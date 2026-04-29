@@ -13,6 +13,9 @@ export function App() {
       <header className="flex items-center justify-between border-b border-neutral-800 pb-4">
         <h1 className="text-2xl font-semibold">CLD Web</h1>
         <div className="flex items-center gap-4 text-sm">
+          <Link to="/library" className="text-neutral-300 hover:underline">
+            Library
+          </Link>
           <Link to="/orgs" className="text-neutral-300 hover:underline">
             Organisations
           </Link>

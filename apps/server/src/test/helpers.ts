@@ -7,6 +7,10 @@ import { db, schema, sqlite } from '../db/index.js';
 export function resetDb(): void {
   sqlite.exec(`
     DELETE FROM audit_events;
+    DELETE FROM module_collaborators;
+    DELETE FROM modules;
+    DELETE FROM custom_part_collaborators;
+    DELETE FROM custom_parts;
     DELETE FROM layout_transfers;
     DELETE FROM layout_updates;
     DELETE FROM layout_invites;

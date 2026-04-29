@@ -12,6 +12,7 @@ import { OrgsPage } from './orgs/OrgsPage';
 import { OrgDetailPage } from './orgs/OrgDetailPage';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
+import { LibraryPage } from './library/LibraryPage';
 import './styles.css';
 
 const queryClient = new QueryClient({
@@ -35,6 +36,7 @@ createRoot(root).render(
           <Route path="/org-invite/:token" element={<OrgInvitePage />} />
           <Route path="/orgs" element={<OrgsPage />} />
           <Route path="/orgs/:slug" element={<OrgDetailPage />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/editor/:id" element={<EditorPage />} />
         </Routes>
       </BrowserRouter>

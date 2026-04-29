@@ -29,6 +29,13 @@
       "when": 1777470139392,
       "tag": "0003_tricky_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777471095730,
+      "tag": "0004_magical_sentry",
+      "breakpoints": true
     }
   ]
 }

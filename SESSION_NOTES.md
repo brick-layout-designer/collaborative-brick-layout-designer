@@ -1,4 +1,4 @@
-# Session notes — Phase 6 ready to commit
+# Session notes — Phase 6.5 ready to commit
 
 > Living document. Move into PLAN.md / commit messages once it's no
 > longer needed.
@@ -13,48 +13,40 @@
 | `3c0211f` | 4 | Realtime collab via y-websocket |
 | `9580892` | 5 | Sharing + invites + role enforcement |
 | `c3929c9` | docs | Overnight summary |
-| *(this commit)* | 6 | Organisations + layout transfer + WS role-revalidate |
+| `b0ed31f` | 6 | Organisations + layout transfer + WS revalidate |
+| *(this commit)* | 6.5 | Custom parts + saved modules |
 
-## Phase 6 (this session)
+## Phase 6.5 (this session)
 
-**Schema (apps/server/src/db/schema.ts + migration 0003):**
-- `org_invites` — token + recipient email + invite role (admin/member),
-  TTL, accepted_at; mirrors layout_invites.
-- `layout_transfers` — pending user→user transfer tokens. Org-recipient
-  transfers commit immediately and never write to this table.
+**Schema (apps/server/src/db/schema.ts + migration 0004):**
+- `custom_parts` — XML + sprite blobs, owner (user XOR org), createdBy.
+- `custom_part_collaborators` — same shape as layout_collaborators.
+- `modules` — title, owner, Y.Doc snapshot + version + optional
+  sidecar.
+- `module_collaborators`.
+
+**Access (apps/server/src/access/resolveResourceRole.ts):**
+- Now dispatches by `kind: 'layout' | 'custom_part' | 'module'`.
+  Identical role-resolution algorithm; just different table joins.
 
 **Server (apps/server/src/routes/):**
-- `orgs.ts` — POST /api/orgs (creator becomes admin; slug validated;
-  demo accounts blocked); GET list/get/members/layouts; PATCH/DELETE
-  members + invite + revoke; last-admin guard everywhere.
-- `orgInvites.ts` — preview + email-match accept.
-- `transfers.ts` — POST /api/layouts/:id/transfer (specify either
-  recipientEmail OR recipientOrgSlug, not both). Org-recipient =
-  immediate; user-recipient = token + email-match accept. Source-org
-  layouts cannot transfer to a user (prevents extraction). Self-transfer
-  rejected. Previous owner becomes editor on accept.
-- `layouts.ts` — POST /api/layouts gained optional `orgSlug` (org
-  membership required); GET list joins org-membership so org-owned
-  layouts surface in member views.
-- `ws/handler.ts` — 30s `resolveResourceRole` poll. Closes WS with
-  4404 on access revocation; live role updates in-memory for sync
-  gating.
+- `customParts.ts` — list/get/create/delete + sprite+xml byte
+  endpoints + share (immediate add for known recipients,
+  pending-link for unregistered) + role change + remove + leave.
+  4MB cap, gif/png mime, demo-gated invites, partNumber unique per
+  owner.
+- `modules.ts` — list/get/create/rename/delete + snapshot GET/PUT
+  + share + remove. Octet-stream snapshot bodies, 50MB cap, viewer
+  PUT → 403, demo-gated invites.
 
 **Web (apps/web/src/):**
-- `api.ts` — `api.orgs.*`, `api.orgInvites.*`, `api.transfers.*`.
-- `orgs/OrgsPage.tsx` — list + new-org dialog.
-- `orgs/OrgDetailPage.tsx` — members panel, invite form,
-  pending-invites list, org-owned layouts list.
-- `orgs/OrgInvitePage.tsx` — /org-invite/:token landing.
-- `layouts/TransferPage.tsx` — /transfer/:token landing.
-- `layouts/LayoutsPage.tsx` — CreateLayoutDialog has an owner select
-  (personal vs org).
-- `layouts/ShareDialog.tsx` — owner-only `TransferSection` with
-  user/org modes. Org transfers show "transferred to X"; user
-  transfers show the copy-link.
-- `App.tsx` — top-nav "Organisations" link.
-- `main.tsx` — routes for /orgs, /orgs/:slug, /org-invite/:token,
-  /transfer/:token.
+- `api.ts` — `api.customParts.*`, `api.modules.*`.
+- `library/LibraryPage.tsx` — combined view: thumbnail grid for
+  custom parts (sprite from `/api/custom-parts/:id/sprite`), list
+  for modules. Upload-part dialog with org owner picker.
+  New-module dialog. Per-row delete.
+- `App.tsx` — top-nav "Library" link.
+- `main.tsx` — `/library` route.
 
 ## Tests passing (last run)
 
@@ -62,69 +54,63 @@
 - 19 parts-catalog
 - 4 ydoc
 - 20 web
-- 70 server (was 50 + 12 orgs + 8 transfers)
-- = **159 passing**
+- 85 server (was 70 + 9 customParts + 6 modules = 15 new)
+- = **174 passing**
 
 ## How to resume / verify
 
 ```sh
 git status                                    # clean
-git log --oneline -7                          # 7 commits
+git log --oneline -8                          # 8 commits
 pnpm -r typecheck && pnpm -r test && pnpm -r build
 ```
 
-Smoke test the full flow:
-1. Register Alice + Bob in two browsers.
-2. Alice creates org "acme" (top-nav → Organisations → New org).
-3. Alice invites Bob as member (Org page → Invite). Copy link.
-4. Bob pastes link → /org-invite/<token> → auto-accepts → /orgs/acme
-   shows Bob as member.
-5. Alice imports tight-corner.bbm with Owner=Acme. The new layout
-   appears in /orgs/acme and in both Alice's and Bob's main layouts
-   list (because Bob is a member).
-6. Both edit it live (Phase 4 collab still works via the org-derived
-   editor role).
-7. Alice opens ShareDialog → TransferSection → "Transfer to a user" →
-   carol@example.com. Pending link returned. Alice copies it. Carol
-   registers, opens the link, becomes the new owner. Alice stays as
-   editor.
-8. WS revalidation: Alice removes Bob from the org. Bob's open editor
-   tab (which is on an org-owned layout) closes within 30 seconds with
-   "access_revoked".
+Smoke test:
+1. Register Alice. Create org "acme" (top-nav → Organisations → New).
+2. Top-nav → Library. Upload a custom part (XML + sprite GIF). Owner
+   defaults to personal; pick the org if you'd like it shared with
+   members.
+3. Create a saved module. Title only — module bytes are seeded as an
+   empty Y.Doc.
+4. Register Bob, invite him to the org as member. Bob now sees both
+   org-owned items in Library.
+5. Sharing a personal part: API only currently — no web UI for the
+   share dialog beyond owner-org selection at create time. The
+   custom-parts share endpoint immediately adds a registered
+   recipient; non-registered returns a copy-link (no DB persistence
+   yet — see Phase 7 follow-up).
 
-## Known follow-ups for Phase 7
+## Known limitations / Phase 7 follow-ups
 
-1. **Audit-log read UI** — rows are being written for share/unshare/
-   role_change/transfer; no /api/layouts/:id/audit endpoint or panel
+1. **Editor doesn't surface custom parts yet.** They're listed in
+   `/library` but the in-editor parts panel pulls from
+   `/api/parts/catalog` only. Phase 7 wires custom parts into the
+   parts panel under "My parts" / "Org parts" tabs.
+2. **Modules can't be placed yet.** No "instantiate this module"
+   command in the editor toolbar. Phase 7.
+3. **Custom-part share for unregistered recipients lacks a DB row.**
+   The endpoint returns a token+URL but the token isn't persisted, so
+   the recipient can't actually accept. Phase 7 adds
+   `custom_part_invites`.
+4. **No transfer for custom parts / modules.** Layout transfer works
+   end-to-end; custom parts and modules don't have transfer endpoints
    yet.
-2. **Backup worker (PLAN.md §4.6)** — daily VACUUM INTO + retention
-   buckets.
-3. **Demo TTL sweeper** — nightly cron deleting expired
-   demo-owned layouts.
-4. **Mobile read-only viewer** — pan/zoom on small screens.
-5. **Place-time snap-to-connection-point hint** + connection-point
-   markers visualisation (Phase 3 deferred items).
-6. **TLS deploy docs** + first `v1.0.0` tag.
-7. **Awareness identity validation** — server-side overwrite of
-   awareness `user.id` to match the WS-authenticated user (currently
-   client-trusted).
-8. **Phase 6.5** — custom parts + saved modules (own ownership +
-   sharing tiers, schema sketched in PLAN.md §3.1).
+5. **No audit log writes for these new resources.** Layout
+   share/unshare/role_change/transfer all hit `audit_events`; the
+   parts/modules paths don't yet.
+6. **Module realtime collab.** Modules use snapshot REST only — no WS
+   server. Editing happens single-user.
 
-## Context for next session
+## Phase 7 priorities (when we get there)
 
-The `layout_transfers` row is currently a one-shot ("pending → accepted"
-or revoked). There's no transfer-history table beyond `audit_events`,
-so audit is the only canonical record. That's intentional and fine for
-v1; if/when we want a "transfers requested by me" view, this is the
-shape that needs adding.
-
-Slug validation accepts only lowercase a-z, 0-9, hyphens; 1–40 chars.
-The handler lowercases input before validation, so "Acme" → "acme"
-gets accepted. Reject pattern: spaces, underscores, leading/trailing
-hyphens, >40 chars.
-
-`resolveResourceRole` already returns `'editor'` for org members on
-org-owned layouts and `'owner'` for org admins. No code change needed
-for org-derived roles in Phase 6 — that helper has been correct since
-Phase 2.
+1. Editor integration of custom parts (parts panel) and modules
+   (instantiate-from-library).
+2. `custom_part_invites` for unregistered recipients.
+3. Audit log writes for custom-part / module events.
+4. Audit log read UI (per-layout / per-resource history).
+5. Daily compaction job (the 30s snapshot covers active editing).
+6. Backup worker (PLAN.md §4.6).
+7. Demo TTL sweeper (nightly cron).
+8. Mobile read-only viewer.
+9. TLS deploy docs + first `v1.0.0` tag.
+10. Awareness identity validation.

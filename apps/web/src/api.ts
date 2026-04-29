@@ -229,7 +229,72 @@ export const api = {
       }>(`/api/transfers/${token}`),
     accept: (token: string) => post<{ layoutId: string }>(`/api/transfers/${token}`),
   },
+
+  customParts: {
+    list: () => get<{ parts: CustomPartSummary[] }>('/api/custom-parts'),
+    get: (id: string) =>
+      get<{ part: CustomPartSummary; role: 'owner' | 'editor' | 'viewer' }>(
+        `/api/custom-parts/${id}`,
+      ),
+    create: (body: {
+      partNumber: string;
+      displayName: string;
+      xmlBase64: string;
+      spriteBase64: string;
+      spriteMime: 'image/gif' | 'image/png';
+      orgSlug?: string;
+    }) =>
+      post<{ id: string; partNumber: string; displayName: string }>(
+        '/api/custom-parts',
+        body,
+      ),
+    remove: (id: string) => del(`/api/custom-parts/${id}`),
+    spriteUrl: (id: string) => `/api/custom-parts/${id}/sprite`,
+    xmlUrl: (id: string) => `/api/custom-parts/${id}/xml`,
+    invite: (id: string, email: string, role: 'viewer' | 'editor') =>
+      post<{ added?: true; pending?: true; inviteUrl?: string }>(
+        `/api/custom-parts/${id}/invites`,
+        { email, role },
+      ),
+  },
+
+  modules: {
+    list: () => get<{ modules: ModuleSummary[] }>('/api/modules'),
+    get: (id: string) =>
+      get<{ module: ModuleSummary; role: 'owner' | 'editor' | 'viewer' }>(
+        `/api/modules/${id}`,
+      ),
+    create: (body: { title?: string; orgSlug?: string }) =>
+      post<{ id: string; title: string }>('/api/modules', body),
+    rename: (id: string, title: string) =>
+      patch<{ ok: true }>(`/api/modules/${id}`, { title }),
+    remove: (id: string) => del(`/api/modules/${id}`),
+    invite: (id: string, email: string, role: 'viewer' | 'editor') =>
+      post<{ added: true }>(`/api/modules/${id}/invites`, { email, role }),
+  },
 };
+
+export interface CustomPartSummary {
+  id: string;
+  partNumber: string;
+  displayName: string;
+  ownerUserId: string | null;
+  ownerOrgId: string | null;
+  spriteMime: 'image/gif' | 'image/png';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ModuleSummary {
+  id: string;
+  title: string;
+  ownerUserId: string | null;
+  ownerOrgId: string | null;
+  docVersion: number;
+  hasSidecar: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
 
 export interface OrgSummary {
   id: string;

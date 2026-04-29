@@ -903,34 +903,45 @@ keeping their open WS until refresh.
 
 ### Phase 6.5 — Custom parts + saved modules (2 weeks)
 
-Extends the same ownership/sharing/transfer machinery built for layouts to
-two new resource kinds. The work is mostly schema + REST + UI; the engine
-already understands "fetch a part definition by id" and "instantiate a
-named module" because those concepts come from the desktop port in Phase 3.
+**Shipped:**
+- Schema: `custom_parts`, `custom_part_collaborators`, `modules`,
+  `module_collaborators`. Migration `0004_magical_sentry.sql`.
+- `resolveResourceRole` generalised to handle `'layout' | 'custom_part'
+  | 'module'`. Same algorithm: ownerUserId match → owner, org admin →
+  owner, org member → editor, explicit collaborator → that role.
+- Server REST `/api/custom-parts/*`: list, get (existence-leak
+  protected), create (4MB combined cap, partNumber unique per owner,
+  org-owned via `orgSlug`), delete (owner-only), sprite + xml byte
+  endpoints, share (immediate add for registered recipients;
+  pending-link returned for non-registered with no DB row yet — Phase 7
+  hardens with a `custom_part_invites` table). Demo accounts blocked
+  from invite endpoint.
+- Server REST `/api/modules/*`: full CRUD + snapshot GET/PUT
+  (octet-stream Y.Doc bytes, same shape as layouts snapshot, viewer
+  PUT returns 403). Share + delete + rename, demo-gated invites.
+- Web `api.ts` clients for both. `LibraryPage` at `/library` lists
+  both kinds with create dialogs, owner picker (personal vs org),
+  thumbnail grid for parts, list view for modules. Top-nav "Library"
+  link.
 
-- SQLite schema: `custom_parts`, `custom_part_collaborators`, `modules`,
-  `module_collaborators` (per §3.1)
-- Generalise `resolveLayoutRole` → `resolveResourceRole(kind, id)`
-- REST: `GET/POST/PATCH/DELETE /api/custom-parts/*` with file upload
-  endpoint for `xml_blob` + `sprite_blob` (mime sniffing, max 1 MB sprite,
-  validate the XML parses against the BlueBrickParts schema)
-- REST: `GET/POST/PATCH/DELETE /api/modules/*`. Modules are persisted
-  with the same Yjs snapshot+update-log pattern as layouts so they can be
-  collaboratively edited too (a stretch goal — single-user edits are
-  enough for v1).
-- Frontend: parts panel groups bricks into "Bundled / My parts / Org
-  parts / Shared with me" tabs; modules panel does the same
-- Frontend: "Save selection as module…" command in the editor toolbar
-- Sharing UIs reuse the same components as layout sharing (same
-  `<ResourceShareDialog>` parameterised by resource kind)
-- Audit log: `audit_events` rows for create/share/unshare/transfer on
-  these new resources (event_type extended to `module_share` etc.)
-- Demo-account restrictions extended: demo accounts cannot invite to
-  custom parts or modules (already noted in §3.4)
+**Tests: +15 server (9 customParts + 6 modules). Total 174.**
 
-**Shippable:** upload a custom part, drop it into a layout. Save a
-selection as a module, share it with a teammate, they drop it into their
-layout. Move a module from personal ownership to the org.
+**Deferred to Phase 7:**
+- `custom_part_invites` table for token-based pending-accept on parts
+  (currently only registered-recipient share works server-side).
+- Editor parts panel integration: surface custom parts in the in-app
+  parts panel alongside the bundled BlueBrickParts.
+- Module placement: "drop a module into a layout" command on the
+  editor side (the snapshot exists, but the editor doesn't yet read
+  modules as templates).
+- `audit_events` rows for custom-part / module create/share — only
+  the layout-side audit writes are wired.
+- Module realtime collab over WS — single-user is enough for v1.
+- Module transfer (mirror of layout transfer).
+
+**Shippable:** upload a custom part, see it in the Library page.
+Create a module, share it with a teammate. Editor integration to
+actually USE these in layouts lands in Phase 7 / a follow-up.
 
 ### Phase 7 — Polish + ops + mobile viewer (2 weeks)
 

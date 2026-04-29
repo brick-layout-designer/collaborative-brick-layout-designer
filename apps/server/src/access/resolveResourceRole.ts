@@ -1,4 +1,4 @@
-// Generic access-control helper used by REST handlers AND (later) the WS
+// Generic access-control helper used by REST handlers AND the WS
 // connection-time auth check. Mirrors the SQL function the desktop plan
 // originally proposed; in SQLite it's a single TS function.
 //
@@ -11,14 +11,16 @@
 //   - 'owner'  — ownerUserId match, OR org-admin on the owning org
 //   - 'editor' — org-member on the owning org (default), OR explicit editor
 //   - 'viewer' — explicit viewer share
+//
+// Three resource kinds share this shape: layouts, custom_parts, modules.
+// We dispatch by kind to the appropriate tables; the role-resolution
+// algorithm itself is identical (per PLAN.md §3.3 / §6.5).
 
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 
 export type Role = 'owner' | 'editor' | 'viewer';
-export type ResourceKind = 'layout';
-// Phase 6.5 will add 'custom_part' | 'module'. Keeping this as a discriminated
-// kind from day one so the handler signatures don't need to change later.
+export type ResourceKind = 'layout' | 'custom_part' | 'module';
 
 export interface RoleResolution {
   role: Role | null;
@@ -31,38 +33,125 @@ function strongerOf(a: Role | null, b: Role | null): Role | null {
   return ROLE_RANK[a] >= ROLE_RANK[b] ? a : b;
 }
 
-export async function resolveResourceRole(
-  userId: string,
-  kind: ResourceKind,
-  resourceId: string,
-): Promise<RoleResolution> {
-  if (kind !== 'layout') {
-    throw new Error(`unsupported resource kind: ${kind as string}`);
-  }
+interface ResourceTables {
+  ownerUserId: string | null;
+  ownerOrgId: string | null;
+  collaboratorRole: Role | null;
+}
 
-  const layout = await db
+async function loadLayout(userId: string, id: string): Promise<ResourceTables | null> {
+  const row = await db
     .select({
       ownerUserId: schema.layouts.ownerUserId,
       ownerOrgId: schema.layouts.ownerOrgId,
     })
     .from(schema.layouts)
-    .where(eq(schema.layouts.id, resourceId))
+    .where(eq(schema.layouts.id, id))
     .get();
-  if (!layout) return { role: null };
+  if (!row) return null;
+  const collab = await db
+    .select({ role: schema.layoutCollaborators.role })
+    .from(schema.layoutCollaborators)
+    .where(
+      and(
+        eq(schema.layoutCollaborators.layoutId, id),
+        eq(schema.layoutCollaborators.userId, userId),
+      ),
+    )
+    .get();
+  return {
+    ownerUserId: row.ownerUserId,
+    ownerOrgId: row.ownerOrgId,
+    collaboratorRole: (collab?.role as Role) ?? null,
+  };
+}
+
+async function loadCustomPart(userId: string, id: string): Promise<ResourceTables | null> {
+  const row = await db
+    .select({
+      ownerUserId: schema.customParts.ownerUserId,
+      ownerOrgId: schema.customParts.ownerOrgId,
+    })
+    .from(schema.customParts)
+    .where(eq(schema.customParts.id, id))
+    .get();
+  if (!row) return null;
+  const collab = await db
+    .select({ role: schema.customPartCollaborators.role })
+    .from(schema.customPartCollaborators)
+    .where(
+      and(
+        eq(schema.customPartCollaborators.customPartId, id),
+        eq(schema.customPartCollaborators.userId, userId),
+      ),
+    )
+    .get();
+  return {
+    ownerUserId: row.ownerUserId,
+    ownerOrgId: row.ownerOrgId,
+    collaboratorRole: (collab?.role as Role) ?? null,
+  };
+}
+
+async function loadModule(userId: string, id: string): Promise<ResourceTables | null> {
+  const row = await db
+    .select({
+      ownerUserId: schema.modules.ownerUserId,
+      ownerOrgId: schema.modules.ownerOrgId,
+    })
+    .from(schema.modules)
+    .where(eq(schema.modules.id, id))
+    .get();
+  if (!row) return null;
+  const collab = await db
+    .select({ role: schema.moduleCollaborators.role })
+    .from(schema.moduleCollaborators)
+    .where(
+      and(
+        eq(schema.moduleCollaborators.moduleId, id),
+        eq(schema.moduleCollaborators.userId, userId),
+      ),
+    )
+    .get();
+  return {
+    ownerUserId: row.ownerUserId,
+    ownerOrgId: row.ownerOrgId,
+    collaboratorRole: (collab?.role as Role) ?? null,
+  };
+}
+
+export async function resolveResourceRole(
+  userId: string,
+  kind: ResourceKind,
+  resourceId: string,
+): Promise<RoleResolution> {
+  let res: ResourceTables | null;
+  switch (kind) {
+    case 'layout':
+      res = await loadLayout(userId, resourceId);
+      break;
+    case 'custom_part':
+      res = await loadCustomPart(userId, resourceId);
+      break;
+    case 'module':
+      res = await loadModule(userId, resourceId);
+      break;
+  }
+  if (!res) return { role: null };
 
   let role: Role | null = null;
 
-  if (layout.ownerUserId === userId) {
+  if (res.ownerUserId === userId) {
     role = strongerOf(role, 'owner');
   }
 
-  if (layout.ownerOrgId) {
+  if (res.ownerOrgId) {
     const membership = await db
       .select({ role: schema.orgMembers.role })
       .from(schema.orgMembers)
       .where(
         and(
-          eq(schema.orgMembers.orgId, layout.ownerOrgId),
+          eq(schema.orgMembers.orgId, res.ownerOrgId),
           eq(schema.orgMembers.userId, userId),
         ),
       )
@@ -72,17 +161,7 @@ export async function resolveResourceRole(
     }
   }
 
-  const explicitShare = await db
-    .select({ role: schema.layoutCollaborators.role })
-    .from(schema.layoutCollaborators)
-    .where(
-      and(
-        eq(schema.layoutCollaborators.layoutId, resourceId),
-        eq(schema.layoutCollaborators.userId, userId),
-      ),
-    )
-    .get();
-  if (explicitShare) role = strongerOf(role, explicitShare.role);
+  if (res.collaboratorRole) role = strongerOf(role, res.collaboratorRole);
 
   return { role };
 }

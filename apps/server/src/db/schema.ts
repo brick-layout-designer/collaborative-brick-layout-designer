@@ -187,6 +187,84 @@ export const auditEvents = sqliteTable('audit_events', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// Custom parts + reusable modules (Phase 6.5)
+// ---------------------------------------------------------------------------
+
+// User- or org-uploaded part definition. Same shape as a BlueBrickParts
+// XML+sprite pair, persisted in the database. The bundled BlueBrickParts
+// library is NOT modelled here — those are static, served from /parts/*
+// by Fastify. Only USER-uploaded parts hit this table.
+export const customParts = sqliteTable('custom_parts', {
+  id: text('id').primaryKey(),
+  /** Identifier the user picked. Unique within an owner. */
+  partNumber: text('part_number').notNull(),
+  displayName: text('display_name').notNull(),
+  ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  ownerOrgId: text('owner_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by')
+    .notNull()
+    .references(() => users.id),
+  /** Full XML payload — same shape as a BlueBrickParts file. */
+  xmlBlob: blob('xml_blob').notNull(),
+  /** Sprite bytes (gif/png). */
+  spriteBlob: blob('sprite_blob').notNull(),
+  spriteMime: text('sprite_mime', { enum: ['image/gif', 'image/png'] }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const customPartCollaborators = sqliteTable(
+  'custom_part_collaborators',
+  {
+    customPartId: text('custom_part_id')
+      .notNull()
+      .references(() => customParts.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['viewer', 'editor', 'owner'] }).notNull(),
+    addedAt: integer('added_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.customPartId, t.userId] }) }),
+);
+
+// Reusable named module: a saved selection of bricks (and their relative
+// positions / per-brick metadata) that can be dropped into any layout the
+// owner has access to. Mirrors desktop's `Module` but elevates it to a
+// first-class shareable asset.
+export const modules = sqliteTable('modules', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  ownerOrgId: text('owner_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by')
+    .notNull()
+    .references(() => users.id),
+  /** Y.Doc snapshot bytes — same persistence story as layouts. */
+  docSnapshot: blob('doc_snapshot').notNull(),
+  docVersion: integer('doc_version').notNull().default(0),
+  /** Optional sidecar (subset of layout sidecar — no venue, no rulers). */
+  sidecarSnapshot: blob('sidecar_snapshot'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const moduleCollaborators = sqliteTable(
+  'module_collaborators',
+  {
+    moduleId: text('module_id')
+      .notNull()
+      .references(() => modules.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['viewer', 'editor', 'owner'] }).notNull(),
+    addedAt: integer('added_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.moduleId, t.userId] }) }),
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -199,3 +277,7 @@ export type Org = typeof orgs.$inferSelect;
 export type OrgMember = typeof orgMembers.$inferSelect;
 export type OrgInvite = typeof orgInvites.$inferSelect;
 export type LayoutTransfer = typeof layoutTransfers.$inferSelect;
+export type CustomPart = typeof customParts.$inferSelect;
+export type CustomPartCollaborator = typeof customPartCollaborators.$inferSelect;
+export type Module = typeof modules.$inferSelect;
+export type ModuleCollaborator = typeof moduleCollaborators.$inferSelect;
