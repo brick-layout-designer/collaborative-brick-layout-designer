@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
 
@@ -83,6 +84,12 @@ function LayoutRow({
         </p>
       </div>
       <div className="flex items-center gap-2 text-sm">
+        <Link
+          to={`/editor/${layout.id}`}
+          className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-500"
+        >
+          Open
+        </Link>
         <a
           href={api.layouts.exportBbmUrl(layout.id)}
           className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"

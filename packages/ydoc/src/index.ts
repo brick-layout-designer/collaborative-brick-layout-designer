@@ -11,6 +11,9 @@
 import * as Y from 'yjs';
 import type { BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
+import { bbmToDoc, docToBbm } from './projection.js';
+
+export { bbmToDoc, docToBbm } from './projection.js';
 
 export function createLayoutDoc(): Y.Doc {
   const doc = new Y.Doc();
@@ -33,23 +36,13 @@ export function createSidecarDoc(): Y.Doc {
 }
 
 /**
- * Seed a fresh Y.Doc from a parsed `.bbm` map. Phase 2 stub: only stuffs the
- * map header into `meta` so we can prove the import pipeline runs end-to-end.
- * Phase 3/4 expands this to project the full layer/brick tree.
+ * Seed a fresh Y.Doc from a parsed `.bbm` map using the full projection.
+ * Replaces the Phase-2 `bbmCache` shortcut: every layer/brick/textCell now
+ * lives in the Yjs tree and survives editing.
  */
 export function seedFromBbm(map: BbmMap): Y.Doc {
-  const doc = createLayoutDoc();
-  const meta = doc.getMap('meta');
-  meta.set('version', map.version);
-  meta.set('author', map.author);
-  meta.set('lug', map.lug);
-  meta.set('event', map.event);
-  meta.set('comment', map.comment);
-  meta.set('selectedLayerIndex', map.selectedLayerIndex);
-  // Stash the original parsed map until the projection ports — that way an
-  // export round-trip during Phase 2 (read .bbm → store → re-emit .bbm) is
-  // lossless. Phase 3 replaces this with a real per-layer Yjs structure.
-  meta.set('bbmCache', map as unknown as Record<string, unknown>);
+  const doc = new Y.Doc();
+  bbmToDoc(map, doc);
   return doc;
 }
 
@@ -75,14 +68,15 @@ export function decodeDoc(bytes: Uint8Array): Y.Doc {
 }
 
 /**
- * Phase-2 export shim: pull the cached BbmMap back out of the doc's `meta`
- * map. Returns `null` if nothing was seeded (e.g. a doc created in-app
- * without an import). Phase 3 replaces this by reconstructing the map from
- * the per-layer Yjs structure.
+ * Reconstruct a BbmMap from a populated Yjs doc. Returns `null` if the doc
+ * is empty (no `meta.version` set) — i.e. the caller never seeded it from
+ * a .bbm or `bbmToDoc`. The projection round-trips losslessly with
+ * `bbmToDoc`, so this is the export path used by the server's
+ * `/api/layouts/:id/export.bbm` route.
  */
 export function exportBbmFromDoc(doc: Y.Doc): BbmMap | null {
-  const cached = doc.getMap('meta').get('bbmCache');
-  return (cached as BbmMap | undefined) ?? null;
+  if (doc.getMap('meta').get('version') === undefined) return null;
+  return docToBbm(doc);
 }
 
 export function exportSidecarFromDoc(doc: Y.Doc): Sidecar | null {

@@ -1,0 +1,173 @@
+import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import { docToBbm } from '@cld/ydoc';
+import {
+  deleteBricks,
+  ensureBrickLayer,
+  moveBrick,
+  placeBrick,
+  rotateBricks,
+} from './mutations';
+import { LOCAL_ORIGIN } from './useLayoutDoc';
+
+describe('ensureBrickLayer', () => {
+  it('creates a new brick layer + meta defaults when called on a blank doc', () => {
+    const doc = new Y.Doc();
+    const id = ensureBrickLayer(doc);
+    expect(id).toBeTruthy();
+
+    const layerData = doc.getMap('layerData').get(id);
+    expect(layerData).toBeInstanceOf(Y.Map);
+    expect((layerData as Y.Map<unknown>).get('type')).toBe('brick');
+
+    // Meta seeded with sensible defaults so docToBbm doesn't throw.
+    const map = docToBbm(doc);
+    expect(map.version).toBe(9);
+    expect(map.layers).toHaveLength(1);
+    expect(map.layers[0]?.type).toBe('brick');
+  });
+
+  it('returns the existing brick layer instead of creating another', () => {
+    const doc = new Y.Doc();
+    const a = ensureBrickLayer(doc);
+    const b = ensureBrickLayer(doc);
+    expect(a).toBe(b);
+    expect(docToBbm(doc).layers).toHaveLength(1);
+  });
+});
+
+describe('placeBrick', () => {
+  it('appends a brick with the given partNumber and displayArea', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const brickId = placeBrick(doc, layerId, {
+      partNumber: 'TS_TRACK18S',
+      x: 10,
+      y: 20,
+      width: 16,
+      height: 16,
+    });
+
+    const map = docToBbm(doc);
+    const layer = map.layers[0];
+    expect(layer?.type).toBe('brick');
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks).toHaveLength(1);
+    expect(layer.bricks[0]?.id).toBe(brickId);
+    expect(layer.bricks[0]?.partNumber).toBe('TS_TRACK18S');
+    expect(layer.bricks[0]?.displayArea).toEqual({ x: 10, y: 20, width: 16, height: 16 });
+  });
+
+  it('tags transactions with LOCAL_ORIGIN so UndoManager can find them', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const seenOrigins: unknown[] = [];
+    doc.on('update', (_u, origin) => seenOrigins.push(origin));
+    placeBrick(doc, layerId, { partNumber: 'X', x: 0, y: 0, width: 8, height: 8 });
+    expect(seenOrigins).toContain(LOCAL_ORIGIN);
+  });
+});
+
+describe('deleteBricks', () => {
+  it('removes the requested bricks and leaves the rest intact', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const a = placeBrick(doc, layerId, { partNumber: 'A', x: 0, y: 0, width: 8, height: 8 });
+    const b = placeBrick(doc, layerId, { partNumber: 'B', x: 8, y: 0, width: 8, height: 8 });
+    const c = placeBrick(doc, layerId, { partNumber: 'C', x: 16, y: 0, width: 8, height: 8 });
+
+    deleteBricks(doc, layerId, [a, c]);
+
+    const map = docToBbm(doc);
+    const layer = map.layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks.map((br) => br.id)).toEqual([b]);
+  });
+
+  it('is a no-op for unknown brick ids', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    placeBrick(doc, layerId, { partNumber: 'A', x: 0, y: 0, width: 8, height: 8 });
+    deleteBricks(doc, layerId, ['nonexistent']);
+    expect(((docToBbm(doc).layers[0] as { bricks: unknown[] }).bricks)).toHaveLength(1);
+  });
+});
+
+describe('moveBrick', () => {
+  it('updates displayArea so the centre moves to the requested coords', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const id = placeBrick(doc, layerId, { partNumber: 'A', x: 0, y: 0, width: 16, height: 16 });
+    moveBrick(doc, layerId, id, 100, 200);
+
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    const area = layer.bricks[0]?.displayArea;
+    // Centre at (100, 200) means top-left at (92, 192).
+    expect(area).toEqual({ x: 92, y: 192, width: 16, height: 16 });
+  });
+});
+
+describe('rotateBricks', () => {
+  it('adds the delta to each selected brick orientation', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const a = placeBrick(doc, layerId, {
+      partNumber: 'A',
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+      orientation: 0,
+    });
+    const b = placeBrick(doc, layerId, {
+      partNumber: 'B',
+      x: 16,
+      y: 0,
+      width: 8,
+      height: 8,
+      orientation: 90,
+    });
+
+    rotateBricks(doc, layerId, [a, b], 15);
+
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks[0]?.orientation).toBe(15);
+    expect(layer.bricks[1]?.orientation).toBe(105);
+  });
+
+  it('wraps modulo 360', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const id = placeBrick(doc, layerId, {
+      partNumber: 'A',
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+      orientation: 350,
+    });
+    rotateBricks(doc, layerId, [id], 30);
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks[0]?.orientation).toBe(20);
+  });
+
+  it('snaps to integers (avoids float drift on round-trip)', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const id = placeBrick(doc, layerId, {
+      partNumber: 'A',
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+      orientation: 1.0001,
+    });
+    rotateBricks(doc, layerId, [id], 0.5);
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(Number.isInteger(layer.bricks[0]?.orientation as number)).toBe(true);
+  });
+});

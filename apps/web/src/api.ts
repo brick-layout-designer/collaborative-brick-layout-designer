@@ -61,6 +61,39 @@ async function del(path: string): Promise<void> {
   if (!res.ok) throw new Error(`${path} → ${res.status}`);
 }
 
+export interface PartWire {
+  key: string;
+  partNumber: string;
+  colorCode: string;
+  kind: 'leaf' | 'group';
+  description: string;
+  sortingKey: string;
+  spritePath: string;
+  pxPerStud: number;
+  hasConnections: boolean;
+}
+
+async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: number }> {
+  const res = await fetch(path, { credentials: 'include' });
+  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return {
+    bytes: new Uint8Array(buf),
+    docVersion: Number.parseInt(res.headers.get('x-doc-version') ?? '0', 10),
+  };
+}
+
+async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: number }> {
+  const res = await fetch(path, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: bytes,
+  });
+  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  return res.json() as Promise<{ updatedAt: number }>;
+}
+
 export const api = {
   me: () => get<{ user: Me | null }>('/api/auth/me'),
   providers: () =>
@@ -73,6 +106,9 @@ export const api = {
 
   layouts: {
     list: () => get<{ layouts: LayoutSummary[] }>('/api/layouts'),
+    get: (id: string) => get<{ layout: LayoutSummary; role: 'owner' | 'editor' | 'viewer' }>(
+      `/api/layouts/${id}`,
+    ),
     create: (body: { title?: string; bbm?: string; sidecar?: string }) =>
       post<{ id: string; title: string }>('/api/layouts', body),
     rename: (id: string, title: string) =>
@@ -80,5 +116,12 @@ export const api = {
     remove: (id: string) => del(`/api/layouts/${id}`),
     exportBbmUrl: (id: string) => `/api/layouts/${id}/export.bbm`,
     exportSidecarUrl: (id: string) => `/api/layouts/${id}/export.bbm.cld`,
+    snapshot: (id: string) => getBytes(`/api/layouts/${id}/snapshot`),
+    saveSnapshot: (id: string, bytes: Uint8Array) =>
+      putBytes(`/api/layouts/${id}/snapshot`, bytes),
+  },
+
+  parts: {
+    catalog: () => get<{ parts: PartWire[] }>('/api/parts/catalog'),
   },
 };

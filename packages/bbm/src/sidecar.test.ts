@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   CURRENT_SCHEMA_VERSION,
-  hashBbmBytes,
   readSidecar,
   writeSidecar,
   type Sidecar,
 } from './sidecar.js';
+import { hashBbmBytes } from './sidecarHash.js';
 
 const baseSidecar: Sidecar = {
   schemaVersion: 1,
@@ -50,11 +50,12 @@ describe('writeSidecar', () => {
     expect(written).toContain('\n  "schemaVersion": 1');
   });
 
-  it('overrides bbmHashSha256 when bbmBytes is supplied', () => {
+  it('overrides bbmHashSha256 when an explicit digest is supplied', () => {
     const stale = { ...baseSidecar, bbmHashSha256: 'STALE' };
-    const written = writeSidecar(stale, { bbmBytes: 'abc' });
+    const fresh = hashBbmBytes('abc');
+    const written = writeSidecar(stale, { bbmHashSha256: fresh });
     const parsed = JSON.parse(written) as { bbmHashSha256: string };
-    expect(parsed.bbmHashSha256).toBe(hashBbmBytes('abc'));
+    expect(parsed.bbmHashSha256).toBe(fresh);
     expect(parsed.bbmHashSha256).not.toBe('STALE');
   });
 

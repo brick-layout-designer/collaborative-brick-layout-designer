@@ -11,7 +11,10 @@
 // rather than silently dropping unknown fields. Writers preserve unknown
 // fields they read (round-trip safety) by holding them in `extras`.
 
-import { createHash } from 'node:crypto';
+// Note: `hashBbmBytes` lives in ./sidecarHash.ts so this module has zero
+// runtime dependencies on `node:crypto` — that lets the browser bundle
+// import the readers/writers and the type definitions without a Node-only
+// shim. The hash helper imports `node:crypto` lazily; it's server-side only.
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
@@ -117,12 +120,16 @@ export function readSidecar(raw: string): Sidecar {
 
 export interface WriteSidecarOptions {
   /**
-   * Bytes of the sibling .bbm at write time. If supplied, we (re)compute
-   * `bbmHashSha256` from these bytes, overriding whatever was in the
-   * Sidecar object — that's the desired behaviour because the hash MUST
-   * reflect the current .bbm content for sync detection to work.
+   * If supplied, we use this string as `bbmHashSha256`, overriding whatever
+   * was in the Sidecar object — that's the desired behaviour because the
+   * hash MUST reflect the current .bbm content for sync detection to work.
+   *
+   * The caller computes the hash via `hashBbmBytes` (server-side, lives in
+   * sidecarHash.ts) and passes the digest in. Keeping the hashing out of
+   * this module means sidecar.ts has no `node:crypto` import, so the web
+   * bundle can include it without a Node shim.
    */
-  bbmBytes?: string | Uint8Array;
+  bbmHashSha256?: string;
   /** Indentation: defaults to 2 spaces. */
   indent?: number;
 }
@@ -132,10 +139,7 @@ export function writeSidecar(sidecar: Sidecar, opts: WriteSidecarOptions = {}): 
 
   const out: Record<string, unknown> = {
     schemaVersion: sidecar.schemaVersion,
-    bbmHashSha256:
-      opts.bbmBytes !== undefined
-        ? hashBbmBytes(opts.bbmBytes)
-        : sidecar.bbmHashSha256,
+    bbmHashSha256: opts.bbmHashSha256 ?? sidecar.bbmHashSha256,
   };
   if (sidecar.anchoredLabels) out.anchoredLabels = sidecar.anchoredLabels;
   if (sidecar.modules) out.modules = sidecar.modules;
@@ -145,12 +149,6 @@ export function writeSidecar(sidecar: Sidecar, opts: WriteSidecarOptions = {}): 
   }
 
   return JSON.stringify(out, null, indent);
-}
-
-export function hashBbmBytes(bytes: string | Uint8Array): string {
-  const h = createHash('sha256');
-  h.update(typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : bytes);
-  return h.digest('hex'); // already lowercase
 }
 
 function numberField(node: Record<string, unknown>, key: string): number {

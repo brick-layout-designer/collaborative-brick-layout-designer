@@ -6,6 +6,7 @@ import { App } from './App';
 import { LoginPage } from './auth/LoginPage';
 import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
+import { EditorPage } from './editor/EditorPage';
 import './styles.css';
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ createRoot(root).render(
           <Route path="/login" element={<LoginPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/link" element={<LinkPage />} />
+          <Route path="/editor/:id" element={<EditorPage />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

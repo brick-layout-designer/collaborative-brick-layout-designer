@@ -21,6 +21,17 @@ interface PatchLayoutBody {
 }
 
 export async function layoutRoutes(app: FastifyInstance) {
+  // Accept raw octet-stream bodies (binary Y.Doc snapshots). Without this,
+  // Fastify rejects PUT /api/layouts/:id/snapshot with 415. The 50MB ceiling
+  // matches the docSnapshot size limit enforced in the handler.
+  if (!app.hasContentTypeParser('application/octet-stream')) {
+    app.addContentTypeParser(
+      'application/octet-stream',
+      { parseAs: 'buffer', bodyLimit: 50 * 1024 * 1024 },
+      (_req, body, done) => done(null, body),
+    );
+  }
+
   // ---- list ----------------------------------------------------------------
   app.get('/api/layouts', async (req) => {
     const user = requireUser(req);
@@ -126,6 +137,10 @@ export async function layoutRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = requireUser(req);
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      // No access at all → 404 (existence-leak protection). Insufficient
+      // role (e.g. viewer can't rename) → 403, because the caller already
+      // knows the resource exists.
+      if (role.role === null) return reply.code(404).send({ error: 'not_found' });
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 
       const updates: Partial<typeof schema.layouts.$inferInsert> = {};
@@ -147,6 +162,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>('/api/layouts/:id', async (req, reply) => {
     const user = requireUser(req);
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+    if (role.role === null) return reply.code(404).send({ error: 'not_found' });
     if (!hasAtLeast(role.role, 'owner')) return reply.code(403).send({ error: 'forbidden' });
 
     await db.delete(schema.layouts).where(eq(schema.layouts.id, req.params.id));
@@ -181,6 +197,60 @@ export async function layoutRoutes(app: FastifyInstance) {
       `attachment; filename="${sanitizeFilename(layout.title)}.bbm"`,
     );
     return reply.send(xml);
+  });
+
+  // ---- snapshot (binary Y.Doc) --------------------------------------------
+  // The editor reads this on /editor/:id load and writes it back on save.
+  // Bytes are the y-update format; the server is dumb about doc internals.
+  app.get<{ Params: { id: string } }>('/api/layouts/:id/snapshot', async (req, reply) => {
+    const user = requireUser(req);
+    const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+    if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
+
+    const layout = await db
+      .select()
+      .from(schema.layouts)
+      .where(eq(schema.layouts.id, req.params.id))
+      .get();
+    if (!layout) return reply.code(404).send({ error: 'not_found' });
+
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('X-Doc-Version', String(layout.docVersion));
+    return reply.send(Buffer.from(layout.docSnapshot as Uint8Array));
+  });
+
+  // PUT replaces the snapshot wholesale. Phase 4 (realtime) replaces this
+  // with an incremental y-update protocol over WebSocket; for Phase 3 the
+  // single-user editor just persists the full doc on save.
+  app.put<{ Params: { id: string } }>('/api/layouts/:id/snapshot', async (req, reply) => {
+    const user = requireUser(req);
+    const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+    // No role at all → 404 (existence-leak protection). Has a role but not
+    // editor (e.g. viewer) → 403, because the user already knows the
+    // resource exists.
+    if (role.role === null) return reply.code(404).send({ error: 'not_found' });
+    if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
+
+    const body = req.body;
+    if (!body || !(body instanceof Buffer || body instanceof Uint8Array)) {
+      return reply.code(400).send({ error: 'expected_binary_body' });
+    }
+    const bytes = body instanceof Buffer ? body : Buffer.from(body);
+    if (bytes.length === 0) return reply.code(400).send({ error: 'empty_snapshot' });
+    if (bytes.length > 50 * 1024 * 1024) {
+      return reply.code(413).send({ error: 'snapshot_too_large' });
+    }
+
+    const updatedAt = new Date();
+    await db
+      .update(schema.layouts)
+      .set({
+        docSnapshot: bytes,
+        docVersion: (await currentVersion(req.params.id)) + 1,
+        updatedAt,
+      })
+      .where(eq(schema.layouts.id, req.params.id));
+    return { ok: true, updatedAt: updatedAt.getTime() };
   });
 
   // ---- export (.bbm.cld) ---------------------------------------------------
@@ -226,6 +296,15 @@ function toListItem(l: typeof schema.layouts.$inferSelect) {
     docVersion: l.docVersion,
     hasSidecar: l.sidecarSnapshot !== null,
   };
+}
+
+async function currentVersion(layoutId: string): Promise<number> {
+  const row = await db
+    .select({ docVersion: schema.layouts.docVersion })
+    .from(schema.layouts)
+    .where(eq(schema.layouts.id, layoutId))
+    .get();
+  return row?.docVersion ?? 0;
 }
 
 function sanitizeFilename(s: string): string {
