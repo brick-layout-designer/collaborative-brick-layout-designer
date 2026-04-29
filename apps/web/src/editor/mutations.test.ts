@@ -7,6 +7,7 @@ import {
   moveBrick,
   placeBrick,
   rotateBricks,
+  translateBricks,
 } from './mutations';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 
@@ -105,6 +106,38 @@ describe('moveBrick', () => {
     const area = layer.bricks[0]?.displayArea;
     // Centre at (100, 200) means top-left at (92, 192).
     expect(area).toEqual({ x: 92, y: 192, width: 16, height: 16 });
+  });
+});
+
+describe('translateBricks', () => {
+  it('shifts every brick by the same delta in a single transaction', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    const a = placeBrick(doc, layerId, { partNumber: 'A', x: 0, y: 0, width: 8, height: 8 });
+    const b = placeBrick(doc, layerId, { partNumber: 'B', x: 16, y: 16, width: 8, height: 8 });
+
+    // Watch transaction count — translateBricks must be ONE transaction
+    // (so undo treats the multi-brick move as a single step).
+    let txnCount = 0;
+    doc.on('afterTransaction', () => txnCount++);
+    translateBricks(doc, layerId, [a, b], 5, -3);
+    doc.off('afterTransaction', () => txnCount++);
+    expect(txnCount).toBe(1);
+
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks[0]?.displayArea).toEqual({ x: 5, y: -3, width: 8, height: 8 });
+    expect(layer.bricks[1]?.displayArea).toEqual({ x: 21, y: 13, width: 8, height: 8 });
+  });
+
+  it('skips work when called with empty selection or zero delta', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    let txnCount = 0;
+    doc.on('afterTransaction', () => txnCount++);
+    translateBricks(doc, layerId, [], 5, 5);
+    translateBricks(doc, layerId, ['x'], 0, 0);
+    expect(txnCount).toBe(0);
   });
 });
 

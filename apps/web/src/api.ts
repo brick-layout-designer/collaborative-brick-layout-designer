@@ -61,6 +61,14 @@ async function del(path: string): Promise<void> {
   if (!res.ok) throw new Error(`${path} → ${res.status}`);
 }
 
+export interface ConnectionPointWire {
+  type: string;
+  x: number;
+  y: number;
+  angle: number;
+  electricPlug: number;
+}
+
 export interface PartWire {
   key: string;
   partNumber: string;
@@ -70,7 +78,7 @@ export interface PartWire {
   sortingKey: string;
   spritePath: string;
   pxPerStud: number;
-  hasConnections: boolean;
+  connections: ConnectionPointWire[];
 }
 
 async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: number }> {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer } from 'react-konva';
@@ -16,6 +16,9 @@ import { useViewportSize } from './useViewportSize';
 import { docToBbm } from '@cld/ydoc';
 import { deleteBricks, ensureBrickLayer, placeBrick, rotateBricks } from './mutations';
 import { pxToStud, studToPx } from './render/coords';
+import { ensureSprite } from './render/spriteCache';
+import { PlaceGhost } from './render/PlaceGhost';
+import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
 import { useConnectivity } from './useConnectivity';
 
@@ -127,6 +130,15 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
   const selection = useEditorStore((s) => s.selection);
   const setSelection = useEditorStore((s) => s.setSelection);
 
+  // Cursor in world studs — drives the Place ghost preview. We refresh
+  // it on mousemove only when relevant (place tool active) to avoid
+  // re-rendering the whole canvas on every pixel of mouse movement.
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+
+  // Marquee state. Active while the user is dragging in select mode on
+  // empty stage. Mouse-up commits the intersection to selection.
+  const [marquee, setMarquee] = useState<import('./render/MarqueeOverlay').Marquee | null>(null);
+
   // Reconstruct the BbmMap on every render to feed the layer renderers.
   // Cheap because we already re-rendered on Yjs change; the projection is
   // pure JS over Y.Maps. Real layouts (~500 bricks) are <1ms to project.
@@ -175,40 +187,85 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [doc, selection, activeLayerId, setSelection]);
 
+  /** Read the pointer's stud-space coordinates. */
+  function pointerStuds(): { x: number; y: number } | null {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const ptr = stage.getPointerPosition();
+    if (!ptr) return null;
+    return {
+      x: pxToStud((ptr.x - panX) / zoom),
+      y: pxToStud((ptr.y - panY) / zoom),
+    };
+  }
+
   function handleStageMouseDown(e: KonvaEventObject<MouseEvent>) {
-    // Click on empty space → clear selection (when in select tool).
-    if (tool === 'select' && e.target === e.target.getStage()) {
+    if (e.target !== e.target.getStage()) return;
+    const studs = pointerStuds();
+    if (!studs) return;
+
+    if (tool === 'select') {
+      // Empty-space click in select mode → start marquee.
       setSelection([]);
+      setMarquee({ x0: studs.x, y0: studs.y, x1: studs.x, y1: studs.y });
       return;
     }
-    if (tool !== 'place' || !placePartKey || e.target !== e.target.getStage()) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    const ptr = stage.getPointerPosition();
-    if (!ptr) return;
-    // Convert pointer (px) → world studs.
-    const worldX = (ptr.x - panX) / zoom;
-    const worldY = (ptr.y - panY) / zoom;
-    const studX = pxToStud(worldX);
-    const studY = pxToStud(worldY);
+    if (tool === 'place' && placePartKey) {
+      void doPlace(studs.x, studs.y);
+    }
+  }
 
+  function handleStageMouseMove(_e: KonvaEventObject<MouseEvent>) {
+    const studs = pointerStuds();
+    if (!studs) return;
+    if (tool === 'place') setCursor(studs);
+    if (marquee) setMarquee({ ...marquee, x1: studs.x, y1: studs.y });
+  }
+
+  function handleStageMouseUp(_e: KonvaEventObject<MouseEvent>) {
+    if (!marquee) return;
+    // Commit selection. Only the FIRST brick layer is queryable here —
+    // multi-layer marquee would need an active-layer scope (or a global
+    // "all visible bricks" scope). Sticking with active-layer for now.
+    const layer = map?.layers.find(
+      (l) => l.id === activeLayerId && l.type === 'brick',
+    );
+    if (layer && layer.type === 'brick') {
+      const ids = bricksInMarquee(marquee, layer.bricks).map((id) => id);
+      setSelection(ids);
+    }
+    setMarquee(null);
+  }
+
+  async function doPlace(studX: number, studY: number) {
     const meta = partsByKey.get(placePartKey);
     if (!meta) return;
-    // Default brick size when the catalog doesn't tell us — small placeholder.
-    // The desktop derives this from the sprite dimensions; sprite-aware
-    // sizing arrives later. Use 16x16 studs as a sensible default until
-    // we read the sprite's natural size.
-    const sizeStuds = 16;
+
+    // Sprite-aware sizing. Load the GIF/PNG (cached), then derive stud
+    // size as `naturalSize / pxPerStud` — matches the desktop's
+    // SceneBuilder. Fall back to 16x16 studs if the sprite is missing
+    // (rare; usually means the part XML lists no spritePath).
+    let widthStuds = 16;
+    let heightStuds = 16;
+    if (meta.spritePath) {
+      try {
+        const img = await ensureSprite(`/parts/${meta.spritePath}`);
+        widthStuds = img.naturalWidth / meta.pxPerStud;
+        heightStuds = img.naturalHeight / meta.pxPerStud;
+      } catch {
+        // Use the default; the brick still places, just sized 16x16.
+      }
+    }
 
     const layerId = activeLayerId ?? ensureBrickLayer(doc);
     if (!activeLayerId) setActiveLayer(layerId);
 
     placeBrick(doc, layerId, {
       partNumber: meta.partNumber,
-      x: studX - sizeStuds / 2,
-      y: studY - sizeStuds / 2,
-      width: sizeStuds,
-      height: sizeStuds,
+      x: studX - widthStuds / 2,
+      y: studY - heightStuds / 2,
+      width: widthStuds,
+      height: heightStuds,
     });
   }
 
@@ -222,7 +279,10 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
       y={panY}
       scaleX={zoom}
       scaleY={zoom}
-      draggable={tool !== 'place'}
+      // Disable Konva's stage-level drag while marquee or place is in
+      // play; otherwise the user's intended select/place gesture turns
+      // into a pan.
+      draggable={tool !== 'place' && tool !== 'select'}
       onDragEnd={(e) => {
         useEditorStore.getState().setPan(e.target.x(), e.target.y());
       }}
@@ -232,6 +292,8 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
         useEditorStore.getState().setZoom(zoom * factor);
       }}
       onMouseDown={handleStageMouseDown}
+      onMouseMove={handleStageMouseMove}
+      onMouseUp={handleStageMouseUp}
       onTouchStart={handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void}
     >
       <KonvaLayer listening={false}>
@@ -239,6 +301,16 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
       </KonvaLayer>
       <KonvaLayer>
         <BrickLayer map={map} doc={doc} />
+      </KonvaLayer>
+      <KonvaLayer listening={false}>
+        {tool === 'place' && cursor && (
+          <PlaceGhost
+            part={partsByKey.get(placePartKey) ?? null}
+            cursorStudX={cursor.x}
+            cursorStudY={cursor.y}
+          />
+        )}
+        <MarqueeOverlay marquee={marquee} />
       </KonvaLayer>
     </Stage>
   );

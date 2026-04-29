@@ -51,12 +51,20 @@ export function PartsPanel() {
       <div className="flex-1 overflow-y-auto">
         {isLoading && <p className="p-3 text-xs text-neutral-500">Loading catalog…</p>}
         {[...grouped.entries()].map(([bucket, parts]) => (
-          <details key={bucket} open className="border-b border-neutral-800">
+          <details
+            key={bucket}
+            // Open the first few buckets by default; collapse the rest so
+            // a fresh editor doesn't render hundreds of thumbnails up front.
+            // Search expands all buckets implicitly because `filter` shrinks
+            // the list.
+            open={filter.length > 0}
+            className="border-b border-neutral-800"
+          >
             <summary className="cursor-pointer bg-neutral-900 px-3 py-1 text-xs text-neutral-400">
               {bucket} ({parts.length})
             </summary>
             <ul className="grid grid-cols-2 gap-1 p-2">
-              {parts.slice(0, 50).map((p) => (
+              {parts.map((p) => (
                 <li key={p.key}>
                   <button
                     onClick={() => setPlacePart(p.key)}
@@ -82,11 +90,6 @@ export function PartsPanel() {
                   </button>
                 </li>
               ))}
-              {parts.length > 50 && (
-                <li className="col-span-2 p-1 text-center text-[10px] text-neutral-500">
-                  … {parts.length - 50} more (use search)
-                </li>
-              )}
             </ul>
           </details>
         ))}

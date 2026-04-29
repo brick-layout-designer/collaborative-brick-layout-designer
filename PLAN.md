@@ -729,14 +729,38 @@ re-export to `.bbm`, byte-compare with input.
 
 ### Phase 3 — Canvas editor (2 weeks)
 
-- Konva-based map view: grid, layers, brick rendering
-- Parts panel: lazy-load thumbnails from `/parts/*`
-- Tools: select, place, drag, rotate, delete (the core 5)
-- Layer panel
-- Per-user undo/redo via `Y.UndoManager`
-- Connectivity recompute on the client (port from desktop)
+**Shipped (commits `4de0b70` + `2b30dad` + this milestone):**
+- Yjs ↔ BbmMap projection (`@cld/ydoc/projection`) — full layer/brick
+  tree, round-trips losslessly through binary y-update
+- Snapshot REST: `GET/PUT /api/layouts/:id/snapshot` (octet-stream),
+  with existence-leak fix (404 for non-collaborators, 403 for
+  insufficient role) applied across PATCH / DELETE / PUT
+- Konva-based map view: GridLayer (major + sub grid, ColorSpec → CSS
+  table), BrickLayer (Konva.Image with sprite cache + fallback rect)
+- Parts panel: catalog grouped by sortingKey, thumbnails from
+  `/parts/<spritePath>`, search, collapsed-by-default buckets
+- Tools: select / place / drag / rotate (Q/E ±15°, integer-snapped) /
+  delete (Del/Backspace), tagged with `LOCAL_ORIGIN` for undo scoping
+- Marquee selection (axis-aligned overlap, supports inverted drags)
+- Place-tool ghost preview (faded sprite at cursor)
+- Multi-select drag (single Yjs transaction translates every selected
+  brick by the same delta)
+- Per-user undo/redo via `Y.UndoManager` with `trackedOrigins =
+  Set([LOCAL_ORIGIN])`. Cmd-Z / Cmd-Shift-Z, captureTimeout 200ms.
+- Connectivity recompute (desktop's O(N) bucketing port) wired into
+  the editor, debounced 250ms after each LOCAL_ORIGIN edit, with
+  connection-point coords now shipped on `/api/parts/catalog`
+- Save UX: 2s debounced auto-save + explicit Save button + Cmd-S
+- Sprite-aware brick sizing on Place: `naturalSize / pxPerStud`
 
-**Shippable:** single-user editing in the browser, with undo/redo and save.
+**Deferred to a follow-up phase (see SESSION_NOTES.md):**
+- Layer panel (add / hide / reorder layers)
+- Copy/paste, group/ungroup
+- Place-time snap-to-connection-point hint
+- Connection-point markers visualisation
+
+**Shippable:** single-user editing in the browser, with undo/redo,
+auto-save, real `.bbm` sprites, and connectivity recompute.
 
 ### Phase 4 — Realtime collab + presence (1.5 weeks)
 

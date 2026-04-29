@@ -8,6 +8,14 @@ import { scanCatalog } from '@cld/parts-catalog';
 import type { PartMetadata } from '@cld/parts-catalog';
 import { env } from '../env.js';
 
+interface ConnectionPointWire {
+  type: string;
+  x: number;
+  y: number;
+  angle: number;
+  electricPlug: number;
+}
+
 interface PartWire {
   key: string;
   partNumber: string;
@@ -17,8 +25,13 @@ interface PartWire {
   sortingKey: string;
   spritePath: string;
   pxPerStud: number;
-  /** True if the part has any catalog connection points. Useful for the parts panel. */
-  hasConnections: boolean;
+  /**
+   * Catalog connection points in local-part-coords (studs). Used by:
+   *   - the editor's connectivity recompute
+   *   - rendering connection-point markers (Phase 3 polish)
+   * Empty for parts that never connect (most decorative bricks).
+   */
+  connections: ConnectionPointWire[];
 }
 
 let cache: { etag: string; wire: PartWire[] } | null = null;
@@ -68,7 +81,13 @@ function toWire(p: PartMetadata): PartWire {
     sortingKey: p.sortingKey,
     spritePath: p.spritePath,
     pxPerStud: p.pxPerStud,
-    hasConnections: p.connections.length > 0,
+    connections: p.connections.map((c) => ({
+      type: c.type,
+      x: c.x,
+      y: c.y,
+      angle: c.angle,
+      electricPlug: c.electricPlug,
+    })),
   };
 }
 

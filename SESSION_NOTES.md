@@ -1,103 +1,104 @@
-# Session notes — Phase 3 milestone 2 ready to commit
+# Session notes — Phase 3 complete (milestones 1, 2, 3)
 
-> Living document. Updated as work progresses so the next session can
-> pick up cleanly. Move into PLAN.md / commit messages once Phase 3 ships.
+> Living document. Move into PLAN.md / commit messages once it's no
+> longer needed.
 
-## Commits so far
+## Commits
 
 - **`4de0b70`** — initial scaffold (Phases 1, 2, Phase 3 milestone 1).
-  Monorepo + auth + layouts + .bbm parser + parts catalog + connectivity.
-  98 tests passing.
+  Monorepo + auth + layouts + .bbm parser + parts catalog +
+  connectivity recompute. 98 tests.
+- **`2b30dad`** — Phase 3 milestone 2: editor scaffold, Yjs projection,
+  snapshot REST, tools, undo/redo. 116 tests.
+- *(this commit)* — Phase 3 milestone 3: connectivity activated,
+  marquee, ghost preview, multi-drag, sprite-aware sizing. 122 tests.
 
-## Phase 3 milestone 2 — Editor (this session)
+## Phase 3 milestone 3 (this session)
 
-**What's done:**
+**Connectivity activated:**
+- `/api/parts/catalog` wire shape now ships full `connections[]` per part
+  (type, x, y, angle, electricPlug). `hasConnections: boolean` removed.
+- `useConnectivity` builds a real `Catalog` from the wire data and
+  feeds it to `rebuildConnectivity`. Debounced 250ms after each
+  LOCAL_ORIGIN edit.
+- `linkedTo` writeback wraps in `doc.transact(..., LOCAL_ORIGIN)` so
+  the connectivity update folds into the same undo step as the
+  triggering brick edit.
 
-- `@cld/parts-catalog` split into `./` (Node, has fs scanner) and
-  `./browser` (browser-safe — types + parser + connectivity)
-- `@cld/bbm` similarly split: `./` (full), `./browser` (no node:crypto),
-  `./hash` (the SHA-256 helper, server-only)
-- `@cld/ydoc/projection` — full Yjs ↔ BbmMap projection. Replaces the
-  Phase-2 `bbmCache` shortcut. Round-trips losslessly through the binary
-  y-update path, verified by tests against both vendored fixtures.
-- `apps/web` deps: Konva 9.3.16, react-konva 18.2.10, yjs 13.6.18, all
-  `@cld/*` workspace packages
-- **Editor route** at `/editor/:id`:
-  - `useLayoutDoc` hydrates from `GET /api/layouts/:id/snapshot`,
-    tracks dirty state, debounced 2s auto-save, exposes `saveNow`.
-  - `useUndoManager` binds `Y.UndoManager` to `layerData` with
-    `trackedOrigins: new Set([LOCAL_ORIGIN])`. Cmd-Z / Cmd-Shift-Z. Undo
-    captures grouped by 200ms.
-  - `useConnectivity` schedules debounced recompute (250ms) on every
-    LOCAL_ORIGIN doc update. Currently a no-op because the wire shape
-    of `/api/parts/catalog` doesn't include connection-point coords —
-    see "Known limitations" below.
-  - `useEditorStore` (Zustand) holds tool / selection / activeLayerId /
-    placePartKey / zoom / pan.
-- **Konva canvas**:
-  - `GridLayer` — major + sub grid lines, background fill, ColorSpec
-    converted via a small known-color table (BlueBrick names like
-    `CornflowerBlue` mapped to hex).
-  - `BrickLayer` — Konva.Image per brick using a sprite cache that
-    loads from `/parts/<spritePath>`. Magenta placeholder during load.
-    Selection outline (dashed blue) when selected.
-- **Server**:
-  - `GET/PUT /api/layouts/:id/snapshot` (binary octet-stream Y.Doc).
-    PUT does access check (404 for non-collaborators, 403 for
-    insufficient role) and bumps `docVersion`.
-  - Same existence-leak fix applied to PATCH and DELETE.
-- **Tools**:
-  - Select (click brick to toggle, shift-click to add)
-  - Place (click stage when a part is picked; brick spawned at cursor)
-  - Drag (Konva native draggable)
-  - Rotate (Q/E for ±15° on selection — integer-snapped)
-  - Delete (Del/Backspace)
-- **Parts panel** — catalog grouped by sortingKey, per-bucket cap of 50,
-  thumbnail per part using `/parts/<spritePath>`.
-- Layouts list page now has an "Open" button that links to `/editor/:id`.
+**Sprite-aware sizing:**
+- Place tool now `await ensureSprite(...)`, reads
+  `naturalWidth/Height`, divides by `pxPerStud` for stud size. Falls
+  back to 16x16 if the sprite is missing.
 
-**Test totals: 116 passing (46 bbm + 19 parts-catalog + 4 ydoc + 10 web + 37 server)**
+**Place-tool ghost preview:**
+- `PlaceGhost` component: faded Konva.Image at cursor, sized
+  identically to the brick that will be created.
+- Cursor tracked via stage `onMouseMove`, in stud coordinates.
 
-## Known limitations to address in milestone 3 (polish)
+**Marquee select:**
+- Drag on empty stage in select mode draws a rubber-band rectangle.
+- `bricksInMarquee` (in pure `marqueeMath.ts`) does AABB intersection.
+  Inverted drags (bottom-right → top-left) work.
+- Selection commits on mouse up.
 
-1. **Connectivity recompute is plumbed but not active.** The wire shape
-   of `/api/parts/catalog` strips connection-point coordinates. Either
-   add `connections: ConnectionPoint[]` to `PartWire`, or add a separate
-   `/api/parts/:key/connections` endpoint.
+**Multi-select drag:**
+- `translateBricks` mutation: shifts every brick in a list by the same
+  delta in a single Yjs transaction (one undo step).
+- BrickLayer's drag handler dispatches based on `selection.length`:
+  single brick → `moveBrick`, multi → `translateBricks`.
 
-2. **Brick sizing on Place uses a hardcoded 16x16 stud default.** Should
-   derive from sprite natural size / `pxPerStud`.
+**Parts panel polish:**
+- Removed 50-per-bucket cap (browser handles 500+ lazy-loaded `<img>`).
+- Buckets collapsed by default; expanded automatically when search
+  filter is non-empty.
 
-3. **No marquee-select.** Click-to-toggle works but no rubber-band.
+**Refactors:**
+- Mutation helpers (`deleteBricks`, `moveBrick`, `translateBricks`)
+  centralised in `mutations.ts`. BrickLayer no longer has its own
+  duplicate copies.
+- `marqueeMath.ts` split off from `MarqueeOverlay.tsx` so unit tests
+  can run without react-konva (which needs a DOM canvas in Node).
 
-4. **No multi-select drag.** Dragging one brick of a multi-selection
-   only moves that brick.
+## Test totals (last run)
 
-5. **`PartsPanel` 50-per-bucket cap.** Large buckets are unscrollable
-   beyond 50; needs virtualization or "load more".
-
-6. **No place-tool ghost preview.**
-
-7. **No copy/paste, no group/ungroup, no layer panel.** Deferred per
-   PLAN.md Phase 3 scope.
+- 46 bbm
+- 19 parts-catalog
+- 4 ydoc
+- 16 web (10 mutations + 4 marquee + 2 file passes)
+- 37 server
+- = **122 passing**
 
 ## How to resume
 
-1. `git status` should be clean (after this commit).
+1. `git status` should be clean after this commit.
 2. `pnpm -r typecheck && pnpm -r test && pnpm -r build` — all green.
-3. `cd apps/server && pnpm dev` and `cd apps/web && pnpm dev` — Vite
-   proxies /api and /ws to :3000. Visit http://localhost:5173.
-4. Register a password account (set `ENABLE_PASSWORD_AUTH=true`),
-   import `tight-corner.bbm` via the layouts list, click Open, edit.
-5. **The connectivity hook is dormant** until item #1 in "Known
-   limitations" lands. Brick `linkedTo` will stay empty after edits;
-   that's expected.
+3. `cd apps/server && pnpm dev` (port 3000) and `cd apps/web && pnpm dev`
+   (port 5173 with proxy).
+4. Set `ENABLE_PASSWORD_AUTH=true` in `apps/server/.env`, register, import
+   `tight-corner.bbm` from `packages/bbm/tests/fixtures/`, click Open.
+5. Try: place a part (search "TS_CURVE" in parts panel, click, then
+   click on canvas), drag it, Q/E to rotate, Cmd-Z to undo, marquee-
+   select a group, drag the group, Del to delete.
 
-## Next options
+## Phase 3 deferred items (PLAN.md notes)
 
-- Polish (items 1–6 above) — extends Phase 3 milestone 3, ~1 day
-- Phase 4 (realtime collab) — y-websocket server, awareness, presence
-  panel, snapshot worker. Replaces the snapshot REST endpoint with a
-  WS provider. ~1.5 weeks per PLAN.md.
-- Phase 5 (sharing + invites) — layout-collaborator UI, email/link
-  invite flow, role-based access in REST + WS. ~1.5 weeks.
+- Layer panel (add / hide / reorder layers)
+- Copy/paste, group/ungroup
+- Place-time snap-to-connection-point hint
+- Connection-point markers visualisation
+
+## What's next
+
+Phase 4 — Realtime collab + presence (~1.5 weeks per PLAN.md):
+- y-websocket server in-process with Fastify
+- Yjs doc hydration from snapshot + replay; idle eviction
+- Snapshot worker: every 30s of activity, rewrite snapshot + truncate updates
+- Awareness: cursors, selection outlines, presence panel
+- Connection-state UI (reconnecting, offline)
+- Replace the snapshot-REST `useLayoutDoc` with a y-websocket provider
+- Multiplayer test: 2 tabs editing the same map → mutual cursors,
+  edits flow both ways, offline-then-reconnect merges cleanly
+
+The Phase-3 editor's mutations are already well-structured for this:
+every change goes through `LOCAL_ORIGIN`-tagged transactions, so the
+WS layer just needs to broadcast them.

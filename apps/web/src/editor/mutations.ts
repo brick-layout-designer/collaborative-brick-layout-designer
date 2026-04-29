@@ -102,6 +102,34 @@ export function moveBrick(
   }, LOCAL_ORIGIN);
 }
 
+/**
+ * Translate every brick in `brickIds` by the same delta. Used for
+ * multi-select drag — the dragged brick's `dx, dy` is computed by the
+ * caller from the Konva event, then applied to every selected brick in
+ * a single Yjs transaction so undo treats the whole drag as one step.
+ */
+export function translateBricks(
+  doc: Y.Doc,
+  layerId: string,
+  brickIds: string[],
+  dxStuds: number,
+  dyStuds: number,
+): void {
+  if (brickIds.length === 0 || (dxStuds === 0 && dyStuds === 0)) return;
+  doc.transact(() => {
+    for (const brickId of brickIds) {
+      const yBrick = findBrick(doc, layerId, brickId);
+      if (!yBrick) continue;
+      const area = yBrick.get('displayArea') as RectangleF;
+      yBrick.set('displayArea', {
+        ...area,
+        x: area.x + dxStuds,
+        y: area.y + dyStuds,
+      });
+    }
+  }, LOCAL_ORIGIN);
+}
+
 export function rotateBricks(
   doc: Y.Doc,
   layerId: string,

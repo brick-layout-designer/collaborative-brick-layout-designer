@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo } from 'react';
 import * as Y from 'yjs';
-import { rebuildConnectivity, type Catalog } from '@cld/parts-catalog/browser';
+import { rebuildConnectivity, type Catalog, type PartMetadata } from '@cld/parts-catalog/browser';
 import { docToBbm } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import type { PartWire } from '../api';
@@ -22,13 +22,36 @@ import type { PartWire } from '../api';
 const DEBOUNCE_MS = 250;
 
 export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined): void {
-  // Build a catalog the recompute can read. The desktop's per-part
-  // connection-point coordinates aren't carried in PartWire (we strip
-  // them on the wire to keep the payload small) — Phase 3 needs the
-  // server to ship them through. For now we feed an EMPTY catalog so
-  // recompute is a no-op until that lands. The hook still wires the
-  // debounce so plugging in the data later is one line.
-  const catalog: Catalog = useMemo(() => new Map(), [parts]);
+  // Build a Catalog from the wire shape. The recompute only reads
+  // `connections` and `partNumber`/`key` — we leave the other fields
+  // empty since the algorithm doesn't touch them.
+  const catalog: Catalog = useMemo(() => {
+    const m: Catalog = new Map();
+    for (const p of parts ?? []) {
+      const meta: PartMetadata = {
+        key: p.key,
+        partNumber: p.partNumber,
+        colorCode: p.colorCode,
+        kind: p.kind,
+        descriptions: {},
+        author: '',
+        sortingKey: p.sortingKey,
+        spritePath: p.spritePath,
+        pxPerStud: p.pxPerStud,
+        connections: p.connections.map((c) => ({
+          type: c.type,
+          x: c.x,
+          y: c.y,
+          angle: c.angle,
+          electricPlug: c.electricPlug,
+        })),
+        subparts: [],
+        canUngroup: true,
+      };
+      m.set(p.key, meta);
+    }
+    return m;
+  }, [parts]);
 
   useEffect(() => {
     if (!doc) return;

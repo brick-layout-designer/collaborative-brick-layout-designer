@@ -6,7 +6,7 @@ import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, type PartWire } from '../../api';
 import { useEditorStore } from '../editorStore';
-import { LOCAL_ORIGIN } from '../useLayoutDoc';
+import { deleteBricks, moveBrick, translateBricks } from '../mutations';
 import { studToPx } from './coords';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 
@@ -95,15 +95,28 @@ function BrickGlyph({
       toggleSelected(brick.id, additive);
     } else if (tool === 'delete') {
       e.cancelBubble = true;
-      deleteBrick(doc, layerId, brick.id);
+      deleteBricks(doc, layerId, [brick.id]);
     }
   }
 
   function handleDragEnd(e: KonvaEventObject<DragEvent>) {
     if (tool !== 'drag' && tool !== 'select') return;
-    const newX = e.target.x();
-    const newY = e.target.y();
-    moveBrick(doc, layerId, brick.id, newX / studToPx(), newY / studToPx());
+    const newCentreStudX = e.target.x() / studToPx();
+    const newCentreStudY = e.target.y() / studToPx();
+
+    if (selection.includes(brick.id) && selection.length > 1) {
+      // Multi-select drag: translate every selected brick by the same delta.
+      // Using THIS brick's old centre to compute the delta keeps relative
+      // positions intact when the user drags by another brick in the
+      // selection.
+      const oldCentreStudX = brick.displayArea.x + brick.displayArea.width / 2;
+      const oldCentreStudY = brick.displayArea.y + brick.displayArea.height / 2;
+      const dx = newCentreStudX - oldCentreStudX;
+      const dy = newCentreStudY - oldCentreStudY;
+      translateBricks(doc, layerId, selection, dx, dy);
+    } else {
+      moveBrick(doc, layerId, brick.id, newCentreStudX, newCentreStudY);
+    }
   }
 
   return (
@@ -152,54 +165,5 @@ function BrickGlyph({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Mutations — every doc change wraps in doc.transact(fn, LOCAL_ORIGIN) so
-// per-user undo (Y.UndoManager) only walks back our own transactions.
-// ---------------------------------------------------------------------------
-
-function deleteBrick(doc: Y.Doc, layerId: string, brickId: string): void {
-  doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const bricks = layerData.get('bricks');
-    if (!(bricks instanceof Y.Array)) return;
-    const idx = findBrickIndex(bricks, brickId);
-    if (idx === -1) return;
-    bricks.delete(idx, 1);
-  }, LOCAL_ORIGIN);
-}
-
-function moveBrick(
-  doc: Y.Doc,
-  layerId: string,
-  brickId: string,
-  newX: number,
-  newY: number,
-): void {
-  doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const bricks = layerData.get('bricks');
-    if (!(bricks instanceof Y.Array)) return;
-    const idx = findBrickIndex(bricks, brickId);
-    if (idx === -1) return;
-    const yBrick = bricks.get(idx);
-    if (!(yBrick instanceof Y.Map)) return;
-    const area = yBrick.get('displayArea') as { x: number; y: number; width: number; height: number };
-    yBrick.set('displayArea', {
-      ...area,
-      // Konva Group origin is the brick's CENTRE; convert back to top-left
-      // for storage so the .bbm round-trip remains identical.
-      x: newX - area.width / 2,
-      y: newY - area.height / 2,
-    });
-  }, LOCAL_ORIGIN);
-}
-
-function findBrickIndex(bricks: Y.Array<unknown>, brickId: string): number {
-  for (let i = 0; i < bricks.length; i++) {
-    const b = bricks.get(i);
-    if (b instanceof Y.Map && b.get('id') === brickId) return i;
-  }
-  return -1;
-}
+// Mutation helpers (deleteBricks, moveBrick, translateBricks) live in
+// `../mutations.ts`, where they're exercised by mutations.test.ts.
