@@ -1,0 +1,85 @@
+// Recursively walk a parts-library directory, parse every `.xml` file, and
+// pair it with the matching sprite. Returns an in-memory `Catalog`.
+
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { parsePartXml } from './parse.js';
+import type { Catalog, PartMetadata } from './types.js';
+
+const SPRITE_EXTS = ['.gif', '.png', '.jpg', '.jpeg'] as const;
+
+export interface ScanResult {
+  catalog: Catalog;
+  /** Files that failed to parse, with the error message. Diagnostic only. */
+  errors: { path: string; message: string }[];
+}
+
+export async function scanCatalog(rootDir: string): Promise<ScanResult> {
+  const catalog: Catalog = new Map();
+  const errors: { path: string; message: string }[] = [];
+
+  if (!existsSync(rootDir)) {
+    throw new Error(`parts-library not found at ${rootDir}`);
+  }
+
+  for await (const xmlPath of walkXml(rootDir)) {
+    try {
+      const part = await parseOne(rootDir, xmlPath);
+      catalog.set(part.key, part);
+    } catch (err) {
+      errors.push({ path: relative(rootDir, xmlPath), message: (err as Error).message });
+    }
+  }
+
+  return { catalog, errors };
+}
+
+async function parseOne(rootDir: string, xmlPath: string): Promise<PartMetadata> {
+  const xml = await readFile(xmlPath, 'utf8');
+
+  // Filename → libraryKey. Strip `.set.xml` (groups) or `.xml` (leaves).
+  const filename = xmlPath.slice(xmlPath.lastIndexOf('/') + 1);
+  const isGroupFile = filename.toLowerCase().endsWith('.set.xml');
+  const stem = isGroupFile ? filename.slice(0, -'.set.xml'.length) : filename.slice(0, -'.xml'.length);
+
+  // Stem is `"<partNumber>.<colorCode>"` — the LAST dot separates them.
+  // Some part numbers contain dots (e.g. "TS_TRACK18S.8"), so simple
+  // splitting on the FIRST dot is wrong. The desktop's `splitPartKey`
+  // splits on the last dot, which we mirror.
+  const lastDot = stem.lastIndexOf('.');
+  const partNumber = lastDot === -1 ? stem : stem.slice(0, lastDot);
+  const colorCode = lastDot === -1 ? '' : stem.slice(lastDot + 1);
+
+  // Find a sibling sprite. The desktop tries .gif → .png → .jpg → .jpeg.
+  const xmlBase = isGroupFile ? xmlPath.slice(0, -'.set.xml'.length) : xmlPath.slice(0, -'.xml'.length);
+  let spritePath = '';
+  for (const ext of SPRITE_EXTS) {
+    const candidate = xmlBase + ext;
+    if (existsSync(candidate)) {
+      spritePath = relative(rootDir, candidate);
+      break;
+    }
+  }
+
+  return parsePartXml(xml, { partNumber, colorCode, spritePath });
+}
+
+async function* walkXml(dir: string): AsyncIterable<string> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      yield* walkXml(full);
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.xml')) {
+      yield full;
+    }
+  }
+}
+
+/** Convenience wrapper for `fs.stat` on the root, returning a friendly error. */
+export async function statRoot(root: string): Promise<void> {
+  if (!existsSync(root)) throw new Error(`parts-library directory missing: ${root}`);
+  const s = await stat(root);
+  if (!s.isDirectory()) throw new Error(`parts-library path is not a directory: ${root}`);
+}

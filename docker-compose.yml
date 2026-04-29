@@ -1,0 +1,26 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: cld-web:dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/cld.sqlite
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      PARTS_DIR: /parts
+    volumes:
+      - cld-data:/data
+      - cld-backups:/backups
+      # Read-only bind mount of the BlueBrickParts submodule. Fastify serves
+      # `/parts/*` from disk with long Cache-Control headers; put your own
+      # reverse proxy (Caddy / Traefik / Cloudflare Tunnel / nginx /
+      # whatever) in front for TLS termination.
+      - ./parts-library:/parts:ro
+    ports:
+      - "${HTTP_PORT:-3000}:3000"
+
+volumes:
+  cld-data:
+  cld-backups:

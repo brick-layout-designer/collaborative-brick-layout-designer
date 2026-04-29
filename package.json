@@ -1,0 +1,35 @@
+{
+  "name": "cld-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Collaborative Layout Designer — web port",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "audit": "pnpm audit --prod",
+    "scan:secrets": "gitleaks detect --no-banner --redact -v --config .gitleaks.toml",
+    "scan:deps": "npx -y -p osv-scanner@latest osv-scanner scan --recursive --skip-git ./",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "lefthook": "1.7.18",
+    "typescript": "5.5.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "lefthook",
+      "@node-rs/argon2"
+    ]
+  }
+}

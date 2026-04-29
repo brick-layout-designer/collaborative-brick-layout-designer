@@ -1,0 +1,3 @@
+[submodule "parts-library"]
+	path = parts-library
+	url = https://github.com/Lswbanban/BlueBrickParts.git
