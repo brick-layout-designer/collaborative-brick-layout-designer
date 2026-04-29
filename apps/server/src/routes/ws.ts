@@ -56,7 +56,9 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         }
         userConnections.set(userId, current + 1);
 
-        const detach = await attachWsHandlers(ws, layoutId, userId);
+        // role.role is non-null here because hasAtLeast(role.role, 'viewer')
+        // succeeded above. Cast for the type system.
+        const detach = await attachWsHandlers(ws, layoutId, userId, role.role!);
 
         const cleanup = async () => {
           await detach();

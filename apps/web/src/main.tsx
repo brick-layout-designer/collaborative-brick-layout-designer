@@ -6,6 +6,7 @@ import { App } from './App';
 import { LoginPage } from './auth/LoginPage';
 import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
+import { InvitePage } from './auth/InvitePage';
 import { EditorPage } from './editor/EditorPage';
 import './styles.css';
 
@@ -25,6 +26,7 @@ createRoot(root).render(
           <Route path="/login" element={<LoginPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/link" element={<LinkPage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/editor/:id" element={<EditorPage />} />
         </Routes>
       </BrowserRouter>

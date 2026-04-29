@@ -11,6 +11,8 @@ import { ensureBootstrapAdmin } from './auth/bootstrap.js';
 import { oauthRoutes } from './routes/auth/oauth.js';
 import { passwordRoutes } from './routes/auth/password.js';
 import { sessionRoutes } from './routes/auth/session.js';
+import { collaboratorRoutes } from './routes/collaborators.js';
+import { inviteRoutes } from './routes/invites.js';
 import { layoutRoutes } from './routes/layouts.js';
 import { partsRoutes } from './routes/parts.js';
 import { wsRoutes } from './routes/ws.js';
@@ -36,6 +38,8 @@ async function main() {
   await app.register(sessionRoutes);
   await app.register(layoutRoutes);
   await app.register(partsRoutes);
+  await app.register(collaboratorRoutes);
+  await app.register(inviteRoutes);
   await app.register(wsRoutes);
 
   // Serve the BlueBrickParts library at /parts/*. The desktop's submodule

@@ -13,9 +13,11 @@ import { ensureSprite, getSpriteSync } from './spriteCache';
 interface Props {
   map: BbmMap;
   doc: Y.Doc;
+  /** When true, the canvas is read-only (no drag, no delete-on-click). */
+  isViewer?: boolean;
 }
 
-export function BrickLayer({ map, doc }: Props) {
+export function BrickLayer({ map, doc, isViewer = false }: Props) {
   const catalog = useQuery({
     queryKey: ['parts-catalog'],
     queryFn: api.parts.catalog,
@@ -39,6 +41,7 @@ export function BrickLayer({ map, doc }: Props) {
                 layerId={layer.id}
                 doc={doc}
                 meta={partsByKey.get(brick.partNumber.toLowerCase())}
+                isViewer={isViewer}
               />
             ))
           : null,
@@ -52,10 +55,12 @@ function BrickGlyph({
   layerId,
   doc,
   meta,
+  isViewer,
 }: {
   brick: Brick;
   layerId: string;
   doc: Y.Doc;
+  isViewer: boolean;
   meta: PartWire | undefined;
 }) {
   const selection = useEditorStore((s) => s.selection);
@@ -89,17 +94,20 @@ function BrickGlyph({
 
   function handleClick(e: KonvaEventObject<MouseEvent | TouchEvent>) {
     if (tool === 'select') {
+      // Selection itself is local state — viewers can highlight bricks
+      // for their own reading purposes, but mutations are blocked below.
       e.cancelBubble = true;
       const additive =
         'shiftKey' in e.evt ? e.evt.shiftKey || e.evt.metaKey : false;
       toggleSelected(brick.id, additive);
-    } else if (tool === 'delete') {
+    } else if (tool === 'delete' && !isViewer) {
       e.cancelBubble = true;
       deleteBricks(doc, layerId, [brick.id]);
     }
   }
 
   function handleDragEnd(e: KonvaEventObject<DragEvent>) {
+    if (isViewer) return;
     if (tool !== 'drag' && tool !== 'select') return;
     const newCentreStudX = e.target.x() / studToPx();
     const newCentreStudY = e.target.y() / studToPx();
@@ -124,7 +132,7 @@ function BrickGlyph({
       x={x + w / 2}
       y={y + h / 2}
       rotation={brick.orientation}
-      draggable={tool === 'drag' || tool === 'select'}
+      draggable={!isViewer && (tool === 'drag' || tool === 'select')}
       onClick={handleClick}
       onTap={handleClick}
       onDragEnd={handleDragEnd}

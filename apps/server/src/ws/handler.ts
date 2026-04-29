@@ -26,11 +26,18 @@ const MESSAGE_AWARENESS = 1;
  * Per-connection lifecycle. The handler does NOT close the WS itself;
  * callers handle close + access denial. Returns the function to call when
  * the socket disconnects (cleans up listeners and detaches from the hub).
+ *
+ * `role` is the user's resolved role on this layout. Viewers receive the
+ * full sync stream (so they can see live edits) but the server drops any
+ * sync MESSAGE they try to send — preventing a hostile viewer from
+ * corrupting the doc. Awareness updates are still accepted from viewers
+ * because cursor/selection broadcasting is purely cosmetic.
  */
 export async function attachWsHandlers(
   ws: WebSocket,
   layoutId: string,
   userId: string,
+  role: 'owner' | 'editor' | 'viewer' = 'editor',
 ): Promise<() => Promise<void>> {
   const session = await docHub.getOrCreate(layoutId);
   docHub.attach(session, ws);
@@ -71,7 +78,7 @@ export async function attachWsHandlers(
   // 4. Wire up message handling.
   ws.on('message', (data: Buffer) => {
     try {
-      handleMessage(ws, session, new Uint8Array(data));
+      handleMessage(ws, session, new Uint8Array(data), role);
     } catch {
       // Drop malformed messages silently — Yjs protocol errors should
       // never propagate to the client.
@@ -97,11 +104,24 @@ export async function attachWsHandlers(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function handleMessage(ws: WebSocket, session: DocSession, msg: Uint8Array): void {
+function handleMessage(
+  ws: WebSocket,
+  session: DocSession,
+  msg: Uint8Array,
+  role: 'owner' | 'editor' | 'viewer',
+): void {
   const decoder = decoding.createDecoder(msg);
   const messageType = decoding.readVarUint(decoder);
   switch (messageType) {
     case MESSAGE_SYNC: {
+      // Viewers receive the doc state via the server-initiated step-1
+      // (sent on attach in `sendSyncStep1`) and via doc.update broadcasts
+      // for ongoing edits — neither path reaches this handler. So we
+      // safely drop ALL sync messages a viewer tries to send: that's
+      // their attempted step-2 (uploading their state) or update
+      // messages (proposing edits). Both are write paths and viewers
+      // have no write rights.
+      if (role === 'viewer') return;
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_SYNC);
       // readSyncMessage returns the response message type (0/1/2). For

@@ -129,6 +129,22 @@ export const layoutUpdates = sqliteTable('layout_updates', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+// Per-layout audit log (PLAN.md §3.1 / §4.7). Append-only. payload is a
+// JSON string because SQLite has no jsonb; queries on this table read the
+// whole row and parse it client-side, which keeps us portable to Postgres
+// without a column type change.
+export const auditEvents = sqliteTable('audit_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  layoutId: text('layout_id')
+    .notNull()
+    .references(() => layouts.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  eventType: text('event_type').notNull(),
+  payload: text('payload').notNull(), // JSON string
+  docVersion: integer('doc_version'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -136,3 +152,4 @@ export type OAuthAccount = typeof oauthAccounts.$inferSelect;
 export type Layout = typeof layouts.$inferSelect;
 export type NewLayout = typeof layouts.$inferInsert;
 export type LayoutCollaborator = typeof layoutCollaborators.$inferSelect;
+export type AuditEvent = typeof auditEvents.$inferSelect;

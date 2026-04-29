@@ -2,11 +2,14 @@ import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
+import { ShareDialog } from './ShareDialog';
 
 export function LayoutsPage() {
   const qc = useQueryClient();
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const list = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const [showCreate, setShowCreate] = useState(false);
+  const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
 
   const remove = useMutation({
     mutationFn: api.layouts.remove,
@@ -42,6 +45,7 @@ export function LayoutsPage() {
               onDelete={() => {
                 if (confirm(`Delete "${l.title}"? This cannot be undone.`)) remove.mutate(l.id);
               }}
+              onShare={() => setShareLayout(l)}
             />
           ))}
         </ul>
@@ -56,16 +60,56 @@ export function LayoutsPage() {
           }}
         />
       )}
+
+      {shareLayout && me.data?.user && (
+        <ShareDialogLoader
+          layout={shareLayout}
+          myUserId={me.data.user.id}
+          onClose={() => setShareLayout(null)}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * Resolves the user's role on the layout before opening ShareDialog. The
+ * layouts list response doesn't include the role; we fetch it here and
+ * mount the dialog with the right `myRole` to gate owner-only controls.
+ */
+function ShareDialogLoader({
+  layout,
+  myUserId,
+  onClose,
+}: {
+  layout: LayoutSummary;
+  myUserId: string;
+  onClose: () => void;
+}) {
+  const detail = useQuery({
+    queryKey: ['layout', layout.id],
+    queryFn: () => api.layouts.get(layout.id),
+  });
+  if (detail.isLoading || !detail.data) return null;
+  return (
+    <ShareDialog
+      layoutId={layout.id}
+      layoutTitle={layout.title}
+      myRole={detail.data.role}
+      myUserId={myUserId}
+      onClose={onClose}
+    />
   );
 }
 
 function LayoutRow({
   layout,
   onDelete,
+  onShare,
 }: {
   layout: LayoutSummary;
   onDelete: () => void;
+  onShare: () => void;
 }) {
   return (
     <li className="flex items-center justify-between px-4 py-3">
@@ -90,6 +134,12 @@ function LayoutRow({
         >
           Open
         </Link>
+        <button
+          onClick={onShare}
+          className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+        >
+          Share
+        </button>
         <a
           href={api.layouts.exportBbmUrl(layout.id)}
           className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"

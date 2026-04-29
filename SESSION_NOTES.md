@@ -1,4 +1,4 @@
-# Session notes — Phase 4 ready to commit
+# Session notes — Phase 5 ready to commit
 
 > Living document. Move into PLAN.md / commit messages once it's no
 > longer needed.
@@ -9,110 +9,96 @@
 - **`2b30dad`** — Phase 3 m2: editor scaffold, Yjs projection.
 - **`29511af`** — Phase 3 m3: connectivity active, marquee, multi-drag,
   ghost preview.
-- *(this commit)* — Phase 4: realtime collab via y-websocket, awareness
+- **`3c0211f`** — Phase 4: realtime collab via y-websocket, awareness
   cursors/selection, presence panel.
+- *(this commit)* — Phase 5: sharing + invites, role-aware UI, viewer
+  WS enforcement.
 
-## Phase 4 — Realtime collab (this session)
+## Phase 5 (this session)
 
-**Server-side:**
-- `apps/server/src/ws/docHub.ts` — DocSession hub. Per-layout in-memory
-  Y.Doc + Awareness. Hydrate from `layouts.docSnapshot`, replay any
-  unflushed `layout_updates`, persist every WS update, flush snapshot
-  every 30s or on last-client detach. 60s eviction grace.
-- `apps/server/src/ws/handler.ts` — y-websocket protocol via
-  `y-protocols/sync` + `y-protocols/awareness`. Routes incoming sync
-  steps + awareness updates, broadcasts to peers, tags origins so we
-  don't echo back to the sender.
-- `apps/server/src/routes/ws.ts` — `GET /ws/layout/:id` upgrade
-  endpoint. Reuses `attachUser` for session-cookie auth, then
-  `resolveResourceRole` for per-layout access. Per-user 8-WS cap.
-- Snapshot worker started in `wsRoutes` registration; stopped on
-  Fastify `onClose`.
+**Server (apps/server/src/):**
+- `routes/collaborators.ts` — owner-only PATCH/DELETE for role +
+  remove; self-removal exception. Invite POST + revoke. All write
+  endpoints emit `audit_events`. Demo accounts 403 on invite.
+- `routes/invites.ts` — public preview (`GET /api/invites/:token`)
+  + auth-required accept (`POST /api/invites/:token`). Email-match
+  on accept; 410 on expired/already-accepted.
+- `email/sendInvite.ts` — Nodemailer SMTP transport, lazy-imported,
+  best-effort (returns false when SMTP env not set).
+- `audit/writeAuditEvent.ts` — central writer; payload is JSON
+  (string column for SQLite portability). 10 event_type values.
+- `db/schema.ts` — added `audit_events` table + migration.
+- `routes/ws.ts` + `ws/handler.ts` — pass resolved role into the WS
+  handler; viewers' sync messages dropped server-side.
 
-**Client-side:**
-- `apps/web/src/editor/useLayoutDoc.ts` rewritten as a thin
-  `y-websocket` `WebsocketProvider` shim. Removes the Phase-3
-  snapshot fetch / save. SaveStatus: connecting / synced /
-  reconnecting / offline / error. Cmd-S is a no-op (every edit is
-  saved).
-- `apps/web/src/editor/awareness.ts` — types + `deterministicColor`
-  (8-colour palette, hashed from `userId:layoutId`).
-- `apps/web/src/editor/useAwareness.ts` — `usePublishAwareness` reads
-  editor store + dispatched cursor events; sets `awareness.localState`
-  on every change. `useRemotePeers` returns a sorted list of remote
-  peers (excluding our clientID) with `isIdle: lastActivityMs > 5min`.
-- `apps/web/src/editor/PresencePanel.tsx` — sidebar/header strip,
-  shows everyone connected with their colour dot + name + idle status.
-- `apps/web/src/editor/render/RemoteCursors.tsx` — Konva layer
-  rendering each peer's cursor (arrow + name pill in their colour) +
-  semi-transparent outlines on bricks they've selected.
-- Stage `onMouseMove` dispatches a `cld-cursor-move` window event;
-  `usePublishAwareness` listens and feeds it into awareness state.
-
-**Server-start fix:**
-- `apps/server/package.json` `start` script switched from
-  `node dist/index.js` to `tsx src/index.ts` so the workspace `.ts`
-  imports work at runtime without a pre-build (matches what `pnpm dev`
-  was already doing). Dockerfile CMD changed to `pnpm start`.
+**Web (apps/web/src/):**
+- `api.ts` — `api.collaborators.*` and `api.invites.*` clients.
+- `layouts/ShareDialog.tsx` — modal. Owner sees invite form, role
+  dropdown per row, remove button. Editors and viewers see a read-only
+  collaborator list. Pending invites listed with revoke option for
+  owners.
+- `auth/InvitePage.tsx` — `/invite/:token` landing. Preview, sign-in
+  prompt, auto-accept when email matches, redirect to editor on success.
+- `layouts/LayoutsPage.tsx` — Share button per row; ShareDialogLoader
+  fetches role before mounting the dialog.
+- `editor/EditorPage.tsx` — role-aware: `isViewer` flag flowed to
+  Canvas + BrickLayer; toolbar/parts panel/Save button hidden for
+  viewers; "View only" badge; ShareDialog mountable.
+- `editor/render/BrickLayer.tsx` — drag + delete handlers gated on
+  `isViewer`.
 
 ## Test totals (last run)
 
 - 46 bbm
 - 19 parts-catalog
 - 4 ydoc
-- 20 web (10 mutations + 4 marquee + 2 web tests + 4 awareness)
-- 42 server (5 new docHub tests)
-- = **131 passing**
+- 20 web
+- 50 server (was 42 + 8 collaborator tests)
+- = **139 passing**
 
-## Smoke-test recipe (next session, before declaring Phase 4 done)
+## How to resume
 
-1. `cd apps/server && pnpm dev` (port 3000, with
-   `ENABLE_PASSWORD_AUTH=true` and a fresh DB).
-2. `cd apps/web && pnpm dev` (port 5173, proxies /api and /ws).
-3. Open http://localhost:5173/, register two accounts in two browser
-   profiles (or one Chrome tab + one incognito tab).
-4. Owner imports `tight-corner.bbm`, then Owner shares with the second
-   account: at the moment Phase 5 hasn't shipped, so manually grant
-   collaborator role via DB:
-   ```sh
-   sqlite3 ./data/cld.sqlite \
-     "INSERT INTO layout_collaborators (layout_id, user_id, role, added_at)
-      VALUES ('<layout-id>', '<bob-user-id>', 'editor', strftime('%s','now')*1000);"
-   ```
-5. Both sessions click Open on the layout.
-6. Verify:
-   - Both sessions see "synced" in the status indicator.
-   - Both sessions see each other in the PresencePanel header.
-   - Cursor moves from one tab show up live in the other.
-   - Selecting a brick in tab A shows a coloured outline in tab B.
-   - Placing/moving/deleting bricks in either tab propagates instantly.
-   - Closing tab A removes their cursor + presence dot from tab B.
-   - Briefly disconnecting WiFi while editing tab A shows "offline";
-     reconnecting flushes the offline edits to tab B without loss.
+1. `git status` clean after this commit.
+2. `pnpm -r typecheck && pnpm -r test && pnpm -r build` all green.
+3. `pnpm --filter @cld/server dev` and `pnpm --filter @cld/web dev`.
+4. Smoke-test the full sharing flow:
+   - Register Alice + Bob (separate browsers).
+   - Alice imports tight-corner.bbm, opens it.
+   - Alice clicks Share, invites bob@example.com as editor → copy link.
+   - Bob pastes the link. Auto-accept fires, redirects to the editor.
+   - Both tabs see each other's cursors. Alice drags a brick — Bob
+     sees it move. Bob drags a brick — Alice sees it move.
+   - Alice changes Bob to Viewer in the Share dialog. After Bob's tab
+     refreshes, the canvas is read-only ("View only" badge).
+   - Bob tries to drag a brick — nothing happens (client) AND a forged
+     sync message via dev-tools is dropped by the server.
+   - Alice removes Bob → Bob's tab can no longer fetch the layout
+     (404 on next /api/layouts/:id call).
 
-## Known gaps for the next session
+## Known limitations / follow-ups
 
-1. **Manual two-tab smoke** as above.
-2. **No POST /api/layouts/:id/snapshot/flush** — explicit Save button
-   is a no-op now. Either remove the button (less confusing) or wire a
-   force-flush REST that calls `docHub.getOrCreate(id).flushSnapshot()`.
-3. **Daily compaction job** mentioned in PLAN.md §4.6 not yet built.
-   Phase-4 snapshot worker handles "every 30s of activity"; the
-   "daily full rewrite" cron is a Phase 7 task.
-4. **Awareness is not authenticated** beyond the WS connection itself.
-   A peer could in theory set their `user.displayName` to whatever
-   they want in awareness state. Phase 5 will validate that the
-   awareness `user.id` matches the WS-authenticated user.
-5. **No per-message viewer enforcement.** Viewer can SEE updates but
-   the server doesn't block them from sending sync updates. Phase 5
-   adds that gate via `role === 'editor' || role === 'owner'`.
+1. **Audit log has no read-side UI yet.** Per PLAN.md it lands in
+   Phase 7 alongside the Polish pass.
+2. **WS doesn't auto-disconnect when a user's role drops to `null`
+   while connected.** A user removed from a layout still has their
+   existing WS open until they refresh. A periodic role-revalidation
+   tick on the server-side WS handler would cover this — small
+   addition for Phase 6 or 7.
+3. **Awareness state isn't authenticated**: a peer could spoof a
+   different `displayName` in their awareness payload. Server-side
+   validation of the awareness `user.id` against the WS-authenticated
+   user is a Phase-6 hardening pass.
+4. **Invite revocation doesn't cancel a fired email.** That email
+   still has a working URL until the row is deleted; once deleted,
+   the accept endpoint correctly returns 404.
+5. **No "leave layout" confirmation in the editor itself.** ShareDialog
+   has a "Leave" button when you're a non-owner collaborator; leaving
+   from the editor would need to redirect to /.
 
-## What's next (Phase 5)
+## What's next (Phase 6)
 
-Per PLAN.md (1.5 weeks):
-- Layout-collaborator UI: add/remove, change role
-- Email invite flow (link by default, SMTP if configured)
-- REST + WS access enforcement per role
-- Per-role UI: viewer can't drag, editor can edit but not share, etc.
-- Demo-account 403 on invite endpoint
-- audit_events rows for share / unshare / role_change
+Per PLAN.md (~1.5 weeks):
+- Org create + slug; org admin UI
+- Layouts can be created in an org (`owner_org_id`)
+- Layout transfer flow (user → org, org → org, org → user)
+- Audit `transfer` event

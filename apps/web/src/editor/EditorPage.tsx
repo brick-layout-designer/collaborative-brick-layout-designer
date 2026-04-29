@@ -24,6 +24,7 @@ import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
+import { ShareDialog } from '../layouts/ShareDialog';
 
 export function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -40,6 +41,9 @@ function Editor({ layoutId }: { layoutId: string }) {
   });
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const undo = useUndoManager(doc);
+  const role = meta.data?.role ?? 'viewer';
+  const isViewer = role === 'viewer';
+  const [showShare, setShowShare] = useState(false);
 
   // Publish our awareness state (cursor / selection / tool / identity).
   usePublishAwareness({ awareness, me: me.data?.user ?? null, layoutId });
@@ -108,19 +112,42 @@ function Editor({ layoutId }: { layoutId: string }) {
           >
             Redo
           </button>
-          <Toolbar />
+          {!isViewer && <Toolbar />}
           <button
-            onClick={() => void saveNow()}
-            className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+            onClick={() => setShowShare(true)}
+            className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
           >
-            Save
+            Share
           </button>
+          {!isViewer && (
+            <button
+              onClick={() => void saveNow()}
+              className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+            >
+              Save
+            </button>
+          )}
+          {isViewer && (
+            <span className="rounded bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
+              View only
+            </span>
+          )}
         </div>
       </header>
-      <PartsPanel />
+      {!isViewer && <PartsPanel />}
+      {isViewer && <div className="row-start-2 row-end-3" />}
       <main className="relative overflow-hidden">
-        <Canvas doc={doc} awareness={awareness} />
+        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} />
       </main>
+      {showShare && me.data?.user && meta.data && (
+        <ShareDialog
+          layoutId={layoutId}
+          layoutTitle={meta.data.layout.title}
+          myRole={role}
+          myUserId={me.data.user.id}
+          onClose={() => setShowShare(false)}
+        />
+      )}
     </div>
   );
 }
@@ -128,9 +155,11 @@ function Editor({ layoutId }: { layoutId: string }) {
 function Canvas({
   doc,
   awareness,
+  isViewer,
 }: {
   doc: import('yjs').Doc;
   awareness: import('y-protocols/awareness').Awareness | null;
+  isViewer: boolean;
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const { width, height } = useViewportSize();
@@ -184,6 +213,7 @@ function Canvas({
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isViewer) return; // viewers can't rotate/delete
       if (selection.length === 0 || !activeLayerId) return;
       if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
@@ -199,7 +229,7 @@ function Canvas({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doc, selection, activeLayerId, setSelection]);
+  }, [doc, selection, activeLayerId, setSelection, isViewer]);
 
   /** Read the pointer's stud-space coordinates. */
   function pointerStuds(): { x: number; y: number } | null {
@@ -225,6 +255,7 @@ function Canvas({
       return;
     }
     if (tool === 'place' && placePartKey) {
+      if (isViewer) return; // viewers can't place bricks
       void doPlace(studs.x, studs.y);
     }
   }
@@ -322,7 +353,7 @@ function Canvas({
         <GridLayer map={map} />
       </KonvaLayer>
       <KonvaLayer>
-        <BrickLayer map={map} doc={doc} />
+        <BrickLayer map={map} doc={doc} isViewer={isViewer} />
       </KonvaLayer>
       <KonvaLayer listening={false}>
         {tool === 'place' && cursor && (

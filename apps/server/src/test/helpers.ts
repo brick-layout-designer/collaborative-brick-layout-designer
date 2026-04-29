@@ -6,6 +6,7 @@ import { db, schema, sqlite } from '../db/index.js';
  */
 export function resetDb(): void {
   sqlite.exec(`
+    DELETE FROM audit_events;
     DELETE FROM layout_updates;
     DELETE FROM layout_invites;
     DELETE FROM layout_collaborators;

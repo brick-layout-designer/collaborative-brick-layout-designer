@@ -132,4 +132,54 @@ export const api = {
   parts: {
     catalog: () => get<{ parts: PartWire[] }>('/api/parts/catalog'),
   },
+
+  collaborators: {
+    list: (layoutId: string) =>
+      get<{ collaborators: CollaboratorSummary[]; invites: InviteSummary[] }>(
+        `/api/layouts/${layoutId}/collaborators`,
+      ),
+    invite: (layoutId: string, email: string, role: 'viewer' | 'editor') =>
+      post<{
+        id: string;
+        token: string;
+        inviteUrl: string;
+        emailDelivered: boolean;
+        expiresAt: number;
+      }>(`/api/layouts/${layoutId}/invites`, { email, role }),
+    revokeInvite: (layoutId: string, inviteId: string) =>
+      del(`/api/layouts/${layoutId}/invites/${inviteId}`),
+    changeRole: (layoutId: string, userId: string, role: 'viewer' | 'editor') =>
+      patch<{ ok: true }>(`/api/layouts/${layoutId}/collaborators/${userId}`, { role }),
+    remove: (layoutId: string, userId: string) =>
+      del(`/api/layouts/${layoutId}/collaborators/${userId}`),
+  },
+
+  invites: {
+    preview: (token: string) =>
+      get<{
+        invitedEmail: string;
+        role: 'viewer' | 'editor';
+        layoutId: string;
+        layoutTitle: string;
+        expiresAt: number;
+      }>(`/api/invites/${token}`),
+    accept: (token: string) =>
+      post<{ layoutId: string; role: 'viewer' | 'editor' }>(`/api/invites/${token}`),
+  },
 };
+
+export interface CollaboratorSummary {
+  userId: string;
+  role: 'viewer' | 'editor' | 'owner';
+  addedAt: number;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface InviteSummary {
+  id: string;
+  invitedEmail: string;
+  role: 'viewer' | 'editor';
+  expiresAt: number;
+}

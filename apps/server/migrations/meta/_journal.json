@@ -15,6 +15,13 @@
       "when": 1777443141631,
       "tag": "0001_nosy_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777447321537,
+      "tag": "0002_young_maximus",
+      "breakpoints": true
     }
   ]
 }

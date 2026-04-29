@@ -808,19 +808,53 @@ test" recipe for the next session to validate.
 
 ### Phase 5 — Sharing + invites (1.5 weeks)
 
-- Layout-collaborator UI: add/remove, change role
-- Invite flow: enter email → token row in `layout_invites` → return a
-  shareable link AND, if SMTP is configured, send an email
-- Recipient flow: link → sign in (any provider) or register → invite
-  consumed → layout appears in their list
-- Access enforcement: REST + WS reject if role insufficient
-- Per-role UI: viewers can't drag, editors can edit but not share, owners
-  can do everything
-- `audit_events` rows written for `share`, `unshare`, `role_change`
-- Demo-account restriction enforced: demo accounts get 403 on invite endpoint
+**Shipped:**
+- Server: collaborator CRUD endpoints
+  (`GET /api/layouts/:id/collaborators`, owner-only PATCH/DELETE for
+  role change + remove). `userId === self.id` is allowed without owner
+  role for self-removal.
+- Server: invite endpoints
+  (`POST /api/layouts/:id/invites`, `DELETE /api/layouts/:id/invites/:inviteId`,
+  `GET /api/invites/:token` for preview, `POST /api/invites/:token` to
+  accept). Email-match check on accept (case-insensitive). 410 on
+  expired or already-accepted invites. 409 on inviting an email already
+  with access.
+- Server: SMTP integration via Nodemailer (best-effort, gated on
+  `SMTP_*` env vars; the inviter always gets the URL in the API
+  response so a missing/failed SMTP doesn't break the flow).
+- Server: WS-side viewer enforcement — viewers receive sync state on
+  attach but the server drops every sync MESSAGE they send, so a
+  hostile viewer can't propose edits. Awareness is still bidirectional
+  (cosmetic).
+- Server: `audit_events` writes for `share`, `unshare`,
+  `role_change`. Per-layout history available via the table; a
+  read-side endpoint lands in Phase 7's audit-log viewer.
+- Server: demo-account check on invite endpoint (`isDemoAccount` →
+  403 `demo_account_cannot_invite`).
+- Web: `ShareDialog` modal (collaborator list, role dropdown, remove,
+  invite-by-email with copy-link fallback).
+- Web: `/invite/:token` landing page — preview the invite, redirect
+  to login if not signed in, auto-accept on arrival when the email
+  matches, redirect to the editor on accept.
+- Web: per-role UI gating in the editor — viewers get a "View only"
+  badge, no toolbar, no parts panel, no drag/place/rotate/delete; the
+  Share dialog still opens (read-only collaborator list).
+
+**Tests: +8 in apps/server/src/routes/collaborators.test.ts.** Total
+139 passing. Coverage:
+- Owner invites bob; preview returns the right shape; bob accepts;
+  bob has editor access.
+- Email-mismatch acceptance returns 403.
+- Inviting an email that already has access returns 409.
+- Editor cannot invite (only owner).
+- Demo-account blocked from invite endpoint.
+- Owner role-change writes a `role_change` audit row with from/to.
+- Self-removal works (DELETE without owner role for self).
+- Expired invite returns 410.
 
 **Shippable:** invite a friend by email or link, they sign in, see the
-layout, edit alongside you.
+layout, edit alongside you. Viewers get a read-only canvas. Server
+enforces role at both REST and WS layers.
 
 ### Phase 6 — Organizations + transfer (1.5 weeks)
 
