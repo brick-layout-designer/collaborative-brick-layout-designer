@@ -13,6 +13,7 @@ import { passwordRoutes } from './routes/auth/password.js';
 import { sessionRoutes } from './routes/auth/session.js';
 import { layoutRoutes } from './routes/layouts.js';
 import { partsRoutes } from './routes/parts.js';
+import { wsRoutes } from './routes/ws.js';
 
 async function main() {
   // Run pending migrations on boot. Idempotent.
@@ -35,6 +36,7 @@ async function main() {
   await app.register(sessionRoutes);
   await app.register(layoutRoutes);
   await app.register(partsRoutes);
+  await app.register(wsRoutes);
 
   // Serve the BlueBrickParts library at /parts/*. The desktop's submodule
   // organises files under `parts-library/parts/`, so we point at that

@@ -21,6 +21,9 @@ import { PlaceGhost } from './render/PlaceGhost';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
 import { useConnectivity } from './useConnectivity';
+import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
+import { PresencePanel } from './PresencePanel';
+import { RemoteCursors } from './render/RemoteCursors';
 
 export function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -30,12 +33,16 @@ export function EditorPage() {
 }
 
 function Editor({ layoutId }: { layoutId: string }) {
-  const { doc, loadError, loading, status, saveNow } = useLayoutDoc(layoutId);
+  const { doc, awareness, loadError, loading, status, saveNow } = useLayoutDoc(layoutId);
   const meta = useQuery({
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
   });
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const undo = useUndoManager(doc);
+
+  // Publish our awareness state (cursor / selection / tool / identity).
+  usePublishAwareness({ awareness, me: me.data?.user ?? null, layoutId });
 
   // Connectivity recompute (debounced). The hook listens to LOCAL_ORIGIN
   // updates and patches `linkedTo` fields back into Yjs. It's a no-op
@@ -82,6 +89,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             {meta.data?.layout.title ?? 'Untitled'}
           </h1>
           <SaveStatusIndicator status={status} />
+          <PresencePanel awareness={awareness} />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -111,13 +119,19 @@ function Editor({ layoutId }: { layoutId: string }) {
       </header>
       <PartsPanel />
       <main className="relative overflow-hidden">
-        <Canvas doc={doc} />
+        <Canvas doc={doc} awareness={awareness} />
       </main>
     </div>
   );
 }
 
-function Canvas({ doc }: { doc: import('yjs').Doc }) {
+function Canvas({
+  doc,
+  awareness,
+}: {
+  doc: import('yjs').Doc;
+  awareness: import('y-protocols/awareness').Awareness | null;
+}) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const { width, height } = useViewportSize();
   const zoom = useEditorStore((s) => s.zoom);
@@ -220,6 +234,13 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
     if (!studs) return;
     if (tool === 'place') setCursor(studs);
     if (marquee) setMarquee({ ...marquee, x1: studs.x, y1: studs.y });
+    // Always broadcast cursor so peers can see us — even when we're
+    // panning or hovering empty space.
+    dispatchCursorMove(studs.x, studs.y);
+  }
+
+  function handleStageMouseLeave() {
+    dispatchCursorLeave();
   }
 
   function handleStageMouseUp(_e: KonvaEventObject<MouseEvent>) {
@@ -294,6 +315,7 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
       onMouseDown={handleStageMouseDown}
       onMouseMove={handleStageMouseMove}
       onMouseUp={handleStageMouseUp}
+      onMouseLeave={handleStageMouseLeave}
       onTouchStart={handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void}
     >
       <KonvaLayer listening={false}>
@@ -311,6 +333,7 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
           />
         )}
         <MarqueeOverlay marquee={marquee} />
+        <RemoteCursors awareness={awareness} map={map} />
       </KonvaLayer>
     </Stage>
   );
@@ -318,20 +341,24 @@ function Canvas({ doc }: { doc: import('yjs').Doc }) {
 
 function SaveStatusIndicator({ status }: { status: import('./useLayoutDoc').SaveStatus }) {
   switch (status.kind) {
-    case 'idle':
-      return null;
-    case 'dirty':
-      return <span className="text-xs text-neutral-500">unsaved changes…</span>;
-    case 'saving':
-      return <span className="text-xs text-neutral-500">saving…</span>;
-    case 'saved':
+    case 'connecting':
+      return <span className="text-xs text-neutral-500">connecting…</span>;
+    case 'synced':
+      return <span className="text-xs text-emerald-500">synced</span>;
+    case 'reconnecting':
       return (
-        <span className="text-xs text-emerald-500">
-          saved {timeAgo(status.at)}
+        <span className="text-xs text-amber-400">
+          reconnecting{status.lastSyncedAt ? ` · last synced ${timeAgo(status.lastSyncedAt)}` : ''}
+        </span>
+      );
+    case 'offline':
+      return (
+        <span className="text-xs text-amber-400">
+          offline{status.lastSyncedAt ? ` · edits saved locally, will sync on reconnect` : ''}
         </span>
       );
     case 'error':
-      return <span className="text-xs text-red-400">save failed: {status.message}</span>;
+      return <span className="text-xs text-red-400">{status.message}</span>;
   }
 }
 

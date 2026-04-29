@@ -764,15 +764,47 @@ auto-save, real `.bbm` sprites, and connectivity recompute.
 
 ### Phase 4 — Realtime collab + presence (1.5 weeks)
 
-- y-websocket server in-process with Fastify
-- Yjs doc hydration from snapshot + replay; eviction on idle
-- Snapshot worker (background, per active doc)
-- Awareness: cursors, selection outlines, presence panel
-- Connection state UI (reconnecting, offline)
+**Shipped:**
+- WebSocket endpoint `GET /ws/layout/:id` with session-cookie auth +
+  per-layout role check (`hasAtLeast(role, 'viewer')`). Per-user 8-WS
+  cap to prevent fork-bombs.
+- `apps/server/src/ws/docHub.ts` — hub of `DocSession` instances:
+  - hydrate from `layouts.docSnapshot` + replay any unflushed
+    `layout_updates` rows
+  - persist every accepted update by appending to `layout_updates`
+  - flush snapshot worker (every 30s of activity, or on last-client
+    detach) — writes a fresh `docSnapshot`, bumps `docVersion`,
+    truncates the consumed updates. Crash-safe ordering.
+  - 60s grace before evicting an idle session
+- `apps/server/src/ws/handler.ts` — y-websocket protocol over the WS
+  connection. Sync (step 1/2 + ongoing updates) and awareness messages
+  routed via `y-protocols/sync` + `y-protocols/awareness`.
+- Web `useLayoutDoc` rewritten as a thin `y-websocket` provider shim.
+  Replaces the Phase-3 snapshot REST. Status states: `connecting` /
+  `synced` / `reconnecting` / `offline` / `error`.
+- Awareness publish (`usePublishAwareness`): cursor (in stud coords),
+  selection, current tool, identity (id, displayName, avatarUrl,
+  colour), `lastActivityMs` for idle dot. Colour is deterministic per
+  `(userId, layoutId)`.
+- Awareness render: `RemoteCursors` Konva layer (peer cursor + name
+  pill + selection outlines), `PresencePanel` header strip with
+  per-user dot (5min idle threshold).
+- Cursor events broadcast via a global `cld-cursor-move` event so the
+  publish layer doesn't have to thread cursor state through React.
+- Server start switched to `tsx src/index.ts` so the workspace `.ts`
+  imports work without a pre-build step. Dockerfile updated to
+  `pnpm start`.
+
+**Tests:** +9 across the workspace (5 docHub + 4 awareness).
 
 **Shippable:** two browser tabs editing the same map see each other in
 real time. Cursor collisions don't corrupt state. One tab offline keeps
-editing locally, syncs on reconnect.
+editing locally, syncs on reconnect (Yjs CRDT property).
+
+**Not yet smoke-tested manually:** two-tab side-by-side. The Yjs
+plumbing is symmetric, but the only thing exercising the full WS round
+trip in CI is the docHub unit tests. SESSION_NOTES.md has a "smoke
+test" recipe for the next session to validate.
 
 ### Phase 5 — Sharing + invites (1.5 weeks)
 

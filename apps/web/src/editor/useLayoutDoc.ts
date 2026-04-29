@@ -1,152 +1,151 @@
-// Owns the Y.Doc lifecycle for the editor:
-//   - hydrate from /api/layouts/:id/snapshot
-//   - track in-memory mutations (subscribe so the UI re-renders)
-//   - debounced auto-save back to the server
-//   - expose an explicit Save callback for UI buttons + Cmd-S
+// Owns the Y.Doc lifecycle for the editor.
 //
-// Phase 4 will replace the fetch-based loader with a y-websocket connection,
-// at which point this hook becomes a thin shim over y-websocket's provider.
+// In Phase 4 this is a thin shim over y-websocket's `WebsocketProvider`.
+// The provider:
+//   - opens `ws://.../ws/layout/:id` (or wss in prod)
+//   - performs the y-websocket sync handshake on connect
+//   - streams local edits to the server, applies remote edits to the doc
+//   - exposes a `Awareness` instance for cursor/selection broadcasts
+//
+// Persistence is now the server's job — every accepted update is written
+// to `layout_updates` and periodically compacted into a fresh snapshot
+// (see apps/server/src/ws/docHub.ts). The client doesn't ship a
+// "save" message anymore; the Save button forces a server-side
+// snapshot write via `POST /api/layouts/:id/snapshot/flush` (TODO),
+// and Cmd-S becomes a no-op (every edit is already saved).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Y from 'yjs';
-import { api } from '../api';
-
-const AUTOSAVE_DEBOUNCE_MS = 2000;
+import { WebsocketProvider } from 'y-websocket';
+import type { Awareness } from 'y-protocols/awareness';
 
 export type SaveStatus =
-  | { kind: 'idle' }
-  | { kind: 'dirty' }
-  | { kind: 'saving' }
-  | { kind: 'saved'; at: number }
+  | { kind: 'connecting' }
+  | { kind: 'synced' }
+  | { kind: 'reconnecting'; lastSyncedAt: number | null }
+  | { kind: 'offline'; lastSyncedAt: number | null }
   | { kind: 'error'; message: string };
 
 export interface LayoutDocState {
-  /** The Y.Doc once loaded, or null while fetching. */
   doc: Y.Doc | null;
-  /** Loading errors from the initial fetch. */
-  loadError: Error | null;
-  /** True until the first hydration completes. */
-  loading: boolean;
-  /** Save status — drives the "saved 3s ago" indicator. */
+  awareness: Awareness | null;
+  /** Connection status — drives the synced/reconnecting indicator. */
   status: SaveStatus;
-  /** Server's reported docVersion. Bumps after a successful save. */
-  docVersion: number;
-  /** Trigger an immediate save (Save button / Cmd-S). */
+  /** Backwards-compatible no-op kept for the explicit Save button + Cmd-S. */
   saveNow: () => Promise<void>;
+  /** Surfaced to the UI for "couldn't connect" cases (auth, 404, etc). */
+  loadError: Error | null;
+  loading: boolean;
 }
 
 /**
- * Origin tag used on every transaction the local user makes. Y.UndoManager
- * is configured with `trackedOrigins: new Set([clientID])` so undo only
- * walks back transactions matching this id.
- *
- * In Phase 4 this becomes the local Yjs `clientID` so other peers'
- * transactions (which carry their own clientID origin) aren't undone by us.
+ * Origin tag used on every transaction the local user makes. UndoManager
+ * is configured with `trackedOrigins: new Set([LOCAL_ORIGIN])` so undo
+ * only walks back transactions matching this id. The origin is
+ * deliberately a runtime symbol so a server-relayed update (origin =
+ * the WebsocketProvider instance) doesn't get reverted by Cmd-Z.
  */
 export const LOCAL_ORIGIN = Symbol('cld-local-origin');
 
+const SYNC_TIMEOUT_MS = 10_000;
+
+/** Build the WS URL relative to the current page (so dev + prod both work). */
+function wsUrlBase(): string {
+  if (typeof window === 'undefined') return '';
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}`;
+}
+
 export function useLayoutDoc(layoutId: string): LayoutDocState {
   const [doc, setDoc] = useState<Y.Doc | null>(null);
+  const [awareness, setAwareness] = useState<Awareness | null>(null);
+  const [status, setStatus] = useState<SaveStatus>({ kind: 'connecting' });
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
-  const [docVersion, setDocVersion] = useState(0);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inFlight = useRef<Promise<void> | null>(null);
 
-  // Hydrate.
   useEffect(() => {
-    let cancelled = false;
     setDoc(null);
+    setAwareness(null);
     setLoading(true);
     setLoadError(null);
-    api.layouts
-      .snapshot(layoutId)
-      .then(({ bytes, docVersion }) => {
-        if (cancelled) return;
-        const fresh = new Y.Doc();
-        if (bytes.length > 0) Y.applyUpdate(fresh, bytes);
+    setStatus({ kind: 'connecting' });
+
+    const fresh = new Y.Doc();
+    // y-websocket appends `/<roomname>` to the base URL; we want the
+    // ROOM to be the literal layout id (no slashes), so we include the
+    // `/ws/layout` prefix in `wsUrlBase` and use `layoutId` as room.
+    const provider = new WebsocketProvider(`${wsUrlBase()}/ws/layout`, layoutId, fresh, {
+      // params: we rely on the session cookie for auth; nothing else.
+      connect: true,
+    });
+
+    let lastSyncedAt: number | null = null;
+    let syncTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      // If the handshake doesn't complete within 10s, surface a clear
+      // error rather than spinning forever. Common cause: the layout
+      // doesn't exist or the user isn't authorized.
+      setLoadError(new Error('connection timed out'));
+      setStatus({ kind: 'error', message: 'connection timed out' });
+    }, SYNC_TIMEOUT_MS);
+
+    const onSync = (isSynced: boolean): void => {
+      if (isSynced) {
+        if (syncTimer) {
+          clearTimeout(syncTimer);
+          syncTimer = null;
+        }
+        lastSyncedAt = Date.now();
+        setLoading(false);
         setDoc(fresh);
-        setDocVersion(docVersion);
-        setLoading(false);
-      })
-      .catch((err: Error) => {
-        if (cancelled) return;
-        setLoadError(err);
-        setLoading(false);
-      });
+        setAwareness(provider.awareness);
+        setStatus({ kind: 'synced' });
+      }
+    };
+
+    const onStatus = (event: { status: 'disconnected' | 'connecting' | 'connected' }): void => {
+      switch (event.status) {
+        case 'connected':
+          // 'sync' fires shortly after to flip us to synced.
+          break;
+        case 'connecting':
+          setStatus({ kind: 'reconnecting', lastSyncedAt });
+          break;
+        case 'disconnected':
+          setStatus({ kind: 'offline', lastSyncedAt });
+          break;
+      }
+    };
+
+    const onConnectionClose = (event: CloseEvent): void => {
+      if (event.code === 4404) setLoadError(new Error('layout not found'));
+      else if (event.code === 1008) setLoadError(new Error('not signed in'));
+      else if (event.code === 4429) setLoadError(new Error('too many connections'));
+    };
+
+    provider.on('sync', onSync);
+    provider.on('status', onStatus);
+    provider.on('connection-close', onConnectionClose);
+
     return () => {
-      cancelled = true;
+      if (syncTimer) clearTimeout(syncTimer);
+      provider.off('sync', onSync);
+      provider.off('status', onStatus);
+      provider.off('connection-close', onConnectionClose);
+      provider.disconnect();
+      provider.destroy();
+      fresh.destroy();
     };
   }, [layoutId]);
 
-  // Define save first so the dirty-tracker effect below can call it.
+  // Save is implicit (every edit goes over WS). Kept as a no-op for the
+  // Save button + Cmd-S binding so the existing UI keeps compiling. A
+  // forthcoming follow-up may add a "force snapshot now" REST call.
   const saveNow = useCallback(async (): Promise<void> => {
-    if (!doc) return;
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    if (inFlight.current) await inFlight.current;
-    setStatus({ kind: 'saving' });
-    const bytes = Y.encodeStateAsUpdate(doc);
-    const promise = api.layouts
-      .saveSnapshot(layoutId, bytes)
-      .then((res) => {
-        setStatus({ kind: 'saved', at: res.updatedAt });
-        setDocVersion((v) => v + 1);
-      })
-      .catch((err: Error) => {
-        setStatus({ kind: 'error', message: err.message });
-      })
-      .finally(() => {
-        inFlight.current = null;
-      });
-    inFlight.current = promise;
-    await promise;
-  }, [doc, layoutId]);
-
-  // Track dirty + schedule auto-save. Subscribe at doc level so any update,
-  // anywhere, triggers a debounced save. Y.UndoManager edits also fire
-  // `update` events, so undo/redo trigger the same save path.
-  useEffect(() => {
-    if (!doc) return;
-    const onUpdate = (_update: Uint8Array, origin: unknown) => {
-      // Skip the initial applyUpdate during hydration: that fires with
-      // origin === null on a freshly-attached doc. We only want to mark
-      // dirty for genuine local edits.
-      if (origin === null) return;
-      setStatus((s) => (s.kind === 'saving' ? s : { kind: 'dirty' }));
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        saveTimer.current = null;
-        void saveNow();
-      }, AUTOSAVE_DEBOUNCE_MS);
-    };
-    doc.on('update', onUpdate);
-    return () => {
-      doc.off('update', onUpdate);
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-    };
-  }, [doc, saveNow]);
-
-  // Cmd/Ctrl-S binding.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        void saveNow();
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [saveNow]);
+    /* implicit save */
+  }, []);
 
   return useMemo(
-    () => ({ doc, loadError, loading, status, docVersion, saveNow }),
-    [doc, loadError, loading, status, docVersion, saveNow],
+    () => ({ doc, awareness, status, saveNow, loadError, loading }),
+    [doc, awareness, status, saveNow, loadError, loading],
   );
 }

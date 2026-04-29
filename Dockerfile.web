@@ -60,4 +60,4 @@ COPY --from=builder /app/packages/ydoc/src  ./packages/ydoc/src
 EXPOSE 3000
 WORKDIR /app/apps/server
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "dist/index.js"]
+CMD ["pnpm", "start"]
