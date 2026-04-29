@@ -19,6 +19,7 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
+import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -234,6 +235,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       createdAt: now,
       updatedAt: now,
     });
+    await writeAuditEvent({
+      resourceKind: 'custom_part',
+      resourceId: id,
+      userId: user.id,
+      eventType: 'create',
+      payload: { partNumber, displayName, owner: ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id } },
+    });
     return reply.code(201).send({ id, partNumber, displayName });
   });
 
@@ -248,6 +256,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'forbidden' });
       }
       await db.delete(schema.customParts).where(eq(schema.customParts.id, req.params.id));
+      await writeAuditEvent({
+        resourceKind: 'custom_part',
+        resourceId: req.params.id,
+        userId: user.id,
+        eventType: 'delete',
+        payload: {},
+      });
       return { ok: true };
     },
   );
@@ -352,6 +367,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
           addedAt: new Date(),
         })
         .onConflictDoNothing();
+      await writeAuditEvent({
+        resourceKind: 'custom_part',
+        resourceId: req.params.id,
+        userId: user.id,
+        eventType: 'share',
+        payload: { targetUserId: recipient.id, role: inviteRole },
+      });
       return { added: true };
     },
   );
@@ -379,6 +401,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
           eq(schema.customPartCollaborators.userId, req.params.userId),
         ),
       );
+    await writeAuditEvent({
+      resourceKind: 'custom_part',
+      resourceId: req.params.id,
+      userId: user.id,
+      eventType: 'role_change',
+      payload: { targetUserId: req.params.userId, toRole: newRole },
+    });
     return { ok: true };
   });
 
@@ -400,6 +429,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
             eq(schema.customPartCollaborators.userId, req.params.userId),
           ),
         );
+      await writeAuditEvent({
+        resourceKind: 'custom_part',
+        resourceId: req.params.id,
+        userId: user.id,
+        eventType: 'unshare',
+        payload: { targetUserId: req.params.userId, selfRemoved: isSelf },
+      });
       return { ok: true };
     },
   );

@@ -72,6 +72,28 @@ export async function attachWsHandlers(
     changes: { added: number[]; updated: number[]; removed: number[] },
     origin: unknown,
   ): void => {
+    // Identity validation: a client could send awareness state with a
+    // forged `user.id` / `displayName`. We don't know which client a
+    // given clientID belongs to in general, but when the change came
+    // FROM a specific WS (via applyAwarenessUpdate(awareness, bytes,
+    // ws)), `origin === ws` and we know that client's true userId.
+    // For each clientID that changed AND originated from `ws`, peek at
+    // the state and overwrite `user.id` if it doesn't match.
+    if (origin === ws) {
+      for (const clientId of [...changes.added, ...changes.updated]) {
+        const state = session.awareness.getStates().get(clientId) as
+          | { user?: { id?: string } }
+          | undefined;
+        if (state?.user?.id && state.user.id !== userId) {
+          // Spoof attempt — overwrite the user.id with the authenticated
+          // value. We don't drop the rest of the state (cursor /
+          // selection / displayName are cosmetic and clients are
+          // responsible for using their own data anyway).
+          state.user.id = userId;
+        }
+      }
+    }
+
     const changedClients = [...changes.added, ...changes.updated, ...changes.removed];
     if (changedClients.length === 0) return;
     const payload = encodeAwarenessUpdate(session.awareness, changedClients);

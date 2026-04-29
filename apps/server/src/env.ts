@@ -29,6 +29,12 @@ export const env = {
   oidc: oidcEnv(),
 
   smtp: smtpEnv(),
+
+  // Phase 7 background workers — all on by default in production.
+  backupsEnabled: bool(process.env.BACKUPS_ENABLED, true),
+  backupsDir: process.env.BACKUPS_DIR ?? '/backups',
+  demoTtlSweepEnabled: bool(process.env.DEMO_TTL_SWEEP_ENABLED, true),
+  dailyCompactionEnabled: bool(process.env.DAILY_COMPACTION_ENABLED, true),
 };
 
 function providerEnv(prefix: string): { clientId: string; clientSecret: string } | null {

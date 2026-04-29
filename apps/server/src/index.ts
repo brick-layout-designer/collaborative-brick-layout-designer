@@ -11,7 +11,9 @@ import { ensureBootstrapAdmin } from './auth/bootstrap.js';
 import { oauthRoutes } from './routes/auth/oauth.js';
 import { passwordRoutes } from './routes/auth/password.js';
 import { sessionRoutes } from './routes/auth/session.js';
+import { auditRoutes } from './routes/audit.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
+import { startWorkers, stopWorkers } from './workers/index.js';
 import { customPartRoutes } from './routes/customParts.js';
 import { inviteRoutes } from './routes/invites.js';
 import { layoutRoutes } from './routes/layouts.js';
@@ -37,6 +39,19 @@ async function main() {
   app.addHook('preHandler', attachUser);
 
   app.get('/api/health', async () => ({ ok: true }));
+  // Deeper /api/health/ready: confirms DB is reachable. Useful as a
+  // container readiness probe (k8s, docker compose health-check).
+  app.get('/api/health/ready', async (_req, reply) => {
+    try {
+      // Cheap query that exercises the SQLite connection.
+      const { sqlite } = await import('./db/index.js');
+      const row = sqlite.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined;
+      if (row?.ok !== 1) throw new Error('db ping returned unexpected shape');
+      return { ok: true, db: 'ready' };
+    } catch (err) {
+      return reply.code(503).send({ ok: false, error: (err as Error).message });
+    }
+  });
 
   await app.register(oauthRoutes);
   await app.register(passwordRoutes);
@@ -50,6 +65,7 @@ async function main() {
   await app.register(transferRoutes);
   await app.register(customPartRoutes);
   await app.register(moduleRoutes);
+  await app.register(auditRoutes);
   await app.register(wsRoutes);
 
   // Serve the BlueBrickParts library at /parts/*. The desktop's submodule
@@ -88,6 +104,11 @@ async function main() {
   } catch {
     app.log.warn(`SPA dist not found at ${spaDir}; serving API only`);
   }
+
+  startWorkers();
+  app.addHook('onClose', async () => {
+    stopWorkers();
+  });
 
   await app.listen({ port: env.port, host: '0.0.0.0' });
 }

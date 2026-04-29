@@ -1,7 +1,7 @@
-# Session notes — Phase 6.5 ready to commit
+# Session notes — Phase 7 ready to commit (v1.0.0 candidate)
 
-> Living document. Move into PLAN.md / commit messages once it's no
-> longer needed.
+> Living document. After the v1.0.0 tag this can be deleted; the PLAN
+> serves as the canonical record.
 
 ## Commits to date
 
@@ -14,103 +14,88 @@
 | `9580892` | 5 | Sharing + invites + role enforcement |
 | `c3929c9` | docs | Overnight summary |
 | `b0ed31f` | 6 | Organisations + layout transfer + WS revalidate |
-| *(this commit)* | 6.5 | Custom parts + saved modules |
+| `fad8801` | 6.5 | Custom parts + saved modules |
+| *(this commit)* | 7 | Polish: audit log, workers, awareness ID, mobile viewer |
 
-## Phase 6.5 (this session)
+## Phase 7 (this session)
 
-**Schema (apps/server/src/db/schema.ts + migration 0004):**
-- `custom_parts` — XML + sprite blobs, owner (user XOR org), createdBy.
-- `custom_part_collaborators` — same shape as layout_collaborators.
-- `modules` — title, owner, Y.Doc snapshot + version + optional
-  sidecar.
-- `module_collaborators`.
+**Audit log:**
+- Schema generalised to `(layout_id) | (resource_kind, resource_id)`.
+  Migration 0005 recreates the table to drop NOT NULL on layout_id.
+- `writeAuditEvent` supports both shapes. Custom-part and module
+  endpoints emit `create / share / role_change / unshare / delete`.
+- Read APIs: `/api/layouts/:id/audit` and `/api/audit?kind=&id=`.
 
-**Access (apps/server/src/access/resolveResourceRole.ts):**
-- Now dispatches by `kind: 'layout' | 'custom_part' | 'module'`.
-  Identical role-resolution algorithm; just different table joins.
+**Workers (apps/server/src/workers/index.ts):**
+- Daily tick (60s startup grace, then 24h interval). Each job
+  toggleable via env: `DEMO_TTL_SWEEP_ENABLED`,
+  `DAILY_COMPACTION_ENABLED`, `BACKUPS_ENABLED`.
+- Demo TTL sweep — hard-delete past-expires_at layouts.
+- Daily compaction — same logic as docHub flushSnapshot but for
+  layouts that aren't being actively edited.
+- Backup worker — `VACUUM INTO` + gzip + retention-bucket cleanup
+  (last 7 days + 1/wk×3wk + 1/mo×12mo).
 
-**Server (apps/server/src/routes/):**
-- `customParts.ts` — list/get/create/delete + sprite+xml byte
-  endpoints + share (immediate add for known recipients,
-  pending-link for unregistered) + role change + remove + leave.
-  4MB cap, gif/png mime, demo-gated invites, partNumber unique per
-  owner.
-- `modules.ts` — list/get/create/rename/delete + snapshot GET/PUT
-  + share + remove. Octet-stream snapshot bodies, 50MB cap, viewer
-  PUT → 403, demo-gated invites.
+**Security/UX:**
+- Awareness identity validation in `ws/handler.ts` — overwrites
+  `state.user.id` with the authenticated user when a peer's
+  awareness change came from THIS WS but claims a different id.
+- `useViewportSize` adds `isMobile` (< 768px). EditorPage forces
+  read-only on mobile + collapses the sidebar grid column.
+- `/api/health/ready` deep health check that pings the DB.
 
-**Web (apps/web/src/):**
-- `api.ts` — `api.customParts.*`, `api.modules.*`.
-- `library/LibraryPage.tsx` — combined view: thumbnail grid for
-  custom parts (sprite from `/api/custom-parts/:id/sprite`), list
-  for modules. Upload-part dialog with org owner picker.
-  New-module dialog. Per-row delete.
-- `App.tsx` — top-nav "Library" link.
-- `main.tsx` — `/library` route.
-
-## Tests passing (last run)
+## Test totals (last run)
 
 - 46 bbm
 - 19 parts-catalog
 - 4 ydoc
 - 20 web
-- 85 server (was 70 + 9 customParts + 6 modules = 15 new)
-- = **174 passing**
+- 92 server (was 85; +5 audit + 2 health = 7 new)
+- = **181 passing**
 
-## How to resume / verify
+## How to verify
 
 ```sh
 git status                                    # clean
-git log --oneline -8                          # 8 commits
+git log --oneline -9                          # 9 commits
 pnpm -r typecheck && pnpm -r test && pnpm -r build
 ```
 
-Smoke test:
-1. Register Alice. Create org "acme" (top-nav → Organisations → New).
-2. Top-nav → Library. Upload a custom part (XML + sprite GIF). Owner
-   defaults to personal; pick the org if you'd like it shared with
-   members.
-3. Create a saved module. Title only — module bytes are seeded as an
-   empty Y.Doc.
-4. Register Bob, invite him to the org as member. Bob now sees both
-   org-owned items in Library.
-5. Sharing a personal part: API only currently — no web UI for the
-   share dialog beyond owner-org selection at create time. The
-   custom-parts share endpoint immediately adds a registered
-   recipient; non-registered returns a copy-link (no DB persistence
-   yet — see Phase 7 follow-up).
+## Tag plan
 
-## Known limitations / Phase 7 follow-ups
+After this commit, tag `v1.0.0`. The tag fires `release.yml`:
+- multi-arch image build → GHCR `:v1.0.0` and `:latest`
+- Trivy gate (fails release on CRITICAL CVE)
+- auto-generated release notes grouped by Conventional Commits type
+- attaches `docker-compose.yml` + `.env.example`
 
-1. **Editor doesn't surface custom parts yet.** They're listed in
-   `/library` but the in-editor parts panel pulls from
-   `/api/parts/catalog` only. Phase 7 wires custom parts into the
-   parts panel under "My parts" / "Org parts" tabs.
-2. **Modules can't be placed yet.** No "instantiate this module"
-   command in the editor toolbar. Phase 7.
-3. **Custom-part share for unregistered recipients lacks a DB row.**
-   The endpoint returns a token+URL but the token isn't persisted, so
-   the recipient can't actually accept. Phase 7 adds
-   `custom_part_invites`.
-4. **No transfer for custom parts / modules.** Layout transfer works
-   end-to-end; custom parts and modules don't have transfer endpoints
-   yet.
-5. **No audit log writes for these new resources.** Layout
-   share/unshare/role_change/transfer all hit `audit_events`; the
-   parts/modules paths don't yet.
-6. **Module realtime collab.** Modules use snapshot REST only — no WS
-   server. Editing happens single-user.
+```sh
+git tag -a v1.0.0 -m "v1.0.0 — initial release"
+# push when ready: git push origin v1.0.0
+```
 
-## Phase 7 priorities (when we get there)
+## Phase 7 deferred / v1.x backlog
 
-1. Editor integration of custom parts (parts panel) and modules
-   (instantiate-from-library).
-2. `custom_part_invites` for unregistered recipients.
-3. Audit log writes for custom-part / module events.
-4. Audit log read UI (per-layout / per-resource history).
-5. Daily compaction job (the 30s snapshot covers active editing).
-6. Backup worker (PLAN.md §4.6).
-7. Demo TTL sweeper (nightly cron).
-8. Mobile read-only viewer.
-9. TLS deploy docs + first `v1.0.0` tag.
-10. Awareness identity validation.
+1. **Editor integration of custom parts** — Library page lists them
+   but the in-editor parts panel pulls only `/api/parts/catalog`.
+2. **Module instantiation in the editor** — no "drop module into
+   layout" command yet.
+3. **Custom-part invites for unregistered recipients** — endpoint
+   returns 202 + token but no `custom_part_invites` table to persist.
+4. **Audit log read UI** — backend serves data; no editor panel yet.
+5. **Module transfer** — layouts have transfer; modules don't.
+6. **Org audit events** — `resource_kind: 'org'` accepted by the
+   schema but no callers write org events; audit endpoint refuses
+   `?kind=org` until both sides land.
+7. **Workers tests** — retention-bucket math + ISO-week + gzip
+   pipeline currently exercised only in production. v1.1 fixture
+   harness.
+
+## Ops checklist for first deploy
+
+- [ ] Set `BOOTSTRAP_ADMIN_EMAIL` + `BOOTSTRAP_ADMIN_PASSWORD`.
+- [ ] Mount `/data` and `/backups` to host volumes (compose does this).
+- [ ] Optional: SMTP env for email invites.
+- [ ] Optional: OAuth provider env (Google/GitHub/OIDC).
+- [ ] Front with TLS (Caddy / Traefik / Cloudflare).
+- [ ] Verify `/api/health/ready` returns 200 externally.

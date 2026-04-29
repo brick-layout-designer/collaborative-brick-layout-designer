@@ -42,7 +42,11 @@ function Editor({ layoutId }: { layoutId: string }) {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const undo = useUndoManager(doc);
   const role = meta.data?.role ?? 'viewer';
-  const isViewer = role === 'viewer';
+  // Mobile viewport forces read-only mode regardless of role (PLAN.md
+  // §1 non-goal: no touch editing on phones). We re-use the existing
+  // viewer-mode UI gating instead of inventing a new "mobile" mode.
+  const viewport = useViewportSize();
+  const isViewer = role === 'viewer' || viewport.isMobile;
   const [showShare, setShowShare] = useState(false);
 
   // Publish our awareness state (cursor / selection / tool / identity).
@@ -83,8 +87,24 @@ function Editor({ layoutId }: { layoutId: string }) {
   if (loading || !doc) return <LoadingScreen />;
 
   return (
-    <div className="grid h-screen grid-cols-[260px_1fr] grid-rows-[auto_1fr] bg-neutral-950">
-      <header className="col-span-2 flex items-center justify-between border-b border-neutral-800 px-4 py-2">
+    <div
+      className={
+        // Mobile: no sidebar column. Desktop: 260px parts panel + canvas.
+        // The viewport drives `isViewer` too, so the conditional renders
+        // below already skip mounting the panel; this just collapses
+        // the grid.
+        viewport.isMobile
+          ? 'grid h-screen grid-cols-[1fr] grid-rows-[auto_1fr] bg-neutral-950'
+          : 'grid h-screen grid-cols-[260px_1fr] grid-rows-[auto_1fr] bg-neutral-950'
+      }
+    >
+      <header
+        className={
+          // Span the entire grid width — 1 column on mobile, 2 on desktop.
+          (viewport.isMobile ? 'col-span-1' : 'col-span-2') +
+          ' flex items-center justify-between border-b border-neutral-800 px-4 py-2'
+        }
+      >
         <div className="flex items-center gap-3">
           <Link to="/" className="text-sm text-neutral-400 hover:underline">
             ← Layouts

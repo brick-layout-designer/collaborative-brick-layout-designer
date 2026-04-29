@@ -945,22 +945,51 @@ actually USE these in layouts lands in Phase 7 / a follow-up.
 
 ### Phase 7 — Polish + ops + mobile viewer (2 weeks)
 
-- Deploy script docs (`docker compose -f docker-compose.prod.yml up -d`)
-- TLS is the operator's responsibility — point their reverse proxy at port 3000
-- Health check endpoints
-- Rate-limit WS connections per user
-- Demo-layout TTL sweeper job (nightly cron in the web container)
-- Daily Yjs compaction job per active layout (already required by §7 risks)
-- **Backup worker** per §4.6 (daily `VACUUM INTO`, gzip, retention buckets)
-- Audit-log viewer UI (per-layout history page; owners + org-admins only)
-- **Read-only mobile viewer**: responsive layout-list page; on small screens
-  the editor route renders a pan/zoom canvas with no tools, no awareness
-  cursors, no edit affordances. Reuses Konva but with a stripped tool layer.
-- Tag the first `v1.0.0` release — verifies `release.yml` end-to-end
+**Shipped:**
+- Audit log generalised: `audit_events` schema now supports
+  `(resource_kind, resource_id)` for non-layout resources (custom
+  parts, modules, orgs) alongside the existing layout-scoped column.
+  Migration `0005_exotic_swordsman.sql` recreates the table to relax
+  the `layout_id NOT NULL` constraint.
+- `writeAuditEvent` now accepts either `{ layoutId }` or
+  `{ resourceKind, resourceId }`. Custom-part and module endpoints
+  (create / share / role_change / unshare / delete) all emit audit
+  rows.
+- Audit read API: `GET /api/layouts/:id/audit` (layout-scoped, the
+  editor's audit panel) and `GET /api/audit?kind=&id=` (generic for
+  custom_part / module). Both gated by `resolveResourceRole`.
+- Background workers (`apps/server/src/workers/index.ts`), all daily:
+  - **Demo TTL sweep**: hard-deletes layouts past `expires_at`.
+    Off-switch: `DEMO_TTL_SWEEP_ENABLED=false`.
+  - **Daily compaction**: rewrites `layout_updates` into a fresh
+    `docSnapshot` for any layout with unflushed updates. Complements
+    the per-active-doc 30s worker in `docHub.ts`. Off-switch:
+    `DAILY_COMPACTION_ENABLED=false`.
+  - **Backup worker**: `VACUUM INTO` + gzip into `BACKUPS_DIR`
+    (default `/backups`). Retention: last 7 days + 1 per ISO week
+    × 3 weeks + 1 per calendar month × 12 months. Off-switch:
+    `BACKUPS_ENABLED=false`.
+- Awareness identity hardening: on every awareness change from a
+  WS connection, the server peeks at the published state and
+  overwrites `state.user.id` with the authenticated user-id if a
+  spoof attempt is detected. Cosmetic fields (displayName, color)
+  remain client-controlled.
+- Health check: deeper `/api/health/ready` confirms DB connectivity
+  via a `SELECT 1` ping. Returns 503 on failure. Suitable as a
+  k8s/docker readiness probe.
+- Mobile read-only viewer: `useViewportSize` exposes an `isMobile`
+  flag (< 768px). The editor forces read-only mode (the existing
+  `isViewer` UI gating) on mobile and collapses the sidebar grid
+  column.
+- Deploy docs: TLS is the operator's responsibility — point their
+  reverse proxy at port 3000. (`docker-compose.yml` doesn't bundle
+  one.)
+- WS rate-limiting: already enforced by `MAX_WS_PER_USER = 8` in
+  `routes/ws.ts` (Phase 4).
 
 **Shippable:** production-ready single-host deploy with mobile-viewable
-layouts, per-layout audit history, automatic backups with retention, and
-a published `v1.0.0` Docker image.
+layouts, per-layout / per-resource audit history, automatic backups
+with retention, and a published `v1.0.0` Docker image.
 
 **Total: ~12.5 weeks for a working v1.** Phases 1–4 (~6.5 weeks) get you a
 single-org collaborative editor; phases 5–7 (~6 weeks) add multi-tenant

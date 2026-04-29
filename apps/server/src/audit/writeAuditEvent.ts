@@ -1,14 +1,15 @@
-// Write a per-layout audit row. Centralised so the event_type strings
-// stay consistent and the payload shape is one schema.
+// Write an audit row. Centralised so the event_type strings stay
+// consistent and the payload shape is one schema.
 //
-// Events the editor produces:
-//   - 'open' / 'close' (Phase 6 — wired into WS attach/detach)
-//   - 'edit' (Phase 6 — once we settle on per-edit granularity)
-//   - 'share' / 'unshare' / 'role_change' (Phase 5 — this file's primary
-//     callers)
-//   - 'transfer' (Phase 6)
-//   - 'import' / 'export' (Phase 5+)
-//   - 'rename' (could be added now; currently not wired)
+// Two call shapes:
+//
+//   writeAuditEvent({ layoutId, ... })        // legacy layout-only audits
+//   writeAuditEvent({ resourceKind, resourceId, ... })  // generic
+//
+// Either layoutId OR (resourceKind+resourceId) must be set; never both.
+// The schema column `layout_id` carries the layout-id form for backwards
+// compatibility with existing queries; the generic form leaves it null
+// and populates (resource_kind, resource_id) instead.
 
 import { db, schema } from '../db/index.js';
 
@@ -22,10 +23,13 @@ export type AuditEventType =
   | 'transfer'
   | 'import'
   | 'export'
-  | 'rename';
+  | 'rename'
+  | 'create'
+  | 'delete';
 
-export interface AuditEvent {
-  layoutId: string;
+export type AuditResourceKind = 'layout' | 'custom_part' | 'module' | 'org';
+
+interface CommonAuditFields {
   /** null for system-driven events (TTL sweep, transfer admin). */
   userId: string | null;
   eventType: AuditEventType;
@@ -34,9 +38,23 @@ export interface AuditEvent {
   docVersion?: number;
 }
 
+interface LayoutAuditEvent extends CommonAuditFields {
+  layoutId: string;
+}
+
+interface GenericAuditEvent extends CommonAuditFields {
+  resourceKind: AuditResourceKind;
+  resourceId: string;
+}
+
+export type AuditEvent = LayoutAuditEvent | GenericAuditEvent;
+
 export async function writeAuditEvent(event: AuditEvent): Promise<void> {
+  const isLayout = 'layoutId' in event;
   await db.insert(schema.auditEvents).values({
-    layoutId: event.layoutId,
+    layoutId: isLayout ? event.layoutId : null,
+    resourceKind: isLayout ? null : event.resourceKind,
+    resourceId: isLayout ? null : event.resourceId,
     userId: event.userId,
     eventType: event.eventType,
     payload: JSON.stringify(event.payload),

@@ -177,9 +177,23 @@ export const layoutUpdates = sqliteTable('layout_updates', {
 // without a column type change.
 export const auditEvents = sqliteTable('audit_events', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  layoutId: text('layout_id')
-    .notNull()
-    .references(() => layouts.id, { onDelete: 'cascade' }),
+  /**
+   * Layout-specific audits keep this column populated. New non-layout
+   * resource events (custom parts, modules) leave it null and use the
+   * generic `(resource_kind, resource_id)` pair below. Kept as a
+   * convenience column so existing layout-audit queries keep working
+   * without a migration; intentionally NOT a foreign key when null,
+   * so generic events don't trigger cascade-on-delete behaviour.
+   */
+  layoutId: text('layout_id'),
+  /**
+   * Resource kind for generic audits. Null for legacy layout-only rows
+   * (where layout_id is set instead). Either (layout_id) or
+   * (resource_kind + resource_id) must be set; never both, never
+   * neither. Enforced in the writer, not in the schema.
+   */
+  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org'] }),
+  resourceId: text('resource_id'),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   eventType: text('event_type').notNull(),
   payload: text('payload').notNull(), // JSON string
