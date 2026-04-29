@@ -60,6 +60,8 @@ export function ShareDialog({
           />
         )}
 
+        {isOwner && <TransferSection layoutId={layoutId} />}
+
         {list.isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
         {list.data && (
           <div className="space-y-3">
@@ -329,6 +331,173 @@ function PendingInvites({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function TransferSection({ layoutId }: { layoutId: string }) {
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
+  const [mode, setMode] = useState<'closed' | 'user' | 'org'>('closed');
+  const [email, setEmail] = useState('');
+  const [orgSlug, setOrgSlug] = useState('');
+  const [linkResult, setLinkResult] = useState<{ url: string; emailDelivered: boolean } | null>(
+    null,
+  );
+  const [orgResult, setOrgResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const initiate = useMutation({
+    mutationFn: () =>
+      mode === 'user'
+        ? api.transfers.initiate(layoutId, { email })
+        : api.transfers.initiate(layoutId, { orgSlug }),
+    onSuccess: (res) => {
+      setError(null);
+      if ('transferred' in res) {
+        setOrgResult(res.ownerSlug);
+        setLinkResult(null);
+      } else {
+        setLinkResult({ url: res.transferUrl, emailDelivered: res.emailDelivered });
+        setOrgResult(null);
+      }
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <div className="rounded border border-neutral-800 p-3 text-sm">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        Transfer ownership
+      </h4>
+      {mode === 'closed' && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode('user')}
+            className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+          >
+            Transfer to a user
+          </button>
+          {orgs.data && orgs.data.orgs.length > 0 && (
+            <button
+              onClick={() => setMode('org')}
+              className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+            >
+              Transfer to an org
+            </button>
+          )}
+        </div>
+      )}
+
+      {mode === 'user' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            initiate.mutate();
+          }}
+          className="space-y-2"
+        >
+          <p className="text-xs text-neutral-500">
+            The recipient must accept via the link before ownership flips. You'll
+            stay on the layout as an editor.
+          </p>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="recipient@example.com"
+            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={initiate.isPending}
+              className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-50"
+            >
+              Initiate transfer
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('closed')}
+              className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {mode === 'org' && orgs.data && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            initiate.mutate();
+          }}
+          className="space-y-2"
+        >
+          <p className="text-xs text-neutral-500">
+            Transfer commits immediately. You'll lose owner-level access unless
+            you're an admin of the destination org.
+          </p>
+          <select
+            value={orgSlug}
+            onChange={(e) => setOrgSlug(e.target.value)}
+            required
+            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+          >
+            <option value="">Choose an organisation…</option>
+            {orgs.data.orgs.map((o) => (
+              <option key={o.slug} value={o.slug}>
+                {o.name} ({o.myRole})
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={initiate.isPending || !orgSlug}
+              className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-50"
+            >
+              Transfer to org
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('closed')}
+              className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+
+      {linkResult && (
+        <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
+          <p className="text-emerald-400">
+            {linkResult.emailDelivered
+              ? 'Email sent. The transfer is pending until the recipient accepts.'
+              : 'Email delivery skipped (no SMTP configured). Share this link:'}
+          </p>
+          <code className="mt-1 block break-all rounded bg-neutral-950 p-1 text-[11px]">
+            {linkResult.url}
+          </code>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(linkResult.url)}
+            className="mt-1 text-xs text-blue-400 hover:underline"
+          >
+            Copy link
+          </button>
+        </div>
+      )}
+
+      {orgResult && (
+        <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs text-emerald-400">
+          Layout transferred to <strong>/{orgResult}</strong>.
+        </div>
+      )}
     </div>
   );
 }

@@ -18,9 +18,19 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import type { DocSession } from './docHub.js';
 import { docHub } from './docHub.js';
+import { resolveResourceRole } from '../access/resolveResourceRole.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
+
+/**
+ * How often we re-check whether the connected user still has access to
+ * this layout. Catches the "admin removes a collaborator while they're
+ * editing" case so a removed user can't keep editing until they refresh.
+ * 30s is short enough that real users barely notice; long enough that
+ * the database load is negligible.
+ */
+const ROLE_REVALIDATE_MS = 30_000;
 
 /**
  * Per-connection lifecycle. The handler does NOT close the WS itself;
@@ -76,16 +86,51 @@ export async function attachWsHandlers(
   session.awareness.on('update', onAwarenessChange);
 
   // 4. Wire up message handling.
+  let currentRole = role;
   ws.on('message', (data: Buffer) => {
     try {
-      handleMessage(ws, session, new Uint8Array(data), role);
+      handleMessage(ws, session, new Uint8Array(data), currentRole);
     } catch {
       // Drop malformed messages silently — Yjs protocol errors should
       // never propagate to the client.
     }
   });
 
+  // 5. Periodic role revalidation. If the user is removed from the layout
+  //    mid-session (admin yanks their share, layout is transferred away),
+  //    we need to drop the connection rather than let them keep editing.
+  //    Polling is the simplest fit — a DB-trigger-style notification would
+  //    avoid the 30s window but pulls in pub/sub infrastructure.
+  const revalidateTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const { role: refreshedRole } = await resolveResourceRole(
+          userId,
+          'layout',
+          layoutId,
+        );
+        if (refreshedRole === null) {
+          // Access revoked. Close with our "not_found" code so the client
+          // surfaces the same error as a stale page reload would.
+          ws.close(4404, 'access_revoked');
+          return;
+        }
+        if (refreshedRole !== currentRole) {
+          // Role downgraded (or upgraded). Update the in-memory copy so
+          // subsequent message handling honours the new tier. We don't
+          // disconnect on role change because the user still has access;
+          // the editor's UI will catch up next time it refetches the
+          // layout-detail query.
+          currentRole = refreshedRole;
+        }
+      } catch {
+        /* DB transient — try again next tick */
+      }
+    })();
+  }, ROLE_REVALIDATE_MS);
+
   return async () => {
+    clearInterval(revalidateTimer);
     session.doc.off('update', onUpdate);
     session.awareness.off('update', onAwarenessChange);
     // Remove this client's awareness state so others see them disappear.

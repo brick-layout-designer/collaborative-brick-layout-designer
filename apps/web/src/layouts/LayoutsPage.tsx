@@ -176,7 +176,13 @@ function CreateLayoutDialog({
   const [bbm, setBbm] = useState<string | null>(null);
   const [sidecar, setSidecar] = useState<string | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
+  // Owner: empty string = personal; otherwise the org slug.
+  const [ownerSlug, setOwnerSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch the user's orgs so the dialog can offer them as owner options.
+  // Cheap; cached by react-query so this almost never hits the network.
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
 
   const create = useMutation({
     mutationFn: api.layouts.create,
@@ -202,11 +208,12 @@ function CreateLayoutDialog({
   function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const body: { title?: string; bbm?: string; sidecar?: string } = {};
+    const body: { title?: string; bbm?: string; sidecar?: string; orgSlug?: string } = {};
     const t = title.trim();
     if (t) body.title = t;
     if (bbm) body.bbm = bbm;
     if (sidecar) body.sidecar = sidecar;
+    if (ownerSlug) body.orgSlug = ownerSlug;
     create.mutate(body);
   }
 
@@ -227,6 +234,24 @@ function CreateLayoutDialog({
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
+
+        {orgs.data && orgs.data.orgs.length > 0 && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-neutral-400">Owner</span>
+            <select
+              value={ownerSlug}
+              onChange={(e) => setOwnerSlug(e.target.value)}
+              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            >
+              <option value="">Personal (you)</option>
+              {orgs.data.orgs.map((o) => (
+                <option key={o.slug} value={o.slug}>
+                  Org: {o.name} ({o.myRole})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">

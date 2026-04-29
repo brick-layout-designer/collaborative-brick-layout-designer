@@ -60,6 +60,23 @@ export const orgMembers = sqliteTable(
   }),
 );
 
+// Pending org-membership invites. Same shape as layout_invites but for
+// joining an org. Auto-cleared on accept; admins can also revoke.
+export const orgInvites = sqliteTable('org_invites', {
+  id: text('id').primaryKey(),
+  orgId: text('org_id')
+    .notNull()
+    .references(() => orgs.id, { onDelete: 'cascade' }),
+  invitedEmail: text('invited_email').notNull(),
+  invitedBy: text('invited_by')
+    .notNull()
+    .references(() => users.id),
+  role: text('role', { enum: ['admin', 'member'] }).notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+});
+
 // ---------------------------------------------------------------------------
 // Layouts (Phase 2)
 // ---------------------------------------------------------------------------
@@ -116,6 +133,31 @@ export const layoutInvites = sqliteTable('layout_invites', {
   acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
 });
 
+// User → user layout transfers (Phase 6 / PLAN.md §3.5). When the new
+// owner is a user (not an org), the transfer requires the recipient to
+// accept via a token link before ownership flips. Transfers TO an org
+// commit immediately and don't use this table.
+export const layoutTransfers = sqliteTable('layout_transfers', {
+  id: text('id').primaryKey(),
+  layoutId: text('layout_id')
+    .notNull()
+    .references(() => layouts.id, { onDelete: 'cascade' }),
+  /** Caller who initiated the transfer. */
+  initiatedBy: text('initiated_by')
+    .notNull()
+    .references(() => users.id),
+  /**
+   * Email of the recipient. We don't FK to users because the recipient
+   * may not yet have an account at invite time — same shape as
+   * layout_invites. Email-match enforced at acceptance time.
+   */
+  recipientEmail: text('recipient_email').notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 // Phase 4 will fill this with y-update binary records between snapshots.
 // We declare it now so the migration sticks once and Phase 4 doesn't need
 // to alter a populated layouts table.
@@ -153,3 +195,7 @@ export type Layout = typeof layouts.$inferSelect;
 export type NewLayout = typeof layouts.$inferInsert;
 export type LayoutCollaborator = typeof layoutCollaborators.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
+export type Org = typeof orgs.$inferSelect;
+export type OrgMember = typeof orgMembers.$inferSelect;
+export type OrgInvite = typeof orgInvites.$inferSelect;
+export type LayoutTransfer = typeof layoutTransfers.$inferSelect;

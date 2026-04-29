@@ -8,6 +8,10 @@ import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
 import { InvitePage } from './auth/InvitePage';
 import { EditorPage } from './editor/EditorPage';
+import { OrgsPage } from './orgs/OrgsPage';
+import { OrgDetailPage } from './orgs/OrgDetailPage';
+import { OrgInvitePage } from './orgs/OrgInvitePage';
+import { TransferPage } from './layouts/TransferPage';
 import './styles.css';
 
 const queryClient = new QueryClient({
@@ -27,6 +31,10 @@ createRoot(root).render(
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/link" element={<LinkPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
+          <Route path="/transfer/:token" element={<TransferPage />} />
+          <Route path="/org-invite/:token" element={<OrgInvitePage />} />
+          <Route path="/orgs" element={<OrgsPage />} />
+          <Route path="/orgs/:slug" element={<OrgDetailPage />} />
           <Route path="/editor/:id" element={<EditorPage />} />
         </Routes>
       </BrowserRouter>

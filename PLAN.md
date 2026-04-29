@@ -858,20 +858,48 @@ enforces role at both REST and WS layers.
 
 ### Phase 6 — Organizations + transfer (1.5 weeks)
 
-- Org create + slug (demo accounts blocked from creation per §3.4)
-- Org admin UI: invite, change role, remove member
-- Layouts can be created in an org (owner_org_id) — role inherited from
-  org membership unless explicitly overridden
-- Org-level layouts list
-- Layout transfer flow per §3.5:
-  - User → user: pending-accept via token link
-  - User → org / org → org / org → user: immediate (caller must be admin
-    on both sides where applicable)
-  - `audit_events` `transfer` row written on commit
-  - `expires_at` cleared when transferring out of demo ownership
+**Shipped:**
+- Schema: `org_invites`, `layout_transfers` tables added (migration
+  `0003_tricky_blazing_skull.sql`).
+- Server: `POST /api/orgs` (slug-validated, demo-account blocked),
+  `GET /api/orgs` (user's orgs), `GET /api/orgs/:slug` (existence-leak
+  protected). Member CRUD + invite/revoke + email-match acceptance at
+  `/api/org-invites/:token`. Last-admin guard prevents the only admin
+  from self-demoting or being removed. Org-owned layouts list at
+  `/api/orgs/:slug/layouts`.
+- Server: `POST /api/layouts` extended with optional `orgSlug` to
+  create an org-owned layout. Org membership required.
+- Server: `GET /api/layouts` now joins org-membership; org members see
+  org-owned layouts in their list.
+- Server: `POST /api/layouts/:id/transfer` — immediate commit for
+  org-recipient transfers (caller must be a member of the destination
+  org); pending-accept via `layout_transfers` row + `/transfer/:token`
+  landing for user→user. Org-owned layouts can only transfer to other
+  orgs (never to a personal user, to avoid sneak-extracting). Self-
+  transfer rejected. Previous owner kept as editor on user→user
+  acceptance.
+- Server: WS handler now polls `resolveResourceRole` every 30s. If the
+  user is removed from the layout mid-session, the WS closes with
+  `4404 access_revoked`. Role downgrades update the in-memory tier so
+  subsequent sync messages are gated correctly.
+- Web: `/orgs` index + create dialog; `/orgs/:slug` detail with
+  members panel (admin role select, remove, leave) + invite form +
+  org-owned layouts list.
+- Web: `/org-invite/:token` and `/transfer/:token` landing pages
+  with auto-accept on email match.
+- Web: `CreateLayoutDialog` extended with an Owner select; the user
+  can pick personal or any org they're a member of. Org members see
+  the picker, personal-only users don't.
+- Web: ShareDialog `TransferSection` — owners can transfer to a user
+  by email or to any org they're a member of. Org transfer commits
+  immediately; user transfer surfaces the pending link.
 
-**Shippable:** create an org, invite teammates, store layouts at org scope,
-all members can collaborate, transfer a personal layout into the org.
+**Tests: +20 in apps/server (12 orgs + 8 transfers).** Total 159.
+
+**Shippable:** create an org, invite teammates, store layouts at org
+scope, all members can collaborate, transfer a personal layout into
+the org. Removed users get auto-disconnected within 30s instead of
+keeping their open WS until refresh.
 
 ### Phase 6.5 — Custom parts + saved modules (2 weeks)
 

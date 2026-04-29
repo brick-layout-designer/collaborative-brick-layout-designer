@@ -14,7 +14,10 @@ import { sessionRoutes } from './routes/auth/session.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
 import { inviteRoutes } from './routes/invites.js';
 import { layoutRoutes } from './routes/layouts.js';
+import { orgRoutes } from './routes/orgs.js';
+import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
+import { transferRoutes } from './routes/transfers.js';
 import { wsRoutes } from './routes/ws.js';
 
 async function main() {
@@ -40,6 +43,9 @@ async function main() {
   await app.register(partsRoutes);
   await app.register(collaboratorRoutes);
   await app.register(inviteRoutes);
+  await app.register(orgRoutes);
+  await app.register(orgInviteRoutes);
+  await app.register(transferRoutes);
   await app.register(wsRoutes);
 
   // Serve the BlueBrickParts library at /parts/*. The desktop's submodule

@@ -7,11 +7,13 @@ import { db, schema, sqlite } from '../db/index.js';
 export function resetDb(): void {
   sqlite.exec(`
     DELETE FROM audit_events;
+    DELETE FROM layout_transfers;
     DELETE FROM layout_updates;
     DELETE FROM layout_invites;
     DELETE FROM layout_collaborators;
     DELETE FROM layouts;
     DELETE FROM oauth_accounts;
+    DELETE FROM org_invites;
     DELETE FROM org_members;
     DELETE FROM orgs;
     DELETE FROM sessions;

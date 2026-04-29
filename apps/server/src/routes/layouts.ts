@@ -14,6 +14,13 @@ interface CreateLayoutBody {
   bbm?: string;
   /** Optional `.bbm.cld` JSON payload to seed the sidecar. */
   sidecar?: string;
+  /**
+   * If provided, the new layout is org-owned. The caller must be a
+   * member of the org. Mutually exclusive with personal ownership.
+   * Demo accounts cannot create org-owned layouts (they can't join orgs
+   * without being invited; if they ARE invited, they can still create).
+   */
+  orgSlug?: string;
 }
 
 interface PatchLayoutBody {
@@ -35,23 +42,44 @@ export async function layoutRoutes(app: FastifyInstance) {
   // ---- list ----------------------------------------------------------------
   app.get('/api/layouts', async (req) => {
     const user = requireUser(req);
-    // Layouts the user owns + layouts they collaborate on. Org-owned layouts
-    // (where user is a member) are not yet listed here — Phase 6 wires the
-    // org-membership join. Phase-2 scope: personal layouts only.
+    // Three sources of layouts the user can see:
+    //   1. ownerUserId === user.id          (personal)
+    //   2. ownerOrgId joined to org_members (org-owned where they're a member)
+    //   3. layout_collaborators row         (explicitly shared)
+    // Dedupe by id since 2 and 3 can overlap (an org member who also has
+    // an explicit per-user share). Set keyed by id wins.
     const personal = await db
       .select()
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, user.id));
+    const orgOwned = await db
+      .select({ layout: schema.layouts })
+      .from(schema.orgMembers)
+      .innerJoin(schema.layouts, eq(schema.layouts.ownerOrgId, schema.orgMembers.orgId))
+      .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
       .select({ layout: schema.layouts })
       .from(schema.layoutCollaborators)
       .innerJoin(schema.layouts, eq(schema.layouts.id, schema.layoutCollaborators.layoutId))
       .where(eq(schema.layoutCollaborators.userId, user.id));
 
-    const all = [
-      ...personal.map(toListItem),
-      ...shared.map((s) => toListItem(s.layout)),
-    ];
+    const seen = new Set<string>();
+    const all: ReturnType<typeof toListItem>[] = [];
+    for (const l of personal) {
+      if (seen.has(l.id)) continue;
+      seen.add(l.id);
+      all.push(toListItem(l));
+    }
+    for (const { layout } of orgOwned) {
+      if (seen.has(layout.id)) continue;
+      seen.add(layout.id);
+      all.push(toListItem(layout));
+    }
+    for (const { layout } of shared) {
+      if (seen.has(layout.id)) continue;
+      seen.add(layout.id);
+      all.push(toListItem(layout));
+    }
     return { layouts: all };
   });
 
@@ -108,17 +136,45 @@ export async function layoutRoutes(app: FastifyInstance) {
       }
     }
 
+    // Resolve owner — personal by default, or an org if `orgSlug` provided.
+    let ownerUserId: string | null = user.id;
+    let ownerOrgId: string | null = null;
+    if (body.orgSlug) {
+      const org = await db
+        .select({ id: schema.orgs.id })
+        .from(schema.orgs)
+        .where(eq(schema.orgs.slug, body.orgSlug.toLowerCase()))
+        .get();
+      if (!org) return reply.code(404).send({ error: 'org_not_found' });
+      const membership = await db
+        .select({ role: schema.orgMembers.role })
+        .from(schema.orgMembers)
+        .where(
+          and(
+            eq(schema.orgMembers.orgId, org.id),
+            eq(schema.orgMembers.userId, user.id),
+          ),
+        )
+        .get();
+      if (!membership) return reply.code(403).send({ error: 'not_an_org_member' });
+      ownerUserId = null;
+      ownerOrgId = org.id;
+    }
+
     const id = randomUUID();
     const now = new Date();
-    const expiresAt = user.isDemoAccount
-      ? new Date(now.getTime() + Number(process.env.DEMO_LAYOUT_TTL_DAYS ?? 30) * 86400_000)
-      : null;
+    // Demo TTL only applies to user-owned layouts; org layouts persist
+    // until an admin deletes them.
+    const expiresAt =
+      user.isDemoAccount && ownerUserId
+        ? new Date(now.getTime() + Number(process.env.DEMO_LAYOUT_TTL_DAYS ?? 30) * 86400_000)
+        : null;
 
     await db.insert(schema.layouts).values({
       id,
       title,
-      ownerUserId: user.id,
-      ownerOrgId: null,
+      ownerUserId,
+      ownerOrgId,
       createdBy: user.id,
       createdAt: now,
       updatedAt: now,

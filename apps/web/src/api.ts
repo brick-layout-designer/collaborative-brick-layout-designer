@@ -166,7 +166,96 @@ export const api = {
     accept: (token: string) =>
       post<{ layoutId: string; role: 'viewer' | 'editor' }>(`/api/invites/${token}`),
   },
+
+  orgs: {
+    list: () => get<{ orgs: OrgSummary[] }>('/api/orgs'),
+    create: (name: string, slug: string) =>
+      post<{ id: string; name: string; slug: string }>('/api/orgs', { name, slug }),
+    get: (slug: string) => get<OrgDetail>(`/api/orgs/${slug}`),
+    members: (slug: string) =>
+      get<{ members: OrgMemberSummary[]; invites: OrgInviteSummary[] }>(
+        `/api/orgs/${slug}/members`,
+      ),
+    invite: (slug: string, email: string, role: 'admin' | 'member') =>
+      post<{
+        id: string;
+        token: string;
+        inviteUrl: string;
+        emailDelivered: boolean;
+        expiresAt: number;
+      }>(`/api/orgs/${slug}/invites`, { email, role }),
+    revokeInvite: (slug: string, inviteId: string) =>
+      del(`/api/orgs/${slug}/invites/${inviteId}`),
+    changeMemberRole: (slug: string, userId: string, role: 'admin' | 'member') =>
+      patch<{ ok: true }>(`/api/orgs/${slug}/members/${userId}`, { role }),
+    removeMember: (slug: string, userId: string) =>
+      del(`/api/orgs/${slug}/members/${userId}`),
+    layouts: (slug: string) =>
+      get<{ layouts: LayoutSummary[] }>(`/api/orgs/${slug}/layouts`),
+  },
+
+  orgInvites: {
+    preview: (token: string) =>
+      get<{
+        invitedEmail: string;
+        role: 'admin' | 'member';
+        orgId: string;
+        orgName: string;
+        orgSlug: string;
+        expiresAt: number;
+      }>(`/api/org-invites/${token}`),
+    accept: (token: string) =>
+      post<{ orgId: string; role: 'admin' | 'member' }>(`/api/org-invites/${token}`),
+  },
+
+  transfers: {
+    initiate: (
+      layoutId: string,
+      recipient: { email: string } | { orgSlug: string },
+    ) =>
+      post<
+        | { transferred: true; ownerKind: 'org'; ownerSlug: string }
+        | { id: string; token: string; transferUrl: string; emailDelivered: boolean; expiresAt: number }
+      >(`/api/layouts/${layoutId}/transfer`, {
+        recipientEmail: 'email' in recipient ? recipient.email : undefined,
+        recipientOrgSlug: 'orgSlug' in recipient ? recipient.orgSlug : undefined,
+      }),
+    preview: (token: string) =>
+      get<{
+        recipientEmail: string;
+        layoutId: string;
+        layoutTitle: string;
+        expiresAt: number;
+      }>(`/api/transfers/${token}`),
+    accept: (token: string) => post<{ layoutId: string }>(`/api/transfers/${token}`),
+  },
 };
+
+export interface OrgSummary {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: number;
+  myRole: 'admin' | 'member';
+}
+
+export interface OrgDetail extends OrgSummary {}
+
+export interface OrgMemberSummary {
+  userId: string;
+  role: 'admin' | 'member';
+  joinedAt: number;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface OrgInviteSummary {
+  id: string;
+  invitedEmail: string;
+  role: 'admin' | 'member';
+  expiresAt: number;
+}
 
 export interface CollaboratorSummary {
   userId: string;
