@@ -62,6 +62,8 @@ export function ShareDialog({
 
         {isOwner && <TransferSection layoutId={layoutId} />}
 
+        <AuditPanel layoutId={layoutId} />
+
         {list.isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
         {list.data && (
           <div className="space-y-3">
@@ -500,4 +502,67 @@ function TransferSection({ layoutId }: { layoutId: string }) {
       )}
     </div>
   );
+}
+
+/** Per-layout audit log panel — collapsed by default. */
+export function AuditPanel({ layoutId }: { layoutId: string }) {
+  const events = useQuery({
+    queryKey: ['audit', 'layout', layoutId],
+    queryFn: () => api.audit.forLayout(layoutId),
+    // Audit log isn't reactive — re-fetch on dialog open is enough.
+    staleTime: 30_000,
+  });
+
+  return (
+    <details className="rounded border border-neutral-800 p-3 text-sm">
+      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        History
+      </summary>
+      <div className="mt-2 max-h-60 overflow-y-auto">
+        {events.isLoading && <p className="text-xs text-neutral-500">Loading…</p>}
+        {events.data && events.data.events.length === 0 && (
+          <p className="text-xs text-neutral-500">No events recorded yet.</p>
+        )}
+        {events.data && events.data.events.length > 0 && (
+          <ul className="space-y-1 text-xs">
+            {events.data.events.map((e) => (
+              <li
+                key={e.id}
+                className="grid grid-cols-[auto_1fr] gap-x-2 text-neutral-300"
+              >
+                <span className="font-mono text-neutral-500">
+                  {new Date(e.createdAt).toLocaleString()}
+                </span>
+                <span>
+                  <strong>{e.eventType}</strong>
+                  <span className="ml-1 text-neutral-500">
+                    {summarisePayload(e.payload)}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function summarisePayload(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return '';
+  // Cheap human-readable rendering. Full payload is in the response if
+  // a power user wants the JSON; the UI is intentionally summary-only.
+  const p = payload as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof p.invitedEmail === 'string') parts.push(`→ ${p.invitedEmail}`);
+  if (typeof p.role === 'string') parts.push(`(${p.role})`);
+  if (typeof p.toRole === 'string' && typeof p.fromRole === 'string') {
+    parts.push(`${p.fromRole} → ${p.toRole}`);
+  }
+  if (p.to && typeof p.to === 'object') {
+    const to = p.to as Record<string, unknown>;
+    if (to.kind === 'org' && typeof to.slug === 'string') parts.push(`→ /${to.slug}`);
+  }
+  if (typeof p.partNumber === 'string') parts.push(`[${p.partNumber}]`);
+  return parts.join(' ');
 }

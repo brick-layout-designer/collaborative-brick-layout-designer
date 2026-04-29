@@ -130,6 +130,55 @@ export function translateBricks(
   }, LOCAL_ORIGIN);
 }
 
+/**
+ * Insert a list of bricks (typically extracted from a module's snapshot)
+ * into the given layer at an offset. New brick ids are minted so the
+ * insertion can't collide with existing ids in the target layout.
+ *
+ * Returns the list of newly-minted ids in insertion order — useful for
+ * the editor to immediately select what was inserted.
+ */
+export function insertBricks(
+  doc: Y.Doc,
+  layerId: string,
+  bricks: Array<{
+    partNumber: string;
+    displayArea: { x: number; y: number; width: number; height: number };
+    orientation?: number;
+    altitude?: number;
+  }>,
+  offset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+): string[] {
+  if (bricks.length === 0) return [];
+  const ids: string[] = [];
+  doc.transact(() => {
+    const layerData = doc.getMap('layerData').get(layerId);
+    if (!(layerData instanceof Y.Map)) return;
+    const yBricks = layerData.get('bricks');
+    if (!(yBricks instanceof Y.Array)) return;
+    for (const b of bricks) {
+      const id = makeId();
+      ids.push(id);
+      const yBrick = new Y.Map<unknown>();
+      yBrick.set('id', id);
+      yBrick.set('displayArea', {
+        x: b.displayArea.x + offset.dx,
+        y: b.displayArea.y + offset.dy,
+        width: b.displayArea.width,
+        height: b.displayArea.height,
+      });
+      yBrick.set('myGroup', '');
+      yBrick.set('partNumber', b.partNumber);
+      yBrick.set('orientation', b.orientation ?? 0);
+      yBrick.set('activeConnectionPointIndex', 0);
+      yBrick.set('altitude', b.altitude ?? 0);
+      yBrick.set('connexions', []);
+      yBricks.push([yBrick]);
+    }
+  }, LOCAL_ORIGIN);
+  return ids;
+}
+
 export function rotateBricks(
   doc: Y.Doc,
   layerId: string,

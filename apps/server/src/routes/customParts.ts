@@ -330,14 +330,22 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.users.email, email))
         .get();
       if (!recipient) {
-        // We still queue the share via a token so the recipient can
-        // accept after registering. For simplicity we reuse the layout-
-        // invite email helper but generate a token; a thin pending table
-        // for custom parts can land in a follow-up.
+        // Persist the invite as a pending row; once the recipient
+        // registers + hits POST /api/custom-part-invites/:token they
+        // get added to custom_part_collaborators.
         const token = randomBytes(24).toString('hex');
-        const inviteUrl = `${env.publicUrl}/custom-part-share?token=${token}`;
-        // Fire-and-forget email; if SMTP isn't configured, response
-        // includes the URL.
+        const inviteId = randomUUID();
+        const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+        await db.insert(schema.customPartInvites).values({
+          id: inviteId,
+          customPartId: req.params.id,
+          invitedEmail: email,
+          role: inviteRole,
+          token,
+          expiresAt,
+          acceptedAt: null,
+        });
+        const inviteUrl = `${env.publicUrl}/custom-part-invite/${token}`;
         let emailDelivered = false;
         try {
           emailDelivered = await sendInviteEmail({
@@ -346,15 +354,20 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
             inviterName: user.displayName,
           });
         } catch {
-          /* ignored */
+          /* ignored — caller can hand-deliver the URL */
         }
+        await writeAuditEvent({
+          resourceKind: 'custom_part',
+          resourceId: req.params.id,
+          userId: user.id,
+          eventType: 'share',
+          payload: { invitedEmail: email, role: inviteRole, inviteId, pending: true },
+        });
         return reply.code(202).send({
           pending: true,
           inviteUrl,
           emailDelivered,
-          expiresAt: Date.now() + INVITE_TTL_MS,
-          // Token isn't persisted yet — caller must hand-deliver the URL.
-          // Phase 7 hardens this with a custom_part_invites table.
+          expiresAt: expiresAt.getTime(),
         });
       }
 

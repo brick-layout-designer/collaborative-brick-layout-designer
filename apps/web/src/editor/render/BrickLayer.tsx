@@ -4,7 +4,7 @@ import * as Y from 'yjs';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
-import { api, type PartWire } from '../../api';
+import { api, spriteUrlFor, type PartWire } from '../../api';
 import { useEditorStore } from '../editorStore';
 import { deleteBricks, moveBrick, translateBricks } from '../mutations';
 import { studToPx } from './coords';
@@ -67,7 +67,7 @@ function BrickGlyph({
   const tool = useEditorStore((s) => s.tool);
   const toggleSelected = useEditorStore((s) => s.toggleSelected);
   const isSelected = selection.includes(brick.id);
-  const spriteUrl = meta?.spritePath ? `/parts/${meta.spritePath}` : '';
+  const spriteUrl = meta ? spriteUrlFor(meta) : '';
 
   // Ensure the sprite gets loaded into the sync cache. A successful load
   // bumps a counter so this component re-renders and renders the image.

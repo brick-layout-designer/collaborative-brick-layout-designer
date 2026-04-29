@@ -243,6 +243,21 @@ export const customPartCollaborators = sqliteTable(
   (t) => ({ pk: primaryKey({ columns: [t.customPartId, t.userId] }) }),
 );
 
+// Pending custom-part invites for unregistered emails (Phase 7 backlog).
+// Once the recipient registers + accepts, accepted_at is set and a
+// custom_part_collaborators row is created.
+export const customPartInvites = sqliteTable('custom_part_invites', {
+  id: text('id').primaryKey(),
+  customPartId: text('custom_part_id')
+    .notNull()
+    .references(() => customParts.id, { onDelete: 'cascade' }),
+  invitedEmail: text('invited_email').notNull(),
+  role: text('role', { enum: ['viewer', 'editor'] }).notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+});
+
 // Reusable named module: a saved selection of bricks (and their relative
 // positions / per-brick metadata) that can be dropped into any layout the
 // owner has access to. Mirrors desktop's `Module` but elevates it to a
@@ -279,6 +294,23 @@ export const moduleCollaborators = sqliteTable(
   (t) => ({ pk: primaryKey({ columns: [t.moduleId, t.userId] }) }),
 );
 
+// User → user module transfers (mirror of layout_transfers). Org-recipient
+// transfers commit immediately and don't write here.
+export const moduleTransfers = sqliteTable('module_transfers', {
+  id: text('id').primaryKey(),
+  moduleId: text('module_id')
+    .notNull()
+    .references(() => modules.id, { onDelete: 'cascade' }),
+  initiatedBy: text('initiated_by')
+    .notNull()
+    .references(() => users.id),
+  recipientEmail: text('recipient_email').notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -293,5 +325,7 @@ export type OrgInvite = typeof orgInvites.$inferSelect;
 export type LayoutTransfer = typeof layoutTransfers.$inferSelect;
 export type CustomPart = typeof customParts.$inferSelect;
 export type CustomPartCollaborator = typeof customPartCollaborators.$inferSelect;
+export type CustomPartInvite = typeof customPartInvites.$inferSelect;
 export type Module = typeof modules.$inferSelect;
 export type ModuleCollaborator = typeof moduleCollaborators.$inferSelect;
+export type ModuleTransfer = typeof moduleTransfers.$inferSelect;

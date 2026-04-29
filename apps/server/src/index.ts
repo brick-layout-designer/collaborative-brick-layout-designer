@@ -15,9 +15,11 @@ import { auditRoutes } from './routes/audit.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 import { customPartRoutes } from './routes/customParts.js';
+import { customPartInviteRoutes } from './routes/customPartInvites.js';
 import { inviteRoutes } from './routes/invites.js';
 import { layoutRoutes } from './routes/layouts.js';
 import { moduleRoutes } from './routes/modules.js';
+import { moduleTransferRoutes } from './routes/moduleTransfers.js';
 import { orgRoutes } from './routes/orgs.js';
 import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
@@ -64,7 +66,9 @@ async function main() {
   await app.register(orgInviteRoutes);
   await app.register(transferRoutes);
   await app.register(customPartRoutes);
+  await app.register(customPartInviteRoutes);
   await app.register(moduleRoutes);
+  await app.register(moduleTransferRoutes);
   await app.register(auditRoutes);
   await app.register(wsRoutes);
 

@@ -4,6 +4,7 @@ import { docToBbm } from '@cld/ydoc';
 import {
   deleteBricks,
   ensureBrickLayer,
+  insertBricks,
   moveBrick,
   placeBrick,
   rotateBricks,
@@ -202,5 +203,78 @@ describe('rotateBricks', () => {
     const layer = docToBbm(doc).layers[0];
     if (layer?.type !== 'brick') throw new Error('not a brick layer');
     expect(Number.isInteger(layer.bricks[0]?.orientation as number)).toBe(true);
+  });
+});
+
+describe('insertBricks', () => {
+  it('appends every brick with a fresh id and applies the offset', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+
+    // Existing brick with id 'a' at (0,0). The inserted brick should
+    // get a different id even if the source brick id collides.
+    placeBrick(doc, layerId, {
+      partNumber: 'EXISTING',
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+    });
+
+    const ids = insertBricks(
+      doc,
+      layerId,
+      [
+        {
+          partNumber: 'A',
+          displayArea: { x: 0, y: 0, width: 16, height: 16 },
+        },
+        {
+          partNumber: 'B',
+          displayArea: { x: 16, y: 0, width: 16, height: 16 },
+          orientation: 90,
+        },
+      ],
+      { dx: 100, dy: 50 },
+    );
+
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
+
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks).toHaveLength(3); // existing + 2 inserted
+    // First inserted brick should be at (100, 50).
+    expect(layer.bricks[1]?.displayArea).toEqual({
+      x: 100,
+      y: 50,
+      width: 16,
+      height: 16,
+    });
+    expect(layer.bricks[2]?.orientation).toBe(90);
+  });
+
+  it('returns empty + does nothing for an empty input', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    expect(insertBricks(doc, layerId, [])).toEqual([]);
+    const layer = docToBbm(doc).layers[0];
+    if (layer?.type !== 'brick') throw new Error('not a brick layer');
+    expect(layer.bricks).toHaveLength(0);
+  });
+
+  it('insertion is one Yjs transaction (one undo step for the whole insert)', () => {
+    const doc = new Y.Doc();
+    const layerId = ensureBrickLayer(doc);
+    let txnCount = 0;
+    const onTx = () => txnCount++;
+    doc.on('afterTransaction', onTx);
+    insertBricks(doc, layerId, [
+      { partNumber: 'A', displayArea: { x: 0, y: 0, width: 8, height: 8 } },
+      { partNumber: 'B', displayArea: { x: 8, y: 0, width: 8, height: 8 } },
+      { partNumber: 'C', displayArea: { x: 16, y: 0, width: 8, height: 8 } },
+    ]);
+    doc.off('afterTransaction', onTx);
+    expect(txnCount).toBe(1);
   });
 });

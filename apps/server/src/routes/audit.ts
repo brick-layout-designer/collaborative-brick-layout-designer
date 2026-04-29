@@ -58,9 +58,6 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'kind_and_id_required' });
     }
     if (!isResolvableKind(kind)) {
-      // Org-scoped audits aren't yet wired into resolveResourceRole; we
-      // refuse the read until they are. Layouts / custom_parts / modules
-      // all dispatch through the helper.
       return reply.code(400).send({ error: 'unsupported_kind' });
     }
     const { role } = await resolveResourceRole(user.id, kind, id);
@@ -93,7 +90,12 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
 }
 
 function isResolvableKind(kind: AuditResourceKind): kind is ResourceKind {
-  return kind === 'layout' || kind === 'custom_part' || kind === 'module';
+  return (
+    kind === 'layout' ||
+    kind === 'custom_part' ||
+    kind === 'module' ||
+    kind === 'org'
+  );
 }
 
 function clampLimit(raw: string | undefined): number {

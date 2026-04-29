@@ -132,11 +132,22 @@ describe('audit endpoints', () => {
     expect(body.events.some((e) => e.eventType === 'create')).toBe(true);
   });
 
-  it('rejects ?kind=org (unsupported) with 400', async () => {
+  it('non-member of an org gets 404 on org audit (existence-leak)', async () => {
+    // The audit endpoint accepts kind=org now; gating is by membership.
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     const res = await app.inject({
       method: 'GET',
-      url: '/api/audit?kind=org&id=abc',
+      url: '/api/audit?kind=org&id=non-existent-org',
+      headers: { cookie: aliceCookie },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects unknown ?kind values with 400', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/audit?kind=mystery&id=abc',
       headers: { cookie: aliceCookie },
     });
     expect(res.statusCode).toBe(400);

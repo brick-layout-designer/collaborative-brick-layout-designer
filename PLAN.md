@@ -991,6 +991,51 @@ actually USE these in layouts lands in Phase 7 / a follow-up.
 layouts, per-layout / per-resource audit history, automatic backups
 with retention, and a published `v1.0.0` Docker image.
 
+### Phase 7.x — Post-v1.0 backlog (this session)
+
+Single follow-up batch tightening the loose ends from Phases 6.5 + 7.
+No schema-breaking changes; designed to drop in on top of `v1.0.0`.
+
+**Shipped:**
+- **Editor integration of custom parts.** `/api/parts/catalog` merges
+  the user's custom parts (personal + org-owned + collab-shared) into
+  the catalog response with a `source: 'bundled' | 'custom'`
+  discriminator and a `customPartId` field. Web side gets a
+  `spriteUrlFor(part)` helper that resolves to either `/parts/...`
+  (bundled) or `/api/custom-parts/:id/sprite` (custom, auth-gated).
+  Per-user ETag includes a slice of the user-id + custom count so a
+  fresh upload busts only that user's cache.
+- **Module instantiation in the editor.** New `InsertModuleDialog`
+  fetches `/api/modules/:id/snapshot`, decodes via Y.applyUpdate,
+  projects through `docToBbm`, and calls a new `insertBricks` Yjs
+  mutation that does a single-transaction batch insert with freshly
+  minted ids into the active brick layer.
+- **`custom_part_invites` table** (migration 0006). Custom-part share
+  to an unregistered email now persists a token row with role +
+  expires_at, mirroring layout invites. New
+  `/api/custom-parts/invites/:token` preview + accept routes
+  (`customPartInvites.ts`).
+- **Audit log read UI.** ShareDialog has a collapsed `<details>` panel
+  showing newest-first events with human-readable summaries
+  (`summarisePayload`). Falls back gracefully when the events array
+  is empty.
+- **Module transfer** (migration 0007 + `routes/moduleTransfers.ts`).
+  Org-recipient is immediate; user-recipient is pending-token. Mirror
+  of layout transfer including the previous-owner-becomes-editor rule
+  for user→user transfers.
+- **`resource_kind: 'org'` wired end-to-end.** `resolveResourceRole`
+  now handles `'org'` directly (admin → owner, member → editor,
+  non-member → null). Audit endpoint accepts `?kind=org`. Org create /
+  invite / role_change / member-remove routes write audit rows.
+- **Workers fixture-driven tests.** Pure helpers
+  (`parseBackupDate`, `isoWeekKey`, `classifyBackups`) extracted to
+  `workers/retention.ts`. 10 new tests cover the daily window, weekly
+  bucket de-dup invariants, ~12-month cap, and non-matching-filename
+  rejection. The driver in `workers/index.ts` now delegates classify
+  to the pure module.
+
+**Tests: +14 server (10 retention + 4 audit/org). Total 195.**
+
 **Total: ~12.5 weeks for a working v1.** Phases 1–4 (~6.5 weeks) get you a
 single-org collaborative editor; phases 5–7 (~6 weeks) add multi-tenant
 sharing, transfer, audit, custom parts, reusable modules, mobile viewing,

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, type PartWire } from '../api';
+import { api, spriteUrlFor, type PartWire } from '../api';
 import { useEditorStore } from './editorStore';
 
 export function PartsPanel() {
@@ -76,16 +76,19 @@ export function PartsPanel() {
                         : 'bg-neutral-900 hover:bg-neutral-800')
                     }
                   >
-                    {p.spritePath ? (
-                      <img
-                        src={`/parts/${p.spritePath}`}
-                        alt=""
-                        className="h-12 w-12 object-contain"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded bg-neutral-800" />
-                    )}
+                    {(() => {
+                      const url = spriteUrlFor(p);
+                      return url ? (
+                        <img
+                          src={url}
+                          alt=""
+                          className="h-12 w-12 object-contain"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-12 w-12 rounded bg-neutral-800" />
+                      );
+                    })()}
                     <span className="mt-1 line-clamp-1">{p.partNumber}</span>
                   </button>
                 </li>

@@ -1,7 +1,7 @@
-# Session notes — Phase 7 ready to commit (v1.0.0 candidate)
+# Session notes — v1.x backlog ready to commit
 
-> Living document. After the v1.0.0 tag this can be deleted; the PLAN
-> serves as the canonical record.
+> Living document. After tagging v1.1.0 (or when this batch lands) the
+> PLAN remains the canonical record.
 
 ## Commits to date
 
@@ -15,81 +15,105 @@
 | `c3929c9` | docs | Overnight summary |
 | `b0ed31f` | 6 | Organisations + layout transfer + WS revalidate |
 | `fad8801` | 6.5 | Custom parts + saved modules |
-| *(this commit)* | 7 | Polish: audit log, workers, awareness ID, mobile viewer |
+| *(prev)* | 7 | Polish: audit log, workers, awareness ID, mobile viewer |
+| *(this commit)* | 7.x | v1.x backlog: editor custom parts, module insert/transfer, audit panel, custom-part invites, org audit, retention tests |
 
-## Phase 7 (this session)
+## v1.x backlog (this session)
 
-**Audit log:**
-- Schema generalised to `(layout_id) | (resource_kind, resource_id)`.
-  Migration 0005 recreates the table to drop NOT NULL on layout_id.
-- `writeAuditEvent` supports both shapes. Custom-part and module
-  endpoints emit `create / share / role_change / unshare / delete`.
-- Read APIs: `/api/layouts/:id/audit` and `/api/audit?kind=&id=`.
+Picks up where the v1.0.0 candidate notes left off. Each item is one of
+the deferred entries from the Phase 7 backlog, now shipped:
 
-**Workers (apps/server/src/workers/index.ts):**
-- Daily tick (60s startup grace, then 24h interval). Each job
-  toggleable via env: `DEMO_TTL_SWEEP_ENABLED`,
-  `DAILY_COMPACTION_ENABLED`, `BACKUPS_ENABLED`.
-- Demo TTL sweep — hard-delete past-expires_at layouts.
-- Daily compaction — same logic as docHub flushSnapshot but for
-  layouts that aren't being actively edited.
-- Backup worker — `VACUUM INTO` + gzip + retention-bucket cleanup
-  (last 7 days + 1/wk×3wk + 1/mo×12mo).
+**Editor integration of custom parts:**
+- `/api/parts/catalog` merges per-user custom parts (personal + org-owned
+  + collab-shared) into the response.
+- New `PartWire.source` discriminator (`'bundled' | 'custom'`) and
+  `PartWire.customPartId`. Per-user ETag (`<base>-u-<id-slice>-<count>`)
+  so fresh uploads bust only that user's cached catalog.
+- Web `spriteUrlFor(part)` resolver in `apps/web/src/api.ts`. Editor's
+  PartsPanel / BrickLayer / PlaceGhost / EditorPage all switched to it.
 
-**Security/UX:**
-- Awareness identity validation in `ws/handler.ts` — overwrites
-  `state.user.id` with the authenticated user when a peer's
-  awareness change came from THIS WS but claims a different id.
-- `useViewportSize` adds `isMobile` (< 768px). EditorPage forces
-  read-only on mobile + collapses the sidebar grid column.
-- `/api/health/ready` deep health check that pings the DB.
+**Module instantiation in the editor:**
+- New `apps/web/src/editor/InsertModuleDialog.tsx`. Fetches
+  `/api/modules/:id/snapshot`, decodes via `Y.applyUpdate`, projects via
+  `docToBbm`, walks brick layers, batch-inserts via a new
+  `insertBricks(doc, layerId, bricks, offset)` mutation.
+- `insertBricks` is single-transaction with freshly minted ids so undo
+  treats the whole insert as one operation.
+
+**Custom-part invites for unregistered recipients:**
+- Migration `0006_mean_christian_walker.sql` adds `custom_part_invites`
+  (id, custom_part_id, invited_email, role, token, expires_at, accepted_at).
+- `apps/server/src/routes/customParts.ts` now persists a row when the
+  email isn't registered + writes an audit event.
+- New `apps/server/src/routes/customPartInvites.ts` — GET preview + POST
+  accept with email-match check, mirroring the layout invite shape.
+
+**Audit log read UI:**
+- `ShareDialog` gains an `AuditPanel` (collapsed `<details>`) between
+  the transfer section and collaborator list. Newest-first, with
+  `summarisePayload` rendering human-readable strings (e.g., "shared with
+  bob@... as editor", "removed alice@...").
+
+**Module transfer:**
+- Migration `0007_right_havok.sql` adds `module_transfers`.
+- New `apps/server/src/routes/moduleTransfers.ts` mirrors `transfers.ts`
+  for layouts: org-recipient is immediate, user-recipient is pending
+  token. Previous owner becomes editor on user→user accept.
+
+**Org as a first-class audit kind:**
+- `resolveResourceRole` short-circuits `kind === 'org'` to membership:
+  admin → owner, member → editor, non-member → null.
+- `routes/audit.ts` accepts `?kind=org`.
+- `routes/orgs.ts` writes audit rows for create / invite / role_change /
+  member-remove.
+
+**Workers fixture-driven tests:**
+- Pure helpers extracted to `apps/server/src/workers/retention.ts`:
+  `parseBackupDate`, `isoWeekKey`, `classifyBackups(files, now)`.
+- New `workers/retention.test.ts`: 10 tests covering parse, ISO-week
+  grouping, daily window, weekly bucket invariants (no two kept files
+  in the same ISO week within the 8..21-day window), monthly window,
+  drop-after-12-months, ignore non-matching filenames, empty input.
+- `workers/index.ts` now delegates `applyRetentionPolicy` → `classifyBackups`.
 
 ## Test totals (last run)
 
 - 46 bbm
 - 19 parts-catalog
 - 4 ydoc
-- 20 web
-- 92 server (was 85; +5 audit + 2 health = 7 new)
-- = **181 passing**
+- 23 web (was 20; +3 mutations for `insertBricks`)
+- 103 server (was 92; +10 retention + 1 audit org-test reframe)
+- = **195 passing**
 
 ## How to verify
 
 ```sh
-git status                                    # clean
-git log --oneline -9                          # 9 commits
+git status                                    # clean after commit
+git log --oneline -10                         # ten commits
 pnpm -r typecheck && pnpm -r test && pnpm -r build
 ```
 
 ## Tag plan
 
-After this commit, tag `v1.0.0`. The tag fires `release.yml`:
-- multi-arch image build → GHCR `:v1.0.0` and `:latest`
-- Trivy gate (fails release on CRITICAL CVE)
-- auto-generated release notes grouped by Conventional Commits type
-- attaches `docker-compose.yml` + `.env.example`
+After this commit: optional `v1.1.0` tag if marking the batch as a
+release. The tag fires `release.yml` (multi-arch build, Trivy gate,
+auto-notes, attaches `docker-compose.yml` + `.env.example`). Skip the
+tag if accumulating into a larger v1.1 release.
 
 ```sh
-git tag -a v1.0.0 -m "v1.0.0 — initial release"
-# push when ready: git push origin v1.0.0
+git tag -a v1.1.0 -m "v1.1.0 — editor integration, module transfer, audit UI"
+# push when ready: git push origin v1.1.0
 ```
 
-## Phase 7 deferred / v1.x backlog
+## Still deferred (v1.2+)
 
-1. **Editor integration of custom parts** — Library page lists them
-   but the in-editor parts panel pulls only `/api/parts/catalog`.
-2. **Module instantiation in the editor** — no "drop module into
-   layout" command yet.
-3. **Custom-part invites for unregistered recipients** — endpoint
-   returns 202 + token but no `custom_part_invites` table to persist.
-4. **Audit log read UI** — backend serves data; no editor panel yet.
-5. **Module transfer** — layouts have transfer; modules don't.
-6. **Org audit events** — `resource_kind: 'org'` accepted by the
-   schema but no callers write org events; audit endpoint refuses
-   `?kind=org` until both sides land.
-7. **Workers tests** — retention-bucket math + ISO-week + gzip
-   pipeline currently exercised only in production. v1.1 fixture
-   harness.
+- Module realtime collab over WS (single-user is sufficient for v1).
+- Instance-wide public parts/modules library (moderation + versioning
+  unsolved).
+- Touch-first editing on mobile (read-only viewer is intentional v1
+  scope).
+- `audit_events` retention/pruning policy (currently grows unbounded).
+- Public part attribution / licensing fields on `custom_parts`.
 
 ## Ops checklist for first deploy
 

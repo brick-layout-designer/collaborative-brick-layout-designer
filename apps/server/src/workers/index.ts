@@ -27,6 +27,7 @@ import { Readable } from 'node:stream';
 import * as Y from 'yjs';
 import { db, schema, sqlite } from '../db/index.js';
 import { env } from '../env.js';
+import { classifyBackups } from './retention.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -191,75 +192,15 @@ async function backupWorker(): Promise<void> {
  * Snapshots within a week/month are deduped by keeping the YOUNGEST.
  */
 function applyRetentionPolicy(dir: string): void {
-  const files = readdirSync(dir)
-    .filter((n) => /^cld-\d{4}-\d{2}-\d{2}\.sqlite\.gz$/.test(n))
-    .sort()
-    .reverse(); // newest first
-
-  if (files.length === 0) return;
-  const now = Date.now();
-  const keep = new Set<string>();
-
-  // Daily bucket: last 7.
-  const dailyCutoff = now - 7 * DAY_MS;
-  // Weekly bucket: last 3 ISO weeks.
-  const weeklyCutoff = now - 21 * DAY_MS;
-  // Monthly bucket: last 12 calendar months.
-  const monthlyCutoff = now - 365 * DAY_MS;
-
-  const seenWeek = new Set<string>();
-  const seenMonth = new Set<string>();
-
-  for (const file of files) {
-    const date = parseDate(file);
-    if (!date) continue;
-    const ts = date.getTime();
-
-    if (ts >= dailyCutoff) {
-      keep.add(file);
-      continue;
-    }
-    if (ts >= weeklyCutoff) {
-      const week = isoWeekKey(date);
-      if (!seenWeek.has(week)) {
-        keep.add(file);
-        seenWeek.add(week);
-      }
-      continue;
-    }
-    if (ts >= monthlyCutoff) {
-      const month = `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
-      if (!seenMonth.has(month)) {
-        keep.add(file);
-        seenMonth.add(month);
-      }
-      continue;
-    }
-  }
-
-  for (const file of files) {
-    if (keep.has(file)) continue;
+  const files = readdirSync(dir);
+  const { delete: toDelete } = classifyBackups(files, Date.now());
+  for (const file of toDelete) {
     try {
       unlinkSync(resolve(dir, file));
     } catch {
       /* best-effort */
     }
   }
-}
-
-function parseDate(filename: string): Date | null {
-  const m = /^cld-(\d{4})-(\d{2})-(\d{2})\.sqlite\.gz$/.exec(filename);
-  if (!m) return null;
-  return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
-}
-
-function isoWeekKey(date: Date): string {
-  // ISO week number (Monday-start). Standard formula.
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((+d - +yearStart) / DAY_MS + 1) / 7);
-  return `${d.getUTCFullYear()}-W${weekNo}`;
 }
 
 // `Readable` is imported above only because TS will tree-shake it

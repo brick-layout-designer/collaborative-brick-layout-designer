@@ -43,6 +43,20 @@
       "when": 1777471697303,
       "tag": "0005_exotic_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777473006766,
+      "tag": "0006_mean_christian_walker",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777473352334,
+      "tag": "0007_right_havok",
+      "breakpoints": true
     }
   ]
 }

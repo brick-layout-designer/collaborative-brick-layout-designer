@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { api, type PartWire } from '../api';
+import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useYjsSnapshot } from './useYjsSnapshot';
 import { useEditorStore } from './editorStore';
@@ -25,6 +25,7 @@ import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
 import { ShareDialog } from '../layouts/ShareDialog';
+import { InsertModuleDialog } from './InsertModuleDialog';
 
 export function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -48,6 +49,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   const viewport = useViewportSize();
   const isViewer = role === 'viewer' || viewport.isMobile;
   const [showShare, setShowShare] = useState(false);
+  const [showInsertModule, setShowInsertModule] = useState(false);
 
   // Publish our awareness state (cursor / selection / tool / identity).
   usePublishAwareness({ awareness, me: me.data?.user ?? null, layoutId });
@@ -133,6 +135,15 @@ function Editor({ layoutId }: { layoutId: string }) {
             Redo
           </button>
           {!isViewer && <Toolbar />}
+          {!isViewer && (
+            <button
+              onClick={() => setShowInsertModule(true)}
+              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+              title="Insert a saved module"
+            >
+              Insert module
+            </button>
+          )}
           <button
             onClick={() => setShowShare(true)}
             className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
@@ -167,6 +178,9 @@ function Editor({ layoutId }: { layoutId: string }) {
           myUserId={me.data.user.id}
           onClose={() => setShowShare(false)}
         />
+      )}
+      {showInsertModule && (
+        <InsertModuleDialog doc={doc} onClose={() => setShowInsertModule(false)} />
       )}
     </div>
   );
@@ -319,9 +333,10 @@ function Canvas({
     // (rare; usually means the part XML lists no spritePath).
     let widthStuds = 16;
     let heightStuds = 16;
-    if (meta.spritePath) {
+    const spriteUrl = spriteUrlFor(meta);
+    if (spriteUrl) {
       try {
-        const img = await ensureSprite(`/parts/${meta.spritePath}`);
+        const img = await ensureSprite(spriteUrl);
         widthStuds = img.naturalWidth / meta.pxPerStud;
         heightStuds = img.naturalHeight / meta.pxPerStud;
       } catch {

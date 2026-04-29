@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Image as KonvaImage } from 'react-konva';
-import type { PartWire } from '../../api';
+import { spriteUrlFor, type PartWire } from '../../api';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 import { studToPx } from './coords';
 
@@ -20,10 +20,13 @@ interface Props {
  */
 export function PlaceGhost({ part, cursorStudX, cursorStudY }: Props) {
   const [, force] = useState(0);
+  // Compute the sprite URL OUTSIDE the effect so it's stable per part
+  // and the effect dep is a simple string.
+  const url = part ? spriteUrlFor(part) : '';
   useEffect(() => {
-    if (!part?.spritePath) return;
+    if (!url) return;
     let cancelled = false;
-    ensureSprite(`/parts/${part.spritePath}`)
+    ensureSprite(url)
       .then(() => {
         if (!cancelled) force((n) => n + 1);
       })
@@ -31,10 +34,9 @@ export function PlaceGhost({ part, cursorStudX, cursorStudY }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [part?.spritePath]);
+  }, [url]);
 
   if (!part) return null;
-  const url = part.spritePath ? `/parts/${part.spritePath}` : '';
   const sprite = url ? getSpriteSync(url) : null;
   if (!sprite) return null;
 

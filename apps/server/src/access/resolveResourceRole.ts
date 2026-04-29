@@ -20,7 +20,7 @@ import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 
 export type Role = 'owner' | 'editor' | 'viewer';
-export type ResourceKind = 'layout' | 'custom_part' | 'module';
+export type ResourceKind = 'layout' | 'custom_part' | 'module' | 'org';
 
 export interface RoleResolution {
   role: Role | null;
@@ -125,6 +125,25 @@ export async function resolveResourceRole(
   kind: ResourceKind,
   resourceId: string,
 ): Promise<RoleResolution> {
+  // Orgs are special: there's no separate ownership row + collaborators,
+  // the membership table IS the access list. admin → owner, member →
+  // editor. We short-circuit here rather than threading orgs through
+  // the loadXxx helpers (which assume the resource has its own row).
+  if (kind === 'org') {
+    const membership = await db
+      .select({ role: schema.orgMembers.role })
+      .from(schema.orgMembers)
+      .where(
+        and(
+          eq(schema.orgMembers.orgId, resourceId),
+          eq(schema.orgMembers.userId, userId),
+        ),
+      )
+      .get();
+    if (!membership) return { role: null };
+    return { role: membership.role === 'admin' ? 'owner' : 'editor' };
+  }
+
   let res: ResourceTables | null;
   switch (kind) {
     case 'layout':

@@ -76,9 +76,21 @@ export interface PartWire {
   kind: 'leaf' | 'group';
   description: string;
   sortingKey: string;
+  /** Empty for source: 'custom' (use spriteUrlFor to compose). */
   spritePath: string;
   pxPerStud: number;
   connections: ConnectionPointWire[];
+  source: 'bundled' | 'custom';
+  /** Set on source: 'custom' so the editor can build the sprite URL. */
+  customPartId: string | null;
+}
+
+/** Resolve the sprite URL for any part, regardless of source. */
+export function spriteUrlFor(part: PartWire): string {
+  if (part.source === 'custom' && part.customPartId) {
+    return `/api/custom-parts/${part.customPartId}/sprite`;
+  }
+  return part.spritePath ? `/parts/${part.spritePath}` : '';
 }
 
 async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: number }> {
@@ -272,7 +284,68 @@ export const api = {
     invite: (id: string, email: string, role: 'viewer' | 'editor') =>
       post<{ added: true }>(`/api/modules/${id}/invites`, { email, role }),
   },
+
+  audit: {
+    forLayout: (layoutId: string, limit = 100) =>
+      get<{ events: AuditEventSummary[] }>(
+        `/api/layouts/${layoutId}/audit?limit=${limit}`,
+      ),
+    generic: (kind: 'layout' | 'custom_part' | 'module' | 'org', id: string, limit = 100) =>
+      get<{ events: AuditEventSummary[] }>(
+        `/api/audit?kind=${kind}&id=${encodeURIComponent(id)}&limit=${limit}`,
+      ),
+  },
+
+  customPartInvites: {
+    preview: (token: string) =>
+      get<{
+        invitedEmail: string;
+        role: 'viewer' | 'editor';
+        customPartId: string;
+        partNumber: string;
+        displayName: string;
+        expiresAt: number;
+      }>(`/api/custom-part-invites/${token}`),
+    accept: (token: string) =>
+      post<{ customPartId: string; role: 'viewer' | 'editor' }>(
+        `/api/custom-part-invites/${token}`,
+      ),
+  },
+
+  moduleTransfers: {
+    initiate: (
+      moduleId: string,
+      recipient: { email: string } | { orgSlug: string },
+    ) =>
+      post<
+        | { transferred: true; ownerKind: 'org'; ownerSlug: string }
+        | { id: string; token: string; transferUrl: string; emailDelivered: boolean; expiresAt: number }
+      >(`/api/modules/${moduleId}/transfer`, {
+        recipientEmail: 'email' in recipient ? recipient.email : undefined,
+        recipientOrgSlug: 'orgSlug' in recipient ? recipient.orgSlug : undefined,
+      }),
+    preview: (token: string) =>
+      get<{
+        recipientEmail: string;
+        moduleId: string;
+        moduleTitle: string;
+        expiresAt: number;
+      }>(`/api/module-transfers/${token}`),
+    accept: (token: string) => post<{ moduleId: string }>(`/api/module-transfers/${token}`),
+  },
 };
+
+export interface AuditEventSummary {
+  id: number;
+  layoutId: string | null;
+  resourceKind: 'layout' | 'custom_part' | 'module' | 'org' | null;
+  resourceId: string | null;
+  userId: string | null;
+  eventType: string;
+  payload: unknown;
+  docVersion: number | null;
+  createdAt: number;
+}
 
 export interface CustomPartSummary {
   id: string;

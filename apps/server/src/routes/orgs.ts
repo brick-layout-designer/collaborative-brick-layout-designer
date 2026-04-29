@@ -98,6 +98,13 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       role: 'admin',
       joinedAt: now,
     });
+    await writeAuditEvent({
+      resourceKind: 'org',
+      resourceId: id,
+      userId: user.id,
+      eventType: 'create',
+      payload: { name, slug },
+    });
     return reply.code(201).send({ id, name, slug });
   });
 
@@ -242,6 +249,14 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         /* ignored — fall back to copy-paste link */
       }
 
+      await writeAuditEvent({
+        resourceKind: 'org',
+        resourceId: org.id,
+        userId: user.id,
+        eventType: 'share',
+        payload: { invitedEmail: email, role, inviteId: id },
+      });
+
       return {
         id,
         token,
@@ -321,6 +336,17 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           eq(schema.orgMembers.userId, req.params.userId),
         ),
       );
+    await writeAuditEvent({
+      resourceKind: 'org',
+      resourceId: org.id,
+      userId: user.id,
+      eventType: 'role_change',
+      payload: {
+        targetUserId: req.params.userId,
+        fromRole: targetMembership.role,
+        toRole: newRole,
+      },
+    });
 
     return { ok: true };
   });
@@ -357,6 +383,13 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
             eq(schema.orgMembers.userId, req.params.userId),
           ),
         );
+      await writeAuditEvent({
+        resourceKind: 'org',
+        resourceId: org.id,
+        userId: user.id,
+        eventType: 'unshare',
+        payload: { targetUserId: req.params.userId, selfRemoved: isSelf },
+      });
       return { ok: true };
     },
   );
@@ -391,8 +424,6 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ---- audit (Phase 6 hook for future read UI) -- intentionally stubbed ---
-  void writeAuditEvent;
 }
 
 // ---------------------------------------------------------------------------
