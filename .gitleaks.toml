@@ -1,0 +1,21 @@
+# Extend the default gitleaks ruleset with project-specific allowlists.
+# The default rules cover most cloud + git provider tokens.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project-wide allowlist"
+paths = [
+  '''pnpm-lock\.yaml$''',
+  '''parts-library/.*''',
+  '''\.env\.example$''',
+  # Test fixtures may legitimately contain things that look like tokens.
+  '''.*\.test\.ts$''',
+]
+# `correct horse battery` is the canonical test password used in the auth
+# tests; the default ruleset never matches it but keep this here as
+# documentation if anyone runs a stricter ruleset locally.
+regexes = [
+  '''correct horse battery''',
+]
