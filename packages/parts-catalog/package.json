@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@cld/model": "workspace:*",
-    "fast-xml-parser": "4.5.0"
+    "fast-xml-parser": "5.7.0"
   },
   "devDependencies": {
     "@types/node": "22.5.4",
