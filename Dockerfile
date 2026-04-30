@@ -61,10 +61,10 @@ RUN pnpm install --prod --frozen-lockfile=false --ignore-scripts \
 COPY --from=builder /app/apps/server/dist        ./apps/server/dist
 COPY --from=builder /app/apps/server/migrations  ./apps/server/migrations
 COPY --from=builder /app/apps/web/dist           ./apps/web/dist
-COPY --from=builder /app/packages/model/src        ./packages/model/src
-COPY --from=builder /app/packages/bbm/src          ./packages/bbm/src
-COPY --from=builder /app/packages/ydoc/src         ./packages/ydoc/src
-COPY --from=builder /app/packages/parts-catalog/src ./packages/parts-catalog/src
+COPY --from=builder /app/packages/model/dist        ./packages/model/dist
+COPY --from=builder /app/packages/bbm/dist          ./packages/bbm/dist
+COPY --from=builder /app/packages/ydoc/dist         ./packages/ydoc/dist
+COPY --from=builder /app/packages/parts-catalog/dist ./packages/parts-catalog/dist
 
 EXPOSE 3000
 WORKDIR /app/apps/server
