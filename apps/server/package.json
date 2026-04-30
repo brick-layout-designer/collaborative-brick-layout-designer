@@ -18,20 +18,20 @@
     "@cld/model": "workspace:*",
     "@cld/parts-catalog": "workspace:*",
     "@cld/ydoc": "workspace:*",
-    "@fastify/cookie": "9.3.1",
+    "@fastify/cookie": "11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
-    "@fastify/multipart": "8.3.0",
+    "@fastify/multipart": "10.0.0",
     "@fastify/rate-limit": "^10.3.0",
-    "@fastify/static": "7.0.4",
-    "@fastify/websocket": "10.0.1",
+    "@fastify/static": "9.1.3",
+    "@fastify/websocket": "11.2.0",
     "@node-rs/argon2": "1.8.3",
     "arctic": "2.2.2",
     "better-sqlite3": "12.4.1",
-    "drizzle-orm": "0.33.0",
-    "fastify": "4.28.1",
+    "drizzle-orm": "0.45.2",
+    "fastify": "5.8.5",
     "lib0": "0.2.97",
-    "nodemailer": "6.9.14",
+    "nodemailer": "8.0.7",
     "openid-client": "5.6.5",
     "y-protocols": "1.0.6",
     "yjs": "13.6.18"
@@ -43,6 +43,6 @@
     "drizzle-kit": "0.24.2",
     "tsx": "4.19.0",
     "typescript": "5.5.4",
-    "vitest": "2.0.5"
+    "vitest": "4.1.5"
   }
 }
