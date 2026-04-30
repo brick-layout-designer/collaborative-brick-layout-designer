@@ -1,18 +1,20 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { scanCatalog } from './scan.js';
 
-// Path to the BlueBrickParts submodule. The scan test exercises the real
-// vendored library to catch regressions in dispatching `.set.xml` vs `.xml`,
-// finding sibling sprites, and surfacing parser errors as warnings.
+// These tests require the BlueBrickParts library on disk. In CI and local dev
+// without the library downloaded the suite is skipped automatically.
 const PARTS_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../parts-library/parts',
 );
+const HAVE_PARTS = existsSync(PARTS_ROOT);
+const maybeIt = HAVE_PARTS ? it : it.skip;
 
 describe('scanCatalog (against vendored BlueBrickParts)', () => {
-  it('finds a substantial number of leaf parts', async () => {
+  maybeIt('finds a substantial number of leaf parts', async () => {
     const result = await scanCatalog(PARTS_ROOT);
 
     expect(result.catalog.size).toBeGreaterThan(500);
@@ -26,14 +28,14 @@ describe('scanCatalog (against vendored BlueBrickParts)', () => {
     expect(curve?.connections).toHaveLength(2);
   });
 
-  it('pairs XML files with their matching sprites', async () => {
+  maybeIt('pairs XML files with their matching sprites', async () => {
     const { catalog } = await scanCatalog(PARTS_ROOT);
     const curve = catalog.get('ts_curve_r56.8');
     // The sibling .gif lives at parts/4DBrix/TS_CURVE_R56.8.gif.
     expect(curve?.spritePath).toMatch(/TS_CURVE_R56\.8\.gif$/);
   });
 
-  it('emits a useful diagnostic instead of crashing on malformed XML', async () => {
+  maybeIt('emits a useful diagnostic instead of crashing on malformed XML', async () => {
     const result = await scanCatalog(PARTS_ROOT);
     // The vendored library may have some legitimately-broken files; we
     // never want a single bad file to abort the whole scan.
