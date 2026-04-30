@@ -31,6 +31,8 @@ interface CreatePartBody {
   spriteMime: 'image/gif' | 'image/png';
   /** When set, the part is org-owned. Caller must be a member of the org. */
   orgSlug?: string;
+  /** Parts-browser category label. Defaults to 'Custom'. */
+  category?: string;
 }
 
 interface InviteBody {
@@ -222,10 +224,12 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
 
     const id = randomUUID();
     const now = new Date();
+    const category = body.category?.trim() || 'Custom';
     await db.insert(schema.customParts).values({
       id,
       partNumber,
       displayName,
+      category,
       ownerUserId,
       ownerOrgId,
       createdBy: user.id,

@@ -62,7 +62,7 @@ export function OrgInvitePage() {
   const wrongUser =
     isSignedIn && me.data!.user!.email.toLowerCase() !== inv.invitedEmail.toLowerCase();
 
-  if (accepted) return <Centered>Joined! Opening the organisation…</Centered>;
+  if (accepted) return <Centered>Joined! Opening the organization…</Centered>;
 
   return (
     <Centered>

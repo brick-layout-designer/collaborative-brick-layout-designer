@@ -6,8 +6,8 @@ import * as Y from 'yjs';
 import { readBbm } from '@cld/bbm';
 import { bbmToDoc, docToBbm } from './projection.js';
 
-// Same vendored corpus as packages/bbm uses. Symlinking into ydoc would be
-// finicky in CI; just navigate up to the bbm package.
+// Same vendored sample `.bbm` files as packages/bbm uses. Symlinking into
+// ydoc would be finicky in CI; just navigate up to the bbm package.
 const BBM_FIXTURES = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../bbm/tests/fixtures',

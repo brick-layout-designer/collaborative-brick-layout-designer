@@ -71,17 +71,18 @@ multi-user editing, organizations, and layout sharing. Self-hosted via
 - **Sharp** for any server-side image work (.bbm GIFs, sprite generation if needed)
 
 ### Infrastructure
-- Single-container `docker-compose.yml`: just `web` (Fastify serves the SPA,
-  the API, the WebSocket, and `/parts/*` from disk; SQLite file on a docker
-  volume). No bundled nginx — operators put their own reverse proxy in front
-  for TLS (Caddy / Traefik / Cloudflare Tunnel / nginx / whatever they
-  already run).
-- Docker volumes for SQLite data and backup output; bind-mount of the
-  `parts-library/` submodule into the container at `/parts` (read-only).
-- Env-driven config; no secrets in compose file.
+- Single `Dockerfile` (no `docker-compose.yml` — operators bring their own
+  compose or run `docker run` directly). Fastify serves the SPA, the API,
+  the WebSocket, and `/parts/*` from disk; SQLite file on a docker volume.
+  No bundled nginx — operators put their own reverse proxy in front for TLS
+  (Caddy / Traefik / Cloudflare Tunnel / nginx / whatever they already run).
+- Docker volumes for SQLite data, parts library, and backup output.
+- Parts library is downloaded and managed via Admin → Libraries on first
+  deploy — no submodule, no bind mount, no host-side git checkout required.
+- Env-driven config; secrets passed via environment variables.
 
 ### Parts library
-- **BlueBrickParts** (727 XMLs + 670 GIFs, ~26 MB) is added as a **git submodule**
+- **BlueBrickParts** is downloaded at runtime via Admin → Libraries (one-click install).
   pointing at the same upstream the desktop uses. Guarantees part IDs match
   desktop 1:1 and the library is version-pinned with the rest of the source.
 - Bind-mounted read-only into the web container; Fastify serves it at
@@ -425,15 +426,12 @@ The transfer endpoint:
 └──────────────────────────────────────────┘
 ```
 
-One service in `docker-compose.yml`. Volumes:
-- `/data` — SQLite file (named volume `cld-data`)
-- `/backups` — backup output (named volume `cld-backups`)
-- `/parts` — read-only bind mount of the `parts-library/` submodule
+Single image (`Dockerfile`). Recommended volumes:
+- `/data` — SQLite file + downloaded parts library
+- `/backups` — backup output
 
 Operators front this container with whatever reverse proxy they already use
-for TLS. We don't ship nginx in compose because we'd just be duplicating
-work for anyone who's already running Caddy / Traefik / a homelab reverse
-proxy.
+for TLS. No `docker-compose.yml` is shipped — operators bring their own.
 
 ### 4.2 Realtime data flow
 
@@ -564,17 +562,15 @@ Mirror the LU-Rebuilt project layout under `.github/workflows/`:
     `docker buildx`.
   - Tag and push to GHCR as `ghcr.io/<owner>/cld-web:nightly` and
     `:sha-<short>`.
-  - Upload `docker-compose.yml` + `.env.example` as release assets on a
-    rolling pre-release tagged `latest` (matches the LU-Rebuilt nightly
-    pattern: `softprops/action-gh-release@v2` with `prerelease: true`,
-    `make_latest: false`).
+  - Upload `.env.example` as a release asset on a rolling pre-release tagged
+    `latest` (matches the LU-Rebuilt nightly pattern: `softprops/action-gh-release@v2`
+    with `prerelease: true`, `make_latest: false`).
 - **`release.yml`** — runs on `v*` tag pushes:
   - Same multi-arch image build, tagged `:vX.Y.Z` and `:latest` on GHCR.
   - Auto-generated release notes grouped by Conventional Commits type
     (Features / Bug Fixes / Performance / Documentation / Build & CI /
     Other) — same script as LU-Rebuilt's `fdb-tools/release.yml`.
-  - Attach `docker-compose.yml` + `.env.example` template to the GitHub
-    Release.
+  - Attach `.env.example` template to the GitHub Release.
 
 Conventional Commits is enforced by `ci.yml`'s `commit-lint` job; the same
 regex is reused by `release.yml` to group commits in the auto-generated
@@ -661,8 +657,6 @@ cld-web/
 │   ├── model/                  # shared TS types: Brick, Layer, etc.
 │   ├── ydoc/                   # Yjs doc shape + helpers (createDoc, applyBbm)
 │   └── parts-library-meta/     # static metadata about the bundled library
-├── parts-library/              # vendored BlueBrickParts (gitignored binary,
-│                               # populated by submodule or fetch script)
 ├── .github/
 │   ├── dependabot.yml          # weekly PRs: npm + actions + docker
 │   └── workflows/
@@ -674,8 +668,7 @@ cld-web/
 ├── lefthook.yml                # local pre-commit / commit-msg / pre-push
 ├── .gitleaks.toml              # secret-scan allowlist
 ├── SECURITY.md                 # vuln reporting + scan policy
-├── docker-compose.yml          # single web service, no bundled proxy
-├── Dockerfile.web              # multi-stage: build SPA + Node bundle
+├── Dockerfile                  # multi-stage: build SPA + Node bundle
 ├── .env.example                # template — operators copy to .env
 ├── pnpm-workspace.yaml
 └── README.md
@@ -689,7 +682,7 @@ stack from scratch.
 ### Phase 1 — Skeleton + Auth (1.5 weeks)
 
 - Repo scaffold, monorepo, `pnpm-workspace.yaml`
-- `git submodule add` BlueBrickParts so the parts library is available
+- Install BlueBrickParts via Admin → Libraries so the parts library is available
 - `.github/workflows/ci.yml` — conventional-commits lint, build, test,
   dependency review, OSV-Scanner on PRs
 - `.github/workflows/nightly.yml` + `release.yml` — Docker image build &
@@ -926,18 +919,13 @@ keeping their open WS until refresh.
 
 **Tests: +15 server (9 customParts + 6 modules). Total 174.**
 
-**Deferred to Phase 7:**
-- `custom_part_invites` table for token-based pending-accept on parts
-  (currently only registered-recipient share works server-side).
-- Editor parts panel integration: surface custom parts in the in-app
-  parts panel alongside the bundled BlueBrickParts.
-- Module placement: "drop a module into a layout" command on the
-  editor side (the snapshot exists, but the editor doesn't yet read
-  modules as templates).
-- `audit_events` rows for custom-part / module create/share — only
-  the layout-side audit writes are wired.
-- Module realtime collab over WS — single-user is enough for v1.
-- Module transfer (mirror of layout transfer).
+**All deferred items shipped in Phase 7.x** (see below):
+- `custom_part_invites` table — shipped (migration 0006, `customPartInvites.ts`).
+- Editor parts panel integration — shipped (`/api/parts/catalog` merges custom parts).
+- Module placement in editor — shipped (`InsertModuleDialog` + `insertBricks` mutation).
+- `audit_events` for custom-part / module — shipped (all CRUD routes emit audit rows).
+- Module realtime collab — confirmed working: sidecar mutations use `doc.transact()` on the main Y.Doc, which propagates over y-websocket automatically.
+- Module transfer — shipped (migration 0007, `routes/moduleTransfers.ts`).
 
 **Shippable:** upload a custom part, see it in the Library page.
 Create a module, share it with a teammate. Editor integration to
@@ -982,8 +970,7 @@ actually USE these in layouts lands in Phase 7 / a follow-up.
   `isViewer` UI gating) on mobile and collapses the sidebar grid
   column.
 - Deploy docs: TLS is the operator's responsibility — point their
-  reverse proxy at port 3000. (`docker-compose.yml` doesn't bundle
-  one.)
+  reverse proxy at port 3000.
 - WS rate-limiting: already enforced by `MAX_WS_PER_USER = 8` in
   `routes/ws.ts` (Phase 4).
 
@@ -1041,6 +1028,39 @@ single-org collaborative editor; phases 5–7 (~6 weeks) add multi-tenant
 sharing, transfer, audit, custom parts, reusable modules, mobile viewing,
 backups, and ops.
 
+### Phase 7.y — Editor UX + export polish (this session)
+
+**Shipped:**
+- **`.zip` export.** `/api/layouts/:id/export.zip` bundles `.bbm` + `.bbm.cld`
+  sidecar (if present) in a pure-Node ZIP (store method, no native deps).
+  LayoutsPage replaces separate export links with a single "Export .zip" button.
+  `api.ts` exposes `exportZipUrl(id)`.
+- **Multi-page tiled print / PDF export.** `ExportImageDialog` rewritten with
+  two modes: PNG export (pixel ratio 1×/2×/4×, optional transparent bg) and
+  Tiled Print (paper size, DPI, tile overlap). Print mode renders via
+  `stage.toCanvas({pixelRatio: dpi/96})`, slices into page tiles, opens a new
+  window with `@page { size: Wmm Hmm; margin: 0 }` CSS and auto-triggers
+  `window.print()`. `ExportHandle` interface exported for type safety.
+- **Hull polygon rendering.** `PartMetadata` gains `hullPts: {x,y}[]` parsed
+  from `<hull><point>` XML elements. `BrickLayer` renders a Konva `<Line
+  closed>` hull overlay when ≥3 points present; falls back to `<Rect>` when
+  absent. Coordinate transform: pixel-space pt → Group local via
+  `ox = -spriteWpx/2, oy = -spriteHpx/2`.
+- **Floating (tear-off) panels.** `DockZone` extended with `'float'`.
+  `FloatingPanel` component renders via `ReactDOM.createPortal` into
+  `document.body` with drag-to-move (title bar) and resize (bottom-right
+  corner). `dockLayout.ts` tracks `float[]` and `floatPos` with staggered
+  default positions; `LAYOUT_VERSION` bumped to 8.
+- **Parts Browser icon size toggle.** S/M/L cycle button in PartsPanel,
+  persisted to `localStorage('cld:partsIconSize')`. Grid uses
+  `minmax(Npx, 1fr)` column sizing.
+- **Budget/Over column in Used Parts panel.** When `budgetLimits` map is
+  non-empty, shows a 4th column: `count/limit` in green, `+N` in red when
+  over; row tinted `bg-red-950/30` for over-budget parts. Sort by budget delta.
+- **Panels menu as checkbox dropdown.** Toolbar "Panels" button opens a
+  dropdown listing all panels with checkboxes for show/hide toggle instead of
+  a flat show-all / hide-all approach.
+
 ## 7. Risks & open questions
 
 ### Risks
@@ -1048,13 +1068,14 @@ backups, and ops.
   10k+ bricks. Konva is fine up to ~2k complex shapes per layer; beyond
   that we need to switch render strategy (off-screen canvas tiles, or
   batched draw with a single Konva.Layer + custom hit testing). De-risk
-  in the day-1 spike using the **largest real fixture from desktop's
-  `fixtures/bbm-corpus/`** (not synthetic dummy bricks).
+  in the day-1 spike using the **largest real `.bbm` sample file from
+  desktop's `fixtures/`** (not synthetic dummy bricks).
 - **`.bbm` byte-exact round-trip.** Desktop CLD enforces this with property
-  tests against `tests/saveload/RoundTripTest.cpp` + `fixtures/bbm-corpus/`.
-  The TS port has to do the same; XML formatting quirks (attribute order,
-  whitespace, CRLF, 2-space indent) will burn hours if not pinned to
-  fixtures from day one. Reuse the desktop fixture corpus directly.
+  tests against `tests/saveload/RoundTripTest.cpp` + its real-world
+  `.bbm` sample files. The TS port has to do the same; XML formatting
+  quirks (attribute order, whitespace, CRLF, 2-space indent) will burn
+  hours if not pinned to fixtures from day one. Reuse the desktop
+  sample files directly.
 - **`.bbm.cld` sidecar JSON round-trip.** Sidecar is JSON, not XML — schema
   documented at `docs/bbm-cld-schema.md` in the desktop repo. Web round-trip
   must preserve unknown keys (forward-compat) and regenerate `bbmHashSha256`
@@ -1073,7 +1094,7 @@ backups, and ops.
 ### Decisions locked at planning time
 - **Database**: SQLite (WAL mode) for v1; Drizzle schema kept portable so a
   swap to Postgres later is a driver change, not a rewrite.
-- **Parts library**: git submodule of upstream BlueBrickParts (same as desktop).
+- **Parts library**: downloaded at runtime via Admin → Libraries; no submodule or bind mount needed.
 - **Auth providers**: Google + GitHub + Microsoft/OIDC + email-password (gated).
 - **Mobile**: read-only viewer (pan/zoom) on small screens; no touch editing.
 - **Audit log**: full version — log every persisted action via `audit_events`.
@@ -1095,12 +1116,12 @@ backups, and ops.
 - **Security scanning** (see §4.8): CodeQL + OSV-Scanner + Gitleaks +
   Trivy + Dependabot in CI; lefthook hooks (typecheck, gitleaks, commit-msg,
   full tests on push) locally.
-- **Spike data**: largest real `.bbm` fixture from desktop corpus.
+- **Spike data**: largest real `.bbm` sample file from the desktop repo.
 
 ### Open questions (call before each phase that touches it)
-- **Phase 2:** is sidecar export inside a `.zip` (with `.bbm`) or two
-  separate downloads? Desktop puts them side-by-side on disk; web users
-  expect one download. Default to `.zip`.
+- **Phase 2 — resolved:** sidecar export is a single `.zip` download
+  (`/api/layouts/:id/export.zip`) bundling `.bbm` + `.bbm.cld`. Shipped in
+  Phase 7.y.
 - **Phase 3:** which tools land in v1? Full desktop parity is huge — the
   core 5 (select/place/drag/rotate/delete) is enough to demo collab. Text
   tool, area tool, ruler tool can wait.
@@ -1116,10 +1137,10 @@ A throwaway spike to de-risk the riskiest unknowns:
 1. Scaffold pnpm monorepo, `docker compose up`
 2. Stand up SQLite + Fastify + a `/api/health` endpoint
 3. Wire Arctic + Google OAuth + the `sessions` cookie helper, log in / out
-4. Load the **largest real fixture** from desktop's `fixtures/bbm-corpus/`
-   into a Konva canvas; measure FPS while panning + zooming. This is the
-   real worst case — synthetic 2000 dummy bricks don't capture the
-   distribution of part shapes/sizes a real layout has.
+4. Load the **largest real `.bbm` sample file** from the desktop's
+   `fixtures/` directory into a Konva canvas; measure FPS while panning +
+   zooming. This is the real worst case — synthetic 2000 dummy bricks
+   don't capture the distribution of part shapes/sizes a real layout has.
 5. Open a Yjs doc between two browser tabs, drag a brick, watch the other
    tab move it
 

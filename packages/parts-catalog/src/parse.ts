@@ -25,6 +25,12 @@ export interface ParseInput {
   colorCode: string;
   /** Path of the matching sprite (already discovered by caller), or '' if none. */
   spritePath: string;
+  /**
+   * Library-relative path of the XML this part came from. Optional
+   * because the test suite calls `parsePartXml` directly without a
+   * filesystem path — the catalog scanner always passes one.
+   */
+  xmlRelPath?: string;
 }
 
 type RawNode = Record<string, unknown>;
@@ -52,8 +58,14 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
 
   const connections = kind === 'leaf' ? readConnexionList(root.ConnexionList) : [];
   const subparts = kind === 'group' ? readSubPartList(root.SubPartList) : [];
+  const hullPts = readHull(root.hull);
 
-  const key = `${input.partNumber}.${input.colorCode}`.toLowerCase();
+  // Match desktop's PartsLibrary::scanFile (PartsLibrary.cpp:173-175):
+  // when colorCode is empty, key is bare partNumber, no trailing dot.
+  const key = (input.colorCode
+    ? `${input.partNumber}.${input.colorCode}`
+    : input.partNumber
+  ).toLowerCase();
   return {
     key,
     partNumber: input.partNumber,
@@ -63,10 +75,12 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     author,
     sortingKey,
     spritePath: input.spritePath,
+    xmlRelPath: input.xmlRelPath ?? '',
     pxPerStud: Number.isFinite(pxPerStud) && pxPerStud > 0 ? pxPerStud : 8,
     connections,
     subparts,
     canUngroup,
+    hullPts,
   };
 }
 
@@ -156,4 +170,19 @@ function optionalNumber(node: RawNode, key: string): number | undefined {
   if (v === undefined || v === null || v === '') return undefined;
   const n = Number.parseFloat(String(v));
   return Number.isFinite(n) ? n : undefined;
+}
+
+function readHull(node: unknown): { x: number; y: number }[] {
+  if (!node || typeof node !== 'object') return [];
+  const raw = (node as RawNode).point;
+  if (raw === undefined) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const pts: { x: number; y: number }[] = [];
+  for (const p of list) {
+    const n = p as RawNode;
+    const x = Number.parseFloat(stringField(n, 'x', '0'));
+    const y = Number.parseFloat(stringField(n, 'y', '0'));
+    if (Number.isFinite(x) && Number.isFinite(y)) pts.push({ x, y });
+  }
+  return pts;
 }

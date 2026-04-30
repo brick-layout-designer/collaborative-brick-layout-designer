@@ -67,8 +67,10 @@ describe('orgs', () => {
   it('rejects invalid slugs', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     // Note: the handler lowercases the slug before validation, so "Acme"
-    // is accepted as "acme". Test only the truly-invalid shapes.
-    for (const bad of ['a_b', '-leading', 'trailing-', '', 'a'.repeat(50), 'has space']) {
+    // is accepted as "acme". Test only the truly-invalid shapes — the
+    // empty-string case is now treated as "omitted" (auto-derive from
+    // name) and accepted, so it's deliberately NOT in this list.
+    for (const bad of ['a_b', '-leading', 'trailing-', 'a'.repeat(50), 'has space']) {
       const res = await app.inject({
         method: 'POST',
         url: '/api/orgs',
@@ -77,6 +79,38 @@ describe('orgs', () => {
       });
       expect(res.statusCode).toBe(400);
     }
+  });
+
+  it('auto-derives slug from name when none is provided', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/orgs',
+      headers: { cookie: aliceCookie },
+      payload: { name: 'Acme Bricks!' },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as { slug: string };
+    expect(body.slug).toBe('acme-bricks');
+  });
+
+  it('disambiguates auto-slug with a numeric suffix on collision', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/orgs',
+      headers: { cookie: aliceCookie },
+      payload: { name: 'Foo' },
+    });
+    expect((first.json() as { slug: string }).slug).toBe('foo');
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/orgs',
+      headers: { cookie: aliceCookie },
+      payload: { name: 'Foo' },
+    });
+    expect(second.statusCode).toBe(201);
+    expect((second.json() as { slug: string }).slug).toBe('foo-2');
   });
 
   it('rejects duplicate slug with 409', async () => {

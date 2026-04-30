@@ -11,7 +11,7 @@ export function LoginPage() {
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-neutral-800 bg-neutral-900 p-8 shadow">
-        <h1 className="text-center text-xl font-semibold">Sign in to CLD</h1>
+        <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Layout Designer</h1>
 
         <div className="space-y-2">
           {providers.data?.providers

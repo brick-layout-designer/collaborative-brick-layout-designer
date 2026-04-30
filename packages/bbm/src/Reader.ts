@@ -14,7 +14,10 @@ import type {
   LayerRuler,
   LayerText,
   LayerType,
+  LinearRulerItem,
+  CircularRulerItem,
   RectangleF,
+  RulerItem,
   TextCell,
 } from '@cld/model';
 import { readColorSpec } from './color.js';
@@ -165,9 +168,12 @@ function readLayerGrid(n: Node, c: Omit<LayerGrid, 'type' | keyof LayerGridOnly>
     ...c,
     type: 'grid',
     gridColor: readColorSpec(required<Node>(n, 'GridColor')),
-    gridThickness: parseInt(stringField(n, 'GridThickness'), 10),
+    // Desktop reads these as float (LayerIO.cpp:120,122), so do the same
+    // here — otherwise fractional thickness from a desktop-saved file is
+    // lost on round-trip.
+    gridThickness: parseFloat(stringField(n, 'GridThickness')),
     subGridColor: readColorSpec(required<Node>(n, 'SubGridColor')),
-    subGridThickness: parseInt(stringField(n, 'SubGridThickness'), 10),
+    subGridThickness: parseFloat(stringField(n, 'SubGridThickness')),
     gridSizeInStud: parseInt(stringField(n, 'GridSizeInStud'), 10),
     subDivisionNumber: parseInt(stringField(n, 'SubDivisionNumber'), 10),
     displayGrid: parseBool(stringField(n, 'DisplayGrid')),
@@ -214,11 +220,108 @@ function readLayerRuler(n: Node, c: Omit<LayerRuler, 'type' | 'rulerItems' | 'gr
   return {
     ...c,
     type: 'ruler',
-    // Detailed ruler item shape is not yet ported — kept opaque so we don't
-    // lose data on round-trip via re-emit (writer emits an empty container).
-    rulerItems: [],
+    rulerItems: readRulerItems(n.RulerItems),
     groups: readGroups(n.Groups),
   };
+}
+
+/**
+ * Parse `<RulerItems>`. Mirrors desktop `readLayerRuler`/`readRulerItem`
+ * (saveload/LayerIO.cpp:395-465). Each child is either a
+ * `<LinearRuler>` or `<CircularRuler>` element. Field order follows
+ * `RulerItemBase` (LayerIO.cpp:381-393) plus the subclass-specific
+ * fields appended at the end.
+ */
+function readRulerItems(node: unknown): RulerItem[] {
+  if (!node || typeof node !== 'object') return [];
+  const out: RulerItem[] = [];
+  const linear = (node as Node).LinearRuler;
+  for (const item of asArray<unknown>(linear)) {
+    if (item && typeof item === 'object') out.push(readLinearRuler(item as Node));
+  }
+  const circular = (node as Node).CircularRuler;
+  for (const item of asArray<unknown>(circular)) {
+    if (item && typeof item === 'object') out.push(readCircularRuler(item as Node));
+  }
+  return out;
+}
+
+function readLinearRuler(n: Node): LinearRulerItem {
+  return {
+    kind: 'linear',
+    ...readRulerCommon(n),
+    point1: readPoint(required<Node>(n, 'Point1')),
+    point2: readPoint(required<Node>(n, 'Point2')),
+    attachedBrick1Id: optionalString(n, 'AttachedBrick1') ?? '',
+    attachedBrick2Id: optionalString(n, 'AttachedBrick2') ?? '',
+    offsetDistance: parseFloat(stringField(n, 'OffsetDistance')),
+    allowOffset: parseBool(stringField(n, 'AllowOffset')),
+  };
+}
+
+function readCircularRuler(n: Node): CircularRulerItem {
+  return {
+    kind: 'circular',
+    ...readRulerCommon(n),
+    center: readPoint(required<Node>(n, 'Center')),
+    radius: parseFloat(stringField(n, 'Radius')),
+    attachedBrickId: optionalString(n, 'AttachedBrick') ?? '',
+  };
+}
+
+function readRulerCommon(n: Node) {
+  return {
+    // Mint a fresh id on read — `<LinearRuler>`/`<CircularRuler>` XML
+    // has no id attribute upstream, so every load assigns new ids.
+    // That's fine: ruler ids are in-memory only and never persisted.
+    // Mirrors desktop's `LayerItem.guid = newBbmId()` at
+    // RulerCommands.cpp:33 / 102 / 169 etc.
+    id: mintRulerId(),
+    displayArea: readRect(required<Node>(n, 'DisplayArea')),
+    myGroup: optionalString(n, 'MyGroup') ?? '',
+    color: readColorSpec(required<Node>(n, 'Color')),
+    lineThickness: parseFloat(stringField(n, 'LineThickness')),
+    displayDistance: parseBool(stringField(n, 'DisplayDistance')),
+    displayUnit: parseBool(stringField(n, 'DisplayUnit')),
+    guidelineColor: readColorSpec(required<Node>(n, 'GuidelineColor')),
+    guidelineThickness: parseFloat(stringField(n, 'GuidelineThickness')),
+    guidelineDashPattern: readFloatArray(n.GuidelineDashPattern),
+    unit: parseInt(stringField(n, 'Unit'), 10),
+    measureFont: readFont(required<Node>(n, 'MeasureFont')),
+    measureFontColor: readColorSpec(required<Node>(n, 'MeasureFontColor')),
+  };
+}
+
+function mintRulerId(): string {
+  return `${Date.now()}${Math.floor(Math.random() * 1_000_000)
+    .toString()
+    .padStart(6, '0')}`;
+}
+
+function readPoint(node: Node): { x: number; y: number } {
+  return {
+    x: parseFloat(stringField(node, 'X')),
+    y: parseFloat(stringField(node, 'Y')),
+  };
+}
+
+/**
+ * `<GuidelineDashPattern><double>1.5</double><double>2</double>…</GuidelineDashPattern>`
+ * fast-xml-parser collapses single-child arrays to a string, so accept
+ * both shapes.
+ */
+function readFloatArray(node: unknown): number[] {
+  if (!node || typeof node !== 'object') return [];
+  const inner = (node as Node).double;
+  if (inner === undefined) return [];
+  return asArray(inner)
+    .map((v) => (typeof v === 'string' ? parseFloat(v) : Number(v)))
+    .filter((v) => Number.isFinite(v));
+}
+
+function asArray<T>(v: T | T[] | undefined): T[] {
+  if (v === undefined || v === null) return [];
+  return Array.isArray(v) ? v : [v];
 }
 
 // ---------------------------------------------------------------------------

@@ -1,31 +1,61 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CustomPartSummary, type ModuleSummary } from '../api';
+import { api, type CustomPartSummary, type LayoutSummary, type ModuleSummary } from '../api';
+import { AppHeader } from '../AppHeader';
+import { useEditorStore } from '../editor/editorStore';
 
 /**
- * /library page — combined view of custom parts (uploaded XML + sprite)
- * and saved modules. Both share the same ownership / sharing model so a
- * single page is simpler than two separate routes for v1.
+ * /library page — combined view of layouts, custom parts (uploaded XML + sprite)
+ * and saved modules. All share the same ownership / sharing model.
  */
 export function LibraryPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const parts = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
   const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   const [showPart, setShowPart] = useState(false);
   const [showModule, setShowModule] = useState(false);
+  const navigate = useNavigate();
+  const reopenLastFile = useEditorStore((s) => s.reopenLastFile);
+
+  // Reopen last layout on mount when the preference is enabled.
+  useEffect(() => {
+    if (!reopenLastFile) return;
+    const lastId = localStorage.getItem('cld:lastLayoutId');
+    if (lastId) navigate(`/editor/${lastId}`, { replace: true });
+  // Only run once on mount — intentional empty-ish deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (me.isLoading) return <div className="p-8 text-neutral-500">Loading…</div>;
+  if (!me.data?.user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <Link to="/" className="text-sm text-neutral-400 hover:underline">
-          ← Layouts
-        </Link>
-        <h1 className="mt-1 text-xl font-semibold">Library</h1>
-        <p className="text-sm text-neutral-500">
-          Custom parts and saved modules. Same sharing rules as layouts.
-        </p>
-      </div>
+    <div className="h-full overflow-y-auto p-8">
+      <AppHeader user={me.data.user} />
+      <main className="mx-auto mt-8 max-w-4xl space-y-8">
+        <div>
+          <h1 className="text-xl font-semibold">Library</h1>
+          <p className="text-sm text-neutral-500">
+            Layouts, custom parts, and saved modules accessible to you.
+          </p>
+        </div>
+
+      <section>
+        <header className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Layouts
+          </h2>
+          <Link
+            to="/"
+            className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+          >
+            Manage layouts
+          </Link>
+        </header>
+        <LayoutsList layouts={layouts.data?.layouts ?? []} loading={layouts.isLoading} />
+      </section>
 
       <section>
         <header className="flex items-center justify-between">
@@ -61,9 +91,45 @@ export function LibraryPage() {
         <ModulesList modules={modules.data?.modules ?? []} loading={modules.isLoading} />
       </section>
 
-      {showPart && <UploadPartDialog onClose={() => setShowPart(false)} />}
-      {showModule && <NewModuleDialog onClose={() => setShowModule(false)} />}
+        {showPart && <UploadPartDialog onClose={() => setShowPart(false)} />}
+        {showModule && <NewModuleDialog onClose={() => setShowModule(false)} />}
+      </main>
     </div>
+  );
+}
+
+function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: boolean }) {
+  if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
+  if (layouts.length === 0)
+    return (
+      <p className="mt-2 rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+        No layouts yet. <Link to="/" className="text-blue-400 hover:underline">Create one</Link> to get started.
+      </p>
+    );
+  return (
+    <ul className="mt-2 divide-y divide-neutral-800 rounded border border-neutral-800">
+      {layouts.map((l) => (
+        <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
+          <div>
+            <p>{l.title}</p>
+            <p className="text-xs text-neutral-500">
+              v{l.docVersion} · updated {new Date(l.updatedAt).toLocaleString()}
+              {l.expiresAt && (
+                <span className="ml-2 text-amber-500">
+                  expires {new Date(l.expiresAt).toLocaleDateString()}
+                </span>
+              )}
+            </p>
+          </div>
+          <Link
+            to={`/editor/${l.id}`}
+            className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500"
+          >
+            Open
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -161,17 +227,24 @@ function ModulesList({
 function UploadPartDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
+  const catalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
   const [partNumber, setPartNumber] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [category, setCategory] = useState('Custom');
   const [xmlText, setXmlText] = useState('');
   const [spriteFile, setSpriteFile] = useState<File | null>(null);
   const [ownerSlug, setOwnerSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const existingCategories = Array.from(
+    new Set((catalog.data?.parts ?? []).map((p) => p.category || 'Custom').filter(Boolean))
+  ).sort();
+
   const create = useMutation({
     mutationFn: api.customParts.create,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['custom-parts'] });
+      qc.invalidateQueries({ queryKey: ['parts-catalog'] });
       onClose();
     },
     onError: (e: Error) => setError(e.message),
@@ -203,6 +276,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
     create.mutate({
       partNumber: partNumber.trim(),
       displayName: displayName.trim(),
+      category: category.trim() || 'Custom',
       xmlBase64,
       spriteBase64,
       spriteMime: mime,
@@ -237,6 +311,12 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
+
+        <CategoryPicker
+          categories={existingCategories}
+          value={category}
+          onChange={setCategory}
+        />
 
         {orgs.data && orgs.data.orgs.length > 0 && (
           <label className="block">
@@ -384,4 +464,67 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]!);
   return btoa(binary);
+}
+
+export function CategoryPicker({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  // Track whether the user has explicitly chosen "type your own" mode.
+  // We can't infer this from value alone: an empty string or an unrecognised
+  // value both look like "custom" but the initial render should show the
+  // select, not the text input.
+  const [customMode, setCustomMode] = useState(false);
+
+  function onSelect(e: React.ChangeEvent<HTMLSelectElement>) {
+    const v = e.target.value;
+    if (v === '__custom__') {
+      setCustomMode(true);
+      onChange('');
+    } else {
+      setCustomMode(false);
+      onChange(v);
+    }
+  }
+
+  return (
+    <div className="block space-y-1">
+      <span className="block text-neutral-400">Category</span>
+      {!customMode ? (
+        <select
+          value={categories.includes(value) ? value : (categories[0] ?? '')}
+          onChange={onSelect}
+          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+        >
+          {categories.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+          <option value="__custom__">— type your own —</option>
+        </select>
+      ) : (
+        <div className="flex gap-2">
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="My Category"
+            autoFocus
+            className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => { setCustomMode(false); onChange(categories[0] ?? 'Custom'); }}
+            className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+            title="Pick from list"
+          >
+            ↩
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

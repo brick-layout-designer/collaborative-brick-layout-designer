@@ -1,3 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Single-page app — the editor manages its own scrollable regions
+   (parts panel, dialogs). The browser never needs page-level scroll. */
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}

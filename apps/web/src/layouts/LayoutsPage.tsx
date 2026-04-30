@@ -141,19 +141,12 @@ function LayoutRow({
           Share
         </button>
         <a
-          href={api.layouts.exportBbmUrl(layout.id)}
+          href={api.layouts.exportZipUrl(layout.id)}
           className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          title={layout.hasSidecar ? 'Download .bbm + .bbm.cld sidecar as a .zip' : 'Download .bbm'}
         >
-          Export .bbm
+          Export .zip
         </a>
-        {layout.hasSidecar && (
-          <a
-            href={api.layouts.exportSidecarUrl(layout.id)}
-            className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
-          >
-            .bbm.cld
-          </a>
-        )}
         <button
           onClick={onDelete}
           className="rounded border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"

@@ -67,6 +67,15 @@ export interface Venue {
   obstacles: VenueObstacle[];
 }
 
+export interface BackgroundImage {
+  /** Server-relative URL (e.g. `/api/layouts/<id>/background-image`). */
+  url: string;
+  /** Opacity 0..1. Desktop default 0.5. */
+  opacity: number;
+  /** Placement rect in studs. null/absent = stretch to scene bounds. */
+  rect?: { x: number; y: number; w: number; h: number };
+}
+
 export interface Sidecar {
   schemaVersion: number;
   /** Lowercase hex of the .bbm bytes at write time, or empty when unknown. */
@@ -74,6 +83,7 @@ export interface Sidecar {
   anchoredLabels?: AnchoredLabel[];
   modules?: SidecarModule[];
   venue?: Venue;
+  backgroundImage?: BackgroundImage;
   /** Unknown top-level fields preserved verbatim across round-trip. */
   extras?: Record<string, unknown>;
 }

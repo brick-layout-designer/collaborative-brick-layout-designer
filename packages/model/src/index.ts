@@ -164,9 +164,55 @@ export interface LayerArea extends LayerCommon {
   areas: AreaCell[];
 }
 
-export type RulerItem =
-  | ({ kind: 'linear' } & Record<string, unknown>)
-  | ({ kind: 'circular' } & Record<string, unknown>);
+/**
+ * Common ruler-item header fields. Ported from desktop's
+ * `RulerItemBase` (saveload/LayerIO.cpp:381-393); element order in the
+ * file is: DisplayArea, MyGroup, Color, LineThickness, DisplayDistance,
+ * DisplayUnit, GuidelineColor, GuidelineThickness, GuidelineDashPattern,
+ * Unit, MeasureFont, MeasureFontColor.
+ */
+export interface RulerItemCommon {
+  /**
+   * Stable in-memory id used by ruler commands (`MoveRuler`,
+   * `EditRuler`, `MoveRulerEndpoint`, `AttachRuler`, `DeleteRuler`).
+   * Mirrors desktop's `LayerItem.guid` (LayerItem.h:18) — assigned by
+   * `core::newBbmId()` when the ruler is created and never written to
+   * disk (the .bbm `<LinearRuler>`/`<CircularRuler>` element has no id
+   * attribute upstream — see LayerIO.cpp:427-428).
+   */
+  id: string;
+  displayArea: RectangleF;
+  myGroup: string;
+  color: ColorSpec;
+  lineThickness: number;
+  displayDistance: boolean;
+  displayUnit: boolean;
+  guidelineColor: ColorSpec;
+  guidelineThickness: number;
+  guidelineDashPattern: number[];
+  unit: number;
+  measureFont: FontSpec;
+  measureFontColor: ColorSpec;
+}
+
+export interface LinearRulerItem extends RulerItemCommon {
+  kind: 'linear';
+  point1: { x: number; y: number };
+  point2: { x: number; y: number };
+  attachedBrick1Id: string;
+  attachedBrick2Id: string;
+  offsetDistance: number;
+  allowOffset: boolean;
+}
+
+export interface CircularRulerItem extends RulerItemCommon {
+  kind: 'circular';
+  center: { x: number; y: number };
+  radius: number;
+  attachedBrickId: string;
+}
+
+export type RulerItem = LinearRulerItem | CircularRulerItem;
 
 export interface LayerRuler extends LayerCommon {
   type: 'ruler';

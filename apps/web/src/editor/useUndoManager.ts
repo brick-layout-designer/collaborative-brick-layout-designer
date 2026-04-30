@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import { useEditorStore } from './editorStore';
 
 export interface UndoState {
   manager: Y.UndoManager | null;
@@ -31,7 +32,6 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
     undo: noop,
     redo: noop,
   });
-
   useEffect(() => {
     if (!doc) {
       setState({ manager: null, canUndo: false, canRedo: false, undo: noop, redo: noop });
@@ -47,6 +47,11 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
     });
 
     const updateState = () => {
+      // Prune undo stack to configured depth (0 = unlimited, default 100).
+      const limit = useEditorStore.getState().undoStackDepth;
+      if (limit > 0 && manager.undoStack.length > limit) {
+        manager.undoStack.splice(0, manager.undoStack.length - limit);
+      }
       setState({
         manager,
         canUndo: manager.canUndo(),
@@ -65,10 +70,11 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
       if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         return;
       }
-      if (e.key === 'z' && !e.shiftKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
         manager.undo();
-      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
         e.preventDefault();
         manager.redo();
       }

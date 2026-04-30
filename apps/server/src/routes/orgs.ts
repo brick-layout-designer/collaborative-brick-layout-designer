@@ -23,7 +23,29 @@ import { env } from '../env.js';
 
 interface CreateOrgBody {
   name: string;
-  slug: string;
+  /**
+   * Optional. When omitted (or empty) the server auto-derives a slug
+   * from `name` and disambiguates with a numeric suffix on collision.
+   * Older clients still send a manual slug.
+   */
+  slug?: string;
+}
+
+/**
+ * Slugify a name into a URL-safe identifier. Lowercase, replace any
+ * non-alnum run with `-`, trim leading/trailing `-`, cap at 40 chars.
+ * Falls back to `'org'` for names with no usable characters (CJK only,
+ * empty, etc.) so the suffix-disambig loop has something to grow.
+ */
+function slugifyName(name: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/^-+|-+$/g, '');
+  return cleaned || 'org';
 }
 
 interface OrgMemberInviteBody {
@@ -68,26 +90,41 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: 'demo_account_cannot_create_org' });
     }
     const name = req.body.name?.trim();
-    const slug = req.body.slug?.trim().toLowerCase();
+    const requestedSlug = req.body.slug?.trim().toLowerCase();
     if (!name || name.length < 1 || name.length > 80) {
       return reply.code(400).send({ error: 'invalid_name' });
     }
-    if (!slug || !SLUG_RE.test(slug)) {
-      // Slugs must be URL-safe and short. The regex allows lower-case
-      // letters, digits, and internal hyphens; can't start or end with
-      // a hyphen. Length 1–40 chars.
-      return reply.code(400).send({ error: 'invalid_slug' });
-    }
 
-    // Reject collisions early so the error is friendlier than a unique-
-    // constraint failure. Race-condition window between the check and
-    // insert is tiny; the unique index catches it deterministically.
-    const existing = await db
-      .select()
-      .from(schema.orgs)
-      .where(eq(schema.orgs.slug, slug))
-      .get();
-    if (existing) return reply.code(409).send({ error: 'slug_taken' });
+    // Resolve the final slug. If the caller passed one, validate it
+    // and reject collisions explicitly so they see a clear error.
+    // If they didn't, auto-derive from `name` and append a numeric
+    // suffix until it's unique. This makes the UI a one-field form
+    // (just "Name") in the common case.
+    let slug: string;
+    if (requestedSlug) {
+      if (!SLUG_RE.test(requestedSlug)) {
+        return reply.code(400).send({ error: 'invalid_slug' });
+      }
+      const collide = await db
+        .select()
+        .from(schema.orgs)
+        .where(eq(schema.orgs.slug, requestedSlug))
+        .get();
+      if (collide) return reply.code(409).send({ error: 'slug_taken' });
+      slug = requestedSlug;
+    } else {
+      const base = slugifyName(name).slice(0, 36); // leave room for `-99`
+      slug = base;
+      for (let n = 2; n < 100; n++) {
+        const collide = await db
+          .select()
+          .from(schema.orgs)
+          .where(eq(schema.orgs.slug, slug))
+          .get();
+        if (!collide) break;
+        slug = `${base}-${n}`;
+      }
+    }
 
     const id = randomUUID();
     const now = new Date();
@@ -421,6 +458,151 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           hasSidecar: l.sidecarSnapshot !== null,
         })),
       };
+    },
+  );
+
+  // -----------------------------------------------------------------
+  // Per-org part library management (org admin only)
+  // -----------------------------------------------------------------
+
+  // GET /api/orgs/:slug/part-libraries
+  // Returns all installed libraries with the org's enabled/disabled status.
+  app.get<{ Params: { slug: string } }>(
+    '/api/orgs/:slug/part-libraries',
+    async (req, reply) => {
+      const me = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const membership = await getMembership(org.id, me.id);
+      if (!membership) return reply.code(403).send({ error: 'not_member' });
+
+      // All installed libraries.
+      const all = await db.select().from(schema.partLibraries).orderBy(schema.partLibraries.name);
+      // This org's explicit overrides.
+      const overrides = await db
+        .select()
+        .from(schema.orgPartLibraries)
+        .where(eq(schema.orgPartLibraries.orgId, org.id));
+      const overrideMap = new Map(overrides.map((o) => [o.libraryId, o.enabled]));
+
+      return {
+        libraries: all.map((lib) => {
+          const explicit = overrideMap.get(lib.id);
+          // Locked libraries are always enabled regardless of any override.
+          const enabled = lib.locked ? true : (explicit !== undefined ? explicit : lib.defaultEnabled);
+          return {
+            id: lib.id,
+            name: lib.name,
+            slug: lib.slug,
+            partCount: lib.partCount,
+            defaultEnabled: lib.defaultEnabled,
+            locked: lib.locked,
+            enabled,
+            explicitOverride: !lib.locked && explicit !== undefined,
+          };
+        }),
+        isAdmin: membership.role === 'admin',
+      };
+    },
+  );
+
+  // PUT /api/orgs/:slug/part-libraries/:libraryId
+  // Org admin enables or disables a library for the org.
+  app.put<{
+    Params: { slug: string; libraryId: string };
+    Body: { enabled: boolean };
+  }>(
+    '/api/orgs/:slug/part-libraries/:libraryId',
+    async (req, reply) => {
+      const me = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const membership = await getMembership(org.id, me.id);
+      if (!membership || membership.role !== 'admin') {
+        return reply.code(403).send({ error: 'not_org_admin' });
+      }
+
+      const lib = await db
+        .select({ id: schema.partLibraries.id, defaultEnabled: schema.partLibraries.defaultEnabled, locked: schema.partLibraries.locked })
+        .from(schema.partLibraries)
+        .where(eq(schema.partLibraries.id, req.params.libraryId))
+        .get();
+      if (!lib) return reply.code(404).send({ error: 'library_not_found' });
+      if (lib.locked) return reply.code(403).send({ error: 'library_locked' });
+
+      const enabled = Boolean(req.body.enabled);
+      const now = new Date();
+
+      // Upsert the override row.
+      const existing = await db
+        .select()
+        .from(schema.orgPartLibraries)
+        .where(
+          and(
+            eq(schema.orgPartLibraries.orgId, org.id),
+            eq(schema.orgPartLibraries.libraryId, lib.id),
+          ),
+        )
+        .get();
+
+      if (existing) {
+        await db
+          .update(schema.orgPartLibraries)
+          .set({ enabled, updatedAt: now })
+          .where(
+            and(
+              eq(schema.orgPartLibraries.orgId, org.id),
+              eq(schema.orgPartLibraries.libraryId, lib.id),
+            ),
+          );
+      } else {
+        await db.insert(schema.orgPartLibraries).values({
+          orgId: org.id,
+          libraryId: lib.id,
+          enabled,
+          updatedAt: now,
+        });
+      }
+
+      await writeAuditEvent({
+        resourceKind: 'org',
+        resourceId: org.id,
+        userId: me.id,
+        eventType: 'org_part_library_toggle',
+        payload: { libraryId: lib.id, enabled, orgSlug: org.slug },
+      });
+      return { ok: true };
+    },
+  );
+
+  // DELETE /api/orgs/:slug/part-libraries/:libraryId
+  // Removes the explicit override — library reverts to its defaultEnabled state.
+  app.delete<{ Params: { slug: string; libraryId: string } }>(
+    '/api/orgs/:slug/part-libraries/:libraryId',
+    async (req, reply) => {
+      const me = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const membership = await getMembership(org.id, me.id);
+      if (!membership || membership.role !== 'admin') {
+        return reply.code(403).send({ error: 'not_org_admin' });
+      }
+      const lib = await db
+        .select({ locked: schema.partLibraries.locked })
+        .from(schema.partLibraries)
+        .where(eq(schema.partLibraries.id, req.params.libraryId))
+        .get();
+      if (!lib) return reply.code(404).send({ error: 'library_not_found' });
+      if (lib.locked) return reply.code(403).send({ error: 'library_locked' });
+      await db
+        .delete(schema.orgPartLibraries)
+        .where(
+          and(
+            eq(schema.orgPartLibraries.orgId, org.id),
+            eq(schema.orgPartLibraries.libraryId, req.params.libraryId),
+          ),
+        );
+      return { ok: true };
     },
   );
 

@@ -48,6 +48,7 @@ import type {
   LayerRuler,
   LayerText,
   RectangleF,
+  RulerItem,
   TextCell,
 } from '@cld/model';
 
@@ -234,9 +235,15 @@ function writeLayerArea(layer: LayerArea, y: Y.Map<unknown>): void {
 }
 
 function writeLayerRuler(layer: LayerRuler, y: Y.Map<unknown>): void {
-  // Ruler items not yet ported — see packages/bbm Writer notes. We persist
-  // an empty Y.Array so the doc shape is stable when ruler support lands.
-  y.set('rulerItems', new Y.Array<Y.Map<unknown>>());
+  // Ruler items are stored as plain-JSON entries (deep-cloned) for now —
+  // they're not collaboratively edited, just round-tripped through the
+  // doc so saving doesn't drop them. When a ruler-edit UI ships these
+  // become Y.Maps so individual fields can be mutated atomically.
+  const rulers = new Y.Array<RulerItem>();
+  for (const r of layer.rulerItems) {
+    rulers.push([structuredClone(r)]);
+  }
+  y.set('rulerItems', rulers);
   const groups = new Y.Array<Y.Map<unknown>>();
   for (const g of layer.groups) groups.push([groupToYMap(g)]);
   y.set('groups', groups);
@@ -363,10 +370,11 @@ function readLayerArea(y: Y.Map<unknown>, c: CommonFields): LayerArea {
 
 function readLayerRuler(y: Y.Map<unknown>, c: CommonFields): LayerRuler {
   const groupsY = y.get('groups') as Y.Array<Y.Map<unknown>> | undefined;
+  const rulersY = y.get('rulerItems') as Y.Array<RulerItem> | undefined;
   return {
     ...c,
     type: 'ruler',
-    rulerItems: [],
+    rulerItems: rulersY ? rulersY.toArray().map((r) => structuredClone(r)) : [],
     groups: groupsY ? groupsY.toArray().map(yMapToGroup) : [],
   };
 }

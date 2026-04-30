@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
+import fastifyMultipart from '@fastify/multipart';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { db } from './db/index.js';
 import { env } from './env.js';
@@ -12,6 +13,7 @@ import { oauthRoutes } from './routes/auth/oauth.js';
 import { passwordRoutes } from './routes/auth/password.js';
 import { sessionRoutes } from './routes/auth/session.js';
 import { auditRoutes } from './routes/audit.js';
+import { adminRoutes } from './routes/admin.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 import { customPartRoutes } from './routes/customParts.js';
@@ -20,6 +22,7 @@ import { inviteRoutes } from './routes/invites.js';
 import { layoutRoutes } from './routes/layouts.js';
 import { moduleRoutes } from './routes/modules.js';
 import { moduleTransferRoutes } from './routes/moduleTransfers.js';
+import { venueRoutes } from './routes/venues.js';
 import { orgRoutes } from './routes/orgs.js';
 import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
@@ -37,6 +40,7 @@ async function main() {
   const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
 
   await app.register(cookie);
+  await app.register(fastifyMultipart);
 
   app.addHook('preHandler', attachUser);
 
@@ -69,11 +73,13 @@ async function main() {
   await app.register(customPartInviteRoutes);
   await app.register(moduleRoutes);
   await app.register(moduleTransferRoutes);
+  await app.register(venueRoutes);
   await app.register(auditRoutes);
+  await app.register(adminRoutes);
   await app.register(wsRoutes);
 
   // Serve the BlueBrickParts library at /parts/*. The desktop's submodule
-  // organises files under `parts-library/parts/`, so we point at that
+  // organizes files under `parts-library/parts/`, so we point at that
   // subdirectory directly. In Docker the host bind-mounts the submodule at
   // `/parts`; in local dev the submodule lives at `../../parts-library`.
   const partsRoot = resolve(env.partsDir, 'parts');
@@ -93,19 +99,43 @@ async function main() {
   // Serve the SPA (built by `apps/web`) from /web/dist when present.
   // In dev, run `pnpm --filter @cld/web dev` separately on :5173 — Vite
   // proxies /api and /ws to this server.
+  //
+  // The SPA fallback (`setNotFoundHandler` -> serve index.html for any
+  // non-API path) used to call `reply.sendFile` — but BOTH static
+  // registrations pass `decorateReply: false` (the parts registration
+  // does it for a tiny perf win; the SPA registration inherited it),
+  // so `reply.sendFile` is undefined and a hard refresh on `/library`,
+  // `/orgs/...`, etc. produced a 500. Cache `index.html` at boot and
+  // serve its bytes directly so we don't depend on any reply decoration.
   const spaDir = resolve('../web/dist');
+  const spaIndexPath = resolve(spaDir, 'index.html');
+  let spaIndexHtml: string | null = null;
   try {
+    if (existsSync(spaIndexPath)) {
+      const { readFileSync } = await import('node:fs');
+      spaIndexHtml = readFileSync(spaIndexPath, 'utf8');
+    }
+  } catch (err) {
+    app.log.warn({ err }, `failed to cache SPA index.html from ${spaIndexPath}`);
+  }
+  if (spaIndexHtml !== null) {
     await app.register(fastifyStatic, {
       root: spaDir,
       prefix: '/',
       decorateReply: false,
       wildcard: false,
     });
+    const indexBytes = spaIndexHtml; // capture for the closure
     app.setNotFoundHandler(async (req, reply) => {
       if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'not_found' });
-      return reply.sendFile('index.html', spaDir);
+      reply.header('content-type', 'text/html; charset=utf-8');
+      // Don't cache — the SPA bundle hash is in the linked assets;
+      // if `index.html` itself is cached, deploys break for users
+      // whose browser still has the previous version.
+      reply.header('cache-control', 'no-cache');
+      return reply.send(indexBytes);
     });
-  } catch {
+  } else {
     app.log.warn(`SPA dist not found at ${spaDir}; serving API only`);
   }
 

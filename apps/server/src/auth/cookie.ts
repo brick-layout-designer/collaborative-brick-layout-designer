@@ -47,3 +47,22 @@ export function requireUser(req: FastifyRequest): User {
   }
   return req.user;
 }
+
+/**
+ * Stricter variant for the platform-admin endpoints. Throws 401 if no
+ * session, 403 when the session belongs to a non-global-admin user.
+ *
+ * Every endpoint mounted at `/api/admin/*` must call this — the
+ * boundary is per-route rather than per-prefix because Fastify's
+ * preHandler hooks are global, and we want the permission check to
+ * sit next to the route's own logic for clarity.
+ */
+export function requireGlobalAdmin(req: FastifyRequest): User {
+  const user = requireUser(req);
+  if (!user.isGlobalAdmin) {
+    const err = new Error('forbidden');
+    (err as Error & { statusCode?: number }).statusCode = 403;
+    throw err;
+  }
+  return user;
+}

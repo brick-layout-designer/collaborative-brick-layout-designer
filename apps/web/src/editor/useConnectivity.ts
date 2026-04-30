@@ -47,6 +47,7 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
         })),
         subparts: [],
         canUngroup: true,
+        hullPts: p.hullPts ?? [],
       };
       m.set(p.key, meta);
     }
@@ -85,6 +86,10 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
     }
 
     doc.on('update', onUpdate);
+    // Run once on mount (or when catalog becomes available) so that bricks
+    // already in the doc get their connexions populated without needing to
+    // trigger a mutation first.
+    schedule();
     return () => {
       doc.off('update', onUpdate);
       if (timer) clearTimeout(timer);

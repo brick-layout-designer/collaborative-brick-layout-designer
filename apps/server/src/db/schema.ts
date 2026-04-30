@@ -102,6 +102,11 @@ export const layouts = sqliteTable('layouts', {
   docSnapshot: blob('doc_snapshot').notNull(),
   docVersion: integer('doc_version').notNull().default(0),
   sidecarSnapshot: blob('sidecar_snapshot'),
+  // Public-share token. Null = layout is private (default). Non-null
+  // = anyone with the token URL can view the layout read-only without
+  // signing in. The token is the only secret — owners rotate it by
+  // disabling and re-enabling sharing.
+  publicShareToken: text('public_share_token').unique(),
 });
 
 export const layoutCollaborators = sqliteTable(
@@ -192,7 +197,7 @@ export const auditEvents = sqliteTable('audit_events', {
    * (resource_kind + resource_id) must be set; never both, never
    * neither. Enforced in the writer, not in the schema.
    */
-  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org'] }),
+  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library'] }),
   resourceId: text('resource_id'),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   eventType: text('event_type').notNull(),
@@ -219,6 +224,18 @@ export const customParts = sqliteTable('custom_parts', {
   createdBy: text('created_by')
     .notNull()
     .references(() => users.id),
+  /**
+   * When true, this part is visible to ALL users as part of the global
+   * catalog and can only be managed by platform admins. ownerUserId and
+   * ownerOrgId are null for global parts.
+   */
+  isGlobal: integer('is_global', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Parts-browser category label. Bundled parts derive this from the
+   * XML's parent folder name; custom parts let the uploader specify a
+   * string (e.g. "My Org Tracks"). Defaults to 'Custom'.
+   */
+  category: text('category').notNull().default('Custom'),
   /** Full XML payload — same shape as a BlueBrickParts file. */
   xmlBlob: blob('xml_blob').notNull(),
   /** Sprite bytes (gif/png). */
@@ -311,6 +328,53 @@ export const moduleTransfers = sqliteTable('module_transfers', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// Part libraries — system-installed, org-selectable.
+//
+// A `part_library` is a named collection of parts installed by a platform
+// admin (uploaded as a zip, or pulled from a URL). Every library's parts are
+// served as bundled parts scoped to their library slug.
+//
+// `org_part_libraries` is a join table: when a row exists, the org has that
+// library enabled. Orgs that have no rows default to seeing only the built-in
+// parts (same as today). A library marked `default_enabled` is automatically
+// made available to all orgs without an explicit row.
+// ---------------------------------------------------------------------------
+export const partLibraries = sqliteTable('part_libraries', {
+  id: text('id').primaryKey(),
+  /** Human-readable display name. */
+  name: text('name').notNull(),
+  /** URL slug — used as the category prefix for parts in this library. */
+  slug: text('slug').notNull().unique(),
+  /** Source URL if installed from a remote zip; null for manual uploads. */
+  sourceUrl: text('source_url'),
+  /** Number of parts in the library (denormalised for the UI). */
+  partCount: integer('part_count').notNull().default(0),
+  /** When true, all orgs see this library without an explicit opt-in. */
+  defaultEnabled: integer('default_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** When true, org admins cannot disable this library — it is always on for everyone. */
+  locked: integer('locked', { mode: 'boolean' }).notNull().default(false),
+  installedAt: integer('installed_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** Explicit per-org library opt-in/opt-out. */
+export const orgPartLibraries = sqliteTable(
+  'org_part_libraries',
+  {
+    orgId: text('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    libraryId: text('library_id')
+      .notNull()
+      .references(() => partLibraries.id, { onDelete: 'cascade' }),
+    /** true = explicitly enabled; false = explicitly disabled (overrides defaultEnabled). */
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.orgId, t.libraryId] }) }),
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -320,6 +384,7 @@ export type NewLayout = typeof layouts.$inferInsert;
 export type LayoutCollaborator = typeof layoutCollaborators.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type Org = typeof orgs.$inferSelect;
+export type PartLibrary = typeof partLibraries.$inferSelect;
 export type OrgMember = typeof orgMembers.$inferSelect;
 export type OrgInvite = typeof orgInvites.$inferSelect;
 export type LayoutTransfer = typeof layoutTransfers.$inferSelect;
@@ -329,3 +394,14 @@ export type CustomPartInvite = typeof customPartInvites.$inferSelect;
 export type Module = typeof modules.$inferSelect;
 export type ModuleCollaborator = typeof moduleCollaborators.$inferSelect;
 export type ModuleTransfer = typeof moduleTransfers.$inferSelect;
+
+export const venueLibrary = sqliteTable('venue_library', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  ownerOrgId: text('owner_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** Serialised Venue JSON. */
+  data: text('data').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+export type VenueLibraryEntry = typeof venueLibrary.$inferSelect;

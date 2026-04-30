@@ -71,11 +71,16 @@ async function loadCustomPart(userId: string, id: string): Promise<ResourceTable
     .select({
       ownerUserId: schema.customParts.ownerUserId,
       ownerOrgId: schema.customParts.ownerOrgId,
+      isGlobal: schema.customParts.isGlobal,
     })
     .from(schema.customParts)
     .where(eq(schema.customParts.id, id))
     .get();
   if (!row) return null;
+  // Global parts are visible (viewer) to every authenticated user.
+  if (row.isGlobal) {
+    return { ownerUserId: userId, ownerOrgId: null, collaboratorRole: null };
+  }
   const collab = await db
     .select({ role: schema.customPartCollaborators.role })
     .from(schema.customPartCollaborators)

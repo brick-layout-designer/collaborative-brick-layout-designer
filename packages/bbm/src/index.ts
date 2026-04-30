@@ -2,7 +2,7 @@
 //
 // Phase 2 port from desktop CLD's `src/saveload/`. Round-trip parity with
 // the desktop is enforced by the byte-exact + semantic tests against the
-// vendored corpus in `tests/fixtures/`.
+// vendored sample `.bbm` files in `tests/fixtures/`.
 
 export { readBbm, type ReadResult } from './Reader.js';
 export { writeBbm, type WriteOptions } from './Writer.js';
@@ -13,6 +13,7 @@ export {
   readSidecar,
   writeSidecar,
   type AnchoredLabel,
+  type BackgroundImage,
   type Sidecar,
   type SidecarModule,
   type Venue,

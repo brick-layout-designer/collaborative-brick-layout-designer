@@ -10,8 +10,8 @@ import { passwordRoutes } from './auth/password.js';
 import { sessionRoutes } from './auth/session.js';
 import { layoutRoutes } from './layouts.js';
 
-// Path to the vendored corpus inside packages/bbm. Tests import the same
-// fixtures the bbm package's round-trip tests do.
+// Path to the vendored sample `.bbm` files inside packages/bbm. Tests
+// import the same fixtures the bbm package's round-trip tests do.
 const FIXTURES = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../../packages/bbm/tests/fixtures',

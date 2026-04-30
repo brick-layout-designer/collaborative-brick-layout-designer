@@ -5,57 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1777436481619,
-      "tag": "0000_third_firedrake",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1777443141631,
-      "tag": "0001_nosy_kid_colt",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1777447321537,
-      "tag": "0002_young_maximus",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1777470139392,
-      "tag": "0003_tricky_blazing_skull",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1777471095730,
-      "tag": "0004_magical_sentry",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1777471697303,
-      "tag": "0005_exotic_swordsman",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1777473006766,
-      "tag": "0006_mean_christian_walker",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1777473352334,
-      "tag": "0007_right_havok",
+      "when": 1777563388703,
+      "tag": "0000_init",
       "breakpoints": true
     }
   ]

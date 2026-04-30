@@ -188,7 +188,11 @@ describe('rotateBricks', () => {
     expect(layer.bricks[0]?.orientation).toBe(20);
   });
 
-  it('snaps to integers (avoids float drift on round-trip)', () => {
+  it('preserves float orientation (matches desktop)', () => {
+    // Desktop's RotateBricksCommand stores Brick.orientation as a float
+    // and adds the float delta directly (MapView.cpp:964-967). The web
+    // port now matches — rounding to an int would silently quantise a
+    // float orientation that came in from a desktop-saved file.
     const doc = new Y.Doc();
     const layerId = ensureBrickLayer(doc);
     const id = placeBrick(doc, layerId, {
@@ -197,12 +201,12 @@ describe('rotateBricks', () => {
       y: 0,
       width: 8,
       height: 8,
-      orientation: 1.0001,
+      orientation: 1.5,
     });
-    rotateBricks(doc, layerId, [id], 0.5);
+    rotateBricks(doc, layerId, [id], 0.25);
     const layer = docToBbm(doc).layers[0];
     if (layer?.type !== 'brick') throw new Error('not a brick layer');
-    expect(Number.isInteger(layer.bricks[0]?.orientation as number)).toBe(true);
+    expect(layer.bricks[0]?.orientation).toBeCloseTo(1.75, 6);
   });
 });
 

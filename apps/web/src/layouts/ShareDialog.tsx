@@ -62,6 +62,8 @@ export function ShareDialog({
 
         {isOwner && <TransferSection layoutId={layoutId} />}
 
+        {isOwner && <PublicShareSection layoutId={layoutId} />}
+
         <AuditPanel layoutId={layoutId} />
 
         {list.isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
@@ -447,7 +449,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             required
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
           >
-            <option value="">Choose an organisation…</option>
+            <option value="">Choose an organization…</option>
             {orgs.data.orgs.map((o) => (
               <option key={o.slug} value={o.slug}>
                 {o.name} ({o.myRole})
@@ -545,6 +547,97 @@ export function AuditPanel({ layoutId }: { layoutId: string }) {
         )}
       </div>
     </details>
+  );
+}
+
+/**
+ * Public-share toggle. Owner-only. When enabled, anyone with the
+ * `/p/<token>` URL can view the layout read-only without signing in.
+ * Disable rotates the link (re-enabling mints a fresh token).
+ */
+function PublicShareSection({ layoutId }: { layoutId: string }) {
+  const qc = useQueryClient();
+  // Pull the latest token from the layout summary cached by editor /
+  // layouts list. We refetch this layout's row directly so the dialog
+  // always shows the current state regardless of which page mounted it.
+  const layout = useQuery({
+    queryKey: ['layout', layoutId],
+    queryFn: () => api.layouts.get(layoutId),
+  });
+  const [copied, setCopied] = useState(false);
+
+  const enable = useMutation({
+    mutationFn: () => api.layouts.enablePublicShare(layoutId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['layout', layoutId] });
+      qc.invalidateQueries({ queryKey: ['layouts'] });
+    },
+  });
+  const disable = useMutation({
+    mutationFn: () => api.layouts.disablePublicShare(layoutId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['layout', layoutId] });
+      qc.invalidateQueries({ queryKey: ['layouts'] });
+    },
+  });
+
+  const token = layout.data?.layout.publicShareToken ?? null;
+  const url = token ? `${window.location.origin}/p/${token}` : null;
+
+  return (
+    <div className="rounded border border-neutral-800 p-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            Public link
+          </h4>
+          <p className="mt-1 text-xs text-neutral-500">
+            {token
+              ? 'Anyone with this link can view (read-only) without signing in.'
+              : 'Off — only invited collaborators can see this layout.'}
+          </p>
+        </div>
+        {token ? (
+          <button
+            onClick={() => {
+              if (confirm('Disable the public link? The current URL will stop working.')) {
+                disable.mutate();
+              }
+            }}
+            disabled={disable.isPending}
+            className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
+          >
+            Disable
+          </button>
+        ) : (
+          <button
+            onClick={() => enable.mutate()}
+            disabled={enable.isPending}
+            className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
+          >
+            Enable
+          </button>
+        )}
+      </div>
+      {url && (
+        <div className="mt-2">
+          <code className="block break-all rounded bg-neutral-950 p-1 text-[11px]">
+            {url}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(url);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className="mt-1 text-xs text-blue-400 hover:underline"
+          >
+            {copied ? 'Copied!' : 'Copy link'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

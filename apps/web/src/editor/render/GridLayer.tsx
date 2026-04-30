@@ -1,61 +1,153 @@
 import { Group, Line, Rect } from 'react-konva';
 import type { BbmMap, ColorSpec, LayerGrid } from '@cld/model';
 import { studToPx, COLOR_DEFAULT } from './coords';
+import { useEditorStore } from '../editorStore';
 
-// Stage-extent used for drawing the grid background. The desktop computes
-// this from the map's actual extent; we pick a generous fixed size so the
-// grid is always visible regardless of zoom/pan. Real layouts fit easily.
-const EXTENT_STUDS = 2000;
+export interface ViewportRect {
+  /** World-space (stud) bounds currently visible on the stage. */
+  studXMin: number;
+  studYMin: number;
+  studXMax: number;
+  studYMax: number;
+}
 
-export function GridLayer({ map }: { map: BbmMap }) {
-  // Pick the FIRST grid layer the map has — the desktop assumes one.
-  // Bricks live in their own LayerBrick instances.
+/**
+ * Background fill + grid lines, sized to whatever is currently visible.
+ *
+ * Old behaviour drew a fixed 2000-stud square centred on the origin —
+ * panning or zooming far enough left a blank stage. We now derive the
+ * extent from the live viewport so the grid is always covering exactly
+ * what the user sees.
+ */
+export function GridLayer({
+  map,
+  viewport,
+}: {
+  map: BbmMap;
+  viewport: ViewportRect;
+}) {
+  const showGrid = useEditorStore((s) => s.showGrid);
   const grid = map.layers.find((l): l is LayerGrid => l.type === 'grid');
-  if (!grid || !grid.visible) return null;
+  if (!grid || !grid.visible || !showGrid) return null;
+
+  // Pad a couple of grid steps beyond the viewport so the lines extend
+  // off-screen (no visible cut-off when the user pans during a frame).
+  const pad = grid.gridSizeInStud * 2;
+  const xMin = viewport.studXMin - pad;
+  const yMin = viewport.studYMin - pad;
+  const xMax = viewport.studXMax + pad;
+  const yMax = viewport.studYMax + pad;
+
+  const px = studToPx();
 
   return (
     <Group>
-      {/* Background fill. */}
       <Rect
-        x={-EXTENT_STUDS * studToPx() / 2}
-        y={-EXTENT_STUDS * studToPx() / 2}
-        width={EXTENT_STUDS * studToPx()}
-        height={EXTENT_STUDS * studToPx()}
+        x={xMin * px}
+        y={yMin * px}
+        width={(xMax - xMin) * px}
+        height={(yMax - yMin) * px}
         fill={cssColor(map.backgroundColor)}
+        listening={false}
       />
-      {grid.displaySubGrid && <SubGridLines grid={grid} />}
-      {grid.displayGrid && <MajorGridLines grid={grid} />}
+      {grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
+      {grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
     </Group>
   );
 }
 
-function MajorGridLines({ grid }: { grid: LayerGrid }) {
-  const stepStuds = grid.gridSizeInStud;
-  const lines = [];
-  const px = studToPx();
-  const halfPx = (EXTENT_STUDS / 2) * px;
-  const stroke = cssColor(grid.gridColor);
-  const opacity = grid.transparency / 100;
+interface Bounds {
+  xMin: number;
+  yMin: number;
+  xMax: number;
+  yMax: number;
+}
 
-  for (let s = -EXTENT_STUDS / 2; s <= EXTENT_STUDS / 2; s += stepStuds) {
+// Desktop draws grid lines at full pen colour (no transparency multiplier
+// applied, even when the layer has a non-100 `transparency`) — see
+// MapViewPaint.cpp:84-104. The sub-step is `gridSizeInStud /
+// max(subDivisionNumber, 2)` (line 77) so a single-division grid still
+// yields a meaningful sub-step.
+
+function MajorGridLines({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
+  return (
+    <GridLines
+      stepStuds={grid.gridSizeInStud}
+      bounds={bounds}
+      stroke={cssColor(grid.gridColor)}
+      thickness={grid.gridThickness}
+      opacity={1}
+      keyPrefix="g"
+    />
+  );
+}
+
+function SubGridLines({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
+  const step = grid.gridSizeInStud / Math.max(2, grid.subDivisionNumber);
+  return (
+    <GridLines
+      stepStuds={step}
+      bounds={bounds}
+      stroke={cssColor(grid.subGridColor)}
+      thickness={grid.subGridThickness}
+      opacity={1}
+      keyPrefix="s"
+    />
+  );
+}
+
+function GridLines({
+  stepStuds,
+  bounds,
+  stroke,
+  thickness,
+  opacity,
+  keyPrefix,
+}: {
+  stepStuds: number;
+  bounds: Bounds;
+  stroke: string;
+  thickness: number;
+  opacity: number;
+  keyPrefix: string;
+}) {
+  const px = studToPx();
+  const lines: JSX.Element[] = [];
+  // Snap start to a multiple of `stepStuds` so the lines stay anchored
+  // to the world even while the user pans.
+  const startX = Math.floor(bounds.xMin / stepStuds) * stepStuds;
+  const startY = Math.floor(bounds.yMin / stepStuds) * stepStuds;
+  // Cap the number of lines we emit even when zoomed way out — we don't
+  // need 50000 sub-grid lines, the grid is purely cosmetic past a point.
+  const maxLines = 600;
+  const xCount = Math.ceil((bounds.xMax - startX) / stepStuds);
+  const yCount = Math.ceil((bounds.yMax - startY) / stepStuds);
+  if (xCount > maxLines || yCount > maxLines) return null;
+
+  for (let i = 0; i <= xCount; i++) {
+    const s = startX + i * stepStuds;
     const p = s * px;
     lines.push(
       <Line
-        key={`v-${s}`}
-        points={[p, -halfPx, p, halfPx]}
+        key={`${keyPrefix}-v-${i}`}
+        points={[p, bounds.yMin * px, p, bounds.yMax * px]}
         stroke={stroke}
-        strokeWidth={grid.gridThickness}
+        strokeWidth={thickness}
         opacity={opacity}
         perfectDrawEnabled={false}
         listening={false}
       />,
     );
+  }
+  for (let j = 0; j <= yCount; j++) {
+    const s = startY + j * stepStuds;
+    const p = s * px;
     lines.push(
       <Line
-        key={`h-${s}`}
-        points={[-halfPx, p, halfPx, p]}
+        key={`${keyPrefix}-h-${j}`}
+        points={[bounds.xMin * px, p, bounds.xMax * px, p]}
         stroke={stroke}
-        strokeWidth={grid.gridThickness}
+        strokeWidth={thickness}
         opacity={opacity}
         perfectDrawEnabled={false}
         listening={false}
@@ -65,52 +157,15 @@ function MajorGridLines({ grid }: { grid: LayerGrid }) {
   return <Group>{lines}</Group>;
 }
 
-function SubGridLines({ grid }: { grid: LayerGrid }) {
-  const stepStuds = grid.gridSizeInStud / Math.max(1, grid.subDivisionNumber);
-  const lines = [];
-  const px = studToPx();
-  const halfPx = (EXTENT_STUDS / 2) * px;
-  const stroke = cssColor(grid.subGridColor);
-  const opacity = (grid.transparency / 100) * 0.5;
-
-  for (let s = -EXTENT_STUDS / 2; s <= EXTENT_STUDS / 2; s += stepStuds) {
-    const p = s * px;
-    lines.push(
-      <Line
-        key={`sv-${s}`}
-        points={[p, -halfPx, p, halfPx]}
-        stroke={stroke}
-        strokeWidth={grid.subGridThickness}
-        opacity={opacity}
-        perfectDrawEnabled={false}
-        listening={false}
-      />,
-    );
-    lines.push(
-      <Line
-        key={`sh-${s}`}
-        points={[-halfPx, p, halfPx, p]}
-        stroke={stroke}
-        strokeWidth={grid.subGridThickness}
-        opacity={opacity}
-        perfectDrawEnabled={false}
-        listening={false}
-      />,
-    );
-  }
-  return <Group>{lines}</Group>;
-}
-
-/** Convert a BlueBrick ColorSpec to a CSS color string. */
 function cssColor(c: ColorSpec): string {
   if (c.kind === 'known') return KNOWN_COLORS[c.name.toLowerCase()] ?? COLOR_DEFAULT;
   // ARGB hex like "ffaabbcc" — strip the alpha for now (Konva supports rgba
-  // but the corpus uses opaque colors almost always).
+  // but real-world `.bbm` files use opaque colors almost always).
   if (c.argb.length === 8) return `#${c.argb.slice(2)}`;
   return `#${c.argb}`;
 }
 
-// Subset of System.Drawing.KnownColor that the BBM corpus actually uses.
+// Subset of System.Drawing.KnownColor that real `.bbm` files actually use.
 // Anything missing falls back to neutral grey — the export is faithful
 // either way because we preserve `kind: 'known'` in the model.
 const KNOWN_COLORS: Record<string, string> = {

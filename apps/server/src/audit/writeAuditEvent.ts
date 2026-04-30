@@ -25,9 +25,30 @@ export type AuditEventType =
   | 'export'
   | 'rename'
   | 'create'
-  | 'delete';
+  | 'delete'
+  // Platform-admin actions. Subject is the resource being modified
+  // (`resourceKind: 'user' | 'org' | 'layout' | ...`); the userId
+  // field on the event is the admin who performed the action.
+  | 'admin_user_patch'
+  | 'admin_user_delete'
+  | 'admin_revoke_sessions'
+  | 'admin_org_delete'
+  | 'admin_layout_delete'
+  | 'admin_global_part_create'
+  | 'admin_global_part_delete'
+  | 'admin_part_library_install'
+  | 'admin_part_library_patch'
+  | 'admin_part_library_update'
+  | 'admin_part_library_delete'
+  | 'org_part_library_toggle';
 
-export type AuditResourceKind = 'layout' | 'custom_part' | 'module' | 'org';
+export type AuditResourceKind =
+  | 'layout'
+  | 'custom_part'
+  | 'module'
+  | 'org'
+  | 'user'
+  | 'part_library';
 
 interface CommonAuditFields {
   /** null for system-driven events (TTL sweep, transfer admin). */
