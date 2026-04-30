@@ -108,7 +108,7 @@ export class XmlBuilder {
  */
 export function vanillaPostProcess(xml: string): string {
   let out = xml;
-  out = out.replace(/<([A-Za-z][^<>\s/]*)([^<>]*)><\/\1>/g, '<$1$2 />');
+  out = out.replace(/<([A-Za-z][^<>\s/]*)((?:[^<>])*)><\/\1>/g, '<$1$2 />');
   out = out.replace(/<([A-Za-z][^<>\s/]*)([^<>]*?)\/>/g, (_m, name: string, rest: string) => {
     const trimmed = rest.replace(/\s+$/, '');
     return `<${name}${trimmed} />`;

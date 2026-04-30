@@ -27,6 +27,30 @@ function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
 }
 
+/**
+ * Assert that a URL is safe to fetch from an outbound server-side request.
+ * Throws if the URL is not https:// or resolves to a private/loopback network.
+ */
+function assertSafeUrl(raw: string): void {
+  let parsed: URL;
+  try { parsed = new URL(raw); } catch { throw new Error('invalid URL'); }
+  if (parsed.protocol !== 'https:') throw new Error('only https:// URLs are allowed');
+  const host = parsed.hostname.toLowerCase();
+  // Block localhost and RFC-1918 / link-local ranges (SSRF guard)
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host.endsWith('.local') ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^169\.254\./.test(host)
+  ) {
+    throw new Error('URL resolves to a private network address');
+  }
+}
+
 interface UserListQuery {
   q?: string;
   limit?: string;
@@ -531,12 +555,16 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Install a new part library. The zip is extracted into
   // `${PARTS_DIR}/libraries/${slug}/` so the bundled parts scanner picks
   // them up. We count XMLs found and store the count in the DB row.
-  app.post<{ Body: InstallLibraryBody }>('/api/admin/part-libraries', async (req, reply) => {
+  app.post<{ Body: InstallLibraryBody }>(
+    '/api/admin/part-libraries',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const body = req.body ?? ({} as InstallLibraryBody);
     const name = body.name?.trim();
     const slugRaw = body.slug?.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
     if (!name || !slugRaw) return reply.code(400).send({ error: 'name and slug required' });
+    if (!/^[a-z0-9-]+$/.test(slugRaw)) return reply.code(400).send({ error: 'invalid_slug' });
 
     // Slug must be unique.
     const existing = await db
@@ -566,9 +594,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     } else if (body.sourceUrl) {
       // Fetch from remote URL and extract.
       const sourceUrl = body.sourceUrl.trim();
-      if (!sourceUrl.startsWith('https://')) {
+      try { assertSafeUrl(sourceUrl); } catch (e) {
         await rm(libDir, { recursive: true, force: true });
-        return reply.code(400).send({ error: 'sourceUrl must use https://' });
+        return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid sourceUrl' });
       }
       try {
         const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
@@ -615,6 +643,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // `source` can be 'official', 'nonlego', or any https:// URL.
   app.get<{ Querystring: { source?: string } }>(
     '/api/admin/part-libraries/search',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       requireGlobalAdmin(req);
       const source = (req.query.source ?? '').trim();
@@ -628,6 +657,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         indexUrl = source.endsWith('/') ? source : source + '/';
       } else {
         return reply.code(400).send({ error: 'invalid source' });
+      }
+
+      // SSRF guard — assertSafeUrl also validates https:// for custom sources.
+      try { assertSafeUrl(indexUrl); } catch (e) {
+        return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid source URL' });
       }
 
       let html: string;
@@ -722,6 +756,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Body: DownloadLibraryBody }>(
     '/api/admin/part-libraries/download',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
       const body = req.body ?? ({} as DownloadLibraryBody);
@@ -732,8 +767,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       if (!name || !slugRaw || !sourceUrl) {
         return reply.code(400).send({ error: 'name, slug and sourceUrl required' });
       }
-      if (!sourceUrl.startsWith('https://') && !sourceUrl.startsWith('http://')) {
-        return reply.code(400).send({ error: 'sourceUrl must be http(s)' });
+      if (!/^[a-z0-9-]+$/.test(slugRaw)) return reply.code(400).send({ error: 'invalid_slug' });
+      try { assertSafeUrl(sourceUrl); } catch (e) {
+        return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid sourceUrl' });
       }
       // Only allow bluebrick.lswproject.com or user-confirmed custom URLs.
       // The slug-conflict check acts as an idempotency guard.
@@ -819,6 +855,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Re-fetch from sourceUrl and replace directory contents in-place.
   app.post<{ Params: { id: string } }>(
     '/api/admin/part-libraries/:id/update',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
       const lib = await db
@@ -828,6 +865,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         .get();
       if (!lib) return reply.code(404).send({ error: 'not_found' });
       if (!lib.sourceUrl) return reply.code(400).send({ error: 'no_source_url' });
+      if (!/^[a-z0-9-]+$/.test(lib.slug)) return reply.code(500).send({ error: 'corrupt_slug' });
+      try { assertSafeUrl(lib.sourceUrl); } catch (e) {
+        return reply.code(500).send({ error: e instanceof Error ? e.message : 'corrupt_source_url' });
+      }
 
       const { env } = await import('../env.js');
       const libDir = resolve(join(env.partsDir, 'libraries', lib.slug));
@@ -873,7 +914,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.delete<{ Params: { id: string } }>('/api/admin/part-libraries/:id', async (req, reply) => {
+  app.delete<{ Params: { id: string } }>(
+    '/api/admin/part-libraries/:id',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const lib = await db
       .select()
@@ -881,6 +925,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.partLibraries.id, req.params.id))
       .get();
     if (!lib) return reply.code(404).send({ error: 'not_found' });
+    if (!/^[a-z0-9-]+$/.test(lib.slug)) return reply.code(500).send({ error: 'corrupt_slug' });
 
     // Remove the library directory from disk.
     const { env } = await import('../env.js');

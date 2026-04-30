@@ -454,8 +454,10 @@ export async function layoutRoutes(app: FastifyInstance) {
   // 10 MB ceiling; accepted types: image/jpeg, image/png, image/gif, image/webp.
   app.post<{ Params: { id: string } }>(
     '/api/layouts/:id/background-image',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
+      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid_id' });
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 
@@ -486,8 +488,10 @@ export async function layoutRoutes(app: FastifyInstance) {
   // ---- background image: serve --------------------------------------------
   app.get<{ Params: { id: string } }>(
     '/api/layouts/:id/background-image',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
+      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid_id' });
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
       if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
@@ -508,8 +512,10 @@ export async function layoutRoutes(app: FastifyInstance) {
   // ---- background image: delete -------------------------------------------
   app.delete<{ Params: { id: string } }>(
     '/api/layouts/:id/background-image',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
+      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid_id' });
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 

@@ -13,7 +13,7 @@ export async function oauthRoutes(app: FastifyInstance) {
   // ---- Google ------------------------------------------------------------
   const googleClient = google;
   if (googleClient) {
-    app.get('/api/auth/google', async (_req, reply) => {
+    app.get('/api/auth/google', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => {
       const state = generateState();
       const codeVerifier = generateCodeVerifier();
       const url = googleClient.createAuthorizationURL(state, codeVerifier, [
@@ -45,7 +45,7 @@ export async function oauthRoutes(app: FastifyInstance) {
   // ---- GitHub ------------------------------------------------------------
   const githubClient = github;
   if (githubClient) {
-    app.get('/api/auth/github', async (_req, reply) => {
+    app.get('/api/auth/github', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => {
       const state = generateState();
       const url = githubClient.createAuthorizationURL(state, ['read:user', 'user:email']);
       setStateCookies(reply, state, '');

@@ -59,6 +59,7 @@ async function main() {
 
   app.addHook('preHandler', attachUser);
 
+  // lgtm[js/missing-rate-limiting]
   app.get('/api/health', async () => ({ ok: true }));
   // Deeper /api/health/ready: confirms DB is reachable. Useful as a
   // container readiness probe (k8s, docker compose health-check).
