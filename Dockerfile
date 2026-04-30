@@ -43,9 +43,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tini ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade npm to pull in patched brace-expansion and picomatch (CVE-2026-33750, CVE-2026-33671/2)
-RUN npm install -g npm@latest
-
 RUN corepack enable && corepack prepare pnpm@10 --activate
 
 COPY --from=builder /app/pnpm-workspace.yaml /app/package.json ./
@@ -56,7 +53,10 @@ COPY --from=builder /app/packages/bbm/package.json          ./packages/bbm/
 COPY --from=builder /app/packages/ydoc/package.json         ./packages/ydoc/
 COPY --from=builder /app/packages/parts-catalog/package.json ./packages/parts-catalog/
 
-RUN pnpm install --prod --frozen-lockfile=false --ignore-scripts
+RUN pnpm install --prod --frozen-lockfile=false --ignore-scripts \
+ && corepack disable \
+ && npm uninstall -g corepack \
+ && rm -rf /root/.local/share/pnpm /root/.cache/node/corepack
 
 COPY --from=builder /app/apps/server/dist        ./apps/server/dist
 COPY --from=builder /app/apps/server/migrations  ./apps/server/migrations
@@ -69,4 +69,4 @@ COPY --from=builder /app/packages/parts-catalog/src ./packages/parts-catalog/src
 EXPOSE 3000
 WORKDIR /app/apps/server
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["pnpm", "start"]
+CMD ["node", "dist/index.js"]

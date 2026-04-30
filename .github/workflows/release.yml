@@ -56,6 +56,7 @@ jobs:
           severity: CRITICAL
           exit-code: '1'
           ignore-unfixed: true
+          skip-dirs: /root/.local/share/pnpm,/home/runner/.local/share/pnpm
 
   release:
     name: Create GitHub Release
