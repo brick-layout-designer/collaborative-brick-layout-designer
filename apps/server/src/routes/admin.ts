@@ -31,7 +31,7 @@ function safeParse(json: string): unknown {
  * Assert that a URL is safe to fetch from an outbound server-side request.
  * Throws if the URL is not https:// or resolves to a private/loopback network.
  */
-function assertSafeUrl(raw: string): void {
+function assertSafeUrl(raw: string): string {
   let parsed: URL;
   try { parsed = new URL(raw); } catch { throw new Error('invalid URL'); }
   if (parsed.protocol !== 'https:') throw new Error('only https:// URLs are allowed');
@@ -49,6 +49,7 @@ function assertSafeUrl(raw: string): void {
   ) {
     throw new Error('URL resolves to a private network address');
   }
+  return parsed.href;
 }
 
 interface UserListQuery {
@@ -564,19 +565,20 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const name = body.name?.trim();
     const slugRaw = body.slug?.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
     if (!name || !slugRaw) return reply.code(400).send({ error: 'name and slug required' });
-    if (!/^[a-z0-9-]+$/.test(slugRaw)) return reply.code(400).send({ error: 'invalid_slug' });
+    const slug = /^([a-z0-9-]+)$/.exec(slugRaw)?.[1];
+    if (!slug) return reply.code(400).send({ error: 'invalid_slug' });
 
     // Slug must be unique.
     const existing = await db
       .select({ id: schema.partLibraries.id })
       .from(schema.partLibraries)
-      .where(eq(schema.partLibraries.slug, slugRaw))
+      .where(eq(schema.partLibraries.slug, slug))
       .get();
     if (existing) return reply.code(409).send({ error: 'slug_conflict' });
 
     // Resolve library directory.
     const { env } = await import('../env.js');
-    const libDir = resolve(join(env.partsDir, 'libraries', slugRaw));
+    const libDir = resolve(join(env.partsDir, 'libraries', slug));
     await mkdir(libDir, { recursive: true });
 
     let partCount = 0;
@@ -593,13 +595,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       }
     } else if (body.sourceUrl) {
       // Fetch from remote URL and extract.
-      const sourceUrl = body.sourceUrl.trim();
-      try { assertSafeUrl(sourceUrl); } catch (e) {
+      let safeSourceUrl: string;
+      try { safeSourceUrl = assertSafeUrl(body.sourceUrl.trim()); } catch (e) {
         await rm(libDir, { recursive: true, force: true });
         return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid sourceUrl' });
       }
       try {
-        const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
+        const res = await fetch(safeSourceUrl, { signal: AbortSignal.timeout(120_000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB limit');
@@ -621,7 +623,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     await db.insert(schema.partLibraries).values({
       id,
       name,
-      slug: slugRaw,
+      slug,
       sourceUrl: body.sourceUrl ?? null,
       partCount,
       defaultEnabled: body.defaultEnabled ?? false,
@@ -633,9 +635,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       resourceId: id,
       userId: me.id,
       eventType: 'admin_part_library_install',
-      payload: { name, slug: slugRaw, partCount, sourceUrl: body.sourceUrl ?? null },
+      payload: { name, slug, partCount, sourceUrl: body.sourceUrl ?? null },
     });
-    return reply.code(201).send({ id, slug: slugRaw, partCount });
+    return reply.code(201).send({ id, slug, partCount });
   });
 
   // Search BlueBrick download-center sources for available packages.
@@ -660,13 +662,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // SSRF guard — assertSafeUrl also validates https:// for custom sources.
-      try { assertSafeUrl(indexUrl); } catch (e) {
+      let safeIndexUrl: string;
+      try { safeIndexUrl = assertSafeUrl(indexUrl); } catch (e) {
         return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid source URL' });
       }
 
       let html: string;
       try {
-        const res = await fetch(indexUrl, {
+        const res = await fetch(safeIndexUrl, {
           headers: {
             'User-Agent':
               'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
@@ -767,8 +770,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       if (!name || !slugRaw || !sourceUrl) {
         return reply.code(400).send({ error: 'name, slug and sourceUrl required' });
       }
-      if (!/^[a-z0-9-]+$/.test(slugRaw)) return reply.code(400).send({ error: 'invalid_slug' });
-      try { assertSafeUrl(sourceUrl); } catch (e) {
+      const dlSlug = /^([a-z0-9-]+)$/.exec(slugRaw)?.[1];
+      if (!dlSlug) return reply.code(400).send({ error: 'invalid_slug' });
+      let safeSourceUrl2: string;
+      try { safeSourceUrl2 = assertSafeUrl(sourceUrl); } catch (e) {
         return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid sourceUrl' });
       }
       // Only allow bluebrick.lswproject.com or user-confirmed custom URLs.
@@ -776,16 +781,16 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       const existing = await db
         .select({ id: schema.partLibraries.id })
         .from(schema.partLibraries)
-        .where(eq(schema.partLibraries.slug, slugRaw))
+        .where(eq(schema.partLibraries.slug, dlSlug))
         .get();
       if (existing) return reply.code(409).send({ error: 'slug_conflict' });
 
       const { env } = await import('../env.js');
-      const libDir = resolve(join(env.partsDir, 'libraries', slugRaw));
+      const libDir = resolve(join(env.partsDir, 'libraries', dlSlug));
       await mkdir(libDir, { recursive: true });
 
       try {
-        const res = await fetch(sourceUrl, {
+        const res = await fetch(safeSourceUrl2, {
           headers: {
             'User-Agent':
               'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
@@ -807,8 +812,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       await db.insert(schema.partLibraries).values({
         id,
         name,
-        slug: slugRaw,
-        sourceUrl,
+        slug: dlSlug,
+        sourceUrl: safeSourceUrl2,
         partCount,
         defaultEnabled: body.defaultEnabled ?? false,
         installedAt: now,
@@ -819,9 +824,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         resourceId: id,
         userId: me.id,
         eventType: 'admin_part_library_install',
-        payload: { name, slug: slugRaw, partCount, sourceUrl },
+        payload: { name, slug: dlSlug, partCount, sourceUrl: safeSourceUrl2 },
       });
-      return reply.code(201).send({ id, slug: slugRaw, partCount });
+      return reply.code(201).send({ id, slug: dlSlug, partCount });
     },
   );
 
@@ -865,13 +870,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         .get();
       if (!lib) return reply.code(404).send({ error: 'not_found' });
       if (!lib.sourceUrl) return reply.code(400).send({ error: 'no_source_url' });
-      if (!/^[a-z0-9-]+$/.test(lib.slug)) return reply.code(500).send({ error: 'corrupt_slug' });
-      try { assertSafeUrl(lib.sourceUrl); } catch (e) {
+      const safeSlug = /^([a-z0-9-]+)$/.exec(lib.slug)?.[1];
+      if (!safeSlug) return reply.code(500).send({ error: 'corrupt_slug' });
+      let safeLibUrl: string;
+      try { safeLibUrl = assertSafeUrl(lib.sourceUrl); } catch (e) {
         return reply.code(500).send({ error: e instanceof Error ? e.message : 'corrupt_source_url' });
       }
 
       const { env } = await import('../env.js');
-      const libDir = resolve(join(env.partsDir, 'libraries', lib.slug));
+      const libDir = resolve(join(env.partsDir, 'libraries', safeSlug));
 
       // Download into a temp sibling dir, swap on success.
       const tmpDir = libDir + '.tmp_update';
@@ -879,7 +886,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       await mkdir(tmpDir, { recursive: true });
 
       try {
-        const res = await fetch(lib.sourceUrl, { signal: AbortSignal.timeout(120_000) });
+        const res = await fetch(safeLibUrl, { signal: AbortSignal.timeout(120_000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB limit');
@@ -925,11 +932,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.partLibraries.id, req.params.id))
       .get();
     if (!lib) return reply.code(404).send({ error: 'not_found' });
-    if (!/^[a-z0-9-]+$/.test(lib.slug)) return reply.code(500).send({ error: 'corrupt_slug' });
+    const delSlug = /^([a-z0-9-]+)$/.exec(lib.slug)?.[1];
+    if (!delSlug) return reply.code(500).send({ error: 'corrupt_slug' });
 
     // Remove the library directory from disk.
     const { env } = await import('../env.js');
-    const libDir = resolve(join(env.partsDir, 'libraries', lib.slug));
+    const libDir = resolve(join(env.partsDir, 'libraries', delSlug));
     await rm(libDir, { recursive: true, force: true });
 
     await db.delete(schema.partLibraries).where(eq(schema.partLibraries.id, lib.id));

@@ -939,9 +939,9 @@ function Canvas({
       setDropPart(null);
 
       // Module drop — fetch snapshot and insert bricks.
-      const moduleId = dt?.getData(MODULE_MIME);
+      const moduleIdRaw = dt?.getData(MODULE_MIME);
+      const moduleId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(moduleIdRaw ?? '')?.[1];
       if (moduleId) {
-        if (!/^[0-9a-f-]{36}$/.test(moduleId)) return;
         const layerId = activeLayerId ?? ensureBrickLayer(doc);
         void (async () => {
           try {

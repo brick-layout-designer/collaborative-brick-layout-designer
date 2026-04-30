@@ -25,7 +25,7 @@ export async function oauthRoutes(app: FastifyInstance) {
       return reply.redirect(url.toString());
     });
 
-    app.get('/api/auth/google/callback', async (req, reply) => {
+    app.get('/api/auth/google/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
       const params = req.query as { code?: string; state?: string };
       const stored = readStateCookies(req);
       if (!params.code || !params.state || !stored.state || params.state !== stored.state) {
@@ -52,7 +52,7 @@ export async function oauthRoutes(app: FastifyInstance) {
       return reply.redirect(url.toString());
     });
 
-    app.get('/api/auth/github/callback', async (req, reply) => {
+    app.get('/api/auth/github/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
       const params = req.query as { code?: string; state?: string };
       const stored = readStateCookies(req);
       if (!params.code || !params.state || !stored.state || params.state !== stored.state) {

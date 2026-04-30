@@ -59,11 +59,10 @@ async function main() {
 
   app.addHook('preHandler', attachUser);
 
-  // lgtm[js/missing-rate-limiting]
-  app.get('/api/health', async () => ({ ok: true }));
+  app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
   // Deeper /api/health/ready: confirms DB is reachable. Useful as a
   // container readiness probe (k8s, docker compose health-check).
-  app.get('/api/health/ready', async (_req, reply) => {
+  app.get('/api/health/ready', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (_req, reply) => {
     try {
       // Cheap query that exercises the SQLite connection.
       const { sqlite } = await import('./db/index.js');

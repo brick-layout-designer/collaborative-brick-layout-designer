@@ -457,8 +457,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid_id' });
-      const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      const layoutId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(req.params.id)?.[1];
+      if (!layoutId) return reply.code(400).send({ error: 'invalid_id' });
+      const role = await resolveResourceRole(user.id, 'layout', layoutId);
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 
       const data = await req.file({ limits: { fileSize: 10 * 1024 * 1024 } });
@@ -477,10 +478,10 @@ export async function layoutRoutes(app: FastifyInstance) {
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
       await mkdir(bgDir, { recursive: true });
-      const filename = `${req.params.id}.${ext}`;
+      const filename = `${layoutId}.${ext}`;
       const dest = join(bgDir, filename);
       await pipeline(data.file, createWriteStream(dest));
-      const url = `/api/layouts/${req.params.id}/background-image`;
+      const url = `/api/layouts/${layoutId}/background-image`;
       return { url };
     },
   );
@@ -491,13 +492,14 @@ export async function layoutRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid_id' });
-      const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      const layoutId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(req.params.id)?.[1];
+      if (!layoutId) return reply.code(400).send({ error: 'invalid_id' });
+      const role = await resolveResourceRole(user.id, 'layout', layoutId);
       if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
       for (const ext of ['png', 'jpg', 'gif', 'webp']) {
-        const p = join(bgDir, `${req.params.id}.${ext}`);
+        const p = join(bgDir, `${layoutId}.${ext}`);
         if (existsSync(p)) {
           const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
           reply.header('Content-Type', mime);
@@ -515,13 +517,14 @@ export async function layoutRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid_id' });
-      const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      const layoutId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(req.params.id)?.[1];
+      if (!layoutId) return reply.code(400).send({ error: 'invalid_id' });
+      const role = await resolveResourceRole(user.id, 'layout', layoutId);
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
       for (const ext of ['png', 'jpg', 'gif', 'webp']) {
-        const p = join(bgDir, `${req.params.id}.${ext}`);
+        const p = join(bgDir, `${layoutId}.${ext}`);
         if (existsSync(p)) { await unlink(p); break; }
       }
       return { ok: true };
