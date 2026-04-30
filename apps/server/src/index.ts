@@ -59,10 +59,12 @@ async function main() {
 
   app.addHook('preHandler', attachUser);
 
-  app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true })); // codeql[js/missing-rate-limiting]
+  // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+  app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
   // Deeper /api/health/ready: confirms DB is reachable. Useful as a
   // container readiness probe (k8s, docker compose health-check).
-  app.get('/api/health/ready', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (_req, reply) => { // codeql[js/missing-rate-limiting]
+  // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+  app.get('/api/health/ready', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (_req, reply) => {
     try {
       // Cheap query that exercises the SQLite connection.
       const { sqlite } = await import('./db/index.js');

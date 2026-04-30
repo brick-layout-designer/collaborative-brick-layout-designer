@@ -10,8 +10,10 @@ import { resetDb } from './test/helpers.js';
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify();
   await app.register(cookie);
-  app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true })); // codeql[js/missing-rate-limiting]
-  app.get('/api/health/ready', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (_req, reply) => { // codeql[js/missing-rate-limiting]
+  // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+  app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
+  // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+  app.get('/api/health/ready', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (_req, reply) => {
     try {
       const { sqlite } = await import('./db/index.js');
       const row = sqlite.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined;

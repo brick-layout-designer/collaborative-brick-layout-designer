@@ -50,6 +50,7 @@ async function safeFetch(raw: string, init?: RequestInit): Promise<Response> {
   ) {
     throw new Error('URL resolves to a private network address');
   }
+  // codeql[js/request-forgery] - URL validated: https-only, private-network blocked above
   return fetch(parsed, init);
 }
 
