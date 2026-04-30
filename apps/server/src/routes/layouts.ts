@@ -452,7 +452,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // Editor-role required. Stores the uploaded image as a file under
   // `<data>/bgimages/<layoutId>.<ext>`. Returns the serve URL.
   // 10 MB ceiling; accepted types: image/jpeg, image/png, image/gif, image/webp.
-  app.post<{ Params: { id: string } }>(
+  app.post<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/layouts/:id/background-image',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
@@ -487,7 +487,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   );
 
   // ---- background image: serve --------------------------------------------
-  app.get<{ Params: { id: string } }>(
+  app.get<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/layouts/:id/background-image',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
@@ -512,7 +512,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   );
 
   // ---- background image: delete -------------------------------------------
-  app.delete<{ Params: { id: string } }>(
+  app.delete<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/layouts/:id/background-image',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {

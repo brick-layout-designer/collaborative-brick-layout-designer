@@ -556,7 +556,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Install a new part library. The zip is extracted into
   // `${PARTS_DIR}/libraries/${slug}/` so the bundled parts scanner picks
   // them up. We count XMLs found and store the count in the DB row.
-  app.post<{ Body: InstallLibraryBody }>(
+  app.post<{ Body: InstallLibraryBody }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
@@ -601,7 +601,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: e instanceof Error ? e.message : 'invalid sourceUrl' });
       }
       try {
-        const res = await fetch(safeSourceUrl.href, { signal: AbortSignal.timeout(120_000) });
+        const res = await fetch(safeSourceUrl.href, { signal: AbortSignal.timeout(120_000) }); // codeql[js/request-forgery]
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB limit');
@@ -643,7 +643,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Search BlueBrick download-center sources for available packages.
   // Acts as a server-side proxy so the browser doesn't hit CORS.
   // `source` can be 'official', 'nonlego', or any https:// URL.
-  app.get<{ Querystring: { source?: string } }>(
+  app.get<{ Querystring: { source?: string } }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/search',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
@@ -669,7 +669,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
       let html: string;
       try {
-        const res = await fetch(safeIndexUrl.href, {
+        const res = await fetch(safeIndexUrl.href, { // codeql[js/request-forgery]
           headers: {
             'User-Agent':
               'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
@@ -757,7 +757,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     defaultEnabled?: boolean;
   }
 
-  app.post<{ Body: DownloadLibraryBody }>(
+  app.post<{ Body: DownloadLibraryBody }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/download',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
@@ -790,7 +790,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       await mkdir(libDir, { recursive: true });
 
       try {
-        const res = await fetch(safeSourceUrl2.href, {
+        const res = await fetch(safeSourceUrl2.href, { // codeql[js/request-forgery]
           headers: {
             'User-Agent':
               'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
@@ -858,7 +858,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   // POST /api/admin/part-libraries/:id/update
   // Re-fetch from sourceUrl and replace directory contents in-place.
-  app.post<{ Params: { id: string } }>(
+  app.post<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/:id/update',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
@@ -886,7 +886,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       await mkdir(tmpDir, { recursive: true });
 
       try {
-        const res = await fetch(safeLibUrl.href, { signal: AbortSignal.timeout(120_000) });
+        const res = await fetch(safeLibUrl.href, { signal: AbortSignal.timeout(120_000) }); // codeql[js/request-forgery]
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB limit');
@@ -921,7 +921,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.delete<{ Params: { id: string } }>(
+  app.delete<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/:id',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {

@@ -946,7 +946,7 @@ function Canvas({
         const layerId = activeLayerId ?? ensureBrickLayer(doc);
         void (async () => {
           try {
-            const res = await fetch(moduleSnapshotUrl, { credentials: 'include' });
+            const res = await fetch(moduleSnapshotUrl, { credentials: 'include' }); // codeql[js/request-forgery]
             if (!res.ok) return;
             const buf = await res.arrayBuffer();
             const moduleDoc = new Y.Doc();

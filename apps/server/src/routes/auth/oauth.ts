@@ -13,7 +13,7 @@ export async function oauthRoutes(app: FastifyInstance) {
   // ---- Google ------------------------------------------------------------
   const googleClient = google;
   if (googleClient) {
-    app.get('/api/auth/google', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => {
+    app.get('/api/auth/google', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => { // codeql[js/missing-rate-limiting]
       const state = generateState();
       const codeVerifier = generateCodeVerifier();
       const url = googleClient.createAuthorizationURL(state, codeVerifier, [
@@ -25,7 +25,7 @@ export async function oauthRoutes(app: FastifyInstance) {
       return reply.redirect(url.toString());
     });
 
-    app.get('/api/auth/google/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    app.get('/api/auth/google/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => { // codeql[js/missing-rate-limiting]
       const params = req.query as { code?: string; state?: string };
       const stored = readStateCookies(req);
       if (!params.code || !params.state || !stored.state || params.state !== stored.state) {
@@ -45,14 +45,14 @@ export async function oauthRoutes(app: FastifyInstance) {
   // ---- GitHub ------------------------------------------------------------
   const githubClient = github;
   if (githubClient) {
-    app.get('/api/auth/github', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => {
+    app.get('/api/auth/github', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => { // codeql[js/missing-rate-limiting]
       const state = generateState();
       const url = githubClient.createAuthorizationURL(state, ['read:user', 'user:email']);
       setStateCookies(reply, state, '');
       return reply.redirect(url.toString());
     });
 
-    app.get('/api/auth/github/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    app.get('/api/auth/github/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => { // codeql[js/missing-rate-limiting]
       const params = req.query as { code?: string; state?: string };
       const stored = readStateCookies(req);
       if (!params.code || !params.state || !stored.state || params.state !== stored.state) {
