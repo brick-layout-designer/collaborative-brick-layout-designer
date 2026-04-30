@@ -43,6 +43,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tini ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade npm to pull in patched brace-expansion and picomatch (CVE-2026-33750, CVE-2026-33671/2)
+RUN npm install -g npm@latest
+
 RUN corepack enable && corepack prepare pnpm@10 --activate
 
 COPY --from=builder /app/pnpm-workspace.yaml /app/package.json ./
