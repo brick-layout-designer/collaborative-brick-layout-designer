@@ -942,10 +942,11 @@ function Canvas({
       const moduleIdRaw = dt?.getData(MODULE_MIME);
       const moduleId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(moduleIdRaw ?? '')?.[1];
       if (moduleId) {
+        const moduleSnapshotUrl = new URL(`/api/modules/${moduleId}/snapshot`, window.location.origin);
         const layerId = activeLayerId ?? ensureBrickLayer(doc);
         void (async () => {
           try {
-            const res = await fetch(`/api/modules/${moduleId}/snapshot`, { credentials: 'include' });
+            const res = await fetch(moduleSnapshotUrl, { credentials: 'include' });
             if (!res.ok) return;
             const buf = await res.arrayBuffer();
             const moduleDoc = new Y.Doc();
