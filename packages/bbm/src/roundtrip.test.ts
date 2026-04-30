@@ -9,7 +9,7 @@ const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../tests/fixt
 
 const FIXTURE_FILES = ['tight-corner.bbm', 'fordyce-2026.bbm'];
 
-describe('round-trip against vendored corpus', () => {
+describe('round-trip against vendored sample files', () => {
   for (const file of FIXTURE_FILES) {
     describe(file, () => {
       const original = readFileSync(resolve(FIXTURES, file), 'utf8');
@@ -31,7 +31,11 @@ describe('round-trip against vendored corpus', () => {
         // re-saves a file. When ruler items are ported we can flip this on.
         const written = writeBbm(parsed.map, { recomputeNbItems: false });
         const reparsed = readBbm(written);
-        expect(reparsed.map).toEqual(parsed.map);
+        // Ruler items get a fresh in-memory `id` on every read — desktop
+        // does the same (`<LinearRuler>` / `<CircularRuler>` XML has no
+        // id attribute upstream, so the guid is minted at parse time).
+        // Strip the ids before comparing so equality is semantic.
+        expect(stripRulerIds(reparsed.map)).toEqual(stripRulerIds(parsed.map));
       });
 
       it('output uses CRLF line endings', () => {
@@ -53,3 +57,17 @@ describe('round-trip against vendored corpus', () => {
     });
   }
 });
+
+function stripRulerIds(map: ReturnType<typeof readBbm>['map']): ReturnType<typeof readBbm>['map'] {
+  return {
+    ...map,
+    layers: map.layers.map((layer) =>
+      layer.type === 'ruler'
+        ? {
+            ...layer,
+            rulerItems: layer.rulerItems.map(({ id: _id, ...rest }) => rest),
+          }
+        : layer,
+    ),
+  } as ReturnType<typeof readBbm>['map'];
+}

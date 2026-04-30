@@ -71,17 +71,18 @@ multi-user editing, organizations, and layout sharing. Self-hosted via
 - **Sharp** for any server-side image work (.bbm GIFs, sprite generation if needed)
 
 ### Infrastructure
-- Single-container `docker-compose.yml`: just `web` (Fastify serves the SPA,
-  the API, the WebSocket, and `/parts/*` from disk; SQLite file on a docker
-  volume). No bundled nginx — operators put their own reverse proxy in front
-  for TLS (Caddy / Traefik / Cloudflare Tunnel / nginx / whatever they
-  already run).
-- Docker volumes for SQLite data and backup output; bind-mount of the
-  `parts-library/` submodule into the container at `/parts` (read-only).
-- Env-driven config; no secrets in compose file.
+- Single `Dockerfile` (no `docker-compose.yml` — operators bring their own
+  compose or run `docker run` directly). Fastify serves the SPA, the API,
+  the WebSocket, and `/parts/*` from disk; SQLite file on a docker volume.
+  No bundled nginx — operators put their own reverse proxy in front for TLS
+  (Caddy / Traefik / Cloudflare Tunnel / nginx / whatever they already run).
+- Docker volumes for SQLite data, parts library, and backup output.
+- Parts library is downloaded and managed via Admin → Libraries on first
+  deploy — no submodule, no bind mount, no host-side git checkout required.
+- Env-driven config; secrets passed via environment variables.
 
 ### Parts library
-- **BlueBrickParts** (727 XMLs + 670 GIFs, ~26 MB) is added as a **git submodule**
+- **BlueBrickParts** is downloaded at runtime via Admin → Libraries (one-click install).
   pointing at the same upstream the desktop uses. Guarantees part IDs match
   desktop 1:1 and the library is version-pinned with the rest of the source.
 - Bind-mounted read-only into the web container; Fastify serves it at
@@ -425,15 +426,12 @@ The transfer endpoint:
 └──────────────────────────────────────────┘
 ```
 
-One service in `docker-compose.yml`. Volumes:
-- `/data` — SQLite file (named volume `cld-data`)
-- `/backups` — backup output (named volume `cld-backups`)
-- `/parts` — read-only bind mount of the `parts-library/` submodule
+Single image (`Dockerfile`). Recommended volumes:
+- `/data` — SQLite file + downloaded parts library
+- `/backups` — backup output
 
 Operators front this container with whatever reverse proxy they already use
-for TLS. We don't ship nginx in compose because we'd just be duplicating
-work for anyone who's already running Caddy / Traefik / a homelab reverse
-proxy.
+for TLS. No `docker-compose.yml` is shipped — operators bring their own.
 
 ### 4.2 Realtime data flow
 
@@ -564,17 +562,15 @@ Mirror the LU-Rebuilt project layout under `.github/workflows/`:
     `docker buildx`.
   - Tag and push to GHCR as `ghcr.io/<owner>/cld-web:nightly` and
     `:sha-<short>`.
-  - Upload `docker-compose.yml` + `.env.example` as release assets on a
-    rolling pre-release tagged `latest` (matches the LU-Rebuilt nightly
-    pattern: `softprops/action-gh-release@v2` with `prerelease: true`,
-    `make_latest: false`).
+  - Upload `.env.example` as a release asset on a rolling pre-release tagged
+    `latest` (matches the LU-Rebuilt nightly pattern: `softprops/action-gh-release@v2`
+    with `prerelease: true`, `make_latest: false`).
 - **`release.yml`** — runs on `v*` tag pushes:
   - Same multi-arch image build, tagged `:vX.Y.Z` and `:latest` on GHCR.
   - Auto-generated release notes grouped by Conventional Commits type
     (Features / Bug Fixes / Performance / Documentation / Build & CI /
     Other) — same script as LU-Rebuilt's `fdb-tools/release.yml`.
-  - Attach `docker-compose.yml` + `.env.example` template to the GitHub
-    Release.
+  - Attach `.env.example` template to the GitHub Release.
 
 Conventional Commits is enforced by `ci.yml`'s `commit-lint` job; the same
 regex is reused by `release.yml` to group commits in the auto-generated
@@ -661,8 +657,6 @@ cld-web/
 │   ├── model/                  # shared TS types: Brick, Layer, etc.
 │   ├── ydoc/                   # Yjs doc shape + helpers (createDoc, applyBbm)
 │   └── parts-library-meta/     # static metadata about the bundled library
-├── parts-library/              # vendored BlueBrickParts (gitignored binary,
-│                               # populated by submodule or fetch script)
 ├── .github/
 │   ├── dependabot.yml          # weekly PRs: npm + actions + docker
 │   └── workflows/
@@ -674,8 +668,7 @@ cld-web/
 ├── lefthook.yml                # local pre-commit / commit-msg / pre-push
 ├── .gitleaks.toml              # secret-scan allowlist
 ├── SECURITY.md                 # vuln reporting + scan policy
-├── docker-compose.yml          # single web service, no bundled proxy
-├── Dockerfile.web              # multi-stage: build SPA + Node bundle
+├── Dockerfile                  # multi-stage: build SPA + Node bundle
 ├── .env.example                # template — operators copy to .env
 ├── pnpm-workspace.yaml
 └── README.md
@@ -689,7 +682,7 @@ stack from scratch.
 ### Phase 1 — Skeleton + Auth (1.5 weeks)
 
 - Repo scaffold, monorepo, `pnpm-workspace.yaml`
-- `git submodule add` BlueBrickParts so the parts library is available
+- Install BlueBrickParts via Admin → Libraries so the parts library is available
 - `.github/workflows/ci.yml` — conventional-commits lint, build, test,
   dependency review, OSV-Scanner on PRs
 - `.github/workflows/nightly.yml` + `release.yml` — Docker image build &
@@ -729,114 +722,344 @@ re-export to `.bbm`, byte-compare with input.
 
 ### Phase 3 — Canvas editor (2 weeks)
 
-- Konva-based map view: grid, layers, brick rendering
-- Parts panel: lazy-load thumbnails from `/parts/*`
-- Tools: select, place, drag, rotate, delete (the core 5)
-- Layer panel
-- Per-user undo/redo via `Y.UndoManager`
-- Connectivity recompute on the client (port from desktop)
+**Shipped (commits `4de0b70` + `2b30dad` + this milestone):**
+- Yjs ↔ BbmMap projection (`@cld/ydoc/projection`) — full layer/brick
+  tree, round-trips losslessly through binary y-update
+- Snapshot REST: `GET/PUT /api/layouts/:id/snapshot` (octet-stream),
+  with existence-leak fix (404 for non-collaborators, 403 for
+  insufficient role) applied across PATCH / DELETE / PUT
+- Konva-based map view: GridLayer (major + sub grid, ColorSpec → CSS
+  table), BrickLayer (Konva.Image with sprite cache + fallback rect)
+- Parts panel: catalog grouped by sortingKey, thumbnails from
+  `/parts/<spritePath>`, search, collapsed-by-default buckets
+- Tools: select / place / drag / rotate (Q/E ±15°, integer-snapped) /
+  delete (Del/Backspace), tagged with `LOCAL_ORIGIN` for undo scoping
+- Marquee selection (axis-aligned overlap, supports inverted drags)
+- Place-tool ghost preview (faded sprite at cursor)
+- Multi-select drag (single Yjs transaction translates every selected
+  brick by the same delta)
+- Per-user undo/redo via `Y.UndoManager` with `trackedOrigins =
+  Set([LOCAL_ORIGIN])`. Cmd-Z / Cmd-Shift-Z, captureTimeout 200ms.
+- Connectivity recompute (desktop's O(N) bucketing port) wired into
+  the editor, debounced 250ms after each LOCAL_ORIGIN edit, with
+  connection-point coords now shipped on `/api/parts/catalog`
+- Save UX: 2s debounced auto-save + explicit Save button + Cmd-S
+- Sprite-aware brick sizing on Place: `naturalSize / pxPerStud`
 
-**Shippable:** single-user editing in the browser, with undo/redo and save.
+**Deferred to a follow-up phase (see SESSION_NOTES.md):**
+- Layer panel (add / hide / reorder layers)
+- Copy/paste, group/ungroup
+- Place-time snap-to-connection-point hint
+- Connection-point markers visualisation
+
+**Shippable:** single-user editing in the browser, with undo/redo,
+auto-save, real `.bbm` sprites, and connectivity recompute.
 
 ### Phase 4 — Realtime collab + presence (1.5 weeks)
 
-- y-websocket server in-process with Fastify
-- Yjs doc hydration from snapshot + replay; eviction on idle
-- Snapshot worker (background, per active doc)
-- Awareness: cursors, selection outlines, presence panel
-- Connection state UI (reconnecting, offline)
+**Shipped:**
+- WebSocket endpoint `GET /ws/layout/:id` with session-cookie auth +
+  per-layout role check (`hasAtLeast(role, 'viewer')`). Per-user 8-WS
+  cap to prevent fork-bombs.
+- `apps/server/src/ws/docHub.ts` — hub of `DocSession` instances:
+  - hydrate from `layouts.docSnapshot` + replay any unflushed
+    `layout_updates` rows
+  - persist every accepted update by appending to `layout_updates`
+  - flush snapshot worker (every 30s of activity, or on last-client
+    detach) — writes a fresh `docSnapshot`, bumps `docVersion`,
+    truncates the consumed updates. Crash-safe ordering.
+  - 60s grace before evicting an idle session
+- `apps/server/src/ws/handler.ts` — y-websocket protocol over the WS
+  connection. Sync (step 1/2 + ongoing updates) and awareness messages
+  routed via `y-protocols/sync` + `y-protocols/awareness`.
+- Web `useLayoutDoc` rewritten as a thin `y-websocket` provider shim.
+  Replaces the Phase-3 snapshot REST. Status states: `connecting` /
+  `synced` / `reconnecting` / `offline` / `error`.
+- Awareness publish (`usePublishAwareness`): cursor (in stud coords),
+  selection, current tool, identity (id, displayName, avatarUrl,
+  colour), `lastActivityMs` for idle dot. Colour is deterministic per
+  `(userId, layoutId)`.
+- Awareness render: `RemoteCursors` Konva layer (peer cursor + name
+  pill + selection outlines), `PresencePanel` header strip with
+  per-user dot (5min idle threshold).
+- Cursor events broadcast via a global `cld-cursor-move` event so the
+  publish layer doesn't have to thread cursor state through React.
+- Server start switched to `tsx src/index.ts` so the workspace `.ts`
+  imports work without a pre-build step. Dockerfile updated to
+  `pnpm start`.
+
+**Tests:** +9 across the workspace (5 docHub + 4 awareness).
 
 **Shippable:** two browser tabs editing the same map see each other in
 real time. Cursor collisions don't corrupt state. One tab offline keeps
-editing locally, syncs on reconnect.
+editing locally, syncs on reconnect (Yjs CRDT property).
+
+**Not yet smoke-tested manually:** two-tab side-by-side. The Yjs
+plumbing is symmetric, but the only thing exercising the full WS round
+trip in CI is the docHub unit tests. SESSION_NOTES.md has a "smoke
+test" recipe for the next session to validate.
 
 ### Phase 5 — Sharing + invites (1.5 weeks)
 
-- Layout-collaborator UI: add/remove, change role
-- Invite flow: enter email → token row in `layout_invites` → return a
-  shareable link AND, if SMTP is configured, send an email
-- Recipient flow: link → sign in (any provider) or register → invite
-  consumed → layout appears in their list
-- Access enforcement: REST + WS reject if role insufficient
-- Per-role UI: viewers can't drag, editors can edit but not share, owners
-  can do everything
-- `audit_events` rows written for `share`, `unshare`, `role_change`
-- Demo-account restriction enforced: demo accounts get 403 on invite endpoint
+**Shipped:**
+- Server: collaborator CRUD endpoints
+  (`GET /api/layouts/:id/collaborators`, owner-only PATCH/DELETE for
+  role change + remove). `userId === self.id` is allowed without owner
+  role for self-removal.
+- Server: invite endpoints
+  (`POST /api/layouts/:id/invites`, `DELETE /api/layouts/:id/invites/:inviteId`,
+  `GET /api/invites/:token` for preview, `POST /api/invites/:token` to
+  accept). Email-match check on accept (case-insensitive). 410 on
+  expired or already-accepted invites. 409 on inviting an email already
+  with access.
+- Server: SMTP integration via Nodemailer (best-effort, gated on
+  `SMTP_*` env vars; the inviter always gets the URL in the API
+  response so a missing/failed SMTP doesn't break the flow).
+- Server: WS-side viewer enforcement — viewers receive sync state on
+  attach but the server drops every sync MESSAGE they send, so a
+  hostile viewer can't propose edits. Awareness is still bidirectional
+  (cosmetic).
+- Server: `audit_events` writes for `share`, `unshare`,
+  `role_change`. Per-layout history available via the table; a
+  read-side endpoint lands in Phase 7's audit-log viewer.
+- Server: demo-account check on invite endpoint (`isDemoAccount` →
+  403 `demo_account_cannot_invite`).
+- Web: `ShareDialog` modal (collaborator list, role dropdown, remove,
+  invite-by-email with copy-link fallback).
+- Web: `/invite/:token` landing page — preview the invite, redirect
+  to login if not signed in, auto-accept on arrival when the email
+  matches, redirect to the editor on accept.
+- Web: per-role UI gating in the editor — viewers get a "View only"
+  badge, no toolbar, no parts panel, no drag/place/rotate/delete; the
+  Share dialog still opens (read-only collaborator list).
+
+**Tests: +8 in apps/server/src/routes/collaborators.test.ts.** Total
+139 passing. Coverage:
+- Owner invites bob; preview returns the right shape; bob accepts;
+  bob has editor access.
+- Email-mismatch acceptance returns 403.
+- Inviting an email that already has access returns 409.
+- Editor cannot invite (only owner).
+- Demo-account blocked from invite endpoint.
+- Owner role-change writes a `role_change` audit row with from/to.
+- Self-removal works (DELETE without owner role for self).
+- Expired invite returns 410.
 
 **Shippable:** invite a friend by email or link, they sign in, see the
-layout, edit alongside you.
+layout, edit alongside you. Viewers get a read-only canvas. Server
+enforces role at both REST and WS layers.
 
 ### Phase 6 — Organizations + transfer (1.5 weeks)
 
-- Org create + slug (demo accounts blocked from creation per §3.4)
-- Org admin UI: invite, change role, remove member
-- Layouts can be created in an org (owner_org_id) — role inherited from
-  org membership unless explicitly overridden
-- Org-level layouts list
-- Layout transfer flow per §3.5:
-  - User → user: pending-accept via token link
-  - User → org / org → org / org → user: immediate (caller must be admin
-    on both sides where applicable)
-  - `audit_events` `transfer` row written on commit
-  - `expires_at` cleared when transferring out of demo ownership
+**Shipped:**
+- Schema: `org_invites`, `layout_transfers` tables added (migration
+  `0003_tricky_blazing_skull.sql`).
+- Server: `POST /api/orgs` (slug-validated, demo-account blocked),
+  `GET /api/orgs` (user's orgs), `GET /api/orgs/:slug` (existence-leak
+  protected). Member CRUD + invite/revoke + email-match acceptance at
+  `/api/org-invites/:token`. Last-admin guard prevents the only admin
+  from self-demoting or being removed. Org-owned layouts list at
+  `/api/orgs/:slug/layouts`.
+- Server: `POST /api/layouts` extended with optional `orgSlug` to
+  create an org-owned layout. Org membership required.
+- Server: `GET /api/layouts` now joins org-membership; org members see
+  org-owned layouts in their list.
+- Server: `POST /api/layouts/:id/transfer` — immediate commit for
+  org-recipient transfers (caller must be a member of the destination
+  org); pending-accept via `layout_transfers` row + `/transfer/:token`
+  landing for user→user. Org-owned layouts can only transfer to other
+  orgs (never to a personal user, to avoid sneak-extracting). Self-
+  transfer rejected. Previous owner kept as editor on user→user
+  acceptance.
+- Server: WS handler now polls `resolveResourceRole` every 30s. If the
+  user is removed from the layout mid-session, the WS closes with
+  `4404 access_revoked`. Role downgrades update the in-memory tier so
+  subsequent sync messages are gated correctly.
+- Web: `/orgs` index + create dialog; `/orgs/:slug` detail with
+  members panel (admin role select, remove, leave) + invite form +
+  org-owned layouts list.
+- Web: `/org-invite/:token` and `/transfer/:token` landing pages
+  with auto-accept on email match.
+- Web: `CreateLayoutDialog` extended with an Owner select; the user
+  can pick personal or any org they're a member of. Org members see
+  the picker, personal-only users don't.
+- Web: ShareDialog `TransferSection` — owners can transfer to a user
+  by email or to any org they're a member of. Org transfer commits
+  immediately; user transfer surfaces the pending link.
 
-**Shippable:** create an org, invite teammates, store layouts at org scope,
-all members can collaborate, transfer a personal layout into the org.
+**Tests: +20 in apps/server (12 orgs + 8 transfers).** Total 159.
+
+**Shippable:** create an org, invite teammates, store layouts at org
+scope, all members can collaborate, transfer a personal layout into
+the org. Removed users get auto-disconnected within 30s instead of
+keeping their open WS until refresh.
 
 ### Phase 6.5 — Custom parts + saved modules (2 weeks)
 
-Extends the same ownership/sharing/transfer machinery built for layouts to
-two new resource kinds. The work is mostly schema + REST + UI; the engine
-already understands "fetch a part definition by id" and "instantiate a
-named module" because those concepts come from the desktop port in Phase 3.
+**Shipped:**
+- Schema: `custom_parts`, `custom_part_collaborators`, `modules`,
+  `module_collaborators`. Migration `0004_magical_sentry.sql`.
+- `resolveResourceRole` generalised to handle `'layout' | 'custom_part'
+  | 'module'`. Same algorithm: ownerUserId match → owner, org admin →
+  owner, org member → editor, explicit collaborator → that role.
+- Server REST `/api/custom-parts/*`: list, get (existence-leak
+  protected), create (4MB combined cap, partNumber unique per owner,
+  org-owned via `orgSlug`), delete (owner-only), sprite + xml byte
+  endpoints, share (immediate add for registered recipients;
+  pending-link returned for non-registered with no DB row yet — Phase 7
+  hardens with a `custom_part_invites` table). Demo accounts blocked
+  from invite endpoint.
+- Server REST `/api/modules/*`: full CRUD + snapshot GET/PUT
+  (octet-stream Y.Doc bytes, same shape as layouts snapshot, viewer
+  PUT returns 403). Share + delete + rename, demo-gated invites.
+- Web `api.ts` clients for both. `LibraryPage` at `/library` lists
+  both kinds with create dialogs, owner picker (personal vs org),
+  thumbnail grid for parts, list view for modules. Top-nav "Library"
+  link.
 
-- SQLite schema: `custom_parts`, `custom_part_collaborators`, `modules`,
-  `module_collaborators` (per §3.1)
-- Generalise `resolveLayoutRole` → `resolveResourceRole(kind, id)`
-- REST: `GET/POST/PATCH/DELETE /api/custom-parts/*` with file upload
-  endpoint for `xml_blob` + `sprite_blob` (mime sniffing, max 1 MB sprite,
-  validate the XML parses against the BlueBrickParts schema)
-- REST: `GET/POST/PATCH/DELETE /api/modules/*`. Modules are persisted
-  with the same Yjs snapshot+update-log pattern as layouts so they can be
-  collaboratively edited too (a stretch goal — single-user edits are
-  enough for v1).
-- Frontend: parts panel groups bricks into "Bundled / My parts / Org
-  parts / Shared with me" tabs; modules panel does the same
-- Frontend: "Save selection as module…" command in the editor toolbar
-- Sharing UIs reuse the same components as layout sharing (same
-  `<ResourceShareDialog>` parameterised by resource kind)
-- Audit log: `audit_events` rows for create/share/unshare/transfer on
-  these new resources (event_type extended to `module_share` etc.)
-- Demo-account restrictions extended: demo accounts cannot invite to
-  custom parts or modules (already noted in §3.4)
+**Tests: +15 server (9 customParts + 6 modules). Total 174.**
 
-**Shippable:** upload a custom part, drop it into a layout. Save a
-selection as a module, share it with a teammate, they drop it into their
-layout. Move a module from personal ownership to the org.
+**All deferred items shipped in Phase 7.x** (see below):
+- `custom_part_invites` table — shipped (migration 0006, `customPartInvites.ts`).
+- Editor parts panel integration — shipped (`/api/parts/catalog` merges custom parts).
+- Module placement in editor — shipped (`InsertModuleDialog` + `insertBricks` mutation).
+- `audit_events` for custom-part / module — shipped (all CRUD routes emit audit rows).
+- Module realtime collab — confirmed working: sidecar mutations use `doc.transact()` on the main Y.Doc, which propagates over y-websocket automatically.
+- Module transfer — shipped (migration 0007, `routes/moduleTransfers.ts`).
+
+**Shippable:** upload a custom part, see it in the Library page.
+Create a module, share it with a teammate. Editor integration to
+actually USE these in layouts lands in Phase 7 / a follow-up.
 
 ### Phase 7 — Polish + ops + mobile viewer (2 weeks)
 
-- Deploy script docs (`docker compose -f docker-compose.prod.yml up -d`)
-- TLS is the operator's responsibility — point their reverse proxy at port 3000
-- Health check endpoints
-- Rate-limit WS connections per user
-- Demo-layout TTL sweeper job (nightly cron in the web container)
-- Daily Yjs compaction job per active layout (already required by §7 risks)
-- **Backup worker** per §4.6 (daily `VACUUM INTO`, gzip, retention buckets)
-- Audit-log viewer UI (per-layout history page; owners + org-admins only)
-- **Read-only mobile viewer**: responsive layout-list page; on small screens
-  the editor route renders a pan/zoom canvas with no tools, no awareness
-  cursors, no edit affordances. Reuses Konva but with a stripped tool layer.
-- Tag the first `v1.0.0` release — verifies `release.yml` end-to-end
+**Shipped:**
+- Audit log generalised: `audit_events` schema now supports
+  `(resource_kind, resource_id)` for non-layout resources (custom
+  parts, modules, orgs) alongside the existing layout-scoped column.
+  Migration `0005_exotic_swordsman.sql` recreates the table to relax
+  the `layout_id NOT NULL` constraint.
+- `writeAuditEvent` now accepts either `{ layoutId }` or
+  `{ resourceKind, resourceId }`. Custom-part and module endpoints
+  (create / share / role_change / unshare / delete) all emit audit
+  rows.
+- Audit read API: `GET /api/layouts/:id/audit` (layout-scoped, the
+  editor's audit panel) and `GET /api/audit?kind=&id=` (generic for
+  custom_part / module). Both gated by `resolveResourceRole`.
+- Background workers (`apps/server/src/workers/index.ts`), all daily:
+  - **Demo TTL sweep**: hard-deletes layouts past `expires_at`.
+    Off-switch: `DEMO_TTL_SWEEP_ENABLED=false`.
+  - **Daily compaction**: rewrites `layout_updates` into a fresh
+    `docSnapshot` for any layout with unflushed updates. Complements
+    the per-active-doc 30s worker in `docHub.ts`. Off-switch:
+    `DAILY_COMPACTION_ENABLED=false`.
+  - **Backup worker**: `VACUUM INTO` + gzip into `BACKUPS_DIR`
+    (default `/backups`). Retention: last 7 days + 1 per ISO week
+    × 3 weeks + 1 per calendar month × 12 months. Off-switch:
+    `BACKUPS_ENABLED=false`.
+- Awareness identity hardening: on every awareness change from a
+  WS connection, the server peeks at the published state and
+  overwrites `state.user.id` with the authenticated user-id if a
+  spoof attempt is detected. Cosmetic fields (displayName, color)
+  remain client-controlled.
+- Health check: deeper `/api/health/ready` confirms DB connectivity
+  via a `SELECT 1` ping. Returns 503 on failure. Suitable as a
+  k8s/docker readiness probe.
+- Mobile read-only viewer: `useViewportSize` exposes an `isMobile`
+  flag (< 768px). The editor forces read-only mode (the existing
+  `isViewer` UI gating) on mobile and collapses the sidebar grid
+  column.
+- Deploy docs: TLS is the operator's responsibility — point their
+  reverse proxy at port 3000.
+- WS rate-limiting: already enforced by `MAX_WS_PER_USER = 8` in
+  `routes/ws.ts` (Phase 4).
 
 **Shippable:** production-ready single-host deploy with mobile-viewable
-layouts, per-layout audit history, automatic backups with retention, and
-a published `v1.0.0` Docker image.
+layouts, per-layout / per-resource audit history, automatic backups
+with retention, and a published `v1.0.0` Docker image.
+
+### Phase 7.x — Post-v1.0 backlog (this session)
+
+Single follow-up batch tightening the loose ends from Phases 6.5 + 7.
+No schema-breaking changes; designed to drop in on top of `v1.0.0`.
+
+**Shipped:**
+- **Editor integration of custom parts.** `/api/parts/catalog` merges
+  the user's custom parts (personal + org-owned + collab-shared) into
+  the catalog response with a `source: 'bundled' | 'custom'`
+  discriminator and a `customPartId` field. Web side gets a
+  `spriteUrlFor(part)` helper that resolves to either `/parts/...`
+  (bundled) or `/api/custom-parts/:id/sprite` (custom, auth-gated).
+  Per-user ETag includes a slice of the user-id + custom count so a
+  fresh upload busts only that user's cache.
+- **Module instantiation in the editor.** New `InsertModuleDialog`
+  fetches `/api/modules/:id/snapshot`, decodes via Y.applyUpdate,
+  projects through `docToBbm`, and calls a new `insertBricks` Yjs
+  mutation that does a single-transaction batch insert with freshly
+  minted ids into the active brick layer.
+- **`custom_part_invites` table** (migration 0006). Custom-part share
+  to an unregistered email now persists a token row with role +
+  expires_at, mirroring layout invites. New
+  `/api/custom-parts/invites/:token` preview + accept routes
+  (`customPartInvites.ts`).
+- **Audit log read UI.** ShareDialog has a collapsed `<details>` panel
+  showing newest-first events with human-readable summaries
+  (`summarisePayload`). Falls back gracefully when the events array
+  is empty.
+- **Module transfer** (migration 0007 + `routes/moduleTransfers.ts`).
+  Org-recipient is immediate; user-recipient is pending-token. Mirror
+  of layout transfer including the previous-owner-becomes-editor rule
+  for user→user transfers.
+- **`resource_kind: 'org'` wired end-to-end.** `resolveResourceRole`
+  now handles `'org'` directly (admin → owner, member → editor,
+  non-member → null). Audit endpoint accepts `?kind=org`. Org create /
+  invite / role_change / member-remove routes write audit rows.
+- **Workers fixture-driven tests.** Pure helpers
+  (`parseBackupDate`, `isoWeekKey`, `classifyBackups`) extracted to
+  `workers/retention.ts`. 10 new tests cover the daily window, weekly
+  bucket de-dup invariants, ~12-month cap, and non-matching-filename
+  rejection. The driver in `workers/index.ts` now delegates classify
+  to the pure module.
+
+**Tests: +14 server (10 retention + 4 audit/org). Total 195.**
 
 **Total: ~12.5 weeks for a working v1.** Phases 1–4 (~6.5 weeks) get you a
 single-org collaborative editor; phases 5–7 (~6 weeks) add multi-tenant
 sharing, transfer, audit, custom parts, reusable modules, mobile viewing,
 backups, and ops.
+
+### Phase 7.y — Editor UX + export polish (this session)
+
+**Shipped:**
+- **`.zip` export.** `/api/layouts/:id/export.zip` bundles `.bbm` + `.bbm.cld`
+  sidecar (if present) in a pure-Node ZIP (store method, no native deps).
+  LayoutsPage replaces separate export links with a single "Export .zip" button.
+  `api.ts` exposes `exportZipUrl(id)`.
+- **Multi-page tiled print / PDF export.** `ExportImageDialog` rewritten with
+  two modes: PNG export (pixel ratio 1×/2×/4×, optional transparent bg) and
+  Tiled Print (paper size, DPI, tile overlap). Print mode renders via
+  `stage.toCanvas({pixelRatio: dpi/96})`, slices into page tiles, opens a new
+  window with `@page { size: Wmm Hmm; margin: 0 }` CSS and auto-triggers
+  `window.print()`. `ExportHandle` interface exported for type safety.
+- **Hull polygon rendering.** `PartMetadata` gains `hullPts: {x,y}[]` parsed
+  from `<hull><point>` XML elements. `BrickLayer` renders a Konva `<Line
+  closed>` hull overlay when ≥3 points present; falls back to `<Rect>` when
+  absent. Coordinate transform: pixel-space pt → Group local via
+  `ox = -spriteWpx/2, oy = -spriteHpx/2`.
+- **Floating (tear-off) panels.** `DockZone` extended with `'float'`.
+  `FloatingPanel` component renders via `ReactDOM.createPortal` into
+  `document.body` with drag-to-move (title bar) and resize (bottom-right
+  corner). `dockLayout.ts` tracks `float[]` and `floatPos` with staggered
+  default positions; `LAYOUT_VERSION` bumped to 8.
+- **Parts Browser icon size toggle.** S/M/L cycle button in PartsPanel,
+  persisted to `localStorage('cld:partsIconSize')`. Grid uses
+  `minmax(Npx, 1fr)` column sizing.
+- **Budget/Over column in Used Parts panel.** When `budgetLimits` map is
+  non-empty, shows a 4th column: `count/limit` in green, `+N` in red when
+  over; row tinted `bg-red-950/30` for over-budget parts. Sort by budget delta.
+- **Panels menu as checkbox dropdown.** Toolbar "Panels" button opens a
+  dropdown listing all panels with checkboxes for show/hide toggle instead of
+  a flat show-all / hide-all approach.
 
 ## 7. Risks & open questions
 
@@ -845,13 +1068,14 @@ backups, and ops.
   10k+ bricks. Konva is fine up to ~2k complex shapes per layer; beyond
   that we need to switch render strategy (off-screen canvas tiles, or
   batched draw with a single Konva.Layer + custom hit testing). De-risk
-  in the day-1 spike using the **largest real fixture from desktop's
-  `fixtures/bbm-corpus/`** (not synthetic dummy bricks).
+  in the day-1 spike using the **largest real `.bbm` sample file from
+  desktop's `fixtures/`** (not synthetic dummy bricks).
 - **`.bbm` byte-exact round-trip.** Desktop CLD enforces this with property
-  tests against `tests/saveload/RoundTripTest.cpp` + `fixtures/bbm-corpus/`.
-  The TS port has to do the same; XML formatting quirks (attribute order,
-  whitespace, CRLF, 2-space indent) will burn hours if not pinned to
-  fixtures from day one. Reuse the desktop fixture corpus directly.
+  tests against `tests/saveload/RoundTripTest.cpp` + its real-world
+  `.bbm` sample files. The TS port has to do the same; XML formatting
+  quirks (attribute order, whitespace, CRLF, 2-space indent) will burn
+  hours if not pinned to fixtures from day one. Reuse the desktop
+  sample files directly.
 - **`.bbm.cld` sidecar JSON round-trip.** Sidecar is JSON, not XML — schema
   documented at `docs/bbm-cld-schema.md` in the desktop repo. Web round-trip
   must preserve unknown keys (forward-compat) and regenerate `bbmHashSha256`
@@ -870,7 +1094,7 @@ backups, and ops.
 ### Decisions locked at planning time
 - **Database**: SQLite (WAL mode) for v1; Drizzle schema kept portable so a
   swap to Postgres later is a driver change, not a rewrite.
-- **Parts library**: git submodule of upstream BlueBrickParts (same as desktop).
+- **Parts library**: downloaded at runtime via Admin → Libraries; no submodule or bind mount needed.
 - **Auth providers**: Google + GitHub + Microsoft/OIDC + email-password (gated).
 - **Mobile**: read-only viewer (pan/zoom) on small screens; no touch editing.
 - **Audit log**: full version — log every persisted action via `audit_events`.
@@ -892,12 +1116,12 @@ backups, and ops.
 - **Security scanning** (see §4.8): CodeQL + OSV-Scanner + Gitleaks +
   Trivy + Dependabot in CI; lefthook hooks (typecheck, gitleaks, commit-msg,
   full tests on push) locally.
-- **Spike data**: largest real `.bbm` fixture from desktop corpus.
+- **Spike data**: largest real `.bbm` sample file from the desktop repo.
 
 ### Open questions (call before each phase that touches it)
-- **Phase 2:** is sidecar export inside a `.zip` (with `.bbm`) or two
-  separate downloads? Desktop puts them side-by-side on disk; web users
-  expect one download. Default to `.zip`.
+- **Phase 2 — resolved:** sidecar export is a single `.zip` download
+  (`/api/layouts/:id/export.zip`) bundling `.bbm` + `.bbm.cld`. Shipped in
+  Phase 7.y.
 - **Phase 3:** which tools land in v1? Full desktop parity is huge — the
   core 5 (select/place/drag/rotate/delete) is enough to demo collab. Text
   tool, area tool, ruler tool can wait.
@@ -913,10 +1137,10 @@ A throwaway spike to de-risk the riskiest unknowns:
 1. Scaffold pnpm monorepo, `docker compose up`
 2. Stand up SQLite + Fastify + a `/api/health` endpoint
 3. Wire Arctic + Google OAuth + the `sessions` cookie helper, log in / out
-4. Load the **largest real fixture** from desktop's `fixtures/bbm-corpus/`
-   into a Konva canvas; measure FPS while panning + zooming. This is the
-   real worst case — synthetic 2000 dummy bricks don't capture the
-   distribution of part shapes/sizes a real layout has.
+4. Load the **largest real `.bbm` sample file** from the desktop's
+   `fixtures/` directory into a Konva canvas; measure FPS while panning +
+   zooming. This is the real worst case — synthetic 2000 dummy bricks
+   don't capture the distribution of part shapes/sizes a real layout has.
 5. Open a Yjs doc between two browser tabs, drag a brick, watch the other
    tab move it
 

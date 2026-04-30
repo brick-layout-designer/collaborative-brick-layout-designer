@@ -1,4 +1,4 @@
-# `.bbm` corpus
+# `.bbm` test sample files
 
 Real-world `.bbm` files used as goldens for load/round-trip tests.
 
@@ -15,7 +15,7 @@ appropriate to ship under this repo's GPL-3.0 license.
 
 ## Byte-exact round-trip status
 
-- **Enforced in CI** via `tests/saveload/RealFixtureTest::CorpusByteExactRoundTrip`
+- **Enforced in CI** via `tests/saveload/RealFixtureTest::ByteExactRoundTrip`
   — every `.bbm` here must load + re-save byte-for-byte identical.
 - Vanilla format properties matched: CRLF line endings, 2-space indent,
   no BOM, no xmlns attributes on `<Map>`, `<EmptyTag />` spacing, lowercase

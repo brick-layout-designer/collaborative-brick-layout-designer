@@ -64,6 +64,15 @@ export interface PartMetadata {
    * .jpg, .jpeg.
    */
   spritePath: string;
+  /**
+   * Path of the part's XML, relative to the parts-library root. Set
+   * by the catalog scanner; unit tests that build `PartMetadata`
+   * directly (without a filesystem path) leave it empty. Used to
+   * derive the UI "category" for the parts panel — desktop does the
+   * same via `QFileInfo(xmlPath).dir().dirName()`
+   * (PartsBrowser.cpp:198-202).
+   */
+  xmlRelPath?: string;
   /** Pixels per stud at which the sprite is rendered. Defaults to 8. */
   pxPerStud: number;
   /** Empty for groups. */
@@ -75,6 +84,13 @@ export interface PartMetadata {
    * groups; defaults true.
    */
   canUngroup: boolean;
+  /**
+   * Optional hull polygon from `<hull>` in the XML. Points are in **pixel
+   * space** relative to the sprite's top-left corner (not studs). Empty
+   * array means "use the sprite bounding rect as proxy" (desktop behaviour
+   * for parts without an explicit hull).
+   */
+  hullPts: { x: number; y: number }[];
 }
 
 /** A loaded library — a flat map keyed by lowercased `<partNumber>.<colorCode>`. */

@@ -11,11 +11,11 @@ function int(value: string | undefined, fallback: number): number {
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
-  port: int(process.env.PORT, 3000),
+  port: int(process.env.HTTP_PORT ?? process.env.PORT, 3000),
   dbPath: process.env.DB_PATH ?? './data/cld.sqlite',
   publicUrl: process.env.PUBLIC_URL ?? 'http://localhost:3000',
   cookieSecure: bool(process.env.COOKIE_SECURE, process.env.NODE_ENV === 'production'),
-  partsDir: process.env.PARTS_DIR ?? '../../parts-library',
+  partsDir: process.env.PARTS_DIR ?? './data/parts',
 
   enablePasswordAuth: bool(process.env.ENABLE_PASSWORD_AUTH, false),
   demoMode: bool(process.env.DEMO_MODE, false),
@@ -29,6 +29,12 @@ export const env = {
   oidc: oidcEnv(),
 
   smtp: smtpEnv(),
+
+  // Phase 7 background workers — all on by default in production.
+  backupsEnabled: bool(process.env.BACKUPS_ENABLED, true),
+  backupsDir: process.env.BACKUPS_DIR ?? '/backups',
+  demoTtlSweepEnabled: bool(process.env.DEMO_TTL_SWEEP_ENABLED, true),
+  dailyCompactionEnabled: bool(process.env.DAILY_COMPACTION_ENABLED, true),
 };
 
 function providerEnv(prefix: string): { clientId: string; clientSecret: string } | null {

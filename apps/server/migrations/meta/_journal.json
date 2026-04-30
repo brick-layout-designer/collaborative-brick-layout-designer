@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1777436481619,
-      "tag": "0000_third_firedrake",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1777443141631,
-      "tag": "0001_nosy_kid_colt",
+      "when": 1777563388703,
+      "tag": "0000_init",
       "breakpoints": true
     }
   ]

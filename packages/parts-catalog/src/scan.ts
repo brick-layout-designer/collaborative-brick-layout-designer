@@ -52,7 +52,12 @@ async function parseOne(rootDir: string, xmlPath: string): Promise<PartMetadata>
   const colorCode = lastDot === -1 ? '' : stem.slice(lastDot + 1);
 
   // Find a sibling sprite. The desktop tries .gif → .png → .jpg → .jpeg.
-  const xmlBase = isGroupFile ? xmlPath.slice(0, -'.set.xml'.length) : xmlPath.slice(0, -'.xml'.length);
+  // For `.set.xml` files the sprite is `<stem>.set.gif` (BlueBrickParts
+  // ships a few sets — like `3739-1.set.gif` — with their own thumbnail).
+  // Match desktop's `PartsLibrary.cpp:140-150`, which uses `completeBaseName`
+  // (= path with just `.xml` stripped) for the sprite-stem search regardless
+  // of whether the .set suffix is present.
+  const xmlBase = xmlPath.slice(0, -'.xml'.length);
   let spritePath = '';
   for (const ext of SPRITE_EXTS) {
     const candidate = xmlBase + ext;
@@ -62,7 +67,8 @@ async function parseOne(rootDir: string, xmlPath: string): Promise<PartMetadata>
     }
   }
 
-  return parsePartXml(xml, { partNumber, colorCode, spritePath });
+  const xmlRelPath = relative(rootDir, xmlPath);
+  return parsePartXml(xml, { partNumber, colorCode, spritePath, xmlRelPath });
 }
 
 async function* walkXml(dir: string): AsyncIterable<string> {
