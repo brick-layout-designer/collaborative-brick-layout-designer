@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  image:
+    name: Build & push tagged image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lower-case repo name
+        id: repo
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Extract version
+        id: ver
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.name }}:v${{ steps.ver.outputs.version }}
+            ghcr.io/${{ steps.repo.outputs.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy gate (CRITICAL fail)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ steps.repo.outputs.name }}:v${{ steps.ver.outputs.version }}
+          format: table
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+  release:
+    name: Create GitHub Release
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Stage release assets
+        run: |
+          mkdir -p release
+          cp .env.example release/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git tag --sort=-creatordate | grep -A1 "^${CURRENT_TAG}$" | tail -1)
+          TAG_MSG=$(git tag -l --format='%(contents)' "$CURRENT_TAG" | head -20)
+
+          {
+            echo 'BODY<<ENDOFNOTES'
+
+            if [ -n "$TAG_MSG" ] && [ "$TAG_MSG" != "$CURRENT_TAG" ]; then
+              echo "$TAG_MSG"
+              echo ""
+            fi
+
+            if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$CURRENT_TAG" ]; then
+              RANGE="${PREV_TAG}..${CURRENT_TAG}"
+            else
+              RANGE="HEAD~20..HEAD"
+            fi
+
+            COMMITS=$(git log "$RANGE" --pretty=format:"%s" --no-merges)
+
+            BREAKING=$(echo "$COMMITS" | grep -E '^[a-z]+(\(.+\))?!: ' | sed 's/^/- /' || true)
+            FEAT=$(echo "$COMMITS" | grep -E '^feat(\(.+\))?: ' | sed 's/^/- /' || true)
+            FIX=$(echo "$COMMITS" | grep -E '^fix(\(.+\))?: ' | sed 's/^/- /' || true)
+            PERF=$(echo "$COMMITS" | grep -E '^perf(\(.+\))?: ' | sed 's/^/- /' || true)
+            DOCS=$(echo "$COMMITS" | grep -E '^docs(\(.+\))?: ' | sed 's/^/- /' || true)
+            CI_BUILD=$(echo "$COMMITS" | grep -E '^(ci|build)(\(.+\))?: ' | sed 's/^/- /' || true)
+            OTHER=$(echo "$COMMITS" | grep -vE '^(feat|fix|perf|docs|ci|build|style|refactor|test|chore|revert)(\(.+\))?!?: ' | sed 's/^/- /' || true)
+
+            if [ -n "$BREAKING" ]; then
+              echo "### ⚠ Breaking Changes"
+              echo "$BREAKING"
+              echo ""
+            fi
+            if [ -n "$FEAT" ]; then
+              echo "### Features"
+              echo "$FEAT"
+              echo ""
+            fi
+            if [ -n "$FIX" ]; then
+              echo "### Bug Fixes"
+              echo "$FIX"
+              echo ""
+            fi
+            if [ -n "$PERF" ]; then
+              echo "### Performance"
+              echo "$PERF"
+              echo ""
+            fi
+            if [ -n "$DOCS" ]; then
+              echo "### Documentation"
+              echo "$DOCS"
+              echo ""
+            fi
+            if [ -n "$CI_BUILD" ]; then
+              echo "### Build & CI"
+              echo "$CI_BUILD"
+              echo ""
+            fi
+            if [ -n "$OTHER" ]; then
+              echo "### Other Changes"
+              echo "$OTHER"
+              echo ""
+            fi
+
+            echo "### Image"
+            echo ""
+            echo "Pull with:"
+            echo ""
+            echo '```'
+            echo "docker pull ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]'):${CURRENT_TAG}"
+            echo '```'
+
+            echo 'ENDOFNOTES'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body: ${{ steps.notes.outputs.BODY }}

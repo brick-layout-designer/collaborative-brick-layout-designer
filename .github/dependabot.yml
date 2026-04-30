@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    labels: [dependencies, npm]
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      types:
+        patterns: ['@types/*']
+      dev-tools:
+        patterns:
+          - typescript
+          - vitest
+          - tsx
+          - drizzle-kit
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: build

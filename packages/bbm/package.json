@@ -1,0 +1,28 @@
+{
+  "name": "@cld/bbm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./hash": "./src/sidecarHash.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cld/model": "workspace:*",
+    "fast-xml-parser": "5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.5.4",
+    "typescript": "5.5.4",
+    "vite": "^8.0.10",
+    "vitest": "4.1.5"
+  }
+}
