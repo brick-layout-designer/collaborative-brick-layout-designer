@@ -32,7 +32,7 @@
     "fastify": "5.8.5",
     "lib0": "0.2.97",
     "nodemailer": "8.0.7",
-    "openid-client": "5.6.5",
+    "openid-client": "6.8.4",
     "y-protocols": "1.0.6",
     "yjs": "13.6.18"
   },
