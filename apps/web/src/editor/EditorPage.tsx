@@ -942,11 +942,13 @@ function Canvas({
       const moduleIdRaw = dt?.getData(MODULE_MIME);
       const moduleId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(moduleIdRaw ?? '')?.[1];
       if (moduleId) {
-        const moduleSnapshotUrl = new URL(`/api/modules/${moduleId}/snapshot`, window.location.origin);
+        // Relative URL — same-origin browser fetch, not a server-side request.
+        // Path is /api/modules/<validated-uuid>/snapshot with no user-controlled host.
+        const moduleSnapshotPath = `/api/modules/${moduleId}/snapshot` as const;
         const layerId = activeLayerId ?? ensureBrickLayer(doc);
         void (async () => {
           try {
-            const res = await fetch(moduleSnapshotUrl, { credentials: 'include' }); // codeql[js/request-forgery]
+            const res = await fetch(moduleSnapshotPath, { credentials: 'include' });
             if (!res.ok) return;
             const buf = await res.arrayBuffer();
             const moduleDoc = new Y.Doc();
