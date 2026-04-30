@@ -7,6 +7,11 @@
 
 import type { FastifyInstance } from 'fastify';
 import { and, count, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
+
+/** Escape SQLite LIKE wildcards so user input is treated as a literal string. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, '\\$&');
+}
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { mkdir, rm, readdir } from 'node:fs/promises';
@@ -65,10 +70,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const limit = clampLimit(req.query.limit);
     const offset = clampOffset(req.query.offset);
     const needle = (req.query.q ?? '').trim();
+    const safe = `%${escapeLike(needle)}%`;
     const where = needle
       ? or(
-          like(schema.users.email, `%${needle}%`),
-          like(schema.users.displayName, `%${needle}%`),
+          sql`${schema.users.email} LIKE ${safe} ESCAPE '\'`,
+          sql`${schema.users.displayName} LIKE ${safe} ESCAPE '\'`,
         )
       : undefined;
     const rows = await db
@@ -226,8 +232,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const limit = clampLimit(req.query.limit);
     const offset = clampOffset(req.query.offset);
     const needle = (req.query.q ?? '').trim();
+    const safe = `%${escapeLike(needle)}%`;
     const where = needle
-      ? or(like(schema.orgs.name, `%${needle}%`), like(schema.orgs.slug, `%${needle}%`))
+      ? or(
+          sql`${schema.orgs.name} LIKE ${safe} ESCAPE '\'`,
+          sql`${schema.orgs.slug} LIKE ${safe} ESCAPE '\'`,
+        )
       : undefined;
     const rows = await db
       .select({
@@ -285,7 +295,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const offset = clampOffset(req.query.offset);
     const needle = (req.query.q ?? '').trim();
     const filters = [];
-    if (needle) filters.push(like(schema.layouts.title, `%${needle}%`));
+    if (needle) {
+      const safe = `%${escapeLike(needle)}%`;
+      filters.push(sql`${schema.layouts.title} LIKE ${safe} ESCAPE '\'`);
+    }
     if (req.query.ownerUserId) filters.push(eq(schema.layouts.ownerUserId, req.query.ownerUserId));
     if (req.query.ownerOrgId) filters.push(eq(schema.layouts.ownerOrgId, req.query.ownerOrgId));
     const where = filters.length > 0 ? and(...filters) : undefined;
@@ -552,10 +565,16 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       }
     } else if (body.sourceUrl) {
       // Fetch from remote URL and extract.
+      const sourceUrl = body.sourceUrl.trim();
+      if (!sourceUrl.startsWith('https://')) {
+        await rm(libDir, { recursive: true, force: true });
+        return reply.code(400).send({ error: 'sourceUrl must use https://' });
+      }
       try {
-        const res = await fetch(body.sourceUrl);
+        const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB limit');
         await extractZip(buf, libDir);
         partCount = await countXmls(libDir);
       } catch (e) {
@@ -605,7 +624,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         indexUrl = 'https://bluebrick.lswproject.com/download/package/';
       } else if (source === 'nonlego') {
         indexUrl = 'https://bluebrick.lswproject.com/download/packageOther/';
-      } else if (source.startsWith('https://') || source.startsWith('http://')) {
+      } else if (source.startsWith('https://')) {
         indexUrl = source.endsWith('/') ? source : source + '/';
       } else {
         return reply.code(400).send({ error: 'invalid source' });
@@ -621,7 +640,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
           signal: AbortSignal.timeout(20_000),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        html = await res.text();
+        const raw = await res.arrayBuffer();
+        if (raw.byteLength > 1024 * 1024) throw new Error('Index page exceeds 1 MB');
+        html = Buffer.from(raw).toString('utf8');
       } catch (e) {
         return reply.code(502).send({
           error: e instanceof Error ? e.message : 'fetch failed',
@@ -817,9 +838,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       await mkdir(tmpDir, { recursive: true });
 
       try {
-        const res = await fetch(lib.sourceUrl);
+        const res = await fetch(lib.sourceUrl, { signal: AbortSignal.timeout(120_000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 100 * 1024 * 1024) throw new Error('Archive exceeds 100 MB limit');
         await extractZip(buf, tmpDir);
       } catch (e) {
         await rm(tmpDir, { recursive: true, force: true });
@@ -951,6 +973,19 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     });
   }
 
+  const MAX_ENTRY_SIZE = 200 * 1024 * 1024; // 200 MB per file
+  const MAX_TOTAL_SIZE = 500 * 1024 * 1024; // 500 MB total uncompressed
+  let totalUncomp = 0;
+
+  function safeDestPath(base: string, entryName: string): string {
+    const dest = j(base, entryName);
+    // Prevent ZIP slip — resolved path must stay inside destDir.
+    if (!dest.startsWith(base + '/') && dest !== base) {
+      throw new Error(`ZIP slip attempt: ${entryName}`);
+    }
+    return dest;
+  }
+
   // Try adm-zip if installed (not a hard dep — optional optimisation).
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -960,12 +995,17 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     const zip = new AdmZip(buf);
     for (const entry of zip.getEntries()) {
       if (entry.isDirectory) continue;
-      const dest = j(destDir, entry.entryName);
+      const dest = safeDestPath(destDir, entry.entryName);
+      const data = entry.getData();
+      if (data.length > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${entry.entryName}`);
+      totalUncomp += data.length;
+      if (totalUncomp > MAX_TOTAL_SIZE) throw new Error('zip bomb: total uncompressed size exceeds limit');
       await mk(dirname(dest), { recursive: true });
-      await wf(dest, entry.getData());
+      await wf(dest, data);
     }
     return;
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && (e.message.startsWith('ZIP slip') || e.message.startsWith('entry too large') || e.message.startsWith('zip bomb'))) throw e;
     // adm-zip not available; fall through to built-in parser.
   }
 
@@ -993,7 +1033,8 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     const compData = read(compSize);
 
     if (!name.endsWith('/')) {
-      const dest = j(destDir, name);
+      if (uncompSize > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${name}`);
+      const dest = safeDestPath(destDir, name);
       await mk(dirname(dest), { recursive: true });
       let data: Buffer;
       if (method === 0) {
@@ -1004,6 +1045,8 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
         throw new Error(`unsupported compression method ${method} for ${name}`);
       }
       if (data.length !== uncompSize) throw new Error(`size mismatch for ${name}`);
+      totalUncomp += data.length;
+      if (totalUncomp > MAX_TOTAL_SIZE) throw new Error('zip bomb: total uncompressed size exceeds limit');
       await wf(dest, data);
     }
   }

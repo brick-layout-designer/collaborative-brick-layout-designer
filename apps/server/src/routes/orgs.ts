@@ -20,6 +20,7 @@ import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
+import { isValidEmail } from '../utils/validate.js';
 
 interface CreateOrgBody {
   name: string;
@@ -228,6 +229,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // ---- invite member ------------------------------------------------------
   app.post<{ Params: { slug: string }; Body: OrgMemberInviteBody }>(
     '/api/orgs/:slug/invites',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
       if (user.isDemoAccount) {
@@ -242,7 +244,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const { email, role } = req.body;
-      if (!email || !email.includes('@')) {
+      if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
       if (role !== 'admin' && role !== 'member') {

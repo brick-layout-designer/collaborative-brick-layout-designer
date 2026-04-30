@@ -14,9 +14,12 @@ export async function passwordRoutes(app: FastifyInstance) {
 
   app.post<{ Body: { email: string; password: string; displayName?: string } }>(
     '/api/auth/password/register',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
     async (req, reply) => {
       const { email, password, displayName } = req.body;
-      if (!email || !password || password.length < 8) {
+      if (!email || !password || password.length < 8 || password.length > 128) {
         return reply.code(400).send({ error: 'invalid_input' });
       }
       const existing = await db
@@ -46,9 +49,12 @@ export async function passwordRoutes(app: FastifyInstance) {
 
   app.post<{ Body: { email: string; password: string } }>(
     '/api/auth/password/login',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
     async (req, reply) => {
       const { email, password } = req.body;
-      if (!email || !password) return reply.code(400).send({ error: 'invalid_input' });
+      if (!email || !password || password.length > 128) return reply.code(400).send({ error: 'invalid_input' });
       const user = await db
         .select()
         .from(schema.users)

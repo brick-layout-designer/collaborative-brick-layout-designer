@@ -242,7 +242,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           // layout deleted. Demo TTL is reapplied on next demo-only
           // creation, not on transfer.
           expiresAt: user.isDemoAccount
-            ? new Date(now.getTime() + Number(process.env.DEMO_LAYOUT_TTL_DAYS ?? 30) * 86400_000)
+            ? new Date(now.getTime() + env.demoLayoutTtlDays * 86400_000)
             : null,
           updatedAt: now,
         })

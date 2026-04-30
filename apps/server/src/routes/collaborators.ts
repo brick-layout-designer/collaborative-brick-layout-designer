@@ -16,6 +16,7 @@ import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveRes
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { env } from '../env.js';
+import { isValidEmail } from '../utils/validate.js';
 
 interface InviteBody {
   email: string;
@@ -94,6 +95,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
   // ---- create invite -------------------------------------------------------
   app.post<{ Params: { id: string }; Body: InviteBody }>(
     '/api/layouts/:id/invites',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
       if (user.isDemoAccount) {
@@ -106,7 +108,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const { email, role: inviteRole } = req.body;
-      if (!email || !email.includes('@')) {
+      if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
       if (inviteRole !== 'viewer' && inviteRole !== 'editor') {

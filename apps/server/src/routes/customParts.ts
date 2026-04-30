@@ -20,6 +20,7 @@ import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveRes
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { isValidEmail } from '../utils/validate.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -317,7 +318,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'forbidden' });
       }
       const { email, role: inviteRole } = req.body;
-      if (!email || !email.includes('@')) {
+      if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
       if (inviteRole !== 'viewer' && inviteRole !== 'editor') {

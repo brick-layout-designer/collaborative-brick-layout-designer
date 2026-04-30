@@ -2,6 +2,9 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
@@ -39,6 +42,18 @@ async function main() {
   // plenty of headroom while still rejecting obvious DoS shapes.
   const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
 
+  await app.register(helmet, {
+    contentSecurityPolicy: false, // SPA sets its own; API responses are JSON
+    crossOriginEmbedderPolicy: false,
+  });
+  await app.register(cors, {
+    origin: env.publicUrl,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
+  await app.register(rateLimit, {
+    global: false, // applied per-route where needed
+  });
   await app.register(cookie);
   await app.register(fastifyMultipart);
 

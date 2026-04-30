@@ -19,6 +19,7 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { createLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { isValidEmail } from '../utils/validate.js';
 
 interface CreateModuleBody {
   title?: string;
@@ -299,7 +300,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'forbidden' });
       }
       const { email, role: inviteRole } = req.body;
-      if (!email || !email.includes('@')) {
+      if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
       if (inviteRole !== 'viewer' && inviteRole !== 'editor') {

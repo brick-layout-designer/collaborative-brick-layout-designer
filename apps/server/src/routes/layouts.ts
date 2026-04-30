@@ -170,7 +170,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     // until an admin deletes them.
     const expiresAt =
       user.isDemoAccount && ownerUserId
-        ? new Date(now.getTime() + Number(process.env.DEMO_LAYOUT_TTL_DAYS ?? 30) * 86400_000)
+        ? new Date(now.getTime() + env.demoLayoutTtlDays * 86400_000)
         : null;
 
     await db.insert(schema.layouts).values({
@@ -436,6 +436,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .where(eq(schema.layouts.publicShareToken, req.params.token))
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
+    reply.header('Cache-Control', 'no-store');
     return {
       layout: {
         id: layout.id,
