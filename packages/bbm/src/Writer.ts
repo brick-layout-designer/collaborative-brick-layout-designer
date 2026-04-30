@@ -1,6 +1,8 @@
 import type {
   BbmMap,
   Brick,
+  CircularRulerItem,
+  ColorSpec,
   Connexion,
   ExportInfo,
   FontSpec,
@@ -12,7 +14,9 @@ import type {
   LayerGrid,
   LayerRuler,
   LayerText,
+  LinearRulerItem,
   RectangleF,
+  RulerItem,
   TextCell,
 } from '@cld/model';
 import { writeColorSpec } from './color.js';
@@ -66,11 +70,14 @@ function writeColorBlock(b: XmlBuilder, name: string, color: { kind: 'known'; na
 }
 
 function writeRect(b: XmlBuilder, name: string, rect: RectangleF): void {
+  // Desktop emits these via writeFloatElement (G7) — see
+  // saveload/XmlPrimitives.cpp:196-203. G15 here would break byte-identity
+  // round-trip on every brick whose coords aren't exact integers.
   b.open(name);
-  b.textElement('X', formatNumber(rect.x));
-  b.textElement('Y', formatNumber(rect.y));
-  b.textElement('Width', formatNumber(rect.width));
-  b.textElement('Height', formatNumber(rect.height));
+  b.textElement('X', formatNumber(rect.x, 'g7'));
+  b.textElement('Y', formatNumber(rect.y, 'g7'));
+  b.textElement('Width', formatNumber(rect.width, 'g7'));
+  b.textElement('Height', formatNumber(rect.height, 'g7'));
   b.close(name);
 }
 
@@ -141,9 +148,11 @@ function writeLayer(b: XmlBuilder, layer: Layer): void {
 
 function writeLayerGridBody(b: XmlBuilder, layer: LayerGrid): void {
   writeColorBlock(b, 'GridColor', layer.gridColor);
-  b.textElement('GridThickness', formatInt(layer.gridThickness));
+  // Desktop writes these via writeFloatElement (LayerIO.cpp:141,143),
+  // i.e. G7 precision. formatInt would clip a 1.5-px thickness to "1".
+  b.textElement('GridThickness', formatNumber(layer.gridThickness, 'g7'));
   writeColorBlock(b, 'SubGridColor', layer.subGridColor);
-  b.textElement('SubGridThickness', formatInt(layer.subGridThickness));
+  b.textElement('SubGridThickness', formatNumber(layer.subGridThickness, 'g7'));
   b.textElement('GridSizeInStud', formatInt(layer.gridSizeInStud));
   b.textElement('SubDivisionNumber', formatInt(layer.subDivisionNumber));
   b.textElement('DisplayGrid', formatBool(layer.displayGrid));
@@ -237,11 +246,78 @@ function writeLayerAreaBody(b: XmlBuilder, layer: LayerArea): void {
 }
 
 function writeLayerRulerBody(b: XmlBuilder, layer: LayerRuler): void {
-  // Ruler item shape isn't ported yet; round-trip emits an empty container.
-  // Importing a ruler-bearing file and re-exporting it WILL drop ruler items.
-  // The corpus doesn't exercise this path; revisit when LayerRuler ships.
-  b.selfClose('RulerItems');
+  if (layer.rulerItems.length === 0) {
+    b.selfClose('RulerItems');
+  } else {
+    b.open('RulerItems');
+    for (const item of layer.rulerItems) writeRulerItem(b, item);
+    b.close('RulerItems');
+  }
   writeGroups(b, layer.groups);
+}
+
+/**
+ * Mirror of desktop `writeRulerItem` (saveload/LayerIO.cpp:426-447).
+ * Element order: DisplayArea, MyGroup, then RulerItemBase fields, then
+ * the subclass-specific fields (Point1/2 + AttachedBrick1/2 +
+ * OffsetDistance + AllowOffset for linear; Center + Radius +
+ * AttachedBrick for circular).
+ */
+function writeRulerItem(b: XmlBuilder, item: RulerItem): void {
+  if (item.kind === 'linear') {
+    b.open('LinearRuler');
+    writeRulerCommon(b, item);
+    writePoint(b, 'Point1', item.point1);
+    writePoint(b, 'Point2', item.point2);
+    b.textElement('AttachedBrick1', item.attachedBrick1Id);
+    b.textElement('AttachedBrick2', item.attachedBrick2Id);
+    b.textElement('OffsetDistance', formatNumber(item.offsetDistance, 'g7'));
+    b.textElement('AllowOffset', formatBool(item.allowOffset));
+    b.close('LinearRuler');
+  } else {
+    writeCircularRuler(b, item);
+  }
+}
+
+function writeCircularRuler(b: XmlBuilder, item: CircularRulerItem): void {
+  b.open('CircularRuler');
+  writeRulerCommon(b, item);
+  writePoint(b, 'Center', item.center);
+  b.textElement('Radius', formatNumber(item.radius, 'g7'));
+  b.textElement('AttachedBrick', item.attachedBrickId);
+  b.close('CircularRuler');
+}
+
+function writeRulerCommon(b: XmlBuilder, item: LinearRulerItem | CircularRulerItem): void {
+  writeRect(b, 'DisplayArea', item.displayArea);
+  b.textElement('MyGroup', item.myGroup);
+  writeColorBlock(b, 'Color', item.color);
+  b.textElement('LineThickness', formatNumber(item.lineThickness, 'g7'));
+  b.textElement('DisplayDistance', formatBool(item.displayDistance));
+  b.textElement('DisplayUnit', formatBool(item.displayUnit));
+  writeColorBlock(b, 'GuidelineColor', item.guidelineColor);
+  b.textElement('GuidelineThickness', formatNumber(item.guidelineThickness, 'g7'));
+  writeFloatArray(b, 'GuidelineDashPattern', item.guidelineDashPattern);
+  b.textElement('Unit', formatInt(item.unit));
+  writeFont(b, 'MeasureFont', item.measureFont);
+  writeColorBlock(b, 'MeasureFontColor', item.measureFontColor);
+}
+
+function writePoint(b: XmlBuilder, name: string, p: { x: number; y: number }): void {
+  b.open(name);
+  b.textElement('X', formatNumber(p.x, 'g7'));
+  b.textElement('Y', formatNumber(p.y, 'g7'));
+  b.close(name);
+}
+
+function writeFloatArray(b: XmlBuilder, name: string, values: number[]): void {
+  if (values.length === 0) {
+    b.selfClose(name);
+    return;
+  }
+  b.open(name);
+  for (const v of values) b.textElement('double', formatNumber(v, 'g7'));
+  b.close(name);
 }
 
 function writeGroups(b: XmlBuilder, groups: Group[]): void {

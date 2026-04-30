@@ -12,7 +12,7 @@
  *   - `<` → `&lt;`
  *   - `>` → `&gt;` (only when in a context where `]]>` would otherwise form)
  *
- * We escape `>` unconditionally — the corpus has no `>` in text content,
+ * We escape `>` unconditionally — real `.bbm` files have no `>` in text content,
  * and over-escaping is XML-equivalent. Quotes are NOT escaped in text
  * content per spec.
  */

@@ -1,6 +1,7 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
+import { AppHeader } from './AppHeader';
 import { LayoutsPage } from './layouts/LayoutsPage';
 
 export function App() {
@@ -9,16 +10,8 @@ export function App() {
   if (!data?.user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="min-h-screen p-8">
-      <header className="flex items-center justify-between border-b border-neutral-800 pb-4">
-        <h1 className="text-2xl font-semibold">CLD Web</h1>
-        <Link to="/profile" className="flex items-center gap-3 hover:underline">
-          {data.user.avatarUrl && (
-            <img src={data.user.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
-          )}
-          <span>{data.user.displayName}</span>
-        </Link>
-      </header>
+    <div className="h-full overflow-y-auto p-8">
+      <AppHeader user={data.user} />
       <main className="mt-8">
         <LayoutsPage />
       </main>
@@ -27,5 +20,5 @@ export function App() {
 }
 
 function Loading() {
-  return <div className="grid min-h-screen place-items-center text-neutral-500">Loading…</div>;
+  return <div className="grid h-full place-items-center text-neutral-500">Loading…</div>;
 }

@@ -28,6 +28,7 @@ function makeMeta(
     })),
     subparts: [],
     canUngroup: true,
+    hullPts: [],
   };
 }
 

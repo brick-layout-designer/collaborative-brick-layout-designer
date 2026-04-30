@@ -1,11 +1,15 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
+import { ShareDialog } from './ShareDialog';
 
 export function LayoutsPage() {
   const qc = useQueryClient();
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const list = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const [showCreate, setShowCreate] = useState(false);
+  const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
 
   const remove = useMutation({
     mutationFn: api.layouts.remove,
@@ -41,6 +45,7 @@ export function LayoutsPage() {
               onDelete={() => {
                 if (confirm(`Delete "${l.title}"? This cannot be undone.`)) remove.mutate(l.id);
               }}
+              onShare={() => setShareLayout(l)}
             />
           ))}
         </ul>
@@ -55,16 +60,56 @@ export function LayoutsPage() {
           }}
         />
       )}
+
+      {shareLayout && me.data?.user && (
+        <ShareDialogLoader
+          layout={shareLayout}
+          myUserId={me.data.user.id}
+          onClose={() => setShareLayout(null)}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * Resolves the user's role on the layout before opening ShareDialog. The
+ * layouts list response doesn't include the role; we fetch it here and
+ * mount the dialog with the right `myRole` to gate owner-only controls.
+ */
+function ShareDialogLoader({
+  layout,
+  myUserId,
+  onClose,
+}: {
+  layout: LayoutSummary;
+  myUserId: string;
+  onClose: () => void;
+}) {
+  const detail = useQuery({
+    queryKey: ['layout', layout.id],
+    queryFn: () => api.layouts.get(layout.id),
+  });
+  if (detail.isLoading || !detail.data) return null;
+  return (
+    <ShareDialog
+      layoutId={layout.id}
+      layoutTitle={layout.title}
+      myRole={detail.data.role}
+      myUserId={myUserId}
+      onClose={onClose}
+    />
   );
 }
 
 function LayoutRow({
   layout,
   onDelete,
+  onShare,
 }: {
   layout: LayoutSummary;
   onDelete: () => void;
+  onShare: () => void;
 }) {
   return (
     <li className="flex items-center justify-between px-4 py-3">
@@ -83,20 +128,25 @@ function LayoutRow({
         </p>
       </div>
       <div className="flex items-center gap-2 text-sm">
-        <a
-          href={api.layouts.exportBbmUrl(layout.id)}
+        <Link
+          to={`/editor/${layout.id}`}
+          className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-500"
+        >
+          Open
+        </Link>
+        <button
+          onClick={onShare}
           className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
         >
-          Export .bbm
+          Share
+        </button>
+        <a
+          href={api.layouts.exportZipUrl(layout.id)}
+          className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          title={layout.hasSidecar ? 'Download .bbm + .bbm.cld sidecar as a .zip' : 'Download .bbm'}
+        >
+          Export .zip
         </a>
-        {layout.hasSidecar && (
-          <a
-            href={api.layouts.exportSidecarUrl(layout.id)}
-            className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
-          >
-            .bbm.cld
-          </a>
-        )}
         <button
           onClick={onDelete}
           className="rounded border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"
@@ -119,7 +169,13 @@ function CreateLayoutDialog({
   const [bbm, setBbm] = useState<string | null>(null);
   const [sidecar, setSidecar] = useState<string | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
+  // Owner: empty string = personal; otherwise the org slug.
+  const [ownerSlug, setOwnerSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch the user's orgs so the dialog can offer them as owner options.
+  // Cheap; cached by react-query so this almost never hits the network.
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
 
   const create = useMutation({
     mutationFn: api.layouts.create,
@@ -145,11 +201,12 @@ function CreateLayoutDialog({
   function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const body: { title?: string; bbm?: string; sidecar?: string } = {};
+    const body: { title?: string; bbm?: string; sidecar?: string; orgSlug?: string } = {};
     const t = title.trim();
     if (t) body.title = t;
     if (bbm) body.bbm = bbm;
     if (sidecar) body.sidecar = sidecar;
+    if (ownerSlug) body.orgSlug = ownerSlug;
     create.mutate(body);
   }
 
@@ -170,6 +227,24 @@ function CreateLayoutDialog({
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
+
+        {orgs.data && orgs.data.orgs.length > 0 && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-neutral-400">Owner</span>
+            <select
+              value={ownerSlug}
+              onChange={(e) => setOwnerSlug(e.target.value)}
+              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            >
+              <option value="">Personal (you)</option>
+              {orgs.data.orgs.map((o) => (
+                <option key={o.slug} value={o.slug}>
+                  Org: {o.name} ({o.myRole})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">
