@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+.git
+.github
+*.md
+data
+backups
+parts-library
