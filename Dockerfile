@@ -34,7 +34,7 @@ RUN pnpm --filter @cld/model        build || true \
  && pnpm --filter @cld/server       build
 
 # Produce a pruned prod-only node_modules with native addons already compiled.
-RUN pnpm --filter @cld/server deploy --prod /app/server-deploy
+RUN pnpm --filter @cld/server deploy --prod --legacy /app/server-deploy
 
 # ---- runtime ---------------------------------------------------------------
 FROM node:24-bookworm-slim AS runtime
