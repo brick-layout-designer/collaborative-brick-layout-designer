@@ -669,6 +669,10 @@ function PartLibrariesTab() {
   const [baseStatus, setBaseStatus] = useState<'idle' | 'installing' | 'done' | 'err'>('idle');
   const [baseErr, setBaseErr] = useState('');
   const baseInstalled = installedSlugs.has('bluebrickparts');
+  const baseDownloaded = installedSlugs.has('bluebrickparts-default');
+
+  const [dlBaseStatus, setDlBaseStatus] = useState<'idle' | 'downloading' | 'done' | 'err'>('idle');
+  const [dlBaseErr, setDlBaseErr] = useState('');
 
   async function installBase() {
     setBaseStatus('installing');
@@ -680,6 +684,24 @@ function PartLibrariesTab() {
     } catch (e) {
       setBaseErr(e instanceof Error ? e.message : 'failed');
       setBaseStatus('err');
+    }
+  }
+
+  async function downloadDefaultLibrary() {
+    setDlBaseStatus('downloading');
+    setDlBaseErr('');
+    try {
+      await api.admin.downloadPartLibrary({
+        name: 'BlueBrickParts (default)',
+        slug: 'bluebrickparts-default',
+        sourceUrl: 'https://github.com/Lswbanban/BlueBrickParts/archive/refs/heads/master.zip',
+        defaultEnabled: true,
+      });
+      invalidateLibraries();
+      setDlBaseStatus('done');
+    } catch (e) {
+      setDlBaseErr(e instanceof Error ? e.message : 'download failed');
+      setDlBaseStatus('err');
     }
   }
 
@@ -845,13 +867,15 @@ function PartLibrariesTab() {
     <div className="space-y-8">
 
       {/* ── Base library ── */}
-      <section className="rounded border border-neutral-800 p-4">
+      <section className="rounded border border-neutral-800 p-4 space-y-4">
+
+        {/* Register on-disk library */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-neutral-300">BlueBrickParts base library</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              The bundled parts that ship with the server (Track, Train, Town, Baseplate, BrickTracks,
-              4DBrix, TrixBrix, …). Already on disk — this just registers it so orgs can enable/disable it.
+              If the parts submodule is already on disk at <code className="text-neutral-400">PARTS_DIR</code>,
+              this registers it so orgs can enable/disable it. No download needed.
             </p>
           </div>
           {baseInstalled ? (
@@ -862,13 +886,42 @@ function PartLibrariesTab() {
             <button
               onClick={installBase}
               disabled={baseStatus === 'installing'}
-              className="shrink-0 rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+              className="shrink-0 rounded bg-neutral-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-600 disabled:opacity-50"
             >
-              {baseStatus === 'installing' ? 'Registering…' : 'Register base library'}
+              {baseStatus === 'installing' ? 'Registering…' : 'Register on-disk library'}
             </button>
           )}
         </div>
-        {baseStatus === 'err' && <p className="mt-2 text-xs text-red-400">{baseErr}</p>}
+        {baseStatus === 'err' && <p className="text-xs text-red-400">{baseErr}</p>}
+
+        {/* Download from GitHub */}
+        <div className="flex items-start justify-between gap-4 border-t border-neutral-800 pt-4">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-300">Download BlueBrickParts from GitHub</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Downloads the latest{' '}
+              <span className="text-neutral-400">Lswbanban/BlueBrickParts</span> archive (~27 MB),
+              extracts it to <code className="text-neutral-400">PARTS_DIR/libraries/bluebrickparts-default/</code>,
+              and enables it for all orgs by default.
+            </p>
+          </div>
+          {baseDownloaded ? (
+            <span className="shrink-0 rounded bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
+              Downloaded
+            </span>
+          ) : (
+            <button
+              onClick={downloadDefaultLibrary}
+              disabled={dlBaseStatus === 'downloading'}
+              className="shrink-0 rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+            >
+              {dlBaseStatus === 'downloading' ? 'Downloading…' : 'Download default library'}
+            </button>
+          )}
+        </div>
+        {dlBaseStatus === 'err' && <p className="text-xs text-red-400">{dlBaseErr}</p>}
+        {dlBaseStatus === 'done' && <p className="text-xs text-emerald-400">Downloaded and installed successfully.</p>}
+
       </section>
 
       {/* ── Download Center ── */}
