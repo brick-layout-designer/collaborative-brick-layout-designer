@@ -160,6 +160,18 @@ const BrickGlyph = memo(function BrickGlyph({
   const spriteHpx = sprite ? sprite.naturalHeight * spriteScale : h;
 
   function handleClick(e: KonvaEventObject<MouseEvent | TouchEvent>) {
+    // Right-click: if the clicked brick is already selected keep the whole
+    // selection so the context menu applies to all selected bricks. If it's
+    // NOT selected, select just this brick (standard OS right-click behaviour).
+    if ('button' in e.evt && e.evt.button === 2) {
+      if (tool === 'select') {
+        const currentSel = useEditorStore.getState().selection;
+        if (!currentSel.includes(brick.id)) {
+          useEditorStore.getState().setSelection([brick.id]);
+        }
+      }
+      return;
+    }
     if (tool === 'select') {
       // Match Qt's default QGraphicsScene selection (the path desktop's
       // MapView::mousePressEvent falls through to at MapView.cpp:534):

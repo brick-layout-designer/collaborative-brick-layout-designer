@@ -1436,6 +1436,9 @@ function Canvas({
       return;
     }
 
+    // Right-click opens the context menu — don't clear selection or start marquee.
+    if (evt.button === 2) return;
+
     if (e.target !== e.target.getStage()) return;
     const studs = pointerStuds();
     if (!studs) return;
