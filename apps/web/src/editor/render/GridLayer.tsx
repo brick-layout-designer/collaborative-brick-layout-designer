@@ -32,30 +32,35 @@ export function GridLayer({
   const showGridStore = useEditorStore((s) => s.showGrid);
   const showGrid = showGridProp ?? showGridStore;
   const grid = map.layers.find((l): l is LayerGrid => l.type === 'grid');
-  if (!grid || !grid.visible || !showGrid) return null;
 
-  // Pad a couple of grid steps beyond the viewport so the lines extend
-  // off-screen (no visible cut-off when the user pans during a frame).
-  const pad = grid.gridSizeInStud * 2;
+  // Background always covers the full visible area regardless of grid visibility.
+  const bgPad = (grid?.gridSizeInStud ?? 32) * 2;
+  const bgXMin = viewport.studXMin - bgPad;
+  const bgYMin = viewport.studYMin - bgPad;
+  const bgXMax = viewport.studXMax + bgPad;
+  const bgYMax = viewport.studYMax + bgPad;
+  const px = studToPx();
+
+  // Grid lines only render when the grid layer exists, is visible, and showGrid is on.
+  const gridVisible = grid && grid.visible && showGrid;
+  const pad = gridVisible ? grid.gridSizeInStud * 2 : bgPad;
   const xMin = viewport.studXMin - pad;
   const yMin = viewport.studYMin - pad;
   const xMax = viewport.studXMax + pad;
   const yMax = viewport.studYMax + pad;
 
-  const px = studToPx();
-
   return (
     <Group>
       <Rect
-        x={xMin * px}
-        y={yMin * px}
-        width={(xMax - xMin) * px}
-        height={(yMax - yMin) * px}
+        x={bgXMin * px}
+        y={bgYMin * px}
+        width={(bgXMax - bgXMin) * px}
+        height={(bgYMax - bgYMin) * px}
         fill={cssColor(map.backgroundColor)}
         listening={false}
       />
-      {grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
-      {grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
+      {gridVisible && grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
+      {gridVisible && grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
     </Group>
   );
 }

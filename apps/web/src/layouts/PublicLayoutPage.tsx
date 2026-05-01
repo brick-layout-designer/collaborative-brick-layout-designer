@@ -182,7 +182,7 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
         </Link>
       </div>
 
-      <div onWheel={handleWheel}>
+      <div className="absolute inset-0 overflow-hidden" onWheel={handleWheel}>
         <Stage
           ref={stageRef}
           width={width}
