@@ -22,11 +22,15 @@ export interface ViewportRect {
 export function GridLayer({
   map,
   viewport,
+  showGrid: showGridProp,
 }: {
   map: BbmMap;
   viewport: ViewportRect;
+  /** Override the editor-store value. Pass `true` from the public viewer to avoid a store subscription. */
+  showGrid?: boolean;
 }) {
-  const showGrid = useEditorStore((s) => s.showGrid);
+  const showGridStore = useEditorStore((s) => s.showGrid);
+  const showGrid = showGridProp ?? showGridStore;
   const grid = map.layers.find((l): l is LayerGrid => l.type === 'grid');
   if (!grid || !grid.visible || !showGrid) return null;
 

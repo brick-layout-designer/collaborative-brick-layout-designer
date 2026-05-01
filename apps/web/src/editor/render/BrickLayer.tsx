@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Circle, Group, Image as KonvaImage, Line, Rect, Text as KonvaText } from 'react-konva';
 import * as Y from 'yjs';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -7,7 +7,7 @@ import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { useEditorStore } from '../editorStore';
-import { deleteBricks, moveBrick, moveBrickAndOrient, translateBricks, translateBricksAcrossLayers } from '../mutations';
+import { deleteBricks, moveBrick, moveBrickAndOrient, translateBricksAcrossLayers } from '../mutations';
 import { studToPx } from './coords';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap } from '../snap';
@@ -75,7 +75,7 @@ export function BrickLayer({ map, doc, isViewer = false, onEditBrick }: Props) {
   );
 }
 
-function BrickGlyph({
+const BrickGlyph = memo(function BrickGlyph({
   brick,
   layer,
   layerId,
@@ -96,15 +96,30 @@ function BrickGlyph({
   partsByKey: Map<string, PartWire>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
 }) {
-  const selection = useEditorStore((s) => s.selection);
-  const tool = useEditorStore((s) => s.tool);
-  const toggleSelected = useEditorStore((s) => s.toggleSelected);
-  const showConnectionPoints = useEditorStore((s) => s.showConnectionPoints);
-  const alwaysShowConnections = useEditorStore((s) => s.alwaysShowConnections);
-  const showBrickHulls = useEditorStore((s) => s.showBrickHulls);
-  const showBrickElevation = useEditorStore((s) => s.showBrickElevation);
-  const selectionTint = useEditorStore((s) => s.selectionTint);
-  const isSelected = selection.includes(brick.id);
+  // In viewer mode skip all store subscriptions — no selection, no tools,
+  // no connection points. A single combined selector avoids 8 separate
+  // subscriptions per brick (×hundreds of bricks = big perf win).
+  const editorState = useEditorStore((s) =>
+    isViewer
+      ? null
+      : {
+          selection: s.selection,
+          tool: s.tool,
+          showConnectionPoints: s.showConnectionPoints,
+          alwaysShowConnections: s.alwaysShowConnections,
+          showBrickHulls: s.showBrickHulls,
+          showBrickElevation: s.showBrickElevation,
+          selectionTint: s.selectionTint,
+        },
+  );
+  const selection = editorState?.selection ?? [];
+  const tool = editorState?.tool ?? 'select';
+  const showConnectionPoints = editorState?.showConnectionPoints ?? false;
+  const alwaysShowConnections = editorState?.alwaysShowConnections ?? false;
+  const showBrickHulls = editorState?.showBrickHulls ?? false;
+  const showBrickElevation = editorState?.showBrickElevation ?? false;
+  const selectionTint = editorState?.selectionTint ?? 'ffcc00';
+  const isSelected = !isViewer && selection.includes(brick.id);
   const spriteUrl = meta ? spriteUrlFor(meta) : '';
   const groupRef = useRef<Konva.Group | null>(null);
 
@@ -434,6 +449,8 @@ function BrickGlyph({
           width={spriteWpx}
           height={spriteHpx}
           opacity={1}
+          perfectDrawEnabled={false}
+          listening={false}
         />
       ) : (
         <Rect
@@ -444,6 +461,8 @@ function BrickGlyph({
           fill="#404040"
           stroke="#888"
           strokeWidth={1}
+          perfectDrawEnabled={false}
+          listening={false}
         />
       )}
       {/*
@@ -579,7 +598,7 @@ function BrickGlyph({
       )}
     </Group>
   );
-}
+});
 
 function hullColorToCss(c: import('@cld/model').ColorSpec): string {
   if (c.kind === 'known') {
