@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -51,6 +51,7 @@ import {
   translateBricks,
   translateBricksAcrossLayers,
   ungroupBricks,
+  setVenue,
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
@@ -65,27 +66,31 @@ import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
-import { ShareDialog } from '../layouts/ShareDialog';
-import { InsertModuleDialog } from './InsertModuleDialog';
-import { SaveModuleDialog } from './SaveModuleDialog';
-import { EditBrickDialog } from './EditBrickDialog';
-import { EditRulerDialog } from './EditRulerDialog';
-import { GeneralInfoDialog } from './GeneralInfoDialog';
-import { BackgroundColorDialog } from './BackgroundColorDialog';
-import { BackgroundImageDialog } from './BackgroundImageDialog';
-import { FindDialog } from './FindDialog';
-import { PreferencesDialog } from './PreferencesDialog';
-import { ImportBbmDialog } from './ImportBbmDialog';
-import { ExportImageDialog } from './ExportImageDialog';
-import { AddAnchoredLabelDialog } from './AddAnchoredLabelDialog';
-import { SaveAsSetDialog } from './SaveAsSetDialog';
-import { ModulesPanel } from './ModulesPanel';
-import { ModuleLibraryPanel, MODULE_MIME } from './ModuleLibraryPanel';
-import { VenuePropertiesDialog } from './VenuePropertiesDialog';
-import { VenueDimensionsDialog } from './VenueDimensionsDialog';
-import { BudgetDialog } from './BudgetDialog';
-import { VenueLibraryPanel } from './VenueLibraryPanel';
-import { VenueSaveLibraryDialog } from './VenueSaveLibraryDialog';
+import { MODULE_MIME } from './ModuleLibraryPanel';
+// Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
+// the initial editor chunk. React.lazy requires a default export, but all
+// our components are named; the wrappers below re-export as default.
+const ShareDialog = lazy(() => import('../layouts/ShareDialog').then((m) => ({ default: m.ShareDialog })));
+const InsertModuleDialog = lazy(() => import('./InsertModuleDialog').then((m) => ({ default: m.InsertModuleDialog })));
+const SaveModuleDialog = lazy(() => import('./SaveModuleDialog').then((m) => ({ default: m.SaveModuleDialog })));
+const EditBrickDialog = lazy(() => import('./EditBrickDialog').then((m) => ({ default: m.EditBrickDialog })));
+const EditRulerDialog = lazy(() => import('./EditRulerDialog').then((m) => ({ default: m.EditRulerDialog })));
+const GeneralInfoDialog = lazy(() => import('./GeneralInfoDialog').then((m) => ({ default: m.GeneralInfoDialog })));
+const BackgroundColorDialog = lazy(() => import('./BackgroundColorDialog').then((m) => ({ default: m.BackgroundColorDialog })));
+const BackgroundImageDialog = lazy(() => import('./BackgroundImageDialog').then((m) => ({ default: m.BackgroundImageDialog })));
+const FindDialog = lazy(() => import('./FindDialog').then((m) => ({ default: m.FindDialog })));
+const PreferencesDialog = lazy(() => import('./PreferencesDialog').then((m) => ({ default: m.PreferencesDialog })));
+const ImportBbmDialog = lazy(() => import('./ImportBbmDialog').then((m) => ({ default: m.ImportBbmDialog })));
+const ExportImageDialog = lazy(() => import('./ExportImageDialog').then((m) => ({ default: m.ExportImageDialog })));
+const AddAnchoredLabelDialog = lazy(() => import('./AddAnchoredLabelDialog').then((m) => ({ default: m.AddAnchoredLabelDialog })));
+const SaveAsSetDialog = lazy(() => import('./SaveAsSetDialog').then((m) => ({ default: m.SaveAsSetDialog })));
+const ModulesPanel = lazy(() => import('./ModulesPanel').then((m) => ({ default: m.ModulesPanel })));
+const ModuleLibraryPanel = lazy(() => import('./ModuleLibraryPanel').then((m) => ({ default: m.ModuleLibraryPanel })));
+const VenuePropertiesDialog = lazy(() => import('./VenuePropertiesDialog').then((m) => ({ default: m.VenuePropertiesDialog })));
+const VenueDimensionsDialog = lazy(() => import('./VenueDimensionsDialog').then((m) => ({ default: m.VenueDimensionsDialog })));
+const BudgetDialog = lazy(() => import('./BudgetDialog').then((m) => ({ default: m.BudgetDialog })));
+const VenueLibraryPanel = lazy(() => import('./VenueLibraryPanel').then((m) => ({ default: m.VenueLibraryPanel })));
+const VenueSaveLibraryDialog = lazy(() => import('./VenueSaveLibraryDialog').then((m) => ({ default: m.VenueSaveLibraryDialog })));
 
 export function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -267,9 +272,9 @@ function Editor({ layoutId }: { layoutId: string }) {
     if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
-    if (panelId === 'modules') return <ModulesPanel doc={doc} isViewer={isViewer} />;
-    if (panelId === 'modlibrary') return <ModuleLibraryPanel doc={doc} isViewer={isViewer} />;
-    if (panelId === 'venuelibrary') return <VenueLibraryPanel doc={doc} isViewer={isViewer} />;
+    if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
+    if (panelId === 'modlibrary') return <Suspense fallback={null}><ModuleLibraryPanel doc={doc} isViewer={isViewer} /></Suspense>;
+    if (panelId === 'venuelibrary') return <Suspense fallback={null}><VenueLibraryPanel doc={doc} isViewer={isViewer} /></Suspense>;
     return null;
   }
 
@@ -387,7 +392,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onVenueClear={() => {
                 if (!doc) return;
                 if (!confirm('Remove the entire venue from this project?')) return;
-                import('./mutations').then(({ setVenue }) => setVenue(doc, null));
+                setVenue(doc, null);
               }}
               onVenueDrawOutline={() => {
                 useEditorStore.getState().setTool('venueOutline');
@@ -426,7 +431,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                   file.text().then((text) => {
                     try {
                       const venue = JSON.parse(text);
-                      import('./mutations').then(({ setVenue: sv }) => sv(doc, venue));
+                      setVenue(doc, venue);
                     } catch {
                       alert('Could not parse venue file.');
                     }
@@ -525,6 +530,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           </FloatingPanel>
         );
       })}
+      <Suspense fallback={null}>
       {showShare && me.data?.user && meta.data && (
         <ShareDialog
           layoutId={layoutId}
@@ -678,6 +684,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           />
         );
       })()}
+      </Suspense>
     </div>
   );
 }
@@ -1093,7 +1100,7 @@ function Canvas({
         const kind = venueDraft.kind;
         if (pts.length >= 3 && doc) {
           void (async () => {
-            const { setVenue: sv } = await import('./mutations');
+
             const existing = readSidecarFromDoc(doc);
             if (kind === 'outline') {
               const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
@@ -1113,14 +1120,14 @@ function Canvas({
                 edges,
                 obstacles: existing?.venue?.obstacles ?? [],
               };
-              sv(doc, venue);
+              setVenue(doc, venue);
             } else {
               const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
               const base = existing?.venue ?? {
                 name: '', enabled: true, minWalkwayStuds: 0,
                 bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
               };
-              sv(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
+              setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
             }
           })();
         }
@@ -2254,6 +2261,7 @@ function Canvas({
   return (
     <>
       {stageNode}
+      <Suspense fallback={null}>
       {editing && (
         <EditBrickDialog
           brick={editing.brick}
@@ -2300,6 +2308,7 @@ function Canvas({
           onClose={() => setEditingLabel(null)}
         />
       )}
+      </Suspense>
       {ctxMenu && !isViewer && (
         <CanvasContextMenu
           x={ctxMenu.x}
