@@ -709,9 +709,22 @@ function Canvas({
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const { width, height } = useViewportSize();
+  // Pan/zoom drive the Stage transform imperatively so panning never
+  // triggers a React re-render of the node tree.
   const zoom = useEditorStore((s) => s.zoom);
   const panX = useEditorStore((s) => s.panX);
   const panY = useEditorStore((s) => s.panY);
+  useEffect(() => {
+    return useEditorStore.subscribe((s) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      stage.x(s.panX);
+      stage.y(s.panY);
+      stage.scaleX(s.zoom);
+      stage.scaleY(s.zoom);
+      stage.batchDraw();
+    });
+  }, []);
   const tool = useEditorStore((s) => s.tool);
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
   const setActiveLayer = useEditorStore((s) => s.setActiveLayer);
@@ -2090,7 +2103,7 @@ function Canvas({
       {/* Layer 1 — static background (no hit-testing): grid, background
           image, venue outline, paint areas, electric circuits. Changing
           any of these redraws only this one canvas. */}
-      <KonvaLayer listening={false}>
+      <KonvaLayer listening={false} perfectDrawEnabled={false}>
         <GridLayer
           map={map}
           viewport={{
@@ -2114,7 +2127,7 @@ function Canvas({
 
       {/* Layer 2 — interactive content: bricks, text, rulers, labels.
           Hit-testing is enabled so clicks/drags on bricks and text work. */}
-      <KonvaLayer>
+      <KonvaLayer perfectDrawEnabled={false}>
         <BrickLayer
           map={map}
           doc={doc}
@@ -2167,7 +2180,7 @@ function Canvas({
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
           snap ring, ruler/venue drafts, remote cursors, export watermark. */}
-      <KonvaLayer listening={false}>
+      <KonvaLayer listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
           if (!part || !map) {

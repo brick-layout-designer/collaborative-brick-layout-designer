@@ -7,6 +7,7 @@ import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { useEditorStore } from '../editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { deleteBricks, moveBrick, moveBrickAndOrient, translateBricksAcrossLayers } from '../mutations';
 import { studToPx } from './coords';
 import { ensureSprite, getSpriteSync } from './spriteCache';
@@ -99,18 +100,20 @@ const BrickGlyph = memo(function BrickGlyph({
   // In viewer mode skip all store subscriptions — no selection, no tools,
   // no connection points. A single combined selector avoids 8 separate
   // subscriptions per brick (×hundreds of bricks = big perf win).
-  const editorState = useEditorStore((s) =>
-    isViewer
-      ? null
-      : {
-          selection: s.selection,
-          tool: s.tool,
-          showConnectionPoints: s.showConnectionPoints,
-          alwaysShowConnections: s.alwaysShowConnections,
-          showBrickHulls: s.showBrickHulls,
-          showBrickElevation: s.showBrickElevation,
-          selectionTint: s.selectionTint,
-        },
+  const editorState = useEditorStore(
+    useShallow((s) =>
+      isViewer
+        ? null
+        : {
+            selection: s.selection,
+            tool: s.tool,
+            showConnectionPoints: s.showConnectionPoints,
+            alwaysShowConnections: s.alwaysShowConnections,
+            showBrickHulls: s.showBrickHulls,
+            showBrickElevation: s.showBrickElevation,
+            selectionTint: s.selectionTint,
+          },
+    ),
   );
   const selection = editorState?.selection ?? [];
   const tool = editorState?.tool ?? 'select';
