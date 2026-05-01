@@ -96,6 +96,10 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const stageRef = useRef<Konva.Stage | null>(null);
+  // Tracks the last pinch distance so we can compute a zoom delta each touchmove.
+  const lastPinchRef = useRef<{ dist: number; midX: number; midY: number } | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Project the Y.Doc into a BbmMap once. Snapshot is static for this
   // page so a single projection is enough; if the owner edits while the
@@ -160,6 +164,62 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
     setZoom(newZoom);
   }
 
+  // Native touch handlers with passive:false so preventDefault works.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function onTouchStart(e: globalThis.TouchEvent) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const t0 = e.touches[0]!;
+        const t1 = e.touches[1]!;
+        lastPinchRef.current = {
+          dist: Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY),
+          midX: (t0.clientX + t1.clientX) / 2,
+          midY: (t0.clientY + t1.clientY) / 2,
+        };
+        setIsPinching(true);
+      }
+    }
+
+    function onTouchMove(e: globalThis.TouchEvent) {
+      if (e.touches.length !== 2 || !lastPinchRef.current) return;
+      e.preventDefault();
+      const t0 = e.touches[0]!;
+      const t1 = e.touches[1]!;
+      const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const midX = (t0.clientX + t1.clientX) / 2;
+      const midY = (t0.clientY + t1.clientY) / 2;
+      const factor = newDist / lastPinchRef.current.dist;
+      lastPinchRef.current = { dist: newDist, midX, midY };
+      setZoom((prevZoom) => {
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom * factor));
+        setPan((prevPan) => ({
+          x: midX - ((midX - prevPan.x) / prevZoom) * newZoom,
+          y: midY - ((midY - prevPan.y) / prevZoom) * newZoom,
+        }));
+        return newZoom;
+      });
+    }
+
+    function onTouchEnd(e: globalThis.TouchEvent) {
+      if (e.touches.length < 2) {
+        lastPinchRef.current = null;
+        setIsPinching(false);
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
+
   // Compute the visible-world rect for GridLayer.
   const viewport = {
     studXMin: pxToStud(-pan.x / zoom),
@@ -182,7 +242,11 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
         </Link>
       </div>
 
-      <div className="absolute inset-0 overflow-hidden" onWheel={handleWheel}>
+      <div
+        ref={containerRef}
+        className="absolute inset-0 overflow-hidden"
+        onWheel={handleWheel}
+      >
         <Stage
           ref={stageRef}
           width={width}
@@ -191,7 +255,7 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
           y={pan.y}
           scaleX={zoom}
           scaleY={zoom}
-          draggable
+          draggable={!isPinching}
           onDragEnd={(e) => {
             // Stage drag becomes pan. Konva resets stage x/y on dragstart
             // by default for `draggable`; we just commit them to state.
