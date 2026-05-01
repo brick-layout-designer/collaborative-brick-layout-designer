@@ -232,7 +232,7 @@ const BrickGlyph = memo(function BrickGlyph({
   function handleDragStart(e: KonvaEventObject<DragEvent>) {
     snapOrientRef.current = null;
     if (isViewer || !map) return;
-    if (tool !== 'drag' && tool !== 'select') return;
+    if (tool !== 'select') return;
     // Only the brick under the cursor fires its own onDragStart in
     // Konva; the rest of the selection isn't dragged by Konva itself —
     // we translate them by hand on dragmove.
@@ -279,7 +279,7 @@ const BrickGlyph = memo(function BrickGlyph({
   function handleDragMove(e: KonvaEventObject<DragEvent>) {
     if (isViewer) return;
     if (!meta) return; // can't snap without catalog metadata
-    if (tool !== 'drag' && tool !== 'select') return;
+    if (tool !== 'select') return;
 
     const node = e.target;
     const centreStudX = node.x() / studToPx();
@@ -373,7 +373,7 @@ const BrickGlyph = memo(function BrickGlyph({
     dragStartRef.current = null;
     snapOrientRef.current = null;
     if (isViewer) return;
-    if (tool !== 'drag' && tool !== 'select') return;
+    if (tool !== 'select') return;
     void dragStart;
 
     // Drag-out-of-viewport-to-delete — port of MapView.cpp:725-736.
@@ -438,7 +438,7 @@ const BrickGlyph = memo(function BrickGlyph({
       x={x + w / 2}
       y={y + h / 2}
       rotation={brick.orientation}
-      draggable={!isViewer && (tool === 'drag' || tool === 'select')}
+      draggable={!isViewer && (tool === 'select')}
       onClick={handleClick}
       onTap={handleClick}
       onDblClick={(e) => {

@@ -7,7 +7,6 @@ import { create } from 'zustand';
 
 export type Tool =
   | 'select'
-  | 'drag'
   | 'rotate'
   | 'delete'
   | 'paint'

@@ -7,7 +7,6 @@ import { useEditorStore, type Tool } from './editorStore';
 // 1-key tool switcher at all — these are a web-port convenience.
 const TOOLS: { id: Tool; label: string; shortcut: string | null }[] = [
   { id: 'select', label: 'Select', shortcut: 'V' },
-  { id: 'drag', label: 'Drag', shortcut: 'M' },
   { id: 'paint', label: 'Paint', shortcut: 'B' },
   { id: 'erase', label: 'Erase', shortcut: 'E' },
   { id: 'rulerLinear', label: 'Ruler ─', shortcut: null },
