@@ -58,6 +58,11 @@ RUN pnpm install --prod --frozen-lockfile=false --ignore-scripts \
  && npm uninstall -g corepack \
  && rm -rf /root/.local/share/pnpm /root/.cache/node/corepack
 
+# Copy the pre-compiled native addon from the builder so we don't need
+# build tools (python, gcc) in the runtime image.
+COPY --from=builder /app/node_modules/.pnpm/better-sqlite3@12.4.1/node_modules/better-sqlite3/build \
+                    /app/node_modules/.pnpm/better-sqlite3@12.4.1/node_modules/better-sqlite3/build
+
 COPY --from=builder /app/apps/server/dist        ./apps/server/dist
 COPY --from=builder /app/apps/server/migrations  ./apps/server/migrations
 COPY --from=builder /app/apps/web/dist           ./apps/web/dist
