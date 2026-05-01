@@ -674,6 +674,7 @@ export interface PartLibrary {
   name: string;
   slug: string;
   sourceUrl: string | null;
+  diskPath: string;
   partCount: number;
   defaultEnabled: boolean;
   locked: boolean;

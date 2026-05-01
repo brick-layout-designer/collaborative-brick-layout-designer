@@ -894,33 +894,37 @@ function PartLibrariesTab() {
         </div>
         {baseStatus === 'err' && <p className="text-xs text-red-400">{baseErr}</p>}
 
-        {/* Download from GitHub */}
-        <div className="flex items-start justify-between gap-4 border-t border-neutral-800 pt-4">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-300">Download BlueBrickParts from GitHub</h2>
-            <p className="mt-1 text-xs text-neutral-500">
-              Downloads the latest{' '}
-              <span className="text-neutral-400">Lswbanban/BlueBrickParts</span> archive (~27 MB),
-              extracts it to <code className="text-neutral-400">PARTS_DIR/libraries/bluebrickparts-default/</code>,
-              and enables it for all orgs by default.
-            </p>
-          </div>
-          {baseDownloaded ? (
-            <span className="shrink-0 rounded bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
-              Downloaded
-            </span>
-          ) : (
-            <button
-              onClick={downloadDefaultLibrary}
-              disabled={dlBaseStatus === 'downloading'}
-              className="shrink-0 rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
-            >
-              {dlBaseStatus === 'downloading' ? 'Downloading…' : 'Download default library'}
-            </button>
-          )}
-        </div>
-        {dlBaseStatus === 'err' && <p className="text-xs text-red-400">{dlBaseErr}</p>}
-        {dlBaseStatus === 'done' && <p className="text-xs text-emerald-400">Downloaded and installed successfully.</p>}
+        {/* Download from GitHub — only shown when the on-disk submodule isn't already registered */}
+        {!baseInstalled && (
+          <>
+            <div className="flex items-start justify-between gap-4 border-t border-neutral-800 pt-4">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-300">Download BlueBrickParts from GitHub</h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Downloads the latest{' '}
+                  <span className="text-neutral-400">Lswbanban/BlueBrickParts</span> archive (~27 MB),
+                  extracts it to <code className="text-neutral-400">PARTS_DIR/libraries/bluebrickparts-default/</code>,
+                  and enables it for all orgs by default.
+                </p>
+              </div>
+              {baseDownloaded ? (
+                <span className="shrink-0 rounded bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
+                  Downloaded
+                </span>
+              ) : (
+                <button
+                  onClick={downloadDefaultLibrary}
+                  disabled={dlBaseStatus === 'downloading'}
+                  className="shrink-0 rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                >
+                  {dlBaseStatus === 'downloading' ? 'Downloading…' : 'Download default library'}
+                </button>
+              )}
+            </div>
+            {dlBaseStatus === 'err' && <p className="text-xs text-red-400">{dlBaseErr}</p>}
+            {dlBaseStatus === 'done' && <p className="text-xs text-emerald-400">Downloaded and installed successfully.</p>}
+          </>
+        )}
 
       </section>
 
@@ -1131,7 +1135,7 @@ function PartLibrariesTab() {
             <table className="w-full text-xs">
               <thead className="bg-neutral-900 text-left text-neutral-500">
                 <tr>
-                  <Th>Name</Th><Th>Slug</Th><Th>Parts</Th><Th>Default on</Th><Th>Source</Th><Th>Installed</Th><Th align="right">Actions</Th>
+                  <Th>Name</Th><Th>Slug</Th><Th>Parts</Th><Th>Default on</Th><Th>Source</Th><Th>Path on disk</Th><Th>Installed</Th><Th align="right">Actions</Th>
                 </tr>
               </thead>
               <tbody>
@@ -1163,6 +1167,9 @@ function PartLibrariesTab() {
                       ) : (
                         <span className="italic text-neutral-600">upload</span>
                       )}
+                    </Td>
+                    <Td className="max-w-[20rem] truncate font-mono text-[11px] text-neutral-500">
+                      <span title={lib.diskPath}>{lib.diskPath}</span>
                     </Td>
                     <Td>{new Date(lib.installedAt).toLocaleDateString()}</Td>
                     <Td align="right">

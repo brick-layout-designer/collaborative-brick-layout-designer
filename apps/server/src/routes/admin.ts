@@ -528,6 +528,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/admin/part-libraries', async (req) => {
     requireGlobalAdmin(req);
+    const { env } = await import('../env.js');
     const rows = await db
       .select()
       .from(schema.partLibraries)
@@ -542,6 +543,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       locked: r.locked,
       installedAt: r.installedAt instanceof Date ? r.installedAt.getTime() : r.installedAt,
       updatedAt: r.updatedAt instanceof Date ? r.updatedAt.getTime() : r.updatedAt,
+      diskPath: r.slug === 'bluebrickparts' ? env.partsDir : join(env.partsDir, 'libraries', r.slug),
     })) };
   });
 
@@ -1107,4 +1109,56 @@ async function countXmls(dir: string): Promise<number> {
   }
   await walk(dir);
   return n;
+}
+
+/**
+ * Called once at server startup. Scans PARTS_DIR/libraries/ for directories
+ * that exist on disk but are not yet registered in part_libraries, and
+ * auto-registers them. This makes the container survive a DB wipe while the
+ * parts volume is retained — on the next boot the libraries reappear.
+ */
+export async function syncLibrariesFromDisk(partsDir: string, logger?: { info: (msg: string) => void }): Promise<void> {
+  const { existsSync } = await import('node:fs');
+  const libsDir = join(partsDir, 'libraries');
+  if (!existsSync(libsDir)) return;
+
+  let entries: Awaited<ReturnType<typeof readdir>>;
+  try {
+    entries = await readdir(libsDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  const existing = await db.select({ slug: schema.partLibraries.slug }).from(schema.partLibraries);
+  const registeredSlugs = new Set(existing.map((r) => r.slug));
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const slug = entry.name;
+    if (registeredSlugs.has(slug)) continue;
+
+    const libDir = join(libsDir, slug);
+    let partCount = 0;
+    try {
+      partCount = await countXmls(libDir);
+    } catch {
+      continue;
+    }
+    if (partCount === 0) continue;
+
+    const id = randomUUID();
+    const now = new Date();
+    await db.insert(schema.partLibraries).values({
+      id,
+      name: slug,
+      slug,
+      sourceUrl: null,
+      partCount,
+      defaultEnabled: false,
+      locked: false,
+      installedAt: now,
+      updatedAt: now,
+    });
+    logger?.info(`auto-registered library from disk: ${slug} (${partCount} parts)`);
+  }
 }

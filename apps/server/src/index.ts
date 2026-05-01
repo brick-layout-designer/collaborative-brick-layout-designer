@@ -16,7 +16,7 @@ import { oauthRoutes } from './routes/auth/oauth.js';
 import { passwordRoutes } from './routes/auth/password.js';
 import { sessionRoutes } from './routes/auth/session.js';
 import { auditRoutes } from './routes/audit.js';
-import { adminRoutes } from './routes/admin.js';
+import { adminRoutes, syncLibrariesFromDisk } from './routes/admin.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 import { customPartRoutes } from './routes/customParts.js';
@@ -36,6 +36,7 @@ async function main() {
   // Run pending migrations on boot. Idempotent.
   migrate(db, { migrationsFolder: resolve('./migrations') });
   await ensureBootstrapAdmin();
+  await syncLibrariesFromDisk(env.partsDir, console);
 
   // 10MB body limit — large `.bbm` imports (XML payload) routinely exceed
   // the default 1MB. Real desktop layouts run ~500KB; cap at 10MB to give
