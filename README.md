@@ -118,10 +118,59 @@ nginx at port 3000 and let it handle TLS.
 
 ### Volumes
 
-| Volume         | Mounted at  | Purpose                              |
-|----------------|-------------|--------------------------------------|
-| `cbld-data`    | `/data`     | SQLite database file                 |
-| `cbld-backups` | `/backups`  | Daily gzipped DB snapshots           |
+The included `docker-compose.yml` creates three named Docker volumes for persistent storage:
+
+| Volume         | Mounted at | Purpose                               |
+|----------------|------------|---------------------------------------|
+| `cbld-data`    | `/data`    | SQLite database (`cbld.sqlite`)       |
+| `cbld-parts`   | `/parts`   | Downloaded parts libraries            |
+| `cbld-backups` | `/backups` | Daily gzipped DB snapshots            |
+
+These survive container restarts, upgrades, and recreation. Your layouts, users,
+and parts libraries are never lost across deploys.
+
+### Installing the default parts library
+
+On first run the parts library is empty. Sign in as the bootstrap admin,
+go to **Admin → Libraries**, and click **Download default library**. This
+downloads the latest [BlueBrickParts](https://github.com/Lswbanban/BlueBrickParts)
+archive (~27 MB, ~750 parts) from GitHub, extracts it into the `cbld-parts`
+volume, and enables it for all organisations automatically. Takes ~30 seconds.
+
+To add community packs (non-LEGO trains, 4DBrix, TrixBrix, etc.) use the
+**Download Center** on the same page.
+
+### Unraid / NAS — bind-mount example
+
+If you prefer host paths over named volumes (common on Unraid or Synology),
+replace the `volumes:` section in `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/brick-layout-designer/collaborative-brick-layout-designer:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      - DB_PATH=/data/cbld.sqlite
+      - PARTS_DIR=/parts
+      - BACKUPS_DIR=/backups
+    volumes:
+      - /mnt/user/appdata/cbld/data:/data
+      - /mnt/user/appdata/cbld/parts:/parts
+      - /mnt/user/appdata/cbld/backups:/backups
+```
+
+Adjust the host paths to wherever your appdata share lives.
+
+### Upgrading
+
+```sh
+docker compose pull       # pull the latest image
+docker compose up -d      # recreate the container — migrations run on startup
+```
 
 ---
 
@@ -134,7 +183,8 @@ full list. Notable ones:
 |---------------------------|-------------------------|----------------------------------------------------|
 | `HTTP_PORT`               | `3000`                  | Port the server listens on                         |
 | `PUBLIC_URL`              | `http://localhost:3000` | Used for OAuth callback URLs                       |
-| `DB_PATH`                 | `./data/cbld.sqlite`    | SQLite file path                                   |
+| `DB_PATH`                 | `./data/cbld.sqlite`    | SQLite file path (use `/data/cbld.sqlite` in Docker) |
+| `PARTS_DIR`               | `./data/parts`          | Parts library root (use `/parts` in Docker)        |
 | `COOKIE_SECURE`           | `false`                 | Set `true` behind TLS                              |
 | `ENABLE_PASSWORD_AUTH`    | `false`                 | Enable email/password registration                 |
 | `DEMO_MODE`               | `false`                 | New accounts become demo accounts                  |

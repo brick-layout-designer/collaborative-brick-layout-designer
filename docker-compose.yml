@@ -1,0 +1,20 @@
+services:
+  app:
+    image: ghcr.io/brick-layout-designer/collaborative-brick-layout-designer:latest
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      - DB_PATH=/data/cbld.sqlite
+      - PARTS_DIR=/parts
+      - BACKUPS_DIR=/backups
+    volumes:
+      - cbld-data:/data        # SQLite database
+      - cbld-parts:/parts      # Downloaded parts libraries
+      - cbld-backups:/backups  # Daily DB snapshots
+
+volumes:
+  cbld-data:
+  cbld-parts:
+  cbld-backups:
