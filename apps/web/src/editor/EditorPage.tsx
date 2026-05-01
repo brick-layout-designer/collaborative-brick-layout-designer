@@ -2087,6 +2087,9 @@ function Canvas({
       }}
       onTouchStart={handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void}
     >
+      {/* Layer 1 — static background (no hit-testing): grid, background
+          image, venue outline, paint areas, electric circuits. Changing
+          any of these redraws only this one canvas. */}
       <KonvaLayer listening={false}>
         <GridLayer
           map={map}
@@ -2097,23 +2100,20 @@ function Canvas({
             studYMax: pxToStud((height - panY) / zoom),
           }}
         />
-      </KonvaLayer>
-      {/* Background image — drawn above grid, below everything else.
-          Port of MapViewPaint.cpp:43-70 background-image rendering. */}
-      <BackgroundImageLayer doc={doc} map={map} />
-      {/* Venue overlay sits beneath everything — port of
-          SceneBuilderSidecar.cpp:50-52 (LayerSink z = -100000). */}
-      <KonvaLayer listening={!isViewer}>
-        {isViewer
-          ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
-          : <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} onDoubleClick={onOpenVenueProps} />}
-      </KonvaLayer>
-      {/* Area layers (paint-area cells) sit ON TOP of the grid but
-          UNDER the bricks — port of SceneBuilder.cpp:793-806's z-order
-          where each layer gets baseZ = index * 1000 in declaration order. */}
-      <KonvaLayer listening={false}>
+        <BackgroundImageLayer doc={doc} map={map} />
+        <Group listening={!isViewer}>
+          {isViewer
+            ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
+            : <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} onDoubleClick={onOpenVenueProps} />}
+        </Group>
         <AreaLayers map={map} />
+        {showElectricCircuits && map && (
+          <ElectricCircuitLayer map={map} partsByKey={partsByKey} />
+        )}
       </KonvaLayer>
+
+      {/* Layer 2 — interactive content: bricks, text, rulers, labels.
+          Hit-testing is enabled so clicks/drags on bricks and text work. */}
       <KonvaLayer>
         <BrickLayer
           map={map}
@@ -2121,79 +2121,57 @@ function Canvas({
           isViewer={isViewer}
           onEditBrick={(brick, layerId, meta) => setEditing({ brick, layerId, meta })}
         />
+        <Group listening={!isViewer}>
+          <TextLayers
+            map={map}
+            isViewer={isViewer}
+            onEditText={(ref) => setEditingText(ref)}
+          />
+          <RulerLayers
+            map={map}
+            selectedRulerId={selectedRulerId}
+            onRulerClick={(id) => setSelectedRulerId(id)}
+            onRulerDoubleClick={(id) => {
+              const layer = map.layers.find(
+                (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === id),
+              );
+              if (!layer || layer.type !== 'ruler') return;
+              const item = layer.rulerItems.find((r) => r.id === id);
+              if (!item) return;
+              setSelectedRulerId(id);
+              setEditingRuler({ item, layerId: layer.id });
+            }}
+            onEndpointDrag={(rulerId, which, studX, studY, commit) => {
+              const layer = map.layers.find(
+                (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === rulerId),
+              );
+              if (!layer || layer.type !== 'ruler') return;
+              let sx = studX;
+              let sy = studY;
+              if (commit && snapStepStuds > 0) {
+                sx = Math.round(studX / snapStepStuds) * snapStepStuds;
+                sy = Math.round(studY / snapStepStuds) * snapStepStuds;
+              }
+              moveRulerEndpoint(doc, layer.id, rulerId, which, { x: sx, y: sy });
+            }}
+          />
+          {isViewer
+            ? <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
+            : <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} onDoubleClick={setEditingLabel} />}
+          <ModuleOverlay
+            map={map}
+            modules={readSidecarFromDoc(doc)?.modules ?? []}
+          />
+        </Group>
       </KonvaLayer>
-      {/* Electric circuit overlay — port of SceneBuilderElectric.cpp.
-          z = 500 in desktop (above bricks, below sidecar labels). */}
-      {showElectricCircuits && map && (
-        <KonvaLayer listening={false}>
-          <ElectricCircuitLayer map={map} partsByKey={partsByKey} />
-        </KonvaLayer>
-      )}
-      {/* Text labels render ABOVE bricks so they aren't occluded by
-          baseplate sprites. SceneBuilder.cpp:793-806 z-order. */}
-      <KonvaLayer listening={!isViewer}>
-        <TextLayers
-          map={map}
-          isViewer={isViewer}
-          onEditText={(ref) => setEditingText(ref)}
-        />
-        <RulerLayers
-          map={map}
-          selectedRulerId={selectedRulerId}
-          onRulerClick={(id) => setSelectedRulerId(id)}
-          onRulerDoubleClick={(id) => {
-            const layer = map.layers.find(
-              (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === id),
-            );
-            if (!layer || layer.type !== 'ruler') return;
-            const item = layer.rulerItems.find((r) => r.id === id);
-            if (!item) return;
-            setSelectedRulerId(id);
-            setEditingRuler({ item, layerId: layer.id });
-          }}
-          onEndpointDrag={(rulerId, which, studX, studY, commit) => {
-            // Find the ruler's layer so the mutation knows where to land.
-            const layer = map.layers.find(
-              (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === rulerId),
-            );
-            if (!layer || layer.type !== 'ruler') return;
-            // Snap the endpoint to the active grid step on commit
-            // (matches desktop MapView.cpp:556-559 — endpoint drag
-            // snaps live AND on commit). Live moves stay raw so the
-            // user gets pixel-precise feedback while dragging.
-            let sx = studX;
-            let sy = studY;
-            if (commit && snapStepStuds > 0) {
-              sx = Math.round(studX / snapStepStuds) * snapStepStuds;
-              sy = Math.round(studY / snapStepStuds) * snapStepStuds;
-            }
-            moveRulerEndpoint(doc, layer.id, rulerId, which, { x: sx, y: sy });
-          }}
-        />
-        {isViewer
-          ? <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
-          : <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} onDoubleClick={setEditingLabel} />}
-        <ModuleOverlay
-          map={map}
-          modules={readSidecarFromDoc(doc)?.modules ?? []}
-        />
-      </KonvaLayer>
+
+      {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
+          snap ring, ruler/venue drafts, remote cursors, export watermark. */}
       <KonvaLayer listening={false}>
-        {/*
-          Drag-from-Parts-panel ghost. Same PlaceGhost component, fed
-          from `dropPart` instead of the place-tool cursor. Mirrors
-          MapView::updateDragPreview at MapView.cpp:1715-1761.
-        */}
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
           if (!part || !map) {
-            return (
-              <PlaceGhost
-                part={part}
-                cursorStudX={dropPart.studX}
-                cursorStudY={dropPart.studY}
-              />
-            );
+            return <PlaceGhost part={part} cursorStudX={dropPart.studX} cursorStudY={dropPart.studY} />;
           }
           const ghostUrl = spriteUrlFor(part);
           const cached = ghostUrl ? getSpriteSync(ghostUrl) : null;
@@ -2204,27 +2182,19 @@ function Canvas({
             map,
             partsByKey,
           );
-          return (
-            <PlaceGhost
-              part={part}
-              cursorStudX={snapped.centreX}
-              cursorStudY={snapped.centreY}
-            />
-          );
+          return <PlaceGhost part={part} cursorStudX={snapped.centreX} cursorStudY={snapped.centreY} />;
         })()}
         <MarqueeOverlay marquee={marquee} />
         <SnapRing />
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
         {venueDraft && <VenueDraftPreview draft={venueDraft} />}
         <RemoteCursors awareness={awareness} map={map} />
-      </KonvaLayer>
-      {showExportWatermark && map && (() => {
-        const parts = [map.author, map.lug, map.event].filter(Boolean);
-        if (parts.length === 0) return null;
-        const stamp = parts.join(' / ');
-        const fontSize = Math.max(8, height / 60);
-        return (
-          <KonvaLayer listening={false}>
+        {showExportWatermark && map && (() => {
+          const parts = [map.author, map.lug, map.event].filter(Boolean);
+          if (parts.length === 0) return null;
+          const stamp = parts.join(' / ');
+          const fontSize = Math.max(8, height / 60);
+          return (
             <Text
               text={stamp}
               fontSize={fontSize}
@@ -2235,9 +2205,9 @@ function Canvas({
               width={width - 20}
               align="right"
             />
-          </KonvaLayer>
-        );
-      })()}
+          );
+        })()}
+      </KonvaLayer>
     </Stage>
   );
 
@@ -2845,9 +2815,9 @@ function BackgroundImageLayer({
   }
 
   return (
-    <KonvaLayer listening={false}>
+    <Group listening={false}>
       <KonvaImage image={img} x={x} y={y} width={w} height={h} opacity={bg.opacity} listening={false} />
-    </KonvaLayer>
+    </Group>
   );
 }
 
