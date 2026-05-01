@@ -1001,6 +1001,20 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 // an extra dependency for now.
 // ---------------------------------------------------------------------------
 
+/**
+ * Detect a single common top-level directory in a list of entry names.
+ * GitHub archives always wrap everything in e.g. "RepoName-main/" — we
+ * strip that so the contents land directly in destDir.
+ */
+function detectTopLevelPrefix(names: string[]): string {
+  if (names.length === 0) return '';
+  const segments = names[0]?.split('/') ?? [];
+  const first = (segments[0] ?? '') + '/';
+  if (!first || first === '/') return '';
+  if (names.every((n) => n.startsWith(first))) return first;
+  return '';
+}
+
 async function extractZip(buf: Buffer, destDir: string): Promise<void> {
   const { writeFile: wf, mkdir: mk } = await import('node:fs/promises');
   const { join: j, dirname } = await import('node:path');
@@ -1038,9 +1052,13 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
       getEntries(): Array<{ entryName: string; isDirectory: boolean; getData(): Buffer }>;
     };
     const zip = new AdmZip(buf);
-    for (const entry of zip.getEntries()) {
+    const entries = zip.getEntries();
+    const prefix = detectTopLevelPrefix(entries.map((e) => e.entryName));
+    for (const entry of entries) {
       if (entry.isDirectory) continue;
-      const dest = safeDestPath(destDir, entry.entryName);
+      const stripped = prefix ? entry.entryName.slice(prefix.length) : entry.entryName;
+      if (!stripped) continue;
+      const dest = safeDestPath(destDir, stripped);
       const data = entry.getData();
       if (data.length > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${entry.entryName}`);
       totalUncomp += data.length;
@@ -1054,8 +1072,10 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     // adm-zip not available; fall through to built-in parser.
   }
 
-  // Minimal local-file-entry parser (stored + deflate). Good enough for
-  // parts library zips which are typically flat or one-level-deep.
+  // Minimal local-file-entry parser (stored + deflate). Collect all names
+  // first to detect the common top-level prefix, then extract.
+  interface RawEntry { name: string; method: number; compSize: number; uncompSize: number; dataOff: number }
+  const rawEntries: RawEntry[] = [];
   let off = 0;
   function u16() { const v = buf.readUInt16LE(off); off += 2; return v; }
   function u32() { const v = buf.readUInt32LE(off); off += 4; return v; }
@@ -1075,25 +1095,33 @@ async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     const extraLen = u16();
     const name = read(nameLen).toString('utf8');
     skip(extraLen);
-    const compData = read(compSize);
+    const dataOff = off;
+    skip(compSize);
+    rawEntries.push({ name, method, compSize, uncompSize, dataOff });
+  }
 
-    if (!name.endsWith('/')) {
-      if (uncompSize > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${name}`);
-      const dest = safeDestPath(destDir, name);
-      await mk(dirname(dest), { recursive: true });
-      let data: Buffer;
-      if (method === 0) {
-        data = compData;
-      } else if (method === 8) {
-        data = await inflateRaw(compData);
-      } else {
-        throw new Error(`unsupported compression method ${method} for ${name}`);
-      }
-      if (data.length !== uncompSize) throw new Error(`size mismatch for ${name}`);
-      totalUncomp += data.length;
-      if (totalUncomp > MAX_TOTAL_SIZE) throw new Error('zip bomb: total uncompressed size exceeds limit');
-      await wf(dest, data);
+  const prefix = detectTopLevelPrefix(rawEntries.map((e) => e.name));
+
+  for (const entry of rawEntries) {
+    if (entry.name.endsWith('/')) continue;
+    const stripped = prefix ? entry.name.slice(prefix.length) : entry.name;
+    if (!stripped) continue;
+    if (entry.uncompSize > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${entry.name}`);
+    const dest = safeDestPath(destDir, stripped);
+    await mk(dirname(dest), { recursive: true });
+    const compData = buf.subarray(entry.dataOff, entry.dataOff + entry.compSize);
+    let data: Buffer;
+    if (entry.method === 0) {
+      data = compData;
+    } else if (entry.method === 8) {
+      data = await inflateRaw(compData);
+    } else {
+      throw new Error(`unsupported compression method ${entry.method} for ${entry.name}`);
     }
+    if (data.length !== entry.uncompSize) throw new Error(`size mismatch for ${entry.name}`);
+    totalUncomp += data.length;
+    if (totalUncomp > MAX_TOTAL_SIZE) throw new Error('zip bomb: total uncompressed size exceeds limit');
+    await wf(dest, data);
   }
 }
 

@@ -96,10 +96,8 @@ async function main() {
   await app.register(adminRoutes);
   await app.register(wsRoutes);
 
-  // Serve the BlueBrickParts library at /parts/*. The desktop's submodule
-  // organizes files under `parts-library/parts/`, so we point at that
-  // subdirectory directly. In Docker the host bind-mounts the submodule at
-  // `/parts`; in local dev the submodule lives at `../../parts-library`.
+  // Serve the BlueBrickParts base library at /parts/*.
+  // The submodule organises files under PARTS_DIR/parts/ so we point there.
   const partsRoot = resolve(env.partsDir, 'parts');
   if (existsSync(partsRoot)) {
     await app.register(fastifyStatic, {
@@ -112,6 +110,21 @@ async function main() {
     });
   } else {
     app.log.warn(`parts library not found at ${partsRoot}; /parts/* disabled`);
+  }
+
+  // Serve downloaded libraries at /parts/libraries/<slug>/*.
+  // Each library is extracted into PARTS_DIR/libraries/<slug>/ and its
+  // sprite paths are prefixed with "libraries/<slug>/" in the catalog.
+  const libsRoot = resolve(env.partsDir, 'libraries');
+  if (existsSync(libsRoot)) {
+    await app.register(fastifyStatic, {
+      root: libsRoot,
+      prefix: '/parts/libraries/',
+      decorateReply: false,
+      cacheControl: true,
+      maxAge: '30d',
+      immutable: true,
+    });
   }
 
   // Serve the SPA (built by `apps/web`) from /web/dist when present.

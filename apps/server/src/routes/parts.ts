@@ -8,7 +8,8 @@
 //   - 'bundled' → sprite at /parts/<spritePath>
 //   - 'custom'  → sprite at /api/custom-parts/<id>/sprite (auth required)
 
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { eq, or, isNull } from 'drizzle-orm';
@@ -128,21 +129,53 @@ async function loadBundled(
 ): Promise<{ etag: string; wire: PartWire[] }> {
   if (bundledCache) return bundledCache;
 
+  const allWire: PartWire[] = [];
+
+  // 1. Base library: PARTS_DIR/parts/ (the on-disk submodule path)
   const partsRoot = resolve(env.partsDir, 'parts');
-  try {
-    const result = await scanCatalog(partsRoot);
-    if (result.errors.length > 0) {
-      app.log.warn({ count: result.errors.length }, 'parts catalog scan: some XML files unreadable');
+  if (existsSync(partsRoot)) {
+    try {
+      const result = await scanCatalog(partsRoot);
+      if (result.errors.length > 0) {
+        app.log.warn({ count: result.errors.length }, 'base library scan: some XML files unreadable');
+      }
+      for (const p of result.catalog.values()) allWire.push(toBundledWire(p));
+    } catch (err) {
+      app.log.error({ err }, 'failed to scan base parts library');
     }
-    const wire = Array.from(result.catalog.values()).map(toBundledWire);
-    const etag = `"${Date.now().toString(36)}-${wire.length}"`;
-    bundledCache = { etag, wire };
-    return bundledCache;
-  } catch (err) {
-    app.log.error({ err }, 'failed to scan parts library');
-    bundledCache = { etag: '"empty-0"', wire: [] };
-    return bundledCache;
   }
+
+  // 2. Downloaded libraries: PARTS_DIR/libraries/<slug>/
+  // Sprites live at PARTS_DIR/libraries/<slug>/... but are served at
+  // /parts/libraries/<slug>/... — prefix spritePath accordingly.
+  const libsDir = resolve(env.partsDir, 'libraries');
+  if (existsSync(libsDir)) {
+    const installedLibs = await db
+      .select({ slug: schema.partLibraries.slug })
+      .from(schema.partLibraries)
+      .all();
+
+    for (const { slug } of installedLibs) {
+      if (slug === 'bluebrickparts') continue; // covered by partsRoot above
+      const libDir = resolve(join(libsDir, slug));
+      if (!existsSync(libDir)) continue;
+      try {
+        const result = await scanCatalog(libDir);
+        if (result.errors.length > 0) {
+          app.log.warn({ count: result.errors.length, slug }, 'library scan: some XML files unreadable');
+        }
+        for (const p of result.catalog.values()) {
+          allWire.push(toBundledWire(p, `libraries/${slug}/`));
+        }
+      } catch (err) {
+        app.log.warn({ err, slug }, 'failed to scan library directory');
+      }
+    }
+  }
+
+  const etag = `"${Date.now().toString(36)}-${allWire.length}"`;
+  bundledCache = { etag, wire: allWire };
+  return bundledCache;
 }
 
 async function loadCustom(userId: string | null): Promise<PartWire[]> {
@@ -196,7 +229,7 @@ async function loadCustom(userId: string | null): Promise<PartWire[]> {
   return all;
 }
 
-function toBundledWire(p: PartMetadata): PartWire {
+function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
   return {
     key: p.key,
     partNumber: p.partNumber,
@@ -204,7 +237,7 @@ function toBundledWire(p: PartMetadata): PartWire {
     kind: p.kind,
     description: pickDescription(p.descriptions),
     sortingKey: p.sortingKey,
-    spritePath: p.spritePath,
+    spritePath: p.spritePath ? spritePrefix + p.spritePath : p.spritePath,
     pxPerStud: p.pxPerStud,
     category: categoryFromXmlRelPath(p.xmlRelPath ?? ''),
     connections: p.connections.map((c) => ({
