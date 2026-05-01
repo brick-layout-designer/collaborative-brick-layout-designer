@@ -108,21 +108,28 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
     }
   }, [doc]);
 
-  // Centre the stage on the bricks' bounding box on first render — same
-  // first-paint centering the editor does, so the viewer doesn't dump
-  // people at (0,0) of a layout drawn at e.g. (3000, 1500).
+  // Fit the entire layout into the viewport on first render with a small
+  // padding margin so the layout isn't flush against the screen edges.
   useEffect(() => {
     if (!map) return;
     const bb = bricksBBox(map);
     if (!bb) return;
+    const PADDING = 40; // px inset on each side
+    const px = studToPx();
+    const bbWidthPx = (bb.maxX - bb.minX) * px;
+    const bbHeightPx = (bb.maxY - bb.minY) * px;
+    const availW = width - PADDING * 2;
+    const availH = height - PADDING * 2;
+    const fitZoom = Math.min(availW / bbWidthPx, availH / bbHeightPx, MAX_ZOOM);
+    const fittedZoom = Math.max(MIN_ZOOM, fitZoom);
     const cxStud = (bb.minX + bb.maxX) / 2;
     const cyStud = (bb.minY + bb.maxY) / 2;
+    setZoom(fittedZoom);
     setPan({
-      x: width / 2 - cxStud * studToPx() * zoom,
-      y: height / 2 - cyStud * studToPx() * zoom,
+      x: width / 2 - cxStud * px * fittedZoom,
+      y: height / 2 - cyStud * px * fittedZoom,
     });
-    // Only run once when the map first arrives; subsequent zoom changes
-    // shouldn't recentre.
+    // Only run once when the map first arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map !== null]);
 

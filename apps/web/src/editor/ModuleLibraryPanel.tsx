@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import * as Y from 'yjs';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { docToBbm } from '@cld/ydoc';
 import type { ModuleSummary } from '../api';
 import { api } from '../api';
@@ -87,6 +87,11 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
               isViewer={isViewer}
               isInserting={inserting === m.id}
               onInsert={() => void insertModule(m.id)}
+              onRename={(newTitle) =>
+                api.modules.rename(m.id, newTitle).then(() =>
+                  qc.invalidateQueries({ queryKey: ['modules'] }),
+                )
+              }
               onDelete={() => {
                 if (!confirm(`Delete module "${m.title}"?`)) return;
                 void api.modules.remove(m.id).then(() =>
@@ -106,17 +111,40 @@ function ModuleLibraryRow({
   isViewer,
   isInserting,
   onInsert,
+  onRename,
   onDelete,
 }: {
   module: ModuleSummary;
   isViewer: boolean;
   isInserting: boolean;
   onInsert: () => void;
+  onRename: (title: string) => Promise<unknown>;
   onDelete: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
+  function startRename() {
+    setDraft(module.title);
+    setEditing(true);
+  }
+
+  async function commitRename() {
+    const title = draft.trim();
+    if (!title || title === module.title) { setEditing(false); return; }
+    setRenaming(true);
+    try {
+      await onRename(title);
+    } finally {
+      setRenaming(false);
+      setEditing(false);
+    }
+  }
+
   return (
     <li
-      draggable
+      draggable={!editing}
       onDragStart={(e) => {
         if (!e.dataTransfer) return;
         e.dataTransfer.effectAllowed = 'copy';
@@ -126,7 +154,23 @@ function ModuleLibraryRow({
       className="group flex cursor-grab items-start justify-between gap-2 px-2 py-2 hover:bg-neutral-800/60 active:cursor-grabbing"
     >
       <div className="min-w-0 flex-1 leading-tight" onDoubleClick={isViewer ? undefined : onInsert}>
-        <p className="truncate font-medium text-neutral-200 text-xs">{module.title}</p>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void commitRename()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void commitRename();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+            disabled={renaming}
+            className="w-full rounded border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-neutral-100"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <p className="truncate font-medium text-neutral-200 text-xs">{module.title}</p>
+        )}
         <p className="text-[10px] text-neutral-600">
           v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
         </p>
@@ -140,6 +184,22 @@ function ModuleLibraryRow({
             className="rounded px-1.5 py-0.5 text-[10px] text-blue-400 hover:bg-blue-900/40 disabled:opacity-40"
           >
             {isInserting ? '…' : '↓'}
+          </button>
+          <a
+            href={`/editor/module/${module.id}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Open / edit module"
+            className="rounded px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
+          >
+            ✎
+          </a>
+          <button
+            onClick={startRename}
+            title="Rename module"
+            className="rounded px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
+          >
+            ⓘ
           </button>
           <button
             onClick={onDelete}

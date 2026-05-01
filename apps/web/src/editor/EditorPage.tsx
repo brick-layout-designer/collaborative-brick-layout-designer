@@ -333,12 +333,12 @@ function Editor({ layoutId }: { layoutId: string }) {
           <SaveStatusIndicator status={status} />
           <PresencePanel awareness={awareness} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           <button
             onClick={undo.undo}
             disabled={!undo.canUndo}
             title="Undo (Cmd-Z)"
-            className="rounded border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
           >
             Undo
           </button>
@@ -346,7 +346,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             onClick={undo.redo}
             disabled={!undo.canRedo}
             title="Redo (Cmd-Shift-Z)"
-            className="rounded border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
           >
             Redo
           </button>
@@ -439,7 +439,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           {!isViewer && (
             <button
               onClick={() => setShowInsertModule(true)}
-              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800 whitespace-nowrap"
               title="Insert a saved module"
             >
               Insert module
@@ -447,14 +447,14 @@ function Editor({ layoutId }: { layoutId: string }) {
           )}
           <button
             onClick={() => setShowShare(true)}
-            className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="shrink-0 rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
           >
             Share
           </button>
           {!isViewer && (
             <button
               onClick={() => void saveNow()}
-              className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+              className="shrink-0 rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
             >
               Save
             </button>
@@ -486,7 +486,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         className="relative overflow-hidden"
         style={{ gridColumn: '2', gridRow: '2' }}
       >
-        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} clipboardRef={clipboardRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} />
+        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} clipboardRef={clipboardRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
       </main>
       {showRight && (
         <DockColumn
@@ -693,6 +693,7 @@ function Canvas({
   clipboardRef,
   undo,
   onOpenVenueProps,
+  onSaveModule,
 }: {
   doc: import('yjs').Doc;
   awareness: import('y-protocols/awareness').Awareness | null;
@@ -704,6 +705,7 @@ function Canvas({
   clipboardRef: React.MutableRefObject<{ cut: () => void; copy: () => void; paste: () => void; delete: () => void } | null>;
   undo: { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void };
   onOpenVenueProps: () => void;
+  onSaveModule: () => void;
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const { width, height } = useViewportSize();
@@ -2429,6 +2431,7 @@ function Canvas({
               }
             }
           }}
+          onSaveModule={onSaveModule}
         />
       )}
       <ScaleBarHud zoom={zoom} />
@@ -2515,7 +2518,7 @@ function CanvasContextMenu({
   textCellRef, onEditText, rulerRef, brickIdUnderCursor, selectedRulerId, onAttachRuler,
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
   onRotateCCW, onRotateCW, onBringToFront, onSendToBack,
-  onGroup, onUngroup, onSelectConnected, onAddTextHere, onProperties,
+  onGroup, onUngroup, onSelectConnected, onAddTextHere, onProperties, onSaveModule,
 }: {
   x: number; y: number; studX: number; studY: number; onBrick: boolean;
   selection: string[]; map: import('@cld/model').BbmMap | null;
@@ -2532,7 +2535,7 @@ function CanvasContextMenu({
   onDelete: () => void; onRotateCCW: () => void; onRotateCW: () => void;
   onBringToFront: () => void; onSendToBack: () => void;
   onGroup: () => void; onUngroup: () => void; onSelectConnected: () => void;
-  onAddTextHere: () => void; onProperties: () => void;
+  onAddTextHere: () => void; onProperties: () => void; onSaveModule: () => void;
 }) {
   const hasSel = selection.length > 0;
   const singleSel = selection.length === 1;
@@ -2623,6 +2626,8 @@ function CanvasContextMenu({
     if (hasSel) entries.push(item('Ungroup', onUngroup, !hasSel));
     entries.push(item('Select Connected', onSelectConnected));
     entries.push(sep('s3'));
+    entries.push(item('Save as Module…', onSaveModule));
+    entries.push(sep('s3b'));
     entries.push(item('Cut', onCut));
     entries.push(item('Copy', onCopy));
     entries.push(item('Duplicate', onDuplicate));
