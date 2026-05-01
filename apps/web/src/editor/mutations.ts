@@ -1059,48 +1059,46 @@ export function editBrick(
  */
 export function reorderBricks(
   doc: Y.Doc,
-  layerId: string,
+  _layerId: string,
   brickIds: string[],
   to: 'front' | 'back',
 ): void {
   if (brickIds.length === 0) return;
+  const idSet = new Set(brickIds);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yBricks = layerData.get('bricks');
-    if (!(yBricks instanceof Y.Array)) return;
+    // Reorder within each layer that contains any of the selected bricks.
+    // Iterating all layers handles cross-layer selections correctly.
+    const layerOrder = doc.getArray<string>('layers');
+    for (const lid of layerOrder.toArray()) {
+      const layerData = doc.getMap('layerData').get(lid);
+      if (!(layerData instanceof Y.Map)) continue;
+      const yBricks = layerData.get('bricks');
+      if (!(yBricks instanceof Y.Array)) continue;
 
-    // Collect the moving bricks' indices and Y.Maps in array order so
-    // their relative ordering survives the move (matches desktop's
-    // ReorderBricksCommand which preserves within-selection order).
-    const moving: { idx: number; yMap: Y.Map<unknown> }[] = [];
-    const idSet = new Set(brickIds);
-    for (let i = 0; i < yBricks.length; i++) {
-      const b = yBricks.get(i);
-      if (b instanceof Y.Map && idSet.has(b.get('id') as string)) {
-        moving.push({ idx: i, yMap: b });
+      const moving: number[] = [];
+      for (let i = 0; i < yBricks.length; i++) {
+        const b = yBricks.get(i);
+        if (b instanceof Y.Map && idSet.has(b.get('id') as string)) moving.push(i);
       }
-    }
-    if (moving.length === 0) return;
+      if (moving.length === 0) continue;
 
-    // Snapshot every brick's serialised JSON so we can rebuild the
-    // array in the new order. Y.Array doesn't support move-in-place,
-    // so the only safe way is to delete + re-insert.
-    const all: Record<string, unknown>[] = [];
-    for (let i = 0; i < yBricks.length; i++) {
-      const b = yBricks.get(i);
-      if (b instanceof Y.Map) all.push(b.toJSON() as Record<string, unknown>);
-    }
-    const movingJsonInOrder = moving.map((m) => all[m.idx]!);
-    const stationary = all.filter((_, i) => !moving.some((m) => m.idx === i));
-    const next = to === 'front' ? [...stationary, ...movingJsonInOrder]
-                                : [...movingJsonInOrder, ...stationary];
+      const all: Record<string, unknown>[] = [];
+      for (let i = 0; i < yBricks.length; i++) {
+        const b = yBricks.get(i);
+        if (b instanceof Y.Map) all.push(b.toJSON() as Record<string, unknown>);
+      }
+      const movingSet = new Set(moving);
+      const movingJson = moving.map((i) => all[i]!);
+      const stationary = all.filter((_, i) => !movingSet.has(i));
+      const next = to === 'front' ? [...stationary, ...movingJson]
+                                  : [...movingJson, ...stationary];
 
-    yBricks.delete(0, yBricks.length);
-    for (const json of next) {
-      const yBrick = new Y.Map<unknown>();
-      for (const [k, v] of Object.entries(json)) yBrick.set(k, v);
-      yBricks.push([yBrick]);
+      yBricks.delete(0, yBricks.length);
+      for (const json of next) {
+        const yBrick = new Y.Map<unknown>();
+        for (const [k, v] of Object.entries(json)) yBrick.set(k, v);
+        yBricks.push([yBrick]);
+      }
     }
   }, LOCAL_ORIGIN);
 }

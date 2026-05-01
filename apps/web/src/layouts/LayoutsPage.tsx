@@ -18,7 +18,17 @@ export function LayoutsPage() {
 
   if (list.isLoading) return <p className="text-neutral-500">Loading layouts…</p>;
 
-  const layouts = list.data?.layouts ?? [];
+  const allLayouts = list.data?.layouts ?? [];
+  // Personal layouts only — org-owned layouts live on the org's page.
+  const layouts = allLayouts.filter((l) => l.ownerOrgId === null);
+  // Collect distinct orgs that own at least one layout this user can see.
+  const orgLayouts = allLayouts.filter((l) => l.ownerOrgId !== null);
+  const orgGroups = orgLayouts.reduce<Record<string, { name: string; slug: string }>>((acc, l) => {
+    if (l.ownerOrgSlug && !acc[l.ownerOrgSlug]) {
+      acc[l.ownerOrgSlug] = { name: l.ownerOrgName ?? l.ownerOrgSlug, slug: l.ownerOrgSlug };
+    }
+    return acc;
+  }, {});
 
   return (
     <section className="space-y-4">
@@ -31,6 +41,21 @@ export function LayoutsPage() {
           New layout
         </button>
       </div>
+
+      {Object.values(orgGroups).length > 0 && (
+        <div className="rounded border border-neutral-700 bg-neutral-800/40 px-4 py-3 text-sm text-neutral-400">
+          Some layouts are owned by your orgs and are not shown here.{' '}
+          {Object.values(orgGroups).map((org) => (
+            <Link
+              key={org.slug}
+              to={`/orgs/${org.slug}`}
+              className="text-blue-400 hover:underline"
+            >
+              View {org.name}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {layouts.length === 0 ? (
         <p className="rounded border border-dashed border-neutral-700 p-8 text-center text-neutral-500">

@@ -58,9 +58,10 @@ export async function layoutRoutes(app: FastifyInstance) {
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ layout: schema.layouts })
+      .select({ layout: schema.layouts, orgName: schema.orgs.name, orgSlug: schema.orgs.slug })
       .from(schema.orgMembers)
       .innerJoin(schema.layouts, eq(schema.layouts.ownerOrgId, schema.orgMembers.orgId))
+      .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
       .select({ layout: schema.layouts })
@@ -75,10 +76,10 @@ export async function layoutRoutes(app: FastifyInstance) {
       seen.add(l.id);
       all.push(toListItem(l));
     }
-    for (const { layout } of orgOwned) {
+    for (const { layout, orgName, orgSlug } of orgOwned) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout));
+      all.push(toListItem(layout, orgName, orgSlug));
     }
     for (const { layout } of shared) {
       if (seen.has(layout.id)) continue;
@@ -552,12 +553,14 @@ export async function layoutRoutes(app: FastifyInstance) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toListItem(l: typeof schema.layouts.$inferSelect) {
+function toListItem(l: typeof schema.layouts.$inferSelect, ownerOrgName?: string, ownerOrgSlug?: string) {
   return {
     id: l.id,
     title: l.title,
     ownerUserId: l.ownerUserId,
     ownerOrgId: l.ownerOrgId,
+    ownerOrgName: ownerOrgName ?? null,
+    ownerOrgSlug: ownerOrgSlug ?? null,
     createdAt: l.createdAt,
     updatedAt: l.updatedAt,
     expiresAt: l.expiresAt,

@@ -38,6 +38,8 @@ export interface LayoutSummary {
   title: string;
   ownerUserId: string | null;
   ownerOrgId: string | null;
+  ownerOrgName: string | null;
+  ownerOrgSlug: string | null;
   createdAt: number;
   updatedAt: number;
   expiresAt: number | null;
