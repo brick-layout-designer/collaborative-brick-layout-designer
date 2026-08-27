@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resetDb } from '../../test/helpers.js';
+import { bufConcat, resetDb } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { sessionRoutes } from '../auth/session.js';
@@ -406,7 +406,7 @@ describe('background image', () => {
     const boundary = '----BoundaryPNG';
     const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="bg.png"\r\nContent-Type: image/png\r\n\r\n`;
     const footer = `\r\n--${boundary}--\r\n`;
-    const body = Buffer.concat([Buffer.from(header), pngBytes, Buffer.from(footer)]);
+    const body = bufConcat([Buffer.from(header), pngBytes, Buffer.from(footer)]);
 
     const upload = await app.inject({
       method: 'POST',
@@ -440,7 +440,7 @@ describe('background image', () => {
     const boundary = '----BoundaryDel';
     const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="bg.png"\r\nContent-Type: image/png\r\n\r\n`;
     const footer = `\r\n--${boundary}--\r\n`;
-    const body = Buffer.concat([Buffer.from(header), pngBytes, Buffer.from(footer)]);
+    const body = bufConcat([Buffer.from(header), pngBytes, Buffer.from(footer)]);
 
     await app.inject({
       method: 'POST',
