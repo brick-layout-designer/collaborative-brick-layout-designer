@@ -1150,12 +1150,26 @@ export async function syncLibrariesFromDisk(partsDir: string, logger?: { info: (
   const libsDir = join(partsDir, 'libraries');
   if (!existsSync(libsDir)) return;
 
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  // Read the directory as a plain string-name listing (no withFileTypes) —
+  // newer @types/node made `readdir(..., { withFileTypes: true })`'s return
+  // type depend on the encoding overload TS happens to pick, which doesn't
+  // always match what's actually returned at runtime. `isDirectory()` below
+  // becomes a real fs.statSync check instead of trusting a Dirent flag.
+  let names: string[];
   try {
-    entries = await readdir(libsDir, { withFileTypes: true });
+    names = await readdir(libsDir);
   } catch {
     return;
   }
+  const { statSync } = await import('node:fs');
+  const entries = names
+    .map((name) => ({ name, isDirectory: () => {
+      try {
+        return statSync(join(libsDir, name)).isDirectory();
+      } catch {
+        return false;
+      }
+    } }));
 
   const existing = await db.select({ slug: schema.partLibraries.slug }).from(schema.partLibraries);
   const registeredSlugs = new Set(existing.map((r) => r.slug));
