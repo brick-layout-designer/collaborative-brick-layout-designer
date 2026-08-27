@@ -91,14 +91,16 @@ export function RulerLayers({
           <Group key={layer.id} opacity={opacity}>
             {layer.rulerItems.map((item) => {
               const sel = item.id === selectedRulerId;
+              // `key` must be passed directly to JSX, not spread from a
+              // props object — React 19 warns (and doesn't reliably use
+              // it for reconciliation) when key rides along in a spread.
               const props: {
-                key: string;
                 brickCentres: typeof brickCentres;
                 selected: boolean;
                 onClick?: () => void;
                 onDoubleClick?: () => void;
                 onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, commit: boolean) => void;
-              } = { key: item.id, brickCentres, selected: sel };
+              } = { brickCentres, selected: sel };
               if (onRulerClick) props.onClick = () => onRulerClick(item.id);
               if (onRulerDoubleClick) props.onDoubleClick = () => onRulerDoubleClick(item.id);
               if (onEndpointDrag) {
@@ -106,9 +108,9 @@ export function RulerLayers({
                   onEndpointDrag(item.id, which, sx, sy, commit);
               }
               return item.kind === 'linear' ? (
-                <LinearRulerView item={item} {...props} />
+                <LinearRulerView key={item.id} item={item} {...props} />
               ) : (
-                <CircularRulerView item={item} {...props} />
+                <CircularRulerView key={item.id} item={item} {...props} />
               );
             })}
           </Group>

@@ -18,11 +18,34 @@ const ts = Date.now();
 const EMAIL = `editor-e2e-${ts}@example.com`;
 const PASS = 'correct horse battery';
 
+/**
+ * /api/auth/password/register and /login are both rate-limited (10/min)
+ * — a real, intentional anti-abuse control. This file's ~18 tests all
+ * call loginAndCreateLayout, which register/login every time (harmless
+ * since it's the same account — register just 409s after the first),
+ * easily exceeding 10/min. Retry on 429 using the server's own
+ * `retry-after` header rather than guessing a backoff.
+ */
+async function postWithRateLimitRetry(page: Page, path: string, data: Record<string, string>): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await page.request.post(path, { data });
+    if (res.ok() || res.status() === 409) return; // 409 email_taken is fine — account exists
+    if (res.status() === 429 && attempt < 3) {
+      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
+      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
+      continue;
+    }
+    return; // give up silently, matching this helper's original fire-and-forget style
+  }
+}
+
 async function loginAndCreateLayout(page: Page): Promise<string> {
-  await page.request.post('/api/auth/password/register', {
-    data: { email: EMAIL, password: PASS, displayName: 'Editor Tester' },
+  await postWithRateLimitRetry(page, '/api/auth/password/register', {
+    email: EMAIL,
+    password: PASS,
+    displayName: 'Editor Tester',
   });
-  await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+  await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
   const res = await page.request.post('/api/layouts', { data: { title: 'Editor Test Layout' } });
   const { id } = await res.json() as { id: string };
   return id;
@@ -55,9 +78,11 @@ test.describe('editor — load', () => {
   test('editor toolbar is visible', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    // Toolbar should contain at least a select/pointer tool icon or role.
-    const toolbar = page.locator('[role="toolbar"]').or(page.locator('[data-testid="toolbar"]')).or(page.locator('nav'));
-    await expect(toolbar.first()).toBeVisible({ timeout: 5000 });
+    // The editor's toolbar is plain <button>s in a <header> row (no
+    // role="toolbar"/data-testid/<nav> — those only exist on the
+    // Layouts/Orgs pages' AppHeader, which the editor doesn't render).
+    // The "Select" tool button is always present and active by default.
+    await expect(page.getByRole('button', { name: 'Select' })).toBeVisible({ timeout: 5000 });
   });
 });
 
@@ -65,38 +90,43 @@ test.describe('editor — tool switching', () => {
   test('clicking the rotate tool activates it', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    // Find a rotate button by label text or aria-label.
-    const rotateBtn = page.getByRole('button', { name: /rotate/i });
-    if (await rotateBtn.count() > 0) {
-      await rotateBtn.click();
-      // After clicking, the button (or its parent) should have an active state.
-      await expect(rotateBtn).toHaveAttribute('aria-pressed', 'true').catch(() =>
-        expect(rotateBtn.or(rotateBtn.locator('..')).first()).toHaveClass(/active|selected|current/),
-      );
-    }
+    // Toolbar.tsx has no aria-pressed / active|selected|current class —
+    // the active tool button gets `bg-blue-600 text-white` (see TOOLS.map
+    // in Toolbar.tsx) and the status bar's "Tool: <name>" also reflects
+    // the current tool; check both real signals.
+    const rotateBtn = page.getByRole('button', { name: 'Rotate' });
+    await rotateBtn.click();
+    await expect(rotateBtn).toHaveClass(/bg-blue-600/);
+    await expect(page.locator('footer')).toContainText('Tool: rotate');
   });
 
   test('clicking delete tool activates it', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    const deleteBtn = page.getByRole('button', { name: /delete|erase|remove/i });
-    if (await deleteBtn.count() > 0) {
-      await deleteBtn.click();
-      // No assertion needed beyond not crashing — the tool state is in Zustand.
-      await expect(page.locator('canvas').first()).toBeVisible();
-    }
+    // /delete|erase|remove/i ambiguously matches multiple buttons: the
+    // global "Delete (Del)" selection-delete action, the "Erase" tool,
+    // and the Toolbar's own "Delete" tool — and even an exact accessible
+    // name of "Delete" still matches both Delete buttons (the global
+    // one's computed name apparently still satisfies it). The `title`
+    // attribute is the only thing that disambiguates them: the
+    // Toolbar's tool has no shortcut suffix (see TOOLS.map in
+    // Toolbar.tsx), so its title is the bare string "Delete".
+    const deleteBtn = page.getByTitle('Delete', { exact: true });
+    await deleteBtn.click();
+    await expect(page.locator('footer')).toContainText('Tool: delete');
+    await expect(page.locator('canvas').first()).toBeVisible();
   });
 
   test('clicking select tool activates it after switching away', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    const rotateBtn = page.getByRole('button', { name: /rotate/i });
-    const selectBtn = page.getByRole('button', { name: /select|pointer/i });
-    if ((await rotateBtn.count()) > 0 && (await selectBtn.count()) > 0) {
-      await rotateBtn.click();
-      await selectBtn.click();
-      await expect(page.locator('canvas').first()).toBeVisible();
-    }
+    const rotateBtn = page.getByRole('button', { name: 'Rotate' });
+    const selectBtn = page.getByRole('button', { name: 'Select' });
+    await rotateBtn.click();
+    await expect(page.locator('footer')).toContainText('Tool: rotate');
+    await selectBtn.click();
+    await expect(page.locator('footer')).toContainText('Tool: select');
+    await expect(page.locator('canvas').first()).toBeVisible();
   });
 });
 
@@ -104,8 +134,13 @@ test.describe('editor — keyboard shortcuts', () => {
   test('Ctrl+Z triggers undo without crashing the editor', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    // Click the canvas to focus it, then send undo.
-    await page.locator('canvas').first().click();
+    // Click the canvas to focus it, then send undo. The Konva Stage
+    // stacks 3 <canvas> elements (interactive layer + HUD overlay on
+    // top); `.first()` is the bottom one, which the top layer
+    // legitimately intercepts pointer events for — Playwright's
+    // actionability check correctly refuses a plain click there.
+    // Click the topmost canvas instead, matching a real user's click.
+    await page.locator('canvas').last().click();
     await page.keyboard.press('Control+z');
     // Canvas must still be visible after the keypress.
     await expect(page.locator('canvas').first()).toBeVisible();
@@ -114,7 +149,7 @@ test.describe('editor — keyboard shortcuts', () => {
   test('Ctrl+Y triggers redo without crashing', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    await page.locator('canvas').first().click();
+    await page.locator('canvas').last().click();
     await page.keyboard.press('Control+z');
     await page.keyboard.press('Control+y');
     await expect(page.locator('canvas').first()).toBeVisible();
@@ -123,7 +158,7 @@ test.describe('editor — keyboard shortcuts', () => {
   test('Escape clears selection without crashing', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    await page.locator('canvas').first().click();
+    await page.locator('canvas').last().click();
     await page.keyboard.press('Escape');
     await expect(page.locator('canvas').first()).toBeVisible();
   });
@@ -167,8 +202,9 @@ test.describe('editor — snapshot API round-trip', () => {
 
 test.describe('editor — export', () => {
   test('export .bbm link is reachable and returns XML', async ({ page }) => {
+    // loginAndCreateLayout already logs in — no need to do it twice
+    // (and every hit against the rate-limited login endpoint counts).
     const id = await loginAndCreateLayout(page);
-    await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
 
     const exportRes = await page.request.get(`/api/layouts/${id}/export.bbm`);
     expect(exportRes.ok()).toBe(true);
@@ -178,10 +214,10 @@ test.describe('editor — export', () => {
 
 test.describe('editor — Fordyce 2026 import', () => {
   test('imports Fordyce 2026 .bbm and opens editor without crashing', async ({ page }) => {
-    await page.request.post('/api/auth/password/register', {
-      data: { email: EMAIL, password: PASS, displayName: 'Editor Tester' },
+    await postWithRateLimitRetry(page, '/api/auth/password/register', {
+      email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
-    await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026', bbm: FORDYCE_BBM },
@@ -194,10 +230,10 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 layout title is shown in the editor', async ({ page }) => {
-    await page.request.post('/api/auth/password/register', {
-      data: { email: EMAIL, password: PASS, displayName: 'Editor Tester' },
+    await postWithRateLimitRetry(page, '/api/auth/password/register', {
+      email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
-    await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 Title Test', bbm: FORDYCE_BBM },
@@ -209,10 +245,10 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 snapshot returns substantial bytes', async ({ page }) => {
-    await page.request.post('/api/auth/password/register', {
-      data: { email: EMAIL, password: PASS, displayName: 'Editor Tester' },
+    await postWithRateLimitRetry(page, '/api/auth/password/register', {
+      email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
-    await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 Snapshot', bbm: FORDYCE_BBM },
@@ -227,10 +263,10 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 export round-trip preserves XML structure', async ({ page }) => {
-    await page.request.post('/api/auth/password/register', {
-      data: { email: EMAIL, password: PASS, displayName: 'Editor Tester' },
+    await postWithRateLimitRetry(page, '/api/auth/password/register', {
+      email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
-    await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 Round-trip', bbm: FORDYCE_BBM },
@@ -242,17 +278,18 @@ test.describe('editor — Fordyce 2026 import', () => {
     const xml = await exportRes.text();
     expect(xml).toContain('<Map>');
     expect(xml).toContain('</Map>');
-    // Original has 949 bricks.
-    const itemMatches = xml.match(/<BrickRef /g);
+    // Original has 949 bricks. The writer emits `<Brick id="...">` (see
+    // packages/bbm/src/Writer.ts) — there's no `<BrickRef>` element.
+    const itemMatches = xml.match(/<Brick id="/g);
     expect(itemMatches).not.toBeNull();
     expect(itemMatches!.length).toBeGreaterThan(100);
   });
 
   test('Fordyce 2026 undo/redo does not crash the editor', async ({ page }) => {
-    await page.request.post('/api/auth/password/register', {
-      data: { email: EMAIL, password: PASS, displayName: 'Editor Tester' },
+    await postWithRateLimitRetry(page, '/api/auth/password/register', {
+      email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
-    await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 UndoRedo', bbm: FORDYCE_BBM },
@@ -260,7 +297,7 @@ test.describe('editor — Fordyce 2026 import', () => {
     const { id } = (await res.json()) as { id: string };
 
     await openEditor(page, id);
-    await page.locator('canvas').first().click();
+    await page.locator('canvas').last().click();
     await page.keyboard.press('Control+z');
     await page.keyboard.press('Control+y');
     await expect(page.locator('canvas').first()).toBeVisible();

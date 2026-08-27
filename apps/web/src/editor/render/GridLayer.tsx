@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Group, Line, Rect } from 'react-konva';
 import type { BbmMap, ColorSpec, LayerGrid } from '@cld/model';
 import { studToPx, COLOR_DEFAULT } from './coords';
