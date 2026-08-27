@@ -12,6 +12,7 @@
 // (drawing, dimensions dialog). The data round-trips through the
 // sidecar regardless.
 
+import type { JSX } from 'react';
 import { Group, Line, Rect, Text } from 'react-konva';
 import type { Venue } from '@cld/bbm';
 import { studToPx } from './coords';
