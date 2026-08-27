@@ -195,7 +195,11 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
     method: 'PUT',
     credentials: 'include',
     headers: { 'content-type': 'application/octet-stream' },
-    body: bytes,
+    // TypeScript 7's DOM lib types narrowed BodyInit to require
+    // Uint8Array<ArrayBuffer> specifically, rejecting the more general
+    // Uint8Array (which could theoretically back a SharedArrayBuffer,
+    // though nothing in this codebase ever produces one here).
+    body: bytes as Uint8Array<ArrayBuffer>,
   });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   return res.json() as Promise<{ updatedAt: number }>;

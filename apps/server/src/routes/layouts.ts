@@ -615,7 +615,12 @@ function buildZip(entries: { name: string; data: Buffer }[]): Buffer {
     local.writeUInt32LE(size, 22);        // uncompressed size
     local.writeUInt16LE(nameBytes.length, 26);
     local.writeUInt16LE(0, 28);           // extra len
-    nameBytes.copy(local, 30);
+    // TypeScript 7's stricter ArrayBufferLike/SharedArrayBuffer variance
+    // makes Buffer no longer structurally satisfy Uint8Array<ArrayBuffer>
+    // as Buffer.copy's own `target` param — a type-declaration
+    // self-incompatibility, not a real runtime issue (Buffer.copy has
+    // always accepted a Buffer target).
+    nameBytes.copy(local as unknown as Uint8Array<ArrayBuffer>, 30);
     localHeaders.push(local);
     offset += local.length + size;
   }
@@ -646,7 +651,8 @@ function buildZip(entries: { name: string; data: Buffer }[]): Buffer {
     central.writeUInt16LE(0, 36);          // int attr
     central.writeUInt32LE(0, 38);          // ext attr
     central.writeUInt32LE(offsets[i]!, 42); // local header offset
-    nameBytes.copy(central, 46);
+    // Same TS7 Buffer/Uint8Array<ArrayBuffer> type-declaration gap as above.
+    nameBytes.copy(central as unknown as Uint8Array<ArrayBuffer>, 46);
     centralHeaders.push(central);
   }
 
@@ -661,11 +667,12 @@ function buildZip(entries: { name: string; data: Buffer }[]): Buffer {
   eocd.writeUInt32LE(centralDirStart, 16);    // CD offset
   eocd.writeUInt16LE(0, 20);                  // comment len
 
+  // Same TS7 Buffer/Uint8Array<ArrayBuffer> type-declaration gap as above.
   return Buffer.concat([
     ...localHeaders.flatMap((h, i) => [h, entries[i]!.data]),
     ...centralHeaders,
     eocd,
-  ]);
+  ] as unknown as Uint8Array<ArrayBuffer>[]);
 }
 
 /** CRC-32 compatible with PKZIP (polynomial 0xEDB88320). */

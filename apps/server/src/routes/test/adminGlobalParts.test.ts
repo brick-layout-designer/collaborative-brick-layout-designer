@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db, resetDb, schema } from '../../test/helpers.js';
+import { bufConcat, bufCopy, db, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { sessionRoutes } from '../auth/session.js';
@@ -693,7 +693,7 @@ function buildStoredZip(files: Array<{ name: string; data: Buffer }>): Buffer {
     lh.writeUInt32LE(file.data.length, 22); // uncompressed size
     lh.writeUInt16LE(nameBytes.length, 26);
     lh.writeUInt16LE(0, 28);          // extra len
-    nameBytes.copy(lh, 30);
+    bufCopy(nameBytes, lh, 30);
     parts.push(lh, file.data);
 
     // Central directory entry.
@@ -715,11 +715,11 @@ function buildStoredZip(files: Array<{ name: string; data: Buffer }>): Buffer {
     cd.writeUInt16LE(0, 36);
     cd.writeUInt32LE(0, 38);
     cd.writeUInt32LE(offset, 42);
-    nameBytes.copy(cd, 46);
+    bufCopy(nameBytes, cd, 46);
     centralDir.push(cd);
   }
 
-  const cdBuf = Buffer.concat(centralDir);
+  const cdBuf = bufConcat(centralDir);
   const cdOffset = parts.reduce((sum, p) => sum + p.length, 0);
 
   const eocd = Buffer.alloc(22);
@@ -732,7 +732,7 @@ function buildStoredZip(files: Array<{ name: string; data: Buffer }>): Buffer {
   eocd.writeUInt32LE(cdOffset, 16);
   eocd.writeUInt16LE(0, 20);
 
-  return Buffer.concat([...parts, cdBuf, eocd]);
+  return bufConcat([...parts, cdBuf, eocd]);
 }
 
 describe('extractZip', () => {
@@ -823,7 +823,7 @@ describe('extractZip', () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'zip-test-'));
     try {
       const original = Buffer.from('hello deflated world');
-      const compressed = deflateRawSync(original);
+      const compressed = deflateRawSync(new Uint8Array(original));
 
       const nameBytes = Buffer.from('deflated.txt', 'utf8');
       const lh = Buffer.alloc(30 + nameBytes.length);
@@ -838,9 +838,9 @@ describe('extractZip', () => {
       lh.writeUInt32LE(original.length, 22);
       lh.writeUInt16LE(nameBytes.length, 26);
       lh.writeUInt16LE(0, 28);
-      nameBytes.copy(lh, 30);
+      bufCopy(nameBytes, lh, 30);
 
-      const zipBuf = Buffer.concat([lh, compressed]);
+      const zipBuf = bufConcat([lh, compressed]);
 
       await extractZip(zipBuf, tmpDir);
 
@@ -867,10 +867,10 @@ describe('extractZip', () => {
       lh.writeUInt32LE(4, 22);
       lh.writeUInt16LE(nameBytes.length, 26);
       lh.writeUInt16LE(0, 28);
-      nameBytes.copy(lh, 30);
+      bufCopy(nameBytes, lh, 30);
 
       const data = Buffer.from('data');
-      const zipBuf = Buffer.concat([lh, data]);
+      const zipBuf = bufConcat([lh, data]);
 
       await expect(extractZip(zipBuf, tmpDir)).rejects.toThrow('unsupported compression method 99');
     } finally {
