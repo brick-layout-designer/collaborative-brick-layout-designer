@@ -11,7 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Node 25 stopped bundling corepack (it's no longer preinstalled on the
 # node:*-slim images) — install it explicitly before enabling it.
-RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@10 --activate
+# - Pin to 0.34.7, not @latest: corepack@0.35.0 narrowed its own supported
+#   engines range to exclude Node 25 (EBADENGINE), 0.34.x still covers it.
+# - --force: npm's global bin already has yarn/yarnpkg placeholder shims on
+#   this base image, and a plain install collides with them (EEXIST).
+RUN npm install -g --force corepack@0.34.7 && corepack enable && corepack prepare pnpm@10 --activate
 
 COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/server/package.json apps/server/tsconfig.json apps/server/tsconfig.build.json apps/server/drizzle.config.ts ./apps/server/
