@@ -98,7 +98,7 @@ importers:
         version: 4.1.5(vitest@4.1.5)
       drizzle-kit:
         specifier: 0.24.2
-        version: 0.24.2
+        version: 0.24.2(supports-color@7.2.0)
       tsx:
         specifier: 4.19.0
         version: 4.19.0
@@ -107,7 +107,7 @@ importers:
         version: 5.5.4
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
       ws:
         specifier: ^8.20.0
         version: 8.20.0
@@ -130,8 +130,8 @@ importers:
         specifier: 5.56.2
         version: 5.56.2(react@18.3.1)
       konva:
-        specifier: 9.3.16
-        version: 9.3.16
+        specifier: 10.3.1
+        version: 10.3.1
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -140,7 +140,7 @@ importers:
         version: 18.3.1(react@18.3.1)
       react-konva:
         specifier: 18.2.10
-        version: 18.2.10(@types/react@18.3.5)(konva@9.3.16)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 18.2.10(@types/react@18.3.5)(konva@10.3.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-router-dom:
         specifier: 7.14.2
         version: 7.14.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -198,7 +198,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/bbm:
     dependencies:
@@ -220,7 +220,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/model:
     devDependencies:
@@ -232,7 +232,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/parts-catalog:
     dependencies:
@@ -254,7 +254,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/ydoc:
     dependencies:
@@ -279,7 +279,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
 packages:
 
@@ -1840,8 +1840,16 @@ packages:
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
-  konva@9.3.16:
-    resolution: {integrity: sha512-qa47cefGDDHzkToGRGDsy24f/Njrz7EHP56jQ8mlDcjAPO7vkfTDeoBDIfmF7PZtpfzDdooafQmEUJMDU2F7FQ==}
+  konva@10.3.1:
+    resolution: {integrity: sha512-7fT/jSkL2bZZOHRBk2QVMKAUbgHoKG72W+KJtpP5YMJUZRmjgoafROgxTADsrxKOY2ZM5eKyN/x6CM9PrlFfOg==}
+    peerDependencies:
+      canvas: ^3.0.0
+      skia-canvas: ^3.0.0
+    peerDependenciesMeta:
+      canvas:
+        optional: true
+      skia-canvas:
+        optional: true
 
   lefthook-darwin-arm64@1.7.18:
     resolution: {integrity: sha512-jZgg+TSUINNWEJU2yGybTkW4qCVzGjtATnwJXsOJrM20IFWGy3NKdJG1S8Oha//5FmjcBOUY+gnXGxsWYkAesg==}
@@ -3460,7 +3468,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+      vitest: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   '@vitest/expect@4.1.5':
     dependencies:
@@ -3471,7 +3479,7 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.5(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))':
+  '@vitest/mocker@4.1.5(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))':
     dependencies:
       '@vitest/spy': 4.1.5
       estree-walker: 3.0.3
@@ -3679,9 +3687,11 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@7.2.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 7.2.0
 
   decimal.js@10.6.0: {}
 
@@ -3709,12 +3719,12 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  drizzle-kit@0.24.2:
+  drizzle-kit@0.24.2(supports-color@7.2.0):
     dependencies:
       '@drizzle-team/brocli': 0.10.2
       '@esbuild-kit/esm-loader': 2.6.5
       esbuild: 0.19.12
-      esbuild-register: 3.6.0(esbuild@0.19.12)
+      esbuild-register: 3.6.0(esbuild@0.19.12)(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3755,9 +3765,9 @@ snapshots:
 
   es-module-lexer@2.1.0: {}
 
-  esbuild-register@3.6.0(esbuild@0.19.12):
+  esbuild-register@3.6.0(esbuild@0.19.12)(supports-color@7.2.0):
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       esbuild: 0.19.12
     transitivePeerDependencies:
       - supports-color
@@ -4077,7 +4087,7 @@ snapshots:
 
   json-schema-traverse@1.0.0: {}
 
-  konva@9.3.16: {}
+  konva@10.3.1: {}
 
   lefthook-darwin-arm64@1.7.18:
     optional: true
@@ -4500,11 +4510,11 @@ snapshots:
 
   react-is@17.0.2: {}
 
-  react-konva@18.2.10(@types/react@18.3.5)(konva@9.3.16)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  react-konva@18.2.10(@types/react@18.3.5)(konva@10.3.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       '@types/react-reconciler': 0.28.9(@types/react@18.3.5)
       its-fine: 1.2.5(@types/react@18.3.5)(react@18.3.1)
-      konva: 9.3.16
+      konva: 10.3.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-reconciler: 0.29.2(react@18.3.1)
@@ -4813,10 +4823,10 @@ snapshots:
       tsx: 4.19.0
       yaml: 2.8.3
 
-  vitest@4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)):
+  vitest@4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)):
     dependencies:
       '@vitest/expect': 4.1.5
-      '@vitest/mocker': 4.1.5(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+      '@vitest/mocker': 4.1.5(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
       '@vitest/pretty-format': 4.1.5
       '@vitest/runner': 4.1.5
       '@vitest/snapshot': 4.1.5
