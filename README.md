@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Collaborative Brick Layout Designer logo" width="96" height="96">
+</p>
+
 # Collaborative Brick Layout Designer
 
 A web-based brick layout editor with Google / GitHub / OIDC sign-in, real-time
