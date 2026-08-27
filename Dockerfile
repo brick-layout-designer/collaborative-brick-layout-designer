@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- builder ---------------------------------------------------------------
-FROM node:24-bookworm-slim AS builder
+FROM node:25-bookworm-slim AS builder
 WORKDIR /app
 ENV LEFTHOOK=0
 
@@ -37,7 +37,7 @@ RUN pnpm --filter @cld/model        build || true \
 RUN pnpm --filter @cld/server deploy --prod --legacy /app/server-deploy
 
 # ---- runtime ---------------------------------------------------------------
-FROM node:24-bookworm-slim AS runtime
+FROM node:25-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV LEFTHOOK=0
