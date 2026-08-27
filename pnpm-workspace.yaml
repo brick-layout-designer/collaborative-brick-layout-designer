@@ -1,3 +1,28 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+# Force transitive dependencies up to a version with a known-fixed CVE.
+# These come in via fastify (fast-uri, find-my-way), jsdom/vitest
+# (undici), and y-websocket (ws) — nothing we depend on directly, so an
+# override is the only way to move them without waiting on upstream.
+# `esbuild` was previously (dead) in package.json's "pnpm" field, which
+# this pnpm version no longer reads — moved here, its real home.
+overrides:
+  esbuild: '>=0.25.0'
+  brace-expansion@5.0.5: '>=5.0.9'
+  # fast-json-stringify and @fastify/ajv-compiler both pin fast-uri@^3.0.0
+  # — stay within that line rather than jumping to the untested 4.x.
+  fast-uri@3.1.0: '>=3.1.5 <4.0.0'
+  find-my-way@9.5.0: '>=9.7.0'
+  # jsdom@29.1.1 pins undici@^7.25.0 and reaches into its internal,
+  # unexported lib/ paths (e.g. undici/lib/handler/wrap-handler.js) —
+  # undici 8.x reorganised that internal layout and breaks jsdom
+  # outright. Stay within the ^7 line jsdom actually depends on.
+  undici@7.25.0: '>=7.29.0 <8.0.0'
+  ws: '>=8.21.0'
+# Was package.json's (now-dead, per pnpm's own warning) "pnpm.onlyBuiltDependencies".
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  lefthook: true
+  '@node-rs/argon2': true
