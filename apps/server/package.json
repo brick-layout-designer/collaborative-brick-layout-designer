@@ -33,7 +33,7 @@
     "lib0": "0.2.97",
     "nodemailer": "8.0.7",
     "openid-client": "5.6.5",
-    "y-protocols": "1.0.6",
+    "y-protocols": "1.0.7",
     "yjs": "13.6.18"
   },
   "devDependencies": {
