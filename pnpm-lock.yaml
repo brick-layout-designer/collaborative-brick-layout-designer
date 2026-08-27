@@ -98,7 +98,7 @@ importers:
         version: 4.1.5(vitest@4.1.5)
       drizzle-kit:
         specifier: 0.24.2
-        version: 0.24.2
+        version: 0.24.2(supports-color@7.2.0)
       tsx:
         specifier: 4.19.0
         version: 4.19.0
@@ -107,7 +107,7 @@ importers:
         version: 5.5.4
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
       ws:
         specifier: ^8.20.0
         version: 8.20.0
@@ -198,7 +198,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/bbm:
     dependencies:
@@ -206,8 +206,8 @@ importers:
         specifier: workspace:*
         version: link:../model
       fast-xml-parser:
-        specifier: 5.7.2
-        version: 5.7.2
+        specifier: 5.11.0
+        version: 5.11.0
     devDependencies:
       '@types/node':
         specifier: 22.5.4
@@ -220,7 +220,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/model:
     devDependencies:
@@ -232,7 +232,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/parts-catalog:
     dependencies:
@@ -240,8 +240,8 @@ importers:
         specifier: workspace:*
         version: link:../model
       fast-xml-parser:
-        specifier: 5.7.2
-        version: 5.7.2
+        specifier: 5.11.0
+        version: 5.11.0
     devDependencies:
       '@types/node':
         specifier: 22.5.4
@@ -254,7 +254,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   packages/ydoc:
     dependencies:
@@ -279,7 +279,7 @@ importers:
         version: 8.0.10(@types/node@22.5.4)(esbuild@0.19.12)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)
       vitest:
         specifier: 4.1.5
-        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
 packages:
 
@@ -891,8 +891,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@nodable/entities@2.1.0':
-    resolution: {integrity: sha512-nyT7T3nbMyBI/lvr6L5TyWbFJAI9FTgVRakNoBqCD+PmID8DzFrrNdLLtHMwMszOtqZa8PAOV24ZqDnQrhQINA==}
+  '@nodable/entities@3.0.0':
+    resolution: {integrity: sha512-8L9xFeTYKhm49xfIypoe2W5wV1m/3Z58kT+7kR9A8OyFxcPduI4VmxaUMQyKYrRjUoLLSXv6EKKID5Tvj9cUVw==}
 
   '@node-rs/argon2-android-arm-eabi@1.8.3':
     resolution: {integrity: sha512-JFZPlNM0A8Og+Tncb8UZsQrhEMlbHBXPsT3hRoKImzVmTmq28Os0ucFWow0AACp2coLHBSydXH3Dh0lZup3rWw==}
@@ -1298,6 +1298,9 @@ packages:
     resolution: {integrity: sha512-KMReFUr0B4t+D+OBkjR3KYqvocp2XaSzO55UcB6mgQMd3KbcE+mWTyvVV7D/zsdEbNnV6acZUutkiHQXvTr1Rw==}
     engines: {node: '>= 8'}
 
+  anynum@1.0.1:
+    resolution: {integrity: sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A==}
+
   arctic@2.2.2:
     resolution: {integrity: sha512-m6xyOTBom5/qvAOiJPDpmHuR+vW3q5qH1LwWzWQMQE4tmWOX+CPSeTv3SFYG+CsnmPhfuXz2CfvxIQJmsS/u2w==}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
@@ -1657,11 +1660,11 @@ packages:
   fast-uri@3.1.0:
     resolution: {integrity: sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==}
 
-  fast-xml-builder@1.1.5:
-    resolution: {integrity: sha512-4TJn/8FKLeslLAH3dnohXqE3QSoxkhvaMzepOIZytwJXZO69Bfz0HBdDHzOTOon6G59Zrk6VQ2bEiv1t61rfkA==}
+  fast-xml-builder@1.3.1:
+    resolution: {integrity: sha512-pIM/1n3ntFXKYrUZwW7QCK0gAW7XY+wzj1YMIV3tLDvPj/V+zTGJK5e3/4WJfwj0qWw2ElNXiTixda/R+3YSug==}
 
-  fast-xml-parser@5.7.2:
-    resolution: {integrity: sha512-P7oW7tLbYnhOLQk/Gv7cZgzgMPP/XN03K02/Jy6Y/NHzyIAIpxuZIM/YqAkfiXFPxA2CTm7NtCijK9EDu09u2w==}
+  fast-xml-parser@5.11.0:
+    resolution: {integrity: sha512-9IGxMqvqLOnqP+Egi1nqDHKv5k8aZ7r9n558enxcucmyVGEBNPAU+MOg/8jPIS7rO7sSq4gFm1/nHtiaubMruw==}
     hasBin: true
 
   fastify-plugin@5.1.0:
@@ -1791,6 +1794,9 @@ packages:
 
   is-potential-custom-element-name@1.0.1:
     resolution: {integrity: sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==}
+
+  is-unsafe@2.0.2:
+    resolution: {integrity: sha512-HgbIHPBH0KHHCcjLfGsCvhtPTVxjaAZlXjwdz7/GQC40SjSe4sfQsar8J5VFo8JOSbarkpV0OLG95bbaNd9aAQ==}
 
   isomorphic.js@0.2.5:
     resolution: {integrity: sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw==}
@@ -2174,8 +2180,8 @@ packages:
   parse5@8.0.1:
     resolution: {integrity: sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==}
 
-  path-expression-matcher@1.5.0:
-    resolution: {integrity: sha512-cbrerZV+6rvdQrrD+iGMcZFEiiSrbv9Tfdkvnusy6y0x0GKBXREFg/Y65GhIfm0tnLntThhzCnfKwp1WRjeCyQ==}
+  path-expression-matcher@1.6.2:
+    resolution: {integrity: sha512-enSlaiat05iasnzmgNxRj8reFdj3puY2QpNgP1aPIaVfT6nn9ICuPoFlKHk8EN22HcwewshO+mN2DGbkCEOtqQ==}
     engines: {node: '>=14.0.0'}
 
   path-parse@1.0.7:
@@ -2471,8 +2477,8 @@ packages:
     resolution: {integrity: sha512-4gB8na07fecVVkOI6Rs4e7T6NOTki5EmL7TUduTs6bu3EdnSycntVJ4re8kgZA+wx9IueI2Y11bfbgwtzuE0KQ==}
     engines: {node: '>=0.10.0'}
 
-  strnum@2.2.3:
-    resolution: {integrity: sha512-oKx6RUCuHfT3oyVjtnrmn19H1SiCqgJSg+54XqURKp5aCMbrXrhLjRN9TjuwMjiYstZ0MzDrHqkGZ5dFTKd+zg==}
+  strnum@2.4.2:
+    resolution: {integrity: sha512-rDG3Ah4TV0k1hWvLSzkZtMmLN9+eS+h3knq4MP6A42Y3Yh5qGNnOUs1jJkoSr8FG5dsL28c7KgkIBzSEykqtuw==}
 
   sucrase@3.35.1:
     resolution: {integrity: sha512-DhuTmvZWux4H1UOnWMB3sk0sbaCVOoQZjv8u1rDoTV0HTdGem9hkAZtl4JZy8P2z4Bg0nT+YMeOFyVr4zcG5Tw==}
@@ -2728,6 +2734,10 @@ packages:
   xml-name-validator@5.0.0:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
     engines: {node: '>=18'}
+
+  xml-naming@0.3.0:
+    resolution: {integrity: sha512-ghig2TBE/H11aOVgmahA3MhimvkBr6JIYknH/Dhdk10nXwdbIqBJsbfMxpvFPG8bAw77gN29aQWvKpmVoPlvPQ==}
+    engines: {node: '>=16.0.0'}
 
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
@@ -3207,7 +3217,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
-  '@nodable/entities@2.1.0': {}
+  '@nodable/entities@3.0.0': {}
 
   '@node-rs/argon2-android-arm-eabi@1.8.3':
     optional: true
@@ -3460,7 +3470,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+      vitest: 4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
 
   '@vitest/expect@4.1.5':
     dependencies:
@@ -3471,7 +3481,7 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.5(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))':
+  '@vitest/mocker@4.1.5(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))':
     dependencies:
       '@vitest/spy': 4.1.5
       estree-walker: 3.0.3
@@ -3544,6 +3554,8 @@ snapshots:
     dependencies:
       normalize-path: 3.0.0
       picomatch: 2.3.2
+
+  anynum@1.0.1: {}
 
   arctic@2.2.2:
     dependencies:
@@ -3679,9 +3691,11 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@7.2.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 7.2.0
 
   decimal.js@10.6.0: {}
 
@@ -3709,12 +3723,12 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  drizzle-kit@0.24.2:
+  drizzle-kit@0.24.2(supports-color@7.2.0):
     dependencies:
       '@drizzle-team/brocli': 0.10.2
       '@esbuild-kit/esm-loader': 2.6.5
       esbuild: 0.19.12
-      esbuild-register: 3.6.0(esbuild@0.19.12)
+      esbuild-register: 3.6.0(esbuild@0.19.12)(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3755,9 +3769,9 @@ snapshots:
 
   es-module-lexer@2.1.0: {}
 
-  esbuild-register@3.6.0(esbuild@0.19.12):
+  esbuild-register@3.6.0(esbuild@0.19.12)(supports-color@7.2.0):
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       esbuild: 0.19.12
     transitivePeerDependencies:
       - supports-color
@@ -3879,16 +3893,19 @@ snapshots:
 
   fast-uri@3.1.0: {}
 
-  fast-xml-builder@1.1.5:
+  fast-xml-builder@1.3.1:
     dependencies:
-      path-expression-matcher: 1.5.0
+      path-expression-matcher: 1.6.2
+      xml-naming: 0.3.0
 
-  fast-xml-parser@5.7.2:
+  fast-xml-parser@5.11.0:
     dependencies:
-      '@nodable/entities': 2.1.0
-      fast-xml-builder: 1.1.5
-      path-expression-matcher: 1.5.0
-      strnum: 2.2.3
+      '@nodable/entities': 3.0.0
+      fast-xml-builder: 1.3.1
+      is-unsafe: 2.0.2
+      path-expression-matcher: 1.6.2
+      strnum: 2.4.2
+      xml-naming: 0.3.0
 
   fastify-plugin@5.1.0: {}
 
@@ -4014,6 +4031,8 @@ snapshots:
   is-number@7.0.0: {}
 
   is-potential-custom-element-name@1.0.1: {}
+
+  is-unsafe@2.0.2: {}
 
   isomorphic.js@0.2.5: {}
 
@@ -4360,7 +4379,7 @@ snapshots:
     dependencies:
       entities: 8.0.0
 
-  path-expression-matcher@1.5.0: {}
+  path-expression-matcher@1.6.2: {}
 
   path-parse@1.0.7: {}
 
@@ -4657,7 +4676,9 @@ snapshots:
 
   strip-json-comments@2.0.1: {}
 
-  strnum@2.2.3: {}
+  strnum@2.4.2:
+    dependencies:
+      anynum: 1.0.1
 
   sucrase@3.35.1:
     dependencies:
@@ -4813,10 +4834,10 @@ snapshots:
       tsx: 4.19.0
       yaml: 2.8.3
 
-  vitest@4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)):
+  vitest@4.1.5(@types/node@22.5.4)(@vitest/coverage-v8@4.1.5)(jsdom@29.1.1)(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3)):
     dependencies:
       '@vitest/expect': 4.1.5
-      '@vitest/mocker': 4.1.5(vite@8.0.10(@types/node@22.5.4)(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
+      '@vitest/mocker': 4.1.5(vite@8.0.10(jiti@1.21.7)(tsx@4.19.0)(yaml@2.8.3))
       '@vitest/pretty-format': 4.1.5
       '@vitest/runner': 4.1.5
       '@vitest/snapshot': 4.1.5
@@ -4873,6 +4894,8 @@ snapshots:
   ws@8.20.0: {}
 
   xml-name-validator@5.0.0: {}
+
+  xml-naming@0.3.0: {}
 
   xmlchars@2.2.0: {}
 
