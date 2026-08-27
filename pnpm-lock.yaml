@@ -69,8 +69,8 @@ importers:
         specifier: 0.2.117
         version: 0.2.117
       nodemailer:
-        specifier: 8.0.7
-        version: 8.0.7
+        specifier: 9.0.1
+        version: 9.0.1
       openid-client:
         specifier: 5.6.5
         version: 5.6.5
@@ -2140,8 +2140,8 @@ packages:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
 
-  nodemailer@8.0.7:
-    resolution: {integrity: sha512-pkjE4mkBzQjdJT4/UmlKl3pX0rC9fZmjh7c6C9o7lv66Ac6w9WCnzPzhbPNxwZAzlF4mdq4CSWB5+FbK6FWCow==}
+  nodemailer@9.0.1:
+    resolution: {integrity: sha512-Gwv8SQewT616ZM/URn0H54b8PWo/Wum7md3EW2aWy1lO27+WZCX+Xyak3J+NlmHUjDh5ME+uesJUDRbR3Ye8Bw==}
     engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
@@ -4348,7 +4348,7 @@ snapshots:
 
   node-releases@2.0.53: {}
 
-  nodemailer@8.0.7: {}
+  nodemailer@9.0.1: {}
 
   normalize-path@3.0.0: {}
 
