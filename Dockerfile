@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential python3 git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+# Node 25 stopped bundling corepack (it's no longer preinstalled on the
+# node:*-slim images) — install it explicitly before enabling it.
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@10 --activate
 
 COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/server/package.json apps/server/tsconfig.json apps/server/tsconfig.build.json apps/server/drizzle.config.ts ./apps/server/
