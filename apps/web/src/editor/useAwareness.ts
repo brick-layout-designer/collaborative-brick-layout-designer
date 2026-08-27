@@ -42,19 +42,38 @@ export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts)
 
   // Tap into a global custom event the canvas dispatches on mousemove.
   // Decouples awareness publishing from the canvas implementation.
+  //
+  // Raw mousemove fires far faster than we need to broadcast a cursor
+  // (60-120+ Hz) — without throttling, every pixel of movement (including
+  // while dragging a brick) triggered a React state update AND a
+  // WebSocket awareness broadcast, competing with the drag for the main
+  // thread. Coalesce to one update per animation frame instead: same
+  // perceived smoothness, far fewer renders/broadcasts.
   useEffect(() => {
+    let pending: AwarenessCursor | null | undefined;
+    let raf: number | null = null;
+    function flush() {
+      raf = null;
+      if (pending !== undefined) {
+        setCursor(pending);
+        pending = undefined;
+      }
+    }
     function onMove(e: Event) {
       const detail = (e as CustomEvent<AwarenessCursor>).detail;
-      setCursor(detail);
+      pending = detail;
+      if (raf === null) raf = requestAnimationFrame(flush);
     }
     function onLeave() {
-      setCursor(null);
+      pending = null;
+      if (raf === null) raf = requestAnimationFrame(flush);
     }
     window.addEventListener('cld-cursor-move', onMove);
     window.addEventListener('cld-cursor-leave', onLeave);
     return () => {
       window.removeEventListener('cld-cursor-move', onMove);
       window.removeEventListener('cld-cursor-leave', onLeave);
+      if (raf !== null) cancelAnimationFrame(raf);
     };
   }, []);
 

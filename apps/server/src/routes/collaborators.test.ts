@@ -261,6 +261,51 @@ describe('layout collaborators', () => {
     expect(get.statusCode).toBe(404);
   });
 
+  it('PATCH returns 404 when layout not found', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/layouts/no-such-layout/collaborators/some-user-id',
+      headers: { cookie: aliceCookie },
+      payload: { role: 'editor' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('PATCH returns 404 when target collaborator does not exist', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const layoutId = await createLayout(app, aliceCookie);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/layouts/${layoutId}/collaborators/no-such-user`,
+      headers: { cookie: aliceCookie },
+      payload: { role: 'editor' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as { error: string }).error).toBe('collaborator_not_found');
+  });
+
+  it('non-owner cannot delete another collaborator (403)', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const bobCookie = await registerAndLogin(app, 'bob@example.com');
+    const carolCookie = await registerAndLogin(app, 'carol@example.com');
+    const layoutId = await createLayout(app, aliceCookie);
+    const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get();
+    const carol = await db.select().from(schema.users).where(eq(schema.users.email, 'carol@example.com')).get();
+    await db.insert(schema.layoutCollaborators).values({ layoutId, userId: bob!.id, role: 'editor', addedAt: new Date() });
+    await db.insert(schema.layoutCollaborators).values({ layoutId, userId: carol!.id, role: 'viewer', addedAt: new Date() });
+
+    // Bob (editor, not owner) tries to remove Carol.
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/layouts/${layoutId}/collaborators/${carol!.id}`,
+      headers: { cookie: bobCookie },
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toBe('forbidden');
+    void carolCookie;
+  });
+
   it('expired invites are rejected with 410', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     const layoutId = await createLayout(app, aliceCookie);

@@ -16,9 +16,52 @@ export interface ProviderInfo {
   enabled: boolean;
 }
 
+/**
+ * Curated overrides for error codes whose humanized form (see
+ * `humanizeErrorCode`) would read awkwardly or ambiguously in a form's
+ * inline error text. Everything else falls through to the generic
+ * snake_case → sentence conversion.
+ */
+const ERROR_MESSAGES: Record<string, string> = {
+  invalid_credentials: 'Incorrect email or password.',
+  invalid_input: 'Please fill in all required fields.',
+  email_taken: 'An account with that email already exists.',
+  invalid_email: 'Enter a valid email address.',
+  forbidden: "You don't have permission to do that.",
+  not_found: 'That item could not be found.',
+  payload_too_large: 'That file is too large.',
+};
+
+/** `some_error_code` -> "Some error code." */
+function humanizeErrorCode(code: string): string {
+  const words = code.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1) + '.';
+}
+
+/**
+ * Reads `{ error: string }` from a failed JSON response and turns it
+ * into a message fit for direct display in the UI — never the raw
+ * `path → status`, which used to leak straight into forms (e.g. a
+ * failed login showing "/api/auth/password/login → 401").
+ */
+async function friendlyErrorMessage(res: Response): Promise<string> {
+  try {
+    const body = (await res.clone().json()) as { error?: unknown };
+    if (typeof body.error === 'string' && body.error) {
+      return ERROR_MESSAGES[body.error] ?? humanizeErrorCode(body.error);
+    }
+  } catch {
+    // Response wasn't JSON, or had no `error` field — fall through.
+  }
+  if (res.status === 401) return 'You need to sign in to do that.';
+  if (res.status === 403) return "You don't have permission to do that.";
+  if (res.status >= 500) return 'Something went wrong on our end. Please try again.';
+  return 'Something went wrong. Please try again.';
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: 'include' });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -29,7 +72,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     init.body = JSON.stringify(body);
   }
   const res = await fetch(path, init);
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -68,13 +111,13 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
@@ -84,7 +127,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -139,7 +182,7 @@ export function spriteUrlFor(part: PartWire): string {
 
 async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: number }> {
   const res = await fetch(path, { credentials: 'include' });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   const buf = await res.arrayBuffer();
   return {
     bytes: new Uint8Array(buf),
@@ -154,7 +197,7 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
     headers: { 'content-type': 'application/octet-stream' },
     body: bytes,
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
   return res.json() as Promise<{ updatedAt: number }>;
 }
 

@@ -716,22 +716,20 @@ function Canvas({
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const { width, height } = useViewportSize();
-  // Pan/zoom drive the Stage transform imperatively so panning never
-  // triggers a React re-render of the node tree.
+  // Pan/zoom are plain React state, passed straight to <Stage> as
+  // x/y/scaleX/scaleY props below. (An earlier version additionally
+  // pushed these onto the Stage node imperatively via a raw
+  // `useEditorStore.subscribe`, with no selector — that callback fired
+  // on EVERY store write, including the hud-mouse-coord update on every
+  // single mousemove, so a `stage.batchDraw()` ran on every pixel of
+  // mouse movement, including during a brick drag. It was pure
+  // redundant work — the props below already keep the Stage in sync —
+  // and competed with Konva's own drag-move redraws, making drags feel
+  // like they stalled or wouldn't move. Removed; see issue about
+  // dragging bricks being unresponsive.)
   const zoom = useEditorStore((s) => s.zoom);
   const panX = useEditorStore((s) => s.panX);
   const panY = useEditorStore((s) => s.panY);
-  useEffect(() => {
-    return useEditorStore.subscribe((s) => {
-      const stage = stageRef.current;
-      if (!stage) return;
-      stage.x(s.panX);
-      stage.y(s.panY);
-      stage.scaleX(s.zoom);
-      stage.scaleY(s.zoom);
-      stage.batchDraw();
-    });
-  }, []);
   const tool = useEditorStore((s) => s.tool);
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
   const setActiveLayer = useEditorStore((s) => s.setActiveLayer);
@@ -825,6 +823,30 @@ function Canvas({
   const zoomAccumRef = useRef<{ deltaY: number; ptrX: number; ptrY: number; raf: number | null }>(
     { deltaY: 0, ptrX: 0, ptrY: 0, raf: null },
   );
+
+  // HUD mouse-coord coalescer. `setHudMouse` only feeds the status bar's
+  // "Mouse: x, y" readout, which doesn't need per-pixel precision — but
+  // writing it on every raw mousemove (which also fires continuously
+  // while dragging a brick) forced a StatusBar re-render at native mouse
+  // frequency. Coalesce to one write per frame instead.
+  const hudMouseRafRef = useRef<{ x: number; y: number } | null | undefined>(undefined);
+  const hudMouseRafIdRef = useRef<number | null>(null);
+  function scheduleHudMouse(studs: { x: number; y: number } | null) {
+    hudMouseRafRef.current = studs;
+    if (hudMouseRafIdRef.current !== null) return;
+    hudMouseRafIdRef.current = requestAnimationFrame(() => {
+      hudMouseRafIdRef.current = null;
+      const pending = hudMouseRafRef.current;
+      hudMouseRafRef.current = undefined;
+      if (pending === undefined) return;
+      useEditorStore.getState().setHudMouse(pending?.x ?? null, pending?.y ?? null);
+    });
+  }
+  useEffect(() => {
+    return () => {
+      if (hudMouseRafIdRef.current !== null) cancelAnimationFrame(hudMouseRafIdRef.current);
+    };
+  }, []);
 
   // Paint/erase stroke tracker — set of `${cx},${cy}` cells already
   // touched in the current stroke so we don't re-emit the same Yjs
@@ -1514,7 +1536,7 @@ function Canvas({
 
     const studs = pointerStuds();
     if (!studs) return;
-    useEditorStore.getState().setHudMouse(studs.x, studs.y);
+    scheduleHudMouse(studs);
     if (marquee) setMarquee({ ...marquee, x1: studs.x, y1: studs.y });
     // Continue the paint/erase stroke while the button is held.
     if ((tool === 'paint' || tool === 'erase') && paintStrokeRef.current && evt.buttons & 1) {
@@ -1541,7 +1563,7 @@ function Canvas({
     dispatchCursorLeave();
     middlePanRef.current = null;
     paintStrokeRef.current = null;
-    useEditorStore.getState().setHudMouse(null, null);
+    scheduleHudMouse(null);
   }
 
   /**
@@ -2107,10 +2129,15 @@ function Canvas({
       }}
       onTouchStart={handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void}
     >
-      {/* Layer 1 — static background (no hit-testing): grid, background
-          image, venue outline, paint areas, electric circuits. Changing
-          any of these redraws only this one canvas. */}
-      <KonvaLayer listening={false} perfectDrawEnabled={false}>
+      {/* Layer 1 — mostly-static background: grid, background image,
+          venue outline, paint areas, electric circuits. Changing any of
+          these redraws only this one canvas. Hit-testing is only enabled
+          in editor mode (matching the venue overlay's own listening flag
+          below) so double-click-to-edit on the venue outline works —
+          Konva ANDs `listening` down the ancestor chain, so a hard
+          `listening={false}` here would permanently defeat the child
+          Group's `listening={!isViewer}`. */}
+      <KonvaLayer listening={!isViewer} perfectDrawEnabled={false}>
         <GridLayer
           map={map}
           viewport={{
@@ -3006,6 +3033,10 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   const mapW = useEditorStore((s) => s.hudMapWidthStuds);
   const mapH = useEditorStore((s) => s.hudMapHeightStuds);
   const statusMessage = useEditorStore((s) => s.statusMessage);
+  const activeLayerId = useEditorStore((s) => s.activeLayerId);
+  // Surfaced here so the active layer is visible even when the Layers
+  // panel is collapsed or scrolled out of view (issue #61).
+  const activeLayer = activeLayerId ? budgetMap?.layers.find((l) => l.id === activeLayerId) : null;
   // 1 stud = 8mm for standard LEGO; display in m when ≥100 studs
   function studDisplay(studs: number): string {
     if (studs >= 100) return `${(studs * 0.008).toFixed(1)} m`;
@@ -3019,6 +3050,12 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
     >
       <div className="flex items-center gap-3">
         <span>Tool: <span className="text-neutral-200">{tool}{dirty ? ' *' : ''}</span></span>
+        <span title="Active layer — new parts are placed here">
+          Layer:{' '}
+          <span className={activeLayer ? 'text-neutral-200' : 'text-neutral-600'}>
+            {activeLayer ? activeLayer.name || 'unnamed' : 'none'}
+          </span>
+        </span>
         {statusMessage ? (
           <span className="text-blue-400 transition-opacity">{statusMessage}</span>
         ) : (

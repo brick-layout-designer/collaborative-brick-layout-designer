@@ -1,0 +1,425 @@
+// Integration tests for /api/admin/* routes.
+// All admin endpoints require the caller to be a global admin (isGlobalAdmin=true).
+// This file covers: stats, users (list/get/patch/delete/revoke-sessions),
+// orgs (list/delete), and layouts (list/delete).
+
+import Fastify, { type FastifyInstance } from 'fastify';
+import cookie from '@fastify/cookie';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { db, resetDb, schema } from '../../test/helpers.js';
+import { attachUser } from '../../auth/cookie.js';
+import { passwordRoutes } from '../auth/password.js';
+import { sessionRoutes } from '../auth/session.js';
+import { layoutRoutes } from '../layouts.js';
+import { orgRoutes } from '../orgs.js';
+import { adminRoutes } from '../admin.js';
+
+async function buildApp(): Promise<FastifyInstance> {
+  const app = Fastify({ bodyLimit: 10 * 1024 * 1024 });
+  await app.register(cookie);
+  app.addHook('preHandler', attachUser);
+  await app.register(passwordRoutes);
+  await app.register(sessionRoutes);
+  await app.register(layoutRoutes);
+  await app.register(orgRoutes);
+  await app.register(adminRoutes);
+  return app;
+}
+
+async function registerAndLogin(app: FastifyInstance, email: string): Promise<string> {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/auth/password/register',
+    payload: { email, password: 'correct horse battery', displayName: email },
+  });
+  expect(res.statusCode).toBe(200);
+  const setCookie = res.headers['set-cookie'];
+  return Array.isArray(setCookie) ? setCookie.join('; ') : (setCookie ?? '');
+}
+
+/** Promote a user to global admin directly in the DB. */
+async function promoteToAdmin(email: string): Promise<void> {
+  await db.update(schema.users).set({ isGlobalAdmin: true }).where(eq(schema.users.email, email));
+}
+
+async function getUserId(email: string): Promise<string> {
+  const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+  if (!user) throw new Error(`user not found: ${email}`);
+  return user.id;
+}
+
+// ---- auth gate -----------------------------------------------------------
+
+describe('admin routes — auth gate', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('returns 401 when unauthenticated', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/admin/stats' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 403 when authenticated but not a global admin', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const res = await app.inject({ method: 'GET', url: '/api/admin/stats', headers: { cookie } });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+// ---- stats ---------------------------------------------------------------
+
+describe('admin stats', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('returns zero counts on empty DB', async () => {
+    const cookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/stats', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      users: number; demoUsers: number; globalAdmins: number;
+      orgs: number; layouts: number; customParts: number; modules: number; activeSessions: number;
+    };
+    // The admin themselves is a user.
+    expect(body.users).toBe(1);
+    expect(body.globalAdmins).toBe(1);
+    expect(body.orgs).toBe(0);
+    expect(body.layouts).toBe(0);
+  });
+
+  it('reflects newly created resources', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+
+    await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'L' },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/stats', headers: { cookie: adminCookie } });
+    const body = res.json() as { users: number; layouts: number };
+    expect(body.users).toBe(2);
+    expect(body.layouts).toBe(1);
+  });
+});
+
+// ---- users ---------------------------------------------------------------
+
+describe('admin users — list', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('lists all users', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/users', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const { users, total } = res.json() as { users: { email: string }[]; total: number };
+    expect(total).toBe(2);
+    expect(users.map((u) => u.email)).toContain('alice@example.com');
+  });
+
+  it('filters users by email prefix', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'bob@example.com');
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/users?q=bob', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const { users, total } = res.json() as { users: { email: string }[]; total: number };
+    expect(total).toBe(1);
+    expect(users[0]?.email).toBe('bob@example.com');
+  });
+
+  it('returns empty list when query matches nothing', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/users?q=zzz-nobody', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const { users } = res.json() as { users: unknown[] };
+    expect(users).toHaveLength(0);
+  });
+
+  it('respects limit and offset', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    await registerAndLogin(app, 'bob@example.com');
+
+    const page1 = (await app.inject({ method: 'GET', url: '/api/admin/users?limit=1&offset=0', headers: { cookie: adminCookie } })).json() as { users: unknown[]; total: number };
+    expect(page1.users).toHaveLength(1);
+    expect(page1.total).toBe(3);
+
+    const page2 = (await app.inject({ method: 'GET', url: '/api/admin/users?limit=1&offset=1', headers: { cookie: adminCookie } })).json() as { users: unknown[] };
+    expect(page2.users).toHaveLength(1);
+  });
+});
+
+describe('admin users — get / patch / delete', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('GET /api/admin/users/:id returns user detail with stats', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    const res = await app.inject({ method: 'GET', url: `/api/admin/users/${aliceId}`, headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { user: { email: string }; stats: { layouts: number } };
+    expect(body.user.email).toBe('alice@example.com');
+    expect(typeof body.stats.layouts).toBe('number');
+  });
+
+  it('GET /api/admin/users/:id returns 404 for unknown id', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const res = await app.inject({ method: 'GET', url: '/api/admin/users/00000000-0000-0000-0000-000000000000', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('PATCH promotes a user to global admin', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/admin/users/${aliceId}`,
+      headers: { cookie: adminCookie },
+      payload: { isGlobalAdmin: true },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+    expect(alice!.isGlobalAdmin).toBe(true);
+  });
+
+  it('PATCH marks a user as demo account', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    await app.inject({
+      method: 'PATCH', url: `/api/admin/users/${aliceId}`,
+      headers: { cookie: adminCookie },
+      payload: { isDemoAccount: true },
+    });
+    const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+    expect(alice!.isDemoAccount).toBe(true);
+  });
+
+  it('PATCH cannot demote self', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const adminId = await getUserId('admin@example.com');
+
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/admin/users/${adminId}`,
+      headers: { cookie: adminCookie },
+      payload: { isGlobalAdmin: false },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('cannot_demote_self');
+  });
+
+  it('PATCH with empty body returns 400', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    const res = await app.inject({
+      method: 'PATCH', url: `/api/admin/users/${aliceId}`,
+      headers: { cookie: adminCookie },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('empty_patch');
+  });
+
+  it('DELETE removes a user', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    const res = await app.inject({ method: 'DELETE', url: `/api/admin/users/${aliceId}`, headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+
+    const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+    expect(alice).toBeUndefined();
+  });
+
+  it('DELETE cannot delete self', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const adminId = await getUserId('admin@example.com');
+
+    const res = await app.inject({ method: 'DELETE', url: `/api/admin/users/${adminId}`, headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('cannot_delete_self');
+  });
+
+  it('POST /revoke-all invalidates sessions', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/admin/users/${aliceId}/sessions/revoke-all`,
+      headers: { cookie: adminCookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+// ---- orgs ----------------------------------------------------------------
+
+describe('admin orgs', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('lists all orgs with member counts', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Acme', slug: 'acme' },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/orgs', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const { orgs, total } = res.json() as { orgs: { slug: string; memberCount: number }[]; total: number };
+    expect(total).toBe(1);
+    expect(orgs[0]?.slug).toBe('acme');
+    expect(orgs[0]?.memberCount).toBe(1); // creator is a member
+  });
+
+  it('filters orgs by name', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Acme' },
+    });
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Widgets Inc' },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/orgs?q=acme', headers: { cookie: adminCookie } });
+    const { orgs } = res.json() as { orgs: { name: string }[] };
+    expect(orgs).toHaveLength(1);
+    expect(orgs[0]?.name).toBe('Acme');
+  });
+
+  it('deletes an org', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const create = await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Delete Me', slug: 'delete-me' },
+    });
+    const orgId = (create.json() as { id: string }).id;
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/admin/orgs/${orgId}`, headers: { cookie: adminCookie } });
+    expect(del.statusCode).toBe(200);
+
+    const org = await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
+    expect(org).toBeUndefined();
+  });
+
+  it('returns 404 when deleting a non-existent org', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const res = await app.inject({ method: 'DELETE', url: '/api/admin/orgs/00000000-0000-0000-0000-000000000000', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ---- layouts -------------------------------------------------------------
+
+describe('admin layouts', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('lists all layouts', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'Awesome Layout' },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/layouts', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const { layouts, total } = res.json() as { layouts: { title: string }[]; total: number };
+    expect(total).toBe(1);
+    expect(layouts[0]?.title).toBe('Awesome Layout');
+  });
+
+  it('filters layouts by title', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'Alpha' } });
+    await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'Beta' } });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/layouts?q=beta', headers: { cookie: adminCookie } });
+    const { layouts } = res.json() as { layouts: { title: string }[] };
+    expect(layouts).toHaveLength(1);
+    expect(layouts[0]?.title).toBe('Beta');
+  });
+
+  it('filters layouts by ownerUserId', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'Admin Layout' } });
+    await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: aliceCookie }, payload: { title: 'Alice Layout' } });
+
+    const res = await app.inject({
+      method: 'GET', url: `/api/admin/layouts?ownerUserId=${aliceId}`, headers: { cookie: adminCookie },
+    });
+    const { layouts } = res.json() as { layouts: { title: string }[] };
+    expect(layouts).toHaveLength(1);
+    expect(layouts[0]?.title).toBe('Alice Layout');
+  });
+
+  it('deletes a layout', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const create = await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'To Delete' },
+    });
+    const layoutId = (create.json() as { id: string }).id;
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/admin/layouts/${layoutId}`, headers: { cookie: adminCookie } });
+    expect(del.statusCode).toBe(200);
+
+    const layout = await db.select().from(schema.layouts).where(eq(schema.layouts.id, layoutId)).get();
+    expect(layout).toBeUndefined();
+  });
+
+  it('returns 404 when deleting a non-existent layout', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const res = await app.inject({ method: 'DELETE', url: '/api/admin/layouts/00000000-0000-0000-0000-000000000000', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(404);
+  });
+});

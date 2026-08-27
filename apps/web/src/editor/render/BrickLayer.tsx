@@ -457,6 +457,15 @@ const BrickGlyph = memo(function BrickGlyph({
         // sprite's natural pixels, NOT the displayArea AABB. This keeps
         // a 45°-rotated 16x4 brick at its real 16x4 footprint (just
         // rotated) instead of stretching it into the AABB envelope.
+        //
+        // `listening` MUST be true here (or on some other shape in this
+        // Group) — Konva hit-tests against an offscreen per-Layer hit
+        // canvas that non-listening shapes never paint onto, and a
+        // Group has no hit area of its own beyond the union of its
+        // listening children's. With every shape in this Group at
+        // `listening={false}`, the brick's `draggable` Group had no hit
+        // area at all: clicking directly on a brick's own pixels never
+        // registered a hit, so selecting/dragging bricks didn't work.
         <KonvaImage
           image={sprite}
           x={-spriteWpx / 2}
@@ -465,7 +474,6 @@ const BrickGlyph = memo(function BrickGlyph({
           height={spriteHpx}
           opacity={1}
           perfectDrawEnabled={false}
-          listening={false}
         />
       ) : (
         <Rect
@@ -477,7 +485,6 @@ const BrickGlyph = memo(function BrickGlyph({
           stroke="#888"
           strokeWidth={1}
           perfectDrawEnabled={false}
-          listening={false}
         />
       )}
       {/*

@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { db, resetDb, schema } from '../test/helpers.js';
 import { attachUser } from '../auth/cookie.js';
 import { passwordRoutes } from './auth/password.js';
@@ -16,6 +17,7 @@ const FIXTURES = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../../packages/bbm/tests/fixtures',
 );
+const FORDYCE_BBM = readFileSync(resolve(FIXTURES, 'fordyce-2026.bbm'), 'utf-8');
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 10 * 1024 * 1024 });
@@ -328,7 +330,6 @@ describe('layout routes', () => {
     expect(noShare.statusCode).toBe(404);
 
     // Now grant Bob viewer; PUT should be 403 (not 404 — he knows the layout exists).
-    const { eq } = await import('drizzle-orm');
     const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob-snap@example.com')).get();
     await db.insert(schema.layoutCollaborators).values({
       layoutId: id,
@@ -358,7 +359,6 @@ describe('layout routes', () => {
     const id = (create.json() as { id: string }).id;
 
     // Manually grant Bob the 'viewer' role (no share API yet — Phase 5).
-    const { eq } = await import('drizzle-orm');
     const bob = await db
       .select()
       .from(schema.users)
@@ -389,4 +389,127 @@ describe('layout routes', () => {
     });
     expect(del.statusCode).toBe(403);
   });
+
+  it('shared layout appears in GET /api/layouts for a non-owner collaborator', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const bobCookie = await registerAndLogin(app, 'bob@example.com');
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: aliceCookie },
+      payload: { title: 'Shared Layout' },
+    });
+    const { id } = create.json() as { id: string };
+    const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get();
+    await db.insert(schema.layoutCollaborators).values({ layoutId: id, userId: bob!.id, role: 'viewer', addedAt: new Date() });
+
+    const list = await app.inject({ method: 'GET', url: '/api/layouts', headers: { cookie: bobCookie } });
+    expect(list.statusCode).toBe(200);
+    const layouts = (list.json() as { layouts: { id: string }[] }).layouts;
+    expect(layouts.some((l) => l.id === id)).toBe(true);
+  });
+
+  it('list deduplicates when user is both owner and collaborator on same layout', async () => {
+    const cookieStr = await registerAndLogin(app, 'dedup@example.com');
+    const owner = await db.select().from(schema.users).where(eq(schema.users.email, 'dedup@example.com')).get();
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: cookieStr },
+      payload: { title: 'Dedup Layout' },
+    });
+    const { id } = create.json() as { id: string };
+
+    // Also add the owner as a collaborator on their own layout.
+    await db.insert(schema.layoutCollaborators).values({ layoutId: id, userId: owner!.id, role: 'editor', addedAt: new Date() });
+
+    const list = await app.inject({ method: 'GET', url: '/api/layouts', headers: { cookie: cookieStr } });
+    const layouts = (list.json() as { layouts: { id: string }[] }).layouts;
+    const ids = layouts.map((l) => l.id);
+    expect(ids.filter((i) => i === id).length).toBe(1);
+
+    // Also call single-get to exercise resolveResourceRole with owner+collaborator rows for the same user.
+    const single = await app.inject({ method: 'GET', url: `/api/layouts/${id}`, headers: { cookie: cookieStr } });
+    expect(single.statusCode).toBe(200);
+    expect((single.json() as { role: string }).role).toBe('owner');
+  });
+
+  it('POST returns 400 when sidecar JSON is invalid', async () => {
+    const cookieStr = await registerAndLogin(app, 'sidecarfail@example.com');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: cookieStr },
+      payload: { title: 'Bad Sidecar', bbm: FORDYCE_BBM, sidecar: 'not-valid-json{{' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('sidecar_parse_failed');
+  });
+
+  it('GET /export.bbm returns 400 for in-app layout with no BbmMap (no meta.version)', async () => {
+    const cookieStr = await registerAndLogin(app, 'nobbm@example.com');
+    // Create a default layout (with meta.version).
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: cookieStr },
+      payload: { title: 'No BbmMap' },
+    });
+    const { id } = create.json() as { id: string };
+
+    // Overwrite the docSnapshot with an empty Y.Doc (no meta.version).
+    const Y = await import('yjs');
+    const emptyDoc = new Y.Doc();
+    const emptyBytes = Buffer.from(Y.encodeStateAsUpdate(emptyDoc));
+    await db.update(schema.layouts).set({ docSnapshot: emptyBytes }).where(eq(schema.layouts.id, id));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/layouts/${id}/export.bbm`,
+      headers: { cookie: cookieStr },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('export_unavailable_for_in_app_layout');
+  });
+
+  it('PATCH /api/layouts/:id returns 400 when no updatable fields are provided', async () => {
+    const cookieStr = await registerAndLogin(app, 'patch@example.com');
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: cookieStr },
+      payload: { title: 'Patch Test' },
+    });
+    const { id } = create.json() as { id: string };
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/layouts/${id}`,
+      headers: { cookie: cookieStr },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('no_updates');
+  });
+
+  it('PUT /snapshot returns 400 when body is not binary', async () => {
+    const cookieStr = await registerAndLogin(app, 'snaptext@example.com');
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: cookieStr },
+      payload: { title: 'Binary Test' },
+    });
+    const { id } = create.json() as { id: string };
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/layouts/${id}/snapshot`,
+      headers: { cookie: cookieStr, 'content-type': 'application/json' },
+      payload: { notBinary: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('expected_binary_body');
+  });
+
 });

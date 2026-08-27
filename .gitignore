@@ -15,6 +15,12 @@ coverage/
 apps/*/dist/
 packages/*/dist/
 
+# playwright e2e output
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
 # editor
 .vscode/
 .idea/

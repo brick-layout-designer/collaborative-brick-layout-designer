@@ -100,8 +100,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const safe = `%${escapeLike(needle)}%`;
     const where = needle
       ? or(
-          sql`${schema.users.email} LIKE ${safe} ESCAPE '\'`,
-          sql`${schema.users.displayName} LIKE ${safe} ESCAPE '\'`,
+          sql`${schema.users.email} LIKE ${safe} ESCAPE '\\'`,
+          sql`${schema.users.displayName} LIKE ${safe} ESCAPE '\\'`,
         )
       : undefined;
     const rows = await db
@@ -262,8 +262,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const safe = `%${escapeLike(needle)}%`;
     const where = needle
       ? or(
-          sql`${schema.orgs.name} LIKE ${safe} ESCAPE '\'`,
-          sql`${schema.orgs.slug} LIKE ${safe} ESCAPE '\'`,
+          sql`${schema.orgs.name} LIKE ${safe} ESCAPE '\\'`,
+          sql`${schema.orgs.slug} LIKE ${safe} ESCAPE '\\'`,
         )
       : undefined;
     const rows = await db
@@ -324,7 +324,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const filters = [];
     if (needle) {
       const safe = `%${escapeLike(needle)}%`;
-      filters.push(sql`${schema.layouts.title} LIKE ${safe} ESCAPE '\'`);
+      filters.push(sql`${schema.layouts.title} LIKE ${safe} ESCAPE '\\'`);
     }
     if (req.query.ownerUserId) filters.push(eq(schema.layouts.ownerUserId, req.query.ownerUserId));
     if (req.query.ownerOrgId) filters.push(eq(schema.layouts.ownerOrgId, req.query.ownerOrgId));
@@ -1006,7 +1006,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
  * GitHub archives always wrap everything in e.g. "RepoName-main/" — we
  * strip that so the contents land directly in destDir.
  */
-function detectTopLevelPrefix(names: string[]): string {
+export function detectTopLevelPrefix(names: string[]): string {
   if (names.length === 0) return '';
   const segments = names[0]?.split('/') ?? [];
   const first = (segments[0] ?? '') + '/';
@@ -1015,7 +1015,7 @@ function detectTopLevelPrefix(names: string[]): string {
   return '';
 }
 
-async function extractZip(buf: Buffer, destDir: string): Promise<void> {
+export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
   const { writeFile: wf, mkdir: mk } = await import('node:fs/promises');
   const { join: j, dirname } = await import('node:path');
   const { createInflateRaw } = await import('node:zlib');

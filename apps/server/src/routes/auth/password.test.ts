@@ -101,6 +101,16 @@ describe('password auth routes', () => {
     expect(res.headers['set-cookie']).toBeUndefined();
   });
 
+  it('login returns 400 when email is missing', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/login',
+      payload: { password: 'correct horse battery' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_input');
+  });
+
   it('login for unknown email returns 401 (does not leak existence)', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -133,5 +143,14 @@ describe('password auth routes', () => {
     });
     const meBody = me.json() as { user: unknown };
     expect(meBody.user).toBeNull();
+  });
+
+  it('logout without a session cookie still returns 200', async () => {
+    const logout = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+    });
+    expect(logout.statusCode).toBe(200);
+    expect((logout.json() as { ok: boolean }).ok).toBe(true);
   });
 });

@@ -68,6 +68,16 @@ export async function attachWsHandlers(
   };
   session.doc.on('update', onUpdate);
 
+  // Track which awareness clientID(s) this WS has ever set — Yjs
+  // assigns a fresh random clientID per Y.Doc, so a browser tab's
+  // awareness clientID has no fixed relationship to anything else we
+  // track (definitely not `session.doc.clientID`, which is the
+  // server's OWN clientID for the shared doc, common to every
+  // connection in the room). We learn the real clientID(s) the first
+  // time this ws's updates flow through (`origin === ws` below), and
+  // use that set to clean up on disconnect.
+  const ownedClientIds = new Set<number>();
+
   const onAwarenessChange = (
     changes: { added: number[]; updated: number[]; removed: number[] },
     origin: unknown,
@@ -81,6 +91,7 @@ export async function attachWsHandlers(
     // the state and overwrite `user.id` if it doesn't match.
     if (origin === ws) {
       for (const clientId of [...changes.added, ...changes.updated]) {
+        ownedClientIds.add(clientId);
         const state = session.awareness.getStates().get(clientId) as
           | { user?: { id?: string } }
           | undefined;
@@ -158,9 +169,7 @@ export async function attachWsHandlers(
     // Remove this client's awareness state so others see them disappear.
     awarenessProtocol.removeAwarenessStates(
       session.awareness,
-      [...session.awareness.getStates().keys()].filter(
-        (id) => id === session.doc.clientID,
-      ),
+      [...ownedClientIds],
       ws,
     );
     await docHub.detach(session, ws);

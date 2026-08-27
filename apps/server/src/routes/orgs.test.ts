@@ -365,4 +365,115 @@ describe('orgs', () => {
     });
     expect((get.json() as { role: string }).role).toBe('owner');
   });
+
+  it('org invite returns 400 for invalid email', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/orgs/acme/invites',
+      headers: { cookie: aliceCookie },
+      payload: { email: 'not-an-email', role: 'member' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_email');
+  });
+
+  it('org invite returns 400 for invalid role', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme2', slug: 'acme2' } });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/orgs/acme2/invites',
+      headers: { cookie: aliceCookie },
+      payload: { email: 'bob@example.com', role: 'superuser' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_role');
+  });
+
+  it('POST /api/orgs returns 400 for invalid name', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    // name too long (> 80 chars)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/orgs',
+      headers: { cookie: aliceCookie },
+      payload: { name: 'A'.repeat(81) },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_name');
+  });
+
+  it('demo account cannot invite org members', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'DemoOrg', slug: 'demo-org' } });
+    const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+    await db.update(schema.users).set({ isDemoAccount: true }).where(eq(schema.users.id, alice!.id));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/orgs/demo-org/invites',
+      headers: { cookie: aliceCookie },
+      payload: { email: 'bob@example.com', role: 'member' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toBe('demo_account_cannot_invite');
+  });
+
+  it('GET /api/orgs/:slug/members lists members and pending invites for admin', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'MembersOrg', slug: 'members-org' } });
+    await app.inject({
+      method: 'POST', url: '/api/orgs/members-org/invites',
+      headers: { cookie: aliceCookie },
+      payload: { email: 'pending@example.com', role: 'member' },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/orgs/members-org/members',
+      headers: { cookie: aliceCookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { members: unknown[]; invites: { invitedEmail: string }[] };
+    expect(Array.isArray(body.members)).toBe(true);
+    expect(body.members.length).toBeGreaterThanOrEqual(1);
+    expect(body.invites.some((i) => i.invitedEmail === 'pending@example.com')).toBe(true);
+  });
+
+  it('non-admin member sees empty invites array', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const bobCookie = await registerAndLogin(app, 'bob@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'SecretOrg', slug: 'secret-org' } });
+    const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get();
+    const orgRow = await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'secret-org')).get();
+    await db.insert(schema.orgMembers).values({ orgId: orgRow!.id, userId: bob!.id, role: 'member', joinedAt: new Date() });
+
+    const res = await app.inject({ method: 'GET', url: '/api/orgs/secret-org/members', headers: { cookie: bobCookie } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { invites: unknown[] };
+    expect(body.invites).toEqual([]);
+  });
+
+  it('non-admin cannot PATCH member role', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const bobCookie = await registerAndLogin(app, 'bob@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'RoleOrg', slug: 'role-org' } });
+    const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+    const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get();
+    const orgRow = await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'role-org')).get();
+    await db.insert(schema.orgMembers).values({ orgId: orgRow!.id, userId: bob!.id, role: 'member', joinedAt: new Date() });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/orgs/role-org/members/${alice!.id}`,
+      headers: { cookie: bobCookie },
+      payload: { role: 'member' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect((res.json() as { error: string }).error).toBe('forbidden');
+  });
 });

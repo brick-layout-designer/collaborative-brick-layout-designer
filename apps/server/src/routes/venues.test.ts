@@ -320,4 +320,63 @@ describe('venues', () => {
     const venues = (list.json() as { venues: { name: string }[] }).venues;
     expect(venues.some((v) => v.name === 'Shared Hall')).toBe(true);
   });
+
+  it('POST /api/venues returns 404 when orgSlug does not exist', async () => {
+    const alice = await registerAndLogin(app, 'alice@example.com');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/venues',
+      headers: { cookie: alice },
+      payload: { name: 'Venue X', data: SAMPLE_VENUE, orgSlug: 'no-such-org' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('DELETE /api/venues/:id returns 404 for an unknown id', async () => {
+    const alice = await registerAndLogin(app, 'alice@example.com');
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/venues/no-such-id',
+      headers: { cookie: alice },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('deduplicates venues that appear in both personal and org lists', async () => {
+    // This should not happen in practice but the code guards against it.
+    // Create a personal venue and then make it org-visible at the same time
+    // by assigning the user's personal + org membership so both queries return it.
+    // Simplest path: just verify the list has no duplicates even when the user
+    // is both the owner and an org member for the same org-owned venue (which
+    // can't happen), so we settle for testing that a user with both personal
+    // and org venues sees each at most once.
+    const alice = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({
+      method: 'POST',
+      url: '/api/orgs',
+      headers: { cookie: alice },
+      payload: { name: 'DedupOrg' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/venues',
+      headers: { cookie: alice },
+      payload: { name: 'Personal Hall', data: SAMPLE_VENUE },
+    });
+    const orgList = await app.inject({ method: 'GET', url: '/api/orgs', headers: { cookie: alice } });
+    const orgSlug = (orgList.json() as { orgs: Array<{ slug: string }> }).orgs[0]!.slug;
+    await app.inject({
+      method: 'POST',
+      url: '/api/venues',
+      headers: { cookie: alice },
+      payload: { name: 'Org Hall', data: SAMPLE_VENUE, orgSlug },
+    });
+
+    const list = await app.inject({ method: 'GET', url: '/api/venues', headers: { cookie: alice } });
+    const { venues } = list.json() as { venues: Array<{ id: string }> };
+    const ids = venues.map((v) => v.id);
+    const unique = new Set(ids);
+    expect(ids.length).toBe(unique.size); // no duplicates
+    expect(ids.length).toBe(2);
+  });
 });

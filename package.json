@@ -18,7 +18,8 @@
     "audit": "pnpm audit --prod",
     "scan:secrets": "gitleaks detect --no-banner --redact -v --config .gitleaks.toml",
     "scan:deps": "npx -y -p osv-scanner@latest osv-scanner scan --recursive --skip-git ./",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "e2e": "pnpm --filter @cld/web test:e2e"
   },
   "devDependencies": {
     "lefthook": "1.7.18",
