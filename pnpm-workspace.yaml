@@ -21,6 +21,9 @@ overrides:
   undici@7.25.0: '>=7.29.0 <8.0.0'
   ws: '>=8.21.0'
 # Was package.json's (now-dead, per pnpm's own warning) "pnpm.onlyBuiltDependencies".
+# Also approves esbuild's postinstall (fetches its prebuilt native binary
+# for the current platform) so `pnpm install`/CI don't stall on pnpm's
+# interactive build-approval prompt.
 allowBuilds:
   better-sqlite3: true
   esbuild: true

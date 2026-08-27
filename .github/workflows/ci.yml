@@ -73,9 +73,12 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile=false --ignore-scripts
-      - uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+      - uses: google/osv-scanner-action/osv-scanner-action@v2.5.1
         with:
+          # osv-scanner (bundled by action v2.1.0+) dropped --skip-git:
+          # skipping .git is now the default, opted OUT of via the new
+          # --include-git-root flag — so there's nothing to pass here for
+          # the old behavior.
           scan-args: |-
             --recursive
-            --skip-git
             ./
