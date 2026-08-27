@@ -176,7 +176,17 @@ async function backupWorker(): Promise<void> {
 
   // Gzip + cleanup.
   const { createReadStream } = await import('node:fs');
-  await pipeline(createReadStream(tmpPath), createGzip(), createWriteStream(finalPath));
+  // @types/node 26's PipelineSource requires an async iterator matching
+  // ReadableStream's exactOptionalPropertyTypes-aware shape, which even
+  // Node's own `Readable`/`WriteStream` classes don't structurally
+  // satisfy in these types — a type-declaration gap, not a real
+  // behavior mismatch (these are genuinely valid pipeline streams at
+  // runtime). Casting `pipeline` itself to a permissive signature keeps
+  // the escape hatch to one line without TS reinterpreting the
+  // argument list against the wrong overload.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pipelineAny = pipeline as (...streams: any[]) => Promise<void>;
+  await pipelineAny(createReadStream(tmpPath), createGzip(), createWriteStream(finalPath));
   unlinkSync(tmpPath);
 
   applyRetentionPolicy(dir);

@@ -481,7 +481,15 @@ export async function layoutRoutes(app: FastifyInstance) {
       await mkdir(bgDir, { recursive: true });
       const filename = `${layoutId}.${ext}`;
       const dest = join(bgDir, filename);
-      await pipeline(data.file, createWriteStream(dest));
+      // @types/node 26's PipelineSource requires an async iterator
+      // matching ReadableStream's exactOptionalPropertyTypes-aware
+      // shape, which even Node's own `Readable` class doesn't
+      // structurally satisfy in these types — a type-declaration gap,
+      // not a real behavior mismatch (Busboy's file stream is genuinely
+      // a valid pipeline source at runtime). `any` is the least-bad
+      // escape hatch until upstream fixes the declaration.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await pipeline(data.file as any, createWriteStream(dest));
       const url = `/api/layouts/${layoutId}/background-image`;
       return { url };
     },
