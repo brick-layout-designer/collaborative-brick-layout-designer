@@ -31,7 +31,7 @@
     "drizzle-orm": "0.45.2",
     "fastify": "5.8.5",
     "lib0": "0.2.117",
-    "nodemailer": "8.0.7",
+    "nodemailer": "9.0.1",
     "openid-client": "5.6.5",
     "y-protocols": "1.0.7",
     "yjs": "13.6.18"
