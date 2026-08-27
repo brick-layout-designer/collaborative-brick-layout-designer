@@ -1020,12 +1020,17 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
   const { join: j, dirname } = await import('node:path');
   const { createInflateRaw } = await import('node:zlib');
 
-  function inflateRaw(data: Buffer): Promise<Buffer> {
-    return new Promise<Buffer>((res, rej) => {
+  // Returns Uint8Array rather than Buffer — under TypeScript 7's stricter
+  // ArrayBufferLike/SharedArrayBuffer variance, Buffer no longer
+  // structurally satisfies Uint8Array<ArrayBuffer> at every API boundary
+  // below (writeFile, etc.), so we normalise to a plain Uint8Array here
+  // once instead of casting at each call site.
+  function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+    return new Promise<Uint8Array>((res, rej) => {
       const z = createInflateRaw();
       const chunks: Buffer[] = [];
       z.on('data', (c: Buffer) => chunks.push(c));
-      z.on('end', () => res(Buffer.concat(chunks)));
+      z.on('end', () => res(new Uint8Array(Buffer.concat(chunks as unknown as Uint8Array<ArrayBuffer>[]))));
       z.on('error', rej);
       z.write(data);
       z.end();
@@ -1064,7 +1069,7 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
       totalUncomp += data.length;
       if (totalUncomp > MAX_TOTAL_SIZE) throw new Error('zip bomb: total uncompressed size exceeds limit');
       await mk(dirname(dest), { recursive: true });
-      await wf(dest, data);
+      await wf(dest, new Uint8Array(data));
     }
     return;
   } catch (e) {
@@ -1110,11 +1115,11 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     const dest = safeDestPath(destDir, stripped);
     await mk(dirname(dest), { recursive: true });
     const compData = buf.subarray(entry.dataOff, entry.dataOff + entry.compSize);
-    let data: Buffer;
+    let data: Uint8Array;
     if (entry.method === 0) {
-      data = compData;
+      data = new Uint8Array(compData);
     } else if (entry.method === 8) {
-      data = await inflateRaw(compData);
+      data = await inflateRaw(new Uint8Array(compData));
     } else {
       throw new Error(`unsupported compression method ${entry.method} for ${entry.name}`);
     }
