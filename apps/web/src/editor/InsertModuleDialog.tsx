@@ -52,7 +52,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         throw new Error('module has no bricks to insert');
       }
       if (!activeLayerId) {
-        throw new Error('no active brick layer in this layout');
+        throw new Error('no active parts layer in this layout');
       }
       // Centre the inserted block at the viewport's stud-origin (0,0).
       // A future polish: drop at the cursor like the place tool. For

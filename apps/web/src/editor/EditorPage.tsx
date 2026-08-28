@@ -233,10 +233,14 @@ function Editor({ layoutId }: { layoutId: string }) {
       const map = docToBbm(doc);
       const firstBrick = map.layers.find((l) => l.type === 'brick');
       if (!firstBrick) return;
-      // If the current activeLayerId exists in this map, keep it.
-      // Otherwise (stale id from another layout, or null), pick the first.
+      // If the current activeLayerId still exists in this map (of ANY
+      // layer kind — the user may have deliberately activated an area,
+      // text, or ruler layer via the Layers panel), keep it. Only pick a
+      // fallback when there's no valid active layer at all (stale id
+      // from another layout, or null on first load): default to the
+      // first brick layer since tools that place parts need one.
       const current = useEditorStore.getState().activeLayerId;
-      const stillValid = current && map.layers.some((l) => l.id === current && l.type === 'brick');
+      const stillValid = current && map.layers.some((l) => l.id === current);
       if (!stillValid) setActiveLayer(firstBrick.id);
     } catch {
       // Doc isn't fully populated yet (e.g. blank-create layout). Phase 3
@@ -866,6 +870,22 @@ function Canvas({
     }
   }, [doc, rev]);
 
+  /**
+   * Resolve the layer that new parts should be placed into. `activeLayerId`
+   * is the Layers-panel selection and can legitimately point at ANY layer
+   * kind (area, text, ruler — the user may have clicked one on purpose).
+   * Placing tools need a brick layer specifically: use the active layer
+   * only when it IS a brick layer, otherwise fall back to the first brick
+   * layer in the doc, creating one if none exists.
+   */
+  function resolveBrickLayerForPlacement(): string {
+    if (activeLayerId && map?.layers.some((l) => l.id === activeLayerId && l.type === 'brick')) {
+      return activeLayerId;
+    }
+    const firstBrick = map?.layers.find((l) => l.type === 'brick');
+    return firstBrick?.id ?? ensureBrickLayer(doc);
+  }
+
   // Push map bounding-box into the store so the StatusBar can show it
   // without prop-drilling. Runs whenever the map changes.
   const setHudMapBounds = useEditorStore((s) => s.setHudMapBounds);
@@ -989,7 +1009,7 @@ function Canvas({
         // Relative URL — same-origin browser fetch, not a server-side request.
         // Path is /api/modules/<validated-uuid>/snapshot with no user-controlled host.
         const moduleSnapshotPath = `/api/modules/${moduleId}/snapshot` as const;
-        const layerId = activeLayerId ?? ensureBrickLayer(doc);
+        const layerId = resolveBrickLayerForPlacement();
         void (async () => {
           try {
             const res = await fetch(moduleSnapshotPath, { credentials: 'include' }); // codeql[js/request-forgery] - browser same-origin fetch, UUID validated by regex above
@@ -1855,8 +1875,8 @@ function Canvas({
         : { centreX: studX, centreY: studY, snappedToConnection: false, newOrientation: null };
     }
 
-    const layerId = activeLayerId ?? ensureBrickLayer(doc);
-    if (!activeLayerId) setActiveLayer(layerId);
+    const layerId = resolveBrickLayerForPlacement();
+    if (activeLayerId !== layerId) setActiveLayer(layerId);
 
     // `snapPlacement` returns the rotation-aligned centre when connection
     // snap fired (mirrors desktop's `rotationAlignedTranslationStuds` +
@@ -1920,8 +1940,8 @@ function Canvas({
    */
   async function placeSetAt(group: PartWire, studX: number, studY: number) {
     if (group.subparts.length === 0) return;
-    const layerId = activeLayerId ?? ensureBrickLayer(doc);
-    if (!activeLayerId) setActiveLayer(layerId);
+    const layerId = resolveBrickLayerForPlacement();
+    if (activeLayerId !== layerId) setActiveLayer(layerId);
 
     const bricks: Array<{
       partNumber: string;

@@ -15,17 +15,15 @@ import type * as Y from 'yjs';
 import type { BbmMap, Layer } from '@cld/model';
 import { useEditorStore } from './editorStore';
 import {
+  addLayer,
   deleteLayer,
-  ensureAreaLayer,
-  ensureBrickLayer,
-  ensureRulerLayer,
-  ensureTextLayer,
   moveLayer,
   renameLayer,
   setLayerTransparency,
   setLayerVisible,
   showAllLayers,
   soloLayer,
+  type LayerKind,
 } from './mutations';
 import { LayerOptionsDialog } from './LayerOptionsDialog';
 
@@ -42,6 +40,22 @@ const KIND_GLYPH: Record<Layer['type'], string> = {
   area: '▦',
   ruler: '─',
 };
+
+/** Number of items on a layer — parts on a parts (brick) layer, cells/areas/rulers on the others. */
+function layerItemCount(layer: Layer): number | null {
+  switch (layer.type) {
+    case 'brick':
+      return layer.bricks.length;
+    case 'text':
+      return layer.textCells.length;
+    case 'area':
+      return layer.areas.length;
+    case 'ruler':
+      return layer.rulerItems.length;
+    case 'grid':
+      return null;
+  }
+}
 
 export function LayersPanel({ map, doc, isViewer }: Props) {
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
@@ -72,7 +86,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
       {!isViewer && (
         <div className="flex flex-col gap-1 border-t border-neutral-800 p-1">
           <div className="flex items-center gap-1">
-            <AddLayerButton doc={doc} />
+            <AddLayerButton doc={doc} onAdd={setActiveLayer} />
             <button
               onClick={() => {
                 if (!activeLayerId) return;
@@ -152,6 +166,7 @@ function LayerRow({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const itemCount = layerItemCount(layer);
 
   // Re-sync the draft when the layer's name changes externally (remote
   // collaborator rename, undo). Only when NOT actively editing — we
@@ -239,6 +254,14 @@ function LayerRow({
             }
           >
             {layer.name || '(untitled)'}
+          </span>
+        )}
+        {!editing && itemCount !== null && (
+          <span
+            className="shrink-0 tabular-nums text-[10px] text-neutral-500"
+            title={layer.type === 'brick' ? `${itemCount} part${itemCount === 1 ? '' : 's'} on this layer` : undefined}
+          >
+            {itemCount}
           </span>
         )}
       </div>
@@ -339,7 +362,14 @@ function LayerRow({
   );
 }
 
-function AddLayerButton({ doc }: { doc: Y.Doc }) {
+const ADD_LAYER_OPTIONS: { kind: LayerKind; label: string }[] = [
+  { kind: 'brick', label: 'Parts layer' },
+  { kind: 'area', label: 'Area layer' },
+  { kind: 'text', label: 'Text layer' },
+  { kind: 'ruler', label: 'Ruler layer' },
+];
+
+function AddLayerButton({ doc, onAdd }: { doc: Y.Doc; onAdd: (layerId: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -355,38 +385,16 @@ function AddLayerButton({ doc }: { doc: Y.Doc }) {
           className="absolute bottom-7 left-0 z-10 w-40 rounded border border-neutral-700 bg-neutral-900 text-xs shadow"
           onClick={() => setOpen(false)}
         >
-          <li>
-            <button
-              onClick={() => ensureBrickLayer(doc)}
-              className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
-            >
-              Brick layer
-            </button>
-          </li>
-          <li>
-            <button
-              onClick={() => ensureAreaLayer(doc)}
-              className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
-            >
-              Area layer
-            </button>
-          </li>
-          <li>
-            <button
-              onClick={() => ensureTextLayer(doc)}
-              className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
-            >
-              Text layer
-            </button>
-          </li>
-          <li>
-            <button
-              onClick={() => ensureRulerLayer(doc)}
-              className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
-            >
-              Ruler layer
-            </button>
-          </li>
+          {ADD_LAYER_OPTIONS.map(({ kind, label }) => (
+            <li key={kind}>
+              <button
+                onClick={() => onAdd(addLayer(doc, kind))}
+                className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
+              >
+                {label}
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </div>
