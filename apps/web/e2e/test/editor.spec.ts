@@ -303,3 +303,62 @@ test.describe('editor — Fordyce 2026 import', () => {
     await expect(page.locator('canvas').first()).toBeVisible();
   });
 });
+
+test.describe('editor — layers panel', () => {
+  // Regression coverage for: "add layer" was silently a no-op because the
+  // menu wired into the idempotent `ensure*Layer` seed helpers (which
+  // early-return the existing layer of that kind instead of creating a
+  // new one) rather than a real "always add" mutation. See addLayer() in
+  // apps/web/src/editor/mutations.ts.
+
+  test('adding a parts layer actually adds a new layer', async ({ page }) => {
+    const id = await loginAndCreateLayout(page);
+    await openEditor(page, id);
+
+    const layersPanel = page.locator('aside', { hasText: 'Layers' });
+    await expect(layersPanel).toBeVisible();
+
+    const countBefore = Number(await layersPanel.locator('span.text-neutral-600').innerText());
+
+    await layersPanel.getByTitle('Add a new layer').click();
+    await page.getByRole('button', { name: 'Parts layer' }).click();
+
+    await expect(layersPanel.locator('span.text-neutral-600')).toHaveText(String(countBefore + 1));
+
+    // A second "Parts layer" click must add ANOTHER layer, not silently
+    // no-op on top of the one that already exists (the original bug).
+    await layersPanel.getByTitle('Add a new layer').click();
+    await page.getByRole('button', { name: 'Parts layer' }).click();
+    await expect(layersPanel.locator('span.text-neutral-600')).toHaveText(String(countBefore + 2));
+
+    // The two new parts layers get disambiguated default names.
+    await expect(layersPanel.getByText('Parts', { exact: true })).toBeVisible();
+    await expect(layersPanel.getByText('Parts 2', { exact: true })).toBeVisible();
+  });
+
+  test('newly added layer becomes the active layer', async ({ page }) => {
+    const id = await loginAndCreateLayout(page);
+    await openEditor(page, id);
+
+    const layersPanel = page.locator('aside', { hasText: 'Layers' });
+    await layersPanel.getByTitle('Add a new layer').click();
+    await page.getByRole('button', { name: 'Area layer' }).click();
+
+    // The active row is highlighted with a blue left border + background;
+    // the newly-added "Area" row should be the one carrying it.
+    const activeRow = layersPanel.locator('li.border-l-blue-500');
+    await expect(activeRow).toContainText('Area');
+  });
+
+  test('layers panel shows a part count for the default parts (brick) layer', async ({ page }) => {
+    const id = await loginAndCreateLayout(page);
+    await openEditor(page, id);
+
+    const layersPanel = page.locator('aside', { hasText: 'Layers' });
+    // A freshly-created layout seeds one grid layer + one brick layer
+    // named "Layout" (createDefaultLayoutDoc, packages/ydoc/src/index.ts).
+    const partsRow = layersPanel.locator('li', { hasText: 'Layout' }).first();
+    // Starts empty.
+    await expect(partsRow.locator('span.tabular-nums.text-\\[10px\\].text-neutral-500')).toHaveText('0');
+  });
+});

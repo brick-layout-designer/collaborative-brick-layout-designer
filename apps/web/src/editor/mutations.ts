@@ -1208,6 +1208,77 @@ function findBrick(doc: Y.Doc, layerId: string, brickId: string): Y.Map<unknown>
 // their first interaction. We seed minimal defaults for layers / fonts.
 // ---------------------------------------------------------------------------
 
+export type LayerKind = 'brick' | 'area' | 'text' | 'ruler';
+
+const NEW_LAYER_DEFAULTS: Record<LayerKind, { name: string; extraFields: () => Record<string, unknown> }> = {
+  brick: {
+    name: 'Parts',
+    extraFields: () => ({
+      displayBrickElevation: false,
+      bricks: new Y.Array<Y.Map<unknown>>(),
+    }),
+  },
+  area: {
+    name: 'Area',
+    extraFields: () => ({
+      areaCellSize: 8,
+      areas: new Y.Array<{ x: number; y: number; color: string }>(),
+    }),
+  },
+  text: {
+    name: 'Text',
+    extraFields: () => ({ textCells: new Y.Array() }),
+  },
+  ruler: {
+    name: 'Ruler',
+    extraFields: () => ({ rulerItems: new Y.Array() }),
+  },
+};
+
+/**
+ * Unconditionally create a new layer of the given kind and return its id.
+ * Unlike the `ensure*Layer` initialisers below (which are idempotent —
+ * used to lazily seed a blank doc on first interaction), this always adds
+ * a fresh layer, disambiguating the default name against existing layers
+ * of the same kind (e.g. "Parts", "Parts 2", "Parts 3", ...).
+ */
+export function addLayer(doc: Y.Doc, kind: LayerKind): string {
+  const layerOrder = doc.getArray<string>('layers');
+  const layerData = doc.getMap<Y.Map<unknown>>('layerData');
+  const defaults = NEW_LAYER_DEFAULTS[kind];
+  const existingNames = new Set(
+    layerOrder
+      .toArray()
+      .map((id) => layerData.get(id))
+      .filter((l): l is Y.Map<unknown> => l instanceof Y.Map && l.get('type') === kind)
+      .map((l) => l.get('name')),
+  );
+  let name = defaults.name;
+  for (let n = 2; existingNames.has(name); n++) name = `${defaults.name} ${n}`;
+
+  const id = makeId();
+  doc.transact(() => {
+    const meta = doc.getMap('meta');
+    if (meta.get('version') === undefined) seedDefaultMeta(meta);
+    const yLayer = new Y.Map<unknown>();
+    yLayer.set('id', id);
+    yLayer.set('type', kind);
+    yLayer.set('name', name);
+    yLayer.set('visible', true);
+    yLayer.set('transparency', 100);
+    yLayer.set('hullProperties', {
+      isVisible: false,
+      hullColor: { kind: 'known', name: 'Black' } satisfies ColorSpec,
+      hullThickness: 1,
+    });
+    for (const [k, v] of Object.entries(defaults.extraFields())) yLayer.set(k, v);
+    yLayer.set('groups', new Y.Array<Y.Map<unknown>>());
+    layerData.set(id, yLayer);
+    layerOrder.push([id]);
+  }, LOCAL_ORIGIN);
+  return id;
+}
+
 export function ensureBrickLayer(doc: Y.Doc): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
@@ -1224,7 +1295,7 @@ export function ensureBrickLayer(doc: Y.Doc): string {
     const yLayer = new Y.Map<unknown>();
     yLayer.set('id', layerId);
     yLayer.set('type', 'brick');
-    yLayer.set('name', 'Bricks');
+    yLayer.set('name', 'Parts');
     yLayer.set('visible', true);
     yLayer.set('transparency', 100);
     yLayer.set('hullProperties', {
