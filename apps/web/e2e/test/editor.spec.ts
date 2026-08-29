@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getVerificationToken } from '../dbHelpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -39,12 +40,28 @@ async function postWithRateLimitRetry(page: Page, path: string, data: Record<str
   }
 }
 
+// This file's ~18 tests all share the one EMAIL account across the
+// whole run and each register/login it independently (409 on repeat
+// register is fine — see postWithRateLimitRetry). Verification only
+// needs to happen once: this flag makes every call site's "register,
+// then ensure verified, then login" sequence safe to repeat.
+let verified = false;
+
+/** Verify EMAIL's account if this run hasn't already — safe to call after every register. */
+async function ensureVerified(page: Page): Promise<void> {
+  if (verified) return;
+  const token = await getVerificationToken(EMAIL);
+  await page.request.post(`/api/auth/password/verify-email/${token}`);
+  verified = true;
+}
+
 async function loginAndCreateLayout(page: Page): Promise<string> {
   await postWithRateLimitRetry(page, '/api/auth/password/register', {
     email: EMAIL,
     password: PASS,
     displayName: 'Editor Tester',
   });
+  await ensureVerified(page);
   await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
   const res = await page.request.post('/api/layouts', { data: { title: 'Editor Test Layout' } });
   const { id } = await res.json() as { id: string };
@@ -217,6 +234,7 @@ test.describe('editor — Fordyce 2026 import', () => {
     await postWithRateLimitRetry(page, '/api/auth/password/register', {
       email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
+    await ensureVerified(page);
     await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
@@ -233,6 +251,7 @@ test.describe('editor — Fordyce 2026 import', () => {
     await postWithRateLimitRetry(page, '/api/auth/password/register', {
       email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
+    await ensureVerified(page);
     await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
@@ -248,6 +267,7 @@ test.describe('editor — Fordyce 2026 import', () => {
     await postWithRateLimitRetry(page, '/api/auth/password/register', {
       email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
+    await ensureVerified(page);
     await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
@@ -266,6 +286,7 @@ test.describe('editor — Fordyce 2026 import', () => {
     await postWithRateLimitRetry(page, '/api/auth/password/register', {
       email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
+    await ensureVerified(page);
     await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {
@@ -289,6 +310,7 @@ test.describe('editor — Fordyce 2026 import', () => {
     await postWithRateLimitRetry(page, '/api/auth/password/register', {
       email: EMAIL, password: PASS, displayName: 'Editor Tester',
     });
+    await ensureVerified(page);
     await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 
     const res = await page.request.post('/api/layouts', {

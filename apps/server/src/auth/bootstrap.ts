@@ -39,6 +39,10 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     passwordHash,
     isDemoAccount: false,
     isGlobalAdmin: true,
+    // The bootstrap admin has no inbox to click a verification link
+    // from — it's created straight from a trusted env var, so it's
+    // exempt from the password-signup email-verification requirement.
+    emailVerified: true,
     createdAt: new Date(),
   });
   console.log('====================================================');

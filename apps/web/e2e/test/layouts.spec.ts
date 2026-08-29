@@ -1,18 +1,46 @@
 // E2E: Layout CRUD — create, rename, delete, and list operations.
 
 import { test, expect, type Page } from '@playwright/test';
+import { getVerificationToken } from '../dbHelpers';
 
 const ts = Date.now();
 const EMAIL = `layouts-e2e-${ts}@example.com`;
 const PASS = 'correct horse battery';
 
+// Every test in this file shares EMAIL via beforeEach — register 409s
+// after the first call (fine), but verification only needs doing once.
+let verified = false;
+
+/**
+ * /api/auth/password/register and /login are both rate-limited
+ * (10/min) — a real, intentional anti-abuse control. Retry on 429 using
+ * the server's own `retry-after` header rather than guessing a backoff.
+ */
+async function postWithRateLimitRetry(page: Page, path: string, data: Record<string, string>): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await page.request.post(path, { data });
+    if (res.ok() || res.status() === 409) return; // 409 email_taken is fine — account exists
+    if (res.status() === 429 && attempt < 3) {
+      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
+      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
+      continue;
+    }
+    return; // give up silently, matching this helper's original fire-and-forget style
+  }
+}
+
 async function loginViaApi(page: Page): Promise<void> {
-  await page.request.post('/api/auth/password/register', {
-    data: { email: EMAIL, password: PASS, displayName: 'Layouts Tester' },
+  await postWithRateLimitRetry(page, '/api/auth/password/register', {
+    email: EMAIL,
+    password: PASS,
+    displayName: 'Layouts Tester',
   });
-  await page.request.post('/api/auth/password/login', {
-    data: { email: EMAIL, password: PASS },
-  });
+  if (!verified) {
+    const token = await getVerificationToken(EMAIL);
+    await page.request.post(`/api/auth/password/verify-email/${token}`);
+    verified = true;
+  }
+  await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 }
 
 test.describe('layout list page', () => {

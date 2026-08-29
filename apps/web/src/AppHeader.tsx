@@ -30,7 +30,8 @@ export function AppHeader({ user }: Props) {
 
   return (
     <header className="flex items-center justify-between border-b border-neutral-800 pb-4">
-      <Link to="/" className="text-2xl font-semibold hover:underline">
+      <Link to="/" className="flex items-center gap-2 text-2xl font-semibold hover:underline">
+        <img src="/logo.png" alt="" className="h-8 w-8 rounded" />
         Collaborative Brick Layout Designer
       </Link>
       <nav className="flex items-center gap-4 text-sm">

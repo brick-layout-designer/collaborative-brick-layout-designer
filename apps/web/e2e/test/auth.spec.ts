@@ -1,30 +1,34 @@
-// E2E: Authentication flows — register, login, logout, and redirect behaviour.
+// E2E: Authentication flows — register, email verification, login,
+// logout, and redirect behaviour.
+//
+// Registration no longer logs the user straight in (see
+// apps/server/src/routes/auth/password.ts) — it creates an unverified
+// account and emails a verification link. Since Playwright can't
+// receive that email, these tests pull the live token directly from
+// the server's own SQLite DB via dbHelpers.ts (Node-side, not a
+// browser action) to click the equivalent of the emailed link.
+//
 // Tests in this file share a unique email per run to stay isolated.
 
 import { test, expect } from '@playwright/test';
+import { getVerificationToken, expireVerificationToken } from '../dbHelpers';
 
 const ts = Date.now();
 const EMAIL = `auth-e2e-${ts}@example.com`;
 const PASS = 'correct horse battery';
 
 test.describe('auth — register', () => {
-  test('registers a new account and lands on the home page', async ({ page }) => {
+  test('registering shows a check-your-inbox state, not an immediate login', async ({ page }) => {
     await page.goto('/login');
-
-    // The register toggle is a <button>, not a link — "Need an account?"
-    // flips PasswordForm's internal mode from 'login' to 'register',
-    // which also swaps the submit button's label to "Create account".
     await page.getByRole('button', { name: /need an account/i }).click();
-
     await page.getByLabel(/email/i).fill(EMAIL);
     await page.getByLabel(/password/i).fill(PASS);
-
     await page.getByRole('button', { name: /create account/i }).click();
-    await expect(page).toHaveURL('/');
-    // The login form has no display-name field, so the server defaults
-    // displayName to the email itself — that's what should show as
-    // logged-in confirmation somewhere in the header/nav.
-    await expect(page.getByText(EMAIL).first()).toBeVisible({ timeout: 5000 });
+
+    // Stays on /login (no session yet) and tells the user to check email.
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByText(EMAIL)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/check/i)).toBeVisible();
   });
 
   test('rejects registration with a too-short password', async ({ page }) => {
@@ -42,41 +46,118 @@ test.describe('auth — register', () => {
   });
 });
 
+test.describe('auth — email verification', () => {
+  test('clicking the verification link logs the user in', async ({ page, request }) => {
+    const email = `verify-${ts}@example.com`;
+    // Register via a cookie-isolated context — see the login-test
+    // comment below for why `page.request` isn't used here.
+    await request.post('/api/auth/password/register', {
+      data: { email, password: PASS, displayName: 'Verify User' },
+    });
+
+    const token = await getVerificationToken(email);
+    await page.goto(`/verify-email/${token}`);
+    await expect(page).toHaveURL('/', { timeout: 5000 });
+    // The header shows the account's displayName, not its email.
+    await expect(page.getByText('Verify User').first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('an expired verification link shows an error, not a login', async ({ page, request }) => {
+    const email = `expired-${ts}@example.com`;
+    await request.post('/api/auth/password/register', {
+      data: { email, password: PASS, displayName: 'Expired User' },
+    });
+    const token = await getVerificationToken(email);
+    await expireVerificationToken(email);
+
+    await page.goto(`/verify-email/${token}`);
+    await expect(page.getByText(/expired/i)).toBeVisible({ timeout: 5000 });
+    await expect(page).not.toHaveURL('/');
+  });
+
+  test('a bogus verification token shows an error', async ({ page }) => {
+    await page.goto('/verify-email/not-a-real-token-at-all');
+    await expect(page.getByText(/invalid/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test('resend button on the login page issues a new working token', async ({ page }) => {
+    const email = `resend-${ts}@example.com`;
+
+    // Register through the UI itself — this is what actually creates the
+    // first token; no separate pre-registration needed (and doing one
+    // via the API first would just 409 this form submission instead).
+    await page.goto('/login');
+    await page.getByRole('button', { name: /need an account/i }).click();
+    await page.getByLabel(/email/i).fill(email);
+    await page.getByLabel(/password/i).fill(PASS);
+    await page.getByRole('button', { name: /create account/i }).click();
+    await expect(page.getByText(/check/i)).toBeVisible({ timeout: 5000 });
+
+    const firstToken = await getVerificationToken(email);
+
+    await page.getByRole('button', { name: /resend/i }).click();
+    await expect(page.getByText(/sent/i)).toBeVisible({ timeout: 5000 });
+
+    const secondToken = await getVerificationToken(email);
+    expect(secondToken).not.toBe(firstToken);
+
+    await page.goto(`/verify-email/${secondToken}`);
+    await expect(page).toHaveURL('/', { timeout: 5000 });
+  });
+});
+
 test.describe('auth — login', () => {
   test('unauthenticated visit to / redirects to /login', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test('logs in with correct credentials and lands on home', async ({ page, request }) => {
-    // Register via a separate, cookie-isolated request context — the
-    // register endpoint auto-logs-in (sets a session cookie on its
-    // response), and `page.request` shares cookie storage with `page`.
-    // Registering through `page.request` directly would leave the
-    // browser already authenticated, so `page.goto('/login')` below
-    // would immediately redirect to `/` before the form ever renders.
+  test('logging in before verifying shows an error with a resend option', async ({ page, request }) => {
+    const email = `unverified-${ts}@example.com`;
     await request.post('/api/auth/password/register', {
-      data: { email: `login-${ts}@example.com`, password: PASS, displayName: 'Login User' },
+      data: { email, password: PASS, displayName: 'Unverified User' },
     });
 
     await page.goto('/login');
-    await page.getByLabel(/email/i).fill(`login-${ts}@example.com`);
+    await page.getByLabel(/email/i).fill(email);
+    await page.getByLabel(/password/i).fill(PASS);
+    await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByText(/verify your email/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: /resend/i })).toBeVisible();
+  });
+
+  test('logs in with correct credentials and lands on home', async ({ page, request }) => {
+    // Register via a separate, cookie-isolated request context.
+    // `page.request` shares cookie storage with `page`, and even though
+    // register no longer sets a cookie, using the isolated context keeps
+    // this test robust to that changing back — either way we want the
+    // browser itself to start signed out so `page.goto('/login')` below
+    // renders the form instead of redirecting to `/`.
+    const email = `login-${ts}@example.com`;
+    await request.post('/api/auth/password/register', {
+      data: { email, password: PASS, displayName: 'Login User' },
+    });
+    const token = await getVerificationToken(email);
+    await request.post(`/api/auth/password/verify-email/${token}`);
+
+    await page.goto('/login');
+    await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill(PASS);
     await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
     await expect(page).toHaveURL('/');
   });
 
   test('shows an error with wrong password', async ({ page, request }) => {
-    // Register via a cookie-isolated context — see the previous test's
-    // comment: registering through `page.request` would auto-log-in the
-    // browser (the endpoint sets a session cookie), which would redirect
-    // `/login` straight to `/` before the form ever renders.
+    const email = `badpass-${ts}@example.com`;
     await request.post('/api/auth/password/register', {
-      data: { email: `badpass-${ts}@example.com`, password: PASS, displayName: 'Bad Pass' },
+      data: { email, password: PASS, displayName: 'Bad Pass' },
     });
+    const token = await getVerificationToken(email);
+    await request.post(`/api/auth/password/verify-email/${token}`);
 
     await page.goto('/login');
-    await page.getByLabel(/email/i).fill(`badpass-${ts}@example.com`);
+    await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill('wrong-password-xyz');
     await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
     // Should stay on /login and show a human-readable error — NOT the raw
@@ -106,13 +187,12 @@ test.describe('auth — login', () => {
 
 test.describe('auth — logout', () => {
   test('logs out and redirects to /login', async ({ page }) => {
-    // Register + login via API.
+    const email = `logout-${ts}@example.com`;
     await page.request.post('/api/auth/password/register', {
-      data: { email: `logout-${ts}@example.com`, password: PASS, displayName: 'Logout User' },
+      data: { email, password: PASS, displayName: 'Logout User' },
     });
-    const loginRes = await page.request.post('/api/auth/password/login', {
-      data: { email: `logout-${ts}@example.com`, password: PASS },
-    });
+    const token = await getVerificationToken(email);
+    const loginRes = await page.request.post(`/api/auth/password/verify-email/${token}`);
     expect(loginRes.ok()).toBe(true);
 
     // Navigate home — should work.
@@ -132,14 +212,14 @@ test.describe('auth — logout', () => {
 
 test.describe('auth — profile page', () => {
   test('profile page is accessible after login', async ({ page }) => {
+    const email = `profile-${ts}@example.com`;
     await page.request.post('/api/auth/password/register', {
-      data: { email: `profile-${ts}@example.com`, password: PASS, displayName: 'Profile User' },
+      data: { email, password: PASS, displayName: 'Profile User' },
     });
-    await page.request.post('/api/auth/password/login', {
-      data: { email: `profile-${ts}@example.com`, password: PASS },
-    });
+    const token = await getVerificationToken(email);
+    await page.request.post(`/api/auth/password/verify-email/${token}`);
     await page.goto('/profile');
     // Profile page should render with the user's email somewhere visible.
-    await expect(page.getByText(`profile-${ts}@example.com`)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(email)).toBeVisible({ timeout: 5000 });
   });
 });

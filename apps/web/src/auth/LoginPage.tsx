@@ -11,6 +11,7 @@ export function LoginPage() {
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-neutral-800 bg-neutral-900 p-8 shadow">
+        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded" />
         <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
 
         <div className="space-y-2">
@@ -44,6 +45,9 @@ function PasswordForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Set after a successful registration — password signups no longer log
+  // straight in; the account needs to click the emailed link first.
+  const [awaitingVerification, setAwaitingVerification] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -51,11 +55,38 @@ function PasswordForm() {
         ? api.passwordLogin(email, password)
         : api.passwordRegister(email, password),
     onSuccess: () => {
+      if (mode === 'register') {
+        setAwaitingVerification(email);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['me'] });
       window.location.href = '/';
     },
     onError: (e: Error) => setError(e.message),
   });
+
+  const resend = useMutation({
+    mutationFn: () => api.resendVerification(email),
+  });
+
+  if (awaitingVerification) {
+    return (
+      <div className="space-y-3 border-t border-neutral-800 pt-4 text-center">
+        <p className="text-sm text-neutral-300">
+          Check <span className="font-medium text-white">{awaitingVerification}</span> for a
+          confirmation link to finish creating your account.
+        </p>
+        <button
+          type="button"
+          onClick={() => resend.mutate()}
+          disabled={resend.isPending || resend.isSuccess}
+          className="text-sm text-blue-400 hover:underline disabled:opacity-50"
+        >
+          {resend.isSuccess ? 'Email sent — check your inbox' : "Didn't get it? Resend"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -85,7 +116,21 @@ function PasswordForm() {
         minLength={8}
         className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
       />
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="text-sm text-red-400">
+          <p>{error}</p>
+          {mode === 'login' && error.toLowerCase().includes('verify') && (
+            <button
+              type="button"
+              onClick={() => resend.mutate()}
+              disabled={resend.isPending || resend.isSuccess}
+              className="mt-1 text-blue-400 hover:underline disabled:opacity-50"
+            >
+              {resend.isSuccess ? 'Email sent — check your inbox' : 'Resend confirmation email'}
+            </button>
+          )}
+        </div>
+      )}
       <button
         type="submit"
         disabled={mutation.isPending}

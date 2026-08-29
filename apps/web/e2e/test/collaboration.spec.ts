@@ -7,6 +7,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getVerificationToken } from '../dbHelpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -48,6 +49,7 @@ async function postWithRateLimitRetry(
   }
 }
 
+/** Register AND verify — every test in this file registers a brand-new, one-off email, so there's no shared-account idempotency concern here (contrast editor.spec.ts). */
 async function registerUser(page: Page, email: string, name: string): Promise<void> {
   await postWithRateLimitRetry(
     page,
@@ -55,6 +57,9 @@ async function registerUser(page: Page, email: string, name: string): Promise<vo
     { email, password: PASS, displayName: name },
     'register',
   );
+  const token = await getVerificationToken(email);
+  const res = await page.request.post(`/api/auth/password/verify-email/${token}`);
+  expect(res.ok(), `verify-email failed for ${email}: ${res.status()}`).toBe(true);
 }
 
 async function loginUser(page: Page, email: string): Promise<void> {

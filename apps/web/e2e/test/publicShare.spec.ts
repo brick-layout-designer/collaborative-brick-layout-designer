@@ -4,6 +4,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getVerificationToken } from '../dbHelpers';
 
 const ts = Date.now();
 const EMAIL = `share-e2e-${ts}@example.com`;
@@ -17,13 +18,40 @@ const FORDYCE_BBM = readFileSync(
   'utf-8',
 );
 
+// Every test in this file shares EMAIL — register 409s after the first
+// call (fine), but verification only needs doing once.
+let verified = false;
+
+/**
+ * /api/auth/password/register and /login are both rate-limited
+ * (10/min) — a real, intentional anti-abuse control. Retry on 429 using
+ * the server's own `retry-after` header rather than guessing a backoff.
+ */
+async function postWithRateLimitRetry(page: Page, path: string, data: Record<string, string>): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await page.request.post(path, { data });
+    if (res.ok() || res.status() === 409) return; // 409 email_taken is fine — account exists
+    if (res.status() === 429 && attempt < 3) {
+      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
+      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
+      continue;
+    }
+    return; // give up silently, matching this helper's original fire-and-forget style
+  }
+}
+
 async function registerAndLogin(page: Page): Promise<void> {
-  await page.request.post('/api/auth/password/register', {
-    data: { email: EMAIL, password: PASS, displayName: 'Share Tester' },
+  await postWithRateLimitRetry(page, '/api/auth/password/register', {
+    email: EMAIL,
+    password: PASS,
+    displayName: 'Share Tester',
   });
-  await page.request.post('/api/auth/password/login', {
-    data: { email: EMAIL, password: PASS },
-  });
+  if (!verified) {
+    const token = await getVerificationToken(EMAIL);
+    await page.request.post(`/api/auth/password/verify-email/${token}`);
+    verified = true;
+  }
+  await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
 }
 
 async function createLayout(page: Page, title: string): Promise<string> {
@@ -101,8 +129,10 @@ test.describe('public share — anonymous API access', () => {
     const anonPage = await anonCtx.newPage();
     const res = await anonPage.request.get(`/api/public-layouts/${token}`);
     expect(res.ok()).toBe(true);
-    const body = (await res.json()) as { title: string };
-    expect(body.title).toBe('Public Metadata Layout');
+    // Response nests fields under `layout` — see /api/public-layouts/:token
+    // in apps/server/src/routes/layouts.ts.
+    const body = (await res.json()) as { layout: { title: string } };
+    expect(body.layout.title).toBe('Public Metadata Layout');
     await anonCtx.close();
   });
 
@@ -142,11 +172,12 @@ test.describe('public share — Fordyce 2026 layout', () => {
     const token = await enableSharing(page, id);
     expect(token.length).toBeGreaterThan(8);
 
-    // Verify the metadata is correct.
+    // Verify the metadata is correct. Response nests fields under
+    // `layout` — see /api/public-layouts/:token in apps/server/src/routes/layouts.ts.
     const meta = await page.request.get(`/api/public-layouts/${token}`);
     expect(meta.ok()).toBe(true);
-    const body = (await meta.json()) as { title: string };
-    expect(body.title).toBe('Fordyce 2026');
+    const body = (await meta.json()) as { layout: { title: string } };
+    expect(body.layout.title).toBe('Fordyce 2026');
   });
 
   test('Fordyce 2026 public snapshot returns non-trivial bytes', async ({
