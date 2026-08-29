@@ -5,6 +5,7 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getVerificationToken } from '../dbHelpers';
 
 const ts = Date.now();
 const ADMIN_EMAIL = `orgs-admin-${ts}@example.com`;
@@ -20,21 +21,58 @@ const FORDYCE_BBM = readFileSync(
   'utf-8',
 );
 
+/**
+ * /api/auth/password/register and /login are both rate-limited
+ * (10/min) — a real, intentional anti-abuse control. This file alone
+ * registers a dozen-plus accounts, so running it back-to-back with
+ * other specs can legitimately trip the limit. Retry on 429 using the
+ * server's own `retry-after` header rather than guessing a backoff.
+ */
+async function postWithRateLimitRetry(
+  page: Page,
+  path: string,
+  data: Record<string, string>,
+): Promise<{ ok: () => boolean; status: () => number }> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await page.request.post(path, { data });
+    if (res.status() === 429 && attempt < 3) {
+      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
+      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
+      continue;
+    }
+    return res;
+  }
+}
+
+/**
+ * Register AND verify. A few tests re-register the same email across
+ * multiple `test()` blocks (e.g. ADMIN_EMAIL) — register itself already
+ * tolerates that (see the pre-existing 409-on-repeat pattern elsewhere
+ * in this file), and on a repeat the server never issues a second
+ * verification token, so skip the verify round-trip when the account is
+ * already known to be verified from an earlier call in this run.
+ */
+const verifiedEmails = new Set<string>();
+
 async function registerUser(
   page: Page,
   email: string,
   displayName: string,
 ): Promise<void> {
-  const res = await page.request.post('/api/auth/password/register', {
-    data: { email, password: PASS, displayName },
+  const res = await postWithRateLimitRetry(page, '/api/auth/password/register', {
+    email, password: PASS, displayName,
   });
-  expect(res.ok()).toBe(true);
+  if (res.status() !== 409) expect(res.ok()).toBe(true);
+  if (!verifiedEmails.has(email)) {
+    const token = await getVerificationToken(email);
+    const verifyRes = await page.request.post(`/api/auth/password/verify-email/${token}`);
+    expect(verifyRes.ok()).toBe(true);
+    verifiedEmails.add(email);
+  }
 }
 
 async function loginUser(page: Page, email: string): Promise<void> {
-  const res = await page.request.post('/api/auth/password/login', {
-    data: { email, password: PASS },
-  });
+  const res = await postWithRateLimitRetry(page, '/api/auth/password/login', { email, password: PASS });
   expect(res.ok()).toBe(true);
 }
 
@@ -85,8 +123,10 @@ test.describe('orgs — create', () => {
 
     const list = await page.request.get('/api/orgs');
     expect(list.ok()).toBe(true);
-    const body = (await list.json()) as Array<{ slug: string; name: string }>;
-    expect(body.some((o) => o.slug === org.slug)).toBe(true);
+    // Response nests the array under `orgs` — see GET /api/orgs in
+    // apps/server/src/routes/orgs.ts.
+    const body = (await list.json()) as { orgs: Array<{ slug: string; name: string }> };
+    expect(body.orgs.some((o) => o.slug === org.slug)).toBe(true);
   });
 
   test('org details are retrievable by slug', async ({ page }) => {
@@ -279,18 +319,25 @@ test.describe('orgs — layout ownership', () => {
     });
     const { id: layoutId } = (await layoutRes.json()) as { id: string };
 
-    // Invite the member as a collaborator on the layout.
-    await page.request.post(`/api/layouts/${layoutId}/collaborators`, {
+    // Invite the member as a collaborator on the layout (the endpoint is
+    // .../invites, which creates a token the recipient must accept —
+    // there's no direct .../collaborators write endpoint).
+    const collabInviteRes = await page.request.post(`/api/layouts/${layoutId}/invites`, {
       data: { email: MEMBER_EMAIL, role: 'editor' },
     });
+    const { token: collabToken } = (await collabInviteRes.json()) as { token: string };
+    const acceptRes = await memberPage.request.post(`/api/invites/${collabToken}`);
+    expect(acceptRes.ok()).toBe(true);
 
     // Member should be able to GET the layout.
     const layoutDetail = await memberPage.request.get(
       `/api/layouts/${layoutId}`,
     );
     expect(layoutDetail.ok()).toBe(true);
-    const layoutBody = (await layoutDetail.json()) as { title: string };
-    expect(layoutBody.title).toBe('Org Layout');
+    // Response nests fields under `layout` — see GET /api/layouts/:id in
+    // apps/server/src/routes/layouts.ts.
+    const layoutBody = (await layoutDetail.json()) as { layout: { title: string } };
+    expect(layoutBody.layout.title).toBe('Org Layout');
 
     await memberCtx.close();
   });
@@ -308,11 +355,13 @@ test.describe('orgs — layout ownership', () => {
     expect(layoutRes.ok()).toBe(true);
     const { id } = (await layoutRes.json()) as { id: string };
 
-    // Verify layout is retrievable and has the right title.
+    // Verify layout is retrievable and has the right title. Response
+    // nests fields under `layout` — see GET /api/layouts/:id in
+    // apps/server/src/routes/layouts.ts.
     const detail = await page.request.get(`/api/layouts/${id}`);
     expect(detail.ok()).toBe(true);
-    const body = (await detail.json()) as { title: string };
-    expect(body.title).toBe('Fordyce 2026 Org Import');
+    const body = (await detail.json()) as { layout: { title: string } };
+    expect(body.layout.title).toBe('Fordyce 2026 Org Import');
 
     // Org exists and creator is admin.
     const members = await page.request.get(`/api/orgs/${org.slug}/members`);

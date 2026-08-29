@@ -30,6 +30,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to do that.",
   not_found: 'That item could not be found.',
   payload_too_large: 'That file is too large.',
+  email_not_verified: 'Please verify your email before signing in — check your inbox for the confirmation link.',
+  verification_not_found: 'That verification link is invalid.',
+  verification_expired: 'That verification link has expired. Request a new one below.',
 };
 
 /** `some_error_code` -> "Some error code." */
@@ -213,7 +216,15 @@ export const api = {
   passwordLogin: (email: string, password: string) =>
     post<{ ok: true }>('/api/auth/password/login', { email, password }),
   passwordRegister: (email: string, password: string, displayName?: string) =>
-    post<{ ok: true }>('/api/auth/password/register', { email, password, displayName }),
+    post<{ ok: true; verificationRequired: true }>('/api/auth/password/register', {
+      email,
+      password,
+      displayName,
+    }),
+  resendVerification: (email: string) =>
+    post<{ ok: true }>('/api/auth/password/resend-verification', { email }),
+  verifyEmail: (token: string) =>
+    post<{ ok: true }>(`/api/auth/password/verify-email/${encodeURIComponent(token)}`),
 
   layouts: {
     list: () => get<{ layouts: LayoutSummary[] }>('/api/layouts'),

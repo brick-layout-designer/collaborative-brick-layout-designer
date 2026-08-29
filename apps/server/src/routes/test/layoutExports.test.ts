@@ -14,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bufConcat, resetDb } from '../../test/helpers.js';
+import { eq } from 'drizzle-orm';
+import { bufConcat, db, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { sessionRoutes } from '../auth/session.js';
@@ -46,7 +47,18 @@ async function registerAndLogin(app: FastifyInstance, email: string): Promise<st
     payload: { email, password: 'correct horse battery', displayName: email },
   });
   expect(res.statusCode).toBe(200);
-  const setCookie = res.headers['set-cookie'];
+  const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+  const verification = await db
+    .select()
+    .from(schema.emailVerifications)
+    .where(eq(schema.emailVerifications.userId, user!.id))
+    .get();
+  const verifyRes = await app.inject({
+    method: 'POST',
+    url: `/api/auth/password/verify-email/${verification!.token}`,
+  });
+  expect(verifyRes.statusCode).toBe(200);
+  const setCookie = verifyRes.headers['set-cookie'];
   return Array.isArray(setCookie) ? setCookie.join('; ') : (setCookie ?? '');
 }
 

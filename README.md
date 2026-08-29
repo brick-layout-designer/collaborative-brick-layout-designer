@@ -190,7 +190,7 @@ full list. Notable ones:
 | `DB_PATH`                 | `./data/cbld.sqlite`    | SQLite file path (use `/data/cbld.sqlite` in Docker) |
 | `PARTS_DIR`               | `./data/parts`          | Parts library root (use `/parts` in Docker)        |
 | `COOKIE_SECURE`           | `false`                 | Set `true` behind TLS                              |
-| `ENABLE_PASSWORD_AUTH`    | `false`                 | Enable email/password registration                 |
+| `ENABLE_PASSWORD_AUTH`    | `false`                 | Enable email/password registration (requires verifying email — see SMTP) |
 | `DEMO_MODE`               | `false`                 | New accounts become demo accounts                  |
 | `DEMO_LAYOUT_TTL_DAYS`    | `30`                    | Auto-expire demo-owned layouts after N days        |
 | `BOOTSTRAP_ADMIN_EMAIL`   | —                       | Created on first start if absent                   |
@@ -198,7 +198,7 @@ full list. Notable ones:
 | `GOOGLE_CLIENT_ID/SECRET` | —                       | Enables Google OAuth when both set                 |
 | `GITHUB_CLIENT_ID/SECRET` | —                       | Enables GitHub OAuth when both set                 |
 | `OIDC_ISSUER_URL/...`     | —                       | Generic OIDC (Microsoft, Auth0, Keycloak, …)       |
-| `SMTP_HOST/PORT/...`      | —                       | If set, invites are emailed; else copy-paste links |
+| `SMTP_HOST/PORT/...`      | —                       | If set, invites + signup verification are emailed; else copy-paste links / server-log link |
 | `BACKUPS_ENABLED`         | `true`                  | Daily backup worker                                |
 | `BACKUPS_DIR`             | `/backups`              | Where backups land                                 |
 | `DEMO_TTL_SWEEP_ENABLED`  | `true`                  | Daily sweep of expired demo layouts                |

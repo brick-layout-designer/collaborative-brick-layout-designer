@@ -11,6 +11,14 @@ export const users = sqliteTable('users', {
   passwordHash: text('password_hash'),
   isDemoAccount: integer('is_demo_account', { mode: 'boolean' }).notNull().default(false),
   isGlobalAdmin: integer('is_global_admin', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Password-auth accounts start unverified and must confirm via the
+   * emailed link (see email_verifications below) before they can log in.
+   * OAuth/OIDC accounts are always created verified — the provider has
+   * already proven the email — so this defaults true and password
+   * registration explicitly sets it false.
+   */
+  emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(true),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -35,6 +43,20 @@ export const oauthAccounts = sqliteTable(
     pk: primaryKey({ columns: [t.provider, t.providerUserId] }),
   }),
 );
+
+// Pending email-verification tokens for password-auth signups. One row
+// per outstanding (unconsumed) verification link; a fresh register or
+// resend deletes any prior row for the user before inserting a new one,
+// so a user has at most one live token at a time.
+export const emailVerifications = sqliteTable('email_verifications', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
 
 export const orgs = sqliteTable('orgs', {
   id: text('id').primaryKey(),
@@ -379,6 +401,7 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type OAuthAccount = typeof oauthAccounts.$inferSelect;
+export type EmailVerification = typeof emailVerifications.$inferSelect;
 export type Layout = typeof layouts.$inferSelect;
 export type NewLayout = typeof layouts.$inferInsert;
 export type LayoutCollaborator = typeof layoutCollaborators.$inferSelect;

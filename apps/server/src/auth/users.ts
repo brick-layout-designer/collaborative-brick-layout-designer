@@ -48,6 +48,8 @@ export async function resolveOauthUser(
     passwordHash: null,
     isDemoAccount: false,
     isGlobalAdmin: false,
+    // OAuth/OIDC providers have already proven control of this email.
+    emailVerified: true,
     createdAt: new Date(),
   };
   await db.insert(schema.users).values(created);

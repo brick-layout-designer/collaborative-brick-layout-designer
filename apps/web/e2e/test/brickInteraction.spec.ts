@@ -19,6 +19,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getVerificationToken } from '../dbHelpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -32,10 +33,19 @@ const ts = Date.now();
 const EMAIL = `brick-e2e-${ts}@example.com`;
 const PASS = 'correct horse battery';
 
+// Every test in this file shares EMAIL — register 409s after the first
+// call (fine), but verification only needs doing once.
+let verified = false;
+
 async function loginAndImportFordyce(page: import('@playwright/test').Page): Promise<string> {
   await page.request.post('/api/auth/password/register', {
     data: { email: EMAIL, password: PASS, displayName: 'Brick Tester' },
   });
+  if (!verified) {
+    const token = await getVerificationToken(EMAIL);
+    await page.request.post(`/api/auth/password/verify-email/${token}`);
+    verified = true;
+  }
   await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
   const res = await page.request.post('/api/layouts', {
     data: { title: 'Brick Interaction Test', bbm: FORDYCE_BBM },
