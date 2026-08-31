@@ -434,3 +434,157 @@ describe('admin layouts', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+// ---- settings --------------------------------------------------------------
+
+describe('admin settings', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('non-admins get 403 on GET and PATCH', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const get = await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie } });
+    expect(get.statusCode).toBe(403);
+    const patch = await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie }, payload: { requireEmailVerification: false },
+    });
+    expect(patch.statusCode).toBe(403);
+  });
+
+  it('GET creates the singleton row on first access with the pre-existing default (verification required, no DB SMTP)', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { requireEmailVerification: boolean; smtp: { host: string | null; active: boolean; source: string | null; passSet: boolean } };
+    expect(body.requireEmailVerification).toBe(true);
+    expect(body.smtp.host).toBeNull();
+    expect(body.smtp.passSet).toBe(false);
+    // No SMTP_HOST env var set in this test process, so nothing is active.
+    expect(body.smtp.active).toBe(false);
+    expect(body.smtp.source).toBeNull();
+  });
+
+  it('PATCH toggling requireEmailVerification off persists and reflects on GET', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const patch = await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { requireEmailVerification: false },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    const get = await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie: adminCookie } });
+    expect((get.json() as { requireEmailVerification: boolean }).requireEmailVerification).toBe(false);
+  });
+
+  it('PATCH with an empty body returns 400 empty_patch', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const res = await app.inject({ method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie }, payload: {} });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('empty_patch');
+  });
+
+  it('PATCH with an out-of-range smtpPort returns 400', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpHost: 'smtp.example.com', smtpPort: 99999 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_smtp_port');
+  });
+
+  it('PATCH sets a DB SMTP config; GET reports it active with source=database and never echoes the password', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    const patch = await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: {
+        smtpHost: 'smtp.example.com',
+        smtpPort: 587,
+        smtpUser: 'bot@example.com',
+        smtpPass: 'super-secret',
+        smtpFrom: 'noreply@example.com',
+      },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    const get = await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie: adminCookie } });
+    const body = get.json() as { smtp: { host: string | null; passSet: boolean; active: boolean; source: string | null } };
+    expect(body.smtp.host).toBe('smtp.example.com');
+    expect(body.smtp.passSet).toBe(true);
+    expect(body.smtp.active).toBe(true);
+    expect(body.smtp.source).toBe('database');
+    // Never leaked in the response body at all.
+    expect(JSON.stringify(get.json())).not.toContain('super-secret');
+  });
+
+  it('PATCH with smtpPass omitted leaves a previously-saved password untouched', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpHost: 'smtp.example.com', smtpPass: 'first-secret' },
+    });
+    // Second PATCH changes only the from-address; smtpPass field absent.
+    await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpFrom: 'updated@example.com' },
+    });
+
+    const row = await db.select().from(schema.platformSettings).get();
+    expect(row?.smtpPass).toBe('first-secret');
+    expect(row?.smtpFrom).toBe('updated@example.com');
+  });
+
+  it('PATCH with smtpPass="" explicitly clears a previously-saved password', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpHost: 'smtp.example.com', smtpPass: 'to-be-cleared' },
+    });
+    await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpPass: '' },
+    });
+
+    const row = await db.select().from(schema.platformSettings).get();
+    expect(row?.smtpPass).toBeNull();
+  });
+
+  it('PATCH writes an audit event with the password redacted', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    const adminId = await getUserId('admin@example.com');
+    await promoteToAdmin('admin@example.com');
+
+    await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpHost: 'smtp.example.com', smtpPass: 'do-not-leak' },
+    });
+
+    const events = await db
+      .select()
+      .from(schema.auditEvents)
+      .where(eq(schema.auditEvents.eventType, 'admin_settings_patch'))
+      .all();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.userId).toBe(adminId);
+    expect(events[0]?.payload).not.toContain('do-not-leak');
+    expect(events[0]?.payload).toContain('redacted');
+  });
+});

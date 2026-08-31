@@ -58,6 +58,43 @@ export const emailVerifications = sqliteTable('email_verifications', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+/**
+ * Platform-wide settings, admin-configurable via /api/admin/settings.
+ * Singleton table: always exactly one row, id fixed to
+ * PLATFORM_SETTINGS_ID (see auth/platformSettings.ts). DB values here
+ * take precedence over the equivalent .env vars when set (a null SMTP
+ * field falls back to env.smtp) — see auth/platformSettings.ts for the
+ * merge logic and the transporter-cache invalidation it triggers.
+ */
+export const platformSettings = sqliteTable('platform_settings', {
+  id: text('id').primaryKey(),
+  /**
+   * Require clicking an emailed link before a password-auth account can
+   * log in. Defaults true (matches pre-existing always-on behaviour).
+   * Turning this off does NOT retroactively verify existing unverified
+   * accounts in the database — it makes the login/register routes stop
+   * checking the flag at all, which has the same practical effect
+   * (nothing blocks their login) without an irreversible bulk UPDATE.
+   */
+  requireEmailVerification: integer('require_email_verification', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * SMTP override. All fields null = "use env.smtp (or none)". Any
+   * non-null smtpHost is treated as "DB config is in use" — see
+   * mergeSmtpConfig in auth/platformSettings.ts. smtpPass is stored in
+   * plaintext in SQLite (matches SMTP_PASS's own trust model — this DB
+   * file already holds password hashes and session tokens) and is
+   * NEVER returned by GET /api/admin/settings; the API returns
+   * `smtpPassSet: boolean` instead.
+   */
+  smtpHost: text('smtp_host'),
+  smtpPort: integer('smtp_port'),
+  smtpUser: text('smtp_user'),
+  smtpPass: text('smtp_pass'),
+  smtpFrom: text('smtp_from'),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+});
+
 export const orgs = sqliteTable('orgs', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -219,7 +256,7 @@ export const auditEvents = sqliteTable('audit_events', {
    * (resource_kind + resource_id) must be set; never both, never
    * neither. Enforced in the writer, not in the schema.
    */
-  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library'] }),
+  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library', 'platform_settings'] }),
   resourceId: text('resource_id'),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   eventType: text('event_type').notNull(),
@@ -402,6 +439,7 @@ export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type OAuthAccount = typeof oauthAccounts.$inferSelect;
 export type EmailVerification = typeof emailVerifications.$inferSelect;
+export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type Layout = typeof layouts.$inferSelect;
 export type NewLayout = typeof layouts.$inferInsert;
 export type LayoutCollaborator = typeof layoutCollaborators.$inferSelect;

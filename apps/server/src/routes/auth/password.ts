@@ -6,6 +6,7 @@ import { db, schema } from '../../db/index.js';
 import { createSession } from '../../auth/session.js';
 import { setSessionCookie } from '../../auth/cookie.js';
 import { sendVerificationEmail } from '../../email/sendVerification.js';
+import { getPlatformSettings } from '../../auth/platformSettings.js';
 import { env } from '../../env.js';
 
 const ARGON_OPTS = { memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1 };
@@ -63,6 +64,7 @@ export async function passwordRoutes(app: FastifyInstance) {
         .get();
       if (existing) return reply.code(409).send({ error: 'email_taken' });
 
+      const settings = await getPlatformSettings();
       const passwordHash = await hash(password, ARGON_OPTS);
       const id = randomUUID();
       await db.insert(schema.users).values({
@@ -73,9 +75,19 @@ export async function passwordRoutes(app: FastifyInstance) {
         passwordHash,
         isDemoAccount: env.demoMode,
         isGlobalAdmin: false,
-        emailVerified: false,
+        emailVerified: !settings.requireEmailVerification,
         createdAt: new Date(),
       });
+
+      if (!settings.requireEmailVerification) {
+        // Verification is off — behave exactly like pre-verification
+        // register did: create the account already verified and log
+        // straight in.
+        const { token, expiresAt } = await createSession(id);
+        setSessionCookie(reply, token, expiresAt);
+        return reply.send({ ok: true, verificationRequired: false });
+      }
+
       await issueVerification(req.log, id, email);
       // No session cookie yet — the account can't log in until verified.
       return reply.send({ ok: true, verificationRequired: true });
@@ -90,6 +102,7 @@ export async function passwordRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { email } = req.body;
       if (!email) return reply.code(400).send({ error: 'invalid_input' });
+      const settings = await getPlatformSettings();
       const user = await db
         .select()
         .from(schema.users)
@@ -98,7 +111,7 @@ export async function passwordRoutes(app: FastifyInstance) {
       // Always return ok regardless of whether the account exists or is
       // already verified — don't let this endpoint be used to enumerate
       // registered emails.
-      if (user && user.passwordHash && !user.emailVerified) {
+      if (settings.requireEmailVerification && user && user.passwordHash && !user.emailVerified) {
         await issueVerification(req.log, user.id, user.email);
       }
       return reply.send({ ok: true });
@@ -154,7 +167,13 @@ export async function passwordRoutes(app: FastifyInstance) {
       const ok = await verify(user.passwordHash, password, ARGON_OPTS);
       if (!ok) return reply.code(401).send({ error: 'invalid_credentials' });
       if (!user.emailVerified) {
-        return reply.code(403).send({ error: 'email_not_verified' });
+        // Re-check live: an admin may have turned verification off
+        // after this account registered while it was still on. Don't
+        // block a login that the current policy no longer requires.
+        const settings = await getPlatformSettings();
+        if (settings.requireEmailVerification) {
+          return reply.code(403).send({ error: 'email_not_verified' });
+        }
       }
       const { token, expiresAt } = await createSession(user.id);
       setSessionCookie(reply, token, expiresAt);
