@@ -24,7 +24,7 @@
     "@fastify/multipart": "10.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "10.1.2",
-    "@fastify/websocket": "11.2.0",
+    "@fastify/websocket": "11.3.0",
     "@node-rs/argon2": "1.8.3",
     "arctic": "2.2.2",
     "better-sqlite3": "12.4.1",
