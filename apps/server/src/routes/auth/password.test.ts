@@ -382,3 +382,106 @@ describe('password auth routes — requireEmailVerification off', () => {
     expect(verification).toBeUndefined();
   });
 });
+
+describe('PATCH /api/auth/me — self-service display name', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('changes the caller\'s own display name', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/register',
+      payload: { email: 'alice@example.com', password: 'correct horse battery' },
+    });
+    const cookieStr = cookieHeader(
+      await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('alice@example.com')}` }),
+    );
+
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/auth/me', headers: { cookie: cookieStr }, payload: { displayName: 'Alice Wonderland' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { displayName: string }).displayName).toBe('Alice Wonderland');
+
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: cookieStr } });
+    expect((me.json() as { user: { displayName: string } }).user.displayName).toBe('Alice Wonderland');
+  });
+
+  it('trims whitespace', async () => {
+    await app.inject({
+      method: 'POST', url: '/api/auth/password/register', payload: { email: 'bob@example.com', password: 'correct horse battery' },
+    });
+    const cookieStr = cookieHeader(
+      await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('bob@example.com')}` }),
+    );
+
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/auth/me', headers: { cookie: cookieStr }, payload: { displayName: '  Bob  ' },
+    });
+    expect((res.json() as { displayName: string }).displayName).toBe('Bob');
+  });
+
+  it('rejects an empty (post-trim) display name', async () => {
+    await app.inject({
+      method: 'POST', url: '/api/auth/password/register', payload: { email: 'carol2@example.com', password: 'correct horse battery' },
+    });
+    const cookieStr = cookieHeader(
+      await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('carol2@example.com')}` }),
+    );
+
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/auth/me', headers: { cookie: cookieStr }, payload: { displayName: '   ' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_display_name');
+  });
+
+  it('rejects a display name over 60 characters', async () => {
+    await app.inject({
+      method: 'POST', url: '/api/auth/password/register', payload: { email: 'dave2@example.com', password: 'correct horse battery' },
+    });
+    const cookieStr = cookieHeader(
+      await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('dave2@example.com')}` }),
+    );
+
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/auth/me', headers: { cookie: cookieStr }, payload: { displayName: 'x'.repeat(61) },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_display_name');
+  });
+
+  it('requires authentication', async () => {
+    const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', payload: { displayName: 'Nobody' } });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('does not let a user change another user\'s display name (no such route surface exists — verifying the id is always the caller\'s own)', async () => {
+    await app.inject({
+      method: 'POST', url: '/api/auth/password/register', payload: { email: 'eve2@example.com', password: 'correct horse battery' },
+    });
+    const eveCookie = cookieHeader(
+      await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('eve2@example.com')}` }),
+    );
+    await app.inject({
+      method: 'POST', url: '/api/auth/password/register', payload: { email: 'frank2@example.com', password: 'correct horse battery' },
+    });
+
+    await app.inject({
+      method: 'PATCH', url: '/api/auth/me', headers: { cookie: eveCookie }, payload: { displayName: 'Renamed By Eve' },
+    });
+
+    const frank = await db.select().from(schema.users).where(eq(schema.users.email, 'frank2@example.com')).get();
+    expect(frank?.displayName).toBe('frank2@example.com'); // unchanged — register defaults to email
+    const eve = await db.select().from(schema.users).where(eq(schema.users.email, 'eve2@example.com')).get();
+    expect(eve?.displayName).toBe('Renamed By Eve');
+  });
+});
