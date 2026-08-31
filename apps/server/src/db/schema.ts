@@ -1,4 +1,4 @@
-import { blob, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 // All timestamps are unix-millis (Drizzle "timestamp_ms" mode). Kept portable to
 // Postgres `timestamptz` later by treating columns as opaque time-ordered ints.
@@ -140,33 +140,43 @@ export const orgInvites = sqliteTable('org_invites', {
 // Layouts (Phase 2)
 // ---------------------------------------------------------------------------
 
-export const layouts = sqliteTable('layouts', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  // Exactly one of (ownerUserId, ownerOrgId) is non-null. Drizzle/SQLite has
-  // no native check-constraint helper here; the resolveResourceRole helper
-  // and REST handlers enforce the invariant.
-  ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
-  ownerOrgId: text('owner_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
-  createdBy: text('created_by')
-    .notNull()
-    .references(() => users.id),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-  // For demo-owned layouts (see PLAN.md §3.4). Null otherwise.
-  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
-  // Yjs binary doc snapshot. In Phase 2, populated from a fresh seed (empty
-  // Y.Doc) on create OR derived from the imported .bbm. Phase 4's WS server
-  // hydrates this on first connect.
-  docSnapshot: blob('doc_snapshot').notNull(),
-  docVersion: integer('doc_version').notNull().default(0),
-  sidecarSnapshot: blob('sidecar_snapshot'),
-  // Public-share token. Null = layout is private (default). Non-null
-  // = anyone with the token URL can view the layout read-only without
-  // signing in. The token is the only secret — owners rotate it by
-  // disabling and re-enabling sharing.
-  publicShareToken: text('public_share_token').unique(),
-});
+export const layouts = sqliteTable(
+  'layouts',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    // Exactly one of (ownerUserId, ownerOrgId) is non-null. Drizzle/SQLite has
+    // no native check-constraint helper here; the resolveResourceRole helper
+    // and REST handlers enforce the invariant.
+    ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    ownerOrgId: text('owner_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    // For demo-owned layouts (see PLAN.md §3.4). Null otherwise.
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+    // Yjs binary doc snapshot. In Phase 2, populated from a fresh seed (empty
+    // Y.Doc) on create OR derived from the imported .bbm. Phase 4's WS server
+    // hydrates this on first connect.
+    docSnapshot: blob('doc_snapshot').notNull(),
+    docVersion: integer('doc_version').notNull().default(0),
+    sidecarSnapshot: blob('sidecar_snapshot'),
+    // Public-share token. Null = layout is private (default). Non-null
+    // = anyone with the token URL can view the layout read-only without
+    // signing in. The token is the only secret — owners rotate it by
+    // disabling and re-enabling sharing.
+    publicShareToken: text('public_share_token').unique(),
+  },
+  (t) => ({
+    // Both power admin per-owner aggregate queries (layout count + size
+    // by user/org) — see routes/admin.ts. Without these, GROUP BY
+    // owner_user_id / owner_org_id is a full table scan.
+    ownerUserIdx: index('layouts_owner_user_id_idx').on(t.ownerUserId),
+    ownerOrgIdx: index('layouts_owner_org_id_idx').on(t.ownerOrgId),
+  }),
+);
 
 export const layoutCollaborators = sqliteTable(
   'layout_collaborators',
@@ -225,15 +235,23 @@ export const layoutTransfers = sqliteTable('layout_transfers', {
 // Phase 4 will fill this with y-update binary records between snapshots.
 // We declare it now so the migration sticks once and Phase 4 doesn't need
 // to alter a populated layouts table.
-export const layoutUpdates = sqliteTable('layout_updates', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  layoutId: text('layout_id')
-    .notNull()
-    .references(() => layouts.id, { onDelete: 'cascade' }),
-  doc: text('doc', { enum: ['main', 'sidecar'] }).notNull(),
-  updateBytes: blob('update_bytes').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const layoutUpdates = sqliteTable(
+  'layout_updates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    layoutId: text('layout_id')
+      .notNull()
+      .references(() => layouts.id, { onDelete: 'cascade' }),
+    doc: text('doc', { enum: ['main', 'sidecar'] }).notNull(),
+    updateBytes: blob('update_bytes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    // Every WS write hits this by layoutId (docHub.ts), and the admin
+    // per-owner size aggregate joins through it — see routes/admin.ts.
+    layoutIdx: index('layout_updates_layout_id_idx').on(t.layoutId),
+  }),
+);
 
 // Per-layout audit log (PLAN.md §3.1 / §4.7). Append-only. payload is a
 // JSON string because SQLite has no jsonb; queries on this table read the

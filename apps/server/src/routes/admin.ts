@@ -24,6 +24,7 @@ import { parsePartXml } from '@cld/parts-catalog';
 import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
 import { invalidateTransporter } from '../email/transporter.js';
+import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLayoutId } from './adminLayoutStats.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
@@ -114,6 +115,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         avatarUrl: schema.users.avatarUrl,
         isDemoAccount: schema.users.isDemoAccount,
         isGlobalAdmin: schema.users.isGlobalAdmin,
+        emailVerified: schema.users.emailVerified,
         createdAt: schema.users.createdAt,
       })
       .from(schema.users)
@@ -127,7 +129,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.users)
       .where(where)
       .get();
-    return { users: rows, total: totalRow?.n ?? 0, limit, offset };
+    // Bounded to this page's ids — see adminLayoutStats.ts's header
+    // comment for why this doesn't scan the whole layouts table.
+    const layoutStats = await layoutStatsByUser(rows.map((r) => r.id));
+    return {
+      users: rows.map((r) => ({
+        ...r,
+        layoutCount: layoutStats.get(r.id)?.layoutCount ?? 0,
+        layoutSizeBytes: layoutStats.get(r.id)?.sizeBytes ?? 0,
+      })),
+      total: totalRow?.n ?? 0,
+      limit,
+      offset,
+    };
   });
 
   app.get<{ Params: { id: string } }>('/api/admin/users/:id', async (req, reply) => {
@@ -139,14 +153,27 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .get();
     if (!user) return reply.code(404).send({ error: 'not_found' });
 
-    // Counts: orgs the user belongs to, layouts they own, custom parts, modules.
-    const [orgCount, layoutCount, partCount, moduleCount, sessionCount] = await Promise.all([
+    // Counts: orgs the user belongs to, custom parts, modules, sessions.
+    // Layout count + size come from adminLayoutStats (folds in
+    // layout_updates too — see its header comment).
+    const [orgCount, partCount, moduleCount, sessionCount, layoutStats, orgMemberships, layouts] = await Promise.all([
       db.select({ n: count() }).from(schema.orgMembers).where(eq(schema.orgMembers.userId, user.id)).get(),
-      db.select({ n: count() }).from(schema.layouts).where(eq(schema.layouts.ownerUserId, user.id)).get(),
       db.select({ n: count() }).from(schema.customParts).where(eq(schema.customParts.ownerUserId, user.id)).get(),
       db.select({ n: count() }).from(schema.modules).where(eq(schema.modules.ownerUserId, user.id)).get(),
       db.select({ n: count() }).from(schema.sessions).where(eq(schema.sessions.userId, user.id)).get(),
+      layoutStatsForSingleUser(user.id),
+      db
+        .select({ orgId: schema.orgs.id, name: schema.orgs.name, slug: schema.orgs.slug, role: schema.orgMembers.role })
+        .from(schema.orgMembers)
+        .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
+        .where(eq(schema.orgMembers.userId, user.id)),
+      db
+        .select({ id: schema.layouts.id, title: schema.layouts.title, updatedAt: schema.layouts.updatedAt })
+        .from(schema.layouts)
+        .where(eq(schema.layouts.ownerUserId, user.id))
+        .orderBy(desc(schema.layouts.updatedAt)),
     ]);
+    const sizeByLayout = await sizeByLayoutId(layouts.map((l) => l.id));
 
     return {
       user: {
@@ -156,15 +183,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         avatarUrl: user.avatarUrl,
         isDemoAccount: user.isDemoAccount,
         isGlobalAdmin: user.isGlobalAdmin,
+        emailVerified: user.emailVerified,
         createdAt: user.createdAt,
       },
       stats: {
         orgs: orgCount?.n ?? 0,
-        layouts: layoutCount?.n ?? 0,
+        layouts: layoutStats.layoutCount,
+        layoutSizeBytes: layoutStats.sizeBytes,
         customParts: partCount?.n ?? 0,
         modules: moduleCount?.n ?? 0,
         activeSessions: sessionCount?.n ?? 0,
       },
+      orgMemberships,
+      layouts: layouts.map((l) => ({ ...l, sizeBytes: sizeByLayout.get(l.id) ?? 0 })),
     };
   });
 
@@ -285,18 +316,68 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.orgs)
       .where(where)
       .get();
-    // Fold member-counts into the rows (one extra round-trip avoided
-    // by computing in SQL).
-    const memberCounts = await db
-      .select({ orgId: schema.orgMembers.orgId, n: count() })
-      .from(schema.orgMembers)
-      .groupBy(schema.orgMembers.orgId);
+    // Fold member-counts + layout stats into the rows. Both bounded to
+    // this page's org ids — see the member-count fix below and
+    // adminLayoutStats.ts's header comment. (The member-count query
+    // used to be unbounded — a full-table GROUP BY on every page load
+    // regardless of `ids` — fixed here to match the new layout query.)
+    const ids = rows.map((r) => r.id);
+    const [memberCounts, layoutStats] = await Promise.all([
+      ids.length > 0
+        ? db
+            .select({ orgId: schema.orgMembers.orgId, n: count() })
+            .from(schema.orgMembers)
+            .where(inArray(schema.orgMembers.orgId, ids))
+            .groupBy(schema.orgMembers.orgId)
+        : Promise.resolve([]),
+      layoutStatsByOrg(ids),
+    ]);
     const byId = new Map(memberCounts.map((r) => [r.orgId, r.n]));
     return {
-      orgs: rows.map((r) => ({ ...r, memberCount: byId.get(r.id) ?? 0 })),
+      orgs: rows.map((r) => ({
+        ...r,
+        memberCount: byId.get(r.id) ?? 0,
+        layoutCount: layoutStats.get(r.id)?.layoutCount ?? 0,
+        layoutSizeBytes: layoutStats.get(r.id)?.sizeBytes ?? 0,
+      })),
       total: totalRow?.n ?? 0,
       limit,
       offset,
+    };
+  });
+
+  app.get<{ Params: { id: string } }>('/api/admin/orgs/:id', async (req, reply) => {
+    requireGlobalAdmin(req);
+    const org = await db.select().from(schema.orgs).where(eq(schema.orgs.id, req.params.id)).get();
+    if (!org) return reply.code(404).send({ error: 'not_found' });
+
+    const [members, layouts, layoutStats] = await Promise.all([
+      db
+        .select({
+          userId: schema.users.id,
+          email: schema.users.email,
+          displayName: schema.users.displayName,
+          role: schema.orgMembers.role,
+          joinedAt: schema.orgMembers.joinedAt,
+        })
+        .from(schema.orgMembers)
+        .innerJoin(schema.users, eq(schema.users.id, schema.orgMembers.userId))
+        .where(eq(schema.orgMembers.orgId, org.id)),
+      db
+        .select({ id: schema.layouts.id, title: schema.layouts.title, updatedAt: schema.layouts.updatedAt })
+        .from(schema.layouts)
+        .where(eq(schema.layouts.ownerOrgId, org.id))
+        .orderBy(desc(schema.layouts.updatedAt)),
+      layoutStatsByOrg([org.id]),
+    ]);
+    const sizeByLayout = await sizeByLayoutId(layouts.map((l) => l.id));
+    const stats = layoutStats.get(org.id) ?? { layoutCount: 0, sizeBytes: 0 };
+
+    return {
+      org: { id: org.id, name: org.name, slug: org.slug, createdAt: org.createdAt },
+      stats: { members: members.length, layouts: stats.layoutCount, layoutSizeBytes: stats.sizeBytes },
+      members,
+      layouts: layouts.map((l) => ({ ...l, sizeBytes: sizeByLayout.get(l.id) ?? 0 })),
     };
   });
 
@@ -338,6 +419,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         title: schema.layouts.title,
         ownerUserId: schema.layouts.ownerUserId,
         ownerOrgId: schema.layouts.ownerOrgId,
+        ownerUserEmail: schema.users.email,
+        ownerOrgName: schema.orgs.name,
         createdBy: schema.layouts.createdBy,
         createdAt: schema.layouts.createdAt,
         updatedAt: schema.layouts.updatedAt,
@@ -345,6 +428,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         docVersion: schema.layouts.docVersion,
       })
       .from(schema.layouts)
+      .leftJoin(schema.users, eq(schema.users.id, schema.layouts.ownerUserId))
+      .leftJoin(schema.orgs, eq(schema.orgs.id, schema.layouts.ownerOrgId))
       .where(where)
       .orderBy(desc(schema.layouts.updatedAt))
       .limit(limit)
@@ -354,7 +439,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.layouts)
       .where(where)
       .get();
-    return { layouts: rows, total: totalRow?.n ?? 0, limit, offset };
+    const sizeByLayout = await sizeByLayoutId(rows.map((r) => r.id));
+    return {
+      layouts: rows.map((r) => ({ ...r, sizeBytes: sizeByLayout.get(r.id) ?? 0 })),
+      total: totalRow?.n ?? 0,
+      limit,
+      offset,
+    };
   });
 
   app.delete<{ Params: { id: string } }>('/api/admin/layouts/:id', async (req, reply) => {
