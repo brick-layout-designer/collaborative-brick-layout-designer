@@ -52,35 +52,44 @@ export function RemoteCursors({
               />
             );
           })}
-          {state.cursor && (
-            <Group x={studToPx(state.cursor.x)} y={studToPx(state.cursor.y)}>
-              {/* Arrow shape: pointer triangle. */}
-              <Line
-                points={[0, 0, 0, 16, 4, 12, 9, 22, 11, 21, 7, 11, 12, 11]}
-                fill={state.user.color}
-                stroke="#000"
-                strokeWidth={0.5}
-                closed
-              />
-              {/* Name pill — drawn after the arrow so it overlaps. */}
-              <Rect
-                x={14}
-                y={2}
-                width={state.user.displayName.length * 7 + 12}
-                height={16}
-                fill={state.user.color}
-                cornerRadius={3}
-              />
-              <Text
-                text={state.user.displayName}
-                x={20}
-                y={5}
-                fontSize={10}
-                fill="#fff"
-                listening={false}
-              />
-            </Group>
-          )}
+          {state.cursor && (() => {
+            // Display names are now user-editable (up to 60 chars, see
+            // PATCH /api/auth/me) — clamp the on-canvas label so a long
+            // name doesn't draw a huge pill over the layout.
+            const MAX_LABEL_CHARS = 20;
+            const label = state.user.displayName.length > MAX_LABEL_CHARS
+              ? state.user.displayName.slice(0, MAX_LABEL_CHARS - 1) + '…'
+              : state.user.displayName;
+            return (
+              <Group x={studToPx(state.cursor.x)} y={studToPx(state.cursor.y)}>
+                {/* Arrow shape: pointer triangle. */}
+                <Line
+                  points={[0, 0, 0, 16, 4, 12, 9, 22, 11, 21, 7, 11, 12, 11]}
+                  fill={state.user.color}
+                  stroke="#000"
+                  strokeWidth={0.5}
+                  closed
+                />
+                {/* Name pill — drawn after the arrow so it overlaps. */}
+                <Rect
+                  x={14}
+                  y={2}
+                  width={label.length * 7 + 12}
+                  height={16}
+                  fill={state.user.color}
+                  cornerRadius={3}
+                />
+                <Text
+                  text={label}
+                  x={20}
+                  y={5}
+                  fontSize={10}
+                  fill="#fff"
+                  listening={false}
+                />
+              </Group>
+            );
+          })()}
         </Group>
       ))}
     </Group>

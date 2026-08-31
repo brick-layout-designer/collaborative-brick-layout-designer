@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type OrgMemberSummary, type OrgInviteSummary, type AuditEventSummary, type OrgPartLibrary, type CustomPartSummary, type ModuleSummary } from '../api';
@@ -202,14 +202,39 @@ function MembersList({
 function InviteForm({ slug }: { slug: string }) {
   const qc = useQueryClient();
   const [email, setEmail] = useState('');
+  const [pickedUserId, setPickedUserId] = useState<string | null>(null);
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Autocomplete against real accounts — see /api/orgs/:slug/user-search
+  // (org-admin-only, distinct from the platform-admin user search). It
+  // deliberately never returns an arbitrary user's email address, so
+  // picking a suggestion invites by userId (the server resolves the
+  // email itself — see the invite route's userId branch) rather than
+  // filling the email field with something we were never given. The
+  // actual invite still always goes through the normal token/accept
+  // flow, existing account or not, so the invitee's own action is
+  // still required to join.
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(email.trim()), 250);
+    return () => clearTimeout(id);
+  }, [email]);
+  const suggestions = useQuery({
+    queryKey: ['org-user-search', slug, debouncedQuery],
+    queryFn: () => api.orgs.searchUsers(slug, debouncedQuery),
+    enabled: debouncedQuery.length >= 2 && showSuggestions && pickedUserId === null,
+  });
+
   const invite = useMutation({
-    mutationFn: () => api.orgs.invite(slug, email, role),
+    mutationFn: () => api.orgs.invite(slug, pickedUserId ? { userId: pickedUserId } : { email }, role),
     onSuccess: (res) => {
       setShareUrl(res.inviteUrl);
       setEmail('');
+      setPickedUserId(null);
+      setShowSuggestions(false);
       qc.invalidateQueries({ queryKey: ['org-members', slug] });
     },
     onError: (e: Error) => setError(e.message),
@@ -219,6 +244,7 @@ function InviteForm({ slug }: { slug: string }) {
     e.preventDefault();
     setError(null);
     setShareUrl(null);
+    setShowSuggestions(false);
     invite.mutate();
   }
 
@@ -228,16 +254,52 @@ function InviteForm({ slug }: { slug: string }) {
         Invite member
       </h3>
       <div className="flex items-end gap-2">
-        <label className="flex-1">
+        <label className="relative flex-1">
           <span className="mb-1 block text-xs text-neutral-400">Email</span>
           <input
-            type="email"
+            type="text"
             required
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); setPickedUserId(null); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
-            placeholder="bob@example.com"
+            placeholder="Search by name or paste an email…"
+            autoComplete="off"
           />
+          {showSuggestions && pickedUserId === null && debouncedQuery.length >= 2 && (
+            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded border border-neutral-700 bg-neutral-900 shadow-lg">
+              {suggestions.isLoading && (
+                <li className="px-2 py-1.5 text-xs text-neutral-500">Searching…</li>
+              )}
+              {suggestions.data && suggestions.data.users.length === 0 && (
+                <li className="px-2 py-1.5 text-xs text-neutral-500">
+                  No matching account — you can still invite by email.
+                </li>
+              )}
+              {suggestions.data?.users.map((u) => (
+                <li key={u.id}>
+                  <button
+                    type="button"
+                    disabled={u.alreadyMember}
+                    onMouseDown={(e) => {
+                      // onMouseDown (not onClick) fires before the input's
+                      // onBlur closes this list.
+                      e.preventDefault();
+                      setEmail(u.displayName);
+                      setPickedUserId(u.id);
+                      setShowSuggestions(false);
+                    }}
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-neutral-800 disabled:opacity-40"
+                  >
+                    {u.avatarUrl && <img src={u.avatarUrl} alt="" className="h-5 w-5 rounded-full" />}
+                    <span className="flex-1 truncate">{u.displayName}</span>
+                    {u.alreadyMember && <span className="text-[10px] text-neutral-500">already a member</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </label>
         <label>
           <span className="mb-1 block text-xs text-neutral-400">Role</span>
@@ -258,6 +320,10 @@ function InviteForm({ slug }: { slug: string }) {
           Invite
         </button>
       </div>
+      <p className="mt-1 text-[11px] text-neutral-500">
+        Search by name to find an existing account, or type an email directly. Either way the
+        invite still requires them to accept.
+      </p>
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       {shareUrl && (
         <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs">

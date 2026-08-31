@@ -14,13 +14,13 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
-import { isValidEmail } from '../utils/validate.js';
+import { escapeLike, isValidEmail } from '../utils/validate.js';
 
 interface CreateOrgBody {
   name: string;
@@ -50,7 +50,17 @@ function slugifyName(name: string): string {
 }
 
 interface OrgMemberInviteBody {
-  email: string;
+  /**
+   * Either an email (existing flow — works whether or not the address
+   * has an account yet) OR a userId (the invite-autocomplete path, see
+   * GET /api/orgs/:slug/user-search — that endpoint deliberately never
+   * exposes an arbitrary user's email to the searching admin, so
+   * picking a suggestion invites by id and the server resolves the
+   * email itself). Exactly one of the two should be set; email wins if
+   * both are present.
+   */
+  email?: string;
+  userId?: string;
   role: 'admin' | 'member';
 }
 
@@ -243,20 +253,30 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'forbidden' });
       }
 
-      const { email, role } = req.body;
-      if (!isValidEmail(email)) {
-        return reply.code(400).send({ error: 'invalid_email' });
-      }
+      const { role } = req.body;
       if (role !== 'admin' && role !== 'member') {
         return reply.code(400).send({ error: 'invalid_role' });
       }
 
+      let email: string;
+      let existingUser: typeof schema.users.$inferSelect | undefined;
+      if (req.body.email) {
+        if (!isValidEmail(req.body.email)) {
+          return reply.code(400).send({ error: 'invalid_email' });
+        }
+        email = req.body.email;
+        existingUser = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+      } else if (req.body.userId) {
+        // The autocomplete path — resolve the email server-side so the
+        // client (and the searching admin) never needs to see it.
+        existingUser = await db.select().from(schema.users).where(eq(schema.users.id, req.body.userId)).get();
+        if (!existingUser) return reply.code(404).send({ error: 'not_found' });
+        email = existingUser.email;
+      } else {
+        return reply.code(400).send({ error: 'invalid_input' });
+      }
+
       // Reject if the recipient is already a member.
-      const existingUser = await db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.email, email))
-        .get();
       if (existingUser) {
         const m = await getMembership(org.id, existingUser.id);
         if (m) return reply.code(409).send({ error: 'already_member' });
@@ -302,6 +322,69 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         inviteUrl,
         emailDelivered,
         expiresAt: expiresAt.getTime(),
+      };
+    },
+  );
+
+  // ---- search users to invite ---------------------------------------------
+  // Org-admin-only (NOT the platform-wide /api/admin/users search — that
+  // endpoint exposes isGlobalAdmin/isDemoAccount/emailVerified/storage
+  // stats for every account and would be a privilege escalation if
+  // reachable by a mere org admin). Lets the invite form autocomplete
+  // against real accounts instead of the admin blind-typing an email
+  // and only finding out it's wrong after submitting. Deliberately
+  // narrow: short results, minimal fields (never a bare email match —
+  // only id/displayName/avatarUrl, plus the org-membership status so
+  // the UI can grey out people who are already members), a minimum
+  // query length, and a low rate limit — this is still a user-search
+  // oracle and should stay hard to use for enumeration.
+  app.get<{ Params: { slug: string }; Querystring: { q?: string } }>(
+    '/api/orgs/:slug/user-search',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const myMembership = await getMembership(org.id, user.id);
+      if (!myMembership) return reply.code(404).send({ error: 'not_found' });
+      if (myMembership.role !== 'admin') {
+        return reply.code(403).send({ error: 'forbidden' });
+      }
+
+      const needle = (req.query.q ?? '').trim();
+      if (needle.length < 2) return { users: [] };
+      const safe = `%${escapeLike(needle)}%`;
+
+      const matches = await db
+        .select({ id: schema.users.id, displayName: schema.users.displayName, avatarUrl: schema.users.avatarUrl })
+        .from(schema.users)
+        .where(
+          and(
+            ne(schema.users.id, user.id),
+            or(
+              sql`${schema.users.displayName} LIKE ${safe} ESCAPE '\\'`,
+              // Exact email match only (not a substring LIKE) — lets an
+              // admin invite-by-pasting-the-exact-email still work
+              // without turning this into an email substring search.
+              eq(schema.users.email, needle),
+            ),
+          ),
+        )
+        .limit(10);
+
+      const memberIds = matches.length > 0
+        ? new Set(
+            (
+              await db
+                .select({ userId: schema.orgMembers.userId })
+                .from(schema.orgMembers)
+                .where(and(eq(schema.orgMembers.orgId, org.id), inArray(schema.orgMembers.userId, matches.map((m) => m.id))))
+            ).map((r) => r.userId),
+          )
+        : new Set<string>();
+
+      return {
+        users: matches.map((m) => ({ ...m, alreadyMember: memberIds.has(m.id) })),
       };
     },
   );

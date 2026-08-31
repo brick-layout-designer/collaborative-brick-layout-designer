@@ -7,11 +7,6 @@
 
 import type { FastifyInstance } from 'fastify';
 import { and, count, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
-
-/** Escape SQLite LIKE wildcards so user input is treated as a literal string. */
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, '\\$&');
-}
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { mkdir, rm, readdir } from 'node:fs/promises';
@@ -25,6 +20,7 @@ import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
 import { invalidateTransporter } from '../email/transporter.js';
 import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLayoutId } from './adminLayoutStats.js';
+import { escapeLike } from '../utils/validate.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }

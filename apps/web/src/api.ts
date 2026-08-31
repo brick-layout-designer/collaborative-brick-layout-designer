@@ -33,6 +33,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   email_not_verified: 'Please verify your email before signing in — check your inbox for the confirmation link.',
   verification_not_found: 'That verification link is invalid.',
   verification_expired: 'That verification link has expired. Request a new one below.',
+  invalid_display_name: 'Display name must be between 1 and 60 characters.',
 };
 
 /** `some_error_code` -> "Some error code." */
@@ -210,6 +211,8 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
 
 export const api = {
   me: () => get<{ user: Me | null }>('/api/auth/me'),
+  updateDisplayName: (displayName: string) =>
+    patch<{ ok: true; displayName: string }>('/api/auth/me', { displayName }),
   providers: () =>
     get<{ providers: ProviderInfo[]; passwordEnabled: boolean }>('/api/auth/providers'),
   logout: () => post<{ ok: true }>('/api/auth/logout'),
@@ -309,16 +312,22 @@ export const api = {
       get<{ members: OrgMemberSummary[]; invites: OrgInviteSummary[] }>(
         `/api/orgs/${slug}/members`,
       ),
-    invite: (slug: string, email: string, role: 'admin' | 'member') =>
+    /** Invite by email, OR by userId (the autocomplete path — see searchUsers). Pass exactly one. */
+    invite: (slug: string, target: { email: string } | { userId: string }, role: 'admin' | 'member') =>
       post<{
         id: string;
         token: string;
         inviteUrl: string;
         emailDelivered: boolean;
         expiresAt: number;
-      }>(`/api/orgs/${slug}/invites`, { email, role }),
+      }>(`/api/orgs/${slug}/invites`, { ...target, role }),
     revokeInvite: (slug: string, inviteId: string) =>
       del(`/api/orgs/${slug}/invites/${inviteId}`),
+    /** Autocomplete for the invite form — org-admin-only, min 2 chars, capped results. */
+    searchUsers: (slug: string, q: string) =>
+      get<{ users: { id: string; displayName: string; avatarUrl: string | null; alreadyMember: boolean }[] }>(
+        `/api/orgs/${slug}/user-search?q=${encodeURIComponent(q)}`,
+      ),
     changeMemberRole: (slug: string, userId: string, role: 'admin' | 'member') =>
       patch<{ ok: true }>(`/api/orgs/${slug}/members/${userId}`, { role }),
     removeMember: (slug: string, userId: string) =>

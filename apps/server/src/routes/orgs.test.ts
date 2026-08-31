@@ -488,3 +488,223 @@ describe('orgs', () => {
     expect((res.json() as { error: string }).error).toBe('forbidden');
   });
 });
+
+describe('org user search (invite autocomplete)', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('org admin can search for a user by display-name substring', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org', slug: 'search-org' },
+    });
+    await registerAndLogin(app, 'target@example.com'); // displayName defaults to the email
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org/user-search?q=target', headers: { cookie: adminCookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const { users } = res.json() as { users: { displayName: string; alreadyMember: boolean }[] };
+    expect(users.some((u) => u.displayName === 'target@example.com')).toBe(true);
+    expect(users.find((u) => u.displayName === 'target@example.com')?.alreadyMember).toBe(false);
+  });
+
+  it('matches an exact email even though it is not a substring of displayName', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 2', slug: 'search-org-2' },
+    });
+    await db.insert(schema.users).values({
+      id: 'exact-1', email: 'zzz-nomatch@example.com', displayName: 'Totally Different Name', avatarUrl: null,
+      passwordHash: null, isDemoAccount: false, isGlobalAdmin: false, emailVerified: true, createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-2/user-search?q=zzz-nomatch@example.com', headers: { cookie: adminCookie },
+    });
+    const { users } = res.json() as { users: { displayName: string }[] };
+    expect(users.some((u) => u.displayName === 'Totally Different Name')).toBe(true);
+  });
+
+  it('does NOT substring-match on email (only exact) — a partial email guess returns nothing for that user', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 3', slug: 'search-org-3' },
+    });
+    await db.insert(schema.users).values({
+      id: 'partial-1', email: 'partial-match@example.com', displayName: 'Unrelated Label', avatarUrl: null,
+      passwordHash: null, isDemoAccount: false, isGlobalAdmin: false, emailVerified: true, createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-3/user-search?q=partial-match', headers: { cookie: adminCookie },
+    });
+    const { users } = res.json() as { users: { displayName: string }[] };
+    expect(users.some((u) => u.displayName === 'Unrelated Label')).toBe(false);
+  });
+
+  it('flags alreadyMember: true for an existing member', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    const create = await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 4', slug: 'search-org-4' },
+    });
+    const orgId = (create.json() as { id: string }).id;
+    await registerAndLogin(app, 'member-already@example.com');
+    const memberId = (await db.select().from(schema.users).where(eq(schema.users.email, 'member-already@example.com')).get())!.id;
+    await db.insert(schema.orgMembers).values({ orgId, userId: memberId, role: 'member', joinedAt: new Date() });
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-4/user-search?q=member-already', headers: { cookie: adminCookie },
+    });
+    const { users } = res.json() as { users: { displayName: string; alreadyMember: boolean }[] };
+    expect(users.find((u) => u.displayName === 'member-already@example.com')?.alreadyMember).toBe(true);
+  });
+
+  it('excludes the caller themself from results', async () => {
+    const adminCookie = await registerAndLogin(app, 'search-self@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 5', slug: 'search-org-5' },
+    });
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-5/user-search?q=search-self', headers: { cookie: adminCookie },
+    });
+    const { users } = res.json() as { users: { displayName: string }[] };
+    expect(users.some((u) => u.displayName === 'search-self@example.com')).toBe(false);
+  });
+
+  it('requires at least 2 characters — returns empty rather than erroring', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 6', slug: 'search-org-6' },
+    });
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-6/user-search?q=a', headers: { cookie: adminCookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { users: unknown[] }).users).toHaveLength(0);
+  });
+
+  it('a non-admin member gets 403', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin2@example.com');
+    const create = await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 7', slug: 'search-org-7' },
+    });
+    const orgId = (create.json() as { id: string }).id;
+    await registerAndLogin(app, 'member2@example.com');
+    const memberCookie = await registerAndLogin(app, 'member-searcher@example.com');
+    const memberId = (await db.select().from(schema.users).where(eq(schema.users.email, 'member-searcher@example.com')).get())!.id;
+    await db.insert(schema.orgMembers).values({ orgId, userId: memberId, role: 'member', joinedAt: new Date() });
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-7/user-search?q=member', headers: { cookie: memberCookie },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('a non-member gets 404 (does not leak org existence)', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin3@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 8', slug: 'search-org-8' },
+    });
+    const outsiderCookie = await registerAndLogin(app, 'outsider@example.com');
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/orgs/search-org-8/user-search?q=admin', headers: { cookie: outsiderCookie },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('org invite by userId (autocomplete path)', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('inviting by userId resolves the email server-side and still requires accept', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'UserId Org', slug: 'userid-org' },
+    });
+    await registerAndLogin(app, 'bob@example.com');
+    const bobId = (await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get())!.id;
+
+    const inv = await app.inject({
+      method: 'POST', url: '/api/orgs/userid-org/invites', headers: { cookie: adminCookie },
+      payload: { userId: bobId, role: 'member' },
+    });
+    expect(inv.statusCode).toBe(200);
+    const token = (inv.json() as { token: string }).token;
+
+    // Not a member yet — inviting alone doesn't add them.
+    const before = await db.select().from(schema.orgMembers).where(eq(schema.orgMembers.userId, bobId)).get();
+    expect(before).toBeUndefined();
+
+    const bobLogin = await app.inject({
+      method: 'POST', url: '/api/auth/password/login', payload: { email: 'bob@example.com', password: 'correct horse battery' },
+    });
+    const bobSetCookie = bobLogin.headers['set-cookie'];
+    const bobCookie = Array.isArray(bobSetCookie) ? bobSetCookie.join('; ') : (bobSetCookie ?? '');
+    const accept = await app.inject({ method: 'POST', url: `/api/org-invites/${token}`, headers: { cookie: bobCookie } });
+    expect(accept.statusCode).toBe(200);
+    const after = await db.select().from(schema.orgMembers).where(eq(schema.orgMembers.userId, bobId)).get();
+    expect(after?.role).toBe('member');
+  });
+
+  it('inviting by a nonexistent userId returns 404', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'UserId Org 2', slug: 'userid-org-2' },
+    });
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/orgs/userid-org-2/invites', headers: { cookie: adminCookie },
+      payload: { userId: '00000000-0000-0000-0000-000000000000', role: 'member' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('inviting an already-member userId returns 409 already_member', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    const create = await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'UserId Org 3', slug: 'userid-org-3' },
+    });
+    const orgId = (create.json() as { id: string }).id;
+    await registerAndLogin(app, 'carol@example.com');
+    const carolId = (await db.select().from(schema.users).where(eq(schema.users.email, 'carol@example.com')).get())!.id;
+    await db.insert(schema.orgMembers).values({ orgId, userId: carolId, role: 'member', joinedAt: new Date() });
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/orgs/userid-org-3/invites', headers: { cookie: adminCookie },
+      payload: { userId: carolId, role: 'admin' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toBe('already_member');
+  });
+
+  it('providing neither email nor userId returns 400 invalid_input', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'UserId Org 4', slug: 'userid-org-4' },
+    });
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/orgs/userid-org-4/invites', headers: { cookie: adminCookie },
+      payload: { role: 'member' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('invalid_input');
+  });
+});
