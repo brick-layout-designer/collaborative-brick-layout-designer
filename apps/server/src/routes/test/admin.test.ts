@@ -359,6 +359,143 @@ describe('admin orgs', () => {
     const res = await app.inject({ method: 'DELETE', url: '/api/admin/orgs/00000000-0000-0000-0000-000000000000', headers: { cookie: adminCookie } });
     expect(res.statusCode).toBe(404);
   });
+
+  it('GET /api/admin/orgs/:id returns member list, layout stats, and 404 for an unknown id', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const create = await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Detail Org', slug: 'detail-org' },
+    });
+    const orgId = (create.json() as { id: string }).id;
+
+    const res = await app.inject({ method: 'GET', url: `/api/admin/orgs/${orgId}`, headers: { cookie: adminCookie } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      org: { slug: string };
+      stats: { members: number; layouts: number; layoutSizeBytes: number };
+      members: { email: string; role: string }[];
+      layouts: unknown[];
+    };
+    expect(body.org.slug).toBe('detail-org');
+    expect(body.stats.members).toBe(1);
+    expect(body.members[0]?.email).toBe('admin@example.com');
+    expect(body.members[0]?.role).toBe('admin');
+    expect(body.stats.layouts).toBe(0);
+    expect(body.layouts).toHaveLength(0);
+
+    const notFound = await app.inject({
+      method: 'GET', url: '/api/admin/orgs/00000000-0000-0000-0000-000000000000', headers: { cookie: adminCookie },
+    });
+    expect(notFound.statusCode).toBe(404);
+  });
+});
+
+// ---- layout stats (count + size) — users, orgs, layouts list ---------------
+
+describe('admin layout stats — size and count aggregation', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('GET /api/admin/users includes emailVerified, layoutCount, and layoutSizeBytes', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const aliceId = await getUserId('alice@example.com');
+
+    const create = await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: aliceCookie }, payload: { title: 'Alice Layout' },
+    });
+    expect(create.statusCode).toBe(201);
+    const layoutId = (create.json() as { id: string }).id;
+    const layoutRow = await db.select().from(schema.layouts).where(eq(schema.layouts.id, layoutId)).get();
+    const expectedSnapshotBytes = (layoutRow!.docSnapshot as Buffer).length;
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/users', headers: { cookie: adminCookie } });
+    const { users } = res.json() as {
+      users: { email: string; emailVerified: boolean; layoutCount: number; layoutSizeBytes: number }[];
+    };
+    const alice = users.find((u) => u.email === 'alice@example.com');
+    expect(alice?.emailVerified).toBe(true);
+    expect(alice?.layoutCount).toBe(1);
+    expect(alice?.layoutSizeBytes).toBe(expectedSnapshotBytes);
+
+    // Sanity: a user who registered but never verified should read false
+    // (registerAndLogin always verifies — insert an unverified row directly).
+    await db.insert(schema.users).values({
+      id: 'unverified-1', email: 'pending@example.com', displayName: 'Pending', avatarUrl: null,
+      passwordHash: null, isDemoAccount: false, isGlobalAdmin: false, emailVerified: false, createdAt: new Date(),
+    });
+    const res2 = await app.inject({ method: 'GET', url: '/api/admin/users', headers: { cookie: adminCookie } });
+    const pending = (res2.json() as { users: { email: string; emailVerified: boolean }[] }).users
+      .find((u) => u.email === 'pending@example.com');
+    expect(pending?.emailVerified).toBe(false);
+    void aliceId;
+  });
+
+  it('layout size includes pending layout_updates bytes, not just the snapshot', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+
+    const create = await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: aliceCookie }, payload: { title: 'Hot Layout' },
+    });
+    const layoutId = (create.json() as { id: string }).id;
+    const layoutRow = await db.select().from(schema.layouts).where(eq(schema.layouts.id, layoutId)).get();
+    const snapshotBytes = (layoutRow!.docSnapshot as Buffer).length;
+
+    // Simulate un-compacted Yjs updates sitting in layout_updates.
+    const pendingBytes = 37;
+    await db.insert(schema.layoutUpdates).values({
+      layoutId, doc: 'main', updateBytes: Buffer.alloc(pendingBytes, 1), createdAt: new Date(),
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/users', headers: { cookie: adminCookie } });
+    const alice = (res.json() as { users: { email: string; layoutSizeBytes: number }[] }).users
+      .find((u) => u.email === 'alice@example.com');
+    expect(alice?.layoutSizeBytes).toBe(snapshotBytes + pendingBytes);
+  });
+
+  it('GET /api/admin/orgs includes layoutCount and layoutSizeBytes bounded to the current page', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const org = await app.inject({
+      method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Org With Layouts', slug: 'org-with-layouts' },
+    });
+    const orgId = (org.json() as { id: string }).id;
+    const transfer = await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: adminCookie }, payload: { title: 'Org Layout' },
+    });
+    const layoutId = (transfer.json() as { id: string }).id;
+    // Directly reassign ownership to the org (bypasses the transfer-accept flow — fine for this test's purposes).
+    await db.update(schema.layouts).set({ ownerUserId: null, ownerOrgId: orgId }).where(eq(schema.layouts.id, layoutId));
+    const layoutRow = await db.select().from(schema.layouts).where(eq(schema.layouts.id, layoutId)).get();
+    const expectedBytes = (layoutRow!.docSnapshot as Buffer).length;
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/orgs', headers: { cookie: adminCookie } });
+    const acme = (res.json() as { orgs: { slug: string; layoutCount: number; layoutSizeBytes: number }[] }).orgs
+      .find((o) => o.slug === 'org-with-layouts');
+    expect(acme?.layoutCount).toBe(1);
+    expect(acme?.layoutSizeBytes).toBe(expectedBytes);
+  });
+
+  it('GET /api/admin/layouts includes ownerUserEmail, ownerOrgName, and sizeBytes', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie: aliceCookie }, payload: { title: 'Alice Layout' },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/admin/layouts', headers: { cookie: adminCookie } });
+    const layout = (res.json() as {
+      layouts: { title: string; ownerUserEmail: string | null; ownerOrgName: string | null; sizeBytes: number }[];
+    }).layouts.find((l) => l.title === 'Alice Layout');
+    expect(layout?.ownerUserEmail).toBe('alice@example.com');
+    expect(layout?.ownerOrgName).toBeNull();
+    expect(layout?.sizeBytes).toBeGreaterThan(0);
+  });
 });
 
 // ---- layouts -------------------------------------------------------------

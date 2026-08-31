@@ -19,6 +19,19 @@ import { CategoryPicker } from '../library/LibraryPage';
 
 type Tab = 'dashboard' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'audit' | 'settings';
 
+/** Content size (doc snapshot + sidecar + unflushed Yjs updates) — see adminLayoutStats.ts. Not raw disk usage. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[i]}`;
+}
+
 export function AdminPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const [tab, setTab] = useState<Tab>('dashboard');
@@ -100,6 +113,7 @@ function UsersTab({ selfId }: { selfId: string }) {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [offset, setOffset] = useState(0);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const limit = 50;
   const list = useQuery({
     queryKey: ['admin-users', q, offset, limit],
@@ -124,6 +138,10 @@ function UsersTab({ selfId }: { selfId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });
 
+  if (detailId) {
+    return <UserDetailPanel id={detailId} onBack={() => setDetailId(null)} />;
+  }
+
   return (
     <section>
       <Toolbar
@@ -147,6 +165,9 @@ function UsersTab({ selfId }: { selfId: string }) {
               <tr>
                 <Th>Email</Th>
                 <Th>Name</Th>
+                <Th>Verified</Th>
+                <Th align="right">Layouts</Th>
+                <Th align="right">Size</Th>
                 <Th>Created</Th>
                 <Th>Demo</Th>
                 <Th>Admin</Th>
@@ -158,8 +179,21 @@ function UsersTab({ selfId }: { selfId: string }) {
                 const isSelf = u.id === selfId;
                 return (
                   <tr key={u.id} className="border-t border-neutral-800">
-                    <Td>{u.email}</Td>
+                    <Td>
+                      <button onClick={() => setDetailId(u.id)} className="text-blue-400 hover:underline">
+                        {u.email}
+                      </button>
+                    </Td>
                     <Td>{u.displayName}</Td>
+                    <Td>
+                      {u.emailVerified ? (
+                        <span className="text-emerald-400" title="Email verified">✓</span>
+                      ) : (
+                        <span className="text-amber-400" title="Not verified">✕</span>
+                      )}
+                    </Td>
+                    <Td align="right" className="tabular-nums">{u.layoutCount}</Td>
+                    <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(u.layoutSizeBytes)}</Td>
                     <Td>{new Date(u.createdAt).toLocaleDateString()}</Td>
                     <Td>
                       <input
@@ -221,10 +255,93 @@ function UsersTab({ selfId }: { selfId: string }) {
   );
 }
 
+function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
+  const detail = useQuery({ queryKey: ['admin-user-detail', id], queryFn: () => api.admin.user(id) });
+
+  return (
+    <section className="space-y-4">
+      <button onClick={onBack} className="text-sm text-blue-400 hover:underline">
+        ← Back to users
+      </button>
+      {detail.isLoading && <Loading />}
+      {detail.data && (
+        <>
+          <div>
+            <h2 className="text-base font-semibold">{detail.data.user.displayName}</h2>
+            <p className="text-sm text-neutral-400">
+              {detail.data.user.email}{' '}
+              {detail.data.user.emailVerified ? (
+                <span className="text-emerald-400">· verified</span>
+              ) : (
+                <span className="text-amber-400">· not verified</span>
+              )}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Orgs', value: detail.data.stats.orgs },
+              { label: 'Layouts', value: detail.data.stats.layouts },
+              { label: 'Layout size', value: formatBytes(detail.data.stats.layoutSizeBytes) },
+              { label: 'Active sessions', value: detail.data.stats.activeSessions },
+            ].map((t) => (
+              <div key={t.label} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+                <p className="text-xs uppercase tracking-wider text-neutral-500">{t.label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums">{t.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-300">Organizations</h3>
+            {detail.data.orgMemberships.length === 0 ? (
+              <p className="mt-1 text-sm text-neutral-500">Not a member of any org.</p>
+            ) : (
+              <ul className="mt-1 divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+                {detail.data.orgMemberships.map((m) => (
+                  <li key={m.orgId} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <span>{m.name} <span className="text-neutral-500">/{m.slug}</span></span>
+                    <span className="text-xs uppercase text-neutral-500">{m.role}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-300">Layouts</h3>
+            {detail.data.layouts.length === 0 ? (
+              <p className="mt-1 text-sm text-neutral-500">No layouts owned by this user.</p>
+            ) : (
+              <table className="mt-1 w-full text-sm">
+                <thead className="text-left text-xs uppercase tracking-wider text-neutral-500">
+                  <tr><Th>Title</Th><Th>Updated</Th><Th align="right">Size</Th></tr>
+                </thead>
+                <tbody>
+                  {detail.data.layouts.map((l) => (
+                    <tr key={l.id} className="border-t border-neutral-800">
+                      <Td>
+                        <Link to={`/editor/${l.id}`} className="text-blue-400 hover:underline">{l.title}</Link>
+                      </Td>
+                      <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
+                      <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(l.sizeBytes)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function OrgsTab() {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [offset, setOffset] = useState(0);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const limit = 50;
   const list = useQuery({
     queryKey: ['admin-orgs', q, offset, limit],
@@ -234,6 +351,11 @@ function OrgsTab() {
     mutationFn: (id: string) => api.admin.deleteOrg(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orgs'] }),
   });
+
+  if (detailId) {
+    return <OrgDetailPanel id={detailId} onBack={() => setDetailId(null)} />;
+  }
+
   return (
     <section>
       <Toolbar
@@ -258,6 +380,8 @@ function OrgsTab() {
                 <Th>Name</Th>
                 <Th>Slug</Th>
                 <Th>Members</Th>
+                <Th align="right">Layouts</Th>
+                <Th align="right">Size</Th>
                 <Th>Created</Th>
                 <Th align="right">Actions</Th>
               </tr>
@@ -265,9 +389,15 @@ function OrgsTab() {
             <tbody>
               {list.data?.orgs.map((o) => (
                 <tr key={o.id} className="border-t border-neutral-800">
-                  <Td>{o.name}</Td>
+                  <Td>
+                    <button onClick={() => setDetailId(o.id)} className="text-blue-400 hover:underline">
+                      {o.name}
+                    </button>
+                  </Td>
                   <Td>{o.slug}</Td>
                   <Td>{o.memberCount}</Td>
+                  <Td align="right" className="tabular-nums">{o.layoutCount}</Td>
+                  <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(o.layoutSizeBytes)}</Td>
                   <Td>{new Date(o.createdAt).toLocaleDateString()}</Td>
                   <Td align="right">
                     <button
@@ -290,6 +420,76 @@ function OrgsTab() {
             </tbody>
           </table>
         </div>
+      )}
+    </section>
+  );
+}
+
+function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
+  const detail = useQuery({ queryKey: ['admin-org-detail', id], queryFn: () => api.admin.org(id) });
+
+  return (
+    <section className="space-y-4">
+      <button onClick={onBack} className="text-sm text-blue-400 hover:underline">
+        ← Back to orgs
+      </button>
+      {detail.isLoading && <Loading />}
+      {detail.data && (
+        <>
+          <div>
+            <h2 className="text-base font-semibold">{detail.data.org.name}</h2>
+            <p className="text-sm text-neutral-400">/{detail.data.org.slug}</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 sm:max-w-md">
+            {[
+              { label: 'Members', value: detail.data.stats.members },
+              { label: 'Layouts', value: detail.data.stats.layouts },
+              { label: 'Layout size', value: formatBytes(detail.data.stats.layoutSizeBytes) },
+            ].map((t) => (
+              <div key={t.label} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+                <p className="text-xs uppercase tracking-wider text-neutral-500">{t.label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums">{t.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-300">Members</h3>
+            <ul className="mt-1 divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+              {detail.data.members.map((m) => (
+                <li key={m.userId} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span>{m.displayName} <span className="text-neutral-500">({m.email})</span></span>
+                  <span className="text-xs uppercase text-neutral-500">{m.role}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-300">Layouts</h3>
+            {detail.data.layouts.length === 0 ? (
+              <p className="mt-1 text-sm text-neutral-500">No layouts owned by this org.</p>
+            ) : (
+              <table className="mt-1 w-full text-sm">
+                <thead className="text-left text-xs uppercase tracking-wider text-neutral-500">
+                  <tr><Th>Title</Th><Th>Updated</Th><Th align="right">Size</Th></tr>
+                </thead>
+                <tbody>
+                  {detail.data.layouts.map((l) => (
+                    <tr key={l.id} className="border-t border-neutral-800">
+                      <Td>
+                        <Link to={`/editor/${l.id}`} className="text-blue-400 hover:underline">{l.title}</Link>
+                      </Td>
+                      <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
+                      <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(l.sizeBytes)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
     </section>
   );
@@ -331,6 +531,7 @@ function LayoutsTab() {
               <tr>
                 <Th>Title</Th>
                 <Th>Owner</Th>
+                <Th align="right">Size</Th>
                 <Th>Updated</Th>
                 <Th>Doc v</Th>
                 <Th>Expires</Th>
@@ -341,13 +542,14 @@ function LayoutsTab() {
               {list.data?.layouts.map((l) => (
                 <tr key={l.id} className="border-t border-neutral-800">
                   <Td>
-                    <Link to={`/edit/${l.id}`} className="text-blue-400 hover:underline">
+                    <Link to={`/editor/${l.id}`} className="text-blue-400 hover:underline">
                       {l.title}
                     </Link>
                   </Td>
-                  <Td className="font-mono text-xs text-neutral-500">
-                    {l.ownerOrgId ? `org:${l.ownerOrgId.slice(0, 8)}` : `user:${(l.ownerUserId ?? 'demo').slice(0, 8)}`}
+                  <Td className="text-xs text-neutral-400">
+                    {l.ownerOrgName ?? l.ownerUserEmail ?? (l.ownerUserId ? '(deleted user)' : '—')}
                   </Td>
+                  <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(l.sizeBytes)}</Td>
                   <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
                   <Td>{l.docVersion}</Td>
                   <Td>{l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : '—'}</Td>

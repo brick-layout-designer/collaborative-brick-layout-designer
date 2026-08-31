@@ -480,8 +480,7 @@ export const api = {
       get<{ users: AdminUser[]; total: number; limit: number; offset: number }>(
         `/api/admin/users?${listParams(q)}`,
       ),
-    user: (id: string) =>
-      get<{ user: AdminUser; stats: AdminUserStats }>(`/api/admin/users/${id}`),
+    user: (id: string) => get<AdminUserDetail>(`/api/admin/users/${id}`),
     patchUser: (id: string, body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean }) =>
       patch<{ ok: true }>(`/api/admin/users/${id}`, body),
     deleteUser: (id: string) => del(`/api/admin/users/${id}`),
@@ -491,6 +490,7 @@ export const api = {
       get<{ orgs: AdminOrg[]; total: number; limit: number; offset: number }>(
         `/api/admin/orgs?${listParams(q)}`,
       ),
+    org: (id: string) => get<AdminOrgDetail>(`/api/admin/orgs/${id}`),
     deleteOrg: (id: string) => del(`/api/admin/orgs/${id}`),
     layouts: (q: AdminListParams & { ownerUserId?: string; ownerOrgId?: string }) =>
       get<{ layouts: AdminLayout[]; total: number; limit: number; offset: number }>(
@@ -618,15 +618,27 @@ export interface AdminUser {
   avatarUrl: string | null;
   isDemoAccount: boolean;
   isGlobalAdmin: boolean;
+  emailVerified: boolean;
   createdAt: number;
+  layoutCount: number;
+  /** Content size (doc snapshot + sidecar + unflushed updates), not raw disk usage. */
+  layoutSizeBytes: number;
 }
 
 export interface AdminUserStats {
   orgs: number;
   layouts: number;
+  layoutSizeBytes: number;
   customParts: number;
   modules: number;
   activeSessions: number;
+}
+
+export interface AdminUserDetail {
+  user: AdminUser;
+  stats: AdminUserStats;
+  orgMemberships: { orgId: string; name: string; slug: string; role: 'admin' | 'member' }[];
+  layouts: { id: string; title: string; updatedAt: number; sizeBytes: number }[];
 }
 
 export interface AdminOrg {
@@ -635,6 +647,15 @@ export interface AdminOrg {
   slug: string;
   createdAt: number;
   memberCount: number;
+  layoutCount: number;
+  layoutSizeBytes: number;
+}
+
+export interface AdminOrgDetail {
+  org: { id: string; name: string; slug: string; createdAt: number };
+  stats: { members: number; layouts: number; layoutSizeBytes: number };
+  members: { userId: string; email: string; displayName: string; role: 'admin' | 'member'; joinedAt: number }[];
+  layouts: { id: string; title: string; updatedAt: number; sizeBytes: number }[];
 }
 
 export interface AdminLayout {
@@ -642,11 +663,14 @@ export interface AdminLayout {
   title: string;
   ownerUserId: string | null;
   ownerOrgId: string | null;
+  ownerUserEmail: string | null;
+  ownerOrgName: string | null;
   createdBy: string;
   createdAt: number;
   updatedAt: number;
   expiresAt: number | null;
   docVersion: number;
+  sizeBytes: number;
 }
 
 export interface AdminGlobalPart {
