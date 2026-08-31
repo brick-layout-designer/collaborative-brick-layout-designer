@@ -18,7 +18,7 @@
     "@cld/model": "workspace:*",
     "@cld/parts-catalog": "workspace:*",
     "@cld/ydoc": "workspace:*",
-    "@fastify/cookie": "11.0.2",
+    "@fastify/cookie": "11.1.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "10.0.0",
