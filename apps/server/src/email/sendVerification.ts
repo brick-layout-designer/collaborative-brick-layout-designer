@@ -8,6 +8,7 @@
 // the link when SMTP isn't configured — see routes/auth/password.ts.
 
 import { getTransporter } from './transporter.js';
+import { escapeHtml } from '../utils/validate.js';
 
 interface SendVerificationEmailArgs {
   to: string;
@@ -19,6 +20,12 @@ export async function sendVerificationEmail(args: SendVerificationEmailArgs): Pr
   if (!resolved) return false;
   const { transporter, config } = resolved;
 
+  // verifyUrl is always server-generated (env.publicUrl + a random hex
+  // token — see routes/auth/password.ts), so there's no real injection
+  // path here, but it's escaped anyway for consistency with
+  // sendInvite.ts's html body and as cheap defense-in-depth.
+  const safeUrl = escapeHtml(args.verifyUrl);
+
   const subject = 'Verify your email — Collaborative Brick Layout Designer';
   const text =
     `Welcome to Collaborative Brick Layout Designer!\n\n` +
@@ -27,8 +34,8 @@ export async function sendVerificationEmail(args: SendVerificationEmailArgs): Pr
   const html =
     `<p>Welcome to Collaborative Brick Layout Designer!</p>` +
     `<p>Confirm your email address to finish setting up your account:</p>` +
-    `<p><a href="${args.verifyUrl}">Verify my email</a></p>` +
-    `<p style="color:#888">Or paste this URL into your browser: ${args.verifyUrl}</p>` +
+    `<p><a href="${safeUrl}">Verify my email</a></p>` +
+    `<p style="color:#888">Or paste this URL into your browser: ${safeUrl}</p>` +
     `<p style="color:#888">This link expires in 24 hours.</p>`;
 
   await transporter.sendMail({
