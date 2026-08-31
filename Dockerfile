@@ -30,6 +30,7 @@ RUN git init && pnpm install --frozen-lockfile=false
 COPY apps/server/src ./apps/server/src
 COPY apps/server/migrations ./apps/server/migrations
 COPY apps/web/src ./apps/web/src
+COPY apps/web/public ./apps/web/public
 COPY packages ./packages
 
 RUN pnpm --filter @cld/model        build || true \
