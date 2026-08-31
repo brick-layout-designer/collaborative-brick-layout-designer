@@ -40,7 +40,8 @@ export type AuditEventType =
   | 'admin_part_library_patch'
   | 'admin_part_library_update'
   | 'admin_part_library_delete'
-  | 'org_part_library_toggle';
+  | 'org_part_library_toggle'
+  | 'admin_settings_patch';
 
 export type AuditResourceKind =
   | 'layout'
@@ -48,7 +49,8 @@ export type AuditResourceKind =
   | 'module'
   | 'org'
   | 'user'
-  | 'part_library';
+  | 'part_library'
+  | 'platform_settings';
 
 interface CommonAuditFields {
   /** null for system-driven events (TTL sweep, transfer admin). */

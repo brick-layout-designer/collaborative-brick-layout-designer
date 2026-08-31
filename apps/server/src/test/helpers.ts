@@ -42,6 +42,7 @@ export function resetDb(): void {
     DELETE FROM orgs;
     DELETE FROM sessions;
     DELETE FROM email_verifications;
+    DELETE FROM platform_settings;
     DELETE FROM users;
   `);
 }

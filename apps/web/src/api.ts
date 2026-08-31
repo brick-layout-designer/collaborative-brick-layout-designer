@@ -539,6 +539,15 @@ export const api = {
       post<{ ok: true; partCount: number }>(`/api/admin/part-libraries/${id}/update`, {}),
     deletePartLibrary: (id: string) => del(`/api/admin/part-libraries/${id}`),
     reloadParts: () => post<{ ok: true }>('/api/admin/reload-parts'),
+    settings: () => get<AdminSettings>('/api/admin/settings'),
+    patchSettings: (body: {
+      requireEmailVerification?: boolean;
+      smtpHost?: string | null;
+      smtpPort?: number | null;
+      smtpUser?: string | null;
+      smtpPass?: string | null;
+      smtpFrom?: string | null;
+    }) => patch<{ ok: true }>('/api/admin/settings', body),
   },
 
   // Per-org part library management (org admin only).
@@ -584,6 +593,22 @@ export interface AdminStats {
   customParts: number;
   modules: number;
   activeSessions: number;
+}
+
+export interface AdminSettings {
+  requireEmailVerification: boolean;
+  smtp: {
+    host: string | null;
+    port: number | null;
+    user: string | null;
+    from: string | null;
+    /** true if a password is saved in the DB, without ever sending the value itself. */
+    passSet: boolean;
+    /** Which config is actually in effect right now — null means neither is configured. */
+    source: 'database' | 'env' | null;
+    active: boolean;
+  };
+  updatedAt: number;
 }
 
 export interface AdminUser {

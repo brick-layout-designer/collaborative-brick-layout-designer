@@ -285,3 +285,100 @@ describe('password auth routes', () => {
     expect((logout.json() as { ok: boolean }).ok).toBe(true);
   });
 });
+
+describe('password auth routes — requireEmailVerification off', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+    await db.insert(schema.platformSettings).values({
+      id: 'singleton',
+      requireEmailVerification: false,
+      smtpHost: null,
+      smtpPort: null,
+      smtpUser: null,
+      smtpPass: null,
+      smtpFrom: null,
+      updatedAt: new Date(),
+      updatedBy: null,
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('register logs the user in immediately, matching pre-verification behaviour', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/register',
+      payload: { email: 'alice@example.com', password: 'correct horse battery', displayName: 'Alice' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { verificationRequired: boolean }).verificationRequired).toBe(false);
+    const cookieStr = cookieHeader(res);
+    expect(cookieStr).toContain('cld_session=');
+
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: cookieStr } });
+    expect((me.json() as { user: { email: string } | null }).user?.email).toBe('alice@example.com');
+
+    // No verification token was ever issued.
+    const user = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+    expect(user?.emailVerified).toBe(true);
+    const verification = await db
+      .select()
+      .from(schema.emailVerifications)
+      .where(eq(schema.emailVerifications.userId, user!.id))
+      .get();
+    expect(verification).toBeUndefined();
+  });
+
+  it('login succeeds for an account that was created unverified before the setting was turned off', async () => {
+    // Simulate an account that registered while verification was ON,
+    // then an admin flips the switch off before it ever verifies.
+    await db.insert(schema.users).values({
+      id: 'preexisting-user',
+      email: 'bob@example.com',
+      displayName: 'Bob',
+      avatarUrl: null,
+      passwordHash: (await import('@node-rs/argon2')).hashSync('correct horse battery', {
+        memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1,
+      }),
+      isDemoAccount: false,
+      isGlobalAdmin: false,
+      emailVerified: false,
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/login',
+      payload: { email: 'bob@example.com', password: 'correct horse battery' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(cookieHeader(res)).toContain('cld_session=');
+  });
+
+  it('resend-verification is a no-op (still returns ok, issues no token) when the setting is off', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/register',
+      payload: { email: 'carol@example.com', password: 'correct horse battery' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/resend-verification',
+      payload: { email: 'carol@example.com' },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const user = await db.select().from(schema.users).where(eq(schema.users.email, 'carol@example.com')).get();
+    const verification = await db
+      .select()
+      .from(schema.emailVerifications)
+      .where(eq(schema.emailVerifications.userId, user!.id))
+      .get();
+    expect(verification).toBeUndefined();
+  });
+});

@@ -22,6 +22,8 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { invalidateAllSessions } from '../auth/session.js';
 import { parsePartXml } from '@cld/parts-catalog';
 import { invalidatePartsCache } from './parts.js';
+import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
+import { invalidateTransporter } from '../email/transporter.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
@@ -991,6 +993,101 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       modules: modulesRow?.n ?? 0,
       activeSessions: sessionsRow?.n ?? 0,
     };
+  });
+
+  // -----------------------------------------------------------------
+  // Platform settings — email verification requirement + SMTP config.
+  // Singleton row; see auth/platformSettings.ts for the get-or-create
+  // and DB-over-env merge logic.
+  // -----------------------------------------------------------------
+  app.get('/api/admin/settings', async (req) => {
+    requireGlobalAdmin(req);
+    const settings = await getPlatformSettings();
+    const resolvedSmtp = mergeSmtpConfig(settings);
+    return {
+      requireEmailVerification: settings.requireEmailVerification,
+      smtp: {
+        // The DB fields as stored, MINUS the password — never send a
+        // secret to the client once it's saved. smtpPassSet lets the
+        // UI show "•••• (set)" without round-tripping the value.
+        host: settings.smtpHost,
+        port: settings.smtpPort,
+        user: settings.smtpUser,
+        from: settings.smtpFrom,
+        passSet: !!settings.smtpPass,
+        // What's actually active right now, for display — lets the UI
+        // show "using .env" vs "using database config" and warn when
+        // neither is configured (verification links will only be
+        // logged, not emailed).
+        source: resolvedSmtp?.source ?? null,
+        active: resolvedSmtp !== null,
+      },
+      updatedAt: settings.updatedAt.getTime(),
+    };
+  });
+
+  app.patch<{
+    Body: {
+      requireEmailVerification?: boolean;
+      smtpHost?: string | null;
+      smtpPort?: number | null;
+      smtpUser?: string | null;
+      smtpPass?: string | null;
+      smtpFrom?: string | null;
+    };
+  }>('/api/admin/settings', async (req, reply) => {
+    const me = requireGlobalAdmin(req);
+    const body = req.body ?? {};
+    const patch: Partial<typeof schema.platformSettings.$inferInsert> = {};
+
+    if (typeof body.requireEmailVerification === 'boolean') {
+      patch.requireEmailVerification = body.requireEmailVerification;
+    }
+    // Absent field = leave unchanged; null OR "" = clear it (drop back
+    // to env.smtp, or to "unconfigured" for smtpHost/smtpFrom) — an
+    // empty string is normalised to null so smtpHost stays either a
+    // real value or null, never "", which mergeSmtpConfig would
+    // otherwise treat as falsy anyway but is worth keeping clean in
+    // the DB. smtpPass is the one field where "" vs omitted actually
+    // differ in meaning — see below.
+    if ('smtpHost' in body) patch.smtpHost = body.smtpHost || null;
+    if ('smtpPort' in body) {
+      if (body.smtpPort !== null && (!Number.isInteger(body.smtpPort) || body.smtpPort < 1 || body.smtpPort > 65535)) {
+        return reply.code(400).send({ error: 'invalid_smtp_port' });
+      }
+      patch.smtpPort = body.smtpPort;
+    }
+    if ('smtpUser' in body) patch.smtpUser = body.smtpUser || null;
+    if ('smtpFrom' in body) patch.smtpFrom = body.smtpFrom || null;
+    if ('smtpPass' in body) {
+      // Client sends "" to explicitly clear a saved password; omits
+      // the field entirely to leave whatever's saved untouched. A
+      // non-empty value replaces it. This mirrors the GET response
+      // never echoing the real password back, so the form can't
+      // "round-trip" a masked placeholder into a real clear.
+      patch.smtpPass = body.smtpPass === '' ? null : body.smtpPass;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return reply.code(400).send({ error: 'empty_patch' });
+    }
+
+    await getPlatformSettings(); // ensure the row exists before UPDATE
+    await db
+      .update(schema.platformSettings)
+      .set({ ...patch, updatedAt: new Date(), updatedBy: me.id })
+      .where(eq(schema.platformSettings.id, PLATFORM_SETTINGS_ID));
+    invalidateTransporter();
+
+    await writeAuditEvent({
+      resourceKind: 'platform_settings',
+      resourceId: PLATFORM_SETTINGS_ID,
+      userId: me.id,
+      eventType: 'admin_settings_patch',
+      // Never audit the password value itself.
+      payload: { patch: { ...patch, smtpPass: patch.smtpPass !== undefined ? '(redacted)' : undefined } },
+    });
+    return { ok: true };
   });
 }
 

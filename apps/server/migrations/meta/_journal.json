@@ -15,6 +15,13 @@
       "when": 1787926669423,
       "tag": "0001_special_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788187903088,
+      "tag": "0002_serious_ghost_rider",
+      "breakpoints": true
     }
   ]
 }
