@@ -11,6 +11,8 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
+import { hasVerifiedEmail } from '../auth/users.js';
+import { sameEmail } from '../utils/validate.js';
 
 export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { token: string } }>(
@@ -64,8 +66,13 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
       }
       // Email-match security check (case-insensitive). Identical to the
       // layout-invite path — see the rationale in routes/invites.ts.
-      if (invite.invitedEmail.toLowerCase() !== user.email.toLowerCase()) {
+      if (!sameEmail(invite.invitedEmail, user.email)) {
         return reply.code(403).send({ error: 'email_mismatch' });
+      }
+      // The email match only proves anything if the account has proven
+      // it controls that mailbox.
+      if (!(await hasVerifiedEmail(user))) {
+        return reply.code(403).send({ error: 'email_not_verified' });
       }
 
       // The invite carries its inviter's authority. If they have since

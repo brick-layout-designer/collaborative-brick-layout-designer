@@ -13,6 +13,8 @@ import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.j
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
+import { hasVerifiedEmail } from '../auth/users.js';
+import { sameEmail } from '../utils/validate.js';
 
 interface InitiateTransferBody {
   recipientEmail?: string;
@@ -201,8 +203,13 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
       if (transfer.expiresAt.getTime() < Date.now()) {
         return reply.code(410).send({ error: 'transfer_expired' });
       }
-      if (transfer.recipientEmail.toLowerCase() !== user.email.toLowerCase()) {
+      if (!sameEmail(transfer.recipientEmail, user.email)) {
         return reply.code(403).send({ error: 'email_mismatch' });
+      }
+      // The email match only proves anything if the account has proven
+      // it controls that mailbox.
+      if (!(await hasVerifiedEmail(user))) {
+        return reply.code(403).send({ error: 'email_not_verified' });
       }
 
       const now = new Date();

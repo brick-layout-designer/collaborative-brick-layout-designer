@@ -13,6 +13,8 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { hasVerifiedEmail } from '../auth/users.js';
+import { sameEmail } from '../utils/validate.js';
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   // ---- preview -------------------------------------------------------------
@@ -70,8 +72,13 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       // the token, they can't use it unless they're signed in as the
       // invited user. Case-insensitive to avoid `Alice@…` vs `alice@…`
       // tripping legitimate users.
-      if (invite.invitedEmail.toLowerCase() !== user.email.toLowerCase()) {
+      if (!sameEmail(invite.invitedEmail, user.email)) {
         return reply.code(403).send({ error: 'email_mismatch' });
+      }
+      // The email match only proves anything if the account has proven
+      // it controls that mailbox.
+      if (!(await hasVerifiedEmail(user))) {
+        return reply.code(403).send({ error: 'email_not_verified' });
       }
 
       const now = new Date();

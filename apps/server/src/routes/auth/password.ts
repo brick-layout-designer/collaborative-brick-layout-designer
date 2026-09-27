@@ -7,7 +7,9 @@ import { createSession } from '../../auth/session.js';
 import { setSessionCookie } from '../../auth/cookie.js';
 import { sendVerificationEmail } from '../../email/sendVerification.js';
 import { getPlatformSettings } from '../../auth/platformSettings.js';
+import { findUserByEmail } from '../../auth/users.js';
 import { env } from '../../env.js';
+import { normalizeEmail } from '../../utils/validate.js';
 
 const ARGON_OPTS = { memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1 };
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -53,15 +55,15 @@ export async function passwordRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const { email, password, displayName } = req.body;
+      const { password, displayName } = req.body;
+      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
       if (!email || !password || password.length < 8 || password.length > 128) {
         return reply.code(400).send({ error: 'invalid_input' });
       }
-      const existing = await db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.email, email))
-        .get();
+      // Case-insensitive: `Alice@x.com` must not register alongside
+      // `alice@x.com` (that would let a second account claim invites
+      // addressed to the first).
+      const existing = await findUserByEmail(email);
       if (existing) return reply.code(409).send({ error: 'email_taken' });
 
       const settings = await getPlatformSettings();
@@ -100,14 +102,10 @@ export async function passwordRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const { email } = req.body;
+      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
       if (!email) return reply.code(400).send({ error: 'invalid_input' });
       const settings = await getPlatformSettings();
-      const user = await db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.email, email))
-        .get();
+      const user = await findUserByEmail(email);
       // Always return ok regardless of whether the account exists or is
       // already verified — don't let this endpoint be used to enumerate
       // registered emails.
@@ -154,13 +152,10 @@ export async function passwordRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const { email, password } = req.body;
+      const { password } = req.body;
+      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
       if (!email || !password || password.length > 128) return reply.code(400).send({ error: 'invalid_input' });
-      const user = await db
-        .select()
-        .from(schema.users)
-        .where(eq(schema.users.email, email))
-        .get();
+      const user = await findUserByEmail(email);
       if (!user || !user.passwordHash) {
         return reply.code(401).send({ error: 'invalid_credentials' });
       }
