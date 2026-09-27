@@ -1,8 +1,8 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
-import { ShareDialog } from './ShareDialog';
+const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
   const qc = useQueryClient();
@@ -117,13 +117,15 @@ function ShareDialogLoader({
   });
   if (detail.isLoading || !detail.data) return null;
   return (
-    <ShareDialog
-      layoutId={layout.id}
-      layoutTitle={layout.title}
-      myRole={detail.data.role}
-      myUserId={myUserId}
-      onClose={onClose}
-    />
+    <Suspense fallback={null}>
+      <ShareDialog
+        layoutId={layout.id}
+        layoutTitle={layout.title}
+        myRole={detail.data.role}
+        myUserId={myUserId}
+        onClose={onClose}
+      />
+    </Suspense>
   );
 }
 
