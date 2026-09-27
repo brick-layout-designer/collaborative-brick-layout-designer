@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Circle, Group, Image as KonvaImage, Line, Rect, Text as KonvaText } from 'react-konva';
 import * as Y from 'yjs';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -6,7 +6,7 @@ import type Konva from 'konva';
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
-import { useEditorStore } from '../editorStore';
+import { useEditorStore, type Tool } from '../editorStore';
 import { useShallow } from 'zustand/react/shallow';
 import { deleteBricks, moveBrick, moveBrickAndOrient, translateBricksAcrossLayers } from '../mutations';
 import { studToPx } from './coords';
@@ -22,7 +22,14 @@ interface Props {
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
 }
 
-export function BrickLayer({ map, doc, isViewer = false, onEditBrick }: Props) {
+/**
+ * All brick layers. Memoised, and each glyph is memoised with only
+ * primitive / identity-stable props, so a re-render of the canvas (pan,
+ * zoom, marquee, HUD) or an edit to ONE brick re-renders only what
+ * changed. That relies on the shared cached projection (useDocMap), which
+ * keeps unchanged Brick objects identical across doc updates.
+ */
+export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false, onEditBrick }: Props) {
   const catalog = useQuery({
     queryKey: ['parts-catalog'],
     queryFn: api.parts.catalog,
@@ -33,16 +40,44 @@ export function BrickLayer({ map, doc, isViewer = false, onEditBrick }: Props) {
   // in their `partNumber` field — that's how desktop CLD writes the .bbm.
   // Index by `key` so the lookup matches without a parse step. Fall back
   // to bare `partNumber` for the rare "no colour code" entries (group
-  // parts and some custom uploads).
-  const partsByKey = new Map<string, PartWire>();
-  if (catalog.data) {
-    for (const p of catalog.data.parts) {
-      partsByKey.set(p.key.toLowerCase(), p);
-      if (!partsByKey.has(p.partNumber.toLowerCase())) {
-        partsByKey.set(p.partNumber.toLowerCase(), p);
+  // parts and some custom uploads). Built once per catalog (it used to be
+  // rebuilt on every render, which also broke every glyph's memo).
+  const { partsByKey, byBarePartNumber } = useMemo(() => {
+    const byKey = new Map<string, PartWire>();
+    const bare = new Map<string, PartWire>();
+    for (const p of catalog.data?.parts ?? []) {
+      byKey.set(p.key.toLowerCase(), p);
+      if (!byKey.has(p.partNumber.toLowerCase())) {
+        byKey.set(p.partNumber.toLowerCase(), p);
       }
+      // First catalog entry per bare part number — what the old
+      // per-brick linear `lookupByPartNumberOnly` scan returned.
+      if (!bare.has(p.partNumber.toLowerCase())) bare.set(p.partNumber.toLowerCase(), p);
     }
-  }
+    return { partsByKey: byKey, byBarePartNumber: bare };
+  }, [catalog.data]);
+
+  // Store-driven display state, subscribed ONCE here rather than per glyph
+  // (thousands of per-glyph subscriptions each ran on every store write,
+  // e.g. the per-frame HUD mouse update).
+  const selection = useEditorStore((s) => s.selection);
+  const view = useEditorStore(
+    useShallow((s) => ({
+      tool: s.tool,
+      showConnectionPoints: s.showConnectionPoints,
+      alwaysShowConnections: s.alwaysShowConnections,
+      showBrickHulls: s.showBrickHulls,
+      showBrickElevation: s.showBrickElevation,
+      selectionTint: s.selectionTint,
+    })),
+  );
+  const selectedIds = useMemo(() => new Set(selection), [selection]);
+
+  // Glyphs read the map only inside event handlers; hand them a stable
+  // getter instead of the map itself (a new object on every doc change).
+  const mapRef = useRef(map);
+  mapRef.current = map;
+  const getMap = useCallback(() => mapRef.current, []);
 
   const brickLayers = map.layers.filter((l): l is LayerBrick => l.type === 'brick');
   return (
@@ -53,76 +88,81 @@ export function BrickLayer({ map, doc, isViewer = false, onEditBrick }: Props) {
         // group so every brick inherits it. Mirrors desktop
         // SceneBuilder.cpp:832-834 — `setOpacity(L.transparency/100.0)`.
         const opacity = Math.max(0, Math.min(100, layer.transparency)) / 100;
+        const hull = layer.hullProperties;
+        const showHull = (!isViewer && view.showBrickHulls) || hull.isVisible;
+        const hullColor = hullColorToCss(hull.hullColor);
+        const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
           <Group key={layer.id} opacity={opacity}>
-            {layer.bricks.map((brick) => (
-              <BrickGlyph
-                key={brick.id}
-                brick={brick}
-                layer={layer}
-                layerId={layer.id}
-                doc={doc}
-                meta={partsByKey.get(brick.partNumber.toLowerCase()) ?? lookupByPartNumberOnly(partsByKey, brick.partNumber)}
-                isViewer={isViewer}
-                map={map}
-                partsByKey={partsByKey}
-                {...(onEditBrick ? { onEditBrick } : {})}
-              />
-            ))}
+            {layer.bricks.map((brick) => {
+              const lower = brick.partNumber.toLowerCase();
+              return (
+                <BrickGlyph
+                  key={brick.id}
+                  brick={brick}
+                  layerId={layer.id}
+                  doc={doc}
+                  meta={partsByKey.get(lower) ?? byBarePartNumber.get(lower)}
+                  isViewer={isViewer}
+                  isSelected={!isViewer && selectedIds.has(brick.id)}
+                  tool={isViewer ? 'select' : view.tool}
+                  showConnectionPoints={!isViewer && view.showConnectionPoints}
+                  alwaysShowConnections={!isViewer && view.alwaysShowConnections}
+                  showHull={showHull}
+                  hullColor={hullColor}
+                  hullThickness={hull.hullThickness}
+                  showElevation={showElevation}
+                  selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
+                  getMap={getMap}
+                  partsByKey={partsByKey}
+                  {...(onEditBrick ? { onEditBrick } : {})}
+                />
+              );
+            })}
           </Group>
         );
       })}
     </Group>
   );
-}
+});
 
 const BrickGlyph = memo(function BrickGlyph({
   brick,
-  layer,
   layerId,
   doc,
   meta,
   isViewer,
-  map,
+  isSelected,
+  tool,
+  showConnectionPoints,
+  alwaysShowConnections,
+  showHull,
+  hullColor,
+  hullThickness,
+  showElevation,
+  selectionTint,
+  getMap,
   partsByKey,
   onEditBrick,
 }: {
   brick: Brick;
-  layer: LayerBrick;
   layerId: string;
   doc: Y.Doc;
   isViewer: boolean;
   meta: PartWire | undefined;
-  map: BbmMap;
+  isSelected: boolean;
+  tool: Tool;
+  showConnectionPoints: boolean;
+  alwaysShowConnections: boolean;
+  showHull: boolean;
+  hullColor: string;
+  hullThickness: number;
+  showElevation: boolean;
+  selectionTint: string;
+  getMap: () => BbmMap;
   partsByKey: Map<string, PartWire>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
 }) {
-  // In viewer mode skip all store subscriptions — no selection, no tools,
-  // no connection points. A single combined selector avoids 8 separate
-  // subscriptions per brick (×hundreds of bricks = big perf win).
-  const editorState = useEditorStore(
-    useShallow((s) =>
-      isViewer
-        ? null
-        : {
-            selection: s.selection,
-            tool: s.tool,
-            showConnectionPoints: s.showConnectionPoints,
-            alwaysShowConnections: s.alwaysShowConnections,
-            showBrickHulls: s.showBrickHulls,
-            showBrickElevation: s.showBrickElevation,
-            selectionTint: s.selectionTint,
-          },
-    ),
-  );
-  const selection = editorState?.selection ?? [];
-  const tool = editorState?.tool ?? 'select';
-  const showConnectionPoints = editorState?.showConnectionPoints ?? false;
-  const alwaysShowConnections = editorState?.alwaysShowConnections ?? false;
-  const showBrickHulls = editorState?.showBrickHulls ?? false;
-  const showBrickElevation = editorState?.showBrickElevation ?? false;
-  const selectionTint = editorState?.selectionTint ?? 'ffcc00';
-  const isSelected = !isViewer && selection.includes(brick.id);
   const spriteUrl = meta ? spriteUrlFor(meta) : '';
   const groupRef = useRef<Konva.Group | null>(null);
 
@@ -188,10 +228,9 @@ const BrickGlyph = memo(function BrickGlyph({
       // group selects every brick sharing that group id, mirroring the
       // desktop's group selection behaviour. (`brick.myGroup` is empty
       // when ungrouped.)
-      const groupMembers =
-        brick.myGroup && map
-          ? collectGroupMembers(map, brick.myGroup)
-          : [brick.id];
+      const groupMembers = brick.myGroup
+        ? collectGroupMembers(getMap(), brick.myGroup)
+        : [brick.id];
 
       if (additive) {
         // Shift/ctrl-click toggles the whole group on/off.
@@ -227,15 +266,17 @@ const BrickGlyph = memo(function BrickGlyph({
     | {
         leaderId: string;
         leaderStartCentre: { x: number; y: number };
-        siblings: { id: string; startCentre: { x: number; y: number } }[];
+        siblings: { id: string; startCentre: { x: number; y: number }; node: Konva.Node | null }[];
       }
     | null
   >(null);
 
   function handleDragStart(e: KonvaEventObject<DragEvent>) {
     snapOrientRef.current = null;
-    if (isViewer || !map) return;
+    if (isViewer) return;
     if (tool !== 'select') return;
+    const map = getMap();
+    const selection = useEditorStore.getState().selection;
     // Only the brick under the cursor fires its own onDragStart in
     // Konva; the rest of the selection isn't dragged by Konva itself —
     // we translate them by hand on dragmove.
@@ -249,7 +290,11 @@ const BrickGlyph = memo(function BrickGlyph({
       x: brick.displayArea.x + brick.displayArea.width / 2,
       y: brick.displayArea.y + brick.displayArea.height / 2,
     };
-    const siblings: { id: string; startCentre: { x: number; y: number } }[] = [];
+    // Resolve the sibling Konva nodes once here; looking each one up with
+    // `stage.findOne` on every dragmove frame walked the whole scene graph
+    // per sibling per frame.
+    const stage = e.target.getStage();
+    const siblings: { id: string; startCentre: { x: number; y: number }; node: Konva.Node | null }[] = [];
     for (const layer of map.layers) {
       if (layer.type !== 'brick') continue;
       for (const b of layer.bricks) {
@@ -260,6 +305,7 @@ const BrickGlyph = memo(function BrickGlyph({
             x: b.displayArea.x + b.displayArea.width / 2,
             y: b.displayArea.y + b.displayArea.height / 2,
           },
+          node: stage?.findOne(`.brick-${b.id}`) ?? null,
         });
       }
     }
@@ -316,7 +362,7 @@ const BrickGlyph = memo(function BrickGlyph({
         orientation: brick.orientation,
         snapStepStuds: useEditorStore.getState().snapStepStuds,
       },
-      map,
+      getMap(),
       partsByKey,
     );
 
@@ -339,7 +385,7 @@ const BrickGlyph = memo(function BrickGlyph({
       const dxStud = result.centreX - dragStart.leaderStartCentre.x;
       const dyStud = result.centreY - dragStart.leaderStartCentre.y;
       for (const sib of dragStart.siblings) {
-        const sibNode = stage.findOne(`.brick-${sib.id}`);
+        const sibNode = sib.node;
         if (sibNode) {
           sibNode.position({
             x: (sib.startCentre.x + dxStud) * studToPx(),
@@ -378,6 +424,8 @@ const BrickGlyph = memo(function BrickGlyph({
     if (isViewer) return;
     if (tool !== 'select') return;
     void dragStart;
+    const map = getMap();
+    const selection = useEditorStore.getState().selection;
 
     // Drag-out-of-viewport-to-delete — port of MapView.cpp:725-736.
     // If the user released the mouse outside the Konva stage rect
@@ -560,10 +608,9 @@ const BrickGlyph = memo(function BrickGlyph({
           relative to sprite top-left, shifted to the Group's local centre).
           Fallback: sprite bounding rect (desktop behaviour for parts without a
           hull element in the XML). */}
-      {(showBrickHulls || layer.hullProperties.isVisible) && (() => {
-        const hull = layer.hullProperties;
-        const color = hullColorToCss(hull.hullColor);
-        const sw = Math.max(1, hull.hullThickness);
+      {showHull && (() => {
+        const color = hullColor;
+        const sw = Math.max(1, hullThickness);
         const pts = meta?.hullPts;
         if (pts && pts.length >= 3) {
           // Flatten to Konva points array: [x0,y0, x1,y1, ...]
@@ -603,7 +650,7 @@ const BrickGlyph = memo(function BrickGlyph({
           OR when the layer's displayBrickElevation flag is set.
           Port of SceneBuilder.cpp elevation label (brickElevation key).
           Only shown for non-zero altitude so the canvas stays clean. */}
-      {(showBrickElevation || layer.displayBrickElevation) && brick.altitude !== 0 && (
+      {showElevation && brick.altitude !== 0 && (
         <KonvaText
           x={-spriteWpx / 2 + 2}
           y={-spriteHpx / 2 + 2}
@@ -652,20 +699,4 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
     }
   }
   return out;
-}
-
-/**
- * Last-resort lookup for bricks whose stored `partNumber` doesn't include
- * a colour code (e.g. "BT R104" rather than "BT R104.8"). Walk the catalog
- * for any colour variant of the same partNumber.
- */
-function lookupByPartNumberOnly(
-  partsByKey: Map<string, PartWire>,
-  partNumber: string,
-): PartWire | undefined {
-  const lower = partNumber.toLowerCase();
-  for (const p of partsByKey.values()) {
-    if (p.partNumber.toLowerCase() === lower) return p;
-  }
-  return undefined;
 }
