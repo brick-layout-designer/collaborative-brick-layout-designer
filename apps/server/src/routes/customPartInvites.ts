@@ -10,6 +10,8 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { hasVerifiedEmail } from '../auth/users.js';
+import { sameEmail } from '../utils/validate.js';
 
 export async function customPartInviteRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { token: string } }>(
@@ -62,8 +64,13 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
         return reply.code(410).send({ error: 'invite_expired' });
       }
       // Email-match check — same security invariant as layout invites.
-      if (invite.invitedEmail.toLowerCase() !== user.email.toLowerCase()) {
+      if (!sameEmail(invite.invitedEmail, user.email)) {
         return reply.code(403).send({ error: 'email_mismatch' });
+      }
+      // The email match only proves anything if the account has proven
+      // it controls that mailbox.
+      if (!(await hasVerifiedEmail(user))) {
+        return reply.code(403).send({ error: 'email_not_verified' });
       }
 
       const now = new Date();

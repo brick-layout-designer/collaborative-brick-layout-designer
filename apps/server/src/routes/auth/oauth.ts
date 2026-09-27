@@ -39,6 +39,7 @@ export async function oauthRoutes(app: FastifyInstance) {
         return await completeLogin(reply, 'google', profile);
       } catch (e) {
         if (e instanceof OAuth2RequestError) return reply.code(400).send({ error: 'oauth_error' });
+        if (e instanceof UnverifiedEmailError) return reply.code(403).send({ error: 'email_not_verified' });
         throw e;
       }
     });
@@ -129,7 +130,14 @@ function readStateCookies(req: import('fastify').FastifyRequest) {
   };
 }
 
-async function fetchGoogleProfile(accessToken: string): Promise<NormalisedProfile> {
+/** Thrown when the provider can't vouch for the account's email. */
+export class UnverifiedEmailError extends Error {
+  constructor() {
+    super('provider email not verified');
+  }
+}
+
+export async function fetchGoogleProfile(accessToken: string): Promise<NormalisedProfile> {
   const res = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -137,9 +145,14 @@ async function fetchGoogleProfile(accessToken: string): Promise<NormalisedProfil
   const data = (await res.json()) as {
     sub: string;
     email: string;
+    email_verified?: boolean;
     name?: string;
     picture?: string;
   };
+  // OAuth accounts are created with emailVerified=true and matched to
+  // invites by email, so an address Google hasn't verified (possible for
+  // Google accounts registered with a non-Gmail address) must not sign in.
+  if (data.email_verified !== true || !data.email) throw new UnverifiedEmailError();
   return {
     providerUserId: data.sub,
     email: data.email,

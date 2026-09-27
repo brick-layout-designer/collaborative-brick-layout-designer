@@ -13,14 +13,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { isValidEmail } from '../utils/validate.js';
+import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -322,7 +322,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       if (!hasAtLeast(role, 'owner')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
-      const { email, role: inviteRole } = req.body;
+      const { role: inviteRole } = req.body;
+      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
       if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
@@ -337,7 +338,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       const recipient = await db
         .select()
         .from(schema.users)
-        .where(eq(schema.users.email, email))
+        .where(sql`lower(${schema.users.email}) = ${email}`)
         .get();
       if (!recipient) {
         // Persist the invite as a pending row; once the recipient
