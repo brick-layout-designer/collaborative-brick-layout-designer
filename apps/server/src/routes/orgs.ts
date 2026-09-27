@@ -20,7 +20,7 @@ import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
-import { escapeLike, isValidEmail } from '../utils/validate.js';
+import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
 
 interface CreateOrgBody {
   name: string;
@@ -264,8 +264,12 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         if (!isValidEmail(req.body.email)) {
           return reply.code(400).send({ error: 'invalid_email' });
         }
-        email = req.body.email;
-        existingUser = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+        email = normalizeEmail(req.body.email);
+        existingUser = await db
+          .select()
+          .from(schema.users)
+          .where(sql`lower(${schema.users.email}) = ${email}`)
+          .get();
       } else if (req.body.userId) {
         // The autocomplete path — resolve the email server-side so the
         // client (and the searching admin) never needs to see it.
@@ -366,7 +370,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
               // Exact email match only (not a substring LIKE) — lets an
               // admin invite-by-pasting-the-exact-email still work
               // without turning this into an email substring search.
-              eq(schema.users.email, needle),
+              sql`lower(${schema.users.email}) = ${normalizeEmail(needle)}`,
             ),
           ),
         )
@@ -527,7 +531,18 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
 
       const rows = await db
-        .select()
+        .select({
+          id: schema.layouts.id,
+          title: schema.layouts.title,
+          ownerUserId: schema.layouts.ownerUserId,
+          ownerOrgId: schema.layouts.ownerOrgId,
+          createdAt: schema.layouts.createdAt,
+          updatedAt: schema.layouts.updatedAt,
+          expiresAt: schema.layouts.expiresAt,
+          docVersion: schema.layouts.docVersion,
+          // Metadata only — don't load the doc blobs to list titles.
+          hasSidecar: sql<number>`${schema.layouts.sidecarSnapshot} IS NOT NULL`,
+        })
         .from(schema.layouts)
         .where(eq(schema.layouts.ownerOrgId, org.id));
       return {
@@ -540,7 +555,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           updatedAt: l.updatedAt.getTime(),
           expiresAt: l.expiresAt?.getTime() ?? null,
           docVersion: l.docVersion,
-          hasSidecar: l.sidecarSnapshot !== null,
+          hasSidecar: Boolean(l.hasSidecar),
         })),
       };
     },

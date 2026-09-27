@@ -39,6 +39,33 @@ describe('formatNumber', () => {
   });
 });
 
+describe("formatNumber matches desktop QString::number(v, 'g', p)", () => {
+  it('switches to scientific below 1e-4 with a two-digit exponent', () => {
+    expect(formatNumber(0.0001)).toBe('0.0001');
+    expect(formatNumber(0.00012345678, 'g7')).toBe('0.0001234568');
+    expect(formatNumber(0.00001)).toBe('1e-05');
+    expect(formatNumber(-1.5e-5, 'g7')).toBe('-1.5e-05');
+    expect(formatNumber(1.4210854715202004e-14, 'g7')).toBe('1.421085e-14');
+    expect(formatNumber(2.5e-7)).toBe('2.5e-07');
+  });
+
+  it('switches to scientific at 10^precision', () => {
+    expect(formatNumber(1234567, 'g7')).toBe('1234567');
+    expect(formatNumber(1234567.5, 'g7')).toBe('1234568');
+    expect(formatNumber(12345678, 'g7')).toBe('1.234568e+07');
+    expect(formatNumber(1e7, 'g7')).toBe('1e+07');
+    expect(formatNumber(12345678)).toBe('12345678');
+  });
+
+  it('formats g7 fields from their single-precision value (desktop stores float)', () => {
+    // 0.1f == 0.100000001490116…; still prints as 0.1 at G7.
+    expect(formatNumber(0.1, 'g7')).toBe('0.1');
+    // Rounds at the 7th significant digit after the float cast.
+    expect(formatNumber(9.99999999, 'g7')).toBe('10');
+    expect(formatNumber(-0.30000001, 'g7')).toBe('-0.3');
+  });
+});
+
 describe('formatInt', () => {
   it('round-trips integers', () => {
     expect(formatInt(0)).toBe('0');
