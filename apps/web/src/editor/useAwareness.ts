@@ -8,7 +8,7 @@
 // y-websocket layer broadcasts our state to peers and surfaces their
 // state in `awareness.getStates()`.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import { useEditorStore } from './editorStore';
 import {
@@ -26,78 +26,110 @@ interface UsePublishOpts {
   layoutId: string;
 }
 
+/** How often remote peers' idle flags are re-evaluated. */
+const IDLE_TICK_MS = 5_000;
+
+/** Minimum interval between cursor-only awareness broadcasts (~20 Hz). */
+export const CURSOR_PUBLISH_INTERVAL_MS = 50;
+
 /**
  * Build and publish the local user's awareness state. Reads from the
- * editor store (selection, tool, cursor) and combines with the user's
- * identity. Each store change triggers a single `awareness.setLocalState`
- * call — the y-websocket layer batches the wire update.
+ * editor store (selection, tool, active layer) and combines with the
+ * user's identity. Identity / selection / tool changes publish at once.
+ *
+ * The cursor is deliberately kept OUT of React state: it used to be a
+ * `useState` in the Editor, so every mouse move (rAF-coalesced, 60 Hz)
+ * re-rendered the whole editor tree. It now lives in a ref and is
+ * broadcast straight to the awareness instance, throttled to
+ * CURSOR_PUBLISH_INTERVAL_MS (leading + trailing edge).
  */
 export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts): void {
   const tool = useEditorStore((s) => s.tool);
   const selection = useEditorStore((s) => s.selection);
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
-  // Cursor in stud coordinates. Tracked at the canvas level via a
-  // window-level event so we don't have to thread state through React.
-  const [cursor, setCursor] = useState<AwarenessCursor | null>(null);
+  const cursorRef = useRef<AwarenessCursor | null>(null);
+  // Latest everything-but-the-cursor, so the throttled cursor publisher
+  // (a long-lived listener) always sends a complete, current state.
+  const baseRef = useRef<{
+    user: AwarenessUser;
+    selection: string[];
+    tool: AwarenessState['tool'];
+    activeLayerId: string | null;
+  } | null>(null);
+  const publishRef = useRef<() => void>(() => undefined);
 
-  // Tap into a global custom event the canvas dispatches on mousemove.
-  // Decouples awareness publishing from the canvas implementation.
-  //
-  // Raw mousemove fires far faster than we need to broadcast a cursor
-  // (60-120+ Hz) — without throttling, every pixel of movement (including
-  // while dragging a brick) triggered a React state update AND a
-  // WebSocket awareness broadcast, competing with the drag for the main
-  // thread. Coalesce to one update per animation frame instead: same
-  // perceived smoothness, far fewer renders/broadcasts.
+  publishRef.current = () => {
+    const base = baseRef.current;
+    if (!awareness || !base) return;
+    const cursor = cursorRef.current;
+    const cursorWithLayer: AwarenessCursor | null =
+      cursor && base.activeLayerId
+        ? { x: cursor.x, y: cursor.y, layerId: base.activeLayerId }
+        : cursor;
+    const state: AwarenessState = {
+      user: base.user,
+      cursor: cursorWithLayer,
+      selection: { brickIds: base.selection },
+      tool: base.tool,
+      lastActivityMs: Date.now(),
+    };
+    awareness.setLocalState(state);
+  };
+
+  // Cursor: window-level custom events from the canvas, throttled.
   useEffect(() => {
-    let pending: AwarenessCursor | null | undefined;
-    let raf: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastSent = 0;
+    let dirty = false;
     function flush() {
-      raf = null;
-      if (pending !== undefined) {
-        setCursor(pending);
-        pending = undefined;
-      }
+      timer = null;
+      if (!dirty) return;
+      dirty = false;
+      lastSent = performance.now();
+      publishRef.current();
+    }
+    function schedule() {
+      dirty = true;
+      if (timer !== null) return;
+      const wait = Math.max(0, CURSOR_PUBLISH_INTERVAL_MS - (performance.now() - lastSent));
+      timer = setTimeout(flush, wait);
     }
     function onMove(e: Event) {
-      const detail = (e as CustomEvent<AwarenessCursor>).detail;
-      pending = detail;
-      if (raf === null) raf = requestAnimationFrame(flush);
+      cursorRef.current = (e as CustomEvent<AwarenessCursor>).detail;
+      schedule();
     }
     function onLeave() {
-      pending = null;
-      if (raf === null) raf = requestAnimationFrame(flush);
+      cursorRef.current = null;
+      schedule();
     }
     window.addEventListener('cld-cursor-move', onMove);
     window.addEventListener('cld-cursor-leave', onLeave);
     return () => {
       window.removeEventListener('cld-cursor-move', onMove);
       window.removeEventListener('cld-cursor-leave', onLeave);
-      if (raf !== null) cancelAnimationFrame(raf);
+      if (timer !== null) clearTimeout(timer);
     };
   }, []);
 
+  // Identity / selection / tool / layer: publish immediately.
   useEffect(() => {
-    if (!awareness || !me) return;
-    const user: AwarenessUser = {
-      id: me.id,
-      displayName: me.displayName,
-      avatarUrl: me.avatarUrl,
-      color: deterministicColor(me.id, layoutId),
-    };
-    const cursorWithLayer: AwarenessCursor | null =
-      cursor && activeLayerId
-        ? { x: cursor.x, y: cursor.y, layerId: activeLayerId }
-        : cursor;
-    const state: AwarenessState = {
-      user,
-      cursor: cursorWithLayer,
-      selection: { brickIds: selection },
+    if (!awareness || !me) {
+      baseRef.current = null;
+      return;
+    }
+    baseRef.current = {
+      user: {
+        id: me.id,
+        displayName: me.displayName,
+        avatarUrl: me.avatarUrl,
+        color: deterministicColor(me.id, layoutId),
+      },
+      selection,
       tool,
-      lastActivityMs: Date.now(),
+      activeLayerId,
     };
-    awareness.setLocalState(state);
-  }, [awareness, me, layoutId, tool, selection, activeLayerId, cursor]);
+    publishRef.current();
+  }, [awareness, me, layoutId, tool, selection, activeLayerId]);
 }
 
 /**
@@ -112,9 +144,25 @@ export function useRemotePeers(awareness: Awareness | null): {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!awareness) return;
-    const onChange = () => setTick((t) => t + 1);
+    // Our own state changes on every (throttled) cursor move; those must
+    // not re-render the remote-cursor layer / presence list.
+    const self = awareness.clientID;
+    const onChange = (changes: { added: number[]; updated: number[]; removed: number[] }) => {
+      const touchesPeer =
+        changes.added.some((c) => c !== self) ||
+        changes.updated.some((c) => c !== self) ||
+        changes.removed.some((c) => c !== self);
+      if (touchesPeer) setTick((t) => t + 1);
+    };
     awareness.on('change', onChange);
-    return () => awareness.off('change', onChange);
+    // Peers going idle produce no awareness change, so re-evaluate the
+    // idle flags periodically (they used to piggy-back on our own
+    // per-mousemove state changes).
+    const idleTimer = setInterval(() => setTick((t) => t + 1), IDLE_TICK_MS);
+    return () => {
+      awareness.off('change', onChange);
+      clearInterval(idleTimer);
+    };
   }, [awareness]);
 
   return useMemo(() => {
