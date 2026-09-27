@@ -44,6 +44,7 @@ import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
 import { localBbmDownload, sha256Hex } from '../bbmFiles';
+import { backgroundImageRectPx } from './background';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
@@ -2373,7 +2374,7 @@ function Canvas({
             }}
           />
         </Group>
-        <BackgroundImageLayer doc={doc} map={map} />
+        <BackgroundImageLayer doc={doc} />
         <Group listening={!isViewer}>
           {isViewer
             ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
@@ -3043,16 +3044,10 @@ function ResizableDockSlot({
 
 /**
  * Renders the sidecar background image as a Konva layer below all content.
- * Port of MapViewPaint.cpp:43-70. When no rect is set the image stretches
- * to the brick bounding box; when a rect is stored it is placed there.
+ * Port of MapViewPaint.cpp:41-67: placed at its stored rect, or at native
+ * size at the origin when there is none (see backgroundImageRectPx).
  */
-function BackgroundImageLayer({
-  doc,
-  map,
-}: {
-  doc: import('yjs').Doc;
-  map: import('@cld/model').BbmMap | null;
-}) {
+function BackgroundImageLayer({ doc }: { doc: import('yjs').Doc }) {
   const bg = readSidecarFromDoc(doc)?.backgroundImage ?? null;
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -3067,31 +3062,11 @@ function BackgroundImageLayer({
 
   if (!bg || !img) return null;
 
-  const PX = 8;
-  let x: number, y: number, w: number, h: number;
-  if (bg.rect) {
-    x = bg.rect.x * PX; y = bg.rect.y * PX;
-    w = bg.rect.w * PX; h = bg.rect.h * PX;
-  } else if (map) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        minX = Math.min(minX, b.displayArea.x);
-        minY = Math.min(minY, b.displayArea.y);
-        maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-        maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-      }
-    }
-    if (!Number.isFinite(minX)) return null;
-    x = minX * PX; y = minY * PX; w = (maxX - minX) * PX; h = (maxY - minY) * PX;
-  } else {
-    return null;
-  }
+  const r = backgroundImageRectPx(bg, { width: img.naturalWidth, height: img.naturalHeight });
 
   return (
     <Group listening={false}>
-      <KonvaImage image={img} x={x} y={y} width={w} height={h} opacity={bg.opacity} listening={false} />
+      <KonvaImage image={img} x={r.x} y={r.y} width={r.width} height={r.height} opacity={bg.opacity} listening={false} />
     </Group>
   );
 }

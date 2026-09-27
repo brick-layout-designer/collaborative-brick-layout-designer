@@ -3,7 +3,7 @@ import { Group, Line, Rect, Text } from 'react-konva';
 import type { BbmMap, LayerGrid } from '@cld/model';
 import { studToPx } from './coords';
 import { useEditorStore } from '../editorStore';
-import { colorSpecToCss, colorSpecToHex } from '../layerOptions';
+import { colorSpecToCss } from '../layerOptions';
 import { cellIndexLabels, parseCellIndexCorner } from './gridIndex';
 
 export interface ViewportRect {
@@ -62,7 +62,7 @@ export function GridLayer({
         y={bgYMin * px}
         width={(bgXMax - bgXMin) * px}
         height={(bgYMax - bgYMin) * px}
-        fill={colorSpecToHex(map.backgroundColor, '#404040')}
+        fill={colorSpecToCss(map.backgroundColor, '#404040')}
         listening={false}
       />
       {gridVisible && grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
