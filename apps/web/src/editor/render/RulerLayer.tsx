@@ -570,24 +570,24 @@ function parseFontStyle(style: string | undefined): string {
 }
 
 /**
- * Format a stud count as the desktop's `formatDistance` does (matches
- * Tools/Distance.cs Unit enum: 0 STUD, 1 LDU, 2 STRAIGHT_TRACK,
- * 3 MODULE, 4 METER, 5 FEET — see SceneBuilder.cpp:459-...).
+ * Format a stud count exactly like desktop `formatDistance`
+ * (rendering/SceneBuilder.cpp:471-483; Tools/Distance.cs Unit enum:
+ * 0 STUD, 1 LDU, 2 STRAIGHT_TRACK, 3 MODULE, 4 METER, 5 FEET).
  */
-function formatDistance(studs: number, unit: number): string {
+export function formatDistance(studs: number, unit: number): string {
   switch (unit) {
-    case 1: // LDU — 1 stud = 20 LDU
-      return `${(studs * 20).toFixed(1)} LDU`;
-    case 2: // STRAIGHT_TRACK — 1 track = 16 studs
-      return `${(studs / 16).toFixed(2)} ST`;
-    case 3: // MODULE — 1 module = 96 studs
+    case 1: // 1 stud = 20 LDU
+      return `${(studs * 20).toFixed(0)} LDU`;
+    case 2: // 1 straight track = 16 studs
+      return `${(studs / 16).toFixed(2)} tracks`;
+    case 3: // 1 AFOL module = 96 studs
       return `${(studs / 96).toFixed(2)} mod`;
     case 4:
-      return `${(studs * 0.008).toFixed(2)} m`;
+      return `${(studs * 0.008).toFixed(3)} m`;
     case 5:
       return `${(studs * 0.026248).toFixed(2)} ft`;
     default:
-      return `${studs.toFixed(1)} studs`;
+      return `${studs.toFixed(2)} studs`;
   }
 }
 

@@ -226,10 +226,13 @@ export const useEditorStore = create<EditorState>((set) => ({
   reopenLastFile: localStorage.getItem('cld:reopenLastFile') === 'true',
   showElectricCircuits: localStorage.getItem('cld:showElectricCircuits') === 'true',
   showExportWatermark: localStorage.getItem('cld:showExportWatermark') === 'true',
+  // Desktop `view/moduleLabelPercent`: % of the module's long axis,
+  // 5..100, default 35. New storage key — the old one held a different,
+  // unused scale.
   moduleLabelPercent: (() => {
-    const v = localStorage.getItem('cld:moduleLabelPercent');
-    const n = v !== null ? parseFloat(v) : 100;
-    return Number.isFinite(n) && n > 0 ? n : 100;
+    const v = localStorage.getItem('cld:moduleLabelPct');
+    const n = v !== null ? parseFloat(v) : 35;
+    return Number.isFinite(n) ? Math.max(5, Math.min(100, n)) : 35;
   })(),
   venueLabelPx: (() => {
     const v = localStorage.getItem('cld:venueLabelPx');
@@ -308,8 +311,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     set({ showExportWatermark: v });
   },
   setModuleLabelPercent: (v) => {
-    const clamped = Math.max(10, Math.min(400, v));
-    localStorage.setItem('cld:moduleLabelPercent', String(clamped));
+    const clamped = Math.max(5, Math.min(100, v));
+    localStorage.setItem('cld:moduleLabelPct', String(clamped));
     set({ moduleLabelPercent: clamped });
   },
   setVenueLabelPx: (v) => {

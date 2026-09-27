@@ -10,11 +10,13 @@
 // Persistence is now the server's job — every accepted update is written
 // to `layout_updates` and periodically compacted into a fresh snapshot
 // (see apps/server/src/ws/docHub.ts). The client doesn't ship a
-// "save" message anymore; the Save button forces a server-side
-// snapshot write via `POST /api/layouts/:id/snapshot/flush` (TODO),
-// and Cmd-S becomes a no-op (every edit is already saved).
+// "save" message anymore: the server appends every accepted update to
+// `layout_updates` before relaying it, so an edit is durable as soon as
+// the socket is connected and synced. Save / Cmd-S therefore reports
+// whether that is the case (see `saveNow`), and the editor offers a local
+// .bbm download when it isn't.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { Awareness } from 'y-protocols/awareness';
@@ -31,8 +33,12 @@ export interface LayoutDocState {
   awareness: Awareness | null;
   /** Connection status — drives the synced/reconnecting indicator. */
   status: SaveStatus;
-  /** Backwards-compatible no-op kept for the explicit Save button + Cmd-S. */
-  saveNow: () => Promise<void>;
+  /**
+   * Explicit Save / Cmd-S. Resolves 'saved' when the socket is connected
+   * and synced (every edit has then reached the server, which persists
+   * each update), 'offline' otherwise.
+   */
+  saveNow: () => Promise<SaveResult>;
   /** Surfaced to the UI for "couldn't connect" cases (auth, 404, etc). */
   loadError: Error | null;
   loading: boolean;
@@ -46,6 +52,8 @@ export interface LayoutDocState {
  * the WebsocketProvider instance) doesn't get reverted by Cmd-Z.
  */
 export const LOCAL_ORIGIN = Symbol('cld-local-origin');
+
+export type SaveResult = 'saved' | 'offline';
 
 const SYNC_TIMEOUT_MS = 10_000;
 
@@ -62,6 +70,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
   const [status, setStatus] = useState<SaveStatus>({ kind: 'connecting' });
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
+  const providerRef = useRef<WebsocketProvider | null>(null);
 
   useEffect(() => {
     setDoc(null);
@@ -78,6 +87,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       // params: we rely on the session cookie for auth; nothing else.
       connect: true,
     });
+    providerRef.current = provider;
 
     let lastSyncedAt: number | null = null;
     let syncTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
@@ -141,15 +151,16 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       provider.off('connection-close', onConnectionClose);
       provider.disconnect();
       provider.destroy();
+      if (providerRef.current === provider) providerRef.current = null;
       fresh.destroy();
     };
   }, [layoutId]);
 
-  // Save is implicit (every edit goes over WS). Kept as a no-op for the
-  // Save button + Cmd-S binding so the existing UI keeps compiling. A
-  // forthcoming follow-up may add a "force snapshot now" REST call.
-  const saveNow = useCallback(async (): Promise<void> => {
-    /* implicit save */
+  // Edits stream over the socket and the server persists each update on
+  // receipt, so "saved" means: connected and synced right now.
+  const saveNow = useCallback(async (): Promise<SaveResult> => {
+    const p = providerRef.current;
+    return p && p.wsconnected && p.synced ? 'saved' : 'offline';
   }, []);
 
   return useMemo(

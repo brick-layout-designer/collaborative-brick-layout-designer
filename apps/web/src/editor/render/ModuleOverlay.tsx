@@ -3,7 +3,9 @@
 //
 // Each sidecar module has a `members` array of brick IDs. We compute the
 // AABB of all member bricks, draw a dashed outline around it (frame), and
-// place the module name above the top-left corner (label).
+// place the module name outside the frame, centred on a long side, sized
+// as `moduleLabelPercent`% of the long axis (SceneBuilderSidecar.cpp:242-368).
+// Desktop also dodges other modules' labels; we keep the first slot.
 
 import { Group, Rect, Text } from 'react-konva';
 import type { BbmMap } from '@cld/model';
@@ -16,10 +18,21 @@ interface Props {
   modules: SidecarModule[];
 }
 
+/**
+ * Module name font size in scene px: `percent`% of the frame's long axis,
+ * clamped to 16..400 px like desktop.
+ */
+export function moduleLabelFontPx(frameWpx: number, frameHpx: number, percent: number): number {
+  const longAxis = Math.max(frameWpx, frameHpx);
+  const pct = Math.max(5, Math.min(100, percent));
+  return Math.round(Math.max(16, Math.min(400, longAxis * (pct / 100))));
+}
+
 export function ModuleOverlay({ map, modules }: Props) {
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
   const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const frameThickness = useEditorStore((s) => s.moduleFrameThickness);
+  const labelPercent = useEditorStore((s) => s.moduleLabelPercent);
 
   if ((!showModuleNames && !showModuleFrames) || modules.length === 0) return null;
 
@@ -59,6 +72,12 @@ export function ModuleOverlay({ map, modules }: Props) {
         const pw = (maxX - minX) * pxPerStud;
         const ph = (maxY - minY) * pxPerStud;
         const PAD = 4;
+        const portrait = ph > pw;
+        const fontPx = moduleLabelFontPx(pw, ph, labelPercent);
+        const GAP = 16; // desktop padOut
+        // Landscape: centred above the frame. Portrait: rotated along the
+        // left edge, reading bottom-to-top.
+        const labelW = portrait ? ph + PAD * 2 : pw + PAD * 2;
 
         return (
           <Group key={mod.id}>
@@ -78,14 +97,18 @@ export function ModuleOverlay({ map, modules }: Props) {
             )}
             {showModuleNames && (
               <Text
-                x={px - PAD}
-                y={py - PAD - 14}
+                {...(portrait
+                  ? { x: px - PAD - GAP - fontPx, y: py + ph + PAD, rotation: -90 }
+                  : { x: px - PAD, y: py - PAD - GAP - fontPx })}
+                width={labelW}
+                align="center"
+                wrap="none"
                 text={mod.name || '(module)'}
-                fontSize={11}
+                fontSize={fontPx}
                 fontStyle="bold"
                 fill="rgba(100,180,255,0.9)"
                 stroke="rgba(0,0,0,0.6)"
-                strokeWidth={2}
+                strokeWidth={Math.max(2, fontPx / 12)}
                 fillAfterStrokeEnabled
                 perfectDrawEnabled={false}
               />
