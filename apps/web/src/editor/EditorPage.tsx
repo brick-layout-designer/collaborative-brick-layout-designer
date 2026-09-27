@@ -1153,6 +1153,50 @@ function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, width, height]);
 
+  // Finish the venue outline / obstacle being drawn (≥3 points) and
+  // return to the select tool. Enter or right-click, like desktop
+  // MapView::finishVenueDraw (MapView.cpp:484-489).
+  function finishVenueDraft() {
+    if (!venueDraft || isViewer) return;
+    const pts = venueDraft.pts;
+    const kind = venueDraft.kind;
+    if (pts.length >= 3 && doc) {
+      void (async () => {
+
+        const existing = readSidecarFromDoc(doc);
+        if (kind === 'outline') {
+          const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
+            kind: 0,
+            doorWidthStuds: 0,
+            label: '',
+            poly: [pt, pts[(i + 1) % pts.length]!],
+          }));
+          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+          const minX = Math.min(...xs), minY = Math.min(...ys);
+          const maxX = Math.max(...xs), maxY = Math.max(...ys);
+          const venue: import('@cld/bbm').Venue = {
+            name: existing?.venue?.name ?? '',
+            enabled: existing?.venue?.enabled ?? true,
+            minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
+            bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+            edges,
+            obstacles: existing?.venue?.obstacles ?? [],
+          };
+          setVenue(doc, venue);
+        } else {
+          const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
+          const base = existing?.venue ?? {
+            name: '', enabled: true, minWalkwayStuds: 0,
+            bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
+          };
+          setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
+        }
+      })();
+    }
+    setVenueDraft(null);
+    useEditorStore.getState().setTool('select');
+  }
+
   // Canvas keyboard shortcuts — port of desktop MapView::keyPressEvent
   // (MapView.cpp:942-983) and MainWindowMenus.cpp shortcut bindings:
   //
@@ -1161,7 +1205,7 @@ function Canvas({
   //   R                     — rotate CCW 90°                    (MapView.cpp:964, MainWindowMenus.cpp:423)
   //   Shift+R               — rotate CW 90°                     (MapView.cpp:964, MainWindowMenus.cpp:418)
   //   Arrow keys            — nudge selection by 1 stud         (MapView.cpp:970-980)
-  //   Ctrl+A                — select all bricks in active layer (MainWindowMenus.cpp:359)
+  //   Ctrl+A                — select all visible bricks          (MapView.cpp:1417)
   //   Ctrl+Shift+A          — select none                       (MainWindowMenus.cpp:362)
   // The handler is rebuilt every render (so it always sees the current
   // venueDraft / selection / map / status ...) and a single window
@@ -1189,43 +1233,7 @@ function Canvas({
       // Enter — commit venue-draw polygon (≥3 pts) or obstacle.
       if (e.key === 'Enter' && venueDraft && !isViewer) {
         e.preventDefault();
-        const pts = venueDraft.pts;
-        const kind = venueDraft.kind;
-        if (pts.length >= 3 && doc) {
-          void (async () => {
-
-            const existing = readSidecarFromDoc(doc);
-            if (kind === 'outline') {
-              const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
-                kind: 0,
-                doorWidthStuds: 0,
-                label: '',
-                poly: [pt, pts[(i + 1) % pts.length]!],
-              }));
-              const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-              const minX = Math.min(...xs), minY = Math.min(...ys);
-              const maxX = Math.max(...xs), maxY = Math.max(...ys);
-              const venue: import('@cld/bbm').Venue = {
-                name: existing?.venue?.name ?? '',
-                enabled: existing?.venue?.enabled ?? true,
-                minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
-                bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-                edges,
-                obstacles: existing?.venue?.obstacles ?? [],
-              };
-              setVenue(doc, venue);
-            } else {
-              const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
-              const base = existing?.venue ?? {
-                name: '', enabled: true, minWalkwayStuds: 0,
-                bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
-              };
-              setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
-            }
-          })();
-        }
-        setVenueDraft(null);
-        useEditorStore.getState().setTool('select');
+        finishVenueDraft();
         return;
       }
 
@@ -1572,7 +1580,10 @@ function Canvas({
     // Right-click opens the context menu — don't clear selection or start marquee.
     if (evt.button === 2) return;
 
-    if (e.target !== e.target.getStage()) return;
+    // Only the select tool defers to whatever was clicked; ruler, venue and
+    // paint tools act anywhere, over bricks too (desktop handles them before
+    // item hit-testing, MapView.cpp:456-535).
+    if (tool === 'select' && e.target !== e.target.getStage()) return;
     const studs = pointerStuds();
     if (!studs) return;
 
@@ -2152,6 +2163,10 @@ function Canvas({
       onContextMenu={(e) => {
         e.evt.preventDefault();
         if (isViewer) return;
+        if (tool === 'venueOutline' || tool === 'venueObstacle') {
+          finishVenueDraft();
+          return;
+        }
         const stage = stageRef.current;
         if (!stage) return;
         const ptr = stage.getPointerPosition();
