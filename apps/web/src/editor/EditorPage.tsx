@@ -78,6 +78,7 @@ import { MODULE_MIME, MODULE_NAME_MIME } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
+import { EXPORT_HIDE, renderMapToCanvas } from './exportRender';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -705,6 +706,7 @@ function Canvas({
   onSaveModule: () => void;
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
+  const hudLayerRef = useRef<Konva.Layer | null>(null);
   const { width, height } = useViewportSize();
   // Pan/zoom are plain React state, passed straight to <Stage> as
   // x/y/scaleX/scaleY props below. (An earlier version additionally
@@ -2053,17 +2055,19 @@ function Canvas({
 
   // Keep the export-image handle fresh (needs stageRef).
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
+  // Renders the whole map (content bounds + margin), not the viewport.
   exportImageRef.current = {
-    toDataURL: ({ pixelRatio, transparent }: { pixelRatio: number; transparent: boolean }) => {
+    render: ({ pixelRatio, transparent }) => {
       const stage = stageRef.current;
-      if (!stage) return null;
-      return stage.toDataURL({
+      if (!stage || !map) return null;
+      const stamp = [map.author, map.lug, map.event].filter(Boolean).join(' / ');
+      return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
         pixelRatio,
-        mimeType: 'image/png',
-        ...(transparent ? { background: 'rgba(0,0,0,0)' } : {}),
+        transparent,
+        hudLayer: hudLayerRef.current,
+        ...(showExportWatermark && stamp ? { watermark: stamp } : {}),
       });
     },
-    getStage: () => stageRef.current,
   };
 
   clipboardRef.current = {
@@ -2204,15 +2208,18 @@ function Canvas({
           `listening={false}` here would permanently defeat the child
           Group's `listening={!isViewer}`. */}
       <KonvaLayer listening={!isViewer} perfectDrawEnabled={false}>
-        <GridLayer
-          map={map}
-          viewport={{
-            studXMin: pxToStud(-panX / zoom),
-            studYMin: pxToStud(-panY / zoom),
-            studXMax: pxToStud((width - panX) / zoom),
-            studYMax: pxToStud((height - panY) / zoom),
-          }}
-        />
+        {/* View-only (desktop paints it in drawBackground): hidden on export. */}
+        <Group name={EXPORT_HIDE} listening={false}>
+          <GridLayer
+            map={map}
+            viewport={{
+              studXMin: pxToStud(-panX / zoom),
+              studYMin: pxToStud(-panY / zoom),
+              studXMax: pxToStud((width - panX) / zoom),
+              studYMax: pxToStud((height - panY) / zoom),
+            }}
+          />
+        </Group>
         <BackgroundImageLayer doc={doc} map={map} />
         <Group listening={!isViewer}>
           {isViewer
@@ -2301,7 +2308,7 @@ function Canvas({
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
           snap ring, ruler/venue drafts, remote cursors, export watermark. */}
-      <KonvaLayer listening={false} perfectDrawEnabled={false}>
+      <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
           if (!part || !map) {

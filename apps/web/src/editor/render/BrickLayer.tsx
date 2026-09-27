@@ -19,6 +19,7 @@ import {
 import { studToPx } from './coords';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap } from '../snap';
+import { EXPORT_HIDE } from '../exportRender';
 
 interface Props {
   map: BbmMap;
@@ -598,6 +599,7 @@ const BrickGlyph = memo(function BrickGlyph({
         return (
           <Circle
             key={`cp-${ci}`}
+            name={EXPORT_HIDE}
             x={cp.x * 8}
             y={cp.y * 8}
             radius={r}
@@ -619,6 +621,7 @@ const BrickGlyph = memo(function BrickGlyph({
         // the rotated brick's silhouette rather than the AABB.
         <>
           <Rect
+            name={EXPORT_HIDE}
             x={-spriteWpx / 2 - 1}
             y={-spriteHpx / 2 - 1}
             width={spriteWpx + 2}
@@ -631,6 +634,7 @@ const BrickGlyph = memo(function BrickGlyph({
             fillEnabled={false}
           />
           <Rect
+            name={EXPORT_HIDE}
             x={-spriteWpx / 2 - 1}
             y={-spriteHpx / 2 - 1}
             width={spriteWpx + 2}
