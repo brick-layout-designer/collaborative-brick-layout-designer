@@ -12,7 +12,7 @@ import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { eq, inArray, or, isNull } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { parsePartXml, scanCatalog } from '@cld/parts-catalog';
 import type { PartMetadata } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
