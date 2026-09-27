@@ -43,6 +43,7 @@ import { ModuleOverlay } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
+import { localBbmDownload, sha256Hex } from '../bbmFiles';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
@@ -3801,19 +3802,25 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
 
 /** Serialise the local doc to .bbm in the browser and download it. */
 async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
-  let xml: string;
+  let file: { filename: string; type: string; data: Uint8Array };
   try {
     // Loaded on demand: the .bbm codec is its own chunk.
-    const { writeBbm } = await import('@cld/bbm');
-    xml = writeBbm(docToBbm(doc));
+    const { writeBbm, writeSidecar } = await import('@cld/bbm');
+    const xml = writeBbm(docToBbm(doc));
+    // The sidecar (labels, modules, venue, background image) travels with
+    // the .bbm, hashed like the server export so desktop sees no drift.
+    const sidecar = readSidecarFromDoc(doc);
+    const hash = sidecar ? await sha256Hex(xml) : undefined;
+    const json = sidecar ? writeSidecar(sidecar, hash ? { bbmHashSha256: hash } : {}) : null;
+    file = localBbmDownload(title, xml, json);
   } catch (e) {
     window.alert(`Could not build the .bbm: ${(e as Error).message}`);
     return;
   }
-  const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+  const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout'}.bbm`;
+  a.download = file.filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

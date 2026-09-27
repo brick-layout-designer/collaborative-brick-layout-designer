@@ -187,7 +187,8 @@ test.describe('toolbar and menus', () => {
     await page.getByRole('button', { name: 'Map', exact: true }).click();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download .bbm' }).click();
-    expect((await download).suggestedFilename()).toBe('Parity_Test.bbm');
+    // No sidecar yet: the bare .bbm, named like the server export.
+    expect((await download).suggestedFilename()).toBe('Parity Test.bbm');
   });
 
   test('Export Image offers size, JPEG quality and antialias', async ({ page }) => {
