@@ -7,7 +7,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getVerificationToken } from '../dbHelpers';
+import { ensureUser, signIn } from '../helpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -20,50 +20,19 @@ const FORDYCE_BBM = readFileSync(
 const ts = Date.now();
 const OWNER_EMAIL = `collab-owner-${ts}@example.com`;
 const EDITOR_EMAIL = `collab-editor-${ts}@example.com`;
-const PASS = 'correct horse battery';
 
-/**
- * /api/auth/password/register and /login are both rate-limited (10/min)
- * — a real, intentional anti-abuse control, not something to weaken for
- * tests. This file alone registers/logs in well over 10 accounts across
- * its tests, so running it back-to-back with other specs (or itself)
- * can legitimately trip the limit. Retry on 429 using the server's own
- * `retry-after` header rather than guessing a backoff.
- */
-async function postWithRateLimitRetry(
-  page: Page,
-  path: string,
-  data: Record<string, string>,
-  label: string,
-): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await page.request.post(path, { data });
-    if (res.ok()) return;
-    if (res.status() === 429 && attempt < 3) {
-      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
-      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
-      continue;
-    }
-    expect(res.ok(), `${label} failed: ${res.status()} ${await res.text()}`).toBe(true);
-    return;
-  }
-}
+// Auth goes through helpers.ts, which registers + verifies each account
+// once (outside any browser context) and signs contexts in by reusing the
+// cached session — keeping this file well inside the register/login rate
+// limits.
 
-/** Register AND verify — every test in this file registers a brand-new, one-off email, so there's no shared-account idempotency concern here (contrast editor.spec.ts). */
-async function registerUser(page: Page, email: string, name: string): Promise<void> {
-  await postWithRateLimitRetry(
-    page,
-    '/api/auth/password/register',
-    { email, password: PASS, displayName: name },
-    'register',
-  );
-  const token = await getVerificationToken(email);
-  const res = await page.request.post(`/api/auth/password/verify-email/${token}`);
-  expect(res.ok(), `verify-email failed for ${email}: ${res.status()}`).toBe(true);
+/** Register AND verify — does not change who `page` is signed in as. */
+async function registerUser(_page: Page, email: string, name: string): Promise<void> {
+  await ensureUser(email, name);
 }
 
 async function loginUser(page: Page, email: string): Promise<void> {
-  await postWithRateLimitRetry(page, '/api/auth/password/login', { email, password: PASS }, 'login');
+  await signIn(page, email);
 }
 
 test.describe('collaboration — dual-editor session', () => {

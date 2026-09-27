@@ -12,10 +12,15 @@
 
 import { test, expect } from '@playwright/test';
 import { getVerificationToken, expireVerificationToken } from '../dbHelpers';
+import { PASS, postAuth, submitAuthForm } from '../helpers';
+
+// This file exercises the rate-limited register/login/resend endpoints
+// directly (and through the UI), so every such call goes through
+// helpers.ts's postAuth / submitAuthForm, which wait out a 429 instead of
+// failing — see helpers.ts.
 
 const ts = Date.now();
 const EMAIL = `auth-e2e-${ts}@example.com`;
-const PASS = 'correct horse battery';
 
 test.describe('auth — register', () => {
   test('registering shows a check-your-inbox state, not an immediate login', async ({ page }) => {
@@ -23,7 +28,9 @@ test.describe('auth — register', () => {
     await page.getByRole('button', { name: /need an account/i }).click();
     await page.getByLabel(/email/i).fill(EMAIL);
     await page.getByLabel(/password/i).fill(PASS);
-    await page.getByRole('button', { name: /create account/i }).click();
+    await submitAuthForm(page, '/api/auth/password/register', () =>
+      page.getByRole('button', { name: /create account/i }).click(),
+    );
 
     // Stays on /login (no session yet) and tells the user to check email.
     await expect(page).toHaveURL(/\/login/);
@@ -51,9 +58,7 @@ test.describe('auth — email verification', () => {
     const email = `verify-${ts}@example.com`;
     // Register via a cookie-isolated context — see the login-test
     // comment below for why `page.request` isn't used here.
-    await request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Verify User' },
-    });
+    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Verify User' });
 
     const token = await getVerificationToken(email);
     await page.goto(`/verify-email/${token}`);
@@ -64,9 +69,7 @@ test.describe('auth — email verification', () => {
 
   test('an expired verification link shows an error, not a login', async ({ page, request }) => {
     const email = `expired-${ts}@example.com`;
-    await request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Expired User' },
-    });
+    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Expired User' });
     const token = await getVerificationToken(email);
     await expireVerificationToken(email);
 
@@ -90,12 +93,16 @@ test.describe('auth — email verification', () => {
     await page.getByRole('button', { name: /need an account/i }).click();
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill(PASS);
-    await page.getByRole('button', { name: /create account/i }).click();
+    await submitAuthForm(page, '/api/auth/password/register', () =>
+      page.getByRole('button', { name: /create account/i }).click(),
+    );
     await expect(page.getByText(/check/i)).toBeVisible({ timeout: 5000 });
 
     const firstToken = await getVerificationToken(email);
 
-    await page.getByRole('button', { name: /resend/i }).click();
+    await submitAuthForm(page, '/api/auth/password/resend-verification', () =>
+      page.getByRole('button', { name: /resend/i }).click(),
+    );
     await expect(page.getByText(/sent/i)).toBeVisible({ timeout: 5000 });
 
     const secondToken = await getVerificationToken(email);
@@ -114,14 +121,14 @@ test.describe('auth — login', () => {
 
   test('logging in before verifying shows an error with a resend option', async ({ page, request }) => {
     const email = `unverified-${ts}@example.com`;
-    await request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Unverified User' },
-    });
+    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Unverified User' });
 
     await page.goto('/login');
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill(PASS);
-    await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
+    await submitAuthForm(page, '/api/auth/password/login', () =>
+      page.getByRole('button', { name: /log.?in|sign.?in/i }).click(),
+    );
     await expect(page).toHaveURL(/\/login/);
     await expect(page.getByText(/verify your email/i)).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole('button', { name: /resend/i })).toBeVisible();
@@ -135,31 +142,31 @@ test.describe('auth — login', () => {
     // browser itself to start signed out so `page.goto('/login')` below
     // renders the form instead of redirecting to `/`.
     const email = `login-${ts}@example.com`;
-    await request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Login User' },
-    });
+    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Login User' });
     const token = await getVerificationToken(email);
     await request.post(`/api/auth/password/verify-email/${token}`);
 
     await page.goto('/login');
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill(PASS);
-    await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
+    await submitAuthForm(page, '/api/auth/password/login', () =>
+      page.getByRole('button', { name: /log.?in|sign.?in/i }).click(),
+    );
     await expect(page).toHaveURL('/');
   });
 
   test('shows an error with wrong password', async ({ page, request }) => {
     const email = `badpass-${ts}@example.com`;
-    await request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Bad Pass' },
-    });
+    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Bad Pass' });
     const token = await getVerificationToken(email);
     await request.post(`/api/auth/password/verify-email/${token}`);
 
     await page.goto('/login');
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill('wrong-password-xyz');
-    await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
+    await submitAuthForm(page, '/api/auth/password/login', () =>
+      page.getByRole('button', { name: /log.?in|sign.?in/i }).click(),
+    );
     // Should stay on /login and show a human-readable error — NOT the raw
     // "/api/auth/password/login → 401" that used to leak straight from
     // api.ts's Error.message into the form (see api.ts's friendlyErrorMessage).
@@ -174,7 +181,9 @@ test.describe('auth — login', () => {
     await page.goto('/login');
     await page.getByLabel(/email/i).fill(`nobody-${ts}@example.com`);
     await page.getByLabel(/password/i).fill(PASS);
-    await page.getByRole('button', { name: /log.?in|sign.?in/i }).click();
+    await submitAuthForm(page, '/api/auth/password/login', () =>
+      page.getByRole('button', { name: /log.?in|sign.?in/i }).click(),
+    );
     await expect(page).toHaveURL(/\/login/);
     // Same credential-check error either way — the server doesn't reveal
     // whether the email exists, so the friendly message is identical to
@@ -188,9 +197,7 @@ test.describe('auth — login', () => {
 test.describe('auth — logout', () => {
   test('logs out and redirects to /login', async ({ page }) => {
     const email = `logout-${ts}@example.com`;
-    await page.request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Logout User' },
-    });
+    await postAuth(page.request, '/api/auth/password/register', { email, password: PASS, displayName: 'Logout User' });
     const token = await getVerificationToken(email);
     const loginRes = await page.request.post(`/api/auth/password/verify-email/${token}`);
     expect(loginRes.ok()).toBe(true);
@@ -213,9 +220,7 @@ test.describe('auth — logout', () => {
 test.describe('auth — profile page', () => {
   test('profile page is accessible after login', async ({ page }) => {
     const email = `profile-${ts}@example.com`;
-    await page.request.post('/api/auth/password/register', {
-      data: { email, password: PASS, displayName: 'Profile User' },
-    });
+    await postAuth(page.request, '/api/auth/password/register', { email, password: PASS, displayName: 'Profile User' });
     const token = await getVerificationToken(email);
     await page.request.post(`/api/auth/password/verify-email/${token}`);
     await page.goto('/profile');

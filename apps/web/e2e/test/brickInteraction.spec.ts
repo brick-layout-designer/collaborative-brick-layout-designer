@@ -19,7 +19,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getVerificationToken } from '../dbHelpers';
+import { signIn } from '../helpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -31,22 +31,11 @@ const FORDYCE_BBM = readFileSync(
 
 const ts = Date.now();
 const EMAIL = `brick-e2e-${ts}@example.com`;
-const PASS = 'correct horse battery';
 
-// Every test in this file shares EMAIL — register 409s after the first
-// call (fine), but verification only needs doing once.
-let verified = false;
-
+// Every test in this file acts as the same account; signIn registers and
+// verifies it once and reuses the session afterwards (see helpers.ts).
 async function loginAndImportFordyce(page: import('@playwright/test').Page): Promise<string> {
-  await page.request.post('/api/auth/password/register', {
-    data: { email: EMAIL, password: PASS, displayName: 'Brick Tester' },
-  });
-  if (!verified) {
-    const token = await getVerificationToken(EMAIL);
-    await page.request.post(`/api/auth/password/verify-email/${token}`);
-    verified = true;
-  }
-  await page.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+  await signIn(page, EMAIL, 'Brick Tester');
   const res = await page.request.post('/api/layouts', {
     data: { title: 'Brick Interaction Test', bbm: FORDYCE_BBM },
   });
@@ -150,7 +139,7 @@ test.describe('brick interaction — select and drag', () => {
     await page.close();
     const ctx2 = await page.context().browser()!.newContext();
     const verifyPage = await ctx2.newPage();
-    await verifyPage.request.post('/api/auth/password/login', { data: { email: EMAIL, password: PASS } });
+    await signIn(ctx2, EMAIL);
     const after = await verifyPage.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
     expect(after).not.toBe(before);
     await ctx2.close();
