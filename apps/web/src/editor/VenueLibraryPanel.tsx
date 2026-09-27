@@ -1,5 +1,6 @@
 // Venue Library panel — lists saved venues from the server, allows loading
-// into the current layout and deleting entries.
+// into the current layout, renaming (VenueLibraryPanel.cpp:244-255) and
+// deleting entries.
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +26,12 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
   const remove = useMutation({
     mutationFn: (id: string) => api.venues.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['venue-library'] }),
+  });
+
+  const rename = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.venues.rename(id, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['venue-library'] }),
+    onError: (e) => alert(`Could not rename the venue: ${(e as Error).message}`),
   });
 
   async function load(id: string) {
@@ -80,6 +87,20 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
                 className="rounded-sm border border-neutral-700 px-1.5 py-0.5 hover:bg-neutral-700"
               >
                 ↓
+              </button>
+            )}
+            {!isViewer && (
+              <button
+                onClick={() => {
+                  const next = prompt('New name:', v.name)?.trim();
+                  if (!next || next === v.name) return;
+                  rename.mutate({ id: v.id, name: next });
+                }}
+                title="Rename…"
+                aria-label={`Rename ${v.name}`}
+                className="rounded-sm border border-neutral-700 px-1.5 py-0.5 hover:bg-neutral-700"
+              >
+                ✎
               </button>
             )}
             <button

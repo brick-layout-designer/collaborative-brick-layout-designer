@@ -7,7 +7,8 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import * as Y from 'yjs';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { readBbm, readSidecar, writeBbm, writeSidecar } from '@cld/bbm';
+import { readBbm, readSidecar, writeBbm, writeSidecar, type Sidecar } from '@cld/bbm';
+import { hashBbmBytes } from '@cld/bbm/hash';
 import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm, seedFromSidecar } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
@@ -19,7 +20,7 @@ interface CreateLayoutBody {
   title?: string;
   /** Optional `.bbm` XML payload to seed the new layout from. */
   bbm?: string;
-  /** Optional `.bbm.cld` JSON payload to seed the sidecar. */
+  /** Optional sidecar JSON payload (desktop `.bbm.bld` or legacy web `.bbm.cld`). */
   sidecar?: string;
   /**
    * If provided, the new layout is org-owned. The caller must be a
@@ -130,28 +131,34 @@ export async function layoutRoutes(app: FastifyInstance) {
     let docSnapshot: Uint8Array;
     let sidecarSnapshot: Uint8Array | null = null;
 
+    let sidecar: Sidecar | null = null;
+    if (body.sidecar) {
+      try {
+        sidecar = readSidecar(body.sidecar);
+        sidecarSnapshot = encodeDoc(seedFromSidecar(sidecar));
+      } catch (e) {
+        return reply.code(400).send({ error: 'sidecar_parse_failed', detail: (e as Error).message });
+      }
+    }
+
+    let doc: Y.Doc;
     if (body.bbm) {
       try {
         const parsed = readBbm(body.bbm);
         // If no title was provided, derive one from the .bbm metadata —
         // either the LUG/Event line or fall back to default.
         if (!body.title?.trim() && parsed.map.event) title = parsed.map.event;
-        docSnapshot = encodeDoc(seedFromBbm(parsed.map));
+        doc = seedFromBbm(parsed.map);
       } catch (e) {
         return reply.code(400).send({ error: 'bbm_parse_failed', detail: (e as Error).message });
       }
     } else {
-      docSnapshot = encodeDoc(createDefaultLayoutDoc());
+      doc = createDefaultLayoutDoc();
     }
-
-    if (body.sidecar) {
-      try {
-        const parsed = readSidecar(body.sidecar);
-        sidecarSnapshot = encodeDoc(seedFromSidecar(parsed));
-      } catch (e) {
-        return reply.code(400).send({ error: 'sidecar_parse_failed', detail: (e as Error).message });
-      }
-    }
+    // The editor reads (and edits) the sidecar from the main doc's
+    // `meta.cache`, so an imported sidecar goes there too.
+    if (sidecar) doc.getMap('meta').set('cache', sidecar as unknown as Record<string, unknown>);
+    docSnapshot = encodeDoc(doc);
 
     // Resolve owner — personal by default, or an org if `orgSlug` provided.
     let ownerUserId: string | null = user.id;
@@ -348,35 +355,40 @@ export async function layoutRoutes(app: FastifyInstance) {
     return { ok: true, updatedAt: updatedAt.getTime() };
   });
 
-  // ---- export (.bbm.cld) ---------------------------------------------------
-  app.get<{ Params: { id: string } }>('/api/layouts/:id/export.bbm.cld', async (req, reply) => {
-    const user = requireUser(req);
-    const role = await resolveResourceRole(user.id, 'layout', req.params.id);
-    if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
+  // ---- export (.bbm.bld sidecar) -------------------------------------------
+  // Desktop loads the sidecar only from `<file>.bbm.bld` (SidecarIO.cpp
+  // sidecarPathFor), so that's the exported name. The JSON is the same
+  // schema desktop's readSidecar decodes. `export.bbm.cld` is the legacy
+  // URL, kept so old links still work.
+  for (const path of ['/api/layouts/:id/export.bbm.bld', '/api/layouts/:id/export.bbm.cld']) {
+    app.get<{ Params: { id: string } }>(path, async (req, reply) => {
+      const user = requireUser(req);
+      const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
-    const layout = await db
-      .select()
-      .from(schema.layouts)
-      .where(eq(schema.layouts.id, req.params.id))
-      .get();
-    if (!layout || !layout.sidecarSnapshot) {
-      return reply.code(404).send({ error: 'no_sidecar' });
-    }
-    const doc = decodeDoc(layout.sidecarSnapshot as Uint8Array);
-    const sidecar = exportSidecarFromDoc(doc);
-    if (!sidecar) return reply.code(404).send({ error: 'no_sidecar' });
-    const json = writeSidecar(sidecar);
-    reply.header('Content-Type', 'application/json; charset=utf-8');
-    reply.header(
-      'Content-Disposition',
-      `attachment; filename="${sanitizeFilename(layout.title)}.bbm.cld"`,
-    );
-    return reply.send(json);
-  });
+      const layout = await db
+        .select()
+        .from(schema.layouts)
+        .where(eq(schema.layouts.id, req.params.id))
+        .get();
+      if (!layout) return reply.code(404).send({ error: 'no_sidecar' });
+      const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
+      const map = exportBbmFromDoc(doc);
+      const json = sidecarJson(doc, layout.sidecarSnapshot as Uint8Array | null, map ? writeBbm(map) : null);
+      if (!json) return reply.code(404).send({ error: 'no_sidecar' });
+      reply.header('Content-Type', 'application/json; charset=utf-8');
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="${sanitizeFilename(layout.title)}.bbm.bld"`,
+      );
+      return reply.send(json);
+    });
+  }
 
-  // ---- export (.zip — .bbm + optional .bbm.cld bundled together) ----------
+  // ---- export (.zip — .bbm + optional .bbm.bld bundled together) ----------
   // Single-download equivalent of the two separate export routes above.
-  // The .bbm.cld entry is omitted when the layout has no sidecar.
+  // The .bbm.bld entry is omitted when the layout has no sidecar; unzipped
+  // side by side, desktop opens both.
   app.get<{ Params: { id: string } }>('/api/layouts/:id/export.zip', async (req, reply) => {
     const user = requireUser(req);
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
@@ -399,14 +411,8 @@ export async function layoutRoutes(app: FastifyInstance) {
     const xml = writeBbm(map);
     entries.push({ name: `${safe}.bbm`, data: Buffer.from(xml, 'utf8') });
 
-    if (layout.sidecarSnapshot) {
-      const sidecarDoc = decodeDoc(layout.sidecarSnapshot as Uint8Array);
-      const sidecar = exportSidecarFromDoc(sidecarDoc);
-      if (sidecar) {
-        const json = writeSidecar(sidecar);
-        entries.push({ name: `${safe}.bbm.cld`, data: Buffer.from(json, 'utf8') });
-      }
-    }
+    const json = sidecarJson(doc, layout.sidecarSnapshot as Uint8Array | null, xml);
+    if (json) entries.push({ name: `${safe}.bbm.bld`, data: Buffer.from(json, 'utf8') });
 
     const zip = buildZip(entries);
     reply.header('Content-Type', 'application/zip');
@@ -825,3 +831,16 @@ function sanitizeFilename(s: string): string {
 void or;
 void isNull;
 void and;
+
+/**
+ * Sidecar JSON for export, or null when the layout has none. The live
+ * doc's `meta.cache` (what the editor edits) wins over the snapshot taken
+ * at import. `bbmHashSha256` is the hash of the `.bbm` exported alongside,
+ * so desktop doesn't flag the pair as drifted (MainWindowFileIO.cpp:88-94).
+ */
+function sidecarJson(doc: Y.Doc, sidecarSnapshot: Uint8Array | null, bbmXml: string | null): string | null {
+  const sidecar =
+    exportSidecarFromDoc(doc) ?? (sidecarSnapshot ? exportSidecarFromDoc(decodeDoc(sidecarSnapshot)) : null);
+  if (!sidecar) return null;
+  return writeSidecar(sidecar, bbmXml !== null ? { bbmHashSha256: hashBbmBytes(bbmXml) } : {});
+}
