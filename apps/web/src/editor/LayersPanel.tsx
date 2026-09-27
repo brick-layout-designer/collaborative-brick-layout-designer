@@ -94,7 +94,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 moveLayer(doc, activeLayerId, 'up');
               }}
               disabled={!activeLayerId}
-              className="rounded px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
+              className="rounded-sm px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
               title="Move active layer toward the top"
             >
               ▲
@@ -105,7 +105,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 moveLayer(doc, activeLayerId, 'down');
               }}
               disabled={!activeLayerId}
-              className="rounded px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
+              className="rounded-sm px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
               title="Move active layer toward the bottom"
             >
               ▼
@@ -117,7 +117,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 deleteLayer(doc, activeLayerId);
               }}
               disabled={!activeLayerId}
-              className="rounded px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
+              className="rounded-sm px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
               title="Delete active layer"
             >
               ✕
@@ -126,7 +126,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => showAllLayers(doc)}
-              className="flex-1 rounded py-0.5 text-xs hover:bg-neutral-800"
+              className="flex-1 rounded-sm py-0.5 text-xs hover:bg-neutral-800"
               title="Make all layers visible"
             >
               Show all
@@ -137,7 +137,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 soloLayer(doc, activeLayerId);
               }}
               disabled={!activeLayerId}
-              className="flex-1 rounded py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
+              className="flex-1 rounded-sm py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
               title="Show only the active layer, hide all others"
             >
               Solo
@@ -222,7 +222,7 @@ function LayerRow({
           : `${isActive && layer.type === 'brick' ? 'Active layer — new parts are placed here. ' : ''}Double-click for Layer Options, F2 to rename`
       }
       className={
-        'relative cursor-pointer border-b border-neutral-800/60 py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500 ' +
+        'relative cursor-pointer border-b border-neutral-800/60 py-1.5 outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500 ' +
         (isActive
           ? 'border-l-2 border-l-blue-500 bg-blue-900/30 pl-1.5 pr-2'
           : 'border-l-2 border-l-transparent pl-1.5 pr-2 hover:bg-neutral-800/60')
@@ -260,7 +260,7 @@ function LayerRow({
               renameLayer(doc, layer.id, draftName.trim() || layer.name);
               setEditing(false);
             }}
-            className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
+            className="flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
           />
         ) : (
           <span
@@ -301,7 +301,7 @@ function LayerRow({
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[170px] rounded border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-lg"
+          className="min-w-[170px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -394,14 +394,14 @@ function AddLayerButton({ doc, onAdd }: { doc: Y.Doc; onAdd: (layerId: string) =
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded px-2 py-0.5 text-xs hover:bg-neutral-800"
+        className="rounded-sm px-2 py-0.5 text-xs hover:bg-neutral-800"
         title="Add a new layer"
       >
         + Add layer
       </button>
       {open && (
         <ul
-          className="absolute bottom-7 left-0 z-10 w-40 rounded border border-neutral-700 bg-neutral-900 text-xs shadow"
+          className="absolute bottom-7 left-0 z-10 w-40 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
           onClick={() => setOpen(false)}
         >
           {ADD_LAYER_OPTIONS.map(({ kind, label }) => (

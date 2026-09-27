@@ -76,7 +76,7 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="New Set"
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
             autoFocus
           />
         </label>
@@ -85,14 +85,14 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-1.5 hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-4 py-1.5 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={picked.length === 0}
-            className="rounded bg-blue-600 px-4 py-1.5 hover:bg-blue-500 disabled:opacity-40"
+            className="rounded-sm bg-blue-600 px-4 py-1.5 hover:bg-blue-500 disabled:opacity-40"
           >
             Download .set.xml
           </button>

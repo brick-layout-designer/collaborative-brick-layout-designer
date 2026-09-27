@@ -105,13 +105,13 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
       {/* Toolbar */}
       <div className="flex gap-2 border-b border-neutral-800 px-3 py-2">
         <button onClick={handleNew}
-          className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">New</button>
+          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">New</button>
         <button onClick={handleOpen}
-          className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Open…</button>
+          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Open…</button>
         <button onClick={handleSave}
-          className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Save…</button>
+          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Save…</button>
         <button onClick={() => setRefreshKey((k) => k + 1)}
-          className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800" title="Re-count parts from current map">Refresh</button>
+          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800" title="Re-count parts from current map">Refresh</button>
       </div>
 
       {/* Table */}
@@ -147,7 +147,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
                       placeholder="—"
                       value={limit >= 0 ? limit : ''}
                       onChange={(e) => setLimit(part, e.target.value)}
-                      className="w-20 rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
+                      className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
                     />
                   </td>
                 </tr>

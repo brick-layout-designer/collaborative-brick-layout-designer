@@ -104,13 +104,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-[34rem] overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
+        className="max-h-[90vh] w-136 overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
       >
         <h2 className="text-base font-semibold">
           Edit {item.kind === 'linear' ? 'linear' : 'circular'} ruler
         </h2>
 
-        <fieldset className="mt-4 space-y-2 rounded border border-neutral-800 p-3 text-sm">
+        <fieldset className="mt-4 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Line</legend>
           <Row label="Colour">
             <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
@@ -120,7 +120,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           </Row>
         </fieldset>
 
-        <fieldset className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-sm">
+        <fieldset className="mt-3 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Distance</legend>
           <Row label="Show distance">
             <input
@@ -140,7 +140,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             <select
               value={unit}
               onChange={(e) => setUnit(parseInt(e.target.value, 10))}
-              className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+              className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
             >
               {UNITS.map((u) => (
                 <option key={u.value} value={u.value}>
@@ -151,13 +151,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           </Row>
         </fieldset>
 
-        <fieldset className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-sm">
+        <fieldset className="mt-3 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Label</legend>
           <Row label="Font">
             <input
               value={fontFamily}
               onChange={(e) => setFontFamily(e.target.value)}
-              className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1"
+              className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1"
             />
           </Row>
           <Row label="Size">
@@ -180,7 +180,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           </Row>
         </fieldset>
 
-        <fieldset className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-sm">
+        <fieldset className="mt-3 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Guidelines</legend>
           <Row label="Colour">
             <input
@@ -201,13 +201,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             <input
               value={dashCsv}
               onChange={(e) => setDashCsv(e.target.value)}
-              className="w-32 rounded border border-neutral-700 bg-neutral-800 px-2 py-1"
+              className="w-32 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1"
             />
           </Row>
         </fieldset>
 
         {linear && (
-          <fieldset className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-sm">
+          <fieldset className="mt-3 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
             <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Linear</legend>
             <Row label="Allow offset">
               <input
@@ -226,7 +226,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               <button
                 disabled={!linear.attachedBrick1Id}
                 onClick={() => detachEndpoint(0)}
-                className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
+                className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
               >
                 Detach
               </button>
@@ -238,7 +238,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               <button
                 disabled={!linear.attachedBrick2Id}
                 onClick={() => detachEndpoint(1)}
-                className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
+                className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
               >
                 Detach
               </button>
@@ -247,7 +247,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
         )}
 
         {circular && (
-          <fieldset className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-sm">
+          <fieldset className="mt-3 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
             <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Circular</legend>
             <Row label="Radius (studs)">
               <NumberField value={radius} setValue={setRadius} step={0.5} min={0} />
@@ -259,7 +259,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               <button
                 disabled={!circular.attachedBrickId}
                 onClick={() => detachEndpoint(0)}
-                className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
+                className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
               >
                 Detach
               </button>
@@ -270,13 +270,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+            className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
           >
             OK
           </button>
@@ -316,7 +316,7 @@ function NumberField({
         const n = parseFloat(e.target.value);
         if (Number.isFinite(n)) setValue(n);
       }}
-      className="w-24 rounded border border-neutral-700 bg-neutral-800 px-2 py-1"
+      className="w-24 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1"
     />
   );
 }

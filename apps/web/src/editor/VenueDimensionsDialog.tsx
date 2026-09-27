@@ -54,7 +54,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
   const [rectW, setRectW] = useState('30.00');
   const [rectD, setRectD] = useState('20.00');
 
-  const inputCls = 'rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
+  const inputCls = 'rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
   const labelCls = 'text-xs text-neutral-400';
 
   function patchSeg(i: number, patch: Partial<Segment>) {
@@ -180,7 +180,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
           </label>
         </div>
 
-        <div className="overflow-auto rounded border border-neutral-800">
+        <div className="overflow-auto rounded-sm border border-neutral-800">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-neutral-800 text-left text-neutral-500">
@@ -202,14 +202,14 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                       step="0.01"
                       value={seg.length}
                       onChange={(e) => patchSeg(i, { length: e.target.value })}
-                      className="w-24 rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5"
+                      className="w-24 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5"
                     />
                   </td>
                   <td className="px-2 py-1">
                     <select
                       value={seg.angle}
                       onChange={(e) => patchSeg(i, { angle: e.target.value })}
-                      className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5"
+                      className="rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5"
                     >
                       {ANGLE_PRESETS.map((p) => (
                         <option key={p.label} value={p.label}>{p.label}</option>
@@ -220,7 +220,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                     <select
                       value={seg.kind}
                       onChange={(e) => patchSeg(i, { kind: Number(e.target.value) as 0 | 1 | 2 })}
-                      className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5"
+                      className="rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5"
                     >
                       {EDGE_KINDS.map((k, v) => (
                         <option key={v} value={v}>{k}</option>
@@ -231,7 +231,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                     <input
                       value={seg.label}
                       onChange={(e) => patchSeg(i, { label: e.target.value })}
-                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5"
+                      className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5"
                     />
                   </td>
                 </tr>
@@ -242,53 +242,53 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
 
         <div className="flex gap-2">
           <button type="button" onClick={addSegment}
-            className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800">
+            className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800">
             Add segment
           </button>
           <button type="button" onClick={removeLast}
-            className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800">
+            className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800">
             Remove last
           </button>
           <button type="button" onClick={() => setShowRectPreset(true)}
-            className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
             title="Quickly fill four segments for a W × D rectangle">
             Rectangle preset…
           </button>
         </div>
 
         {showRectPreset && (
-          <div className="rounded border border-neutral-700 bg-neutral-800/60 p-3 space-y-2">
+          <div className="rounded-sm border border-neutral-700 bg-neutral-800/60 p-3 space-y-2">
             <p className="text-xs font-semibold">Rectangle preset</p>
             <div className="flex flex-wrap gap-3">
               <label className="flex items-center gap-1.5 text-xs">
                 Width (E-W, ft):
                 <input type="number" min="0" step="0.01" value={rectW}
                   onChange={(e) => setRectW(e.target.value)}
-                  className="w-20 rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5" />
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5" />
               </label>
               <label className="flex items-center gap-1.5 text-xs">
                 Depth (N-S, ft):
                 <input type="number" min="0" step="0.01" value={rectD}
                   onChange={(e) => setRectD(e.target.value)}
-                  className="w-20 rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5" />
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5" />
               </label>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={applyRectPreset}
-                className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500">Apply</button>
+                className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500">Apply</button>
               <button type="button" onClick={() => setShowRectPreset(false)}
-                className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800">Cancel</button>
+                className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800">Cancel</button>
             </div>
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-1.5 text-sm hover:bg-neutral-800">
+            className="rounded-sm border border-neutral-700 px-4 py-1.5 text-sm hover:bg-neutral-800">
             Cancel
           </button>
           <button type="submit"
-            className="rounded bg-blue-600 px-4 py-1.5 text-sm hover:bg-blue-500">
+            className="rounded-sm bg-blue-600 px-4 py-1.5 text-sm hover:bg-blue-500">
             OK
           </button>
         </div>

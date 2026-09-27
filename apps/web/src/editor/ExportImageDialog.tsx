@@ -186,7 +186,7 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
         <h2 className="mb-4 text-sm font-semibold text-neutral-200">Export / Print</h2>
 
         {/* Mode toggle */}
-        <div className="mb-4 flex rounded border border-neutral-700 text-xs">
+        <div className="mb-4 flex rounded-sm border border-neutral-700 text-xs">
           {(['png', 'print'] as const).map((m) => (
             <button
               key={m}
@@ -206,7 +206,7 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                 <select
                   value={pixelRatio}
                   onChange={(e) => setPixelRatio(Number(e.target.value))}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 >
                   <option value={1}>1× (native)</option>
                   <option value={2}>2× (retina)</option>
@@ -229,7 +229,7 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                 <select
                   value={paperKey}
                   onChange={(e) => setPaperKey(e.target.value)}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 >
                   {Object.entries(PAPER_SIZES).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
@@ -241,7 +241,7 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                 <select
                   value={dpi}
                   onChange={(e) => setDpi(Number(e.target.value))}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 >
                   <option value={96}>96 (screen)</option>
                   <option value={150}>150 (draft print)</option>
@@ -257,7 +257,7 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                   max={50}
                   step={1}
                   onChange={(e) => setOverlapMm(Math.max(0, Number(e.target.value)))}
-                  className="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </label>
               <p className="text-[10px] text-neutral-500">
@@ -272,14 +272,14 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+            className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             onClick={mode === 'png' ? doExportPng : doTiledPrint}
             disabled={exporting}
-            className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
           >
             {exporting ? 'Working…' : mode === 'png' ? 'Export PNG' : 'Open Print Preview'}
           </button>

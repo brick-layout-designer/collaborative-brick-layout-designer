@@ -73,19 +73,19 @@ export function TransferPage() {
         {!isSignedIn && (
           <Link
             to={`/login?next=${encodeURIComponent(`/transfer/${params.token}`)}`}
-            className="mt-3 block rounded bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
+            className="mt-3 block rounded-sm bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
           >
             Sign in as {t.recipientEmail}
           </Link>
         )}
         {wrongUser && (
-          <p className="mt-3 rounded border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
+          <p className="mt-3 rounded-sm border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
             This transfer is for <strong>{t.recipientEmail}</strong>, but you're signed
             in as <strong>{me.data!.user!.email}</strong>.
           </p>
         )}
         {error && (
-          <p className="mt-2 rounded border border-red-900 bg-red-950/30 p-3 text-xs text-red-300">
+          <p className="mt-2 rounded-sm border border-red-900 bg-red-950/30 p-3 text-xs text-red-300">
             Couldn't accept: {error}
           </p>
         )}

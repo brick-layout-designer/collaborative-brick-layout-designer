@@ -28,7 +28,7 @@ function OrgDetail({ slug }: { slug: string }) {
   if (detail.isError) {
     return (
       <div className="grid h-screen place-items-center">
-        <div className="rounded border border-red-900 bg-red-950/30 p-4 text-sm">
+        <div className="rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
           <p className="font-semibold text-red-400">Organization not found.</p>
           <Link to="/orgs" className="mt-2 inline-block text-blue-400 hover:underline">← back</Link>
         </div>
@@ -54,7 +54,7 @@ function OrgDetail({ slug }: { slug: string }) {
           {isAdmin && (
             <Link
               to={`/orgs/${slug}/admin`}
-              className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
             >
               Org settings →
             </Link>
@@ -82,12 +82,12 @@ function OrgDetail({ slug }: { slug: string }) {
           {layouts.isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
           {layouts.data &&
             (layouts.data.layouts.length === 0 ? (
-              <p className="rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+              <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
                 No layouts owned by this org yet. Open a personal layout and use{' '}
                 <em>Transfer</em> to move it here.
               </p>
             ) : (
-              <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+              <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
                 {layouts.data.layouts.map((l) => (
                   <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
                     <div>
@@ -98,7 +98,7 @@ function OrgDetail({ slug }: { slug: string }) {
                     </div>
                     <Link
                       to={`/editor/${l.id}`}
-                      className="rounded bg-blue-600 px-3 py-1 hover:bg-blue-500"
+                      className="rounded-sm bg-blue-600 px-3 py-1 hover:bg-blue-500"
                     >
                       Open
                     </Link>
@@ -127,7 +127,7 @@ function MembersList({
   members: OrgMemberSummary[];
 }) {
   return (
-    <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+    <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
       {members.map((m) => {
         const isSelf = m.userId === myUserId;
         return (
@@ -138,7 +138,7 @@ function MembersList({
               </p>
               <p className="text-xs text-neutral-500">{m.email}</p>
             </div>
-            <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">
+            <span className="rounded-sm bg-neutral-800 px-2 py-1 text-xs text-neutral-300">
               {m.role}
             </span>
           </li>
@@ -164,7 +164,7 @@ function OrgPartLibraries({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="overflow-auto rounded border border-neutral-800">
+    <div className="overflow-auto rounded-sm border border-neutral-800">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-neutral-800 text-left text-xs text-neutral-500">

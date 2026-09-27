@@ -52,7 +52,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+            className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-800"
           >
             ✕
           </button>
@@ -60,12 +60,12 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
 
         {list.isLoading && <p className="text-neutral-500">Loading…</p>}
         {list.data && list.data.modules.length === 0 && (
-          <p className="rounded border border-dashed border-neutral-800 p-4 text-neutral-500">
+          <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-neutral-500">
             No saved modules yet. Create one from the Library page.
           </p>
         )}
         {list.data && list.data.modules.length > 0 && (
-          <ul className="max-h-80 divide-y divide-neutral-800 overflow-y-auto rounded border border-neutral-800">
+          <ul className="max-h-80 divide-y divide-neutral-800 overflow-y-auto rounded-sm border border-neutral-800">
             {list.data.modules.map((m) => (
               <li
                 key={m.id}
@@ -80,7 +80,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
                 <button
                   onClick={() => insert.mutate(m.id)}
                   disabled={insert.isPending}
-                  className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
+                  className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
                 >
                   Insert
                 </button>
@@ -90,7 +90,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         )}
 
         {error && (
-          <p className="rounded border border-red-900 bg-red-950/30 p-2 text-xs text-red-300">
+          <p className="rounded-sm border border-red-900 bg-red-950/30 p-2 text-xs text-red-300">
             {error}
           </p>
         )}
