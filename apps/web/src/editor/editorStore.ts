@@ -29,10 +29,30 @@ export const SNAP_STEPS = [0, 32, 16, 8, 4, 2, 1, 0.5] as const;
  */
 export const ROTATION_STEPS = [90, 45, 22.5, 11.25, 5, 1] as const;
 
+/**
+ * Non-brick items in the selection — desktop selects rulers, anchored
+ * labels and text cells together with bricks (Qt scene selection,
+ * MapViewDrag.cpp:124-153). Text cells are keyed `${layerId}#${index}`
+ * (see `textKey` in mixedSelection.ts); text cells have no id.
+ */
+export interface AnnoSelection {
+  rulers: string[];
+  labels: string[];
+  texts: string[];
+}
+
+export const EMPTY_ANNO: AnnoSelection = Object.freeze({
+  rulers: [],
+  labels: [],
+  texts: [],
+}) as AnnoSelection;
+
 export interface EditorState {
   tool: Tool;
   /** Brick ids currently selected. */
   selection: string[];
+  /** Rulers / labels / text cells selected alongside `selection`. */
+  annoSelection: AnnoSelection;
   /** Layer id currently being edited. */
   activeLayerId: string | null;
   /** Part library key picked for the place tool. Empty when nothing chosen. */
@@ -131,7 +151,10 @@ export interface EditorState {
   statusMessageTimerId: ReturnType<typeof setTimeout> | null;
 
   setTool: (t: Tool) => void;
+  /** Replace the selection with these bricks (clears rulers / labels / text). */
   setSelection: (ids: string[]) => void;
+  /** Replace the whole mixed selection. */
+  setMixedSelection: (ids: string[], anno: AnnoSelection) => void;
   toggleSelected: (id: string, additive: boolean) => void;
   setActiveLayer: (id: string | null) => void;
   setPlacePart: (key: string) => void;
@@ -173,6 +196,7 @@ export interface EditorState {
 export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selection: [],
+  annoSelection: EMPTY_ANNO,
   activeLayerId: null,
   placePartKey: '',
   zoom: 1,
@@ -340,7 +364,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     set({ rotationStepDegrees: v });
   },
   setLiveSnap: (liveSnap) => set({ liveSnap }),
-  setSelection: (selection) => set({ selection }),
+  setSelection: (selection) => set({ selection, annoSelection: EMPTY_ANNO }),
+  setMixedSelection: (selection, annoSelection) => set({ selection, annoSelection }),
   toggleSelected: (id, additive) =>
     set((s) => {
       if (additive) {
@@ -348,7 +373,7 @@ export const useEditorStore = create<EditorState>((set) => ({
           ? { selection: s.selection.filter((x) => x !== id) }
           : { selection: [...s.selection, id] };
       }
-      return { selection: [id] };
+      return { selection: [id], annoSelection: EMPTY_ANNO };
     }),
   setActiveLayer: (activeLayerId) => set({ activeLayerId }),
   setPlacePart: (placePartKey) => set({ placePartKey }),

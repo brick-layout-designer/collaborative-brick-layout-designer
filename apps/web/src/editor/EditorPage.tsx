@@ -8,7 +8,23 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useDocMap, projectDoc } from './useDocMap';
-import { useEditorStore, SNAP_STEPS, ROTATION_STEPS } from './editorStore';
+import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, type AnnoSelection } from './editorStore';
+import {
+  annoCount,
+  annotationsInMarquee,
+  clickAnno,
+  deleteMixedSelection,
+  mergeAnno,
+  translateMixedSelection,
+} from './mixedSelection';
+import {
+  annoNodeNames,
+  collectNodes,
+  restoreNodes,
+  shiftNodes,
+  type AnnoDragHandlers,
+  type NodeSnap,
+} from './render/groupDragNodes';
 import { Toolbar } from './Toolbar';
 import { GridLayer } from './render/GridLayer';
 import { BrickLayer } from './render/BrickLayer';
@@ -33,11 +49,8 @@ import {
   addLinearRuler,
   addTextCell,
   attachRulerEndpoint,
-  deleteAnchoredLabel,
-  deleteRulerItem,
   deleteTextCell,
   editTextCellFull,
-  moveAnchoredLabel,
   moveRulerEndpoint,
   ensureAreaLayer,
   ensureBrickLayer,
@@ -50,13 +63,10 @@ import {
   importBricksAsModule,
   insertBricksAcrossLayers,
   insertBricks,
-  moveRulerItem,
   paintAreaCells,
   placeBrick,
   reorderBricks,
   rotateBricksAboutCentroid,
-  translateBricks,
-  translateBricksAcrossLayers,
   ungroupBricksAcrossLayers,
   setVenue,
 } from './mutations';
@@ -759,6 +769,7 @@ function Canvas({
   // Marquee state. Active while the user is dragging in select mode on
   // empty stage. Mouse-up commits the intersection to selection.
   const [marquee, setMarquee] = useState<import('./render/MarqueeOverlay').Marquee | null>(null);
+  const marqueeAdditiveRef = useRef(false);
 
   // Context-menu state — position in viewport px + whether the click
   // landed on a brick (drives the selection-aware entry list).
@@ -787,23 +798,21 @@ function Canvas({
   // Edit-AnchoredLabel dialog state — opened by double-click on a label.
   const [editingLabel, setEditingLabel] = useState<import('@cld/bbm').AnchoredLabel | null>(null);
 
-  // Edit-Ruler dialog state — opened by double-click on a ruler item.
-  // `selectedRulerId` drives the highlight halo in `RulerLayers`; the
-  // pointer-down on a ruler updates it without opening the dialog so
-  // the user can hit Delete/arrow-nudge with the ruler "selected".
-  const [selectedRulerId, setSelectedRulerId] = useState<string | null>(null);
-  // Selected anchored label / text cell — click selects, Delete removes
-  // (desktop MapView::deleteSelected handles text and label items too,
-  // MapView.cpp:2108-2179). One annotation at a time; a brick selection
-  // clears it.
-  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
-  const [selectedTextCell, setSelectedTextCell] = useState<{ layerId: string; cellIndex: number } | null>(null);
-  useEffect(() => {
-    if (selection.length > 0) {
-      setSelectedLabelId(null);
-      setSelectedTextCell(null);
-    }
-  }, [selection]);
+  // Mixed selection: rulers, anchored labels and text cells selected
+  // alongside bricks (store `annoSelection`; desktop Qt scene selection,
+  // MapViewDrag.cpp:124-153). Endpoint handles and the ruler-attach menu
+  // need exactly one ruler.
+  const annoSelection = useEditorStore((s) => s.annoSelection);
+  const selectedRulerIds = useMemo(() => new Set(annoSelection.rulers), [annoSelection.rulers]);
+  const selectedLabelIds = useMemo(() => new Set(annoSelection.labels), [annoSelection.labels]);
+  const selectedTextKeys = useMemo(() => new Set(annoSelection.texts), [annoSelection.texts]);
+  const selectedRulerId = annoSelection.rulers.length === 1 ? annoSelection.rulers[0]! : null;
+  /** Select an annotation: plain click → just it; Shift/Ctrl → toggle, keep the rest. */
+  const selectAnno = useCallback((kind: keyof AnnoSelection, id: string, additive: boolean) => {
+    const st = useEditorStore.getState();
+    const next = clickAnno(st.selection, st.annoSelection, kind, id, additive);
+    st.setMixedSelection(next.bricks, next.anno);
+  }, []);
   const [editingRuler, setEditingRuler] = useState<
     { item: import('@cld/model').RulerItem; layerId: string } | null
   >(null);
@@ -884,6 +893,81 @@ function Canvas({
   // changes, and unchanged bricks keep their identity across edits so the
   // memoised brick glyphs skip re-rendering.
   const map = useDocMap(doc);
+  const mapRef = useRef(map);
+  mapRef.current = map;
+
+  // Ruler- or label-led drag of a mixed selection. Qt moves every
+  // selected movable item with the grabbed one and commitDragIfMoved
+  // pushes one "Drag" macro (MapViewDrag.cpp:412-450); bricks then get
+  // the grid snap of the first brick's top-left (MapViewDrag.cpp:600-608).
+  const annoDragRef = useRef<{
+    lead: Konva.Node;
+    x0: number;
+    y0: number;
+    others: NodeSnap[];
+    bricks: string[];
+    anno: AnnoSelection;
+  } | null>(null);
+  const annoDrag = useMemo<AnnoDragHandlers>(() => ({
+    start(kind, id, node) {
+      const st = useEditorStore.getState();
+      let bricks = st.selection;
+      let anno = st.annoSelection;
+      if (!anno[kind].includes(id)) {
+        bricks = [];
+        anno = { rulers: [], labels: [], texts: [], [kind]: [id] };
+        st.setMixedSelection(bricks, anno);
+      }
+      const names = [...bricks.map((b) => `brick-${b}`), ...annoNodeNames(anno)];
+      annoDragRef.current = {
+        lead: node,
+        x0: node.x(),
+        y0: node.y(),
+        others: collectNodes(node.getStage(), names, node),
+        bricks,
+        anno,
+      };
+    },
+    move(node) {
+      const d = annoDragRef.current;
+      if (!d || d.lead !== node) return;
+      shiftNodes(d.others, node.x() - d.x0, node.y() - d.y0);
+    },
+    end(node) {
+      const d = annoDragRef.current;
+      annoDragRef.current = null;
+      if (!d || d.lead !== node) return;
+      const dx = pxToStud(node.x() - d.x0);
+      const dy = pxToStud(node.y() - d.y0);
+      restoreNodes(d.others);
+      node.position({ x: d.x0, y: d.y0 });
+      const m = mapRef.current;
+      if (!m || (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6)) return;
+      let brickDx = dx;
+      let brickDy = dy;
+      const step = useEditorStore.getState().snapStepStuds;
+      if (step > 0 && d.bricks.length > 0) {
+        const first = m.layers
+          .flatMap((l) => (l.type === 'brick' ? l.bricks : []))
+          .find((b) => d.bricks.includes(b.id));
+        if (first) {
+          const tlx = first.displayArea.x + dx;
+          const tly = first.displayArea.y + dy;
+          brickDx += Math.round(tlx / step) * step - tlx;
+          brickDy += Math.round(tly / step) * step - tly;
+        }
+      }
+      const sc = readSidecarFromDoc(doc);
+      translateMixedSelection(doc, m, sc?.anchoredLabels ?? [], sc?.modules ?? [], {
+        bricks: d.bricks,
+        anno: d.anno,
+        dx,
+        dy,
+        brickDx,
+        brickDy,
+      });
+    },
+  }), [doc]);
 
   /**
    * Resolve the layer that new parts should be placed into. `activeLayerId`
@@ -1223,9 +1307,6 @@ function Canvas({
         e.preventDefault();
         if (venueDraft) { setVenueDraft(null); return; }
         setSelection([]);
-        setSelectedRulerId(null);
-        setSelectedLabelId(null);
-        setSelectedTextCell(null);
         setRulerDraft(null);
         return;
       }
@@ -1410,49 +1491,32 @@ function Canvas({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isViewer) return; // viewers can't mutate
 
-      // Selected label / text cell: Delete/Backspace removes it.
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length === 0) {
-        if (selectedLabelId) {
+      // Delete / arrow nudge act on the whole mixed selection: bricks on
+      // any layer plus rulers, labels and text cells (delete) / rulers and
+      // labels (nudge — desktop text cells don't move). MapView.cpp:959-1041.
+      if (selection.length + annoCount(annoSelection) > 0 && map) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault();
-          deleteAnchoredLabel(doc, selectedLabelId);
-          setSelectedLabelId(null);
+          deleteSelection();
           return;
         }
-        if (selectedTextCell) {
+        const NUDGE = snapStepStuds > 0 ? snapStepStuds : 1;
+        let dx = 0;
+        let dy = 0;
+        if (e.key === 'ArrowLeft') dx = -NUDGE;
+        else if (e.key === 'ArrowRight') dx = NUDGE;
+        else if (e.key === 'ArrowUp') dy = -NUDGE;
+        else if (e.key === 'ArrowDown') dy = NUDGE;
+        if (dx !== 0 || dy !== 0) {
           e.preventDefault();
-          deleteTextCell(doc, selectedTextCell.layerId, selectedTextCell.cellIndex);
-          setSelectedTextCell(null);
+          const sc = readSidecarFromDoc(doc);
+          translateMixedSelection(doc, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], {
+            bricks: selection,
+            anno: annoSelection,
+            dx,
+            dy,
+          });
           return;
-        }
-      }
-
-      // Selected-ruler shortcuts: Delete/Backspace removes it; arrow
-      // keys translate by the snap step. Must run BEFORE the brick
-      // selection guard so a ruler-only selection (no bricks) still
-      // honours these.
-      if (selectedRulerId && map) {
-        const rulerLayer = map.layers.find(
-          (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === selectedRulerId),
-        );
-        if (rulerLayer && rulerLayer.type === 'ruler') {
-          if (e.key === 'Delete' || e.key === 'Backspace') {
-            e.preventDefault();
-            deleteRulerItem(doc, rulerLayer.id, selectedRulerId);
-            setSelectedRulerId(null);
-            return;
-          }
-          const STEP = snapStepStuds > 0 ? snapStepStuds : 1;
-          let dxR = 0;
-          let dyR = 0;
-          if (e.key === 'ArrowLeft') dxR = -STEP;
-          else if (e.key === 'ArrowRight') dxR = STEP;
-          else if (e.key === 'ArrowUp') dyR = -STEP;
-          else if (e.key === 'ArrowDown') dyR = STEP;
-          if (dxR !== 0 || dyR !== 0) {
-            e.preventDefault();
-            moveRulerItem(doc, rulerLayer.id, selectedRulerId, dxR, dyR);
-            return;
-          }
         }
       }
 
@@ -1466,39 +1530,6 @@ function Canvas({
         e.preventDefault();
         rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
         return;
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        // The selection may span layers; desktop's deleteSelected() walks
-        // every layer too. One transaction → one undo step.
-        deleteSelectedBricks();
-        return;
-      }
-      // Arrow-key nudge by the active grid-snap step (or 1 stud when
-      // snap is off). Direct port of MapView.cpp:970-980. Applies to
-      // bricks AND to the selected ruler (desktop nudges rulers too —
-      // MapView.cpp:985-...).
-      const NUDGE = snapStepStuds > 0 ? snapStepStuds : 1;
-      let dx = 0;
-      let dy = 0;
-      if (e.key === 'ArrowLeft') dx = -NUDGE;
-      else if (e.key === 'ArrowRight') dx = NUDGE;
-      else if (e.key === 'ArrowUp') dy = -NUDGE;
-      else if (e.key === 'ArrowDown') dy = NUDGE;
-      if (dx !== 0 || dy !== 0) {
-        e.preventDefault();
-        if (map) {
-          const selSet = new Set(selection);
-          const byLayer = new Map<string, string[]>();
-          for (const layer of map.layers) {
-            if (layer.type !== 'brick') continue;
-            const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-            if (ids.length > 0) byLayer.set(layer.id, ids);
-          }
-          translateBricksAcrossLayers(doc, byLayer, dx, dy);
-        } else if (activeLayerId) {
-          translateBricks(doc, activeLayerId, selection, dx, dy);
-        }
       }
     }
     keyHandlerRef.current = onKey;
@@ -1552,7 +1583,8 @@ function Canvas({
     const cx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
     const cy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
     setRulerDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
-    setVenueDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
+    // Venue preview follows the raw cursor (no grid snap, like desktop).
+    setVenueDraft((prev) => (prev ? { ...prev, curX: studs.x, curY: studs.y } : prev));
   }
   function schedulePointerMove() {
     const m = moveRafRef.current;
@@ -1588,10 +1620,11 @@ function Canvas({
     if (!studs) return;
 
     if (tool === 'select') {
-      // Empty-space click in select mode → start marquee.
-      setSelection([]);
-      setSelectedLabelId(null);
-      setSelectedTextCell(null);
+      // Empty-space click in select mode → start marquee. Shift/Ctrl
+      // extends the current selection instead of replacing it (Qt
+      // rubber band with a modifier).
+      marqueeAdditiveRef.current = evt.shiftKey || evt.ctrlKey || evt.metaKey;
+      if (!marqueeAdditiveRef.current) setSelection([]);
       setMarquee({ x0: studs.x, y0: studs.y, x1: studs.x, y1: studs.y });
       return;
     }
@@ -1615,9 +1648,10 @@ function Canvas({
       });
     }
     if ((tool === 'venueOutline' || tool === 'venueObstacle') && !isViewer) {
-      const step = useEditorStore.getState().snapStepStuds;
-      const sx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-      const sy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
+      // Venue vertices land exactly where clicked: desktop appends the raw
+      // scene point with no grid snap (MapView.cpp:474-489).
+      const sx = studs.x;
+      const sy = studs.y;
       setVenueDraft((prev) =>
         prev
           ? { ...prev, pts: [...prev.pts, { x: sx, y: sy }], curX: sx, curY: sy }
@@ -1739,14 +1773,26 @@ function Canvas({
     // Hidden layers are skipped so the user can't accidentally select
     // bricks they can't see; the brick z-order across layers doesn't
     // affect the result because the marquee is purely AABB-based.
+    //
+    // Rulers, anchored labels and text cells in the band join the
+    // selection too (mixed selection, like desktop's scene selection).
     if (map) {
       const ids: string[] = [];
       for (const layer of map.layers) {
         if (layer.type !== 'brick' || !layer.visible) continue;
         ids.push(...bricksInMarquee(finalMarquee, layer.bricks));
       }
-      setSelection(ids);
+      const sc = readSidecarFromDoc(doc);
+      let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom);
+      let bricks = ids;
+      if (marqueeAdditiveRef.current) {
+        const st = useEditorStore.getState();
+        bricks = [...new Set([...st.selection, ...ids])];
+        anno = mergeAnno(st.annoSelection, anno);
+      }
+      useEditorStore.getState().setMixedSelection(bricks, anno);
     }
+    marqueeAdditiveRef.current = false;
     setMarquee(null);
   }
 
@@ -1783,7 +1829,8 @@ function Canvas({
   async function cutSelection(): Promise<void> {
     await copySelection();
     if (selection.length === 0) return;
-    deleteSelectedBricks();
+    deleteBricksAcrossLayers(doc, selectionByLayer());
+    setSelection([]);
   }
 
   /** The selection's brick ids grouped by the layer that holds them. */
@@ -1791,10 +1838,13 @@ function Canvas({
     return map ? bricksByLayer(map, selection) : new Map();
   }
 
-  /** Delete every selected brick, whatever its layer, as one undo step. */
-  function deleteSelectedBricks(): void {
-    if (selection.length === 0) return;
-    deleteBricksAcrossLayers(doc, selectionByLayer());
+  /**
+   * Delete the whole mixed selection — bricks on any layer, rulers,
+   * labels and text cells — as one undo step (MapView.cpp:2108-2179).
+   */
+  function deleteSelection(): void {
+    if (!map || selection.length + annoCount(annoSelection) === 0) return;
+    deleteMixedSelection(doc, map, selection, annoSelection);
     setSelection([]);
   }
 
@@ -2101,7 +2151,7 @@ function Canvas({
     cut: () => void cutSelection(),
     copy: () => void copySelection(),
     paste: () => void pasteAtCursor(),
-    delete: () => deleteSelectedBricks(),
+    delete: () => deleteSelection(),
   };
 
   if (!map) return <EmptyDoc />;
@@ -2243,6 +2293,7 @@ function Canvas({
         <Group name={EXPORT_HIDE} listening={false}>
           <GridLayer
             map={map}
+            zoom={zoom}
             viewport={{
               studXMin: pxToStud(-panX / zoom),
               studYMin: pxToStud(-panY / zoom),
@@ -2277,18 +2328,15 @@ function Canvas({
             map={map}
             isViewer={isViewer}
             onEditText={(ref) => setEditingText(ref)}
-            selected={selectedTextCell}
-            onSelectText={(ref) => {
-              setSelection([]);
-              setSelectedRulerId(null);
-              setSelectedLabelId(null);
-              setSelectedTextCell({ layerId: ref.layerId, cellIndex: ref.cellIndex });
-            }}
+            selectedKeys={selectedTextKeys}
+            onSelectText={(key, additive) => selectAnno('texts', key, additive)}
           />
           <RulerLayers
             map={map}
-            selectedRulerId={selectedRulerId}
-            onRulerClick={(id) => setSelectedRulerId(id)}
+            selectedRulerIds={selectedRulerIds}
+            handleRulerId={selection.length === 0 && annoCount(annoSelection) === 1 ? selectedRulerId : null}
+            onRulerSelect={(id, additive) => selectAnno('rulers', id, additive)}
+            {...(!isViewer && tool === 'select' ? { drag: annoDrag } : {})}
             onRulerDoubleClick={(id) => {
               const layer = map.layers.find(
                 (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === id),
@@ -2296,7 +2344,7 @@ function Canvas({
               if (!layer || layer.type !== 'ruler') return;
               const item = layer.rulerItems.find((r) => r.id === id);
               if (!item) return;
-              setSelectedRulerId(id);
+              selectAnno('rulers', id, false);
               setEditingRuler({ item, layerId: layer.id });
             }}
             onEndpointDrag={(rulerId, which, studX, studY, commit) => {
@@ -2321,14 +2369,9 @@ function Canvas({
                 modules={readSidecarFromDoc(doc)?.modules ?? []}
                 zoom={zoom}
                 onDoubleClick={setEditingLabel}
-                selectedId={selectedLabelId}
-                onSelect={(id) => {
-                  setSelection([]);
-                  setSelectedRulerId(null);
-                  setSelectedTextCell(null);
-                  setSelectedLabelId(id);
-                }}
-                onMove={(id, dx, dy) => moveAnchoredLabel(doc, id, dx, dy)}
+                selectedIds={selectedLabelIds}
+                onSelect={(id, additive) => selectAnno('labels', id, additive)}
+                {...(tool === 'select' ? { drag: annoDrag } : {})}
               />}
           <ModuleOverlay
             map={map}
@@ -2447,7 +2490,7 @@ function Canvas({
           onClose={() => setEditingText(null)}
           onDelete={() => {
             deleteTextCell(doc, editingText.layerId, editingText.cellIndex);
-            setSelectedTextCell(null);
+            setSelection([]);
             setEditingText(null);
           }}
           onCommit={(r) => {
@@ -2490,7 +2533,7 @@ function Canvas({
           onCut={() => void cutSelection()}
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
-          onDelete={() => deleteSelectedBricks()}
+          onDelete={() => deleteSelection()}
           onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees)}
           onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees)}
           onBringToFront={() => {
@@ -3128,7 +3171,8 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
 }) {
   const studX = useEditorStore((s) => s.hudMouseStudX);
   const studY = useEditorStore((s) => s.hudMouseStudY);
-  const selectionCount = useEditorStore((s) => s.selection.length);
+  // Bricks plus selected rulers / labels / text cells (mixed selection).
+  const selectionCount = useEditorStore((s) => s.selection.length + annoCount(s.annoSelection));
   const zoom = useEditorStore((s) => s.zoom);
   const tool = useEditorStore((s) => s.tool);
   const mapW = useEditorStore((s) => s.hudMapWidthStuds);
@@ -3603,6 +3647,7 @@ function HeaderEditButtons({
   clipboardRef: React.MutableRefObject<{ cut: () => void; copy: () => void; paste: () => void; delete: () => void } | null>;
 }) {
   const selection = useEditorStore((s) => s.selection);
+  const annoTotal = useEditorStore((s) => annoCount(s.annoSelection));
   const hasSel = selection.length > 0;
   const btnCls = 'rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default';
   return (
@@ -3623,7 +3668,7 @@ function HeaderEditButtons({
       </button>
       <button
         onClick={() => clipboardRef.current?.delete()}
-        disabled={!hasSel}
+        disabled={!hasSel && annoTotal === 0}
         title="Delete (Del)"
         className={btnCls + ' hover:bg-red-900/40'}
       >

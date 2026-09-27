@@ -1,13 +1,14 @@
 // Layers panel — port of desktop's LayerPanel (`src/ui/LayerPanel.cpp`).
 // Renders every layer in the doc with:
 //   - kind glyph + index + kind name
-//   - editable name (double-click to rename inline)
+//   - double-click a row → Layer Options (desktop LayerPanel.cpp:145);
+//     rename inline via the context menu or F2 on the focused row
 //   - visibility checkbox
 //   - transparency slider
 //   - active-row highlight (clicking sets the active layer)
 //   - up/down/delete buttons
 //
-// Bottom row: + (Add Brick / Area / Text / Ruler) and a "Show all" /
+// Bottom row: + (Add Grid / Parts / Area / Text / Ruler) and a "Show all" /
 // "Solo" pair.
 
 import { useEffect, useRef, useState } from 'react';
@@ -191,17 +192,37 @@ function LayerRow({
     setCtxMenu(null);
   }
 
+  /** Events from the options dialog / rename box bubble through the row; ignore them. */
+  const fromChildWidget = (t: EventTarget) =>
+    t instanceof HTMLElement && (t.closest('[role="dialog"]') !== null || t.tagName === 'INPUT');
+
   return (
     <li
+      tabIndex={0}
       onClick={onActivate}
+      onDoubleClick={(e) => {
+        // Desktop: itemDoubleClicked → layerOptionsRequested (LayerPanel.cpp:145).
+        if (isViewer || editing || fromChildWidget(e.target)) return;
+        setShowOptions(true);
+      }}
+      onKeyDown={(e) => {
+        // F2 renames the focused row (QListWidget edit trigger).
+        if (e.key !== 'F2' || isViewer || editing || fromChildWidget(e.target)) return;
+        e.preventDefault();
+        startRename();
+      }}
       onContextMenu={(e) => {
         if (isViewer) return;
         e.preventDefault();
         setCtxMenu({ x: e.clientX, y: e.clientY });
       }}
-      title={isActive && layer.type === 'brick' ? 'Active layer — new parts are placed here' : undefined}
+      title={
+        isViewer
+          ? undefined
+          : `${isActive && layer.type === 'brick' ? 'Active layer — new parts are placed here. ' : ''}Double-click for Layer Options, F2 to rename`
+      }
       className={
-        'relative cursor-pointer border-b border-neutral-800/60 py-1.5 ' +
+        'relative cursor-pointer border-b border-neutral-800/60 py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500 ' +
         (isActive
           ? 'border-l-2 border-l-blue-500 bg-blue-900/30 pl-1.5 pr-2'
           : 'border-l-2 border-l-transparent pl-1.5 pr-2 hover:bg-neutral-800/60')
@@ -243,10 +264,6 @@ function LayerRow({
           />
         ) : (
           <span
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              if (!isViewer) startRename();
-            }}
             className={
               'flex-1 truncate text-sm ' +
               (isActive ? 'font-semibold text-white ' : '') +
@@ -311,13 +328,13 @@ function LayerRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); setShowOptions(true); }}
           >
-            Layer Options…
+            Layer Options…  <span className="float-right text-neutral-500">dbl-click</span>
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={startRename}
           >
-            Rename…
+            Rename…  <span className="float-right text-neutral-500">F2</span>
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
@@ -362,7 +379,9 @@ function LayerRow({
   );
 }
 
+// Same kinds as desktop's add-layer menu (LayerPanel.cpp:85-89).
 const ADD_LAYER_OPTIONS: { kind: LayerKind; label: string }[] = [
+  { kind: 'grid', label: 'Grid layer' },
   { kind: 'brick', label: 'Parts layer' },
   { kind: 'area', label: 'Area layer' },
   { kind: 'text', label: 'Text layer' },
