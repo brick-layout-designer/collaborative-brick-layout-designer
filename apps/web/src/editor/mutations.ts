@@ -25,14 +25,21 @@ export interface BrickInsertSpec {
   activeConnectionPointIndex?: number;
 }
 
-/** Generate a fresh decimal-numeric brick id derived from current count + ts. */
-function makeId(): string {
-  // Vanilla BlueBrick ids must be parseable as `ulong`. Combine a timestamp
-  // (ms-resolution) with a random tail so IDs are unique even when the
-  // editor produces multiple bricks within the same millisecond.
-  return `${Date.now()}${Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, '0')}`;
+/**
+ * Generate a fresh decimal-numeric id (bricks, layers, groups, ...).
+ *
+ * Vanilla BlueBrick ids must be parseable as `ulong`, so we emit a random
+ * 63-bit unsigned integer in decimal. The previous `Date.now() + rand(0..999)`
+ * scheme collided constantly when many ids were minted in the same
+ * millisecond (a 50-brick paste produced duplicates in ~65% of runs).
+ */
+export function makeId(): string {
+  const a = new BigUint64Array(1);
+  crypto.getRandomValues(a);
+  // Drop the top bit so the value also fits a signed 64-bit long, and
+  // avoid the (astronomically unlikely) zero id.
+  const v = a[0]! >> 1n;
+  return (v === 0n ? 1n : v).toString();
 }
 
 export function placeBrick(
