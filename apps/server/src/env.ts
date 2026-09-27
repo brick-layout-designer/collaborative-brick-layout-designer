@@ -9,6 +9,20 @@ function int(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * TRUST_PROXY → Fastify's `trustProxy`. Unset / "false" / "0": don't
+ * trust X-Forwarded-* (req.ip is the socket peer). "true": trust any
+ * proxy chain. A positive integer: trust that many hops. Anything else:
+ * a comma-separated list of proxy IPs / CIDRs.
+ */
+export function parseTrustProxy(value: string | undefined): boolean | number | string {
+  const v = value?.trim() ?? '';
+  if (v === '' || v === '0' || v.toLowerCase() === 'false') return false;
+  if (v.toLowerCase() === 'true') return true;
+  if (/^\d+$/.test(v)) return Number.parseInt(v, 10);
+  return v;
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: int(process.env.HTTP_PORT ?? process.env.PORT, 3000),
@@ -16,6 +30,7 @@ export const env = {
   publicUrl: process.env.PUBLIC_URL ?? 'http://localhost:3000',
   cookieSecure: bool(process.env.COOKIE_SECURE, process.env.NODE_ENV === 'production'),
   partsDir: process.env.PARTS_DIR ?? './data/parts',
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 
   enablePasswordAuth: bool(process.env.ENABLE_PASSWORD_AUTH, false),
   demoMode: bool(process.env.DEMO_MODE, false),

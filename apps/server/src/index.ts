@@ -42,7 +42,9 @@ async function main() {
   // 10MB body limit — large `.bbm` imports (XML payload) routinely exceed
   // the default 1MB. Real desktop layouts run ~500KB; cap at 10MB to give
   // plenty of headroom while still rejecting obvious DoS shapes.
-  const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
+  // trustProxy: behind a reverse proxy, req.ip (used by the rate
+  // limiter and logs) is otherwise the proxy's address for every client.
+  const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024, trustProxy: env.trustProxy });
 
   await app.register(helmet, {
     contentSecurityPolicy: false, // SPA sets its own; API responses are JSON
