@@ -54,6 +54,37 @@ async function safeFetch(raw: string, init?: RequestInit): Promise<Response> {
   return fetch(parsed, init);
 }
 
+/**
+ * Delete a user, first clearing the foreign keys that reference them
+ * WITHOUT an ON DELETE action (0000_init: layouts / custom_parts /
+ * modules.created_by, layout_transfers / module_transfers.initiated_by,
+ * org_invites.invited_by). Without this, deleting anyone who ever created
+ * an org-owned layout, sent an org invite or started a transfer failed
+ * with a FOREIGN KEY constraint error (500).
+ *
+ * - created_by is NOT NULL, so it is re-attributed to the resource's
+ *   current personal owner, or the acting admin for org-owned / global
+ *   resources. Resources the user personally owns cascade away anyway.
+ * - Transfers they initiated and org invites they sent are deleted: they
+ *   carry the deleted user's authority (see the accept-time checks).
+ *
+ * Runs in one transaction so a failure leaves nothing half-done.
+ */
+function deleteUserAndReassign(userId: string, actingAdminId: string): void {
+  db.transaction((tx) => {
+    for (const table of [schema.layouts, schema.customParts, schema.modules]) {
+      tx.update(table)
+        .set({ createdBy: sql`coalesce(${table.ownerUserId}, ${actingAdminId})` })
+        .where(eq(table.createdBy, userId))
+        .run();
+    }
+    tx.delete(schema.layoutTransfers).where(eq(schema.layoutTransfers.initiatedBy, userId)).run();
+    tx.delete(schema.moduleTransfers).where(eq(schema.moduleTransfers.initiatedBy, userId)).run();
+    tx.delete(schema.orgInvites).where(eq(schema.orgInvites.invitedBy, userId)).run();
+    tx.delete(schema.users).where(eq(schema.users.id, userId)).run();
+  });
+}
+
 interface UserListQuery {
   q?: string;
   limit?: string;
@@ -252,7 +283,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .select({ id: schema.layouts.id })
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, target.id));
-    await db.delete(schema.users).where(eq(schema.users.id, target.id));
+    deleteUserAndReassign(target.id, me.id);
     await docHub.closeMany(ownedLayouts.map((l) => l.id));
     // Cascade handles sessions, oauth_accounts, org_members,
     // owner_user_id columns (SET NULL or CASCADE per schema).
