@@ -14,7 +14,7 @@ import { join, resolve, extname } from 'node:path';
 import { db, schema } from '../db/index.js';
 import { requireGlobalAdmin } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { invalidateAllSessions } from '../auth/session.js';
+import { invalidateAllSessions, notifySessionRevoked } from '../auth/session.js';
 import { parsePartXml } from '@cld/parts-catalog';
 import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
@@ -258,6 +258,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, target.id));
     deleteUserAndReassign(target.id, me.id);
+    // Their sessions cascaded away; drop any open realtime sockets too.
+    notifySessionRevoked({ userId: target.id });
     await docHub.closeMany(ownedLayouts.map((l) => l.id));
     // Cascade handles sessions, oauth_accounts, org_members,
     // owner_user_id columns (SET NULL or CASCADE per schema).
