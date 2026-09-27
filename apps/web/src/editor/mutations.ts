@@ -89,7 +89,32 @@ export function deleteBricks(doc: Y.Doc, layerId: string, brickIds: string[]): v
         bricks.delete(i, 1);
       }
     }
+    pruneModuleMembers(doc, idSet);
   }, LOCAL_ORIGIN);
+}
+
+/**
+ * Drop deleted brick ids from every sidecar module, and remove modules
+ * left with no members — desktop `DeleteBricksCommand::redo`
+ * (EditCommands.cpp:82-120). Writes the cache only when something changed.
+ * Call inside a transaction.
+ */
+function pruneModuleMembers(doc: Y.Doc, deleted: Set<string>): void {
+  const cache = readSidecarCache(doc);
+  const modules = getSidecarModules(cache);
+  if (modules.length === 0) return;
+  let changed = false;
+  const next: SidecarModule[] = [];
+  for (const m of modules) {
+    const members = m.members.filter((id) => !deleted.has(id));
+    if (members.length === m.members.length) {
+      next.push(m);
+      continue;
+    }
+    changed = true;
+    if (members.length > 0) next.push({ ...m, members });
+  }
+  if (changed) writeSidecarCache(doc, { ...cache, modules: next });
 }
 
 export function moveBrick(
@@ -263,6 +288,182 @@ export function rotateBricks(
       // save — and the .bbm writer at G7 already handles drift fine.
       yBrick.set('orientation', mod360(current + deltaDegrees));
     }
+  }, LOCAL_ORIGIN);
+}
+
+/**
+ * Group `ids` by the brick layer that holds them, in layer order. The
+ * selection is a flat id list that can span layers; desktop commands act
+ * on every selected brick whatever its layer (items carry their layer
+ * index), so the web commands resolve layers from the map, never from the
+ * active layer. Unknown ids are dropped.
+ */
+export function bricksByLayer(
+  map: { layers: ReadonlyArray<{ id: string; type: string; bricks?: ReadonlyArray<{ id: string }> }> },
+  ids: Iterable<string>,
+  opts: { visibleOnly?: boolean } = {},
+): Map<string, string[]> {
+  const want = ids instanceof Set ? (ids as Set<string>) : new Set(ids);
+  const out = new Map<string, string[]>();
+  if (want.size === 0) return out;
+  for (const layer of map.layers) {
+    if (layer.type !== 'brick' || !layer.bricks) continue;
+    if (opts.visibleOnly && (layer as { visible?: boolean }).visible === false) continue;
+    const hit: string[] = [];
+    for (const b of layer.bricks) if (want.has(b.id)) hit.push(b.id);
+    if (hit.length > 0) out.set(layer.id, hit);
+  }
+  return out;
+}
+
+/** Every brick id on every visible brick layer — desktop `selectAll` (MapView.cpp:1417). */
+export function allVisibleBrickIds(
+  map: { layers: ReadonlyArray<{ type: string; visible?: boolean; bricks?: ReadonlyArray<{ id: string }> }> },
+): string[] {
+  const out: string[] = [];
+  for (const layer of map.layers) {
+    if (layer.type !== 'brick' || layer.visible === false || !layer.bricks) continue;
+    for (const b of layer.bricks) out.push(b.id);
+  }
+  return out;
+}
+
+/**
+ * `insertBricks` into several layers in one transaction; returns every
+ * new id (layer order). Used by Duplicate so copies stay on their
+ * source layers.
+ */
+export function insertBricksAcrossLayers(
+  doc: Y.Doc,
+  perLayer: Map<string, Parameters<typeof insertBricks>[2]>,
+  offset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+): string[] {
+  const ids: string[] = [];
+  doc.transact(() => {
+    for (const [layerId, bricks] of perLayer) ids.push(...insertBricks(doc, layerId, bricks, offset));
+  }, LOCAL_ORIGIN);
+  return ids;
+}
+
+/** Delete bricks spanning several layers in ONE transaction (one undo step). */
+export function deleteBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string[]>): void {
+  if (byLayer.size === 0) return;
+  doc.transact(() => {
+    for (const [layerId, ids] of byLayer) deleteBricks(doc, layerId, ids);
+  }, LOCAL_ORIGIN);
+}
+
+/**
+ * New centres + orientation delta for rotating a set of bricks about
+ * their collective centroid — port of `MapView::rotateSelected`
+ * (MapView.cpp:1043-1110). The pivot is the mean of the displayArea
+ * centres; a single brick therefore rotates in place.
+ */
+export function rotateAboutCentroid(
+  centres: ReadonlyArray<{ x: number; y: number }>,
+  degrees: number,
+): Array<{ x: number; y: number }> {
+  if (centres.length === 0) return [];
+  let px = 0;
+  let py = 0;
+  for (const c of centres) {
+    px += c.x;
+    py += c.y;
+  }
+  px /= centres.length;
+  py /= centres.length;
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return centres.map((c) => {
+    const rx = c.x - px;
+    const ry = c.y - py;
+    return { x: px + rx * cos - ry * sin, y: py + rx * sin + ry * cos };
+  });
+}
+
+/**
+ * Rotate a (possibly multi-layer) selection by `degrees` about its
+ * centroid: every brick's orientation changes by `degrees` and its centre
+ * orbits the pivot. displayArea keeps its size (desktop's
+ * RotateBricksCommand only touches orientation). One transaction.
+ */
+export function rotateBricksAboutCentroid(
+  doc: Y.Doc,
+  byLayer: Map<string, string[]>,
+  degrees: number,
+): void {
+  if (byLayer.size === 0 || degrees === 0) return;
+  const found: Array<{ yBrick: Y.Map<unknown>; area: RectangleF }> = [];
+  for (const [layerId, ids] of byLayer) {
+    const layerData = doc.getMap('layerData').get(layerId);
+    if (!(layerData instanceof Y.Map)) continue;
+    const bricks = layerData.get('bricks');
+    if (!(bricks instanceof Y.Array)) continue;
+    const idSet = new Set(ids);
+    for (let i = 0; i < bricks.length; i++) {
+      const b = bricks.get(i);
+      if (b instanceof Y.Map && idSet.has(b.get('id') as string)) {
+        found.push({ yBrick: b, area: b.get('displayArea') as RectangleF });
+      }
+    }
+  }
+  if (found.length === 0) return;
+  const next = rotateAboutCentroid(
+    found.map(({ area }) => ({ x: area.x + area.width / 2, y: area.y + area.height / 2 })),
+    degrees,
+  );
+  doc.transact(() => {
+    found.forEach(({ yBrick, area }, i) => {
+      const c = next[i]!;
+      const x = c.x - area.width / 2;
+      const y = c.y - area.height / 2;
+      if (Math.abs(x - area.x) > 1e-9 || Math.abs(y - area.y) > 1e-9) {
+        yBrick.set('displayArea', { ...area, x, y });
+      }
+      const current = (yBrick.get('orientation') as number) ?? 0;
+      yBrick.set('orientation', mod360(current + degrees));
+    });
+  }, LOCAL_ORIGIN);
+}
+
+/**
+ * Group a multi-layer selection — desktop `GroupBricksCommand` creates
+ * ONE group per layer (EditCommands.cpp:298-340) and needs at least two
+ * bricks in total. Returns the new group ids.
+ */
+export function groupBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string[]>): string[] {
+  let total = 0;
+  for (const ids of byLayer.values()) total += ids.length;
+  if (total < 2) return [];
+  const groupIds: string[] = [];
+  doc.transact(() => {
+    for (const [layerId, ids] of byLayer) {
+      const layerData = doc.getMap('layerData').get(layerId);
+      if (!(layerData instanceof Y.Map)) continue;
+      const yBricks = layerData.get('bricks');
+      const yGroups = layerData.get('groups');
+      if (!(yBricks instanceof Y.Array) || !(yGroups instanceof Y.Array)) continue;
+      const groupId = makeId();
+      const g = new Y.Map<unknown>();
+      g.set('id', groupId);
+      yGroups.push([g]);
+      groupIds.push(groupId);
+      const idSet = new Set(ids);
+      for (let i = 0; i < yBricks.length; i++) {
+        const b = yBricks.get(i);
+        if (b instanceof Y.Map && idSet.has(b.get('id') as string)) b.set('myGroup', groupId);
+      }
+    }
+  }, LOCAL_ORIGIN);
+  return groupIds;
+}
+
+/** Ungroup a multi-layer selection in one transaction. */
+export function ungroupBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string[]>): void {
+  if (byLayer.size === 0) return;
+  doc.transact(() => {
+    for (const [layerId, ids] of byLayer) ungroupBricks(doc, layerId, ids);
   }, LOCAL_ORIGIN);
 }
 
@@ -1422,6 +1623,86 @@ export function addSidecarModule(doc: Y.Doc, module: SidecarModule): void {
     const cache = readSidecarCache(doc);
     writeSidecarCache(doc, { ...cache, modules: [...getSidecarModules(cache), module] });
   }, LOCAL_ORIGIN);
+}
+
+/**
+ * Register the given bricks as a new sidecar module — desktop
+ * `CreateModuleCommand` (ModuleCommands.cpp:38-58), reached from
+ * Modules ▸ Create from Selection (MainWindow.cpp:1056). The bricks stay
+ * where they are; only the module entry is added. Returns its id, or
+ * null when there is nothing to group.
+ */
+export function createSidecarModule(doc: Y.Doc, name: string, memberIds: string[]): string | null {
+  const members = [...new Set(memberIds)];
+  if (members.length === 0) return null;
+  const id = makeId();
+  addSidecarModule(doc, {
+    id,
+    name: name.trim() || 'New Module',
+    members,
+    transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  });
+  return id;
+}
+
+/** One source brick layer of a module file — desktop `LayerBatch`. */
+export interface ModuleBatch {
+  layerName: string;
+  bricks: Array<{
+    partNumber: string;
+    displayArea: RectangleF;
+    orientation?: number;
+    altitude?: number;
+  }>;
+}
+
+/**
+ * Insert a module's bricks and register them as a sidecar module in ONE
+ * transaction — desktop `ImportBbmAsModuleCommand` (ModuleCommands.cpp:451-506).
+ * Each batch lands on the host brick layer with the same name, or on a
+ * new brick layer with that name when none exists, so the module keeps
+ * its layering (tracks stay above scenery). Returns the module id and
+ * the new brick ids.
+ */
+export function importBricksAsModule(
+  doc: Y.Doc,
+  batches: ModuleBatch[],
+  opts: { name: string; offset?: { dx: number; dy: number }; sourceFile?: string },
+): { moduleId: string; ids: string[] } | null {
+  const nonEmpty = batches.filter((b) => b.bricks.length > 0);
+  if (nonEmpty.length === 0) return null;
+  const moduleId = makeId();
+  const ids: string[] = [];
+  doc.transact(() => {
+    const layerData = doc.getMap('layerData');
+    const findByName = (name: string): string | null => {
+      for (const lid of doc.getArray<string>('layers').toArray()) {
+        const l = layerData.get(lid);
+        if (l instanceof Y.Map && l.get('type') === 'brick' && l.get('name') === name) return lid;
+      }
+      return null;
+    };
+    for (const batch of nonEmpty) {
+      const name = batch.layerName || 'Module';
+      let layerId = findByName(name);
+      if (!layerId) {
+        layerId = addLayer(doc, 'brick');
+        renameLayer(doc, layerId, name);
+      }
+      ids.push(...insertBricks(doc, layerId, batch.bricks, opts.offset));
+    }
+    const cache = readSidecarCache(doc);
+    const mod: SidecarModule = {
+      id: moduleId,
+      name: opts.name || 'Module',
+      members: ids,
+      transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      importedAt: new Date().toISOString(),
+      ...(opts.sourceFile ? { sourceFile: opts.sourceFile } : {}),
+    };
+    writeSidecarCache(doc, { ...cache, modules: [...getSidecarModules(cache), mod] });
+  }, LOCAL_ORIGIN);
+  return { moduleId, ids };
 }
 
 export function renameSidecarModule(doc: Y.Doc, id: string, name: string): void {
