@@ -16,10 +16,10 @@ Web source root: this repository.
 - [x] **New** (`Ctrl+N`) — navigates to layouts page; confirms if sync is broken. (`MainWindowMenus.cpp:76-78`)
 - [x] **Open...** (`Ctrl+O`) — navigates to layouts page; confirms if sync is broken. (`MainWindowMenus.cpp:80-82`)
 - [n/a] **Open Recent** submenu — layout list page is the equivalent; a "Recent" submenu would be redundant
-- [x] **Save** (`Ctrl+S`) — explicit save flush; writes `.bbm` + sidecar (`MainWindowMenus.cpp:88-90`)
+- [~] **Save** (`Ctrl+S`) — edits persist continuously over Yjs, so there is no separate flush. Save confirms the state instead: "Saved" when the WebSocket is connected and synced. When offline it offers a local `.bbm` download of the current doc (`useLayoutDoc.saveNow`, `EditorPage.tsx` `downloadLocalBbm`). The server does not write a `.bbm` + sidecar on save; it writes them on export. (`MainWindowMenus.cpp:88-90`)
 - [n/a] **Save As...** (`Ctrl+Shift+S`) — layouts are server-side; "Save As" doesn't map to the web model
-- [x] **Export as Image...** — `ExportImageDialog`: 1×/2×/4× resolution, transparent background option; PNG download client-side (`MainWindowMenus.cpp:97-201`).
-- [x] **Export as PDF...** — tiled print mode in `ExportImageDialog`: paper size (A4/A3/Letter portrait+landscape), DPI (96/150/300), tile overlap; opens print window with `@page` CSS → browser Print → PDF
+- [x] **Export as Image...** — `ExportImageDialog`: 1×/2×/4× resolution, transparent background option; PNG download client-side. Renders the whole map (content bounds ± 20 px, like desktop `itemsBoundingRect` export), not the viewport. The grid, selection halo, snap ring and HUD are hidden and the background colour is painted (`exportRender.ts`, `MainWindowMenus.cpp:97-201`).
+- [x] **Export as PDF...** — tiled print mode in `ExportImageDialog` (tiles the whole map, same renderer as the PNG export): paper size (A4/A3/Letter portrait+landscape), DPI (96/150/300), tile overlap; opens print window with `@page` CSS → browser Print → PDF
 - [x] **Print...** (`Ctrl+P`) — covered by tiled print mode in `ExportImageDialog` (same as above)
 - [n/a] **Quit** (`Ctrl+Q`) — browser tab close; no equivalent needed
 
@@ -30,15 +30,16 @@ Web source root: this repository.
 - [x] **Undo / Redo** (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)
 - [x] **Cut / Copy / Paste** (`Ctrl+X` / `Ctrl+C` / `Ctrl+V`) — uses the OS clipboard so paste works across tabs
 - [x] **Duplicate** (`Ctrl+D`)
-- [x] **Delete** (`Del` / `Backspace`)
+- [x] **Delete** (`Del` / `Backspace`) — deletes the selection across all layers in one undo step. With a label or text cell selected it deletes that instead.
 - [x] **Find & Replace** (`Ctrl+F`) — scope (Text content / Part number), match case, click result to select; Replace all for text-cell scope.
-- [x] **Select All** (`Ctrl+A`), **Deselect All** (`Ctrl+Shift+A`)
+- [x] **Select All** (`Ctrl+A`) — every brick on every visible brick layer (`MapView.cpp:1417`); **Deselect All** (`Ctrl+Shift+A`)
+- [ ] **Mixed selection** — desktop selects bricks, rulers, text and labels together (rubber band / Ctrl+click). The web selection is either bricks, or one ruler, label or text cell.
 - [x] **Select Path** (`Ctrl+P`) — BFS over connection links (`MapView.cpp:1481-1543`)
-- [x] **Group / Ungroup** (`Ctrl+G` / `Ctrl+Shift+G`) — group-aware selection in editor
+- [x] **Group / Ungroup** (`Ctrl+G` / `Ctrl+Shift+G`) — group-aware selection in editor. A cross-layer selection makes one group per layer, like `GroupBricksCommand`.
 - [x] **Transform → Arrow nudge** by current snap step
 - [x] **Bring to Front / Send to Back** (`Ctrl+Shift+]` / `Ctrl+Shift+[`)
 - [x] **Rotation Step** — dropdown `90 / 45 / 22.5 / 11.25 / 5 / 1°` in editor toolbar (`editorStore.rotationStepDegrees`)
-- [x] **Rotate CW / CCW** (`Shift+R` / `R`) — uses configured rotation step
+- [x] **Rotate CW / CCW** (`Shift+R` / `R`) — uses the configured rotation step. Rotates the selection about its centroid, across layers (`MapView.cpp:1043-1110`).
 - [x] **Insert → Text...** (`Ctrl+T`) — TextDialog with font / size / bold / italic / colour / rotation
 - [x] **Insert → Anchored Label...** (`Ctrl+L`) — `AddAnchoredLabelDialog`: text, font, size, bold/italic, colour, World/Brick anchor, offset, rotation, minZoom; mutations via sidecar cache patch (`addAnchoredLabel` / `editAnchoredLabel` / `deleteAnchoredLabel` in `mutations.ts`)
 - [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint colour), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
@@ -73,15 +74,15 @@ Web source root: this repository.
 - [x] **Background Colour...** — colour picker → `setBackgroundColor` mutation
 - [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs; stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
 - [x] **General Info...** — Author / LUG / Event / Date / Comment dialog
-- [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels; accessible from Map menu and Toolbar
+- [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar.
 - [x] **Venue → Draw by Dimensions...** — `VenueDimensionsDialog`: unit (ft/in), start X/Y, segment table (length/angle/kind/label), compass-preset angle dropdown, Rectangle preset helper; builds polygon and calls `setVenue`
 - [x] **Venue → Add Obstacle...** — `venueObstacle` tool: same click-polygon flow; Enter appends a `VenueObstacle` to existing venue (or creates bare venue if none); accessible from Map menu and Toolbar
 - [x] **Venue → Edit Properties...** — `VenuePropertiesDialog`: name, render toggle, min walkway (ft), per-edge kind/door-width/label table; Clear Venue button; wired into Map menu → "Venue → Edit Properties..."
 - [x] **Venue → Clear** (with confirmation) — Map menu → "Venue → Clear" calls `setVenue(doc, null)` after `window.confirm`
 - [x] **Venue → Save to Library...** — `VenueSaveLibraryDialog`: personal or org dropdown (orgs fetched via `api.orgs.list`), `POST /api/venues` with optional `orgSlug`; status bar confirms; shown in Venue Library panel
-- [x] **Venue → Export as File...** — client-side download of venue JSON as `.cld-venue` file; Map menu entry `onVenueExportFile`
+- [x] **Venue → Export as File...** — downloads `<name>.bld-venue` with `"schema": "bld-venue/1"`, like desktop `VenueIO.cpp` (`venueFile.ts`)
 - [x] **Venue → Load from Library...** — `VenueLibraryPanel` dock panel: lists server venues, ↓ button loads into layout via `setVenue`; filter input; delete per row
-- [x] **Venue → Load from File...** — file picker for `.cld-venue`/`.json`; parses JSON and calls `setVenue`
+- [x] **Venue → Load from File...** — accepts `.bld-venue`, legacy web `.cld-venue` and `.json`. Validates the schema and fields before `setVenue` (`venueFile.ts`).
 
 ---
 
@@ -93,9 +94,9 @@ Web source root: this repository.
 
 ## Modules menu (`MainWindowMenus.cpp:573-582`)
 
-- [x] **Create from Selection...** — `SaveModuleDialog`: name prompt → creates module via `/api/modules` + snapshot upload; accessible from Map menu → "Save Selection as Module..."
-- [x] **Import .bbm as Module...** — `ImportBbmDialog`: file picker → `readBbm` → collect all brick-layer bricks → translate centroid to origin → `insertBricks` into active layer (`ImportBbmAsModuleCommand` port; flattens to one target layer)
-- [x] **Save Selection as Module...** — same as "Create from Selection..." above (single entry point in Map menu)
+- [x] **Create from Selection...** — Map menu "Create Module from Selection..." and the Modules panel's "+ From selection" prompt for a name (default "New Module"). They register the selected bricks as a sidecar module, like `MainWindow.cpp:1056` (`moduleActions.ts`, `createSidecarModule`).
+- [x] **Import .bbm as Module...** — `ImportBbmDialog`: file picker → `readBbm`. Bricks go onto host layers matched by name, with missing layers created. A sidecar module is recorded with `sourceFile` + `importedAt`, all in one undo step (`importBricksAsModule`; `ImportBbmAsModuleCommand` port).
+- [x] **Save Selection as Module...** — `SaveModuleDialog`: saves the selection to the server module library (`/api/modules` + snapshot upload); web extension of the desktop module-library folder
 - [x] **Save Selection as Set...** — `SaveAsSetDialog`: name prompt → generates BrickTracks-style `.set.xml` (positions relative to centroid, tab-indented) → client-side download; no server round-trip
 
 ---
@@ -125,8 +126,9 @@ Web source root: this repository.
 - [x] Left-click empty space → marquee
 - [x] Left-click brick → select (replace; Shift / Ctrl modifiers); group-aware (clicking a grouped brick selects the whole group)
 - [x] Double-click brick → Edit Brick dialog (per-brick properties)
-- [x] Left-drag brick → move with live connection-snap + grid fallback (single-brick); green snap ring at the active connection target
-- [x] Left-drag selection → group move (translates rigidly; live connection-snap runs on the leader brick with all selected IDs excluded from snap targets; snap-rotation only applies to leader, not siblings — matches desktop behaviour for multi-brick drags)
+- [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target.
+- [ ] **Grab anchor** — desktop remembers the connection nearest the click and uses it as the sole snap lead for the drag (`MapViewDrag.cpp:155`, `captureGrabAnchor`). Web tries every free connection of the moving set.
+- [x] Left-drag selection → group move across layers. It translates rigidly and live connection-snap tries every free connection of every moving brick. Multi-brick snaps are translation-only, with no rotation (`MapViewDrag.cpp:252-310`).
 - [x] Left-drag a single linear-ruler endpoint handle → reshape ruler (`EndpointHandle` in `RulerLayer.tsx`)
 - [x] Middle-button drag → pan
 - [x] Right-click → context menu (selection-aware) — see below
@@ -134,10 +136,11 @@ Web source root: this repository.
 - [x] Drag selection out of viewport → cursor flips to `not-allowed`, release deletes
 - [x] Double-click brick / ruler / text / label / venue → open per-type Properties dialog (`MapView.cpp:1568-1613`) — brick [x], ruler [x], text [x], anchored label [x] (double-click opens `AddAnchoredLabelDialog` in edit mode via `setEditingLabel`), venue [x] (double-click on `VenueOverlay` opens `VenuePropertiesDialog` via `onOpenVenueProps`)
 - [x] Drag thumbnail from Parts panel → live ghost preview with connection-snap rotation; drop places at cursor
-- [x] Drag from Module Library panel → drop on canvas imports bricks into active layer
+- [x] Drag from Module Library panel → drop on canvas. The centroid lands under the cursor, the bbox top-left is grid-snapped, then a translation-only connection snap runs (`MapView.cpp:1900-2060`). Bricks go to host layers matched by name and are registered as a sidecar module.
 - [x] Paint / Erase tool: click + drag stamps cells once each; auto-creates Area layer
 - [x] Linear / Circular ruler tool: click-drag with live dashed preview snapped to grid step during drag; commits a ruler item on release
-- [x] Venue Outline / Obstacle tool: clicks add vertices, dashed preview with vertex dots + hint label, Enter / Esc commit / cancel; grid-snap applied to each vertex
+- [x] Venue Outline / Obstacle tool: clicks add vertices (also over bricks), dashed preview with vertex dots + hint label. Enter or right-click commits, Esc cancels (`MapView.cpp:474-489`). Web also grid-snaps each vertex, which desktop does not.
+- [x] Click an anchored label or text cell to select it (Delete removes it); drag an anchored label to move it (`moveAnchoredLabel`). Text cells are not draggable, same as desktop.
 - [x] Click + place auto-selects new brick so chain-placing snaps off it (`MapView.cpp:1394-1408`)
 
 ### Right-click context menu (`MapViewContextMenu.cpp`)
@@ -151,7 +154,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Group** (≥ 2) / **Ungroup**
 - [x] **Select Connected**
 - [x] **Cut / Copy / Duplicate / Delete**
-- [x] Empty area: **Paste**, **Add Text Here...**
+- [x] Empty area: **Paste**, **Add Text Here...** (opens the text dialog at the click point)
 - [x] Ruler-attach flow: when a single ruler is selected and user right-clicks a brick, offers **Attach Endpoint 1/2** / **Attach Centre**
 - [x] Tail: **Undo / Redo**
 
@@ -159,10 +162,10 @@ Selection-aware; entries vary based on what's under the cursor:
 
 ## Canvas keyboard shortcuts (`MapView.cpp:942-983`)
 
-- [x] `R` / `Shift+R` — rotate ±90° (needs to use configured rotation step)
+- [x] `R` / `Shift+R` — rotate by the configured rotation step about the selection centroid
 - [x] `Delete` / `Backspace` — delete selection
 - [x] Arrow keys — nudge by current snap step (also applies to rulers + anchored labels in desktop)
-- [x] `Enter` / `Esc` — commit / cancel venue-draw polygon (venueOutline / venueObstacle tools)
+- [x] `Enter` / `Esc` — commit / cancel venue-draw polygon (venueOutline / venueObstacle tools); right-click also commits
 - [x] `Escape` — cancel place / deselect (web extension, fine)
 - [x] All Edit-menu shortcuts that are wired (Ctrl+Z/Y, Ctrl+A, Ctrl+Shift+A, Ctrl+S, Ctrl+D, F)
 - [x] `Ctrl+N` — navigate to layouts page (web new-layout equivalent)
@@ -189,6 +192,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] List rows with kind glyph + name + visibility checkbox + transparency slider + active highlight
 - [x] Click row → set active layer
 - [x] Double-click name → inline rename (Enter commits, Escape cancels, blur commits; remote renames sync without clobbering in-progress edits)
+- [ ] Double-click layer row → **Layer Options** (desktop `LayerPanel.cpp:145`). Web double-click renames inline instead; options are only on right-click.
 - [x] Right-click context menu — Show/Hide, Solo, Show all, Rename, Move up/down, Delete, **Layer Options…** (`LayersPanel.tsx` `LayerRow` → `LayerOptionsDialog.tsx`)
 
 ### Modules Panel (`ModulesPanel.cpp`) — **PARTIAL**
@@ -196,15 +200,16 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] List `name (N members — sourceFile)` — reads `sidecar.modules[]`; shown in Panels menu (hidden by default)
 - [x] Click toggles member-brick selection in the scene (additive toggle)
 - [x] Right-click: **Select Members** [x], **Rename** [x] (inline), **Flatten** [x] (`flattenSidecarModule`), **Delete** [x] (`deleteSidecarModule`)
-- [x] Buttons: Create (→ SaveModuleDialog via Map menu [x]), Import… (→ ImportBbmDialog [x]); Save to Library / Clone / Re-scan all shipped
+- [x] Buttons: **+ From selection** (sidecar module from selected bricks [x]), Import… (→ ImportBbmDialog [x]); Save to Library / Clone / Re-scan all shipped
+- [x] Deleting bricks prunes them from module member lists; modules left empty are removed (`DeleteBricksCommand` parity)
 - [x] Right-click: Move… [x], Rotate submenu [x], Clone [x] (bbox-offset copy, new sidecar entry), Save to Library [x] (creates server module, sets sourceFile), Re-scan from source [x] (re-fetches snapshot by module ID, replaces member bricks)
 
 ### Module Library Panel (`ModuleLibraryPanel.tsx`) — **SHIPPED**
 
 - [x] Filter input
 - [x] List saved server modules (personal + org-owned + shared)
-- [x] Drag MIME `application/x-cld-module` → canvas drop inserts bricks into active layer
-- [x] Click ↓ button or double-click → insert into active layer
+- [x] Drag MIME `application/x-cld-module` → canvas drop imports as a sidecar module (layers matched by name; see canvas behaviours)
+- [x] Click ↓ button or double-click → insert as a sidecar module
 - [x] Delete button per row
 - [n/a] Local `.bbm` folder picker — superseded by server-side module library
 
@@ -237,14 +242,16 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Part Library management** — platform-admin installs libraries, org-admin enables/disables per library (`apps/web/src/admin/AdminPage.tsx` Libraries tab; `apps/web/src/orgs/OrgDetailPage.tsx` Part libraries section)
 - [n/a] **Library Paths** dialog (legacy local-path model) — superseded by server-side part library manager
 - [x] **Find & Replace** — text-cell Replace All wired; part-number replace not applicable (part identity)
-- [x] **Layer Options** dialog — `LayerOptionsDialog.tsx`: name, hull visibility/colour/thickness, display-brick-elevation (brick layers only); accessible via right-click → "Layer Options…"
+- [~] **Layer Options** dialog — `LayerOptionsDialog.tsx`: name, hull visibility/colour/thickness, display-brick-elevation (brick layers only); accessible via right-click → "Layer Options…"
+  - [ ] Grid-layer options: cell size, line thickness/colour, display grid / sub-grid, cell index (`MainWindow.cpp:172-200`)
+  - [ ] Area-layer paint cell size (`MainWindow.cpp:220-262`); web paints with the stored `areaCellSize` (default 8) but has no UI to change it
 - [x] **General Info** dialog — Author / LUG / Event / Date / Comment (`GeneralInfoDialog`)
 - [x] **Background Image** dialog — `BackgroundImageDialog.tsx`
 - [x] **Edit Brick** dialog — Part #, X/Y studs, Rotation, Altitude, Active connection # (`EditBrickDialog`)
 - [x] **Edit Ruler** dialog — line color/thickness, unit, guideline, label, Detach buttons (`EditRulerDialog`)
-- [x] **Add Text** dialog — text, font, size, bold, italic, color, rotation (`TextDialog` via `Ctrl+T`)
-- [x] **Edit Text** dialog (double-click or right-click on existing text cell → `TextDialog` pre-populated; patches text/font/color/orientation via `editTextCellFull`)
-- [x] **Add / Edit Anchored Label** dialog — `AddAnchoredLabelDialog.tsx` (text, font, colour, World/Brick anchor, offset, rotation, minZoom); double-click on a rendered label opens in edit mode via `initialLabel` prop + `editAnchoredLabel` mutation
+- [x] **Add Text** dialog — text, font, size, bold, italic, color, rotation (`TextDialog` via `Ctrl+T` or context menu "Add Text Here...")
+- [x] **Edit Text** dialog (double-click or right-click on existing text cell → `TextDialog` pre-populated; patches text/font/color/orientation via `editTextCellFull`; Delete button)
+- [x] **Add / Edit Anchored Label** dialog — `AddAnchoredLabelDialog.tsx` (text, font, colour, World/Brick anchor, offset, rotation, minZoom); double-click on a rendered label opens in edit mode via `initialLabel` prop + `editAnchoredLabel` mutation; Delete button
 - [x] **Export Image** dialog — resolution + transparent background (`ExportImageDialog.tsx`)
 - [x] **Venue Properties** dialog — `VenuePropertiesDialog.tsx`: name, enabled, min walkway (ft), per-edge kind/door-width/label table; Clear Venue button; wired into Map menu
 - [x] **Venue by Dimensions** dialog — `VenueDimensionsDialog.tsx`: unit, origin, segment table with compass-preset angles and Rectangle preset; wired into Map menu
@@ -257,6 +264,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [n/a] **Background Task progress** — web model uses async mutations with inline pending states; no separate progress window needed
 - [n/a] **Restore autosave?** prompt at startup — Yjs provides continuous sync; there is no local autosave file to restore
 - [x] **Unsaved changes** prompt before New/Open — shown when sync is broken (reconnecting/offline/error)
+- [ ] **Missing-parts** modal when a layout references parts not in the library. Web renders placeholders silently. I could not find this dialog in the current desktop `src/`; the only missing-part count is in `ImportPreviewDialog.cpp:175`.
 - [x] **About** — `/about` route (web equivalent of the desktop About message box)
 
 ---
@@ -289,16 +297,16 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Selection halo** — gold / green-when-snap-active polygon outline
 - [x] **Linear-ruler endpoint handles** drawn when one ruler selected; draggable to reshape
 - [x] **Foreground scale-bar HUD** — bottom-right overlay, auto-picks round stud count, labels in mm/cm/m
-- [x] **Module name label** (gated by `view/moduleNames` → `cld:showModuleNames`; `ModuleOverlay.tsx`)
+- [x] **Module name label** (gated by `view/moduleNames` → `cld:showModuleNames`; `ModuleOverlay.tsx`). Font is Module Label Percent (default 35) of the module's long side, clamped 16–400 px, rotated along the long axis (`SceneBuilderSidecar.cpp`).
 - [x] **Module frame outline** (gated by `view/moduleFrameThickness` → `cld:showModuleFrames`; dashed blue rect over member-brick AABB; thickness from `cld:moduleFrameThickness`)
 - [x] **Anchored labels** — World [x], Brick [x], Group [x], Module [x] anchors all render; Group/Module show dashed leader-line from AABB centre to label; add/edit/delete mutations [x]; minZoom gate [x]
 - [x] **Venue outline + obstacles + edge labels** — Wall/Door/Open kinds with desktop pen styles, walkway buffer band on non-Wall edges, ft/in distance labels
-- [x] **Watermark** — Konva `Text` layer bottom-right: `"author / lug / event"`, semi-transparent, gated by `showExportWatermark`; appears in `stage.toDataURL()` exports
+- [x] **Watermark** — Konva `Text` layer bottom-right: `"author / lug / event"`, semi-transparent, gated by `showExportWatermark`; drawn into full-map PNG/print exports
 - [x] Live drag/place ghost item
 - [x] **Snap ring** overlay at the live snap point (green ring) during single-brick drag
 - [x] Live area cell rendering
 - [x] Live text-cell rendering with rotation
-- [x] Live ruler rendering — line / circle + distance label with desktop unit list (studs / LDU / track / module / m / ft)
+- [x] Live ruler rendering — line / circle + distance label, formatted like desktop `formatDistance` (`SceneBuilder.cpp:471-483`: studs 2dp, LDU 0dp, tracks 2dp, mod 2dp, m 3dp, ft 2dp)
 - [x] Connection-point markers gated by `view/connectionPoints` toggle (Map menu → Show Connection Points)
 
 ---
@@ -306,6 +314,7 @@ Selection-aware; entries vary based on what's under the cursor:
 ## Status bar widgets (`MainWindow.cpp:861-1014`)
 
 - [x] Transient status messages (`editorStore.showStatusMessage` → `StatusBar` auto-clears after 3 s)
+- [x] Live drag snap feedback — "Connection snap active", "no free connections in selection" or "N moving conn(s), no target in reach" during a drag, then "Connection snap" / "Moved" on release (`MapViewDrag.cpp:352-376, 594-597`)
 - [x] Permanent dimension label: "W × H studs (W m × H m when ≥100 studs)" — status bar centre-left
 - [x] Permanent selection count
 - [x] Permanent zoom % indicator
@@ -319,7 +328,7 @@ Selection-aware; entries vary based on what's under the cursor:
 
 ## Undo-stack commands (one user-action per class — `src/edit/`)
 
-**Bricks** (`EditCommands.cpp`): MoveBricksCommand [x], RotateBricksCommand [x], DeleteBricksCommand [x], AddBrickCommand [x] (placeBrick), AddBricksCommand [x] (insertBricks), ReorderBricksCommand [x] (reorderBricks), EditBrickCommand [x], GroupBricksCommand [x], UngroupBricksCommand [x]
+**Bricks** (`EditCommands.cpp`): MoveBricksCommand [x], RotateBricksCommand [x] (about selection centroid), DeleteBricksCommand [x] (prunes module members), AddBrickCommand [x] (placeBrick), AddBricksCommand [x] (insertBricks), ReorderBricksCommand [x] (reorderBricks), EditBrickCommand [x], GroupBricksCommand [x], UngroupBricksCommand [x]
 
 **Layers** (`LayerCommands.cpp`): AddLayerCommand [x] (brick / area / text / ruler), DeleteLayerCommand [x], MoveLayerCommand [x], RenameLayerCommand [x], SetLayerTransparencyCommand [x], SetLayerVisibilityCommand [x], ChangeBackgroundColorCommand [x], ChangeGeneralInfoCommand [x], SetLayerHullPropertiesCommand [x] (`setLayerHullProperties`), SetDisplayBrickElevationCommand [x] (`setLayerDisplayBrickElevation`)
 
@@ -331,7 +340,7 @@ Selection-aware; entries vary based on what's under the cursor:
 
 **Areas** (`AreaCommands.cpp`): PaintAreaCellsCommand [x]
 
-**Modules** (`ModuleCommands.cpp`): CreateModuleCommand [x] (SaveModuleDialog), DeleteModuleCommand [x] (`deleteSidecarModule`), MoveModuleCommand [x] (`moveModuleBricks`), RotateModuleCommand [x] (`rotateModuleBricks`), RenameModuleCommand [x] (`renameSidecarModule`), CloneModuleCommand [x] (`cloneModuleBricks`), FlattenModuleCommand [x] (`flattenSidecarModule`), RescanModuleCommand [x] (`rescanModuleFromBricks`), ImportBbmAsModuleCommand [x] (ImportBbmDialog)
+**Modules** (`ModuleCommands.cpp`): CreateModuleCommand [x] (`createSidecarModule`), DeleteModuleCommand [x] (`deleteSidecarModule`), MoveModuleCommand [x] (`moveModuleBricks`), RotateModuleCommand [x] (`rotateModuleBricks`), RenameModuleCommand [x] (`renameSidecarModule`), CloneModuleCommand [x] (`cloneModuleBricks`), FlattenModuleCommand [x] (`flattenSidecarModule`), RescanModuleCommand [x] (`rescanModuleFromBricks`), ImportBbmAsModuleCommand [x] (`importBricksAsModule`)
 
 **Venue** (`VenueCommands.cpp`): SetVenueCommand [x] (`setVenue` — replaces/clears sidecar venue, Yjs-undoable)
 
@@ -341,11 +350,11 @@ Selection-aware; entries vary based on what's under the cursor:
 
 - [x] `.bbm` reader/writer (Grid / Brick / Text / Area / Ruler layers all round-trip)
 - [x] Sidecar `.bbm.cld` (anchored labels, modules, venue, sha256) — round-trip OK; anchored labels [x], modules [x], venue [x] all render
-- [x] `.cld-venue` standalone files — JSON serialisation of the sidecar `Venue` object; save (download) and load (file picker) both wired in Map menu
+- [x] `.bld-venue` standalone files (`"schema": "bld-venue/1"`, `VenueIO.cpp:28`) written; `.bld-venue` and legacy `.cld-venue` read with validation (`venueFile.ts`)
 - [x] `.set.xml` write — `SaveAsSetDialog.tsx`; Map menu → "Save Selection as Set…"
 - [x] Vendored parts library
 - [n/a] User library paths + `imports/` subfolder — superseded by server-side part library manager
-- [x] BlueBrick `.bbb` budget read/write — `BudgetDialog.tsx` parses `<Budget><BudgetEntry><PartNumber><Limit>` XML on Open and writes same format on Save
+- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`. Reads `<Budget><BudgetEntry><PartNumber><Limit>`, ignoring negative or missing limits. Writes XML-escaped entries sorted by part number and drops unlimited (−1) entries, as desktop `Budget.cpp:36-58` does.
 
 ---
 
@@ -394,7 +403,7 @@ mix of: server-side (per-user, sync across devices) and `localStorage`
 ## Drag-and-drop integrations
 
 - [x] Custom MIME drag (parts) `kPartMimeType` — drop on canvas places brick (with connection-snap) (`PartsBrowser.cpp:42-55`)
-- [x] Custom MIME drag (modules) `application/x-cld-module` — drop on canvas imports bricks into active layer
+- [x] Custom MIME drag (modules) `application/x-cld-module` — drop on canvas imports bricks as a sidecar module
 - [x] Drop a `.bbm` file onto the window — opens it (`main.tsx` `GlobalBbmDrop`, `EditorPage.tsx` status-bar feedback)
 - [x] Drag selection out of viewport → cursor flips to `not-allowed`, release deletes
 
