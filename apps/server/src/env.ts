@@ -12,14 +12,17 @@ function int(value: string | undefined, fallback: number): number {
 /**
  * TRUST_PROXY → Fastify's `trustProxy`. Unset / "false" / "0": don't
  * trust X-Forwarded-* (req.ip is the socket peer). "true": trust any
- * proxy chain. A positive integer: trust that many hops. Anything else:
- * a comma-separated list of proxy IPs / CIDRs.
+ * proxy chain. Anything else: a comma-separated list of proxy IPs /
+ * CIDRs. A bare hop count is rejected: Fastify dropped hop-count trust
+ * because it lets direct clients spoof X-Forwarded-For.
  */
-export function parseTrustProxy(value: string | undefined): boolean | number | string {
+export function parseTrustProxy(value: string | undefined): boolean | string {
   const v = value?.trim() ?? '';
   if (v === '' || v === '0' || v.toLowerCase() === 'false') return false;
   if (v.toLowerCase() === 'true') return true;
-  if (/^\d+$/.test(v)) return Number.parseInt(v, 10);
+  if (/^\d+$/.test(v)) {
+    throw new Error('TRUST_PROXY hop counts are not supported; use "true" or proxy IPs/CIDRs');
+  }
   return v;
 }
 
