@@ -43,6 +43,7 @@ import { ModuleOverlay } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
+import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
   addCircularRuler,
@@ -1300,47 +1301,20 @@ function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, width, height]);
 
-  // Finish the venue outline / obstacle being drawn (≥3 points) and
-  // return to the select tool. Enter or right-click, like desktop
-  // MapView::finishVenueDraw (MapView.cpp:484-489).
+  // Finish the venue outline / obstacle being drawn and return to the
+  // select tool. Enter or right-click, like desktop
+  // MapView::finishVenueDraw (MapView.cpp:891-925): fewer than 3 points
+  // drops them, says so and stays in the tool; drawing enables the venue.
   function finishVenueDraft() {
-    if (!venueDraft || isViewer) return;
-    const pts = venueDraft.pts;
-    const kind = venueDraft.kind;
-    if (pts.length >= 3 && doc) {
-      void (async () => {
-
-        const existing = readSidecarFromDoc(doc);
-        if (kind === 'outline') {
-          const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
-            kind: 0,
-            doorWidthStuds: 0,
-            label: '',
-            poly: [pt, pts[(i + 1) % pts.length]!],
-          }));
-          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-          const minX = Math.min(...xs), minY = Math.min(...ys);
-          const maxX = Math.max(...xs), maxY = Math.max(...ys);
-          const venue: import('@cld/bbm').Venue = {
-            name: existing?.venue?.name ?? '',
-            enabled: existing?.venue?.enabled ?? true,
-            minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
-            bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-            edges,
-            obstacles: existing?.venue?.obstacles ?? [],
-          };
-          setVenue(doc, venue);
-        } else {
-          const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
-          const base = existing?.venue ?? {
-            name: '', enabled: true, minWalkwayStuds: 0,
-            bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
-          };
-          setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
-        }
-      })();
-    }
+    if (isViewer) return;
+    const kind = venueDraft?.kind ?? (tool === 'venueObstacle' ? 'obstacle' : 'outline');
+    const next = venueAfterDraw(readSidecarFromDoc(doc)?.venue, kind, venueDraft?.pts ?? []);
     setVenueDraft(null);
+    if (!next) {
+      useEditorStore.getState().showStatusMessage(VENUE_MIN_POINTS_MESSAGE, 2500);
+      return;
+    }
+    setVenue(doc, next);
     useEditorStore.getState().setTool('select');
   }
 
@@ -1375,7 +1349,7 @@ function Canvas({
       }
 
       // Enter — commit venue-draw polygon (≥3 pts) or obstacle.
-      if (e.key === 'Enter' && venueDraft && !isViewer) {
+      if (e.key === 'Enter' && (venueDraft || tool === 'venueOutline' || tool === 'venueObstacle') && !isViewer) {
         e.preventDefault();
         finishVenueDraft();
         return;
@@ -3291,9 +3265,9 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   // panel is collapsed or scrolled out of view (issue #61).
   const activeLayer = activeLayerId ? budgetMap?.layers.find((l) => l.id === activeLayerId) : null;
   // The status bar re-renders on every HUD mouse update; keep the
-  // O(edges x bricks) walkway scan and the budget tally off that path.
-  const walkwayViolations = useMemo(
-    () => (venue ? countWalkwayViolations(venue, budgetMap) : 0),
+  // venue validation and the budget tally off that path.
+  const venueReadout = useMemo(
+    () => venueStatus(venue, validateVenue(venue, budgetMap)),
     [venue, budgetMap],
   );
   const budgetOver = useMemo(() => {
@@ -3347,17 +3321,15 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
         )}
       </div>
       <div className="flex items-center gap-3">
-        {venue !== null && (
+        {venueReadout && (
+          // Desktop MainWindow.cpp:917-936: "Venue: OK" / "Venue: N issue(s)"
+          // with the problems listed in the tooltip.
           <span
-            title={venue.enabled ? `Venue: ${venue.name || 'unnamed'} (${venue.edges.length} edges)` : 'Venue disabled'}
-            className={venue.enabled ? 'text-green-400' : 'text-neutral-500'}
+            data-testid="venue-status"
+            title={venueReadout.tooltip}
+            className={venueReadout.ok ? 'text-green-400' : 'font-semibold text-orange-400'}
           >
-            Venue: {venue.enabled ? (venue.name || 'unnamed') : 'disabled'}
-          </span>
-        )}
-        {walkwayViolations > 0 && venue && (
-          <span className="text-orange-400" title={`${walkwayViolations} brick(s) inside the ${venue.minWalkwayStuds} stud walkway buffer`}>
-            ⚠ {walkwayViolations} in walkway
+            {venueReadout.text}
           </span>
         )}
         {budgetLimits.size > 0 && (
@@ -3375,40 +3347,6 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
       </div>
     </footer>
   );
-}
-
-/**
- * Simplified AABB clearance check: for each non-Wall edge segment compute
- * the walkway buffer band AABB and count bricks that overlap it.
- */
-function countWalkwayViolations(
-  venue: import('@cld/bbm').Venue,
-  map: import('@cld/model').BbmMap | null,
-): number {
-  if (!venue.enabled || venue.minWalkwayStuds <= 0 || !map) return 0;
-  const buf = venue.minWalkwayStuds;
-  let violations = 0;
-  for (const edge of venue.edges) {
-    if (edge.kind === 0 /* Wall */ || !edge.poly || edge.poly.length < 2) continue;
-    for (let i = 1; i < edge.poly.length; i++) {
-      const a = edge.poly[i - 1]!;
-      const b = edge.poly[i]!;
-      const segMinX = Math.min(a.x, b.x) - buf;
-      const segMaxX = Math.max(a.x, b.x) + buf;
-      const segMinY = Math.min(a.y, b.y) - buf;
-      const segMaxY = Math.max(a.y, b.y) + buf;
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        for (const brick of layer.bricks) {
-          const { x, y, width, height } = brick.displayArea;
-          if (x < segMaxX && x + width > segMinX && y < segMaxY && y + height > segMinY) {
-            violations++;
-          }
-        }
-      }
-    }
-  }
-  return violations;
 }
 
 /**
