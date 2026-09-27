@@ -90,6 +90,28 @@ export function clampPixelRatio(widthPx: number, heightPx: number, requested: nu
   return Math.max(0.01, Math.min(requested, bySide, byArea));
 }
 
+/** Stud region of the full-map export: content bounds plus the desktop margin. Null for an empty map. */
+export function exportRegionStuds(map: BbmMap, sidecar?: Sidecar | null): StudRect | null {
+  const b = contentBoundsStuds(map, sidecar);
+  if (!b) return null;
+  return {
+    x: b.x - EXPORT_MARGIN_STUDS,
+    y: b.y - EXPORT_MARGIN_STUDS,
+    width: b.width + 2 * EXPORT_MARGIN_STUDS,
+    height: b.height + 2 * EXPORT_MARGIN_STUDS,
+  };
+}
+
+/** Desktop's export watermark: always "author / LUG / event" (MainWindowMenus.cpp:184-186). */
+export function watermarkText(map: Pick<BbmMap, 'author' | 'lug' | 'event'>): string {
+  return `${map.author} / ${map.lug} / ${map.event}`;
+}
+
+/** Watermark font size in px: QFont point size max(8, height / 60) at 96 dpi. */
+export function watermarkFontPx(imageHeight: number): number {
+  return (Math.max(8, Math.floor(imageHeight / 60)) * 96) / 72;
+}
+
 /** Scene-pixel size (1 stud = 8 px) of the full-map export, margin included. Null for an empty map. */
 export function exportSceneSize(map: BbmMap, sidecar?: Sidecar | null): { width: number; height: number } | null {
   const b = contentBoundsStuds(map, sidecar);
@@ -150,6 +172,12 @@ export interface ExportOptions {
   transparent: boolean;
   /** Bottom-right "author / LUG / event" stamp, like desktop's watermark option. */
   watermark?: string;
+  /**
+   * Render exactly this map region (studs) instead of the whole map — one
+   * print tile. It may extend past the content; that part shows the
+   * background colour.
+   */
+  regionStuds?: StudRect;
 }
 
 /**
@@ -165,13 +193,13 @@ export function renderMapToCanvas(
   sidecar: Sidecar | null,
   opts: ExportOptions & { hudLayer?: Konva.Layer | null },
 ): { canvas: HTMLCanvasElement; pixelRatio: number } | null {
-  const bounds = contentBoundsStuds(map, sidecar);
-  if (!bounds) return null;
+  const region = opts.regionStuds ?? exportRegionStuds(map, sidecar);
+  if (!region) return null;
   const PX = 8;
-  const x0 = (bounds.x - EXPORT_MARGIN_STUDS) * PX;
-  const y0 = (bounds.y - EXPORT_MARGIN_STUDS) * PX;
-  const w = Math.ceil((bounds.width + 2 * EXPORT_MARGIN_STUDS) * PX);
-  const h = Math.ceil((bounds.height + 2 * EXPORT_MARGIN_STUDS) * PX);
+  const x0 = region.x * PX;
+  const y0 = region.y * PX;
+  const w = Math.ceil(region.width * PX);
+  const h = Math.ceil(region.height * PX);
   const size = opts.size ? clampExportSize(opts.size.width, opts.size.height) : null;
   // With an explicit size, render at the larger of the two axis scales
   // and resample into the requested box.
@@ -214,9 +242,8 @@ export function renderMapToCanvas(
   ctx.imageSmoothingEnabled = smooth;
   ctx.drawImage(content, 0, 0, out.width, out.height);
   if (opts.watermark) {
-    const size = Math.max(8, out.height / 60);
-    ctx.font = `${size}px sans-serif`;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.font = `${watermarkFontPx(out.height)}px sans-serif`;
+    ctx.fillStyle = 'rgba(0,0,0,0.549)'; // QColor(0, 0, 0, 140)
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillText(opts.watermark, out.width - 10, out.height - 10);

@@ -1,22 +1,26 @@
-// Export as Image / Tiled Print dialog — port of MainWindowMenus.cpp:97-201
-// and desktop's multi-page A3 tiling (PrintDialog.cpp).
+// Export as Image / Print / PDF dialog — port of MainWindowMenus.cpp:97-312.
 //
-// Both modes render the WHOLE map (content bounds + margin, over the map
+// All modes render the WHOLE map (content bounds + margin, over the map
 // background colour, without grid/selection/cursors) — see exportRender.ts;
 // desktop exports scene->itemsBoundingRect(), never just the viewport.
 //
-// Single-image export: explicit width/height in px with keep-aspect (or a
-// 1×/2×/4× preset), PNG or JPEG with quality, transparent background and
-// antialias toggles (MainWindowMenus.cpp:132-163); downloads client-side.
+// Image: explicit width/height in px with keep-aspect (or a 1×/2×/4×
+// preset), PNG or JPEG with quality, transparent background, antialias
+// and the per-export "Embed general-info watermark" (always
+// "author / LUG / event"); downloads client-side.
 //
-// Tiled print: renders the full map at the chosen DPI, slices it into
-// page-sized tiles with a configurable overlap (registration marks), then
-// opens a new browser window with each tile as a full-page <img> and
-// calls window.print() — the user's OS print dialog handles actual output
-// (PDF, physical printer, etc.).
+// Print: actual size, 1 stud = 8 mm (desktop File ▸ Print). The map is
+// tiled over as many pages of the chosen paper as it needs; each page is
+// rendered separately at the chosen DPI and laid out at its physical size
+// in a print window, so printing at 100 % scale gives true size.
+//
+// PDF: one A3 page, orientation from the layout's aspect, 12 mm margins,
+// map fitted (desktop File ▸ Export as PDF), written without a library.
 
 import { useState } from 'react';
-import { MAX_CANVAS_SIDE, aspectHeight } from './exportRender';
+import { MAX_CANVAS_SIDE, aspectHeight, type StudRect } from './exportRender';
+import { useEditorStore } from './editorStore';
+import { buildImagePdf, dataUrlBytes, pdfPageLayout, printPixelRatio, printTiles } from './printLayout';
 
 export interface ExportHandle {
   /**
@@ -30,10 +34,19 @@ export interface ExportHandle {
     transparent: boolean;
     size?: { width: number; height: number };
     antialias?: boolean;
+    /** Stamp "author / LUG / event" bottom-right. */
+    watermark?: boolean;
+    /** Render only this map region (studs) — a print tile. */
+    regionStuds?: StudRect;
   }) => { canvas: HTMLCanvasElement; pixelRatio: number } | null;
   /** Scene-pixel size of the whole-map export (1×), or null when empty. */
   sceneSize: () => { width: number; height: number } | null;
+  /** Stud region of the whole-map export, or null when empty. */
+  region?: () => StudRect | null;
 }
+
+/** Print-page resolution for the PDF image (the page is A3). */
+const PDF_DPI = 200;
 
 interface Props {
   layoutTitle: string;
@@ -52,7 +65,9 @@ const PAPER_SIZES: Record<string, { w: number; h: number; label: string }> = {
 };
 
 export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Props) {
-  const [mode, setMode] = useState<'image' | 'print'>('image');
+  const [mode, setMode] = useState<'image' | 'print' | 'pdf'>('image');
+  // Desktop remembers the watermark checkbox (QSettings export/watermark).
+  const [watermark, setWatermark] = useState(() => useEditorStore.getState().showExportWatermark);
   // Native (1×) export size; the image defaults to 2×, like the old
   // resolution picker.
   const [scene] = useState(() => exportImageRef.current?.sceneSize() ?? null);
@@ -69,7 +84,8 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
   const [transparent, setTransparent] = useState(false);
   const [dpi, setDpi] = useState(150);
   const [paperKey, setPaperKey] = useState('a3');
-  const [overlapMm, setOverlapMm] = useState(10);
+  const [marginMm, setMarginMm] = useState(10);
+  const [overlapMm, setOverlapMm] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
@@ -95,12 +111,14 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
         // JPEG has no alpha channel; paint the background.
         transparent: transparent && !jpeg,
         antialias,
+        watermark,
       });
       if (!result) { setError('The map is empty.'); return; }
+      useEditorStore.getState().setShowExportWatermark(watermark);
       const dataUrl = jpeg
         ? result.canvas.toDataURL('image/jpeg', quality / 100)
         : result.canvas.toDataURL('image/png');
-      const safe = layoutTitle.replace(/[^a-z0-9_\-]/gi, '_') || 'layout';
+      const safe = safeTitle(layoutTitle);
       const a = document.createElement('a');
       a.href = dataUrl;
       a.download = `${safe}.${jpeg ? 'jpg' : 'png'}`;
@@ -113,99 +131,60 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
     }
   }
 
+  const paper = PAPER_SIZES[paperKey]!;
+  const region = exportImageRef.current?.region?.() ?? null;
+  const tiling = region ? printTiles(region, paper, marginMm, overlapMm) : null;
+
   function doTiledPrint() {
     const handle = exportImageRef.current;
-    if (!handle) return;
+    if (!handle || !tiling) { setError('The map is empty.'); return; }
     setExporting(true);
     setError('');
 
     try {
-      const paper = PAPER_SIZES[paperKey]!;
-      const MM_PER_INCH = 25.4;
-      // Printable area in pixels at the chosen DPI.
-      const pageWpx = Math.floor((paper.w / MM_PER_INCH) * dpi);
-      const pageHpx = Math.floor((paper.h / MM_PER_INCH) * dpi);
-      const overlapPx = Math.round((overlapMm / MM_PER_INCH) * dpi);
-
-      // Render the full map to a single high-res canvas.
-      // pixelRatio = dpi/96 scales the stage's CSS-pixel dimensions to
-      // physical pixels at the target DPI (Konva stages are laid out at 96 dpi).
-      const pr = dpi / 96;
-      const rendered = handle.render({ pixelRatio: pr, transparent: false });
-      if (!rendered) { setError('The map is empty.'); return; }
-      const fullCanvas = rendered.canvas;
-      const fullW = fullCanvas.width;
-      const fullH = fullCanvas.height;
-
-      // Slice into tiles.
-      const stepX = pageWpx - overlapPx;
-      const stepY = pageHpx - overlapPx;
-      const cols = Math.max(1, Math.ceil((fullW - overlapPx) / stepX));
-      const rows = Math.max(1, Math.ceil((fullH - overlapPx) / stepY));
-
+      // Each page shows a paper-sized piece of the map at 1 stud = 8 mm,
+      // rendered at the chosen DPI (desktop renders page by page too).
+      const pr = printPixelRatio(dpi);
       const tiles: string[] = [];
-
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const sx = c * stepX;
-          const sy = r * stepY;
-          const sw = Math.min(pageWpx, fullW - sx);
-          const sh = Math.min(pageHpx, fullH - sy);
-
-          const tile = document.createElement('canvas');
-          tile.width = pageWpx;
-          tile.height = pageHpx;
-          const tc = tile.getContext('2d')!;
-          tc.fillStyle = '#fff';
-          tc.fillRect(0, 0, pageWpx, pageHpx);
-          tc.drawImage(fullCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
-          tiles.push(tile.toDataURL('image/png'));
-        }
+      for (const t of tiling.tiles) {
+        const rendered = handle.render({ pixelRatio: pr, transparent: false, regionStuds: t });
+        if (!rendered) { setError('The map is empty.'); return; }
+        tiles.push(rendered.canvas.toDataURL('image/png'));
       }
 
-      // Open print window.
-      const safe = layoutTitle.replace(/[^a-z0-9_\-]/gi, '_') || 'layout';
       const win = window.open('', '_blank');
       if (!win) { setError('Pop-up blocked — allow pop-ups and try again.'); return; }
-
-      // CSS: each page is exactly the paper size at screen 96dpi equivalent.
-      // @page sets the paper dimensions for the print driver.
-      const pageWmm = paper.w;
-      const pageHmm = paper.h;
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>${safe}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  @page { size: ${pageWmm}mm ${pageHmm}mm; margin: 0; }
-  body { background: #888; }
-  .page {
-    width: ${pageWmm}mm;
-    height: ${pageHmm}mm;
-    overflow: hidden;
-    page-break-after: always;
-    break-after: page;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #fff;
-  }
-  img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  @media print {
-    body { background: #fff; }
-    .page { page-break-after: always; break-after: page; }
-  }
-</style>
-</head>
-<body>
-${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
-<script>window.onload = () => { setTimeout(() => window.print(), 400); }<\/script>
-</body>
-</html>`;
-      win.document.write(html);
+      win.document.write(printHtml(safeTitle(layoutTitle), paper, marginMm, tiling.tileMm, tiles));
       win.document.close();
+      onClose();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function doExportPdf() {
+    const handle = exportImageRef.current;
+    if (!handle || !region) { setError('The map is empty.'); return; }
+    setExporting(true);
+    setError('');
+    try {
+      const layout = pdfPageLayout(region);
+      const size = {
+        width: Math.max(1, Math.round((layout.imageMm.w / 25.4) * PDF_DPI)),
+        height: Math.max(1, Math.round((layout.imageMm.h / 25.4) * PDF_DPI)),
+      };
+      const rendered = handle.render({ pixelRatio: 1, size, transparent: false, antialias: true });
+      if (!rendered) { setError('The map is empty.'); return; }
+      const jpeg = dataUrlBytes(rendered.canvas.toDataURL('image/jpeg', 0.92));
+      const pdf = buildImagePdf(layout, { bytes: jpeg, width: rendered.canvas.width, height: rendered.canvas.height }, layoutTitle);
+      const url = URL.createObjectURL(new Blob([pdf as BlobPart], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeTitle(layoutTitle)}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -227,13 +206,13 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
 
         {/* Mode toggle */}
         <div className="mb-4 flex rounded-sm border border-neutral-700 text-xs">
-          {(['image', 'print'] as const).map((m) => (
+          {(['image', 'print', 'pdf'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
               className={`flex-1 py-1.5 ${mode === m ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-800'}`}
             >
-              {m === 'image' ? 'Export Image' : 'Tiled Print / PDF'}
+              {m === 'image' ? 'Export Image' : m === 'print' ? 'Print (1:1)' : 'PDF (A3)'}
             </button>
           ))}
         </div>
@@ -341,7 +320,20 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                 />
                 Transparent background{format === 'jpeg' ? ' (PNG only)' : ''}
               </label>
+              <label className="flex items-center gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={watermark}
+                  onChange={(e) => setWatermark(e.target.checked)}
+                />
+                Embed general-info watermark
+              </label>
             </>
+          ) : mode === 'pdf' ? (
+            <p className="text-xs text-neutral-400">
+              One A3 page ({region && region.width >= region.height ? 'landscape' : 'portrait'}, from the layout&apos;s
+              shape) with the whole map fitted inside 12 mm margins.
+            </p>
           ) : (
             <>
               <label className="flex items-center justify-between gap-2">
@@ -369,6 +361,19 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                 </select>
               </label>
               <label className="flex items-center justify-between gap-2">
+                <span className="text-xs text-neutral-400">Page margin (mm)</span>
+                <input
+                  type="number"
+                  aria-label="Page margin (mm)"
+                  value={marginMm}
+                  min={0}
+                  max={50}
+                  step={1}
+                  onChange={(e) => setMarginMm(Math.max(0, Number(e.target.value)))}
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2">
                 <span className="text-xs text-neutral-400">Tile overlap (mm)</span>
                 <input
                   type="number"
@@ -380,8 +385,11 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
                   className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </label>
+              <p className="text-xs text-neutral-300" data-testid="print-pages">
+                {tiling ? `${tiling.cols} × ${tiling.rows} = ${tiling.tiles.length} page(s) at actual size (1 stud = 8 mm)` : 'The map is empty.'}
+              </p>
               <p className="text-[10px] text-neutral-500">
-                Opens a new tab with each map tile on a separate page — use your browser's print dialog to output to PDF or a printer.
+                Opens a new tab with one page per tile — print it at 100 % scale (no &quot;fit to page&quot;) to keep the actual size.
               </p>
             </>
           )}
@@ -397,14 +405,48 @@ ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
             Cancel
           </button>
           <button
-            onClick={mode === 'image' ? doExportImage : doTiledPrint}
+            onClick={mode === 'image' ? doExportImage : mode === 'print' ? doTiledPrint : doExportPdf}
             disabled={exporting || (mode === 'image' && !sizeValid)}
             className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
           >
-            {exporting ? 'Working…' : mode === 'image' ? `Export ${format === 'jpeg' ? 'JPEG' : 'PNG'}` : 'Open Print Preview'}
+            {exporting ? 'Working…' : mode === 'image' ? `Export ${format === 'jpeg' ? 'JPEG' : 'PNG'}` : mode === 'print' ? 'Open Print Preview' : 'Export PDF'}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+function safeTitle(title: string): string {
+  return title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout';
+}
+
+/** Print window: one physical-size page per tile. */
+function printHtml(
+  title: string,
+  paper: { w: number; h: number },
+  marginMm: number,
+  tileMm: { w: number; h: number },
+  tiles: readonly string[],
+): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${title}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page { size: ${paper.w}mm ${paper.h}mm; margin: ${marginMm}mm; }
+  body { background: #888; }
+  .page { width: ${tileMm.w}mm; height: ${tileMm.h}mm; overflow: hidden; break-after: page; background: #fff; }
+  .page:last-child { break-after: auto; }
+  img { width: ${tileMm.w}mm; height: ${tileMm.h}mm; display: block; }
+  @media print { body { background: #fff; } }
+</style>
+</head>
+<body>
+${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
+<script>window.onload = () => { setTimeout(() => window.print(), 400); }<\/script>
+</body>
+</html>`;
 }

@@ -282,6 +282,7 @@ describe('ExportImageDialog', () => {
       size: { width: 640, height: 480 },
       transparent: false,
       antialias: false,
+      watermark: false,
     });
     expect(canvas.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.7);
   });
@@ -291,8 +292,59 @@ describe('ExportImageDialog', () => {
     render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
     fireEvent.click(screen.getByLabelText('Transparent background'));
     fireEvent.click(screen.getByRole('button', { name: 'Export PNG' }));
-    expect(renderFn).toHaveBeenCalledWith({ pixelRatio: 1, size: { width: 800, height: 200 }, transparent: true, antialias: true });
+    expect(renderFn).toHaveBeenCalledWith({ pixelRatio: 1, size: { width: 800, height: 200 }, transparent: true, antialias: true, watermark: false });
     expect(canvas.toDataURL).toHaveBeenCalledWith('image/png');
+  });
+
+  it('the watermark is a per-export checkbox, remembered for next time', () => {
+    useEditorStore.setState({ showExportWatermark: false });
+    const { ref, render: renderFn } = handle();
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    const chk = screen.getByLabelText('Embed general-info watermark') as HTMLInputElement;
+    expect(chk.checked).toBe(false);
+    fireEvent.click(chk);
+    fireEvent.click(screen.getByRole('button', { name: 'Export PNG' }));
+    expect(renderFn).toHaveBeenCalledWith(expect.objectContaining({ watermark: true }));
+    expect(useEditorStore.getState().showExportWatermark).toBe(true);
+    useEditorStore.setState({ showExportWatermark: false });
+  });
+
+  it('prints at actual size: one render per A4 tile at dpi/25.4 px per scene px', () => {
+    const { ref, render: renderFn } = handle();
+    // 60 × 40 studs = 480 × 320 mm: 3 × 2 A4-portrait tiles of 190 × 277 mm.
+    ref.current.region = () => ({ x: -10, y: -5, width: 60, height: 40 });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Print (1:1)' }));
+    fireEvent.change(screen.getByDisplayValue('A3 (297 × 420 mm)'), { target: { value: 'a4' } });
+    expect(screen.getByTestId('print-pages').textContent).toBe('3 × 2 = 6 page(s) at actual size (1 stud = 8 mm)');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Print Preview' }));
+    expect(renderFn).toHaveBeenCalledTimes(6);
+    expect(renderFn).toHaveBeenNthCalledWith(1, {
+      pixelRatio: 150 / 25.4,
+      transparent: false,
+      regionStuds: { x: -10, y: -5, width: 190 / 8, height: 277 / 8 },
+    });
+    open.mockRestore();
+  });
+
+  it('exports a single fitted A3 PDF page', () => {
+    const { ref, render: renderFn, canvas } = handle();
+    ref.current.region = () => ({ x: 0, y: 0, width: 100, height: 50 });
+    canvas.width = 10;
+    canvas.height = 5;
+    canvas.toDataURL = vi.fn(() => 'data:image/jpeg;base64,/9j/2Q==');
+    const created: Blob[] = [];
+    const createUrl = vi.fn((b: Blob) => { created.push(b); return 'blob:x'; });
+    Object.assign(URL, { createObjectURL: createUrl, revokeObjectURL: vi.fn() });
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'PDF (A3)' }));
+    expect(screen.getByText(/One A3 page \(landscape/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Export PDF' }));
+    // Landscape A3 paint area 396 × 273 mm; a 2:1 map fills the width.
+    const call = (renderFn.mock.calls as unknown as [{ size: { width: number; height: number } }][])[0]![0];
+    expect(call.size).toEqual({ width: Math.round((396 / 25.4) * 200), height: Math.round((198 / 25.4) * 200) });
+    expect(created[0]!.type).toBe('application/pdf');
   });
 
   it('refuses a size beyond the canvas limit', () => {

@@ -95,7 +95,7 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { EXPORT_HIDE, exportSceneSize, renderMapToCanvas } from './exportRender';
+import { EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
@@ -769,7 +769,6 @@ function Canvas({
   const snapStepStuds = useEditorStore((s) => s.snapStepStuds);
   const rotationStepDegrees = useEditorStore((s) => s.rotationStepDegrees);
   const setSelection = useEditorStore((s) => s.setSelection);
-  const showExportWatermark = useEditorStore((s) => s.showExportWatermark);
   const showElectricCircuits = useEditorStore((s) => s.showElectricCircuits);
   const venueLabelPx = useEditorStore((s) => s.venueLabelPx);
 
@@ -2174,19 +2173,21 @@ function Canvas({
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
   // Renders the whole map (content bounds + margin), not the viewport.
   exportImageRef.current = {
-    render: ({ pixelRatio, transparent, size, antialias }) => {
+    render: ({ pixelRatio, transparent, size, antialias, watermark, regionStuds }) => {
       const stage = stageRef.current;
       if (!stage || !map) return null;
-      const stamp = [map.author, map.lug, map.event].filter(Boolean).join(' / ');
       return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
         pixelRatio,
         transparent,
         ...(size ? { size } : {}),
         ...(antialias !== undefined ? { antialias } : {}),
+        ...(regionStuds ? { regionStuds } : {}),
         hudLayer: hudLayerRef.current,
-        ...(showExportWatermark && stamp ? { watermark: stamp } : {}),
+        // Per-export option, desktop's "Embed general-info watermark".
+        ...(watermark ? { watermark: watermarkText(map) } : {}),
       });
     },
+    region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc)) : null),
     sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
   };
 
@@ -2453,7 +2454,7 @@ function Canvas({
       </KonvaLayer>
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
-          snap ring, ruler/venue drafts, remote cursors, export watermark. */}
+          snap ring, ruler/venue drafts, remote cursors. */}
       <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
@@ -2487,24 +2488,6 @@ function Canvas({
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
         {venueDraft && <VenueDraftPreview draft={venueDraft} />}
         <RemoteCursors awareness={awareness} map={map} />
-        {showExportWatermark && map && (() => {
-          const parts = [map.author, map.lug, map.event].filter(Boolean);
-          if (parts.length === 0) return null;
-          const stamp = parts.join(' / ');
-          const fontSize = Math.max(8, height / 60);
-          return (
-            <Text
-              text={stamp}
-              fontSize={fontSize}
-              fontFamily="sans-serif"
-              fill="rgba(0,0,0,0.55)"
-              x={10}
-              y={height - fontSize - 10}
-              width={width - 20}
-              align="right"
-            />
-          );
-        })()}
       </KonvaLayer>
     </Stage>
   );
