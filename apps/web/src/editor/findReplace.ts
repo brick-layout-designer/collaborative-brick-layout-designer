@@ -8,6 +8,8 @@ import type * as Y from 'yjs';
 import type { BbmMap } from '@cld/model';
 import { editBrick, editTextCell } from './mutations';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import type { AnnoSelection } from './editorStore';
+import { textKey } from './mixedSelection';
 
 export type FindScope = 'part' | 'text';
 
@@ -46,6 +48,21 @@ export function findHits(map: BbmMap, needle: string, scope: FindScope, matchCas
     }
   }
   return out;
+}
+
+/**
+ * The canvas selection for a set of hits: matched bricks plus matched
+ * text cells (mixed selection). Desktop's search selects every match in
+ * the scene as you type (FindDialog.cpp:70-103).
+ */
+export function hitsSelection(hits: readonly FindHit[]): { bricks: string[]; anno: AnnoSelection } {
+  const bricks: string[] = [];
+  const texts: string[] = [];
+  for (const h of hits) {
+    if (h.brickId) bricks.push(h.brickId);
+    else if (h.textIndex !== undefined) texts.push(textKey(h.layerId, h.textIndex));
+  }
+  return { bricks, anno: { rulers: [], labels: [], texts } };
 }
 
 /**

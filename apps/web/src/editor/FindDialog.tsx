@@ -1,15 +1,17 @@
 // Find & Replace dialog — port of `FindDialog.cpp`.
-// Searches brick part numbers and text-cell content; lists matches and
-// lets the user select them. Replace (current match) and Replace All work
+// Searches brick part numbers and text-cell content. Like desktop it is
+// modeless (setModal(false)) — a floating panel that leaves the canvas
+// usable — and selects every match live as you type (200 ms debounce,
+// FindDialog.cpp:70-117); clicking a listed match selects just it. Replace (current match) and Replace All work
 // in both scopes, each as one undo step (FindDialog.cpp:150-189): part
 // scope rewrites the matched text inside part numbers (e.g. 3001.1 →
 // 3001.5), keeping each brick's position.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type * as Y from 'yjs';
 import type { BbmMap } from '@cld/model';
 import { useEditorStore } from './editorStore';
-import { findHits, replaceHits, type FindScope } from './findReplace';
+import { findHits, hitsSelection, replaceHits, type FindHit, type FindScope } from './findReplace';
 
 interface Props {
   map: BbmMap;
@@ -18,7 +20,7 @@ interface Props {
 }
 
 export function FindDialog({ map, doc, onClose }: Props) {
-  const setSelection = useEditorStore((s) => s.setSelection);
+  const setMixedSelection = useEditorStore((s) => s.setMixedSelection);
   const showStatusMessage = useEditorStore((s) => s.showStatusMessage);
   const [needle, setNeedle] = useState('');
   const [replacement, setReplacement] = useState('');
@@ -29,6 +31,24 @@ export function FindDialog({ map, doc, onClose }: Props) {
 
   const hits = useMemo(() => findHits(map, needle, scope, matchCase), [map, needle, scope, matchCase]);
   const cur = hits.length > 0 ? Math.min(current, hits.length - 1) : -1;
+
+  // Live selection of every match, re-run when the query or the match set
+  // changes (desktop also re-runs on every undo-stack change). An empty
+  // query deselects everything.
+  const hitKey = hits.map((h) => h.brickId ?? `${h.layerId}#${h.textIndex}`).join('|');
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const sel = hitsSelection(hits);
+      setMixedSelection(sel.bricks, sel.anno);
+    }, 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hitKey, setMixedSelection]);
+
+  function selectHit(h: FindHit) {
+    const sel = hitsSelection([h]);
+    setMixedSelection(sel.bricks, sel.anno);
+  }
 
   function report(count: number) {
     showStatusMessage(`Replaced ${count} occurrence${count === 1 ? '' : 's'}`);
@@ -48,16 +68,15 @@ export function FindDialog({ map, doc, onClose }: Props) {
   }
 
   return (
+    // Modeless: no backdrop, so the canvas stays live underneath.
     <div
       role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/60"
-      onClick={onClose}
+      aria-modal="false"
+      aria-label="Find & Replace"
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
+      className="fixed right-4 top-16 z-40 w-152 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-152 rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
-      >
+      <div>
         <h2 className="text-base font-semibold">Find &amp; Replace</h2>
 
         {/* Scope + options row */}
@@ -131,15 +150,13 @@ export function FindDialog({ map, doc, onClose }: Props) {
                   <button
                     onClick={() => {
                       setCurrent(i);
-                      if (h.brickId) setSelection([h.brickId]);
+                      selectHit(h);
                     }}
-                    onDoubleClick={() => {
-                      if (h.brickId) onClose();
-                    }}
+                    onDoubleClick={onClose}
                     aria-current={i === cur ? 'true' : undefined}
                     className={
                       'block w-full px-2 py-1 text-left text-sm hover:bg-neutral-800 ' +
-                      (i === cur ? 'bg-blue-950/60 text-neutral-100' : h.brickId ? '' : 'text-neutral-400')
+                      (i === cur ? 'bg-blue-950/60 text-neutral-100' : '')
                     }
                   >
                     {h.preview}

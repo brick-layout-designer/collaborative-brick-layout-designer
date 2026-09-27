@@ -3,7 +3,7 @@
 // Budget dialog writing to the doc, and the Export Image options.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type * as Y from 'yjs';
 import type { AnchoredLabel } from '@cld/bbm';
 import { createDefaultLayoutDoc, docToBbm, readSidecarFromDoc } from '@cld/ydoc';
@@ -11,7 +11,10 @@ import { AddAnchoredLabelDialog } from '../AddAnchoredLabelDialog';
 import { FindDialog } from '../FindDialog';
 import { BudgetDialog } from '../BudgetDialog';
 import { ExportImageDialog, type ExportHandle } from '../ExportImageDialog';
-import { addAnchoredLabel, placeBrick, readBudgetLimits, setBudgetLimits } from '../mutations';
+import { addAnchoredLabel, addTextCell, ensureTextLayer, placeBrick, readBudgetLimits, setBudgetLimits } from '../mutations';
+import { useEditorStore } from '../editorStore';
+import { hitsSelection } from '../findReplace';
+import { textKey } from '../mixedSelection';
 import { createUndoManager } from '../useUndoManager';
 
 afterEach(cleanup);
@@ -154,6 +157,72 @@ describe('FindDialog', () => {
     expect(parts(doc)).toEqual(['3001.7', '3001.7', '3001.7']);
     um.undo();
     expect(parts(doc)).toEqual(['3001.1', '3001.1', '3001.1']);
+  });
+});
+
+describe('FindDialog — modeless, live selection', () => {
+  function withText(): Y.Doc {
+    const doc = createDefaultLayoutDoc();
+    const lid = brickLayerId(doc);
+    placeBrick(doc, lid, { partNumber: '3001.1', x: 0, y: 0, width: 4, height: 2 });
+    placeBrick(doc, lid, { partNumber: '3001.1', x: 10, y: 0, width: 4, height: 2 });
+    placeBrick(doc, lid, { partNumber: '3710.1', x: 20, y: 0, width: 4, height: 2 });
+    const t = ensureTextLayer(doc);
+    for (const text of ['Station', 'Depot', 'Station 2']) {
+      addTextCell(doc, t, {
+        centreX: 0, centreY: 0, widthStuds: 4, heightStuds: 2, text,
+        font: { family: 'Arial', size: 10, style: 'Regular' }, fontColor: { kind: 'known', name: 'Black' },
+      });
+    }
+    return doc;
+  }
+  const bricksOf = (doc: Y.Doc, part: string) =>
+    docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks.filter((b) => b.partNumber === part).map((b) => b.id) : []));
+
+  afterEach(() => {
+    vi.useRealTimers();
+    useEditorStore.setState({ selection: [], annoSelection: { rulers: [], labels: [], texts: [] } });
+  });
+
+  it('is not modal: no backdrop covers the canvas', () => {
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    const dlg = screen.getByRole('dialog');
+    expect(dlg.getAttribute('aria-modal')).toBe('false');
+    expect(dlg.className).not.toMatch(/inset-0/);
+  });
+
+  it('selects every match as you type, and clears the selection for an empty query', () => {
+    vi.useFakeTimers();
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001' } });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().selection).toEqual(bricksOf(doc, '3001.1'));
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '' } });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().selection).toEqual([]);
+  });
+
+  it('selects matching text cells live, and a clicked text result selects just it (regression)', () => {
+    vi.useFakeTimers();
+    const doc = withText();
+    const textLayer = docToBbm(doc).layers.find((l) => l.type === 'text')!.id;
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'text' } });
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: 'station' } });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().annoSelection.texts).toEqual([textKey(textLayer, 0), textKey(textLayer, 2)]);
+    fireEvent.click(screen.getAllByRole('listitem')[1]!.querySelector('button')!);
+    expect(useEditorStore.getState().annoSelection.texts).toEqual([textKey(textLayer, 2)]);
+    expect(useEditorStore.getState().selection).toEqual([]);
+  });
+
+  it('hitsSelection splits bricks and text cells', () => {
+    expect(hitsSelection([
+      { layerId: 'L', brickId: 'b1', value: '', preview: '' },
+      { layerId: 'T', textIndex: 3, value: '', preview: '' },
+    ])).toEqual({ bricks: ['b1'], anno: { rulers: [], labels: [], texts: [textKey('T', 3)] } });
   });
 });
 
