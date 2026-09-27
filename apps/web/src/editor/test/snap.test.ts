@@ -4,6 +4,7 @@ import type { PartWire } from '../../api';
 import {
   connectionSnapReach,
   liveDragSnap,
+  rotationAlignedCentre,
   snapPlacement,
   snapToAnchorBrick,
   type PlaceCandidate,
@@ -402,5 +403,98 @@ describe('liveDragSnap', () => {
     expect(result.centreX).toBe(3.14);
     expect(result.centreY).toBe(2.71);
     expect(result.snappedToConnection).toBe(false);
+  });
+});
+
+// ---- liveDragSnap — desktop parity (rotation, multi-select, grid TL) -------
+
+describe('liveDragSnap — desktop parity', () => {
+  const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+
+  it('rotation-aligns the centre so the moving joint lands exactly on the target', () => {
+    const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+    const oneEnd = makePart({ key: 'end.0', partNumber: 'END', connections: [conn(4, 0, 0)] });
+    const partsByKey = new Map<string, PartWire>([['test.0', track], ['end.0', oneEnd]]);
+    // Stationary centre (12,4): free conns (8,4)@180 and (16,4)@0.
+    const map = brickLayerMap([makeBrick({ id: 's', x: 8, y: 0, w: 8, h: 8 })]);
+    // Dragged at 90°: local (4,0) → world offset (0,4). Centre (16,1) puts
+    // the conn at (16,5), 1 stud from the target (16,4).
+    const r = liveDragSnap(
+      {
+        part: oneEnd, movingId: 'd', movingLinks: [],
+        centreX: 16, centreY: 1, mouseStudX: 16, mouseStudY: 5,
+        orientation: 90, snapStepStuds: 1,
+      },
+      map, partsByKey,
+    );
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.newOrientation).toBeCloseTo(180);
+    // Moving conn at the NEW orientation must coincide with the target.
+    const t = (r.newOrientation! * Math.PI) / 180;
+    expect(r.centreX + 4 * Math.cos(t)).toBeCloseTo(16);
+    expect(r.centreY + 4 * Math.sin(t)).toBeCloseTo(4);
+  });
+
+  it('multi-select drag snaps via a sibling connection, translating without rotating', () => {
+    const noConn = makePart({ key: 'plain.0', partNumber: 'PLAIN' });
+    const track = makePart({ connections: [conn(4, 0, 0)] });
+    const sibPart = makePart({ key: 'sib.0', partNumber: 'SIB', connections: [conn(-4, 0, 90)] });
+    const partsByKey = new Map<string, PartWire>([
+      ['test.0', track], ['plain.0', noConn], ['sib.0', sibPart],
+    ]);
+    // Stationary centre (12,4) → free conn (16,4)@0.
+    const map = brickLayerMap([makeBrick({ id: 's', x: 8, y: 0, w: 8, h: 8 })]);
+    const r = liveDragSnap(
+      {
+        part: noConn, movingId: 'lead', movingLinks: [],
+        siblings: [{ id: 'sib', part: sibPart, links: [], offsetX: 10, offsetY: 0, orientation: 0 }],
+        centreX: 10.5, centreY: 4.5, mouseStudX: 10.5, mouseStudY: 4.5,
+        orientation: 0, snapStepStuds: 1,
+      },
+      map, partsByKey,
+    );
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.newOrientation).toBeNull();
+    expect(r.centreX).toBeCloseTo(10);
+    expect(r.centreY).toBeCloseTo(4);
+  });
+
+  it('never snaps the group onto its own siblings', () => {
+    const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+    const partsByKey = new Map<string, PartWire>([['test.0', track]]);
+    const map = brickLayerMap([makeBrick({ id: 'sib', x: 8, y: 0, w: 8, h: 8 })]);
+    const r = liveDragSnap(
+      {
+        part: track, movingId: 'lead', movingLinks: [],
+        siblings: [{ id: 'sib', part: track, links: [], offsetX: 8, offsetY: 0, orientation: 0 }],
+        centreX: 4.3, centreY: 4, mouseStudX: 4, mouseStudY: 4,
+        orientation: 0, snapStepStuds: 0,
+      },
+      map, partsByKey,
+    );
+    expect(r.snappedToConnection).toBe(false);
+  });
+
+  it('grid fallback rounds the displayArea top-left, not the centre', () => {
+    const part = makePart();
+    const r = liveDragSnap(
+      {
+        part, movingId: 'd', movingLinks: [],
+        centreX: 1.8, centreY: 2.4, width: 3, height: 5,
+        mouseStudX: 0, mouseStudY: 0, orientation: 0, snapStepStuds: 1,
+      },
+      emptyMap(), new Map(),
+    );
+    // TL (0.3, -0.1) → (0, 0) → centre (1.5, 2.5). Centre rounding would give (2, 2).
+    expect(r.centreX).toBeCloseTo(1.5);
+    expect(r.centreY).toBeCloseTo(2.5);
+  });
+});
+
+describe('rotationAlignedCentre', () => {
+  it('returns target minus the rotated local point', () => {
+    const c = rotationAlignedCentre(10, 10, 4, 0, 90);
+    expect(c.x).toBeCloseTo(10);
+    expect(c.y).toBeCloseTo(6);
   });
 });

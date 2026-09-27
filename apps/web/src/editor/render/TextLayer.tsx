@@ -28,10 +28,15 @@ export function TextLayers({
   map,
   isViewer,
   onEditText,
+  selected,
+  onSelectText,
 }: {
   map: BbmMap;
   isViewer?: boolean;
   onEditText?: (ref: TextCellRef) => void;
+  /** The selected cell (highlighted); Delete removes it. */
+  selected?: { layerId: string; cellIndex: number } | null;
+  onSelectText?: (ref: TextCellRef) => void;
 }) {
   const layers = map.layers.filter((l): l is LayerText => l.type === 'text' && l.visible);
   if (layers.length === 0) return null;
@@ -46,7 +51,9 @@ export function TextLayers({
                 key={i}
                 cell={cell}
                 interactive={!isViewer && !!onEditText}
+                isSelected={!!selected && selected.layerId === layer.id && selected.cellIndex === i}
                 onDblClick={() => onEditText?.({ layerId: layer.id, cellIndex: i, cell })}
+                onClick={() => onSelectText?.({ layerId: layer.id, cellIndex: i, cell })}
               />
             ))}
           </Group>
@@ -59,11 +66,15 @@ export function TextLayers({
 function FittedTextCell({
   cell,
   interactive,
+  isSelected,
   onDblClick,
+  onClick,
 }: {
   cell: TextCell;
   interactive?: boolean;
+  isSelected?: boolean;
   onDblClick?: () => void;
+  onClick?: () => void;
 }) {
   const ref = useRef<Konva.Text | null>(null);
   const [layout, setLayout] = useState({ fontSize: PROBE_PX, w: 0, h: 0 });
@@ -125,6 +136,16 @@ function FittedTextCell({
       perfectDrawEnabled={false}
       hitStrokeWidth={0}
       {...(interactive && onDblClick ? { onDblClick, cursor: 'pointer' } : {})}
+      {...(interactive && onClick
+        ? {
+            onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
+              if (e.evt.button !== 0) return;
+              e.cancelBubble = true;
+              onClick();
+            },
+          }
+        : {})}
+      {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
     />
   );
 }

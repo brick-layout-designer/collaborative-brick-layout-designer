@@ -6,13 +6,13 @@
 import { useState } from 'react';
 import * as Y from 'yjs';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { docToBbm } from '@cld/ydoc';
 import type { ModuleSummary } from '../api';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';
-import { ensureBrickLayer, insertBricks } from './mutations';
+import { importBricksAsModule } from './mutations';
+import { fetchModuleBatches } from './moduleSnapshot';
 
-import { MODULE_MIME } from './mime';
+import { MODULE_MIME, MODULE_NAME_MIME } from './mime';
 export { MODULE_MIME };
 
 interface Props {
@@ -26,7 +26,6 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
   const [filter, setFilter] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [inserting, setInserting] = useState<string | null>(null);
-  const activeLayerId = useEditorStore((s) => s.activeLayerId);
 
   const modules = (list.data?.modules ?? []).filter((m) =>
     !filter.trim() || m.title.toLowerCase().includes(filter.trim().toLowerCase()),
@@ -37,20 +36,13 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
     setError(null);
     setInserting(moduleId);
     try {
-      const res = await fetch(`/api/modules/${moduleId}/snapshot`, { credentials: 'include' });
-      if (!res.ok) throw new Error(`snapshot fetch failed: ${res.status}`);
-      const buf = await res.arrayBuffer();
-      const moduleDoc = new Y.Doc();
-      Y.applyUpdate(moduleDoc, new Uint8Array(buf));
-      let map: ReturnType<typeof docToBbm>;
-      try { map = docToBbm(moduleDoc); } catch { moduleDoc.destroy(); throw new Error('snapshot invalid or empty'); }
-      moduleDoc.destroy();
-      const bricks = map.layers
-        .filter((l): l is Extract<typeof l, { type: 'brick' }> => l.type === 'brick')
-        .flatMap((l) => l.bricks);
-      if (bricks.length === 0) throw new Error('module has no bricks');
-      const layerId = activeLayerId ?? ensureBrickLayer(doc);
-      insertBricks(doc, layerId, bricks);
+      const batches = await fetchModuleBatches(moduleId);
+      // Bricks land on host layers matching the module's layer names and
+      // are registered as a sidecar module in the same undo step
+      // (desktop ImportBbmAsModuleCommand).
+      const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';
+      const res = importBricksAsModule(doc, batches, { name: title });
+      if (res) useEditorStore.getState().setSelection(res.ids);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -150,6 +142,7 @@ function ModuleLibraryRow({
         if (!e.dataTransfer) return;
         e.dataTransfer.effectAllowed = 'copy';
         e.dataTransfer.setData(MODULE_MIME, module.id);
+        e.dataTransfer.setData(MODULE_NAME_MIME, module.title);
         e.dataTransfer.setData('text/plain', module.id);
       }}
       className="group flex cursor-grab items-start justify-between gap-2 px-2 py-2 hover:bg-neutral-800/60 active:cursor-grabbing"

@@ -225,14 +225,19 @@ export function PreferencesDialog({ onClose }: Props) {
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
-                <span className="text-xs text-neutral-400">Module label size (%)</span>
+                <span
+                  className="text-xs text-neutral-400"
+                  title="Module name size as a percentage of the module's long axis"
+                >
+                  Module label size (% of long axis)
+                </span>
                 <input
                   type="number"
-                  min={10}
-                  max={400}
-                  step={10}
+                  min={5}
+                  max={100}
+                  step={5}
                   value={moduleLabelPercent}
-                  onChange={(e) => setModuleLabelPercent(parseInt(e.target.value, 10) || 100)}
+                  onChange={(e) => setModuleLabelPercent(parseInt(e.target.value, 10) || 35)}
                   className="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </div>

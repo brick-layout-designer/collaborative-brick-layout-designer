@@ -33,24 +33,31 @@ import {
   addLinearRuler,
   addTextCell,
   attachRulerEndpoint,
-  deleteBricks,
+  deleteAnchoredLabel,
   deleteRulerItem,
+  deleteTextCell,
   editTextCellFull,
+  moveAnchoredLabel,
   moveRulerEndpoint,
   ensureAreaLayer,
   ensureBrickLayer,
   ensureRulerLayer,
   ensureTextLayer,
-  groupBricks,
+  allVisibleBrickIds,
+  bricksByLayer,
+  deleteBricksAcrossLayers,
+  groupBricksAcrossLayers,
+  importBricksAsModule,
+  insertBricksAcrossLayers,
   insertBricks,
   moveRulerItem,
   paintAreaCells,
   placeBrick,
   reorderBricks,
-  rotateBricks,
+  rotateBricksAboutCentroid,
   translateBricks,
   translateBricksAcrossLayers,
-  ungroupBricks,
+  ungroupBricksAcrossLayers,
   setVenue,
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
@@ -67,7 +74,12 @@ import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
-import { MODULE_MIME } from './mime';
+import { MODULE_MIME, MODULE_NAME_MIME } from './mime';
+import { fetchModuleBatches } from './moduleSnapshot';
+import { moduleDropTranslation } from './moduleDrop';
+import { createModuleFromSelection } from './moduleActions';
+import { EXPORT_HIDE, renderMapToCanvas } from './exportRender';
+import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -102,11 +114,25 @@ export function EditorPage() {
 }
 
 function Editor({ layoutId }: { layoutId: string }) {
-  const { doc, awareness, loadError, loading, status, saveNow } = useLayoutDoc(layoutId);
+  const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = useLayoutDoc(layoutId);
   const meta = useQuery({
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
   });
+  // Save / Ctrl+S: every edit is already persisted server-side while the
+  // socket is synced; when it isn't, offer the local state as a .bbm so
+  // nothing is lost (desktop's Save always leaves a file on disk).
+  const saveNow = useCallback(async (): Promise<void> => {
+    if (!doc) return;
+    const result = await checkSaved();
+    if (result === 'saved') {
+      useEditorStore.getState().showStatusMessage('All changes saved to the server', 3000);
+      return;
+    }
+    if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a .bbm copy of the current local version now?')) {
+      void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout');
+    }
+  }, [doc, checkSaved, meta.data?.layout.title]);
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const undo = useUndoManager(doc);
@@ -392,6 +418,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               }}
               onSaveModule={() => setShowSaveModule(true)}
               onImportBbm={() => setShowImportBbm(true)}
+              onCreateModule={() => createModuleFromSelection(doc)}
               onSaveAsSet={() => setShowSaveAsSet(true)}
               onInsertLabel={() => setShowAddLabel(true)}
               onPreferences={() => setShowPreferences(true)}
@@ -419,12 +446,12 @@ function Editor({ layoutId }: { layoutId: string }) {
                 if (!doc) return;
                 const venue = readSidecarFromDoc(doc)?.venue;
                 if (!venue) { alert('No venue defined on this layout.'); return; }
-                const json = JSON.stringify(venue, null, 2);
-                const blob = new Blob([json], { type: 'application/json' });
+                // Desktop format (VenueIO.cpp): *.bld-venue, schema bld-venue/1.
+                const blob = new Blob([writeVenueFile(venue)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `${venue.name || 'venue'}.cld-venue`;
+                a.download = `${venue.name || 'venue'}${VENUE_FILE_EXT}`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}
@@ -432,16 +459,15 @@ function Editor({ layoutId }: { layoutId: string }) {
                 if (!doc) return;
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.cld-venue,.json';
+                input.accept = VENUE_FILE_ACCEPT;
                 input.onchange = () => {
                   const file = input.files?.[0];
                   if (!file) return;
                   file.text().then((text) => {
                     try {
-                      const venue = JSON.parse(text);
-                      setVenue(doc, venue);
-                    } catch {
-                      alert('Could not parse venue file.');
+                      setVenue(doc, parseVenueFile(text));
+                    } catch (e) {
+                      alert(`Could not load venue file: ${(e as Error).message}`);
                     }
                   });
                 };
@@ -694,6 +720,7 @@ function Canvas({
   onSaveModule: () => void;
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
+  const hudLayerRef = useRef<Konva.Layer | null>(null);
   const { width, height } = useViewportSize();
   // Pan/zoom are plain React state, passed straight to <Stage> as
   // x/y/scaleX/scaleY props below. (An earlier version additionally
@@ -765,12 +792,26 @@ function Canvas({
   // pointer-down on a ruler updates it without opening the dialog so
   // the user can hit Delete/arrow-nudge with the ruler "selected".
   const [selectedRulerId, setSelectedRulerId] = useState<string | null>(null);
+  // Selected anchored label / text cell — click selects, Delete removes
+  // (desktop MapView::deleteSelected handles text and label items too,
+  // MapView.cpp:2108-2179). One annotation at a time; a brick selection
+  // clears it.
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
+  const [selectedTextCell, setSelectedTextCell] = useState<{ layerId: string; cellIndex: number } | null>(null);
+  useEffect(() => {
+    if (selection.length > 0) {
+      setSelectedLabelId(null);
+      setSelectedTextCell(null);
+    }
+  }, [selection]);
   const [editingRuler, setEditingRuler] = useState<
     { item: import('@cld/model').RulerItem; layerId: string } | null
   >(null);
 
   // Add-Text dialog state — opened by Ctrl+T.
   const [showAddText, setShowAddText] = useState(false);
+  // Where "Add Text Here…" was invoked (studs); null = at the cursor.
+  const [addTextAt, setAddTextAt] = useState<{ x: number; y: number } | null>(null);
 
   // Edit-Text dialog state — opened by double-click or context menu on a text cell.
   const [editingText, setEditingText] = useState<TextCellRef | null>(null);
@@ -992,40 +1033,34 @@ function Canvas({
       const moduleIdRaw = dt?.getData(MODULE_MIME);
       const moduleId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(moduleIdRaw ?? '')?.[1];
       if (moduleId) {
-        // Relative URL — same-origin browser fetch, not a server-side request.
-        // Path is /api/modules/<validated-uuid>/snapshot with no user-controlled host.
-        const moduleSnapshotPath = `/api/modules/${moduleId}/snapshot` as const;
-        const layerId = resolveBrickLayerForPlacement();
+        const moduleName = dt?.getData(MODULE_NAME_MIME) || 'Module';
         const dropStuds = clientToStuds(e.clientX, e.clientY);
+        const hostMap = map;
+        const catalog = partsByKey;
         void (async () => {
           try {
-            const res = await fetch(moduleSnapshotPath, { credentials: 'include' }); // codeql[js/request-forgery] - browser same-origin fetch, UUID validated by regex above
-            if (!res.ok) return;
-            const buf = await res.arrayBuffer();
-            const moduleDoc = new Y.Doc();
-            Y.applyUpdate(moduleDoc, new Uint8Array(buf));
-            let bbmMap: ReturnType<typeof docToBbm>;
-            try { bbmMap = docToBbm(moduleDoc); } catch { moduleDoc.destroy(); return; }
-            moduleDoc.destroy();
-            const bricks = bbmMap.layers
-              .filter((l): l is Extract<typeof l, { type: 'brick' }> => l.type === 'brick')
-              .flatMap((l) => l.bricks);
-            if (bricks.length === 0) return;
-            // Land the module's centroid under the drop point (modules
-            // are saved centred on the origin, so inserting at the saved
-            // coordinates dropped them at 0,0 regardless of the cursor).
-            let offset = { dx: 0, dy: 0 };
-            if (dropStuds) {
-              let cx = 0;
-              let cy = 0;
-              for (const b of bricks) {
-                cx += b.displayArea.x + b.displayArea.width / 2;
-                cy += b.displayArea.y + b.displayArea.height / 2;
-              }
-              offset = { dx: dropStuds.x - cx / bricks.length, dy: dropStuds.y - cy / bricks.length };
+            const batches = await fetchModuleBatches(moduleId);
+            // Desktop drop (MapView.cpp:1900-2060): centroid under the
+            // cursor, bbox top-left on the grid, then a translation-only
+            // connection snap onto the host's free ends.
+            const offset = dropStuds
+              ? moduleDropTranslation(
+                  batches,
+                  dropStuds,
+                  useEditorStore.getState().snapStepStuds,
+                  hostMap,
+                  catalog,
+                )
+              : { dx: 0, dy: 0 };
+            // Bricks go to host layers named like the module's layers and
+            // are registered as a sidecar module in the same undo step.
+            const res = importBricksAsModule(doc, batches, { name: moduleName, offset });
+            if (res) {
+              setSelection(res.ids);
+              useEditorStore
+                .getState()
+                .showStatusMessage(`Imported ${res.ids.length} bricks from module '${moduleName}'`, 4000);
             }
-            const ids = insertBricks(doc, layerId, bricks, offset);
-            if (ids.length > 0) setSelection(ids);
           } catch { /* silent */ }
         })();
         return;
@@ -1118,6 +1153,50 @@ function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, width, height]);
 
+  // Finish the venue outline / obstacle being drawn (≥3 points) and
+  // return to the select tool. Enter or right-click, like desktop
+  // MapView::finishVenueDraw (MapView.cpp:484-489).
+  function finishVenueDraft() {
+    if (!venueDraft || isViewer) return;
+    const pts = venueDraft.pts;
+    const kind = venueDraft.kind;
+    if (pts.length >= 3 && doc) {
+      void (async () => {
+
+        const existing = readSidecarFromDoc(doc);
+        if (kind === 'outline') {
+          const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
+            kind: 0,
+            doorWidthStuds: 0,
+            label: '',
+            poly: [pt, pts[(i + 1) % pts.length]!],
+          }));
+          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+          const minX = Math.min(...xs), minY = Math.min(...ys);
+          const maxX = Math.max(...xs), maxY = Math.max(...ys);
+          const venue: import('@cld/bbm').Venue = {
+            name: existing?.venue?.name ?? '',
+            enabled: existing?.venue?.enabled ?? true,
+            minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
+            bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+            edges,
+            obstacles: existing?.venue?.obstacles ?? [],
+          };
+          setVenue(doc, venue);
+        } else {
+          const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
+          const base = existing?.venue ?? {
+            name: '', enabled: true, minWalkwayStuds: 0,
+            bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
+          };
+          setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
+        }
+      })();
+    }
+    setVenueDraft(null);
+    useEditorStore.getState().setTool('select');
+  }
+
   // Canvas keyboard shortcuts — port of desktop MapView::keyPressEvent
   // (MapView.cpp:942-983) and MainWindowMenus.cpp shortcut bindings:
   //
@@ -1126,7 +1205,7 @@ function Canvas({
   //   R                     — rotate CCW 90°                    (MapView.cpp:964, MainWindowMenus.cpp:423)
   //   Shift+R               — rotate CW 90°                     (MapView.cpp:964, MainWindowMenus.cpp:418)
   //   Arrow keys            — nudge selection by 1 stud         (MapView.cpp:970-980)
-  //   Ctrl+A                — select all bricks in active layer (MainWindowMenus.cpp:359)
+  //   Ctrl+A                — select all visible bricks          (MapView.cpp:1417)
   //   Ctrl+Shift+A          — select none                       (MainWindowMenus.cpp:362)
   // The handler is rebuilt every render (so it always sees the current
   // venueDraft / selection / map / status ...) and a single window
@@ -1145,6 +1224,8 @@ function Canvas({
         if (venueDraft) { setVenueDraft(null); return; }
         setSelection([]);
         setSelectedRulerId(null);
+        setSelectedLabelId(null);
+        setSelectedTextCell(null);
         setRulerDraft(null);
         return;
       }
@@ -1152,43 +1233,7 @@ function Canvas({
       // Enter — commit venue-draw polygon (≥3 pts) or obstacle.
       if (e.key === 'Enter' && venueDraft && !isViewer) {
         e.preventDefault();
-        const pts = venueDraft.pts;
-        const kind = venueDraft.kind;
-        if (pts.length >= 3 && doc) {
-          void (async () => {
-
-            const existing = readSidecarFromDoc(doc);
-            if (kind === 'outline') {
-              const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
-                kind: 0,
-                doorWidthStuds: 0,
-                label: '',
-                poly: [pt, pts[(i + 1) % pts.length]!],
-              }));
-              const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-              const minX = Math.min(...xs), minY = Math.min(...ys);
-              const maxX = Math.max(...xs), maxY = Math.max(...ys);
-              const venue: import('@cld/bbm').Venue = {
-                name: existing?.venue?.name ?? '',
-                enabled: existing?.venue?.enabled ?? true,
-                minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
-                bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-                edges,
-                obstacles: existing?.venue?.obstacles ?? [],
-              };
-              setVenue(doc, venue);
-            } else {
-              const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
-              const base = existing?.venue ?? {
-                name: '', enabled: true, minWalkwayStuds: 0,
-                bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
-              };
-              setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
-            }
-          })();
-        }
-        setVenueDraft(null);
-        useEditorStore.getState().setTool('select');
+        finishVenueDraft();
         return;
       }
 
@@ -1197,11 +1242,10 @@ function Canvas({
         e.preventDefault();
         if (e.shiftKey) {
           setSelection([]);
-        } else if (activeLayerId && map) {
-          const layer = map.layers.find((l) => l.id === activeLayerId && l.type === 'brick');
-          if (layer && layer.type === 'brick') {
-            setSelection(layer.bricks.map((b) => b.id));
-          }
+        } else if (map) {
+          // Every brick on every visible brick layer, like desktop
+          // MapView::selectAll (MapView.cpp:1417).
+          setSelection(allVisibleBrickIds(map));
         }
         return;
       }
@@ -1238,7 +1282,7 @@ function Canvas({
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0 || !activeLayerId) return;
+        if (isViewer || selection.length === 0) return;
         void duplicateSelection();
         return;
       }
@@ -1247,14 +1291,14 @@ function Canvas({
       // Desktop MainWindowMenus.cpp:391-396.
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === ']' || e.key === '}')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0 || !activeLayerId) return;
-        reorderBricks(doc, activeLayerId, selection, 'front');
+        if (isViewer || selection.length === 0) return;
+        reorderBricks(doc, activeLayerId ?? '', selection, 'front');
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '[' || e.key === '{')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0 || !activeLayerId) return;
-        reorderBricks(doc, activeLayerId, selection, 'back');
+        if (isViewer || selection.length === 0) return;
+        reorderBricks(doc, activeLayerId ?? '', selection, 'back');
         return;
       }
 
@@ -1295,14 +1339,9 @@ function Canvas({
       // Desktop MainWindowMenus.cpp:371-374.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
         e.preventDefault();
-        if (isViewer || !activeLayerId) return;
-        if (e.shiftKey) {
-          if (selection.length === 0) return;
-          ungroupBricks(doc, activeLayerId, selection);
-        } else {
-          if (selection.length < 2) return;
-          groupBricks(doc, activeLayerId, selection);
-        }
+        if (isViewer) return;
+        if (e.shiftKey) ungroupBricksAcrossLayers(doc, selectionByLayer());
+        else groupBricksAcrossLayers(doc, selectionByLayer());
         return;
       }
 
@@ -1371,6 +1410,22 @@ function Canvas({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isViewer) return; // viewers can't mutate
 
+      // Selected label / text cell: Delete/Backspace removes it.
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length === 0) {
+        if (selectedLabelId) {
+          e.preventDefault();
+          deleteAnchoredLabel(doc, selectedLabelId);
+          setSelectedLabelId(null);
+          return;
+        }
+        if (selectedTextCell) {
+          e.preventDefault();
+          deleteTextCell(doc, selectedTextCell.layerId, selectedTextCell.cellIndex);
+          setSelectedTextCell(null);
+          return;
+        }
+      }
+
       // Selected-ruler shortcuts: Delete/Backspace removes it; arrow
       // keys translate by the snap step. Must run BEFORE the brick
       // selection guard so a ruler-only selection (no bricks) still
@@ -1404,35 +1459,19 @@ function Canvas({
       if (selection.length === 0) return;
 
       if (e.key === 'r' || e.key === 'R') {
-        if (!activeLayerId) return;
         // Shift+R = CW (+step), R = CCW (-step). Matches desktop's MainWindow
         // keys (MainWindowMenus.cpp:418,423) where Shift+R is CW and
-        // bare R is CCW; step is the configured rotation step.
+        // bare R is CCW; step is the configured rotation step. The whole
+        // selection (any layer) turns about its centroid.
         e.preventDefault();
-        rotateBricks(doc, activeLayerId, selection, e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
+        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        // Group selected brick IDs by which layer they live in.  The
-        // activeLayerId may be stale or the selection may span layers, so
-        // we search all brick layers. Desktop's deleteSelected() does the
-        // same (MapViewContextMenu.cpp deleteSelected walks all layers).
-        if (map) {
-          const selSet = new Set(selection);
-          for (const layer of map.layers) {
-            if (layer.type !== 'brick') continue;
-            const layerBrickIds = layer.bricks
-              .filter((b) => selSet.has(b.id))
-              .map((b) => b.id);
-            if (layerBrickIds.length > 0) {
-              deleteBricks(doc, layer.id, layerBrickIds);
-            }
-          }
-        } else if (activeLayerId) {
-          deleteBricks(doc, activeLayerId, selection);
-        }
-        setSelection([]);
+        // The selection may span layers; desktop's deleteSelected() walks
+        // every layer too. One transaction → one undo step.
+        deleteSelectedBricks();
         return;
       }
       // Arrow-key nudge by the active grid-snap step (or 1 stud when
@@ -1541,13 +1580,18 @@ function Canvas({
     // Right-click opens the context menu — don't clear selection or start marquee.
     if (evt.button === 2) return;
 
-    if (e.target !== e.target.getStage()) return;
+    // Only the select tool defers to whatever was clicked; ruler, venue and
+    // paint tools act anywhere, over bricks too (desktop handles them before
+    // item hit-testing, MapView.cpp:456-535).
+    if (tool === 'select' && e.target !== e.target.getStage()) return;
     const studs = pointerStuds();
     if (!studs) return;
 
     if (tool === 'select') {
       // Empty-space click in select mode → start marquee.
       setSelection([]);
+      setSelectedLabelId(null);
+      setSelectedTextCell(null);
       setMarquee({ x0: studs.x, y0: studs.y, x1: studs.x, y1: studs.y });
       return;
     }
@@ -1739,16 +1783,18 @@ function Canvas({
   async function cutSelection(): Promise<void> {
     await copySelection();
     if (selection.length === 0) return;
-    if (map) {
-      const selSet = new Set(selection);
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-        if (ids.length > 0) deleteBricks(doc, layer.id, ids);
-      }
-    } else if (activeLayerId) {
-      deleteBricks(doc, activeLayerId, selection);
-    }
+    deleteSelectedBricks();
+  }
+
+  /** The selection's brick ids grouped by the layer that holds them. */
+  function selectionByLayer(): Map<string, string[]> {
+    return map ? bricksByLayer(map, selection) : new Map();
+  }
+
+  /** Delete every selected brick, whatever its layer, as one undo step. */
+  function deleteSelectedBricks(): void {
+    if (selection.length === 0) return;
+    deleteBricksAcrossLayers(doc, selectionByLayer());
     setSelection([]);
   }
 
@@ -1808,21 +1854,24 @@ function Canvas({
     // Paste in-place + 1-stud offset (matches the previous Ctrl+D
     // behaviour while still going through the clipboard so cross-tab
     // duplicate works).
-    const entries = await readBricksFromClipboard();
-    if (!entries || entries.length === 0) return;
-    if (!activeLayerId) return;
-    const targetLayerId = activeLayerId;
-    const ids = insertBricks(
-      doc,
-      targetLayerId,
-      entries.map((e) => ({
-        partNumber: e.brick.partNumber,
-        displayArea: { ...e.brick.displayArea },
-        orientation: e.brick.orientation,
-        altitude: e.brick.altitude,
-      })),
-      { dx: 1, dy: 1 },
-    );
+    // Each copy lands on its source brick's own layer (desktop pastes by
+    // source layer — MapViewClipboard.cpp:74-110), in one undo step.
+    if (!map) return;
+    const sel = new Set(selection);
+    const perLayer = new Map<string, Parameters<typeof insertBricks>[2]>();
+    for (const layer of map.layers) {
+      if (layer.type !== 'brick') continue;
+      const bricks = layer.bricks
+        .filter((b) => sel.has(b.id))
+        .map((b) => ({
+          partNumber: b.partNumber,
+          displayArea: { ...b.displayArea },
+          orientation: b.orientation,
+          altitude: b.altitude,
+        }));
+      if (bricks.length > 0) perLayer.set(layer.id, bricks);
+    }
+    const ids = insertBricksAcrossLayers(doc, perLayer, { dx: 1, dy: 1 });
     if (ids.length > 0) setSelection(ids);
   }
 
@@ -2033,37 +2082,26 @@ function Canvas({
 
   // Keep the export-image handle fresh (needs stageRef).
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
+  // Renders the whole map (content bounds + margin), not the viewport.
   exportImageRef.current = {
-    toDataURL: ({ pixelRatio, transparent }: { pixelRatio: number; transparent: boolean }) => {
+    render: ({ pixelRatio, transparent }) => {
       const stage = stageRef.current;
-      if (!stage) return null;
-      return stage.toDataURL({
+      if (!stage || !map) return null;
+      const stamp = [map.author, map.lug, map.event].filter(Boolean).join(' / ');
+      return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
         pixelRatio,
-        mimeType: 'image/png',
-        ...(transparent ? { background: 'rgba(0,0,0,0)' } : {}),
+        transparent,
+        hudLayer: hudLayerRef.current,
+        ...(showExportWatermark && stamp ? { watermark: stamp } : {}),
       });
     },
-    getStage: () => stageRef.current,
   };
 
   clipboardRef.current = {
     cut: () => void cutSelection(),
     copy: () => void copySelection(),
     paste: () => void pasteAtCursor(),
-    delete: () => {
-      if (selection.length === 0) return;
-      if (map) {
-        const selSet = new Set(selection);
-        for (const layer of map.layers) {
-          if (layer.type !== 'brick') continue;
-          const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-          if (ids.length > 0) deleteBricks(doc, layer.id, ids);
-        }
-      } else if (activeLayerId) {
-        deleteBricks(doc, activeLayerId, selection);
-      }
-      setSelection([]);
-    },
+    delete: () => deleteSelectedBricks(),
   };
 
   if (!map) return <EmptyDoc />;
@@ -2125,6 +2163,10 @@ function Canvas({
       onContextMenu={(e) => {
         e.evt.preventDefault();
         if (isViewer) return;
+        if (tool === 'venueOutline' || tool === 'venueObstacle') {
+          finishVenueDraft();
+          return;
+        }
         const stage = stageRef.current;
         if (!stage) return;
         const ptr = stage.getPointerPosition();
@@ -2197,15 +2239,18 @@ function Canvas({
           `listening={false}` here would permanently defeat the child
           Group's `listening={!isViewer}`. */}
       <KonvaLayer listening={!isViewer} perfectDrawEnabled={false}>
-        <GridLayer
-          map={map}
-          viewport={{
-            studXMin: pxToStud(-panX / zoom),
-            studYMin: pxToStud(-panY / zoom),
-            studXMax: pxToStud((width - panX) / zoom),
-            studYMax: pxToStud((height - panY) / zoom),
-          }}
-        />
+        {/* View-only (desktop paints it in drawBackground): hidden on export. */}
+        <Group name={EXPORT_HIDE} listening={false}>
+          <GridLayer
+            map={map}
+            viewport={{
+              studXMin: pxToStud(-panX / zoom),
+              studYMin: pxToStud(-panY / zoom),
+              studXMax: pxToStud((width - panX) / zoom),
+              studYMax: pxToStud((height - panY) / zoom),
+            }}
+          />
+        </Group>
         <BackgroundImageLayer doc={doc} map={map} />
         <Group listening={!isViewer}>
           {isViewer
@@ -2232,6 +2277,13 @@ function Canvas({
             map={map}
             isViewer={isViewer}
             onEditText={(ref) => setEditingText(ref)}
+            selected={selectedTextCell}
+            onSelectText={(ref) => {
+              setSelection([]);
+              setSelectedRulerId(null);
+              setSelectedLabelId(null);
+              setSelectedTextCell({ layerId: ref.layerId, cellIndex: ref.cellIndex });
+            }}
           />
           <RulerLayers
             map={map}
@@ -2263,7 +2315,21 @@ function Canvas({
           />
           {isViewer
             ? <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
-            : <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} onDoubleClick={setEditingLabel} />}
+            : <AnchoredLabels
+                map={map}
+                labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []}
+                modules={readSidecarFromDoc(doc)?.modules ?? []}
+                zoom={zoom}
+                onDoubleClick={setEditingLabel}
+                selectedId={selectedLabelId}
+                onSelect={(id) => {
+                  setSelection([]);
+                  setSelectedRulerId(null);
+                  setSelectedTextCell(null);
+                  setSelectedLabelId(id);
+                }}
+                onMove={(id, dx, dy) => moveAnchoredLabel(doc, id, dx, dy)}
+              />}
           <ModuleOverlay
             map={map}
             modules={readSidecarFromDoc(doc)?.modules ?? []}
@@ -2273,7 +2339,7 @@ function Canvas({
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
           snap ring, ruler/venue drafts, remote cursors, export watermark. */}
-      <KonvaLayer listening={false} perfectDrawEnabled={false}>
+      <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
           if (!part || !map) {
@@ -2322,7 +2388,8 @@ function Canvas({
     // over the canvas yet). `addTextCell` infers a stud-size box from
     // the requested font size so the renderer's probe-and-fit lands
     // somewhere reasonable.
-    const target = pointerStuds() ?? { x: width / 2 / 8, y: height / 2 / 8 };
+    const target = addTextAt ?? pointerStuds() ?? { x: width / 2 / 8, y: height / 2 / 8 };
+    setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
     // Heuristic: 1 stud ≈ 8 px, so a 24-px font wants ~3 studs tall;
     // width is 0.6 × height per character.
@@ -2366,12 +2433,23 @@ function Canvas({
         />
       )}
       {showAddText && (
-        <TextDialog onClose={() => setShowAddText(false)} onCommit={commitAddText} />
+        <TextDialog
+          onClose={() => {
+            setShowAddText(false);
+            setAddTextAt(null);
+          }}
+          onCommit={commitAddText}
+        />
       )}
       {editingText && (
         <TextDialog
           initial={editingText.cell}
           onClose={() => setEditingText(null)}
+          onDelete={() => {
+            deleteTextCell(doc, editingText.layerId, editingText.cellIndex);
+            setSelectedTextCell(null);
+            setEditingText(null);
+          }}
           onCommit={(r) => {
             const styleParts: string[] = [];
             if (r.isBold) styleParts.push('Bold');
@@ -2412,44 +2490,17 @@ function Canvas({
           onCut={() => void cutSelection()}
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
-          onDelete={() => {
-            if (selection.length === 0) return;
-            if (map) {
-              const selSet = new Set(selection);
-              for (const layer of map.layers) {
-                if (layer.type !== 'brick') continue;
-                const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-                if (ids.length > 0) deleteBricks(doc, layer.id, ids);
-              }
-            } else if (activeLayerId) {
-              deleteBricks(doc, activeLayerId, selection);
-            }
-            setSelection([]);
-          }}
-          onRotateCCW={() => {
-            if (activeLayerId && selection.length > 0)
-              rotateBricks(doc, activeLayerId, selection, -rotationStepDegrees);
-          }}
-          onRotateCW={() => {
-            if (activeLayerId && selection.length > 0)
-              rotateBricks(doc, activeLayerId, selection, rotationStepDegrees);
-          }}
+          onDelete={() => deleteSelectedBricks()}
+          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees)}
+          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees)}
           onBringToFront={() => {
-            if (activeLayerId && selection.length > 0)
-              reorderBricks(doc, activeLayerId, selection, 'front');
+            if (selection.length > 0) reorderBricks(doc, activeLayerId ?? '', selection, 'front');
           }}
           onSendToBack={() => {
-            if (activeLayerId && selection.length > 0)
-              reorderBricks(doc, activeLayerId, selection, 'back');
+            if (selection.length > 0) reorderBricks(doc, activeLayerId ?? '', selection, 'back');
           }}
-          onGroup={() => {
-            if (activeLayerId && selection.length >= 2)
-              groupBricks(doc, activeLayerId, selection);
-          }}
-          onUngroup={() => {
-            if (activeLayerId && selection.length > 0)
-              ungroupBricks(doc, activeLayerId, selection);
-          }}
+          onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
+          onUngroup={() => ungroupBricksAcrossLayers(doc, selectionByLayer())}
           onSelectConnected={() => {
             if (!map) return;
             const adj = buildConnectedAdj(map);
@@ -2477,19 +2528,10 @@ function Canvas({
           }}
           onEditText={(ref) => setEditingText(ref)}
           onAddTextHere={() => {
-            const layerId = ensureTextLayer(doc);
-            const heightStuds = 3;
-            const widthStuds = 12;
-            addTextCell(doc, layerId, {
-              centreX: ctxMenu.studX,
-              centreY: ctxMenu.studY,
-              widthStuds,
-              heightStuds,
-              text: 'Text',
-              font: { family: 'Arial', size: 24, style: 'Regular' },
-              fontColor: { kind: 'argb', argb: 'ff000000' },
-              orientation: 0,
-            });
+            // Prompt for the text first (desktop asks via its text dialog)
+            // instead of dropping a placeholder "Text" cell.
+            setAddTextAt({ x: ctxMenu.studX, y: ctxMenu.studY });
+            setShowAddText(true);
           }}
           onProperties={() => {
             if (ctxMenu.textCellRef) {
@@ -3230,6 +3272,7 @@ function MapMenu({
   onExportCsv,
   onSaveModule,
   onImportBbm,
+  onCreateModule,
   onSaveAsSet,
   onInsertLabel,
   onPreferences,
@@ -3251,6 +3294,7 @@ function MapMenu({
   onExportCsv: () => void;
   onSaveModule: () => void;
   onImportBbm: () => void;
+  onCreateModule: () => void;
   onSaveAsSet: () => void;
   onInsertLabel: () => void;
   onPreferences: () => void;
@@ -3297,6 +3341,7 @@ function MapMenu({
     { label: 'Venue → Load from File...', action: onVenueLoadFromFile },
     { label: 'Venue → Clear', action: onVenueClear },
     { label: '—', action: () => {} },
+    { label: 'Create Module from Selection...', action: onCreateModule },
     { label: 'Save Selection as Module...', action: onSaveModule },
     { label: 'Import .bbm as Module...', action: onImportBbm },
     { label: 'Save Selection as Set...', action: onSaveAsSet },
@@ -3621,4 +3666,23 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
     }
   }
   return adj;
+}
+
+/** Serialise the local doc to .bbm in the browser and download it. */
+async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
+  let xml: string;
+  try {
+    // Loaded on demand: the .bbm codec is its own chunk.
+    const { writeBbm } = await import('@cld/bbm');
+    xml = writeBbm(docToBbm(doc));
+  } catch (e) {
+    window.alert(`Could not build the .bbm: ${(e as Error).message}`);
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout'}.bbm`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
