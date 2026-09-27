@@ -18,6 +18,7 @@
 import { Group, Line, Text } from 'react-konva';
 import type { BbmMap, Brick } from '@cld/model';
 import type { AnchoredLabel, SidecarModule } from '@cld/bbm';
+import type { KonvaEventObject } from 'konva/lib/Node';
 import { studToPx } from './coords';
 
 interface Props {
@@ -28,9 +29,27 @@ interface Props {
   modules?: SidecarModule[];
   /** Called when the user double-clicks a label. */
   onDoubleClick?: (label: AnchoredLabel) => void;
+  /** Highlighted label (click selects; Delete removes). */
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
+  /**
+   * Drag a label to a new offset — desktop labels are movable items
+   * committing MoveAnchoredLabelCommand (MapViewDrag.cpp:420-446).
+   * Delta in studs.
+   */
+  onMove?: (id: string, dxStuds: number, dyStuds: number) => void;
 }
 
-export function AnchoredLabels({ map, labels, zoom, modules = [], onDoubleClick }: Props) {
+export function AnchoredLabels({
+  map,
+  labels,
+  zoom,
+  modules = [],
+  onDoubleClick,
+  selectedId = null,
+  onSelect,
+  onMove,
+}: Props) {
   if (!labels || labels.length === 0) return null;
 
   // Index brick by id; also collect bricks by group id and module member set.
@@ -102,7 +121,32 @@ export function AnchoredLabels({ map, labels, zoom, modules = [], onDoubleClick 
         const x = anchorPxX + label.offset.x * studToPx();
         const y = anchorPxY + label.offset.y * studToPx();
 
-        const groupProps = onDoubleClick ? { onDblClick: () => onDoubleClick(label) } : {};
+        const groupProps = {
+          ...(onDoubleClick ? { onDblClick: () => onDoubleClick(label) } : {}),
+          ...(onSelect
+            ? {
+                onMouseDown: (e: KonvaEventObject<MouseEvent>) => {
+                  if (e.evt.button !== 0) return;
+                  e.cancelBubble = true;
+                  onSelect(label.id);
+                },
+              }
+            : {}),
+          ...(onMove
+            ? {
+                draggable: true,
+                onDragEnd: (e: KonvaEventObject<DragEvent>) => {
+                  // The Group sits at (0,0); its drag position IS the delta.
+                  const node = e.target;
+                  const dx = node.x() / studToPx();
+                  const dy = node.y() / studToPx();
+                  node.position({ x: 0, y: 0 });
+                  if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6) onMove(label.id, dx, dy);
+                },
+              }
+            : {}),
+        };
+        const isSelected = selectedId === label.id;
         return (
           <Group key={label.id} {...groupProps}>
             {leaderTargetPx && (
@@ -124,7 +168,8 @@ export function AnchoredLabels({ map, labels, zoom, modules = [], onDoubleClick 
               fontStyle={fontStyle}
               fill={fill}
               rotation={label.rot}
-              listening={!!onDoubleClick}
+              listening={!!onDoubleClick || !!onSelect || !!onMove}
+              {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
               perfectDrawEnabled={false}
             />
           </Group>

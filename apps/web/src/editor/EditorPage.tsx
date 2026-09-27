@@ -33,8 +33,11 @@ import {
   addLinearRuler,
   addTextCell,
   attachRulerEndpoint,
+  deleteAnchoredLabel,
   deleteRulerItem,
+  deleteTextCell,
   editTextCellFull,
+  moveAnchoredLabel,
   moveRulerEndpoint,
   ensureAreaLayer,
   ensureBrickLayer,
@@ -773,6 +776,18 @@ function Canvas({
   // pointer-down on a ruler updates it without opening the dialog so
   // the user can hit Delete/arrow-nudge with the ruler "selected".
   const [selectedRulerId, setSelectedRulerId] = useState<string | null>(null);
+  // Selected anchored label / text cell — click selects, Delete removes
+  // (desktop MapView::deleteSelected handles text and label items too,
+  // MapView.cpp:2108-2179). One annotation at a time; a brick selection
+  // clears it.
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
+  const [selectedTextCell, setSelectedTextCell] = useState<{ layerId: string; cellIndex: number } | null>(null);
+  useEffect(() => {
+    if (selection.length > 0) {
+      setSelectedLabelId(null);
+      setSelectedTextCell(null);
+    }
+  }, [selection]);
   const [editingRuler, setEditingRuler] = useState<
     { item: import('@cld/model').RulerItem; layerId: string } | null
   >(null);
@@ -1147,6 +1162,8 @@ function Canvas({
         if (venueDraft) { setVenueDraft(null); return; }
         setSelection([]);
         setSelectedRulerId(null);
+        setSelectedLabelId(null);
+        setSelectedTextCell(null);
         setRulerDraft(null);
         return;
       }
@@ -1367,6 +1384,22 @@ function Canvas({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isViewer) return; // viewers can't mutate
 
+      // Selected label / text cell: Delete/Backspace removes it.
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length === 0) {
+        if (selectedLabelId) {
+          e.preventDefault();
+          deleteAnchoredLabel(doc, selectedLabelId);
+          setSelectedLabelId(null);
+          return;
+        }
+        if (selectedTextCell) {
+          e.preventDefault();
+          deleteTextCell(doc, selectedTextCell.layerId, selectedTextCell.cellIndex);
+          setSelectedTextCell(null);
+          return;
+        }
+      }
+
       // Selected-ruler shortcuts: Delete/Backspace removes it; arrow
       // keys translate by the snap step. Must run BEFORE the brick
       // selection guard so a ruler-only selection (no bricks) still
@@ -1528,6 +1561,8 @@ function Canvas({
     if (tool === 'select') {
       // Empty-space click in select mode → start marquee.
       setSelection([]);
+      setSelectedLabelId(null);
+      setSelectedTextCell(null);
       setMarquee({ x0: studs.x, y0: studs.y, x1: studs.x, y1: studs.y });
       return;
     }
@@ -2204,6 +2239,13 @@ function Canvas({
             map={map}
             isViewer={isViewer}
             onEditText={(ref) => setEditingText(ref)}
+            selected={selectedTextCell}
+            onSelectText={(ref) => {
+              setSelection([]);
+              setSelectedRulerId(null);
+              setSelectedLabelId(null);
+              setSelectedTextCell({ layerId: ref.layerId, cellIndex: ref.cellIndex });
+            }}
           />
           <RulerLayers
             map={map}
@@ -2235,7 +2277,21 @@ function Canvas({
           />
           {isViewer
             ? <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
-            : <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} onDoubleClick={setEditingLabel} />}
+            : <AnchoredLabels
+                map={map}
+                labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []}
+                modules={readSidecarFromDoc(doc)?.modules ?? []}
+                zoom={zoom}
+                onDoubleClick={setEditingLabel}
+                selectedId={selectedLabelId}
+                onSelect={(id) => {
+                  setSelection([]);
+                  setSelectedRulerId(null);
+                  setSelectedTextCell(null);
+                  setSelectedLabelId(id);
+                }}
+                onMove={(id, dx, dy) => moveAnchoredLabel(doc, id, dx, dy)}
+              />}
           <ModuleOverlay
             map={map}
             modules={readSidecarFromDoc(doc)?.modules ?? []}
@@ -2344,6 +2400,11 @@ function Canvas({
         <TextDialog
           initial={editingText.cell}
           onClose={() => setEditingText(null)}
+          onDelete={() => {
+            deleteTextCell(doc, editingText.layerId, editingText.cellIndex);
+            setSelectedTextCell(null);
+            setEditingText(null);
+          }}
           onCommit={(r) => {
             const styleParts: string[] = [];
             if (r.isBold) styleParts.push('Bold');
