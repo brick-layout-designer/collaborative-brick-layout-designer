@@ -95,7 +95,12 @@ export interface LayerGrid extends LayerCommon {
   cellIndexColor: ColorSpec;
   cellIndexColumnType: string;
   cellIndexRowType: string;
-  cellIndexCorner: string;
+  /**
+   * Integer cell coordinate (`QPoint` in desktop, LayerGrid.h) of the grid
+   * cell whose top-left corner is labelled "A1"/"1". Serialised as
+   * `<CellIndexCorner><X>..</X><Y>..</Y></CellIndexCorner>`.
+   */
+  cellIndexCorner: PointF;
 }
 
 export interface Connexion {

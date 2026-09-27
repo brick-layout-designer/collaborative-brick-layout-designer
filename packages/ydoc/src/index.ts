@@ -76,7 +76,7 @@ export function createDefaultLayoutDoc(): Y.Doc {
         cellIndexColor: { kind: 'argb', argb: 'ff000000' },
         cellIndexColumnType: '0',
         cellIndexRowType: '1',
-        cellIndexCorner: '',
+        cellIndexCorner: { x: 0, y: 0 },
       },
       {
         id: 'brick-1',

@@ -250,7 +250,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       // directly. For Phase 2, we only export what was imported.
       return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
     }
-    const xml = writeBbm(map, { recomputeNbItems: false });
+    const xml = writeBbm(map);
     reply.header('Content-Type', 'application/xml; charset=utf-8');
     reply.header(
       'Content-Disposition',
@@ -361,7 +361,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const safe = sanitizeFilename(layout.title);
     const entries: { name: string; data: Buffer }[] = [];
 
-    const xml = writeBbm(map, { recomputeNbItems: false });
+    const xml = writeBbm(map);
     entries.push({ name: `${safe}.bbm`, data: Buffer.from(xml, 'utf8') });
 
     if (layout.sidecarSnapshot) {
