@@ -1128,21 +1128,49 @@ export function addTextCell(doc: Y.Doc, layerId: string, spec: AddTextSpec): voi
     if (!(layerData instanceof Y.Map)) return;
     const yCells = layerData.get('textCells');
     if (!(yCells instanceof Y.Array)) return;
-    yCells.push([{
-      displayArea: {
-        x: spec.centreX - spec.widthStuds / 2,
-        y: spec.centreY - spec.heightStuds / 2,
-        width: spec.widthStuds,
-        height: spec.heightStuds,
-      },
-      myGroup: '',
-      text: spec.text,
-      orientation: spec.orientation ?? 0,
-      fontColor: spec.fontColor,
-      font: spec.font,
-      textAlignment: spec.textAlignment ?? 'Center',
-    }]);
+    // Text cells are Y.Maps, like every cell the .bbm import writes
+    // (packages/ydoc textCellToYMap); the projection reads them with
+    // Y.Map#get, so a plain object here made the whole doc unprojectable.
+    yCells.push([
+      textCellYMap({
+        displayArea: {
+          x: spec.centreX - spec.widthStuds / 2,
+          y: spec.centreY - spec.heightStuds / 2,
+          width: spec.widthStuds,
+          height: spec.heightStuds,
+        },
+        myGroup: '',
+        text: spec.text,
+        orientation: spec.orientation ?? 0,
+        fontColor: spec.fontColor,
+        font: spec.font,
+        textAlignment: spec.textAlignment ?? 'Center',
+      }),
+    ]);
   }, LOCAL_ORIGIN);
+}
+
+function textCellYMap(fields: Record<string, unknown>): Y.Map<unknown> {
+  const y = new Y.Map<unknown>();
+  for (const [k, v] of Object.entries(fields)) y.set(k, v);
+  return y;
+}
+
+/**
+ * Apply `patch` to the text cell at `cellIndex`. Y.Map cells are edited
+ * in place; a legacy plain-object cell (written by older web builds) is
+ * replaced by an equivalent Y.Map.
+ */
+function patchTextCell(yCells: Y.Array<unknown>, cellIndex: number, patch: Record<string, unknown>): void {
+  if (cellIndex < 0 || cellIndex >= yCells.length) return;
+  const cell = yCells.get(cellIndex);
+  if (cell instanceof Y.Map) {
+    for (const [k, v] of Object.entries(patch)) cell.set(k, v);
+    return;
+  }
+  if (!cell || typeof cell !== 'object') return;
+  yCells.delete(cellIndex, 1);
+  yCells.insert(cellIndex, [textCellYMap({ ...(cell as Record<string, unknown>), ...patch })]);
 }
 
 /**
@@ -1156,11 +1184,7 @@ export function editTextCell(doc: Y.Doc, layerId: string, cellIndex: number, new
     if (!(layerData instanceof Y.Map)) return;
     const yCells = layerData.get('textCells');
     if (!(yCells instanceof Y.Array)) return;
-    if (cellIndex < 0 || cellIndex >= yCells.length) return;
-    const cell = yCells.get(cellIndex);
-    if (!cell || typeof cell !== 'object') return;
-    yCells.delete(cellIndex, 1);
-    yCells.insert(cellIndex, [{ ...(cell as Record<string, unknown>), text: newText }]);
+    patchTextCell(yCells, cellIndex, { text: newText });
   }, LOCAL_ORIGIN);
 }
 
@@ -1186,16 +1210,12 @@ export function editTextCellFull(
     if (!(layerData instanceof Y.Map)) return;
     const yCells = layerData.get('textCells');
     if (!(yCells instanceof Y.Array)) return;
-    if (cellIndex < 0 || cellIndex >= yCells.length) return;
-    const cell = yCells.get(cellIndex);
-    if (!cell || typeof cell !== 'object') return;
-    const next = { ...(cell as Record<string, unknown>) };
+    const next: Record<string, unknown> = {};
     if (patch.text !== undefined) next.text = patch.text;
     if (patch.font !== undefined) next.font = { ...patch.font };
     if (patch.fontColor !== undefined) next.fontColor = { ...patch.fontColor };
     if (patch.orientation !== undefined) next.orientation = patch.orientation;
-    yCells.delete(cellIndex, 1);
-    yCells.insert(cellIndex, [next]);
+    patchTextCell(yCells, cellIndex, next);
   }, LOCAL_ORIGIN);
 }
 
