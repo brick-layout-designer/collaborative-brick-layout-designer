@@ -996,6 +996,7 @@ function Canvas({
         // Path is /api/modules/<validated-uuid>/snapshot with no user-controlled host.
         const moduleSnapshotPath = `/api/modules/${moduleId}/snapshot` as const;
         const layerId = resolveBrickLayerForPlacement();
+        const dropStuds = clientToStuds(e.clientX, e.clientY);
         void (async () => {
           try {
             const res = await fetch(moduleSnapshotPath, { credentials: 'include' }); // codeql[js/request-forgery] - browser same-origin fetch, UUID validated by regex above
@@ -1009,7 +1010,22 @@ function Canvas({
             const bricks = bbmMap.layers
               .filter((l): l is Extract<typeof l, { type: 'brick' }> => l.type === 'brick')
               .flatMap((l) => l.bricks);
-            if (bricks.length > 0) insertBricks(doc, layerId, bricks);
+            if (bricks.length === 0) return;
+            // Land the module's centroid under the drop point (modules
+            // are saved centred on the origin, so inserting at the saved
+            // coordinates dropped them at 0,0 regardless of the cursor).
+            let offset = { dx: 0, dy: 0 };
+            if (dropStuds) {
+              let cx = 0;
+              let cy = 0;
+              for (const b of bricks) {
+                cx += b.displayArea.x + b.displayArea.width / 2;
+                cy += b.displayArea.y + b.displayArea.height / 2;
+              }
+              offset = { dx: dropStuds.x - cx / bricks.length, dy: dropStuds.y - cy / bricks.length };
+            }
+            const ids = insertBricks(doc, layerId, bricks, offset);
+            if (ids.length > 0) setSelection(ids);
           } catch { /* silent */ }
         })();
         return;
@@ -1112,7 +1128,14 @@ function Canvas({
   //   Arrow keys            — nudge selection by 1 stud         (MapView.cpp:970-980)
   //   Ctrl+A                — select all bricks in active layer (MainWindowMenus.cpp:359)
   //   Ctrl+Shift+A          — select none                       (MainWindowMenus.cpp:362)
-  useEffect(() => {
+  // The handler is rebuilt every render (so it always sees the current
+  // venueDraft / selection / map / status ...) and a single window
+  // listener dispatches to the latest one. The previous effect listed its
+  // deps by hand and missed several (venueDraft, pan/zoom, status), so
+  // Enter/Escape for venue drawing never fired and Ctrl+V pasted at a
+  // stale pointer position.
+  const keyHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(null);
+  {
     function onKey(e: KeyboardEvent) {
       if (isEditableTarget(e.target)) return;
 
@@ -1439,32 +1462,24 @@ function Canvas({
         }
       }
     }
+    keyHandlerRef.current = onKey;
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyHandlerRef.current?.(e);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [
-    doc,
-    selection,
-    activeLayerId,
-    setSelection,
-    isViewer,
-    saveNow,
-    width,
-    height,
-    snapStepStuds,
-    rotationStepDegrees,
-    selectedRulerId,
-    map,
-  ]);
+  }, []);
 
-  /** Read the pointer's stud-space coordinates. */
+  /** Read the pointer's stud-space coordinates (live pan/zoom). */
   function pointerStuds(): { x: number; y: number } | null {
     const stage = stageRef.current;
     if (!stage) return null;
     const ptr = stage.getPointerPosition();
     if (!ptr) return null;
+    const { panX: livePanX, panY: livePanY, zoom: liveZoom } = useEditorStore.getState();
     return {
-      x: pxToStud((ptr.x - panX) / zoom),
-      y: pxToStud((ptr.y - panY) / zoom),
+      x: pxToStud((ptr.x - livePanX) / liveZoom),
+      y: pxToStud((ptr.y - livePanY) / liveZoom),
     };
   }
 
