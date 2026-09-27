@@ -5,6 +5,7 @@ import { mkdir, unlink } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
+import * as Y from 'yjs';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { readBbm, readSidecar, writeBbm, writeSidecar } from '@cld/bbm';
 import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm, seedFromSidecar } from '@cld/ydoc';
@@ -246,7 +247,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
-    const doc = decodeDoc(layout.docSnapshot as Uint8Array);
+    const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
     const map = exportBbmFromDoc(doc);
     if (!map) {
       // The doc was authored in-app and there's no cached BbmMap yet.
@@ -280,7 +281,9 @@ export async function layoutRoutes(app: FastifyInstance) {
 
     reply.header('Content-Type', 'application/octet-stream');
     reply.header('X-Doc-Version', String(layout.docVersion));
-    return reply.send(Buffer.from(layout.docSnapshot as Uint8Array));
+    return reply.send(
+      Buffer.from(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array)),
+    );
   });
 
   // PUT replaces the snapshot wholesale. Phase 4 (realtime) replaces this
@@ -304,6 +307,12 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (bytes.length > 50 * 1024 * 1024) {
       return reply.code(413).send({ error: 'snapshot_too_large' });
     }
+    // While the layout is open in the realtime editor, the in-memory doc
+    // is authoritative and its next flush would silently overwrite a
+    // wholesale replacement written here. Refuse instead of losing it.
+    if (docHub.has(req.params.id)) {
+      return reply.code(409).send({ error: 'layout_open_in_editor' });
+    }
 
     const updatedAt = new Date();
     await db
@@ -314,6 +323,17 @@ export async function layoutRoutes(app: FastifyInstance) {
         updatedAt,
       })
       .where(eq(schema.layouts.id, req.params.id));
+    // A wholesale replacement supersedes any unflushed realtime updates;
+    // replaying them over the new snapshot on next hydrate would merge
+    // stale edits back in.
+    await db
+      .delete(schema.layoutUpdates)
+      .where(
+        and(
+          eq(schema.layoutUpdates.layoutId, req.params.id),
+          eq(schema.layoutUpdates.doc, 'main'),
+        ),
+      );
     return { ok: true, updatedAt: updatedAt.getTime() };
   });
 
@@ -358,7 +378,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
-    const doc = decodeDoc(layout.docSnapshot as Uint8Array);
+    const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
     const map = exportBbmFromDoc(doc);
     if (!map) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
 
@@ -556,7 +576,9 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!layout) return reply.code(404).send({ error: 'not_found' });
       reply.header('Content-Type', 'application/octet-stream');
       reply.header('X-Doc-Version', String(layout.docVersion));
-      return reply.send(Buffer.from(layout.docSnapshot as Uint8Array));
+      return reply.send(
+        Buffer.from(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array)),
+      );
     },
   );
 }
@@ -580,6 +602,44 @@ function toListItem(l: typeof schema.layouts.$inferSelect, ownerOrgName?: string
     hasSidecar: l.sidecarSnapshot !== null,
     publicShareToken: l.publicShareToken ?? null,
   };
+}
+
+/**
+ * The layout's current document, as y-update bytes. The persisted
+ * snapshot alone lags behind realtime editing: the live session's
+ * in-memory doc is authoritative while one is loaded, and otherwise any
+ * layout_updates rows not yet compacted into the snapshot must be
+ * replayed (same as DocSession.hydrate). Reading only docSnapshot made
+ * exports / GET snapshot / the public viewer miss recent edits.
+ */
+async function currentDocBytes(layoutId: string, snapshot: Uint8Array): Promise<Uint8Array> {
+  const live = docHub.peek(layoutId);
+  if (live) return Y.encodeStateAsUpdate(live.doc);
+  const updates = await db
+    .select({ updateBytes: schema.layoutUpdates.updateBytes })
+    .from(schema.layoutUpdates)
+    .where(
+      and(
+        eq(schema.layoutUpdates.layoutId, layoutId),
+        eq(schema.layoutUpdates.doc, 'main'),
+      ),
+    )
+    .orderBy(schema.layoutUpdates.id);
+  if (updates.length === 0) return snapshot;
+  const doc = new Y.Doc();
+  try {
+    if (snapshot.length > 0) Y.applyUpdate(doc, snapshot);
+    for (const u of updates) {
+      try {
+        Y.applyUpdate(doc, u.updateBytes as Uint8Array);
+      } catch {
+        // Corrupt update — skipped, as in DocSession.hydrate.
+      }
+    }
+    return Y.encodeStateAsUpdate(doc);
+  } finally {
+    doc.destroy();
+  }
 }
 
 async function currentVersion(layoutId: string): Promise<number> {
