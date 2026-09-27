@@ -105,6 +105,10 @@ export function docToBbm(doc: Y.Doc): BbmMap {
     layers.push(readLayer(id, yLayer));
   }
 
+  return { ...readMeta(meta), layers };
+}
+
+function readMeta(meta: Y.Map<unknown>): Omit<BbmMap, 'layers'> {
   return {
     version: requireScalar(meta, 'version') as number,
     nbItems: requireScalar(meta, 'nbItems') as number,
@@ -116,7 +120,96 @@ export function docToBbm(doc: Y.Doc): BbmMap {
     comment: requireScalar(meta, 'comment') as string,
     exportInfo: cloneExportInfo(requireScalar(meta, 'exportInfo') as ExportInfo),
     selectedLayerIndex: requireScalar(meta, 'selectedLayerIndex') as number,
-    layers,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cached projection (structural sharing)
+// ---------------------------------------------------------------------------
+
+export interface DocProjector {
+  /**
+   * The doc as a `BbmMap`. Returns the SAME object until the doc changes;
+   * after a change, layers and bricks whose Yjs subtree did not change
+   * keep their previous object identity, so memoised renderers can skip
+   * them. Throws exactly like `docToBbm` when the doc is incomplete.
+   *
+   * The returned objects are shared: callers must treat them as
+   * read-only (use `docToBbm` for a private, mutable copy).
+   */
+  project(): BbmMap;
+  /** Detach the doc observers. */
+  destroy(): void;
+}
+
+/**
+ * Build a cached projector for `doc`. Invalidation is driven by Yjs
+ * observers: a change anywhere below a brick / layer Y.Map evicts that
+ * node and every ancestor, so only the changed bricks (and their layer)
+ * are re-read on the next `project()`.
+ */
+export function createDocProjector(doc: Y.Doc): DocProjector {
+  const meta = doc.getMap('meta');
+  const layerOrder = doc.getArray<string>('layers');
+  const layerData = doc.getMap<Y.Map<unknown>>('layerData');
+  // Keyed on the Y types themselves; entries die with their Y.Map.
+  const brickCache = new WeakMap<object, Brick>();
+  const layerCache = new WeakMap<object, Layer>();
+  let current: BbmMap | null = null;
+
+  const readBrickCached: BrickReader = (y) => {
+    let b = brickCache.get(y);
+    if (!b) {
+      b = yMapToBrick(y);
+      brickCache.set(y, b);
+    }
+    return b;
+  };
+
+  const onLayerData = (events: Array<Y.YEvent<Y.AbstractType<unknown>>>): void => {
+    current = null;
+    for (const ev of events) {
+      let t: Y.AbstractType<unknown> | null = ev.target;
+      while (t && t !== layerData) {
+        brickCache.delete(t);
+        layerCache.delete(t);
+        t = t.parent as Y.AbstractType<unknown> | null;
+      }
+    }
+  };
+  const onOther = (): void => {
+    current = null;
+  };
+  layerData.observeDeep(onLayerData);
+  meta.observeDeep(onOther);
+  layerOrder.observe(onOther);
+
+  return {
+    project(): BbmMap {
+      // Observers only run when a transaction commits; inside one the
+      // caches may be stale, so fall back to an uncached projection.
+      if ((doc as unknown as { _transaction: unknown })._transaction) return docToBbm(doc);
+      if (current) return current;
+      const layers: Layer[] = [];
+      for (const id of layerOrder.toArray()) {
+        const yLayer = layerData.get(id);
+        if (!yLayer) continue;
+        let layer = layerCache.get(yLayer);
+        if (!layer || layer.id !== id) {
+          layer = readLayer(id, yLayer, readBrickCached);
+          layerCache.set(yLayer, layer);
+        }
+        layers.push(layer);
+      }
+      current = { ...readMeta(meta), layers };
+      return current;
+    },
+    destroy(): void {
+      layerData.unobserveDeep(onLayerData);
+      meta.unobserveDeep(onOther);
+      layerOrder.unobserve(onOther);
+      current = null;
+    },
   };
 }
 
@@ -254,7 +347,9 @@ function writeLayerRuler(layer: LayerRuler, y: Y.Map<unknown>): void {
 // Layer read
 // ---------------------------------------------------------------------------
 
-function readLayer(id: string, y: Y.Map<unknown>): Layer {
+type BrickReader = (y: Y.Map<unknown>) => Brick;
+
+function readLayer(id: string, y: Y.Map<unknown>, readBrick: BrickReader = yMapToBrick): Layer {
   const type = requireScalar(y, 'type') as Layer['type'];
   const common = {
     id,
@@ -268,7 +363,7 @@ function readLayer(id: string, y: Y.Map<unknown>): Layer {
     case 'grid':
       return readLayerGrid(y, common);
     case 'brick':
-      return readLayerBrick(y, common);
+      return readLayerBrick(y, common, readBrick);
     case 'text':
       return readLayerText(y, common);
     case 'area':
@@ -319,14 +414,14 @@ function readCellIndexCorner(v: unknown): PointF {
   return { x: 0, y: 0 };
 }
 
-function readLayerBrick(y: Y.Map<unknown>, c: CommonFields): LayerBrick {
+function readLayerBrick(y: Y.Map<unknown>, c: CommonFields, readBrick: BrickReader): LayerBrick {
   const bricksY = y.get('bricks') as Y.Array<Y.Map<unknown>> | undefined;
   const groupsY = y.get('groups') as Y.Array<Y.Map<unknown>> | undefined;
   return {
     ...c,
     type: 'brick',
     displayBrickElevation: requireScalar(y, 'displayBrickElevation') as boolean,
-    bricks: bricksY ? bricksY.toArray().map(yMapToBrick) : [],
+    bricks: bricksY ? bricksY.toArray().map(readBrick) : [],
     groups: groupsY ? groupsY.toArray().map(yMapToGroup) : [],
   };
 }

@@ -13,7 +13,7 @@ import { BBM_FORMAT_VERSION, type BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import { bbmToDoc, docToBbm } from './projection.js';
 
-export { bbmToDoc, docToBbm } from './projection.js';
+export { bbmToDoc, docToBbm, createDocProjector, type DocProjector } from './projection.js';
 
 export function createLayoutDoc(): Y.Doc {
   const doc = new Y.Doc();

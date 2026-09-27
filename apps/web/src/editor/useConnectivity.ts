@@ -1,16 +1,19 @@
 // Debounced connectivity recompute. Listens to doc updates, waits for the
 // drag/edit to settle, then runs the O(N) bucketing algorithm.
 //
-// The recompute is bound to the doc's brick layers; non-brick mutations
-// (e.g. metadata edits) skip the work. Only LOCAL_ORIGIN updates trigger
-// us — Phase 4 will recompute on remote updates too, but for now we only
-// care about our own edits.
+// Triggers: our own edits (LOCAL_ORIGIN) and our own undo/redo (origin is
+// the Y.UndoManager). Remote updates are ignored — the collaborator who
+// made the edit recomputes on their side and the result syncs over.
 //
-// Connectivity is a *derived* projection of the bricks, not stored in
-// Yjs (PLAN.md §3.2). The recompute mutates `Brick.connexions[i].linkedTo`
-// in-place. Since those fields ARE stored in Yjs, the writes go through
-// `doc.transact(..., LOCAL_ORIGIN)` so they're undoable as part of the
-// triggering edit's history.
+// Connectivity is a *derived* projection of the bricks (PLAN.md §3.2). The
+// recompute mutates `Brick.connexions[i].linkedTo` on a throwaway
+// projection and writes only the changed values back into Yjs under
+// CONNECTIVITY_ORIGIN. That origin is deliberately NOT tracked by the
+// UndoManager: the write-back lands ~250ms after the edit (after the
+// undo capture window closes), so tracking it produced a separate undo
+// step and the first Ctrl+Z after a move appeared to do nothing. Links
+// are instead re-derived after undo/redo, which is why undo/redo origins
+// also schedule a recompute.
 
 import { useEffect, useMemo } from 'react';
 import * as Y from 'yjs';
@@ -20,6 +23,12 @@ import { LOCAL_ORIGIN } from './useLayoutDoc';
 import type { PartWire } from '../api';
 
 const DEBOUNCE_MS = 250;
+
+/**
+ * Origin of the connectivity write-back transaction. Not in the
+ * UndoManager's trackedOrigins, so links never form their own undo step.
+ */
+export const CONNECTIVITY_ORIGIN = Symbol('cld-connectivity-origin');
 
 export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined): void {
   // Build a Catalog from the wire shape. The recompute only reads
@@ -64,24 +73,12 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
     }
 
     function runRecompute() {
-      if (!doc || catalog.size === 0) return;
-      try {
-        const map = docToBbm(doc);
-        rebuildConnectivity(map, catalog);
-        // The mutate-in-place result needs to be projected back. The
-        // simplest faithful path is to re-seed the doc; the smaller path
-        // is to write only the changed `linkedTo` values directly. We
-        // take the small path because re-seeding loses Yjs identity (and
-        // therefore breaks UndoManager's stack).
-        doc.transact(() => writeBackConnexions(doc, map), LOCAL_ORIGIN);
-      } catch {
-        // Transient parse failures (e.g. mid-import) are fine — we'll
-        // try again on the next mutation.
-      }
+      if (!doc) return;
+      recomputeConnectivity(doc, catalog);
     }
 
     function onUpdate(_u: Uint8Array, origin: unknown) {
-      if (origin !== LOCAL_ORIGIN) return;
+      if (origin !== LOCAL_ORIGIN && !(origin instanceof Y.UndoManager)) return;
       schedule();
     }
 
@@ -98,8 +95,31 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
 }
 
 /**
+ * Recompute connectivity for the whole doc and write changed links back
+ * under CONNECTIVITY_ORIGIN. Exported for tests.
+ */
+export function recomputeConnectivity(doc: Y.Doc, catalog: Catalog): void {
+  if (catalog.size === 0) return;
+  try {
+    const map = docToBbm(doc);
+    rebuildConnectivity(map, catalog);
+    // The mutate-in-place result needs to be projected back. The
+    // simplest faithful path is to re-seed the doc; the smaller path
+    // is to write only the changed `linkedTo` values directly. We
+    // take the small path because re-seeding loses Yjs identity (and
+    // therefore breaks UndoManager's stack).
+    doc.transact(() => writeBackConnexions(doc, map), CONNECTIVITY_ORIGIN);
+  } catch {
+    // Transient parse failures (e.g. mid-import) are fine — we'll
+    // try again on the next mutation.
+  }
+}
+
+/**
  * Mirror updated `connexions[].linkedTo` back into the Yjs structure.
- * Only writes when the value actually changed to keep undo history clean.
+ * Only writes when the value actually changed. Bricks are resolved via a
+ * per-layer id index built once (a linear scan per brick was O(n^2):
+ * ~8 s at 5k bricks).
  */
 function writeBackConnexions(doc: Y.Doc, map: import('@cld/model').BbmMap): void {
   const layerData = doc.getMap('layerData');
@@ -109,8 +129,13 @@ function writeBackConnexions(doc: Y.Doc, map: import('@cld/model').BbmMap): void
     if (!(yLayer instanceof Y.Map)) continue;
     const yBricks = yLayer.get('bricks');
     if (!(yBricks instanceof Y.Array)) continue;
+    const byId = new Map<unknown, Y.Map<unknown>>();
+    yBricks.forEach((b) => {
+      // First occurrence wins, matching the old linear scan.
+      if (b instanceof Y.Map && !byId.has(b.get('id'))) byId.set(b.get('id'), b);
+    });
     for (const brick of layer.bricks) {
-      const yBrick = findBrickById(yBricks, brick.id);
+      const yBrick = byId.get(brick.id);
       if (!yBrick) continue;
       const current = (yBrick.get('connexions') ?? []) as { id: string; linkedTo: string }[];
       const next = brick.connexions;
@@ -124,12 +149,4 @@ function writeBackConnexions(doc: Y.Doc, map: import('@cld/model').BbmMap): void
       yBrick.set('connexions', next.map((c) => ({ id: c.id, linkedTo: c.linkedTo })));
     }
   }
-}
-
-function findBrickById(bricks: Y.Array<unknown>, brickId: string): Y.Map<unknown> | null {
-  for (let i = 0; i < bricks.length; i++) {
-    const b = bricks.get(i);
-    if (b instanceof Y.Map && b.get('id') === brickId) return b;
-  }
-  return null;
 }

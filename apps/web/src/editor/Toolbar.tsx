@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useEditorStore, type Tool } from './editorStore';
+import { isEditableTarget } from './keyboardGuard';
 
 // Shortcut letters intentionally avoid `R` (which the canvas uses for
 // "rotate selection ±90°", matching desktop MainWindowMenus.cpp:418/423)
@@ -24,10 +25,8 @@ export function Toolbar() {
   // Keyboard shortcuts. Lowercase to match e.key for letter keys.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Don't capture when typing in an input.
-      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
-      }
+      // Don't capture when typing in an input / operating a form control.
+      if (isEditableTarget(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       const t = TOOLS.find(
         (x) => x.shortcut !== null && x.shortcut.toLowerCase() === e.key.toLowerCase(),

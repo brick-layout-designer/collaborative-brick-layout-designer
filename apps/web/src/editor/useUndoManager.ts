@@ -6,15 +6,19 @@
 // undoes their OWN edits, not their collaborators'. For Phase 3 (single
 // user), LOCAL_ORIGIN is enough — every mutation goes through that origin.
 //
-// We bind the manager to the doc's top-level `layerData` Y.Map so any
-// nested change (brick add, brick delete, brick move, brick rotate) is
-// captured. Mutations that change `meta` (rename, etc.) are not reversible
-// from here — they go through their own UndoManager if needed.
+// Scope: `layerData` (every brick/text/area/ruler edit), the `layers`
+// order array (add/delete/reorder layer — without it, undoing deleteLayer
+// restored the layer's data but not its id in the order, leaving an
+// invisible layer) and `meta` (general info, background colour, and the
+// sidecar cache: venue, anchored labels, modules, background image).
+// Connectivity write-backs use their own untracked origin, and remote
+// updates carry the provider as origin, so neither lands on the stack.
 
 import { useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { useEditorStore } from './editorStore';
+import { isEditableTarget } from './keyboardGuard';
 
 export interface UndoState {
   manager: Y.UndoManager | null;
@@ -22,6 +26,20 @@ export interface UndoState {
   canRedo: boolean;
   undo: () => void;
   redo: () => void;
+}
+
+/** Build the editor's UndoManager for `doc` (scope + origins above). */
+export function createUndoManager(doc: Y.Doc): Y.UndoManager {
+  return new Y.UndoManager(
+    [doc.getMap('layerData'), doc.getArray('layers'), doc.getMap('meta')],
+    {
+      trackedOrigins: new Set([LOCAL_ORIGIN]),
+      // 200ms group means rapid keypress-driven edits (e.g. holding Q) all
+      // collapse into one undo step. Larger drag operations are already
+      // single transactions, so this only affects micro-edits.
+      captureTimeout: 200,
+    },
+  );
 }
 
 export function useUndoManager(doc: Y.Doc | null): UndoState {
@@ -38,13 +56,7 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
       return;
     }
 
-    const manager = new Y.UndoManager(doc.getMap('layerData'), {
-      trackedOrigins: new Set([LOCAL_ORIGIN]),
-      // 200ms group means rapid keypress-driven edits (e.g. holding Q) all
-      // collapse into one undo step. Larger drag operations are already
-      // single transactions, so this only affects micro-edits.
-      captureTimeout: 200,
-    });
+    const manager = createUndoManager(doc);
 
     const updateState = () => {
       // Prune undo stack to configured depth (0 = unlimited, default 100).
@@ -67,9 +79,7 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
 
     function onKey(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
-      }
+      if (isEditableTarget(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
