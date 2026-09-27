@@ -1583,7 +1583,8 @@ function Canvas({
     const cx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
     const cy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
     setRulerDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
-    setVenueDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
+    // Venue preview follows the raw cursor (no grid snap, like desktop).
+    setVenueDraft((prev) => (prev ? { ...prev, curX: studs.x, curY: studs.y } : prev));
   }
   function schedulePointerMove() {
     const m = moveRafRef.current;
@@ -1647,9 +1648,10 @@ function Canvas({
       });
     }
     if ((tool === 'venueOutline' || tool === 'venueObstacle') && !isViewer) {
-      const step = useEditorStore.getState().snapStepStuds;
-      const sx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-      const sy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
+      // Venue vertices land exactly where clicked: desktop appends the raw
+      // scene point with no grid snap (MapView.cpp:474-489).
+      const sx = studs.x;
+      const sy = studs.y;
       setVenueDraft((prev) =>
         prev
           ? { ...prev, pts: [...prev.pts, { x: sx, y: sy }], curX: sx, curY: sy }
