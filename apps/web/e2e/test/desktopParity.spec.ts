@@ -288,3 +288,169 @@ test.describe('module drag ghost', () => {
     expect(bbm.split('<Brick id=').length - 1).toBeGreaterThan(900);
   });
 });
+
+test.describe('anchored labels — colour round-trip', () => {
+  test('editing a label with a known colour keeps the colour in the doc', async ({ page }) => {
+    await signIn(page, EMAIL, 'Parity Tester');
+    const sidecar = JSON.stringify({
+      schemaVersion: 1,
+      bbmHashSha256: '',
+      anchoredLabels: [{
+        id: '4242', text: 'Colour Test', font: { family: 'Arial', size: 24, style: 'Regular' },
+        color: { known: true, argb: 4294901760, name: 'Red' },
+        kind: 0, targetId: '', offset: { x: 40, y: 30 }, rot: 0, minZoom: 0,
+      }],
+    });
+    const res = await page.request.post('/api/layouts', { data: { title: 'Parity Test', sidecar } });
+    const { id } = (await res.json()) as { id: string };
+    await openEditor(page, id);
+
+    // Empty map → pan 0 / zoom 1, so the label's top-left is at (320, 240) px.
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    await page.mouse.dblclick(box.x + 320 + 20, box.y + 240 + 10);
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Edit Anchored Label');
+    await expect(dialog.locator('input[type="color"]')).toHaveValue('#ff0000');
+    await dialog.locator('input[type="text"]').first().fill('Colour Kept');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+
+    await expect.poll(async () => (await exportedLabels(page, id))[0]?.text).toBe('Colour Kept');
+    const raw = await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json() as {
+      anchoredLabels: { id: string; color: unknown }[];
+    };
+    expect(raw.anchoredLabels[0]!.id).toBe('4242');
+    expect(raw.anchoredLabels[0]!.color).toEqual({ known: true, argb: 4294901760, name: 'Red' });
+  });
+});
+
+test.describe('insert text', () => {
+  test('Map → Insert Text places the text at the view centre', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const { iw, ih } = await page.evaluate(() => ({ iw: window.innerWidth, ih: window.innerHeight }));
+    const centre = { x: (iw - 260) / 2 / 8, y: (ih - 48) / 2 / 8 };
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: /^Insert Text/ }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('input[type="text"], textarea').first().fill('Centred');
+    await dialog.getByRole('button', { name: 'OK' }).click();
+
+    const cell = async () => {
+      const bbm = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+      const m = /<TextCell>\s*<DisplayArea>\s*<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>\s*<Width>([^<]+)<\/Width>\s*<Height>([^<]+)<\/Height>/.exec(bbm);
+      return m ? { x: Number(m[1]) + Number(m[3]) / 2, y: Number(m[2]) + Number(m[4]) / 2 } : null;
+    };
+    await expect.poll(cell).not.toBeNull();
+    const c = (await cell())!;
+    expect(c.x).toBeCloseTo(centre.x, 1);
+    expect(c.y).toBeCloseTo(centre.y, 1);
+  });
+});
+
+test.describe('venue library', () => {
+  test('Rename via the ✎ button lists the new name', async ({ page }) => {
+    const id = await createLayout(page);
+    const name = `Hall ${Date.now()}`;
+    const created = await page.request.post('/api/venues', {
+      data: { name, data: { name, enabled: true, minWalkwayStuds: 0, bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [] } },
+    });
+    expect(created.ok()).toBe(true);
+    await openEditor(page, id);
+    await page.getByRole('button', { name: 'Panels' }).click();
+    await page.getByLabel('Venue Library').check();
+    await page.mouse.click(400, 400); // close the menu
+
+    const renamed = `${name} (main)`;
+    page.once('dialog', (d) => void d.accept(renamed));
+    await page.getByRole('button', { name: `Rename ${name}` }).click();
+    await expect(page.getByText(renamed, { exact: true })).toBeVisible();
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+    await shot(page, 'venue-rename.png');
+    const list = await (await page.request.get('/api/venues')).json() as { venues: { name: string }[] };
+    expect(list.venues.map((v) => v.name)).toContain(renamed);
+  });
+});
+
+test.describe('budget limits', () => {
+  test('a limit persists across reload and other sessions, and .bbb save / open still work', async ({ page, browser }) => {
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const openBudget = async (p: Page) => {
+      await p.getByRole('button', { name: 'Map', exact: true }).click();
+      await p.getByRole('button', { name: 'Budget...' }).click();
+    };
+    // The Budget table's first row (the Parts filter also uses a '—' placeholder).
+    const budgetRow = (p: Page) => p.locator('tbody tr').filter({ has: p.locator('input[placeholder="—"]') }).first();
+    const limitInput = (p: Page) => budgetRow(p).locator('input[placeholder="—"]');
+    await openBudget(page);
+    await limitInput(page).fill('5');
+    const part = await budgetRow(page).locator('td').first().innerText();
+    await expect(page.locator('footer')).toContainText('Budget: ');
+
+    await page.waitForTimeout(500); // let the update reach the server
+    await page.reload();
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await openBudget(page);
+    await expect(limitInput(page)).toHaveValue('5');
+
+    // Another session sees the shared limit.
+    const ctx2 = await browser.newContext();
+    await signIn(ctx2, EMAIL);
+    const page2 = await ctx2.newPage();
+    await openEditor(page2, id);
+    await openBudget(page2);
+    await expect(limitInput(page2)).toHaveValue('5');
+    await ctx2.close();
+
+    // .bbb export carries the limit…
+    const dl = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save…' }).click();
+    const download = await dl;
+    const file = await download.path();
+    const xml = readFileSync(file, 'utf-8');
+    expect(xml).toContain(`<PartNumber>${part}</PartNumber>`);
+    expect(xml).toContain('<Limit>5</Limit>');
+
+    // …and importing it restores the limit after New cleared it.
+    await page.getByRole('button', { name: 'New', exact: true }).last().click();
+    await expect(limitInput(page)).toHaveValue('');
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Open…' }).click();
+    await (await chooser).setFiles(file);
+    await expect(limitInput(page)).toHaveValue('5');
+  });
+});
+
+test.describe('header dropdowns at a narrow viewport', () => {
+  test.use({ viewport: { width: 1024, height: 700 } });
+
+  test('Map and Panels menus open fully inside the viewport', async ({ page }) => {
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const inside = async (menu: import('@playwright/test').Locator) => {
+      await expect(menu).toBeVisible();
+      const b = (await menu.boundingBox())!;
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.y).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(1024);
+      expect(b.y + b.height).toBeLessThanOrEqual(700);
+      expect(b.height).toBeGreaterThan(100);
+    };
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    const mapMenu = page.locator('ul', { has: page.getByRole('button', { name: 'General info...' }) });
+    await inside(mapMenu);
+    await shot(page, 'map-menu-1024.png');
+    // The last entry is reachable (the menu scrolls instead of overflowing).
+    const prefs = page.getByRole('button', { name: /^Preferences/ });
+    await prefs.scrollIntoViewIfNeeded();
+    await expect(prefs).toBeInViewport();
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(mapMenu).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Panels' }).click();
+    const panelsMenu = page.locator('ul', { has: page.getByLabel('Module Library') });
+    await inside(panelsMenu);
+  });
+});

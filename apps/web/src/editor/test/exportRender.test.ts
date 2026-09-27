@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type Konva from 'konva';
 import * as Y from 'yjs';
 import { docToBbm, readSidecarFromDoc } from '@cld/ydoc';
 import {
@@ -13,7 +14,7 @@ import {
   setLayerVisible,
   setVenue,
 } from '../mutations';
-import { aspectHeight, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE } from '../exportRender';
+import { aspectHeight, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE, renderMapToCanvas } from '../exportRender';
 
 describe('contentBoundsStuds', () => {
   it('is null for an empty map', () => {
@@ -87,5 +88,55 @@ describe('explicit export size', () => {
     const l = ensureBrickLayer(doc);
     placeBrick(doc, l, { partNumber: 'p', x: 0, y: 0, width: 10, height: 5 });
     expect(exportSceneSize(docToBbm(doc))).toEqual({ width: 120, height: 80 });
+  });
+});
+
+describe('renderMapToCanvas output size and antialias', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function setup() {
+    const doc = new Y.Doc();
+    const l = ensureBrickLayer(doc);
+    placeBrick(doc, l, { partNumber: 'p', x: 0, y: 0, width: 10, height: 5 }); // scene 120 × 80 px
+    const content = document.createElement('canvas');
+    content.width = 120;
+    content.height = 80;
+    const toCanvas = vi.fn((cfg: { pixelRatio: number }) => {
+      content.width = Math.round(120 * cfg.pixelRatio);
+      content.height = Math.round(80 * cfg.pixelRatio);
+      return content;
+    });
+    let x = 0, y = 0, sx = 1, sy = 1;
+    const stage = {
+      x: () => x, y: () => y, scaleX: () => sx, scaleY: () => sy,
+      scale: (v: { x: number; y: number }) => { sx = v.x; sy = v.y; },
+      position: (p: { x: number; y: number }) => { x = p.x; y = p.y; },
+      find: () => [],
+      toCanvas,
+      batchDraw: () => {},
+    } as unknown as Konva.Stage;
+    const ctx = { imageSmoothingEnabled: true, fillRect: vi.fn(), drawImage: vi.fn(), fillText: vi.fn(), fillStyle: '', font: '', textAlign: '', textBaseline: '' };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
+    return { map: docToBbm(doc), stage, toCanvas, ctx };
+  }
+
+  it('renders into the exact requested size, stretching when the aspect differs', () => {
+    const { map, stage, toCanvas, ctx } = setup();
+    const out = renderMapToCanvas(stage, map, null, { pixelRatio: 1, transparent: false, size: { width: 600, height: 100 } })!;
+    expect([out.canvas.width, out.canvas.height]).toEqual([600, 100]);
+    // Rendered at the larger axis scale (600/120 = 5), then resampled.
+    expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ pixelRatio: 5, imageSmoothingEnabled: true }));
+    expect(ctx.drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 600, 100);
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 600, 100);
+    // The stage view is restored.
+    expect([stage.x(), stage.y(), stage.scaleX()]).toEqual([0, 0, 1]);
+  });
+
+  it('turns image smoothing off when antialias is off, and skips the background when transparent', () => {
+    const { map, stage, toCanvas, ctx } = setup();
+    renderMapToCanvas(stage, map, null, { pixelRatio: 2, transparent: true, antialias: false });
+    expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ pixelRatio: 2, imageSmoothingEnabled: false }));
+    expect(ctx.imageSmoothingEnabled).toBe(false);
+    expect(ctx.fillRect).not.toHaveBeenCalled();
   });
 });

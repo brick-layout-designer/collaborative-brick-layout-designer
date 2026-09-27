@@ -93,6 +93,7 @@ import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
 import { EXPORT_HIDE, exportSceneSize, renderMapToCanvas } from './exportRender';
+import { dropdownAnchor, dropTargetHint, viewCentreStuds } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -1116,21 +1117,6 @@ function Canvas({
       return entry;
     }
 
-    /**
-     * Status-bar hint naming the layer a drop lands on — the same pick
-     * as `resolveBrickLayerForPlacement` (MapView::showDropTargetHint).
-     */
-    function dropTargetHint(): string {
-      const layers = map?.layers ?? [];
-      const active = layers.find((l) => l.id === activeLayerId && l.type === 'brick');
-      const target = active ?? layers.find((l) => l.type === 'brick');
-      if (!target) return 'No brick layer — dropping creates one';
-      const name = target.name || 'unnamed';
-      return active
-        ? `Drop onto: ${name} (active layer)`
-        : `Drop onto: ${name} (active layer is not a brick layer)`;
-    }
-
     function onDragOver(e: DragEvent) {
       const dt = e.dataTransfer;
       if (!dt) return;
@@ -1140,7 +1126,7 @@ function Canvas({
       if (!isModule && !types.includes(PART_MIME) && !types.includes('text/plain')) return;
       e.preventDefault();
       dt.dropEffect = 'copy';
-      useEditorStore.getState().setDropTargetHint(dropTargetHint());
+      useEditorStore.getState().setDropTargetHint(dropTargetHint(map?.layers ?? [], activeLayerId));
       const studs = clientToStuds(e.clientX, e.clientY);
       if (!studs) return;
       if (isModule) {
@@ -3892,19 +3878,4 @@ interface CanvasActions {
   zoom: (factor: number) => void;
   fit: () => void;
   insertText: () => void;
-}
-
-/**
- * World-stud position under the centre of a `width` × `height` stage —
- * desktop `mapToScene(viewport()->rect().center())`.
- */
-function viewCentreStuds(size: { width: number; height: number }): { x: number; y: number } {
-  const { panX, panY, zoom } = useEditorStore.getState();
-  return { x: pxToStud((size.width / 2 - panX) / zoom), y: pxToStud((size.height / 2 - panY) / zoom) };
-}
-
-/** Viewport position for a header dropdown: right-aligned under `button`. */
-function dropdownAnchor(button: HTMLElement): React.CSSProperties {
-  const r = button.getBoundingClientRect();
-  return { top: r.bottom + 4, right: Math.max(4, window.innerWidth - r.right) };
 }

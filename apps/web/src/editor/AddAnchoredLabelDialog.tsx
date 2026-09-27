@@ -14,7 +14,7 @@ import { useState } from 'react';
 import type * as Y from 'yjs';
 import type { AnchoredLabel } from '@cld/bbm';
 import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel, makeId } from './mutations';
-import { labelColorHex } from './render/AnchoredLabels';
+import { labelColorHex, labelColorToSave } from './labelColor';
 
 interface Props {
   doc: Y.Doc;
@@ -60,12 +60,11 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
   function commit() {
     if (!text.trim()) return;
     const style = [isBold && 'Bold', isItalic && 'Italic'].filter(Boolean).join('');
-    const argbInt = parseInt(colorArgb, 16);
     const label: AnchoredLabel = {
       id: makeId(),
       text: text.trim(),
       font: { family: fontFamily, size: fontSize, style },
-      color: initialLabel && !colorTouched ? initialLabel.color : { known: false, argb: argbInt, name: '' },
+      color: labelColorToSave(initialLabel?.color, colorTouched, colorArgb),
       kind,
       targetId: kind === 1 ? targetId.trim() : '',
       offset: { x: offsetX, y: offsetY },
