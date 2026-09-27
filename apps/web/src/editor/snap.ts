@@ -213,7 +213,7 @@ export function snapPlacement(
   };
 }
 
-interface WorldConnection {
+export interface WorldConnection {
   x: number;
   y: number;
   type: string;
@@ -234,7 +234,7 @@ function collectFreeConnectionsInWorld(
   return freeConnectionsCached(map, partsByKey);
 }
 
-interface OwnedWorldConnection extends WorldConnection {
+export interface OwnedWorldConnection extends WorldConnection {
   brickId: string;
 }
 
@@ -249,7 +249,7 @@ const freeConnCache = new WeakMap<
   { partsByKey: Map<string, PartWire>; conns: OwnedWorldConnection[] }
 >();
 
-function freeConnectionsCached(
+export function freeConnectionsCached(
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
 ): OwnedWorldConnection[] {
@@ -361,7 +361,7 @@ function isBrickLayer(layer: { type: string }): layer is LayerBrick {
   return layer.type === 'brick';
 }
 
-function lookupPart(
+export function lookupPart(
   partsByKey: Map<string, PartWire>,
   partNumber: string,
 ): PartWire | undefined {
@@ -409,10 +409,26 @@ function mod360(v: number): number {
 // (MapViewDrag.cpp:239-410).
 // ---------------------------------------------------------------------------
 
+/**
+ * A non-leader brick moving rigidly with the leader in a multi-select
+ * drag. Its current centre is `leader centre + (offsetX, offsetY)`.
+ */
+export interface DragSibling {
+  id: string;
+  /** Catalog metadata; undefined = no connection geometry (skipped). */
+  part: PartWire | undefined;
+  /** Per-connection link state, index-aligned with `part.connections`. */
+  links: { linkedTo: string }[];
+  /** Centre offset from the leader's centre, in studs. */
+  offsetX: number;
+  offsetY: number;
+  orientation: number;
+}
+
 export interface DragSnapInput {
   /** Catalog metadata for the dragged brick (the "leader" — the one
    *  the cursor is on; the rest of the selection moves rigidly with it). */
-  part: PartWire;
+  part: PartWire | undefined;
   /** Brick id of the leader (excluded from "free targets"). */
   movingId: string;
   /**
@@ -423,6 +439,12 @@ export interface DragSnapInput {
    * same as `[movingId]`.
    */
   movingIds?: string[];
+  /**
+   * The other bricks of a multi-select drag, with their connection
+   * geometry. Desktop tries EVERY free connection of EVERY moving brick
+   * (MapViewDrag.cpp:270-290), not only the grabbed one's.
+   */
+  siblings?: DragSibling[];
   /**
    * The leader's current per-connection link state. Index-aligned with
    * `part.connections`. Connections whose `linkedTo` is non-empty are
@@ -436,6 +458,13 @@ export interface DragSnapInput {
   /** Current (mid-drag) centre of the LEADER in studs. */
   centreX: number;
   centreY: number;
+  /**
+   * Leader displayArea size in studs. The grid fallback rounds the
+   * displayArea TOP-LEFT like desktop's commit (MapViewDrag.cpp:572-580);
+   * omitted = 0, i.e. round the centre.
+   */
+  width?: number;
+  height?: number;
   /** Mouse position in studs — used as a tiebreaker between snap candidates. */
   mouseStudX: number;
   mouseStudY: number;
@@ -446,7 +475,8 @@ export interface DragSnapInput {
 }
 
 export interface DragSnapResult {
-  /** Where the brick's centre should be placed. */
+  /** Where the LEADER's centre should be placed. For a multi-brick drag
+   *  every sibling moves by the same (result - input) translation. */
   centreX: number;
   centreY: number;
   /** True if a connection-snap fired. */
@@ -459,19 +489,28 @@ export interface DragSnapResult {
   ringStudY: number | null;
   /**
    * Orientation the dragged brick should be rotated to so the matched
-   * CPs align angle-to-angle (mouth-to-mouth). Null when no connection snap
-   * fired. Degrees, clockwise positive, [0, 360).
+   * CPs align angle-to-angle (mouth-to-mouth). Only for a single-brick
+   * drag — desktop never rotates a multi-brick group on snap
+   * (MapViewDrag.cpp:551-567). Null otherwise. Degrees, [0, 360).
+   * When set, `centreX/Y` is the rotation-aligned centre: the moving
+   * connection, rotated to `newOrientation`, lands exactly on the target.
    */
   newOrientation: number | null;
+  /** Free connections considered on the moving set (status-bar hint). */
+  movingConnCount: number;
 }
 
 /**
  * Compute the centre position the dragged brick should be at, given:
- *   - free connections on the dragged brick (local-coords from catalog)
+ *   - free connections on every moving brick (local-coords from catalog)
  *   - free connections on every NON-moving brick in the map
  * Picks the (moving conn, target conn) pair with the smallest required
  * translation, breaking ties with mouse proximity (matches
  * MapViewDrag.cpp:303-328 — `kTieStudsSq = 16`).
+ *
+ * Single brick: the result is rotation-aligned (ConnectionSnap.cpp:103-110,
+ * newCentre = target - rotate(conn.local, newOrient)). Multi-brick: pure
+ * translation of the whole group.
  *
  * Falls back to grid snap when no connection match is in range.
  */
@@ -488,45 +527,68 @@ export function liveDragSnap(
   // drag this excludes the whole selection so the group can't snap to
   // its own connection points (matches desktop's `movingGuids` arg to
   // `scanForNearestFreeTarget` — ConnectionSnap.cpp:32-69).
+  const siblings = drag.siblings ?? [];
   const movingSet = new Set<string>(drag.movingIds ?? [drag.movingId]);
-  if (!movingSet.has(drag.movingId)) movingSet.add(drag.movingId);
+  movingSet.add(drag.movingId);
+  for (const s of siblings) movingSet.add(s.id);
   const targets = collectFreeConnectionsExcludingSet(map, partsByKey, movingSet);
+  const single = siblings.length === 0;
 
-  // Free connections on the dragged brick at its CURRENT pose.
-  // Skip conns that are already linked to another brick — desktop
-  // bails on those at MapView::applyLiveConnectionSnap:277-279 and
-  // ConnectionSnap.cpp:93-94. Without this filter, a track in the
-  // middle of a chain tries to "snap" to its already-linked neighbour
-  // every frame.
-  const theta = (drag.orientation * Math.PI) / 180;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  const movingConns: Array<{ worldX: number; worldY: number; type: string; mouseDistSq: number; localAngle: number }> = [];
-  for (let i = 0; i < drag.part.connections.length; i++) {
-    const cp = drag.part.connections[i]!;
-    if (!cp.type) continue;
-    const link = drag.movingLinks[i];
-    if (link && link.linkedTo !== '') continue;
-    const wx = drag.centreX + cp.x * cos - cp.y * sin;
-    const wy = drag.centreY + cp.x * sin + cp.y * cos;
-    const mdx = wx - drag.mouseStudX;
-    const mdy = wy - drag.mouseStudY;
-    movingConns.push({ worldX: wx, worldY: wy, type: cp.type, mouseDistSq: mdx * mdx + mdy * mdy, localAngle: cp.angle });
+  // Free connections on every moving brick at its CURRENT pose. Skip
+  // conns that are already linked to another brick — desktop bails on
+  // those at MapView::applyLiveConnectionSnap:277-279.
+  interface MovingConn {
+    worldX: number;
+    worldY: number;
+    type: string;
+    mouseDistSq: number;
+    localX: number;
+    localY: number;
+    localAngle: number;
+  }
+  const movingConns: MovingConn[] = [];
+  const addConns = (
+    part: PartWire | undefined,
+    links: { linkedTo: string }[],
+    cx: number,
+    cy: number,
+    orientation: number,
+  ) => {
+    if (!part) return;
+    const theta = (orientation * Math.PI) / 180;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    for (let i = 0; i < part.connections.length; i++) {
+      const cp = part.connections[i]!;
+      if (!cp.type) continue;
+      const link = links[i];
+      if (link && link.linkedTo !== '') continue;
+      const wx = cx + cp.x * cos - cp.y * sin;
+      const wy = cy + cp.x * sin + cp.y * cos;
+      const mdx = wx - drag.mouseStudX;
+      const mdy = wy - drag.mouseStudY;
+      movingConns.push({
+        worldX: wx,
+        worldY: wy,
+        type: cp.type,
+        mouseDistSq: mdx * mdx + mdy * mdy,
+        localX: cp.x,
+        localY: cp.y,
+        localAngle: cp.angle,
+      });
+    }
+  };
+  addConns(drag.part, drag.movingLinks, drag.centreX, drag.centreY, drag.orientation);
+  for (const s of siblings) {
+    addConns(s.part, s.links, drag.centreX + s.offsetX, drag.centreY + s.offsetY, s.orientation);
   }
 
   if (movingConns.length === 0 || targets.length === 0) {
-    return gridFallback(drag);
+    return gridFallback(drag, movingConns.length);
   }
 
-  let best: {
-    dx: number;
-    dy: number;
-    transSq: number;
-    mouseDistSq: number;
-    ringX: number;
-    ringY: number;
-    newOrientation: number;
-  } | null = null;
+  let best: { mc: MovingConn; tc: WorldConnection; transSq: number; mouseDistSq: number } | null =
+    null;
 
   for (const mc of movingConns) {
     for (const tc of targets) {
@@ -535,9 +597,6 @@ export function liveDragSnap(
       const dy = tc.y - mc.worldY;
       const transSq = dx * dx + dy * dy;
       if (transSq > reachSq) continue;
-      // Required orientation: moving CP's local angle + new orientation = target angle + 180°
-      // → newOrientation = targetAngle + 180° − movingCpLocalAngle
-      const newOrientation = mod360(tc.angle + 180 - mc.localAngle);
       // Pick the smallest translation; tiebreak on mouse proximity.
       // Same logic as MapViewDrag.cpp:313-319.
       let take = false;
@@ -545,51 +604,76 @@ export function liveDragSnap(
       else if (Math.abs(transSq - best.transSq) <= TIE_SQ && mc.mouseDistSq < best.mouseDistSq) {
         take = true;
       }
-      if (take) {
-        best = {
-          dx,
-          dy,
-          transSq,
-          mouseDistSq: mc.mouseDistSq,
-          ringX: tc.x,
-          ringY: tc.y,
-          newOrientation,
-        };
-      }
+      if (take) best = { mc, tc, transSq, mouseDistSq: mc.mouseDistSq };
     }
   }
 
-  if (best === null) return gridFallback(drag);
+  if (best === null) return gridFallback(drag, movingConns.length);
+  const { mc, tc } = best;
+  if (!single) {
+    return {
+      centreX: drag.centreX + (tc.x - mc.worldX),
+      centreY: drag.centreY + (tc.y - mc.worldY),
+      snappedToConnection: true,
+      ringStudX: tc.x,
+      ringStudY: tc.y,
+      newOrientation: null,
+      movingConnCount: movingConns.length,
+    };
+  }
+  // Required orientation: moving CP's local angle + new orientation = target angle + 180°.
+  const newOrientation = mod360(tc.angle + 180 - mc.localAngle);
+  const aligned = rotationAlignedCentre(tc.x, tc.y, mc.localX, mc.localY, newOrientation);
   return {
-    centreX: drag.centreX + best.dx,
-    centreY: drag.centreY + best.dy,
+    centreX: aligned.x,
+    centreY: aligned.y,
     snappedToConnection: true,
-    ringStudX: best.ringX,
-    ringStudY: best.ringY,
-    newOrientation: best.newOrientation,
+    ringStudX: tc.x,
+    ringStudY: tc.y,
+    newOrientation,
+    movingConnCount: movingConns.length,
   };
 }
 
-function gridFallback(drag: DragSnapInput): DragSnapResult {
-  if (drag.snapStepStuds <= 0) {
-    return {
-      centreX: drag.centreX,
-      centreY: drag.centreY,
-      snappedToConnection: false,
-      ringStudX: null,
-      ringStudY: null,
-      newOrientation: null,
-    };
-  }
-  const sx = roundToStep(drag.centreX, drag.snapStepStuds);
-  const sy = roundToStep(drag.centreY, drag.snapStepStuds);
-  return {
-    centreX: sx,
-    centreY: sy,
+/**
+ * Centre that puts a brick's local connection point `(localX, localY)`
+ * exactly on `(targetX, targetY)` once the brick is at `orientation`:
+ * `target - rotate(local, orientation)` (ConnectionSnap.cpp:109).
+ */
+export function rotationAlignedCentre(
+  targetX: number,
+  targetY: number,
+  localX: number,
+  localY: number,
+  orientation: number,
+): { x: number; y: number } {
+  const t = (orientation * Math.PI) / 180;
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  return { x: targetX - (localX * c - localY * s), y: targetY - (localX * s + localY * c) };
+}
+
+/**
+ * Grid fallback: round the leader's displayArea TOP-LEFT to the grid, as
+ * desktop does when committing a drag (MapViewDrag.cpp:572-580) and when
+ * placing (MapView.cpp:1244-1248). For odd-sized bricks this differs from
+ * rounding the centre by half a stud.
+ */
+function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapResult {
+  const base = {
     snappedToConnection: false,
     ringStudX: null,
     ringStudY: null,
     newOrientation: null,
+    movingConnCount,
+  };
+  if (drag.snapStepStuds <= 0) return { ...base, centreX: drag.centreX, centreY: drag.centreY };
+  const hw = (drag.width ?? 0) / 2;
+  const hh = (drag.height ?? 0) / 2;
+  return {
+    ...base,
+    centreX: roundToStep(drag.centreX - hw, drag.snapStepStuds) + hw,
+    centreY: roundToStep(drag.centreY - hh, drag.snapStepStuds) + hh,
   };
 }
 
