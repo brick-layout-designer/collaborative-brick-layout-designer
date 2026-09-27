@@ -604,6 +604,52 @@ export function setBackgroundColor(
   }, LOCAL_ORIGIN);
 }
 
+/** Meta key of the budget limits: a Y.Map of part number → limit (≥ 0). */
+const BUDGET_KEY = 'budgetLimits';
+
+/**
+ * Budget limits stored in the doc (part number → max count). Desktop keeps
+ * them in a `.bbb` file beside the map (Budget.cpp); here they live in the
+ * doc's `meta` so they survive reload and are shared with collaborators.
+ * `.bbb` files are still read/written by the Budget dialog.
+ */
+export function readBudgetLimits(doc: Y.Doc): Map<string, number> {
+  const out = new Map<string, number>();
+  const y = doc.getMap('meta').get(BUDGET_KEY);
+  if (!(y instanceof Y.Map)) return out;
+  for (const [part, limit] of y.entries()) {
+    if (typeof limit === 'number' && Number.isFinite(limit) && limit >= 0) out.set(part, limit);
+  }
+  return out;
+}
+
+/**
+ * Replace the budget limits with `limits`, as one undo step. Only the
+ * changed parts are written, so two users editing different rows merge.
+ */
+export function setBudgetLimits(doc: Y.Doc, limits: Map<string, number>): void {
+  doc.transact(() => {
+    const meta = doc.getMap('meta');
+    let y = meta.get(BUDGET_KEY);
+    if (!(y instanceof Y.Map)) {
+      if (limits.size === 0) return;
+      y = new Y.Map<number>();
+      meta.set(BUDGET_KEY, y);
+    }
+    const ym = y as Y.Map<number>;
+    for (const part of [...ym.keys()]) {
+      if (!limits.has(part)) ym.delete(part);
+    }
+    for (const [part, limit] of limits) {
+      if (!(limit >= 0)) {
+        if (ym.has(part)) ym.delete(part);
+      } else if (ym.get(part) !== limit) {
+        ym.set(part, limit);
+      }
+    }
+  }, LOCAL_ORIGIN);
+}
+
 /**
  * Set a layer's `visible` flag. Port of `SetLayerVisibilityCommand`
  * (LayerCommands.cpp).
@@ -1310,7 +1356,7 @@ export function setActiveConnectionPoint(
 /**
  * Bring-to-front / send-to-back — port of desktop's
  * `ReorderBricksCommand` (EditCommands.cpp). Repositions every brick in
- * `brickIds` within the layer's `bricks` Y.Array so it sits at the
+ * `brickIds` within its own layer's `bricks` Y.Array (any layer) so it sits at the
  * front (last index = top z) or back (index 0 = bottom z). Within-group
  * order is preserved.
  *
@@ -1319,7 +1365,6 @@ export function setActiveConnectionPoint(
  */
 export function reorderBricks(
   doc: Y.Doc,
-  _layerId: string,
   brickIds: string[],
   to: 'front' | 'back',
 ): void {

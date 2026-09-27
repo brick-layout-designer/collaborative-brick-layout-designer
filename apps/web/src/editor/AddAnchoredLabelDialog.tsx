@@ -6,12 +6,15 @@
 // (kind=2/3) are deferred (no module registry in the web client yet).
 //
 // When a single brick is selected, the dialog defaults to Brick-anchor mode
-// with that brick's id pre-filled. Otherwise it defaults to World.
+// with that brick's id pre-filled and a (2, -2) stud offset. Otherwise it
+// defaults to World, placed at the current viewport centre
+// (MainWindowMenus.cpp:447-457).
 
 import { useState } from 'react';
 import type * as Y from 'yjs';
 import type { AnchoredLabel } from '@cld/bbm';
-import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel } from './mutations';
+import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel, makeId } from './mutations';
+import { labelColorHex } from './render/AnchoredLabels';
 
 interface Props {
   doc: Y.Doc;
@@ -19,14 +22,15 @@ interface Props {
   defaultTargetId: string | null;
   /** When set, the dialog is in edit mode — pre-populates fields and calls editAnchoredLabel. */
   initialLabel?: AnchoredLabel;
+  /** World-stud position of the viewport centre — the default World-label offset. */
+  viewCentre?: { x: number; y: number };
   onClose: () => void;
 }
 
-function makeId(): string {
-  return `${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-}
+/** Brick-anchored labels start just up-right of the brick (desktop offsetStuds = (2, -2)). */
+const BRICK_OFFSET = { x: 2, y: -2 };
 
-export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onClose }: Props) {
+export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, viewCentre, onClose }: Props) {
   const isEdit = !!initialLabel;
   const initStyle = (initialLabel?.font.style ?? '').toLowerCase();
   const [text, setText] = useState(initialLabel?.text ?? '');
@@ -34,17 +38,20 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
   const [fontSize, setFontSize] = useState(initialLabel?.font.size ?? 24);
   const [isBold, setIsBold] = useState(initStyle.includes('bold'));
   const [isItalic, setIsItalic] = useState(initStyle.includes('italic'));
+  // Known colours (desktop "Black" etc.) keep their spec unless the user
+  // picks a new colour, so an edit doesn't rewrite them as plain ARGB.
   const [colorArgb, setColorArgb] = useState(
-    initialLabel
-      ? (initialLabel.color.known ? 'FF000000' : initialLabel.color.argb.toString(16).toUpperCase().padStart(8, '0'))
-      : 'FF000000'
+    initialLabel ? `FF${labelColorHex(initialLabel.color)}` : 'FF000000'
   );
+  const [colorTouched, setColorTouched] = useState(false);
   const [kind, setKind] = useState<0 | 1>(
     initialLabel ? (initialLabel.kind === 1 ? 1 : 0) : defaultTargetId ? 1 : 0
   );
+  const worldOffset = { x: round2(viewCentre?.x ?? 0), y: round2(viewCentre?.y ?? 0) };
+  const initOffset = initialLabel?.offset ?? (kind === 1 ? BRICK_OFFSET : worldOffset);
   const [targetId, setTargetId] = useState(initialLabel?.targetId ?? defaultTargetId ?? '');
-  const [offsetX, setOffsetX] = useState(initialLabel?.offset.x ?? 0);
-  const [offsetY, setOffsetY] = useState(initialLabel?.offset.y ?? 0);
+  const [offsetX, setOffsetX] = useState(initOffset.x);
+  const [offsetY, setOffsetY] = useState(initOffset.y);
   const [rotation, setRotation] = useState(initialLabel?.rot ?? 0);
   const [minZoom, setMinZoom] = useState(initialLabel?.minZoom ?? 0);
 
@@ -58,7 +65,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
       id: makeId(),
       text: text.trim(),
       font: { family: fontFamily, size: fontSize, style },
-      color: { known: false, argb: argbInt, name: '' },
+      color: initialLabel && !colorTouched ? initialLabel.color : { known: false, argb: argbInt, name: '' },
       kind,
       targetId: kind === 1 ? targetId.trim() : '',
       offset: { x: offsetX, y: offsetY },
@@ -133,14 +140,30 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
             <input
               type="color"
               value={rgb}
-              onChange={(e) => setColorArgb(`FF${e.target.value.slice(1).toUpperCase()}`)}
+              onChange={(e) => {
+                setColorArgb(`FF${e.target.value.slice(1).toUpperCase()}`);
+                setColorTouched(true);
+              }}
               className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
             />
           </div>
 
           <div className={rowCls}>
             <span className={labelCls}>Anchor</span>
-            <select value={kind} onChange={(e) => setKind(Number(e.target.value) as 0 | 1)} className={inputCls}>
+            <select
+              value={kind}
+              onChange={(e) => {
+                const k = Number(e.target.value) as 0 | 1;
+                setKind(k);
+                // A new label follows the anchor's default placement.
+                if (!isEdit) {
+                  const o = k === 1 ? BRICK_OFFSET : worldOffset;
+                  setOffsetX(o.x);
+                  setOffsetY(o.y);
+                }
+              }}
+              className={inputCls}
+            >
               <option value={0}>World (fixed position)</option>
               <option value={1}>Brick (follows a brick)</option>
             </select>
@@ -198,4 +221,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
       </div>
     </div>
   );
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
 }

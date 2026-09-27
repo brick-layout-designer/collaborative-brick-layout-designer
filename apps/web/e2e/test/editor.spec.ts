@@ -76,7 +76,7 @@ test.describe('editor — tool switching', () => {
     // the active tool button gets `bg-blue-600 text-white` (see TOOLS.map
     // in Toolbar.tsx) and the status bar's "Tool: <name>" also reflects
     // the current tool; check both real signals.
-    const rotateBtn = page.getByRole('button', { name: 'Rotate' });
+    const rotateBtn = page.getByRole('button', { name: 'Rotate', exact: true });
     await rotateBtn.click();
     await expect(rotateBtn).toHaveClass(/bg-blue-600/);
     await expect(page.locator('footer')).toContainText('Tool: rotate');
@@ -102,7 +102,7 @@ test.describe('editor — tool switching', () => {
   test('clicking select tool activates it after switching away', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    const rotateBtn = page.getByRole('button', { name: 'Rotate' });
+    const rotateBtn = page.getByRole('button', { name: 'Rotate', exact: true });
     const selectBtn = page.getByRole('button', { name: 'Select' });
     await rotateBtn.click();
     await expect(page.locator('footer')).toContainText('Tool: rotate');

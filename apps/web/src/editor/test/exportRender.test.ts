@@ -13,7 +13,7 @@ import {
   setLayerVisible,
   setVenue,
 } from '../mutations';
-import { clampPixelRatio, contentBoundsStuds, MAX_CANVAS_SIDE } from '../exportRender';
+import { aspectHeight, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE } from '../exportRender';
 
 describe('contentBoundsStuds', () => {
   it('is null for an empty map', () => {
@@ -68,5 +68,24 @@ describe('clampPixelRatio', () => {
   it('shrinks to the per-side canvas limit', () => {
     const r = clampPixelRatio(20000, 100, 2);
     expect(20000 * r).toBeLessThanOrEqual(MAX_CANVAS_SIDE + 1e-6);
+  });
+});
+
+describe('explicit export size', () => {
+  it('keeps the map aspect for an auto height, min 64 px (desktop keepAspect)', () => {
+    expect(aspectHeight(1600, { width: 800, height: 400 })).toBe(800);
+    expect(aspectHeight(100, { width: 1000, height: 10 })).toBe(64);
+  });
+  it('clamps to the canvas limits, keeping the ratio', () => {
+    expect(clampExportSize(1600.4, 1200.6)).toEqual({ width: 1600, height: 1201 });
+    const big = clampExportSize(40000, 20000);
+    expect(big.width).toBeLessThanOrEqual(MAX_CANVAS_SIDE);
+    expect(big.width / big.height).toBeCloseTo(2, 2);
+  });
+  it('reports the 1x scene size including the 20 px margin', () => {
+    const doc = new Y.Doc();
+    const l = ensureBrickLayer(doc);
+    placeBrick(doc, l, { partNumber: 'p', x: 0, y: 0, width: 10, height: 5 });
+    expect(exportSceneSize(docToBbm(doc))).toEqual({ width: 120, height: 80 });
   });
 });
