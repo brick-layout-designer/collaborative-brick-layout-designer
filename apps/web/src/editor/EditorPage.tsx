@@ -79,6 +79,7 @@ import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
 import { EXPORT_HIDE, renderMapToCanvas } from './exportRender';
+import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -113,11 +114,25 @@ export function EditorPage() {
 }
 
 function Editor({ layoutId }: { layoutId: string }) {
-  const { doc, awareness, loadError, loading, status, saveNow } = useLayoutDoc(layoutId);
+  const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = useLayoutDoc(layoutId);
   const meta = useQuery({
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
   });
+  // Save / Ctrl+S: every edit is already persisted server-side while the
+  // socket is synced; when it isn't, offer the local state as a .bbm so
+  // nothing is lost (desktop's Save always leaves a file on disk).
+  const saveNow = useCallback(async (): Promise<void> => {
+    if (!doc) return;
+    const result = await checkSaved();
+    if (result === 'saved') {
+      useEditorStore.getState().showStatusMessage('All changes saved to the server', 3000);
+      return;
+    }
+    if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a .bbm copy of the current local version now?')) {
+      void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout');
+    }
+  }, [doc, checkSaved, meta.data?.layout.title]);
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const undo = useUndoManager(doc);
@@ -431,12 +446,12 @@ function Editor({ layoutId }: { layoutId: string }) {
                 if (!doc) return;
                 const venue = readSidecarFromDoc(doc)?.venue;
                 if (!venue) { alert('No venue defined on this layout.'); return; }
-                const json = JSON.stringify(venue, null, 2);
-                const blob = new Blob([json], { type: 'application/json' });
+                // Desktop format (VenueIO.cpp): *.bld-venue, schema bld-venue/1.
+                const blob = new Blob([writeVenueFile(venue)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `${venue.name || 'venue'}.cld-venue`;
+                a.download = `${venue.name || 'venue'}${VENUE_FILE_EXT}`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}
@@ -444,16 +459,15 @@ function Editor({ layoutId }: { layoutId: string }) {
                 if (!doc) return;
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.cld-venue,.json';
+                input.accept = VENUE_FILE_ACCEPT;
                 input.onchange = () => {
                   const file = input.files?.[0];
                   if (!file) return;
                   file.text().then((text) => {
                     try {
-                      const venue = JSON.parse(text);
-                      setVenue(doc, venue);
-                    } catch {
-                      alert('Could not parse venue file.');
+                      setVenue(doc, parseVenueFile(text));
+                    } catch (e) {
+                      alert(`Could not load venue file: ${(e as Error).message}`);
                     }
                   });
                 };
@@ -796,6 +810,8 @@ function Canvas({
 
   // Add-Text dialog state — opened by Ctrl+T.
   const [showAddText, setShowAddText] = useState(false);
+  // Where "Add Text Here…" was invoked (studs); null = at the cursor.
+  const [addTextAt, setAddTextAt] = useState<{ x: number; y: number } | null>(null);
 
   // Edit-Text dialog state — opened by double-click or context menu on a text cell.
   const [editingText, setEditingText] = useState<TextCellRef | null>(null);
@@ -2357,7 +2373,8 @@ function Canvas({
     // over the canvas yet). `addTextCell` infers a stud-size box from
     // the requested font size so the renderer's probe-and-fit lands
     // somewhere reasonable.
-    const target = pointerStuds() ?? { x: width / 2 / 8, y: height / 2 / 8 };
+    const target = addTextAt ?? pointerStuds() ?? { x: width / 2 / 8, y: height / 2 / 8 };
+    setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
     // Heuristic: 1 stud ≈ 8 px, so a 24-px font wants ~3 studs tall;
     // width is 0.6 × height per character.
@@ -2401,7 +2418,13 @@ function Canvas({
         />
       )}
       {showAddText && (
-        <TextDialog onClose={() => setShowAddText(false)} onCommit={commitAddText} />
+        <TextDialog
+          onClose={() => {
+            setShowAddText(false);
+            setAddTextAt(null);
+          }}
+          onCommit={commitAddText}
+        />
       )}
       {editingText && (
         <TextDialog
@@ -2490,19 +2513,10 @@ function Canvas({
           }}
           onEditText={(ref) => setEditingText(ref)}
           onAddTextHere={() => {
-            const layerId = ensureTextLayer(doc);
-            const heightStuds = 3;
-            const widthStuds = 12;
-            addTextCell(doc, layerId, {
-              centreX: ctxMenu.studX,
-              centreY: ctxMenu.studY,
-              widthStuds,
-              heightStuds,
-              text: 'Text',
-              font: { family: 'Arial', size: 24, style: 'Regular' },
-              fontColor: { kind: 'argb', argb: 'ff000000' },
-              orientation: 0,
-            });
+            // Prompt for the text first (desktop asks via its text dialog)
+            // instead of dropping a placeholder "Text" cell.
+            setAddTextAt({ x: ctxMenu.studX, y: ctxMenu.studY });
+            setShowAddText(true);
           }}
           onProperties={() => {
             if (ctxMenu.textCellRef) {
@@ -3637,4 +3651,23 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
     }
   }
   return adj;
+}
+
+/** Serialise the local doc to .bbm in the browser and download it. */
+async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
+  let xml: string;
+  try {
+    // Loaded on demand: the .bbm codec is its own chunk.
+    const { writeBbm } = await import('@cld/bbm');
+    xml = writeBbm(docToBbm(doc));
+  } catch (e) {
+    window.alert(`Could not build the .bbm: ${(e as Error).message}`);
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout'}.bbm`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
