@@ -13,6 +13,7 @@ overrides:
   # fast-json-stringify and @fastify/ajv-compiler both pin fast-uri@^3.0.0
   # — stay within that line rather than jumping to the untested 4.x.
   fast-uri@3.1.0: '>=3.1.5 <4.0.0'
+  postcss-selector-parser@6.1.2: '>=6.1.3 <7.0.0'
   find-my-way@9.5.0: '>=9.7.0'
   # jsdom@29.1.1 pins undici@^7.25.0 and reaches into its internal,
   # unexported lib/ paths (e.g. undici/lib/handler/wrap-handler.js) —
