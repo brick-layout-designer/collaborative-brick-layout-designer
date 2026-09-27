@@ -26,9 +26,11 @@ import { vanillaPostProcess, XmlBuilder } from './xml.js';
 export interface WriteOptions {
   /**
    * If set, the writer recomputes `nbItems` from the layer contents (sum of
-   * bricks + textCells + areas + rulers). Defaults to true since the field
-   * is supposed to be derived. Set false to preserve a stale value
-   * verbatim — useful for byte-identity round-trips on imported files.
+   * bricks + textCells + areas + rulers + one per grid layer — BlueBrick's
+   * definition). Defaults to true since the field is derived and the web
+   * editor never updates the stored value. On an unmodified BlueBrick
+   * file the recomputed value equals the stored one. Set false to
+   * preserve the stored value verbatim.
    */
   recomputeNbItems?: boolean;
 }
@@ -162,7 +164,11 @@ function writeLayerGridBody(b: XmlBuilder, layer: LayerGrid): void {
   writeColorBlock(b, 'CellIndexColor', layer.cellIndexColor);
   b.textElement('CellIndexColumnType', layer.cellIndexColumnType);
   b.textElement('CellIndexRowType', layer.cellIndexRowType);
-  b.textElement('CellIndexCorner', layer.cellIndexCorner);
+  // Desktop: xml::writePoint (LayerIO.cpp:153) — integer X/Y children.
+  b.open('CellIndexCorner');
+  b.textElement('X', formatInt(layer.cellIndexCorner.x));
+  b.textElement('Y', formatInt(layer.cellIndexCorner.y));
+  b.close('CellIndexCorner');
 }
 
 function writeLayerBrickBody(b: XmlBuilder, layer: LayerBrick): void {
@@ -316,7 +322,9 @@ function writeFloatArray(b: XmlBuilder, name: string, values: number[]): void {
     return;
   }
   b.open(name);
-  for (const v of values) b.textElement('double', formatNumber(v, 'g7'));
+  // Desktop writes `<value>` children (XmlPrimitives.cpp:207), matching
+  // the BlueBrick files in the fixture corpus.
+  for (const v of values) b.textElement('value', formatNumber(v, 'g7'));
   b.close(name);
 }
 
@@ -357,7 +365,14 @@ function computeNbItems(layers: Layer[]): number {
       case 'ruler':
         total += layer.rulerItems.length;
         break;
-      // grid layers contribute 0
+      case 'grid':
+        // BlueBrick counts each grid layer as one item (its loader steps
+        // the progress bar once per grid). Verified against every
+        // BlueBrick-written file we have: the two fixtures plus the seven
+        // BlueBrickParts tutorial layouts all equal
+        // bricks + textCells + areas + rulers + gridLayers.
+        total += 1;
+        break;
     }
   }
   return total;

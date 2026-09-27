@@ -22,13 +22,20 @@ export const users = sqliteTable('users', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-export const sessions = sqliteTable('sessions', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    // "Log out everywhere" / user delete cascade look sessions up by user.
+    userIdx: index('sessions_user_id_idx').on(t.userId),
+  }),
+);
 
 export const oauthAccounts = sqliteTable(
   'oauth_accounts',
@@ -116,6 +123,8 @@ export const orgMembers = sqliteTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.orgId, t.userId] }),
+    // "Which orgs am I in" is on every list endpoint; the PK is (org, user).
+    userIdx: index('org_members_user_id_idx').on(t.userId),
   }),
 );
 
@@ -192,6 +201,8 @@ export const layoutCollaborators = sqliteTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.layoutId, t.userId] }),
+    // "Layouts shared with me" — the PK leads with layout_id.
+    userIdx: index('layout_collaborators_user_id_idx').on(t.userId),
   }),
 );
 
@@ -257,7 +268,9 @@ export const layoutUpdates = sqliteTable(
 // JSON string because SQLite has no jsonb; queries on this table read the
 // whole row and parse it client-side, which keeps us portable to Postgres
 // without a column type change.
-export const auditEvents = sqliteTable('audit_events', {
+export const auditEvents = sqliteTable(
+  'audit_events',
+  {
   id: integer('id').primaryKey({ autoIncrement: true }),
   /**
    * Layout-specific audits keep this column populated. New non-layout
@@ -281,7 +294,17 @@ export const auditEvents = sqliteTable('audit_events', {
   payload: text('payload').notNull(), // JSON string
   docVersion: integer('doc_version'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
+  },
+  (t) => ({
+    // The two audit read paths: per-layout and per-(kind, id), newest first.
+    layoutCreatedIdx: index('audit_events_layout_id_created_at_idx').on(t.layoutId, t.createdAt),
+    resourceCreatedIdx: index('audit_events_resource_created_at_idx').on(
+      t.resourceKind,
+      t.resourceId,
+      t.createdAt,
+    ),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Custom parts + reusable modules (Phase 6.5)
@@ -291,7 +314,9 @@ export const auditEvents = sqliteTable('audit_events', {
 // XML+sprite pair, persisted in the database. The bundled BlueBrickParts
 // library is NOT modelled here — those are static, served from /parts/*
 // by Fastify. Only USER-uploaded parts hit this table.
-export const customParts = sqliteTable('custom_parts', {
+export const customParts = sqliteTable(
+  'custom_parts',
+  {
   id: text('id').primaryKey(),
   /** Identifier the user picked. Unique within an owner. */
   partNumber: text('part_number').notNull(),
@@ -320,7 +345,12 @@ export const customParts = sqliteTable('custom_parts', {
   spriteMime: text('sprite_mime', { enum: ['image/gif', 'image/png'] }).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+  },
+  (t) => ({
+    ownerUserIdx: index('custom_parts_owner_user_id_idx').on(t.ownerUserId),
+    ownerOrgIdx: index('custom_parts_owner_org_id_idx').on(t.ownerOrgId),
+  }),
+);
 
 export const customPartCollaborators = sqliteTable(
   'custom_part_collaborators',
@@ -334,7 +364,10 @@ export const customPartCollaborators = sqliteTable(
     role: text('role', { enum: ['viewer', 'editor', 'owner'] }).notNull(),
     addedAt: integer('added_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.customPartId, t.userId] }) }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.customPartId, t.userId] }),
+    userIdx: index('custom_part_collaborators_user_id_idx').on(t.userId),
+  }),
 );
 
 // Pending custom-part invites for unregistered emails (Phase 7 backlog).
@@ -356,7 +389,9 @@ export const customPartInvites = sqliteTable('custom_part_invites', {
 // positions / per-brick metadata) that can be dropped into any layout the
 // owner has access to. Mirrors desktop's `Module` but elevates it to a
 // first-class shareable asset.
-export const modules = sqliteTable('modules', {
+export const modules = sqliteTable(
+  'modules',
+  {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
@@ -371,7 +406,12 @@ export const modules = sqliteTable('modules', {
   sidecarSnapshot: blob('sidecar_snapshot'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+  },
+  (t) => ({
+    ownerUserIdx: index('modules_owner_user_id_idx').on(t.ownerUserId),
+    ownerOrgIdx: index('modules_owner_org_id_idx').on(t.ownerOrgId),
+  }),
+);
 
 export const moduleCollaborators = sqliteTable(
   'module_collaborators',
@@ -385,7 +425,10 @@ export const moduleCollaborators = sqliteTable(
     role: text('role', { enum: ['viewer', 'editor', 'owner'] }).notNull(),
     addedAt: integer('added_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.moduleId, t.userId] }) }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.moduleId, t.userId] }),
+    userIdx: index('module_collaborators_user_id_idx').on(t.userId),
+  }),
 );
 
 // User → user module transfers (mirror of layout_transfers). Org-recipient

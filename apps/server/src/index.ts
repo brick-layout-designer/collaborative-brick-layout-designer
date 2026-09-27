@@ -31,6 +31,7 @@ import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
 import { transferRoutes } from './routes/transfers.js';
 import { wsRoutes } from './routes/ws.js';
+import { registerSecurityHeaders } from './utils/securityHeaders.js';
 
 async function main() {
   // Run pending migrations on boot. Idempotent.
@@ -41,12 +42,19 @@ async function main() {
   // 10MB body limit — large `.bbm` imports (XML payload) routinely exceed
   // the default 1MB. Real desktop layouts run ~500KB; cap at 10MB to give
   // plenty of headroom while still rejecting obvious DoS shapes.
-  const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
+  // trustProxy: behind a reverse proxy, req.ip (used by the rate
+  // limiter and logs) is otherwise the proxy's address for every client.
+  const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024, trustProxy: env.trustProxy });
 
   await app.register(helmet, {
     contentSecurityPolicy: false, // SPA sets its own; API responses are JSON
     crossOriginEmbedderPolicy: false,
   });
+  // …but /api/* and /parts/* responses (which can carry user-uploaded
+  // bytes) get a locked-down sandbox policy. Registered on the root
+  // instance before any routes so it covers every plugin, including the
+  // static /parts/* servers below.
+  registerSecurityHeaders(app);
   await app.register(cors, {
     origin: env.publicUrl,
     credentials: true,
