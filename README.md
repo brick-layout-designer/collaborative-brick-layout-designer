@@ -190,6 +190,7 @@ full list. Notable ones:
 | `DB_PATH`                 | `./data/cbld.sqlite`    | SQLite file path (use `/data/cbld.sqlite` in Docker) |
 | `PARTS_DIR`               | `./data/parts`          | Parts library root (use `/parts` in Docker)        |
 | `COOKIE_SECURE`           | `false`                 | Set `true` behind TLS                              |
+| `TRUST_PROXY`             | `false`                 | Trust `X-Forwarded-*` behind a reverse proxy: `true`, hop count, or proxy IPs/CIDRs |
 | `ENABLE_PASSWORD_AUTH`    | `false`                 | Enable email/password registration (requires verifying email — see SMTP) |
 | `DEMO_MODE`               | `false`                 | New accounts become demo accounts                  |
 | `DEMO_LAYOUT_TTL_DAYS`    | `30`                    | Auto-expire demo-owned layouts after N days        |

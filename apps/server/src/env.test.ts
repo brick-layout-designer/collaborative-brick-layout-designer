@@ -78,3 +78,39 @@ describe('env', () => {
     expect(env.enablePasswordAuth).toBe(false);
   });
 });
+
+describe('TRUST_PROXY', () => {
+  it('defaults to not trusting forwarded headers', async () => {
+    delete process.env.TRUST_PROXY;
+    expect((await loadEnv()).trustProxy).toBe(false);
+  });
+
+  it('parses booleans, hop counts and address lists', async () => {
+    const { parseTrustProxy } = await import('./env.js');
+    expect(parseTrustProxy('false')).toBe(false);
+    expect(parseTrustProxy('0')).toBe(false);
+    expect(parseTrustProxy('true')).toBe(true);
+    expect(parseTrustProxy('2')).toBe(2);
+    expect(parseTrustProxy('10.0.0.0/8, 127.0.0.1')).toBe('10.0.0.0/8, 127.0.0.1');
+  });
+
+  it('makes req.ip honour X-Forwarded-For only when enabled', async () => {
+    const { default: Fastify } = await import('fastify');
+    const { parseTrustProxy } = await import('./env.js');
+    for (const [setting, expected] of [
+      ['false', '127.0.0.1'],
+      ['1', '203.0.113.9'],
+    ] as const) {
+      const app = Fastify({ trustProxy: parseTrustProxy(setting) });
+      app.get('/ip', async (req) => ({ ip: req.ip }));
+      const res = await app.inject({
+        method: 'GET',
+        url: '/ip',
+        headers: { 'x-forwarded-for': '203.0.113.9' },
+        remoteAddress: '127.0.0.1',
+      });
+      expect(res.json().ip).toBe(expected);
+      await app.close();
+    }
+  });
+});
