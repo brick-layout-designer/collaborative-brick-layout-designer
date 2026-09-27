@@ -8,7 +8,7 @@
 // orgs, not joining them).
 
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 
@@ -66,6 +66,25 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
       // layout-invite path — see the rationale in routes/invites.ts.
       if (invite.invitedEmail.toLowerCase() !== user.email.toLowerCase()) {
         return reply.code(403).send({ error: 'email_mismatch' });
+      }
+
+      // The invite carries its inviter's authority. If they have since
+      // been demoted or removed from the org, the invite is void —
+      // otherwise a removed admin's outstanding invites (possibly for
+      // role 'admin') would still let people in.
+      const inviter = await db
+        .select({ role: schema.orgMembers.role })
+        .from(schema.orgMembers)
+        .where(
+          and(
+            eq(schema.orgMembers.orgId, invite.orgId),
+            eq(schema.orgMembers.userId, invite.invitedBy),
+          ),
+        )
+        .get();
+      if (inviter?.role !== 'admin') {
+        await db.delete(schema.orgInvites).where(eq(schema.orgInvites.id, invite.id));
+        return reply.code(409).send({ error: 'invite_revoked' });
       }
 
       const now = new Date();

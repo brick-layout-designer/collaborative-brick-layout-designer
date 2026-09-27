@@ -21,7 +21,7 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
@@ -97,6 +97,9 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
             updatedAt: new Date(),
           })
           .where(eq(schema.layouts.id, req.params.id));
+        // Ownership changed: any pending user->user transfer was issued by
+        // the previous owner and must not be redeemable any more.
+        await deletePendingLayoutTransfers(req.params.id);
 
         await writeAuditEvent({
           layoutId: req.params.id,
@@ -128,6 +131,12 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         return reply
           .code(400)
           .send({ error: 'org_owned_layouts_can_only_transfer_to_orgs' });
+      }
+      // Only the personal owner can hand a personal layout away (an
+      // explicit 'owner' collaborator row is not ownership). Acceptance
+      // re-checks this, so a token from anyone else could never redeem.
+      if (layout.ownerUserId !== user.id) {
+        return reply.code(403).send({ error: 'forbidden' });
       }
 
       // Email-format check.
@@ -233,7 +242,13 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       if (!layout) return reply.code(404).send({ error: 'layout_not_found' });
 
       const now = new Date();
-      await db
+      // The transfer is only valid while its initiator still personally
+      // owns the layout. The guard is part of the UPDATE so a concurrent
+      // ownership change can't slip in between check and write. Without
+      // it, a stale token (the layout already went to someone else, or
+      // was moved into an org) could pull the layout away from its
+      // current owner.
+      const flipped = await db
         .update(schema.layouts)
         .set({
           ownerUserId: user.id,
@@ -246,12 +261,24 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
             : null,
           updatedAt: now,
         })
-        .where(eq(schema.layouts.id, transfer.layoutId));
+        .where(
+          and(
+            eq(schema.layouts.id, transfer.layoutId),
+            eq(schema.layouts.ownerUserId, transfer.initiatedBy),
+            isNull(schema.layouts.ownerOrgId),
+          ),
+        )
+        .returning({ id: schema.layouts.id });
+      if (flipped.length === 0) {
+        await db.delete(schema.layoutTransfers).where(eq(schema.layoutTransfers.id, transfer.id));
+        return reply.code(409).send({ error: 'transfer_stale' });
+      }
 
       await db
         .update(schema.layoutTransfers)
         .set({ acceptedAt: now })
         .where(eq(schema.layoutTransfers.id, transfer.id));
+      await deletePendingLayoutTransfers(transfer.layoutId, transfer.id);
 
       // The previous owner (initiator) loses ownership but it's polite
       // to keep them as a collaborator so they don't lose access entirely.
@@ -304,4 +331,21 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     },
   );
+}
+
+/**
+ * Delete every not-yet-accepted transfer for a layout (optionally keeping
+ * one). Call whenever the layout's owner changes: pending transfers were
+ * issued by the previous owner.
+ */
+async function deletePendingLayoutTransfers(layoutId: string, exceptId?: string): Promise<void> {
+  await db
+    .delete(schema.layoutTransfers)
+    .where(
+      and(
+        eq(schema.layoutTransfers.layoutId, layoutId),
+        isNull(schema.layoutTransfers.acceptedAt),
+        exceptId ? ne(schema.layoutTransfers.id, exceptId) : undefined,
+      ),
+    );
 }
