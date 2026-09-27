@@ -22,7 +22,7 @@
     "e2e": "pnpm --filter @cld/web test:e2e"
   },
   "devDependencies": {
-    "lefthook": "1.7.18",
+    "lefthook": "2.1.10",
     "typescript": "7.0.2"
   }
 }
