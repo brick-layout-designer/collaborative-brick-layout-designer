@@ -1,17 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createWriteStream, createReadStream, existsSync } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, rename, unlink } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import * as Y from 'yjs';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { readBbm, readSidecar, writeBbm, writeSidecar } from '@cld/bbm';
 import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm, seedFromSidecar } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
+import { docHub } from '../ws/docHub.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -31,6 +33,9 @@ interface CreateLayoutBody {
 interface PatchLayoutBody {
   title?: string;
 }
+
+/** Background-image file extensions, in the order GET probes them. */
+const BG_EXTS = ['png', 'jpg', 'gif', 'webp'] as const;
 
 export async function layoutRoutes(app: FastifyInstance) {
   // Accept raw octet-stream bodies (binary Y.Doc snapshots). Without this,
@@ -53,18 +58,26 @@ export async function layoutRoutes(app: FastifyInstance) {
     //   3. layout_collaborators row         (explicitly shared)
     // Dedupe by id since 2 and 3 can overlap (an org member who also has
     // an explicit per-user share). Set keyed by id wins.
+    //
+    // Metadata columns only: `select()` of whole rows pulled every
+    // doc_snapshot / sidecar blob into memory just to build the list.
     const personal = await db
-      .select()
+      .select(layoutListColumns)
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ layout: schema.layouts, orgName: schema.orgs.name, orgSlug: schema.orgs.slug })
+      .select({
+        layout: layoutListColumns,
+        orgName: schema.orgs.name,
+        orgSlug: schema.orgs.slug,
+        memberRole: schema.orgMembers.role,
+      })
       .from(schema.orgMembers)
       .innerJoin(schema.layouts, eq(schema.layouts.ownerOrgId, schema.orgMembers.orgId))
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ layout: schema.layouts })
+      .select({ layout: layoutListColumns, role: schema.layoutCollaborators.role })
       .from(schema.layoutCollaborators)
       .innerJoin(schema.layouts, eq(schema.layouts.id, schema.layoutCollaborators.layoutId))
       .where(eq(schema.layoutCollaborators.userId, user.id));
@@ -74,17 +87,17 @@ export async function layoutRoutes(app: FastifyInstance) {
     for (const l of personal) {
       if (seen.has(l.id)) continue;
       seen.add(l.id);
-      all.push(toListItem(l));
+      all.push(toListItem(l, 'owner'));
     }
-    for (const { layout, orgName, orgSlug } of orgOwned) {
+    for (const { layout, orgName, orgSlug, memberRole } of orgOwned) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout, orgName, orgSlug));
+      all.push(toListItem(layout, memberRole === 'admin' ? 'owner' : 'editor', orgName, orgSlug));
     }
-    for (const { layout } of shared) {
+    for (const { layout, role } of shared) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout));
+      all.push(toListItem(layout, role));
     }
     return { layouts: all };
   });
@@ -96,14 +109,14 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
     const layout = await db
-      .select()
+      .select(layoutListColumns)
       .from(schema.layouts)
       .where(eq(schema.layouts.id, req.params.id))
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
     return {
-      layout: toListItem(layout),
+      layout: toListItem(layout, role.role),
       role: role.role,
     };
   });
@@ -226,6 +239,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!hasAtLeast(role.role, 'owner')) return reply.code(403).send({ error: 'forbidden' });
 
     await db.delete(schema.layouts).where(eq(schema.layouts.id, req.params.id));
+    // Shut any open editor sockets; otherwise their next update hits a
+    // foreign-key failure against the deleted row.
+    await docHub.close(req.params.id);
     return { ok: true };
   });
 
@@ -242,7 +258,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
-    const doc = decodeDoc(layout.docSnapshot as Uint8Array);
+    const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
     const map = exportBbmFromDoc(doc);
     if (!map) {
       // The doc was authored in-app and there's no cached BbmMap yet.
@@ -276,7 +292,9 @@ export async function layoutRoutes(app: FastifyInstance) {
 
     reply.header('Content-Type', 'application/octet-stream');
     reply.header('X-Doc-Version', String(layout.docVersion));
-    return reply.send(Buffer.from(layout.docSnapshot as Uint8Array));
+    return reply.send(
+      Buffer.from(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array)),
+    );
   });
 
   // PUT replaces the snapshot wholesale. Phase 4 (realtime) replaces this
@@ -300,6 +318,12 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (bytes.length > 50 * 1024 * 1024) {
       return reply.code(413).send({ error: 'snapshot_too_large' });
     }
+    // While the layout is open in the realtime editor, the in-memory doc
+    // is authoritative and its next flush would silently overwrite a
+    // wholesale replacement written here. Refuse instead of losing it.
+    if (docHub.has(req.params.id)) {
+      return reply.code(409).send({ error: 'layout_open_in_editor' });
+    }
 
     const updatedAt = new Date();
     await db
@@ -310,6 +334,17 @@ export async function layoutRoutes(app: FastifyInstance) {
         updatedAt,
       })
       .where(eq(schema.layouts.id, req.params.id));
+    // A wholesale replacement supersedes any unflushed realtime updates;
+    // replaying them over the new snapshot on next hydrate would merge
+    // stale edits back in.
+    await db
+      .delete(schema.layoutUpdates)
+      .where(
+        and(
+          eq(schema.layoutUpdates.layoutId, req.params.id),
+          eq(schema.layoutUpdates.doc, 'main'),
+        ),
+      );
     return { ok: true, updatedAt: updatedAt.getTime() };
   });
 
@@ -354,7 +389,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
-    const doc = decodeDoc(layout.docSnapshot as Uint8Array);
+    const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
     const map = exportBbmFromDoc(doc);
     if (!map) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
 
@@ -481,15 +516,35 @@ export async function layoutRoutes(app: FastifyInstance) {
       await mkdir(bgDir, { recursive: true });
       const filename = `${layoutId}.${ext}`;
       const dest = join(bgDir, filename);
-      // @types/node 26's PipelineSource requires an async iterator
-      // matching ReadableStream's exactOptionalPropertyTypes-aware
-      // shape, which even Node's own `Readable` class doesn't
-      // structurally satisfy in these types — a type-declaration gap,
-      // not a real behavior mismatch (Busboy's file stream is genuinely
-      // a valid pipeline source at runtime). `any` is the least-bad
-      // escape hatch until upstream fixes the declaration.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await pipeline(data.file as any, createWriteStream(dest));
+      // Stream into a temp file and only rename over the real one once
+      // the whole upload arrived: writing to `dest` directly truncated
+      // the existing image before an oversized upload was rejected.
+      const tmp = join(bgDir, `${layoutId}.${randomUUID()}.upload`);
+      try {
+        // @types/node 26's PipelineSource requires an async iterator
+        // matching ReadableStream's exactOptionalPropertyTypes-aware
+        // shape, which even Node's own `Readable` class doesn't
+        // structurally satisfy in these types — a type-declaration gap,
+        // not a real behavior mismatch (Busboy's file stream is genuinely
+        // a valid pipeline source at runtime). `any` is the least-bad
+        // escape hatch until upstream fixes the declaration.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await pipeline(data.file as any, createWriteStream(tmp));
+        if (data.file.truncated) {
+          await unlink(tmp).catch(() => {});
+          return reply.code(413).send({ error: 'file_too_large' });
+        }
+        await rename(tmp, dest);
+      } catch (err) {
+        await unlink(tmp).catch(() => {});
+        throw err;
+      }
+      // An image of a different type would otherwise shadow the new one
+      // (the GET handler serves the first extension it finds).
+      for (const other of BG_EXTS) {
+        if (other === ext) continue;
+        await unlink(join(bgDir, `${layoutId}.${other}`)).catch(() => {});
+      }
       const url = `/api/layouts/${layoutId}/background-image`;
       return { url };
     },
@@ -507,7 +562,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
-      for (const ext of ['png', 'jpg', 'gif', 'webp']) {
+      for (const ext of BG_EXTS) {
         const p = join(bgDir, `${layoutId}.${ext}`);
         if (existsSync(p)) {
           const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
@@ -532,9 +587,8 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
-      for (const ext of ['png', 'jpg', 'gif', 'webp']) {
-        const p = join(bgDir, `${layoutId}.${ext}`);
-        if (existsSync(p)) { await unlink(p); break; }
+      for (const ext of BG_EXTS) {
+        await unlink(join(bgDir, `${layoutId}.${ext}`)).catch(() => {});
       }
       return { ok: true };
     },
@@ -552,7 +606,9 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!layout) return reply.code(404).send({ error: 'not_found' });
       reply.header('Content-Type', 'application/octet-stream');
       reply.header('X-Doc-Version', String(layout.docVersion));
-      return reply.send(Buffer.from(layout.docSnapshot as Uint8Array));
+      return reply.send(
+        Buffer.from(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array)),
+      );
     },
   );
 }
@@ -561,7 +617,38 @@ export async function layoutRoutes(app: FastifyInstance) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toListItem(l: typeof schema.layouts.$inferSelect, ownerOrgName?: string, ownerOrgSlug?: string) {
+/** Columns for list/detail responses — everything except the doc blobs. */
+export const layoutListColumns = {
+  id: schema.layouts.id,
+  title: schema.layouts.title,
+  ownerUserId: schema.layouts.ownerUserId,
+  ownerOrgId: schema.layouts.ownerOrgId,
+  createdAt: schema.layouts.createdAt,
+  updatedAt: schema.layouts.updatedAt,
+  expiresAt: schema.layouts.expiresAt,
+  docVersion: schema.layouts.docVersion,
+  publicShareToken: schema.layouts.publicShareToken,
+  hasSidecar: sql<number>`${schema.layouts.sidecarSnapshot} IS NOT NULL`,
+};
+
+type LayoutListRow = {
+  [K in keyof typeof layoutListColumns]: K extends 'hasSidecar'
+    ? number
+    : (typeof schema.layouts.$inferSelect)[K & keyof typeof schema.layouts.$inferSelect];
+};
+
+/**
+ * `role` is the caller's role on the layout. The public-share token is
+ * the layout's read-anywhere secret and only its owners (who alone can
+ * enable / disable sharing) get to see it; it used to be returned to
+ * every viewer and collaborator.
+ */
+function toListItem(
+  l: LayoutListRow,
+  role: 'owner' | 'editor' | 'viewer' | null,
+  ownerOrgName?: string,
+  ownerOrgSlug?: string,
+) {
   return {
     id: l.id,
     title: l.title,
@@ -573,9 +660,47 @@ function toListItem(l: typeof schema.layouts.$inferSelect, ownerOrgName?: string
     updatedAt: l.updatedAt,
     expiresAt: l.expiresAt,
     docVersion: l.docVersion,
-    hasSidecar: l.sidecarSnapshot !== null,
-    publicShareToken: l.publicShareToken ?? null,
+    hasSidecar: Boolean(l.hasSidecar),
+    publicShareToken: role === 'owner' ? (l.publicShareToken ?? null) : null,
   };
+}
+
+/**
+ * The layout's current document, as y-update bytes. The persisted
+ * snapshot alone lags behind realtime editing: the live session's
+ * in-memory doc is authoritative while one is loaded, and otherwise any
+ * layout_updates rows not yet compacted into the snapshot must be
+ * replayed (same as DocSession.hydrate). Reading only docSnapshot made
+ * exports / GET snapshot / the public viewer miss recent edits.
+ */
+async function currentDocBytes(layoutId: string, snapshot: Uint8Array): Promise<Uint8Array> {
+  const live = docHub.peek(layoutId);
+  if (live) return Y.encodeStateAsUpdate(live.doc);
+  const updates = await db
+    .select({ updateBytes: schema.layoutUpdates.updateBytes })
+    .from(schema.layoutUpdates)
+    .where(
+      and(
+        eq(schema.layoutUpdates.layoutId, layoutId),
+        eq(schema.layoutUpdates.doc, 'main'),
+      ),
+    )
+    .orderBy(schema.layoutUpdates.id);
+  if (updates.length === 0) return snapshot;
+  const doc = new Y.Doc();
+  try {
+    if (snapshot.length > 0) Y.applyUpdate(doc, snapshot);
+    for (const u of updates) {
+      try {
+        Y.applyUpdate(doc, u.updateBytes as Uint8Array);
+      } catch {
+        // Corrupt update — skipped, as in DocSession.hydrate.
+      }
+    }
+    return Y.encodeStateAsUpdate(doc);
+  } finally {
+    doc.destroy();
+  }
 }
 
 async function currentVersion(layoutId: string): Promise<number> {

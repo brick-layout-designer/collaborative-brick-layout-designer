@@ -6,13 +6,15 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
+import { hasVerifiedEmail } from '../auth/users.js';
+import { sameEmail } from '../utils/validate.js';
 
 interface InitiateTransferBody {
   recipientEmail?: string;
@@ -75,6 +77,9 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
             updatedAt: new Date(),
           })
           .where(eq(schema.modules.id, req.params.id));
+        // Ownership changed: pending user->user transfers issued by the
+        // previous owner must not be redeemable any more.
+        await deletePendingModuleTransfers(req.params.id);
 
         await writeAuditEvent({
           resourceKind: 'module',
@@ -103,6 +108,10 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         return reply
           .code(400)
           .send({ error: 'org_owned_modules_can_only_transfer_to_orgs' });
+      }
+      // Only the personal owner can hand a personal module away.
+      if (module.ownerUserId !== user.id) {
+        return reply.code(403).send({ error: 'forbidden' });
       }
       if (!recipientEmail || !recipientEmail.includes('@')) {
         return reply.code(400).send({ error: 'invalid_email' });
@@ -194,20 +203,39 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
       if (transfer.expiresAt.getTime() < Date.now()) {
         return reply.code(410).send({ error: 'transfer_expired' });
       }
-      if (transfer.recipientEmail.toLowerCase() !== user.email.toLowerCase()) {
+      if (!sameEmail(transfer.recipientEmail, user.email)) {
         return reply.code(403).send({ error: 'email_mismatch' });
+      }
+      // The email match only proves anything if the account has proven
+      // it controls that mailbox.
+      if (!(await hasVerifiedEmail(user))) {
+        return reply.code(403).send({ error: 'email_not_verified' });
       }
 
       const now = new Date();
-      await db
+      // Only valid while the initiator still personally owns the module
+      // (see the matching comment in routes/transfers.ts).
+      const flipped = await db
         .update(schema.modules)
         .set({ ownerUserId: user.id, ownerOrgId: null, updatedAt: now })
-        .where(eq(schema.modules.id, transfer.moduleId));
+        .where(
+          and(
+            eq(schema.modules.id, transfer.moduleId),
+            eq(schema.modules.ownerUserId, transfer.initiatedBy),
+            isNull(schema.modules.ownerOrgId),
+          ),
+        )
+        .returning({ id: schema.modules.id });
+      if (flipped.length === 0) {
+        await db.delete(schema.moduleTransfers).where(eq(schema.moduleTransfers.id, transfer.id));
+        return reply.code(409).send({ error: 'transfer_stale' });
+      }
 
       await db
         .update(schema.moduleTransfers)
         .set({ acceptedAt: now })
         .where(eq(schema.moduleTransfers.id, transfer.id));
+      await deletePendingModuleTransfers(transfer.moduleId, transfer.id);
 
       // Keep the previous owner as an editor (same as layout transfer).
       if (transfer.initiatedBy && transfer.initiatedBy !== user.id) {
@@ -237,4 +265,20 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
       return { moduleId: transfer.moduleId };
     },
   );
+}
+
+/**
+ * Delete every not-yet-accepted transfer for a module (optionally keeping
+ * one). Call whenever the module's owner changes.
+ */
+async function deletePendingModuleTransfers(moduleId: string, exceptId?: string): Promise<void> {
+  await db
+    .delete(schema.moduleTransfers)
+    .where(
+      and(
+        eq(schema.moduleTransfers.moduleId, moduleId),
+        isNull(schema.moduleTransfers.acceptedAt),
+        exceptId ? ne(schema.moduleTransfers.id, exceptId) : undefined,
+      ),
+    );
 }

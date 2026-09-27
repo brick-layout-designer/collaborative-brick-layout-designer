@@ -1,3 +1,5 @@
+import type { FastifyInstance } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { db, schema, sqlite } from '../db/index.js';
 
 // TypeScript 7's stricter ArrayBufferLike/SharedArrayBuffer variance made
@@ -45,6 +47,33 @@ export function resetDb(): void {
     DELETE FROM platform_settings;
     DELETE FROM users;
   `);
+}
+
+/**
+ * Register + verify a password account through the real routes (the app
+ * must have `passwordRoutes` registered) and return its session cookie
+ * and user id. Verification is what issues the first session cookie.
+ */
+export async function loginAs(
+  app: FastifyInstance,
+  email: string,
+): Promise<{ cookie: string; id: string }> {
+  await app.inject({
+    method: 'POST',
+    url: '/api/auth/password/register',
+    payload: { email, password: 'correct horse battery', displayName: email },
+  });
+  const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
+  if (!user) throw new Error(`loginAs: registration failed for ${email}`);
+  const v = await db
+    .select()
+    .from(schema.emailVerifications)
+    .where(eq(schema.emailVerifications.userId, user.id))
+    .get();
+  if (!v) throw new Error(`loginAs: no verification token for ${email}`);
+  const res = await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${v.token}` });
+  const sc = res.headers['set-cookie'];
+  return { cookie: Array.isArray(sc) ? sc.join('; ') : (sc ?? ''), id: user.id };
 }
 
 export { db, schema };
