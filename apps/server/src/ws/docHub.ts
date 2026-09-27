@@ -13,6 +13,7 @@ import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 
 export class DocSession {
   readonly doc: Y.Doc;
@@ -25,10 +26,87 @@ export class DocSession {
   flushing = false;
   /** Idle timer id; clearTimeout on the next attached client. */
   idleTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Authenticated user id per attached client. Awareness updates that
+   * arrive from a client (origin === that client) have their `user.id`
+   * pinned to this value so a peer can't impersonate someone else.
+   */
+  readonly clientUsers = new Map<unknown, string>();
+  /**
+   * Awareness clientIDs each attached client has set. Yjs assigns a
+   * random clientID per browser Y.Doc, so we learn them as updates flow
+   * through and remove them when the client disconnects.
+   */
+  readonly clientAwarenessIds = new Map<unknown, Set<number>>();
+  /** Set by DocHub.close(); a closed session never persists or re-arms. */
+  closed = false;
+  private broadcasting = false;
 
   constructor(public readonly layoutId: string) {
     this.doc = new Y.Doc();
     this.awareness = new Awareness(this.doc);
+  }
+
+  /**
+   * Install the session's single doc + awareness listeners: every doc
+   * update is persisted once and fanned out once to every peer except
+   * its origin, however many sockets are attached. (These used to be
+   * registered per connection, so N sockets meant N broadcasts of every
+   * update to every peer and N layout_updates rows.) Idempotent.
+   */
+  startBroadcasting(onPersistError: (err: unknown) => void): void {
+    if (this.broadcasting) return;
+    this.broadcasting = true;
+
+    this.doc.on('update', (update: Uint8Array, origin: unknown) => {
+      if (this.closed) return;
+      // Never let a failed insert (e.g. the layout row was deleted while
+      // sockets were still open -> FK violation) become an unhandled
+      // rejection; that terminates the Node process.
+      this.persistUpdate(update).catch(onPersistError);
+      const bytes = encodeSyncUpdate(update);
+      for (const client of this.clients) {
+        if (client === origin) continue;
+        sendBytes(client, bytes);
+      }
+    });
+
+    this.awareness.on(
+      'update',
+      (
+        changes: { added: number[]; updated: number[]; removed: number[] },
+        origin: unknown,
+      ) => {
+        // Identity validation: when the change came FROM a specific
+        // client, we know that client's true userId. Overwrite a forged
+        // `user.id` (cursor / selection / displayName are cosmetic and
+        // left alone) and remember the clientID for disconnect cleanup.
+        const userId = this.clientUsers.get(origin);
+        if (userId !== undefined) {
+          let owned = this.clientAwarenessIds.get(origin);
+          if (!owned) {
+            owned = new Set();
+            this.clientAwarenessIds.set(origin, owned);
+          }
+          for (const clientId of [...changes.added, ...changes.updated]) {
+            owned.add(clientId);
+            const state = this.awareness.getStates().get(clientId) as
+              | { user?: { id?: string } }
+              | undefined;
+            if (state?.user?.id && state.user.id !== userId) {
+              state.user.id = userId;
+            }
+          }
+        }
+        const changedClients = [...changes.added, ...changes.updated, ...changes.removed];
+        if (changedClients.length === 0) return;
+        const payload = encodeAwarenessUpdate(this.awareness, changedClients);
+        for (const client of this.clients) {
+          if (client === origin) continue;
+          sendBytes(client, payload);
+        }
+      },
+    );
   }
 
   /**
@@ -137,8 +215,13 @@ const IDLE_MS = 60_000;
 const SNAPSHOT_INTERVAL_MS = 30_000;
 const SNAPSHOT_MAX_PENDING = 100;
 
+/** WS close code sent when the layout is deleted under open sockets. */
+export const CLOSE_LAYOUT_GONE = 4404;
+
 class DocHub {
   private sessions = new Map<string, Promise<DocSession>>();
+  /** Hydrated sessions, for synchronous lookups (see `peek`). */
+  private live = new Map<string, DocSession>();
   private snapshotTimer: ReturnType<typeof setInterval> | null = null;
 
   startSnapshotWorker(): void {
@@ -162,6 +245,8 @@ class DocHub {
     const promise = (async () => {
       const session = new DocSession(layoutId);
       await session.hydrate();
+      session.startBroadcasting((err) => this.onPersistError(session, err));
+      this.live.set(layoutId, session);
       return session;
     })();
     this.sessions.set(layoutId, promise);
@@ -174,27 +259,123 @@ class DocHub {
     }
   }
 
-  /** Mark a client as connected; cancels any pending eviction. */
-  attach(session: DocSession, client: unknown): void {
+  /** The hydrated in-memory session for a layout, if one is loaded. */
+  peek(layoutId: string): DocSession | undefined {
+    const session = this.live.get(layoutId);
+    return session && !session.closed ? session : undefined;
+  }
+
+  /**
+   * Mark a client as connected; cancels any pending eviction. `userId`
+   * is the authenticated user behind the client, used to pin awareness
+   * identity (see DocSession.startBroadcasting).
+   */
+  attach(session: DocSession, client: unknown, userId?: string): void {
     if (session.idleTimer) {
       clearTimeout(session.idleTimer);
       session.idleTimer = null;
     }
     session.clients.add(client);
+    if (userId !== undefined) session.clientUsers.set(client, userId);
   }
 
-  /** Mark a client as disconnected; schedule eviction if last. */
+  /**
+   * Mark a client as disconnected; schedule eviction if last. Idempotent:
+   * a socket that emits both 'error' and 'close' must not detach twice
+   * (the second call used to arm a second, orphaned idle timer that
+   * destroyed the doc under the next connected client).
+   */
   async detach(session: DocSession, client: unknown): Promise<void> {
-    session.clients.delete(client);
-    if (session.clients.size === 0) {
-      // Final flush so a server restart doesn't lose the last few seconds.
-      await session.flushSnapshot();
-      session.idleTimer = setTimeout(() => {
-        this.sessions.delete(session.layoutId);
-        session.doc.destroy();
-        session.awareness.destroy();
-      }, IDLE_MS);
+    if (!session.clients.delete(client)) return;
+    session.clientUsers.delete(client);
+    session.clientAwarenessIds.delete(client);
+    if (session.closed || session.clients.size > 0) return;
+    // Final flush so a server restart doesn't lose the last few seconds.
+    await session.flushSnapshot();
+    // A client may have (re)attached while the flush was in flight.
+    if (session.closed || session.clients.size > 0) return;
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    session.idleTimer = setTimeout(() => {
+      session.idleTimer = null;
+      if (session.clients.size > 0) return;
+      this.evict(session);
+    }, IDLE_MS);
+  }
+
+  /**
+   * Drop a layout's live session immediately: close every attached
+   * socket with 4404 (clients show the same "layout not found" state a
+   * reload would) and discard the in-memory doc WITHOUT flushing it.
+   * Call this whenever a layout row is deleted, so open sockets can't
+   * keep writing updates against a row that no longer exists.
+   */
+  async close(layoutId: string, reason = 'layout_deleted'): Promise<void> {
+    const pending = this.sessions.get(layoutId);
+    if (!pending) return;
+    this.sessions.delete(layoutId);
+    let session: DocSession;
+    try {
+      session = await pending;
+    } catch {
+      return; // hydration failed; nothing live
     }
+    if (session.closed) return;
+    session.closed = true;
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer);
+      session.idleTimer = null;
+    }
+    const clients = [...session.clients];
+    session.clients.clear();
+    session.clientUsers.clear();
+    session.clientAwarenessIds.clear();
+    for (const client of clients) {
+      if (!isWsPeer(client)) continue;
+      try {
+        client.close(CLOSE_LAYOUT_GONE, reason);
+      } catch {
+        /* already closed */
+      }
+    }
+    if (this.live.get(layoutId) === session) this.live.delete(layoutId);
+    session.doc.destroy();
+    session.awareness.destroy();
+  }
+
+  /** Close the live sessions of several layouts (see `close`). */
+  async closeMany(layoutIds: Iterable<string>, reason?: string): Promise<void> {
+    for (const id of layoutIds) await this.close(id, reason);
+  }
+
+  private evict(session: DocSession): void {
+    if (this.live.get(session.layoutId) === session) {
+      this.live.delete(session.layoutId);
+      this.sessions.delete(session.layoutId);
+    }
+    session.doc.destroy();
+    session.awareness.destroy();
+  }
+
+  /**
+   * A persist failed. Log it, and if the cause is that the layout row is
+   * gone (deleted through a path that didn't call `close`, e.g. an
+   * ON DELETE CASCADE from its owner), shut the session down.
+   */
+  private onPersistError(session: DocSession, err: unknown): void {
+    // eslint-disable-next-line no-console
+    console.error(`[docHub] failed to persist update for layout ${session.layoutId}:`, err);
+    void (async () => {
+      try {
+        const row = await db
+          .select({ id: schema.layouts.id })
+          .from(schema.layouts)
+          .where(eq(schema.layouts.id, session.layoutId))
+          .get();
+        if (!row) await this.close(session.layoutId);
+      } catch {
+        /* DB unavailable; the next update will retry this check */
+      }
+    })();
   }
 
   /** Snapshot worker tick — flush any session past the per-doc threshold. */
@@ -202,7 +383,7 @@ class DocHub {
     for (const [, p] of this.sessions) {
       try {
         const session = await p;
-        if (session.pendingUpdates >= SNAPSHOT_MAX_PENDING) {
+        if (!session.closed && session.pendingUpdates >= SNAPSHOT_MAX_PENDING) {
           await session.flushSnapshot();
         }
       } catch {

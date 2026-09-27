@@ -28,6 +28,7 @@ import * as Y from 'yjs';
 import { db, schema, sqlite } from '../db/index.js';
 import { env } from '../env.js';
 import { classifyBackups } from './retention.js';
+import { docHub } from '../ws/docHub.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -89,6 +90,7 @@ async function demoTtlSweep(): Promise<void> {
     );
   for (const { id } of expired) {
     await db.delete(schema.layouts).where(eq(schema.layouts.id, id));
+    await docHub.close(id);
   }
   if (expired.length > 0) {
     // eslint-disable-next-line no-console
