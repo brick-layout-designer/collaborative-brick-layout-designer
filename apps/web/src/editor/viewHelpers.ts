@@ -46,3 +46,17 @@ export function dropdownAnchor(
   const r = button.getBoundingClientRect();
   return { top: r.bottom + 4, right: Math.max(4, viewportWidth - r.right) };
 }
+
+/**
+ * Multiplicative zoom step for an accumulated wheel `deltaY` — desktop
+ * MapView::wheelEvent (MapView.cpp:354-390): 1.0015^delta with the delta
+ * capped at ±480 per event (~2×). The wheel-zoom-factor preference scales
+ * the exponent (1.0015^(delta·factor)), never the base: a base of
+ * 1.0015·factor would blow through the whole zoom range for any factor ≠ 1.
+ * Browser deltaY is positive for wheel-down (zoom out), the opposite sign
+ * of Qt's angleDelta, hence the negation.
+ */
+export function wheelZoomStep(deltaY: number, wheelZoomFactor = 1): number {
+  const clamped = Math.max(-480, Math.min(480, deltaY));
+  return Math.pow(1.0015, -clamped * wheelZoomFactor);
+}

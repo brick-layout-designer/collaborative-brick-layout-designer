@@ -99,12 +99,17 @@ describe('editorStore — selection', () => {
 describe('editorStore — zoom and pan', () => {
   beforeEach(resetStore);
 
-  it('setZoom clamps to [0.1, 8]', () => {
+  it('setZoom clamps to the desktop range [0.02, 40] (MapView.cpp:77-78)', () => {
     useEditorStore.getState().setZoom(0);
-    expect(useEditorStore.getState().zoom).toBe(0.1);
+    expect(useEditorStore.getState().zoom).toBe(0.02);
 
     useEditorStore.getState().setZoom(100);
-    expect(useEditorStore.getState().zoom).toBe(8);
+    expect(useEditorStore.getState().zoom).toBe(40);
+
+    useEditorStore.getState().setZoom(0.05);
+    expect(useEditorStore.getState().zoom).toBe(0.05);
+    useEditorStore.getState().setZoom(20);
+    expect(useEditorStore.getState().zoom).toBe(20);
 
     useEditorStore.getState().setZoom(2);
     expect(useEditorStore.getState().zoom).toBe(2);

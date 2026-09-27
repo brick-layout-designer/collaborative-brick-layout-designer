@@ -65,9 +65,10 @@ export function contentBoundsStuds(map: BbmMap, sidecar?: Sidecar | null): StudR
     }
   }
   for (const l of sidecar?.anchoredLabels ?? []) {
-    // Only World labels have a position independent of other content;
-    // anchored ones sit next to bricks already inside the box.
-    if (l.kind === 0) add(l.offset.x, l.offset.y);
+    // World, Group and Module labels sit at their offset as a world
+    // position (SceneBuilderSidecar.cpp:222-223); Brick labels ride on
+    // bricks already inside the box.
+    if (l.kind !== 1) add(l.offset.x, l.offset.y);
   }
   const venue = sidecar?.venue;
   if (venue) {

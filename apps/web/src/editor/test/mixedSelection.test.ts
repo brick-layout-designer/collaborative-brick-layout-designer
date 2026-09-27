@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { docToBbm, readSidecarFromDoc } from '@cld/ydoc';
 import type { AnchoredLabel } from '@cld/bbm';
+import type { BbmMap } from '@cld/model';
 import {
   addAnchoredLabel,
   addLinearRuler,
@@ -17,7 +18,14 @@ import {
   buildLabelIndex,
   clickAnno,
   deleteMixedSelection,
+  DEFAULT_LABEL_FONT,
   labelAnchorStuds,
+  labelFontFamily,
+  labelFontPx,
+  labelFontStyle,
+  labelOffsetDelta,
+  labelPlacement,
+  labelShapeStuds,
   labelsToOffset,
   mergeAnno,
   parseTextKey,
@@ -93,23 +101,105 @@ describe('selection helpers', () => {
   });
 });
 
+/** Map with one brick 'b' centred at (10, 20), 8×4 footprint, at `orientation`. */
+function rotatedMap(orientation: number): BbmMap {
+  const vertical = Math.abs(orientation % 180) === 90;
+  const w = vertical ? 4 : 8;
+  const h = vertical ? 8 : 4;
+  return {
+    layers: [{
+      type: 'brick', id: 'L', visible: true,
+      bricks: [{ id: 'b', orientation, myGroup: 'g', displayArea: { x: 10 - w / 2, y: 20 - h / 2, width: w, height: h } }],
+    }],
+  } as unknown as BbmMap;
+}
+
 describe('label geometry', () => {
-  it('anchors World labels at the origin and Brick labels at the brick centre', () => {
+  it('anchors attached Brick labels at the brick centre, everything else at the origin', () => {
     const { doc, brick } = seed();
     const map = docToBbm(doc);
     const index = buildLabelIndex(map, []);
     const [world, onBrick] = labels(doc);
     expect(labelAnchorStuds(world!, index)).toEqual({ x: 0, y: 0 });
     expect(labelAnchorStuds(onBrick!, index)).toEqual({ x: 4, y: 4 });
-    expect(labelAnchorStuds(label({ kind: 1, targetId: 'gone' }), index)).toBeNull();
+    // Desktop falls through to a world position when the brick is gone.
+    expect(labelAnchorStuds(label({ kind: 1, targetId: 'gone' }), index)).toEqual({ x: 0, y: 0 });
+    expect(labelPlacement(label({ kind: 1, targetId: 'gone', offset: { x: 3, y: 4 } }), index))
+      .toEqual({ x: 3, y: 4, rotation: 0 });
     void brick;
   });
 
-  it('skips labels whose anchor bricks all move with the selection', () => {
+  it('places Group and Module labels at their offset as a world position (no bbox anchor)', () => {
+    const index = buildLabelIndex(rotatedMap(0), [{ id: 'm', name: 'M', members: ['b'], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1] }]);
+    const group = label({ kind: 2, targetId: 'g', offset: { x: 5, y: 6 }, rot: 15 });
+    const mod = label({ kind: 3, targetId: 'm', offset: { x: -1, y: 2 } });
+    expect(labelPlacement(group, index)).toEqual({ x: 5, y: 6, rotation: 15 });
+    expect(labelPlacement(mod, index)).toEqual({ x: -1, y: 2, rotation: 0 });
+    // They don't ride along with their members either.
+    expect(labelsToOffset(['l'], [group], index, new Set(['b']))).toEqual(['l']);
+  });
+
+  it('rotates a Brick label offset and text with the brick (SceneBuilderSidecar.cpp:216-221)', () => {
+    const l = label({ kind: 1, targetId: 'b', offset: { x: 2, y: -2 }, rot: 10 });
+    const p0 = labelPlacement(l, buildLabelIndex(rotatedMap(0), []));
+    expect(p0).toEqual({ x: 12, y: 18, rotation: 10 });
+    const p90 = labelPlacement(l, buildLabelIndex(rotatedMap(90), []));
+    // (2, -2) turned 90° clockwise (y down) is (2, 2).
+    expect(p90.x).toBeCloseTo(12, 9);
+    expect(p90.y).toBeCloseTo(22, 9);
+    expect(p90.rotation).toBe(100);
+  });
+
+  it('maps a world drag back into the brick frame so the label lands where dropped', () => {
+    const l = label({ kind: 1, targetId: 'b', offset: { x: 2, y: -2 } });
+    const index = buildLabelIndex(rotatedMap(90), []);
+    const d = labelOffsetDelta(l, index, 3, 0);
+    expect(d.dx).toBeCloseTo(0, 9);
+    expect(d.dy).toBeCloseTo(-3, 9);
+    const moved = labelPlacement({ ...l, offset: { x: l.offset.x + d.dx, y: l.offset.y + d.dy } }, index);
+    const before = labelPlacement(l, index);
+    expect(moved.x - before.x).toBeCloseTo(3, 9);
+    expect(moved.y - before.y).toBeCloseTo(0, 9);
+    expect(labelOffsetDelta(label({ offset: { x: 0, y: 0 } }), index, 3, 1)).toEqual({ dx: 3, dy: 1 });
+  });
+
+  it('hit-tests the rotated label text, not its unrotated box', () => {
+    const index = buildLabelIndex(rotatedMap(90), []);
+    // 'Hello' 16 pt → 21.33 px tall, ~8 studs wide; on a 90° brick it runs downward from (12, 22).
+    const l = label({ id: 'x', kind: 1, targetId: 'b', offset: { x: 2, y: -2 } });
+    const shape = labelShapeStuds(l, index);
+    expect(shape[0]!.x).toBeCloseTo(12, 9);
+    const map = rotatedMap(90);
+    expect(annotationsInMarquee({ x0: 10, y0: 27, x1: 11.5, y1: 29 }, map, [l], [], 1).labels).toEqual(['x']);
+    expect(annotationsInMarquee({ x0: 15, y0: 21, x1: 19, y1: 23 }, map, [l], [], 1).labels).toEqual([]);
+  });
+
+  it('skips labels whose anchor brick moves with the selection', () => {
     const { doc, brick } = seed();
     const index = buildLabelIndex(docToBbm(doc), []);
     expect(labelsToOffset(['world', 'onBrick'], labels(doc), index, new Set([brick]))).toEqual(['world']);
     expect(labelsToOffset(['world', 'onBrick'], labels(doc), index, new Set())).toEqual(['world', 'onBrick']);
+  });
+});
+
+describe('label fonts (points, desktop default)', () => {
+  it('converts points to scene px the way QFont(family, int(pt)) lays out at 96 dpi', () => {
+    expect(labelFontPx(8.25)).toBeCloseTo((8 * 96) / 72, 9);
+    expect(labelFontPx(12)).toBe(16);
+    expect(labelFontPx(0.5)).toBe(12); // invalid size → QFont default 9 pt
+  });
+
+  it('defaults to 8.25 pt Microsoft Sans Serif with a web fallback stack', () => {
+    expect(DEFAULT_LABEL_FONT).toEqual({ family: 'Microsoft Sans Serif', size: 8.25, style: 'Regular' });
+    expect(labelFontFamily('Microsoft Sans Serif')).toBe('"Microsoft Sans Serif", Tahoma, "Segoe UI", Arial, sans-serif');
+    expect(labelFontFamily('')).toMatch(/^"Microsoft Sans Serif", /);
+    expect(labelFontFamily('Comic "Sans')).toMatch(/^"Comic Sans", "Microsoft Sans Serif", /);
+  });
+
+  it('writes C# FontStyle strings', () => {
+    expect(labelFontStyle(false, false)).toBe('Regular');
+    expect(labelFontStyle(true, false)).toBe('Bold');
+    expect(labelFontStyle(true, true)).toBe('Bold, Italic');
   });
 });
 

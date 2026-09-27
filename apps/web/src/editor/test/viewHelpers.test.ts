@@ -2,7 +2,7 @@
 // drop-target hint and header-dropdown placement.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { dropdownAnchor, dropTargetHint, viewCentreStuds } from '../viewHelpers';
+import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from '../viewHelpers';
 import { useEditorStore } from '../editorStore';
 
 describe('viewCentreStuds', () => {
@@ -69,5 +69,27 @@ describe('dropTargetHint store field', () => {
     expect(useEditorStore.getState().dropTargetHint).toBe('Drop onto: A (active layer)');
     st.setDropTargetHint(null);
     expect(useEditorStore.getState().dropTargetHint).toBeNull();
+  });
+});
+
+describe('wheelZoomStep (MapView.cpp:354-390)', () => {
+  it('is 1.0015^-deltaY at factor 1', () => {
+    expect(wheelZoomStep(-120)).toBeCloseTo(Math.pow(1.0015, 120), 10);
+    expect(wheelZoomStep(120)).toBeCloseTo(Math.pow(1.0015, -120), 10);
+  });
+
+  it('caps the delta at ±480 (~2× per event)', () => {
+    expect(wheelZoomStep(-5000)).toBeCloseTo(Math.pow(1.0015, 480), 10);
+    expect(wheelZoomStep(5000)).toBeCloseTo(Math.pow(1.0015, -480), 10);
+  });
+
+  it('scales the exponent, not the base, by the wheel-zoom factor (regression)', () => {
+    // The old pow(1.0015 * factor, -delta) gave 1.5^120 ≈ 1.4e21 for one
+    // notch at factor 1.5 — straight to the zoom limit.
+    const step = wheelZoomStep(-120, 1.5);
+    expect(step).toBeCloseTo(Math.pow(1.0015, 180), 10);
+    expect(step).toBeLessThan(1.4);
+    expect(wheelZoomStep(-120, 0.5)).toBeCloseTo(Math.pow(1.0015, 60), 10);
+    expect(wheelZoomStep(120, 2)).toBeGreaterThan(0.6);
   });
 });

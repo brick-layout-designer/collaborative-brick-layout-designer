@@ -51,6 +51,17 @@ describe('contentBoundsStuds', () => {
     expect(b.y + b.height).toBe(202);
   });
 
+  it('counts Group/Module labels at their world offset, not Brick labels', () => {
+    const doc = new Y.Doc();
+    const l = ensureBrickLayer(doc);
+    placeBrick(doc, l, { partNumber: 'p', x: 0, y: 0, width: 1, height: 1 });
+    const base = { font: { family: 'Arial', size: 10, style: '' }, color: { known: true, argb: 0, name: 'Black' }, rot: 0, minZoom: 0, text: 'x' };
+    addAnchoredLabel(doc, { ...base, id: 'g', kind: 2, targetId: 'grp', offset: { x: 40, y: 0 } });
+    addAnchoredLabel(doc, { ...base, id: 'm', kind: 3, targetId: 'mod', offset: { x: 0, y: 30 } });
+    addAnchoredLabel(doc, { ...base, id: 'b', kind: 1, targetId: 'x', offset: { x: 900, y: 900 } });
+    expect(contentBoundsStuds(docToBbm(doc), readSidecarFromDoc(doc))).toEqual({ x: 0, y: 0, width: 40, height: 30 });
+  });
+
   it('ignores hidden layers', () => {
     const doc = new Y.Doc();
     const l = ensureBrickLayer(doc);

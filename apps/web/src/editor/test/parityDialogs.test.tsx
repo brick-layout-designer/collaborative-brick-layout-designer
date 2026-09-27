@@ -92,6 +92,31 @@ describe('AddAnchoredLabelDialog', () => {
   });
 });
 
+describe('AddAnchoredLabelDialog — desktop font and kinds', () => {
+  it('defaults to 8.25 pt Microsoft Sans Serif, Regular, and accepts fractional points', () => {
+    const doc = createDefaultLayoutDoc();
+    render(<AddAnchoredLabelDialog doc={doc} defaultTargetId={null} viewCentre={{ x: 0, y: 0 }} onClose={() => {}} />);
+    expect((screen.getAllByRole('textbox')[1] as HTMLInputElement).value).toBe('Microsoft Sans Serif');
+    expect(numberInputs()[0]!.value).toBe('8.25');
+    fireEvent.change(numberInputs()[0]!, { target: { value: '10.5' } });
+    fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: 'Pt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Label' }));
+    expect(labels(doc)[0]!.font).toEqual({ family: 'Microsoft Sans Serif', size: 10.5, style: 'Regular' });
+  });
+
+  it('editing a Group label keeps its kind and target', () => {
+    const doc = createDefaultLayoutDoc();
+    const group: AnchoredLabel = { ...KNOWN_RED, id: '88', kind: 2, targetId: 'grp' };
+    addAnchoredLabel(doc, group);
+    render(<AddAnchoredLabelDialog doc={doc} defaultTargetId={null} initialLabel={group} onClose={() => {}} />);
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('2');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Bold' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Italic' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(labels(doc)[0]).toMatchObject({ kind: 2, targetId: 'grp', font: { style: 'Bold, Italic' } });
+  });
+});
+
 describe('FindDialog', () => {
   function seeded(): Y.Doc {
     const doc = createDefaultLayoutDoc();

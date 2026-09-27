@@ -10,18 +10,20 @@
 //   - rot: rotation in degrees
 //   - minZoom: optional visibility threshold
 //
-// World and Brick anchors position the label directly.
-// Group anchors target a shared `myGroup` id — we compute the AABB of
-// all bricks in that group and draw a dashed leader from its centre.
-// Module anchors target a sidecar module id — same AABB approach.
+// Only Brick anchors attach the label: desktop makes it a child of the
+// brick item, so the offset is in the brick's rotated frame and the text
+// turns with the brick. World, Group and Module labels — and a Brick
+// label whose brick is gone — sit at their offset as a world position
+// (SceneBuilderSidecar.cpp:214-224). Font sizes are points
+// (see labelFontPx).
 
-import { Group, Line, Text } from 'react-konva';
+import { Group, Text } from 'react-konva';
 import type { BbmMap } from '@cld/model';
 import type { AnchoredLabel, SidecarModule } from '@cld/bbm';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { studToPx } from './coords';
 import { labelColorHex } from '../labelColor';
-import { buildLabelIndex, labelAnchorStuds } from '../mixedSelection';
+import { buildLabelIndex, labelFontFamily, labelFontPx, labelPlacement } from '../mixedSelection';
 import type { AnnoDragHandlers } from './groupDragNodes';
 
 interface Props {
@@ -62,26 +64,16 @@ export function AnchoredLabels({
     <Group>
       {labels.map((label) => {
         if (label.minZoom > 0 && zoom < label.minZoom) return null;
-        const fontSize = Math.max(1, Math.round(label.font.size));
+        const fontSize = labelFontPx(label.font.size);
         const style = (label.font.style ?? '').toLowerCase();
         const isBold = style.includes('bold');
         const isItalic = style.includes('italic');
         const fontStyle =
           isBold && isItalic ? 'bold italic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
         const fill = argbToCss(label.color);
-
-        // Anchor: origin for World labels, the brick centre for Brick
-        // labels, the member AABB centre (leader-line end) for Group /
-        // Module labels. A lost anchor hides the label.
-        const anchor = labelAnchorStuds(label, index);
-        if (!anchor) return null;
-        const anchorPxX = anchor.x * studToPx();
-        const anchorPxY = anchor.y * studToPx();
-        const leaderTargetPx =
-          label.kind === 2 || label.kind === 3 ? { x: anchorPxX, y: anchorPxY } : null;
-
-        const x = anchorPxX + label.offset.x * studToPx();
-        const y = anchorPxY + label.offset.y * studToPx();
+        const place = labelPlacement(label, index);
+        const x = studToPx(place.x);
+        const y = studToPx(place.y);
 
         const groupProps = {
           ...(onDoubleClick ? { onDblClick: () => onDoubleClick(label) } : {}),
@@ -109,25 +101,15 @@ export function AnchoredLabels({
         const isSelected = !!selectedIds?.has(label.id);
         return (
           <Group key={label.id} name={`label-${label.id}`} {...groupProps}>
-            {leaderTargetPx && (
-              <Line
-                points={[leaderTargetPx.x, leaderTargetPx.y, x, y]}
-                stroke={fill}
-                strokeWidth={1}
-                dash={[4, 4]}
-                listening={false}
-                perfectDrawEnabled={false}
-              />
-            )}
             <Text
               x={x}
               y={y}
               text={label.text}
-              fontFamily={label.font.family || 'Arial'}
+              fontFamily={labelFontFamily(label.font.family)}
               fontSize={fontSize}
               fontStyle={fontStyle}
               fill={fill}
-              rotation={label.rot}
+              rotation={place.rotation}
               listening={!!onDoubleClick || !!onSelect || !!drag}
               {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
               perfectDrawEnabled={false}

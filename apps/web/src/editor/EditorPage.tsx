@@ -8,7 +8,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useDocMap, projectDoc } from './useDocMap';
-import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, type AnnoSelection } from './editorStore';
+import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -93,7 +93,7 @@ import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
 import { EXPORT_HIDE, exportSceneSize, renderMapToCanvas } from './exportRender';
-import { dropdownAnchor, dropTargetHint, viewCentreStuds } from './viewHelpers';
+import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -667,7 +667,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               ? (useEditorStore.getState().selection[0] ?? null)
               : null
           }
-          viewCentre={viewCentreStuds(viewport)}
+          viewCentre={canvasActionsRef.current?.viewCentre() ?? viewCentreStuds(viewport)}
           onClose={() => setShowAddLabel(false)}
         />
       )}
@@ -1045,6 +1045,15 @@ function Canvas({
     return m;
   }, [catalog.data]);
 
+  /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
+  function brickSpriteStuds(b: { partNumber: string }): { w: number; h: number } | null {
+    const meta = partsByKey.get(b.partNumber.toLowerCase());
+    const sprite = meta ? getSpriteSync(spriteUrlFor(meta)) : null;
+    if (!meta || !sprite) return null;
+    const pxPerStud = meta.pxPerStud && meta.pxPerStud > 0 ? meta.pxPerStud : 8;
+    return { w: sprite.naturalWidth / pxPerStud, h: sprite.naturalHeight / pxPerStud };
+  }
+
   // Drag-from-Parts-panel → drop on canvas. The Stage's container <div>
   // receives native HTML5 drag events. We accept the custom MIME type
   // emitted by PartsPanel, render a live ghost via `dropPart` while
@@ -1266,7 +1275,7 @@ function Canvas({
     if (wPx <= 0 || hPx <= 0) return false;
     const PAD = 1.1;
     const fitZoom = Math.min(width / (wPx * PAD), height / (hPx * PAD));
-    const z = Math.max(0.1, Math.min(8, fitZoom));
+    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
     const cxPx = ((minX + maxX) / 2) * 8;
     const cyPx = ((minY + maxY) / 2) * 8;
     useEditorStore.setState({
@@ -1826,7 +1835,8 @@ function Canvas({
     //
     // Hidden layers are skipped so the user can't accidentally select
     // bricks they can't see; the brick z-order across layers doesn't
-    // affect the result because the marquee is purely AABB-based.
+    // affect the result. Each brick is tested by its rotated shape, like
+    // Qt's IntersectsItemShape rubber band (render/marqueeMath.ts).
     //
     // Rulers, anchored labels and text cells in the band join the
     // selection too (mixed selection, like desktop's scene selection).
@@ -1834,7 +1844,7 @@ function Canvas({
       const ids: string[] = [];
       for (const layer of map.layers) {
         if (layer.type !== 'brick' || !layer.visible) continue;
-        ids.push(...bricksInMarquee(finalMarquee, layer.bricks));
+        ids.push(...bricksInMarquee(finalMarquee, layer.bricks, brickSpriteStuds));
       }
       const sc = readSidecarFromDoc(doc);
       let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom);
@@ -2204,6 +2214,13 @@ function Canvas({
     sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
   };
 
+  // The Stage's own size (not a window estimate): World labels and
+  // Insert Text land under its centre (mapToScene(viewport centre)).
+  function stageCentreStuds(): { x: number; y: number } {
+    const st = stageRef.current;
+    return viewCentreStuds({ width: st?.width() ?? width, height: st?.height() ?? height });
+  }
+
   canvasActionsRef.current = {
     cut: () => void cutSelection(),
     copy: () => void copySelection(),
@@ -2229,9 +2246,10 @@ function Canvas({
     // Insert ▸ Text... at the view centre (MapView::addTextAtViewCenter).
     insertText: () => {
       if (isViewer) return;
-      setAddTextAt(viewCentreStuds({ width, height }));
+      setAddTextAt(stageCentreStuds());
       setShowAddText(true);
     },
+    viewCentre: () => stageCentreStuds(),
   };
 
   if (!map) return <EmptyDoc />;
@@ -2253,8 +2271,8 @@ function Canvas({
       onWheel={(e) => {
         e.evt.preventDefault();
         // Wheel = zoom only, anchored under the cursor. Mirrors desktop
-        // MapView::wheelEvent (MapView.cpp:351-385) + AnchorUnderMouse
-        // (MapView.cpp:89): step is 1.0015^deltaY clamped to ±480.
+        // MapView::wheelEvent (MapView.cpp:354-390) + AnchorUnderMouse
+        // (MapView.cpp:89): see wheelZoomStep.
         //
         // High-res trackpads emit wheel events at >60 Hz; processing
         // each one synchronously with a Yjs+catalog re-projection makes
@@ -2276,10 +2294,8 @@ function Canvas({
           const a = zoomAccumRef.current;
           a.raf = null;
           if (a.deltaY === 0) return;
-          const clamped = Math.max(-480, Math.min(480, a.deltaY));
+          const step = wheelZoomStep(a.deltaY, useEditorStore.getState().wheelZoomFactor);
           a.deltaY = 0;
-          const wzf = useEditorStore.getState().wheelZoomFactor;
-          const step = Math.pow(1.0015 * wzf, -clamped);
           // Read the live zoom from the store at apply-time, not from
           // the closure — by now multiple frames may have elapsed.
           const live = useEditorStore.getState().zoom;
@@ -3878,4 +3894,6 @@ interface CanvasActions {
   zoom: (factor: number) => void;
   fit: () => void;
   insertText: () => void;
+  /** World-stud position under the centre of the canvas stage. */
+  viewCentre: () => { x: number; y: number };
 }
