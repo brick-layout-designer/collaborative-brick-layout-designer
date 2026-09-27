@@ -58,16 +58,39 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
 
         // role.role is non-null here because hasAtLeast(role.role, 'viewer')
         // succeeded above. Cast for the type system.
-        const detach = await attachWsHandlers(ws, layoutId, userId, role.role!);
-
-        const cleanup = async () => {
-          await detach();
+        let detach: () => Promise<void>;
+        try {
+          detach = await attachWsHandlers(ws, layoutId, userId, role.role!);
+        } catch (err) {
           const n = (userConnections.get(userId) ?? 1) - 1;
           if (n <= 0) userConnections.delete(userId);
           else userConnections.set(userId, n);
+          throw err;
+        }
+
+        // A socket can emit 'error' AND 'close' (e.g. an invalid UTF-8
+        // text frame), and may already be closed if the client went away
+        // while we were hydrating. Run the cleanup exactly once either way:
+        // a double detach used to double-decrement the connection count and
+        // arm a second idle timer that destroyed the doc under a live client.
+        let cleanedUp = false;
+        const cleanup = async () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          const n = (userConnections.get(userId) ?? 1) - 1;
+          if (n <= 0) userConnections.delete(userId);
+          else userConnections.set(userId, n);
+          try {
+            await detach();
+          } catch (err) {
+            app.log.error({ err, layoutId }, 'ws detach failed');
+          }
         };
         ws.on('close', () => void cleanup());
         ws.on('error', () => void cleanup());
+        if (ws.readyState === ws.CLOSING || ws.readyState === ws.CLOSED) {
+          void cleanup();
+        }
       } catch (err) {
         app.log.error({ err }, 'ws upgrade failed');
         try {

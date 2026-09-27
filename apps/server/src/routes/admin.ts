@@ -21,6 +21,7 @@ import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../a
 import { invalidateTransporter } from '../email/transporter.js';
 import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLayoutId } from './adminLayoutStats.js';
 import { escapeLike } from '../utils/validate.js';
+import { docHub } from '../ws/docHub.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
@@ -245,7 +246,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.users.id, req.params.id))
       .get();
     if (!target) return reply.code(404).send({ error: 'not_found' });
+    // Their personal layouts go with them (ON DELETE CASCADE); remember
+    // which so open editor sockets on those layouts can be shut.
+    const ownedLayouts = await db
+      .select({ id: schema.layouts.id })
+      .from(schema.layouts)
+      .where(eq(schema.layouts.ownerUserId, target.id));
     await db.delete(schema.users).where(eq(schema.users.id, target.id));
+    await docHub.closeMany(ownedLayouts.map((l) => l.id));
     // Cascade handles sessions, oauth_accounts, org_members,
     // owner_user_id columns (SET NULL or CASCADE per schema).
     await writeAuditEvent({
@@ -381,7 +389,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const me = requireGlobalAdmin(req);
     const target = await db.select().from(schema.orgs).where(eq(schema.orgs.id, req.params.id)).get();
     if (!target) return reply.code(404).send({ error: 'not_found' });
+    const orgLayouts = await db
+      .select({ id: schema.layouts.id })
+      .from(schema.layouts)
+      .where(eq(schema.layouts.ownerOrgId, target.id));
     await db.delete(schema.orgs).where(eq(schema.orgs.id, target.id));
+    await docHub.closeMany(orgLayouts.map((l) => l.id));
     await writeAuditEvent({
       resourceKind: 'org',
       resourceId: target.id,
@@ -453,6 +466,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .get();
     if (!target) return reply.code(404).send({ error: 'not_found' });
     await db.delete(schema.layouts).where(eq(schema.layouts.id, target.id));
+    await docHub.close(target.id);
     await writeAuditEvent({
       layoutId: target.id,
       userId: me.id,

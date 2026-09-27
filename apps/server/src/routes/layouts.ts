@@ -12,6 +12,7 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
+import { docHub } from '../ws/docHub.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -226,6 +227,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!hasAtLeast(role.role, 'owner')) return reply.code(403).send({ error: 'forbidden' });
 
     await db.delete(schema.layouts).where(eq(schema.layouts.id, req.params.id));
+    // Shut any open editor sockets; otherwise their next update hits a
+    // foreign-key failure against the deleted row.
+    await docHub.close(req.params.id);
     return { ok: true };
   });
 
