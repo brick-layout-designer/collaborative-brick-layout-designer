@@ -47,12 +47,13 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   // ---- list modules the user can see -------------------------------------
   app.get('/api/modules', async (req) => {
     const user = requireUser(req);
+    // Metadata columns only — never the doc blobs.
     const personal = await db
-      .select()
+      .select(moduleListColumns)
       .from(schema.modules)
       .where(eq(schema.modules.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ module: schema.modules })
+      .select({ module: moduleListColumns })
       .from(schema.orgMembers)
       .innerJoin(
         schema.modules,
@@ -60,7 +61,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ module: schema.modules })
+      .select({ module: moduleListColumns })
       .from(schema.moduleCollaborators)
       .innerJoin(
         schema.modules,
@@ -94,7 +95,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
     const module = await db
-      .select()
+      .select(moduleListColumns)
       .from(schema.modules)
       .where(eq(schema.modules.id, req.params.id))
       .get();
@@ -367,14 +368,30 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
-function toListItem(m: typeof schema.modules.$inferSelect) {
+const moduleListColumns = {
+  id: schema.modules.id,
+  title: schema.modules.title,
+  ownerUserId: schema.modules.ownerUserId,
+  ownerOrgId: schema.modules.ownerOrgId,
+  docVersion: schema.modules.docVersion,
+  hasSidecar: sql<number>`${schema.modules.sidecarSnapshot} IS NOT NULL`,
+  createdAt: schema.modules.createdAt,
+  updatedAt: schema.modules.updatedAt,
+};
+
+function toListItem(
+  m: Pick<
+    typeof schema.modules.$inferSelect,
+    'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'createdAt' | 'updatedAt'
+  > & { hasSidecar: number },
+) {
   return {
     id: m.id,
     title: m.title,
     ownerUserId: m.ownerUserId,
     ownerOrgId: m.ownerOrgId,
     docVersion: m.docVersion,
-    hasSidecar: m.sidecarSnapshot !== null,
+    hasSidecar: Boolean(m.hasSidecar),
     createdAt: m.createdAt.getTime(),
     updatedAt: m.updatedAt.getTime(),
   };

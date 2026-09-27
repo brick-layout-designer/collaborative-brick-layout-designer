@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import * as Y from 'yjs';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { readBbm, readSidecar, writeBbm, writeSidecar } from '@cld/bbm';
 import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm, seedFromSidecar } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
@@ -55,18 +55,21 @@ export async function layoutRoutes(app: FastifyInstance) {
     //   3. layout_collaborators row         (explicitly shared)
     // Dedupe by id since 2 and 3 can overlap (an org member who also has
     // an explicit per-user share). Set keyed by id wins.
+    //
+    // Metadata columns only: `select()` of whole rows pulled every
+    // doc_snapshot / sidecar blob into memory just to build the list.
     const personal = await db
-      .select()
+      .select(layoutListColumns)
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ layout: schema.layouts, orgName: schema.orgs.name, orgSlug: schema.orgs.slug })
+      .select({ layout: layoutListColumns, orgName: schema.orgs.name, orgSlug: schema.orgs.slug })
       .from(schema.orgMembers)
       .innerJoin(schema.layouts, eq(schema.layouts.ownerOrgId, schema.orgMembers.orgId))
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ layout: schema.layouts })
+      .select({ layout: layoutListColumns })
       .from(schema.layoutCollaborators)
       .innerJoin(schema.layouts, eq(schema.layouts.id, schema.layoutCollaborators.layoutId))
       .where(eq(schema.layoutCollaborators.userId, user.id));
@@ -98,7 +101,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
     const layout = await db
-      .select()
+      .select(layoutListColumns)
       .from(schema.layouts)
       .where(eq(schema.layouts.id, req.params.id))
       .get();
@@ -587,7 +590,27 @@ export async function layoutRoutes(app: FastifyInstance) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toListItem(l: typeof schema.layouts.$inferSelect, ownerOrgName?: string, ownerOrgSlug?: string) {
+/** Columns for list/detail responses — everything except the doc blobs. */
+export const layoutListColumns = {
+  id: schema.layouts.id,
+  title: schema.layouts.title,
+  ownerUserId: schema.layouts.ownerUserId,
+  ownerOrgId: schema.layouts.ownerOrgId,
+  createdAt: schema.layouts.createdAt,
+  updatedAt: schema.layouts.updatedAt,
+  expiresAt: schema.layouts.expiresAt,
+  docVersion: schema.layouts.docVersion,
+  publicShareToken: schema.layouts.publicShareToken,
+  hasSidecar: sql<number>`${schema.layouts.sidecarSnapshot} IS NOT NULL`,
+};
+
+type LayoutListRow = {
+  [K in keyof typeof layoutListColumns]: K extends 'hasSidecar'
+    ? number
+    : (typeof schema.layouts.$inferSelect)[K & keyof typeof schema.layouts.$inferSelect];
+};
+
+function toListItem(l: LayoutListRow, ownerOrgName?: string, ownerOrgSlug?: string) {
   return {
     id: l.id,
     title: l.title,
@@ -599,7 +622,7 @@ function toListItem(l: typeof schema.layouts.$inferSelect, ownerOrgName?: string
     updatedAt: l.updatedAt,
     expiresAt: l.expiresAt,
     docVersion: l.docVersion,
-    hasSidecar: l.sidecarSnapshot !== null,
+    hasSidecar: Boolean(l.hasSidecar),
     publicShareToken: l.publicShareToken ?? null,
   };
 }
