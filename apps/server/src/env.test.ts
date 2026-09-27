@@ -85,12 +85,12 @@ describe('TRUST_PROXY', () => {
     expect((await loadEnv()).trustProxy).toBe(false);
   });
 
-  it('parses booleans, hop counts and address lists', async () => {
+  it('parses booleans and address lists, and rejects hop counts', async () => {
     const { parseTrustProxy } = await import('./env.js');
     expect(parseTrustProxy('false')).toBe(false);
     expect(parseTrustProxy('0')).toBe(false);
     expect(parseTrustProxy('true')).toBe(true);
-    expect(parseTrustProxy('2')).toBe(2);
+    expect(() => parseTrustProxy('2')).toThrow(/hop counts/);
     expect(parseTrustProxy('10.0.0.0/8, 127.0.0.1')).toBe('10.0.0.0/8, 127.0.0.1');
   });
 
@@ -99,7 +99,7 @@ describe('TRUST_PROXY', () => {
     const { parseTrustProxy } = await import('./env.js');
     for (const [setting, expected] of [
       ['false', '127.0.0.1'],
-      ['1', '203.0.113.9'],
+      ['127.0.0.1', '203.0.113.9'],
     ] as const) {
       const app = Fastify({ trustProxy: parseTrustProxy(setting) });
       app.get('/ip', async (req) => ({ ip: req.ip }));
