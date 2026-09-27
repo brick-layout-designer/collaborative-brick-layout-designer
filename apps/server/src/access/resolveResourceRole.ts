@@ -77,10 +77,6 @@ async function loadCustomPart(userId: string, id: string): Promise<ResourceTable
     .where(eq(schema.customParts.id, id))
     .get();
   if (!row) return null;
-  // Global parts are visible (viewer) to every authenticated user.
-  if (row.isGlobal) {
-    return { ownerUserId: userId, ownerOrgId: null, collaboratorRole: null };
-  }
   const collab = await db
     .select({ role: schema.customPartCollaborators.role })
     .from(schema.customPartCollaborators)
@@ -91,10 +87,15 @@ async function loadCustomPart(userId: string, id: string): Promise<ResourceTable
       ),
     )
     .get();
+  // Global parts are visible (viewer) to every authenticated user. That
+  // is a floor, not an ownership grant: the real owner / org / explicit
+  // collaborator rows still decide who can edit or delete. (Returning the
+  // caller as `ownerUserId` here once made every user "owner" of every
+  // global part.)
   return {
     ownerUserId: row.ownerUserId,
     ownerOrgId: row.ownerOrgId,
-    collaboratorRole: (collab?.role as Role) ?? null,
+    collaboratorRole: strongerOf((collab?.role as Role) ?? null, row.isGlobal ? 'viewer' : null),
   };
 }
 
