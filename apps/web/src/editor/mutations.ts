@@ -1283,6 +1283,31 @@ export function editBrick(
 }
 
 /**
+ * Origin for UI-state writes that must sync and persist but are not
+ * user edits, so the undo manager (tracking LOCAL_ORIGIN only) skips them.
+ */
+export const UI_STATE_ORIGIN = Symbol('cld-ui-state-origin');
+
+/**
+ * Persist the grab anchor: the connection the user clicked becomes the
+ * brick's active connection point. Desktop `captureGrabAnchor` mutates
+ * `activeConnectionPointIndex` in place without an undo command
+ * (MapViewDrag.cpp:186-216) and BlueBrick saves it, so this writes under
+ * UI_STATE_ORIGIN (synced, saved, not on the undo stack). No-op when
+ * the value is unchanged.
+ */
+export function setActiveConnectionPoint(
+  doc: Y.Doc,
+  layerId: string,
+  brickId: string,
+  index: number,
+): void {
+  const yBrick = findBrick(doc, layerId, brickId);
+  if (!yBrick || yBrick.get('activeConnectionPointIndex') === index) return;
+  doc.transact(() => yBrick.set('activeConnectionPointIndex', index), UI_STATE_ORIGIN);
+}
+
+/**
  * Bring-to-front / send-to-back — port of desktop's
  * `ReorderBricksCommand` (EditCommands.cpp). Repositions every brick in
  * `brickIds` within the layer's `bricks` Y.Array so it sits at the

@@ -4,6 +4,7 @@ import type { PartWire } from '../../api';
 import {
   connectionSnapReach,
   liveDragSnap,
+  nearestConnectionIndex,
   rotationAlignedCentre,
   snapPlacement,
   snapToAnchorBrick,
@@ -496,5 +497,86 @@ describe('rotationAlignedCentre', () => {
     const c = rotationAlignedCentre(10, 10, 4, 0, 90);
     expect(c.x).toBeCloseTo(10);
     expect(c.y).toBeCloseTo(6);
+  });
+});
+
+// ---- grab anchor (MapViewDrag.cpp:60-217) ----------------------------------
+
+describe('nearestConnectionIndex', () => {
+  const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+  const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+
+  it('picks the connection nearest the click', () => {
+    const b = makeBrick({ x: 0, y: 0, w: 8, h: 8 });
+    expect(nearestConnectionIndex(b, track, 7, 4)).toBe(1);
+    expect(nearestConnectionIndex(b, track, 1, 4)).toBe(0);
+  });
+
+  it('follows the brick rotation', () => {
+    // At 90° local (4,0) sits below the centre.
+    const b = makeBrick({ x: 0, y: 0, w: 8, h: 8, orientation: 90 });
+    expect(nearestConnectionIndex(b, track, 4, 7)).toBe(1);
+    expect(nearestConnectionIndex(b, track, 4, 1)).toBe(0);
+  });
+
+  it('prefers a free connection over a nearer linked one', () => {
+    const b = makeBrick({ connexions: [{ id: 'c0', linkedTo: 'other' }, { id: 'c1', linkedTo: '' }] });
+    expect(nearestConnectionIndex(b, track, 1, 4)).toBe(1);
+  });
+
+  it('falls back to the nearest connection when every end is linked', () => {
+    const b = makeBrick({ connexions: [{ id: 'c0', linkedTo: 'a' }, { id: 'c1', linkedTo: 'b' }] });
+    expect(nearestConnectionIndex(b, track, 1, 4)).toBe(0);
+  });
+
+  it('returns -1 without connections or metadata', () => {
+    expect(nearestConnectionIndex(makeBrick(), makePart(), 0, 0)).toBe(-1);
+    expect(nearestConnectionIndex(makeBrick(), undefined, 0, 0)).toBe(-1);
+  });
+});
+
+describe('liveDragSnap — grab anchor lead', () => {
+  const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+  const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+  const partsByKey = new Map<string, PartWire>([['test.0', track]]);
+  // A: centre (-8,4), free conn (-4,4)@0. B: centre (14,4), free conn (10,4)@180.
+  const map = brickLayerMap([
+    makeBrick({ id: 'a', x: -12, y: 0, w: 8, h: 8 }),
+    makeBrick({ id: 'b', x: 10, y: 0, w: 8, h: 8 }),
+  ]);
+  const base = {
+    part: track, movingId: 'd', movingLinks: [],
+    centreX: 0.5, centreY: 4, mouseStudX: 0.5, mouseStudY: 4, orientation: 0,
+  };
+
+  it('without a lead the smallest translation wins (left end)', () => {
+    const r = liveDragSnap({ ...base, snapStepStuds: 8 }, map, partsByKey);
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.centreX).toBeCloseTo(0);
+  });
+
+  it('the grabbed connection leads when it has a target in reach', () => {
+    const r = liveDragSnap({ ...base, snapStepStuds: 8, leadConnIndex: 1 }, map, partsByKey);
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.ringStudX).toBeCloseTo(10);
+    expect(r.centreX).toBeCloseTo(6);
+  });
+
+  it('falls back to the other connections when the lead has nothing in reach', () => {
+    const r = liveDragSnap({ ...base, snapStepStuds: 1, leadConnIndex: 1 }, map, partsByKey);
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.ringStudX).toBeCloseTo(-4);
+    expect(r.centreX).toBeCloseTo(0);
+  });
+
+  it('is ignored for a multi-brick drag', () => {
+    const r = liveDragSnap(
+      {
+        ...base, snapStepStuds: 8, leadConnIndex: 1,
+        siblings: [{ id: 'sib', part: undefined, links: [], offsetX: 0, offsetY: 40, orientation: 0 }],
+      },
+      map, partsByKey,
+    );
+    expect(r.ringStudX).toBeCloseTo(-4);
   });
 });
