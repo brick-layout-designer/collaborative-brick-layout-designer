@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createWriteStream, createReadStream, existsSync } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, rename, unlink } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
@@ -33,6 +33,9 @@ interface CreateLayoutBody {
 interface PatchLayoutBody {
   title?: string;
 }
+
+/** Background-image file extensions, in the order GET probes them. */
+const BG_EXTS = ['png', 'jpg', 'gif', 'webp'] as const;
 
 export async function layoutRoutes(app: FastifyInstance) {
   // Accept raw octet-stream bodies (binary Y.Doc snapshots). Without this,
@@ -508,15 +511,35 @@ export async function layoutRoutes(app: FastifyInstance) {
       await mkdir(bgDir, { recursive: true });
       const filename = `${layoutId}.${ext}`;
       const dest = join(bgDir, filename);
-      // @types/node 26's PipelineSource requires an async iterator
-      // matching ReadableStream's exactOptionalPropertyTypes-aware
-      // shape, which even Node's own `Readable` class doesn't
-      // structurally satisfy in these types — a type-declaration gap,
-      // not a real behavior mismatch (Busboy's file stream is genuinely
-      // a valid pipeline source at runtime). `any` is the least-bad
-      // escape hatch until upstream fixes the declaration.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await pipeline(data.file as any, createWriteStream(dest));
+      // Stream into a temp file and only rename over the real one once
+      // the whole upload arrived: writing to `dest` directly truncated
+      // the existing image before an oversized upload was rejected.
+      const tmp = join(bgDir, `${layoutId}.${randomUUID()}.upload`);
+      try {
+        // @types/node 26's PipelineSource requires an async iterator
+        // matching ReadableStream's exactOptionalPropertyTypes-aware
+        // shape, which even Node's own `Readable` class doesn't
+        // structurally satisfy in these types — a type-declaration gap,
+        // not a real behavior mismatch (Busboy's file stream is genuinely
+        // a valid pipeline source at runtime). `any` is the least-bad
+        // escape hatch until upstream fixes the declaration.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await pipeline(data.file as any, createWriteStream(tmp));
+        if (data.file.truncated) {
+          await unlink(tmp).catch(() => {});
+          return reply.code(413).send({ error: 'file_too_large' });
+        }
+        await rename(tmp, dest);
+      } catch (err) {
+        await unlink(tmp).catch(() => {});
+        throw err;
+      }
+      // An image of a different type would otherwise shadow the new one
+      // (the GET handler serves the first extension it finds).
+      for (const other of BG_EXTS) {
+        if (other === ext) continue;
+        await unlink(join(bgDir, `${layoutId}.${other}`)).catch(() => {});
+      }
       const url = `/api/layouts/${layoutId}/background-image`;
       return { url };
     },
@@ -534,7 +557,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
-      for (const ext of ['png', 'jpg', 'gif', 'webp']) {
+      for (const ext of BG_EXTS) {
         const p = join(bgDir, `${layoutId}.${ext}`);
         if (existsSync(p)) {
           const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
@@ -559,9 +582,8 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
 
       const bgDir = join(dirname(env.dbPath), 'bgimages');
-      for (const ext of ['png', 'jpg', 'gif', 'webp']) {
-        const p = join(bgDir, `${layoutId}.${ext}`);
-        if (existsSync(p)) { await unlink(p); break; }
+      for (const ext of BG_EXTS) {
+        await unlink(join(bgDir, `${layoutId}.${ext}`)).catch(() => {});
       }
       return { ok: true };
     },
