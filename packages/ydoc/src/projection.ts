@@ -47,6 +47,7 @@ import type {
   LayerGrid,
   LayerRuler,
   LayerText,
+  PointF,
   RectangleF,
   RulerItem,
   TextCell,
@@ -260,7 +261,7 @@ function writeLayerGrid(layer: LayerGrid, y: Y.Map<unknown>): void {
   y.set('cellIndexColor', layer.cellIndexColor);
   y.set('cellIndexColumnType', layer.cellIndexColumnType);
   y.set('cellIndexRowType', layer.cellIndexRowType);
-  y.set('cellIndexCorner', layer.cellIndexCorner);
+  y.set('cellIndexCorner', { x: layer.cellIndexCorner.x, y: layer.cellIndexCorner.y });
 }
 
 function writeLayerBrick(layer: LayerBrick, y: Y.Map<unknown>): void {
@@ -391,8 +392,26 @@ function readLayerGrid(y: Y.Map<unknown>, c: CommonFields): LayerGrid {
     cellIndexColor: requireScalar(y, 'cellIndexColor') as ColorSpec,
     cellIndexColumnType: requireScalar(y, 'cellIndexColumnType') as string,
     cellIndexRowType: requireScalar(y, 'cellIndexRowType') as string,
-    cellIndexCorner: requireScalar(y, 'cellIndexCorner') as string,
+    cellIndexCorner: readCellIndexCorner(y.get('cellIndexCorner')),
   };
+}
+
+/**
+ * `cellIndexCorner` is an integer {x, y} point. Docs persisted before that
+ * fix hold a string instead (the reader kept only the element's
+ * whitespace text, dropping its <X>/<Y> children; new docs were seeded
+ * with ''). The original coordinates are unrecoverable from such a doc,
+ * so fall back to desktop's default {0, 0} (LayerGrid.h) — which is also
+ * the value in every BlueBrick file we've seen.
+ */
+function readCellIndexCorner(v: unknown): PointF {
+  if (v && typeof v === 'object') {
+    const p = v as Partial<PointF>;
+    const x = typeof p.x === 'number' && Number.isFinite(p.x) ? p.x : 0;
+    const y = typeof p.y === 'number' && Number.isFinite(p.y) ? p.y : 0;
+    return { x, y };
+  }
+  return { x: 0, y: 0 };
 }
 
 function readLayerBrick(y: Y.Map<unknown>, c: CommonFields, readBrick: BrickReader): LayerBrick {

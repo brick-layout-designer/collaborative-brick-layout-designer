@@ -70,6 +70,67 @@ describe('writeSidecar', () => {
   });
 });
 
+describe('backgroundImage', () => {
+  it('maps the desktop shape {path, rect:[x,y,w,h]} to the web shape', () => {
+    // Shape written by desktop SidecarIO.cpp writeSidecar.
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      bbmHashSha256: '',
+      backgroundImage: { opacity: 0.35, path: '/home/me/hall.png', rect: [-10, 20.5, 300, 150] },
+    });
+    const parsed = readSidecar(raw);
+    expect(parsed.backgroundImage).toEqual({
+      url: '',
+      path: '/home/me/hall.png',
+      opacity: 0.35,
+      rect: { x: -10, y: 20.5, w: 300, h: 150 },
+    });
+    expect(parsed.extras).toBeUndefined();
+  });
+
+  it('defaults opacity to 0.5 and omits rect when absent (desktop defaults)', () => {
+    const parsed = readSidecar(
+      JSON.stringify({ schemaVersion: 1, backgroundImage: { path: 'bg.jpg' } }),
+    );
+    expect(parsed.backgroundImage).toEqual({ url: '', path: 'bg.jpg', opacity: 0.5 });
+  });
+
+  it('reads the web shape {url, rect:{x,y,w,h}}', () => {
+    const bg = { url: '/api/layouts/L1/background-image', opacity: 0.8, rect: { x: 1, y: 2, w: 3, h: 4 } };
+    const parsed = readSidecar(JSON.stringify({ schemaVersion: 1, backgroundImage: bg }));
+    expect(parsed.backgroundImage).toEqual(bg);
+  });
+
+  it('writes backgroundImage (previously dropped) in a shape both apps read', () => {
+    const bg = { url: '/api/layouts/L1/background-image', opacity: 0.8, rect: { x: 1, y: 2, w: 3, h: 4 } };
+    const written = writeSidecar({ ...baseSidecar, backgroundImage: bg });
+    const json = JSON.parse(written) as { backgroundImage: { rect: unknown } };
+    // Desktop only understands a 4-element rect array.
+    expect(json.backgroundImage.rect).toEqual([1, 2, 3, 4]);
+    expect(readSidecar(written).backgroundImage).toEqual(bg);
+  });
+
+  it('round-trips a desktop sidecar without losing path', () => {
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      bbmHashSha256: '',
+      backgroundImage: { opacity: 0.5, path: 'C:/maps/hall.png', rect: [0, 0, 10, 10] },
+    });
+    const json = JSON.parse(writeSidecar(readSidecar(raw))) as { backgroundImage: unknown };
+    expect(json.backgroundImage).toEqual({
+      opacity: 0.5,
+      path: 'C:/maps/hall.png',
+      rect: [0, 0, 10, 10],
+      url: '',
+    });
+  });
+
+  it('ignores a backgroundImage with neither url nor path', () => {
+    const parsed = readSidecar(JSON.stringify({ schemaVersion: 1, backgroundImage: { opacity: 1 } }));
+    expect(parsed.backgroundImage).toBeUndefined();
+  });
+});
+
 describe('hashBbmBytes', () => {
   it('produces lowercase hex', () => {
     const h = hashBbmBytes('hello');

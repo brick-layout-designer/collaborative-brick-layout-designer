@@ -5,6 +5,21 @@ export function isValidEmail(email: unknown): email is string {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/**
+ * Canonical form for storing and comparing email addresses: trimmed and
+ * lower-cased. (Local parts are technically case-sensitive, but no real
+ * provider treats them so, and case-variant duplicates let one mailbox
+ * hold several accounts / dodge invite email matching.)
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/** True when two addresses are the same mailbox after normalisation. */
+export function sameEmail(a: string, b: string): boolean {
+  return normalizeEmail(a) === normalizeEmail(b);
+}
+
 /** Escape SQLite LIKE wildcards so user input is treated as a literal string. */
 export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, '\\$&');

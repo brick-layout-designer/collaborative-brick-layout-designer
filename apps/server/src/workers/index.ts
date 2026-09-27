@@ -28,6 +28,7 @@ import * as Y from 'yjs';
 import { db, schema, sqlite } from '../db/index.js';
 import { env } from '../env.js';
 import { classifyBackups } from './retention.js';
+import { docHub } from '../ws/docHub.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -89,6 +90,7 @@ async function demoTtlSweep(): Promise<void> {
     );
   for (const { id } of expired) {
     await db.delete(schema.layouts).where(eq(schema.layouts.id, id));
+    await docHub.close(id);
   }
   if (expired.length > 0) {
     // eslint-disable-next-line no-console
@@ -100,16 +102,31 @@ async function demoTtlSweep(): Promise<void> {
 // 2. Daily compaction
 // ---------------------------------------------------------------------------
 
-async function dailyCompaction(): Promise<void> {
+export async function dailyCompaction(): Promise<void> {
   // For every layout that has unflushed updates in `layout_updates`,
   // materialise a fresh snapshot from snapshot+updates and truncate.
   // Same logic as docHub's flushSnapshot but doc-hub-independent (so
   // it works on layouts no one is currently editing).
-  const layouts = await db
-    .select({ id: schema.layouts.id, snapshot: schema.layouts.docSnapshot })
-    .from(schema.layouts);
+  //
+  // Only layouts that actually have pending updates are visited, and
+  // each snapshot is loaded one at a time (this used to load every
+  // layout's snapshot blob into memory at once). Layouts with a live
+  // editor session are skipped: the session flushes itself, and
+  // truncating the log underneath it could drop updates it persisted
+  // after we read the log.
+  const pending = await db
+    .selectDistinct({ id: schema.layoutUpdates.layoutId })
+    .from(schema.layoutUpdates)
+    .where(eq(schema.layoutUpdates.doc, 'main'));
   let compacted = 0;
-  for (const layout of layouts) {
+  for (const { id } of pending) {
+    if (docHub.has(id)) continue;
+    const layout = await db
+      .select({ id: schema.layouts.id, snapshot: schema.layouts.docSnapshot })
+      .from(schema.layouts)
+      .where(eq(schema.layouts.id, id))
+      .get();
+    if (!layout) continue;
     const updates = await db
       .select({ updateBytes: schema.layoutUpdates.updateBytes })
       .from(schema.layoutUpdates)

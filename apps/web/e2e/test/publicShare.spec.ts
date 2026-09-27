@@ -4,11 +4,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getVerificationToken } from '../dbHelpers';
+import { signIn } from '../helpers';
 
 const ts = Date.now();
 const EMAIL = `share-e2e-${ts}@example.com`;
-const PASS = 'correct horse battery';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -18,40 +17,10 @@ const FORDYCE_BBM = readFileSync(
   'utf-8',
 );
 
-// Every test in this file shares EMAIL — register 409s after the first
-// call (fine), but verification only needs doing once.
-let verified = false;
-
-/**
- * /api/auth/password/register and /login are both rate-limited
- * (10/min) — a real, intentional anti-abuse control. Retry on 429 using
- * the server's own `retry-after` header rather than guessing a backoff.
- */
-async function postWithRateLimitRetry(page: Page, path: string, data: Record<string, string>): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await page.request.post(path, { data });
-    if (res.ok() || res.status() === 409) return; // 409 email_taken is fine — account exists
-    if (res.status() === 429 && attempt < 3) {
-      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
-      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
-      continue;
-    }
-    return; // give up silently, matching this helper's original fire-and-forget style
-  }
-}
-
+// Every test in this file acts as the same account; signIn registers and
+// verifies it once and reuses the session afterwards (see helpers.ts).
 async function registerAndLogin(page: Page): Promise<void> {
-  await postWithRateLimitRetry(page, '/api/auth/password/register', {
-    email: EMAIL,
-    password: PASS,
-    displayName: 'Share Tester',
-  });
-  if (!verified) {
-    const token = await getVerificationToken(EMAIL);
-    await page.request.post(`/api/auth/password/verify-email/${token}`);
-    verified = true;
-  }
-  await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+  await signIn(page, EMAIL, 'Share Tester');
 }
 
 async function createLayout(page: Page, title: string): Promise<string> {
@@ -273,7 +242,7 @@ test.describe('public share — viewer page', () => {
     await page.goto('/p/this-token-does-not-exist');
     await expect(page.locator('canvas')).not.toBeVisible({ timeout: 3000 });
     await expect(
-      page.getByText(/not found|error|unavailable|invalid/i).or(page.locator('h1')),
+      page.getByRole('heading', { name: /not found|error|unavailable|invalid/i }),
     ).toBeVisible({ timeout: 5000 });
   });
 
