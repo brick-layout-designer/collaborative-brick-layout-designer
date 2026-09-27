@@ -108,3 +108,25 @@ describe('nbItems recompute matches BlueBrick', () => {
     expect(out).toContain(`<nbItems>${318 - removed}</nbItems>`);
   });
 });
+
+describe('<TextCell id> attribute', () => {
+  const withIds = (xml: string) => {
+    let n = 0;
+    return xml.replace(/<TextCell>/g, () => `<TextCell id="${++n}00">`);
+  };
+
+  it('fixtures carry no id, and the model leaves it unset', () => {
+    const { map } = readBbm(fordyce);
+    const cells = map.layers.flatMap((l) => (l.type === 'text' ? l.textCells : []));
+    expect(cells.length).toBeGreaterThan(0);
+    for (const c of cells) expect('id' in c).toBe(false);
+  });
+
+  it('reads the id when present and writes it back byte-for-byte', () => {
+    const xml = withIds(fordyce);
+    const { map } = readBbm(xml);
+    const cells = map.layers.flatMap((l) => (l.type === 'text' ? l.textCells : []));
+    expect(cells[0]!.id).toBe('100');
+    expect(writeBbm(map)).toBe(xml);
+  });
+});

@@ -45,5 +45,39 @@ describe('text cells round-trip through the projection', () => {
     editTextCell(doc, l, 0, 'new');
     expect(yCells.get(0)).toBeInstanceOf(Y.Map);
     expect(cells(doc)[0]!.text).toBe('new');
+    expect((yCells.get(0) as Y.Map<unknown>).get('id')).toMatch(/^\d+$/);
+  });
+});
+
+describe('text cell ids', () => {
+  function yCell(doc: Y.Doc, l: string, i: number): Y.Map<unknown> {
+    const yCells = (doc.getMap('layerData').get(l) as Y.Map<unknown>).get('textCells') as Y.Array<unknown>;
+    return yCells.get(i) as Y.Map<unknown>;
+  }
+
+  it('new cells get a distinct stable id that survives edits', () => {
+    const doc = new Y.Doc();
+    ensureBrickLayer(doc);
+    const l = ensureTextLayer(doc);
+    addTextCell(doc, l, spec);
+    addTextCell(doc, l, spec);
+    const a = yCell(doc, l, 0).get('id');
+    expect(a).toMatch(/^\d+$/);
+    expect(yCell(doc, l, 1).get('id')).not.toBe(a);
+    editTextCellFull(doc, l, 0, { text: 'x', orientation: 45 });
+    expect(yCell(doc, l, 0).get('id')).toBe(a);
+    // Minted ids are sync-only: they never leak into the .bbm export.
+    expect(cells(doc)[0]).not.toHaveProperty('id');
+  });
+
+  it('an id-less Y.Map cell from an old doc gets an id on first edit', () => {
+    const doc = new Y.Doc();
+    ensureBrickLayer(doc);
+    const l = ensureTextLayer(doc);
+    addTextCell(doc, l, spec);
+    yCell(doc, l, 0).delete('id');
+    expect(cells(doc)[0]!.text).toBe('Hello');
+    editTextCell(doc, l, 0, 'edited');
+    expect(yCell(doc, l, 0).get('id')).toMatch(/^\d+$/);
   });
 });

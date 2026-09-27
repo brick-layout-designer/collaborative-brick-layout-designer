@@ -139,6 +139,13 @@ export interface LayerBrick extends LayerCommon {
 }
 
 export interface TextCell {
+  /**
+   * The `<TextCell id="…">` attribute. Vanilla BlueBrick never writes it
+   * (desktop LayerIO.cpp reads it when present), so it is absent for most
+   * files; the reader only sets it when the attribute exists and the
+   * writer only emits it when set, keeping id-less files byte-identical.
+   */
+  id?: string;
   displayArea: RectangleF;
   myGroup: string;
   text: string;

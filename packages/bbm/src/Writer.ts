@@ -223,7 +223,7 @@ function writeLayerTextBody(b: XmlBuilder, layer: LayerText): void {
 }
 
 function writeTextCell(b: XmlBuilder, t: TextCell): void {
-  b.open('TextCell');
+  b.open('TextCell', t.id ? { id: t.id } : undefined);
   writeRect(b, 'DisplayArea', t.displayArea);
   b.optionalTextElement('MyGroup', t.myGroup);
   b.optionalTextElement('Text', t.text);

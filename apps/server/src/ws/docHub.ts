@@ -12,6 +12,7 @@
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { eq, and } from 'drizzle-orm';
+import { upgradeDoc } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 
@@ -144,6 +145,11 @@ export class DocSession {
         // Corrupt updates are ignored — the snapshot is the source of truth.
       }
     }
+    // Docs created before text cells had ids (schemaVersion 1) get them
+    // now, so every live-sync client sees a stable id on every cell. This
+    // runs before the persist listener is installed; the change reaches
+    // the DB with the next snapshot flush (it is part of the doc state).
+    upgradeDoc(this.doc);
   }
 
   /**
