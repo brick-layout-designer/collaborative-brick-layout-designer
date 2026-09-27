@@ -50,12 +50,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- list parts the user can see ---------------------------------------
   app.get('/api/custom-parts', async (req) => {
     const user = requireUser(req);
+    // Metadata columns only — never the xml/sprite blobs.
     const personal = await db
-      .select()
+      .select(partListColumns)
       .from(schema.customParts)
       .where(eq(schema.customParts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ part: schema.customParts })
+      .select({ part: partListColumns })
       .from(schema.orgMembers)
       .innerJoin(
         schema.customParts,
@@ -63,7 +64,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ part: schema.customParts })
+      .select({ part: partListColumns })
       .from(schema.customPartCollaborators)
       .innerJoin(
         schema.customParts,
@@ -97,7 +98,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
     const part = await db
-      .select()
+      .select(partListColumns)
       .from(schema.customParts)
       .where(eq(schema.customParts.id, req.params.id))
       .get();
@@ -465,7 +466,23 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
-function toListItem(p: typeof schema.customParts.$inferSelect) {
+const partListColumns = {
+  id: schema.customParts.id,
+  partNumber: schema.customParts.partNumber,
+  displayName: schema.customParts.displayName,
+  ownerUserId: schema.customParts.ownerUserId,
+  ownerOrgId: schema.customParts.ownerOrgId,
+  spriteMime: schema.customParts.spriteMime,
+  createdAt: schema.customParts.createdAt,
+  updatedAt: schema.customParts.updatedAt,
+};
+
+function toListItem(
+  p: Pick<
+    typeof schema.customParts.$inferSelect,
+    'id' | 'partNumber' | 'displayName' | 'ownerUserId' | 'ownerOrgId' | 'spriteMime' | 'createdAt' | 'updatedAt'
+  >,
+) {
   return {
     id: p.id,
     partNumber: p.partNumber,

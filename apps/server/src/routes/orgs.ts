@@ -531,7 +531,18 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
 
       const rows = await db
-        .select()
+        .select({
+          id: schema.layouts.id,
+          title: schema.layouts.title,
+          ownerUserId: schema.layouts.ownerUserId,
+          ownerOrgId: schema.layouts.ownerOrgId,
+          createdAt: schema.layouts.createdAt,
+          updatedAt: schema.layouts.updatedAt,
+          expiresAt: schema.layouts.expiresAt,
+          docVersion: schema.layouts.docVersion,
+          // Metadata only — don't load the doc blobs to list titles.
+          hasSidecar: sql<number>`${schema.layouts.sidecarSnapshot} IS NOT NULL`,
+        })
         .from(schema.layouts)
         .where(eq(schema.layouts.ownerOrgId, org.id));
       return {
@@ -544,7 +555,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           updatedAt: l.updatedAt.getTime(),
           expiresAt: l.expiresAt?.getTime() ?? null,
           docVersion: l.docVersion,
-          hasSidecar: l.sidecarSnapshot !== null,
+          hasSidecar: Boolean(l.hasSidecar),
         })),
       };
     },
