@@ -76,7 +76,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
 
   const rowCls = 'flex items-center justify-between gap-4 py-1';
   const labelCls = 'text-xs text-neutral-400 w-36 shrink-0';
-  const inputCls = 'flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
+  const inputCls = 'flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
 
   return (
     <div
@@ -86,7 +86,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
       onClick={onClose}
     >
       <div
-        className="w-[28rem] rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+        className="w-md rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-sm font-semibold text-neutral-200">{isEdit ? 'Edit Anchored Label' : 'Add Anchored Label'}</h2>
@@ -134,7 +134,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
               type="color"
               value={rgb}
               onChange={(e) => setColorArgb(`FF${e.target.value.slice(1).toUpperCase()}`)}
-              className="h-7 w-12 cursor-pointer rounded border border-neutral-700 bg-neutral-800 p-0.5"
+              className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
             />
           </div>
 
@@ -179,18 +179,18 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
                 deleteAnchoredLabel(doc, initialLabel.id);
                 onClose();
               }}
-              className="mr-auto rounded border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40"
+              className="mr-auto rounded-sm border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40"
             >
               Delete
             </button>
           )}
-          <button onClick={onClose} className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">
+          <button onClick={onClose} className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">
             Cancel
           </button>
           <button
             onClick={commit}
             disabled={!text.trim()}
-            className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
           >
             {isEdit ? 'Save' : 'Add Label'}
           </button>

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // Dev-server port and API origin default to the standard :5173 → :3000
 // setup; override with VITE_PORT / CLD_API_ORIGIN to run a second stack
@@ -8,7 +9,7 @@ const apiOrigin = process.env.CLD_API_ORIGIN ?? 'http://localhost:3000';
 const wsOrigin = apiOrigin.replace(/^http/, 'ws');
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: Number(process.env.VITE_PORT ?? 5173),
     proxy: {

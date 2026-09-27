@@ -47,7 +47,7 @@ export function ShareDialog({
           </div>
           <button
             onClick={onClose}
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+            className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-800"
           >
             ✕
           </button>
@@ -127,7 +127,7 @@ function InviteForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded border border-neutral-800 p-3 text-sm">
+    <form onSubmit={submit} className="rounded-sm border border-neutral-800 p-3 text-sm">
       <div className="flex items-end gap-2">
         <label className="flex-1">
           <span className="mb-1 block text-xs text-neutral-400">Email</span>
@@ -136,7 +136,7 @@ function InviteForm({
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
             placeholder="alice@example.com"
           />
         </label>
@@ -145,7 +145,7 @@ function InviteForm({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as 'viewer' | 'editor')}
-            className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
           >
             <option value="viewer">Viewer</option>
             <option value="editor">Editor</option>
@@ -154,7 +154,7 @@ function InviteForm({
         <button
           type="submit"
           disabled={invite.isPending}
-          className="rounded bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500 disabled:opacity-50"
+          className="rounded-sm bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500 disabled:opacity-50"
         >
           Invite
         </button>
@@ -163,7 +163,7 @@ function InviteForm({
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
       {shareUrl && (
-        <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
+        <div className="mt-3 rounded-sm border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
           <p className="text-emerald-400">
             {delivered ? 'Email sent.' : 'Email delivery skipped (no SMTP configured).'}
           </p>
@@ -172,7 +172,7 @@ function InviteForm({
             still applies on accept):
           </p>
           <code
-            className="mt-1 block break-all rounded bg-neutral-950 p-1 text-[11px]"
+            className="mt-1 block break-all rounded-sm bg-neutral-950 p-1 text-[11px]"
           >
             {shareUrl}
           </code>
@@ -207,7 +207,7 @@ function CollaboratorList({
       <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
         Collaborators
       </h4>
-      <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+      <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
         {collaborators.length === 0 && (
           <li className="px-3 py-2 text-xs text-neutral-500">No collaborators yet.</li>
         )}
@@ -263,13 +263,13 @@ function CollaboratorRow({
           <select
             value={collaborator.role}
             onChange={(e) => change.mutate(e.target.value as 'viewer' | 'editor')}
-            className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+            className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
           >
             <option value="viewer">Viewer</option>
             <option value="editor">Editor</option>
           </select>
         ) : (
-          <span className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">
+          <span className="rounded-sm bg-neutral-800 px-2 py-1 text-xs text-neutral-300">
             {collaborator.role}
           </span>
         )}
@@ -285,7 +285,7 @@ function CollaboratorRow({
               )
                 remove.mutate();
             }}
-            className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+            className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
           >
             {isSelf ? 'Leave' : 'Remove'}
           </button>
@@ -315,7 +315,7 @@ function PendingInvites({
       <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
         Pending invites
       </h4>
-      <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+      <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
         {invites.map((i) => (
           <li key={i.id} className="flex items-center justify-between px-3 py-2 text-sm">
             <div>
@@ -327,7 +327,7 @@ function PendingInvites({
             {isOwner && (
               <button
                 onClick={() => revoke.mutate(i.id)}
-                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
               >
                 Revoke
               </button>
@@ -369,7 +369,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
   });
 
   return (
-    <div className="rounded border border-neutral-800 p-3 text-sm">
+    <div className="rounded-sm border border-neutral-800 p-3 text-sm">
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
         Transfer ownership
       </h4>
@@ -377,14 +377,14 @@ function TransferSection({ layoutId }: { layoutId: string }) {
         <div className="flex gap-2">
           <button
             onClick={() => setMode('user')}
-            className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
           >
             Transfer to a user
           </button>
           {orgs.data && orgs.data.orgs.length > 0 && (
             <button
               onClick={() => setMode('org')}
-              className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
             >
               Transfer to an org
             </button>
@@ -410,20 +410,20 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="recipient@example.com"
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
           />
           <div className="flex gap-2">
             <button
               type="submit"
               disabled={initiate.isPending}
-              className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-50"
             >
               Initiate transfer
             </button>
             <button
               type="button"
               onClick={() => setMode('closed')}
-              className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
             >
               Cancel
             </button>
@@ -447,7 +447,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             value={orgSlug}
             onChange={(e) => setOrgSlug(e.target.value)}
             required
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
           >
             <option value="">Choose an organization…</option>
             {orgs.data.orgs.map((o) => (
@@ -460,14 +460,14 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             <button
               type="submit"
               disabled={initiate.isPending || !orgSlug}
-              className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-50"
             >
               Transfer to org
             </button>
             <button
               type="button"
               onClick={() => setMode('closed')}
-              className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
             >
               Cancel
             </button>
@@ -478,13 +478,13 @@ function TransferSection({ layoutId }: { layoutId: string }) {
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
       {linkResult && (
-        <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
+        <div className="mt-3 rounded-sm border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
           <p className="text-emerald-400">
             {linkResult.emailDelivered
               ? 'Email sent. The transfer is pending until the recipient accepts.'
               : 'Email delivery skipped (no SMTP configured). Share this link:'}
           </p>
-          <code className="mt-1 block break-all rounded bg-neutral-950 p-1 text-[11px]">
+          <code className="mt-1 block break-all rounded-sm bg-neutral-950 p-1 text-[11px]">
             {linkResult.url}
           </code>
           <button
@@ -498,7 +498,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
       )}
 
       {orgResult && (
-        <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs text-emerald-400">
+        <div className="mt-3 rounded-sm border border-emerald-900 bg-emerald-950/30 p-2 text-xs text-emerald-400">
           Layout transferred to <strong>/{orgResult}</strong>.
         </div>
       )}
@@ -516,7 +516,7 @@ export function AuditPanel({ layoutId }: { layoutId: string }) {
   });
 
   return (
-    <details className="rounded border border-neutral-800 p-3 text-sm">
+    <details className="rounded-sm border border-neutral-800 p-3 text-sm">
       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-400">
         History
       </summary>
@@ -585,7 +585,7 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
   const url = token ? `${window.location.origin}/p/${token}` : null;
 
   return (
-    <div className="rounded border border-neutral-800 p-3 text-sm">
+    <div className="rounded-sm border border-neutral-800 p-3 text-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
@@ -605,7 +605,7 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
               }
             }}
             disabled={disable.isPending}
-            className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
+            className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
           >
             Disable
           </button>
@@ -613,7 +613,7 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
           <button
             onClick={() => enable.mutate()}
             disabled={enable.isPending}
-            className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
           >
             Enable
           </button>
@@ -621,7 +621,7 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
       </div>
       {url && (
         <div className="mt-2">
-          <code className="block break-all rounded bg-neutral-950 p-1 text-[11px]">
+          <code className="block break-all rounded-sm bg-neutral-950 p-1 text-[11px]">
             {url}
           </code>
           <button

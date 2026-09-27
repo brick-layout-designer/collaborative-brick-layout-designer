@@ -41,14 +41,14 @@ export function Toolbar() {
   }, [setTool]);
 
   return (
-    <div className="flex items-center gap-1 rounded border border-neutral-800 bg-neutral-900 p-1 text-xs">
+    <div className="flex items-center gap-1 rounded-sm border border-neutral-800 bg-neutral-900 p-1 text-xs">
       {TOOLS.map((t) => (
         <button
           key={t.id}
           onClick={() => setTool(t.id)}
           title={t.shortcut ? `${t.label} (${t.shortcut})` : t.label}
           className={
-            'rounded px-2 py-1 ' +
+            'rounded-sm px-2 py-1 ' +
             (tool === t.id ? 'bg-blue-600 text-white' : 'text-neutral-300 hover:bg-neutral-800')
           }
         >

@@ -115,7 +115,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+            className="min-w-0 flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
           >
             <option value={ALL_CATEGORIES}>All categories</option>
             {categories.map((c) => (
@@ -127,7 +127,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
           <button
             onClick={cycleIconSize}
             title={`Icon size: ${iconSize} — click to cycle S/M/L`}
-            className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-[10px] text-neutral-400 hover:bg-neutral-700"
+            className="shrink-0 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-[10px] text-neutral-400 hover:bg-neutral-700"
           >
             {iconSize}
           </button>
@@ -136,7 +136,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder='Fuzzy filter — e.g. "plt2" matches "plate2x4"'
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -184,7 +184,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
                     }
                   }}
                   title={tooltip}
-                  className="flex w-full flex-col items-center rounded p-1 text-[10px] bg-neutral-900 hover:bg-neutral-800"
+                  className="flex w-full flex-col items-center rounded-sm p-1 text-[10px] bg-neutral-900 hover:bg-neutral-800"
                 >
                   <PartThumbnail part={p} partsByKey={partsByKey} imgCls={cfg.imgCls} />
                   <span className="mt-1 line-clamp-2 text-center leading-tight">
@@ -230,7 +230,7 @@ function PartContextMenuPopup({
     <div
       ref={ref}
       style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 9999 }}
-      className="min-w-[160px] rounded border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
+      className="min-w-[160px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
       onContextMenu={(e) => e.preventDefault()}
     >
       <button className={itemCls} onClick={onAddToMap}>
@@ -308,7 +308,7 @@ function PartThumbnail({
       />
     );
   }
-  return <div className={`${imgCls} rounded bg-neutral-800`} />;
+  return <div className={`${imgCls} rounded-sm bg-neutral-800`} />;
 }
 
 function fuzzyScore(needle: string, hay: string): number {

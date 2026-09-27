@@ -89,7 +89,7 @@ export function InvitePage() {
             </p>
             <Link
               to={`/login?next=${encodeURIComponent(`/invite/${params.token}`)}`}
-              className="block rounded bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
+              className="block rounded-sm bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
             >
               Sign in
             </Link>
@@ -140,7 +140,7 @@ function Alert({
       ? 'border-red-900 bg-red-950/30 text-red-300'
       : 'border-amber-900 bg-amber-950/30 text-amber-200';
   return (
-    <div className={`rounded border ${colour} p-3 text-sm`}>
+    <div className={`rounded-sm border ${colour} p-3 text-sm`}>
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-xs">{body}</p>
     </div>

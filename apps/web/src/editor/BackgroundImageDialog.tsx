@@ -77,7 +77,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-[26rem] rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
+        className="w-104 rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-semibold">Background Image</h2>
@@ -134,7 +134,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
                     type="number"
                     value={rect[k]}
                     onChange={(e) => setRect((r) => ({ ...r, [k]: parseFloat(e.target.value) || 0 }))}
-                    className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                    className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                   />
                 </label>
               ))}
@@ -149,7 +149,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
             <button
               onClick={remove}
               disabled={busy}
-              className="rounded border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
+              className="rounded-sm border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
             >
               Remove image
             </button>
@@ -157,14 +157,14 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
-              className="rounded border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
             >
               Cancel
             </button>
             <button
               onClick={commit}
               disabled={busy || (!file && !existing)}
-              className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'OK'}
             </button>

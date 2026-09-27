@@ -38,7 +38,7 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   const createButton = isViewer ? null : (
     <button
       onClick={() => createModuleFromSelection(doc)}
-      className="rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-neutral-800"
+      className="rounded-sm border border-neutral-700 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-neutral-800"
       title="Register the selected bricks as a module"
     >
       + From selection
@@ -228,7 +228,7 @@ function ModuleRow({
             else if (e.key === 'Escape') { setDraft(module.name); setRenaming(false); }
           }}
           onBlur={commitRename}
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
         />
       ) : (
         <>
@@ -251,7 +251,7 @@ function ModuleRow({
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[170px] rounded border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-lg"
+          className="min-w-[170px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -272,7 +272,7 @@ function ModuleRow({
             <button className="block w-full px-3 py-1 text-left hover:bg-neutral-700">
               Rotate ▸
             </button>
-            <div className="absolute left-full top-0 hidden min-w-[100px] rounded border border-neutral-700 bg-neutral-900 py-1 shadow-lg group-hover:block">
+            <div className="absolute left-full top-0 hidden min-w-[100px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg group-hover:block">
               {([-90, -45, 45, 90, 180] as const).map((deg) => (
                 <button
                   key={deg}
@@ -374,7 +374,7 @@ function ModuleMoveDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] grid place-items-center bg-black/60 p-4"
+      className="fixed inset-0 z-10000 grid place-items-center bg-black/60 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <form
@@ -391,7 +391,7 @@ function ModuleMoveDialog({
             value={dx}
             onChange={(e) => setDx(e.target.value)}
             autoFocus
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
           />
         </label>
         <label className="block">
@@ -401,20 +401,20 @@ function ModuleMoveDialog({
             step="0.5"
             value={dy}
             onChange={(e) => setDy(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
           />
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
+            className="rounded-sm bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
           >
             Move
           </button>

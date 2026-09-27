@@ -35,7 +35,7 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
 
   return (
     <section
-      className={`flex h-full min-h-0 w-full flex-col bg-neutral-925 transition-colors ${dragOver ? 'outline outline-2 outline-blue-500' : ''}`}
+      className={`flex h-full min-h-0 w-full flex-col bg-neutral-925 transition-colors ${dragOver ? 'outline-solid outline-2 outline-blue-500' : ''}`}
       onDragOver={onReorder ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(true); } : undefined}
       onDragLeave={onReorder ? () => setDragOver(false) : undefined}
       onDrop={onReorder ? (e) => {
@@ -58,14 +58,14 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
         <span className="flex-1 truncate font-semibold uppercase tracking-wider">{title}</span>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded px-1.5 py-0.5 text-[10px] hover:bg-neutral-800"
+          className="rounded-sm px-1.5 py-0.5 text-[10px] hover:bg-neutral-800"
           title="Move or hide panel"
         >
           ⋯
         </button>
         {open && (
           <ul
-            className="absolute right-1 top-full z-20 mt-1 w-40 rounded border border-neutral-700 bg-neutral-900 text-xs shadow"
+            className="absolute right-1 top-full z-20 mt-1 w-40 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
             onClick={() => setOpen(false)}
           >
             {moveTargets.map((m) => (

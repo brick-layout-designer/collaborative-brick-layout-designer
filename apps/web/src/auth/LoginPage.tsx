@@ -10,8 +10,8 @@ export function LoginPage() {
 
   return (
     <div className="grid min-h-screen place-items-center px-4">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-neutral-800 bg-neutral-900 p-8 shadow">
-        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded" />
+      <div className="w-full max-w-sm space-y-6 rounded-lg border border-neutral-800 bg-neutral-900 p-8 shadow-sm">
+        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-sm" />
         <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
 
         <div className="space-y-2">
@@ -21,7 +21,7 @@ export function LoginPage() {
               <a
                 key={p.id}
                 href={`/api/auth/${p.id}`}
-                className="block rounded border border-neutral-700 px-4 py-2 text-center hover:bg-neutral-800"
+                className="block rounded-sm border border-neutral-700 px-4 py-2 text-center hover:bg-neutral-800"
               >
                 Continue with {p.label}
               </a>
@@ -104,7 +104,7 @@ function PasswordForm() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+        className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
       />
       <input
         type="password"
@@ -114,7 +114,7 @@ function PasswordForm() {
         onChange={(e) => setPassword(e.target.value)}
         required
         minLength={8}
-        className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+        className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
       />
       {error && (
         <div className="text-sm text-red-400">
@@ -134,7 +134,7 @@ function PasswordForm() {
       <button
         type="submit"
         disabled={mutation.isPending}
-        className="w-full rounded bg-blue-600 py-2 hover:bg-blue-500 disabled:opacity-50"
+        className="w-full rounded-sm bg-blue-600 py-2 hover:bg-blue-500 disabled:opacity-50"
       >
         {mode === 'login' ? 'Sign in' : 'Create account'}
       </button>
