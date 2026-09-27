@@ -358,7 +358,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                   }
                   window.location.href = '/';
                 }}
-                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
               >
                 New
               </button>
@@ -370,7 +370,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                   }
                   window.location.href = '/';
                 }}
-                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
               >
                 Open
               </button>
@@ -387,7 +387,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             onClick={undo.undo}
             disabled={!undo.canUndo}
             title="Undo (Cmd-Z)"
-            className="shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded-sm border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
           >
             Undo
           </button>
@@ -395,7 +395,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             onClick={undo.redo}
             disabled={!undo.canRedo}
             title="Redo (Cmd-Shift-Z)"
-            className="shrink-0 rounded border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded-sm border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
           >
             Redo
           </button>
@@ -488,7 +488,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           {!isViewer && (
             <button
               onClick={() => setShowInsertModule(true)}
-              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800 whitespace-nowrap"
+              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800 whitespace-nowrap"
               title="Insert a saved module"
             >
               Insert module
@@ -496,20 +496,20 @@ function Editor({ layoutId }: { layoutId: string }) {
           )}
           <button
             onClick={() => setShowShare(true)}
-            className="shrink-0 rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="shrink-0 rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
           >
             Share
           </button>
           {!isViewer && (
             <button
               onClick={() => void saveNow()}
-              className="shrink-0 rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+              className="shrink-0 rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
             >
               Save
             </button>
           )}
           {isViewer && (
-            <span className="rounded bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
+            <span className="rounded-sm bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
               View only
             </span>
           )}
@@ -2633,9 +2633,9 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
       className="pointer-events-none absolute bottom-3 right-3 flex flex-col items-end gap-1"
       style={{ userSelect: 'none' }}
     >
-      <span className="text-[10px] text-neutral-300 drop-shadow">{label}</span>
+      <span className="text-[10px] text-neutral-300 drop-shadow-sm">{label}</span>
       <div
-        className="rounded bg-neutral-200/80"
+        className="rounded-sm bg-neutral-200/80"
         style={{ width: barPx, height: 4 }}
       />
     </div>
@@ -2812,7 +2812,7 @@ function CanvasContextMenu({
     <div
       data-ctx-menu="1"
       style={{ position: 'fixed', left, top, zIndex: 9999, minWidth: menuW }}
-      className="flex flex-col rounded border border-neutral-700 bg-neutral-900 py-1 shadow-xl text-neutral-200"
+      className="flex flex-col rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-xl text-neutral-200"
     >
       {entries}
     </div>
@@ -3412,13 +3412,13 @@ function MapMenu({
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+        className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
       >
         Map
       </button>
       {open && (
         <ul
-          className="absolute right-0 top-full z-30 mt-1 w-52 rounded border border-neutral-700 bg-neutral-900 text-xs shadow"
+          className="absolute right-0 top-full z-30 mt-1 w-52 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
           onClick={() => setOpen(false)}
         >
           {items.map((it, i) =>
@@ -3466,7 +3466,7 @@ function PanelsMenu({
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+        className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
         title="Toggle panels"
       >
         Panels
@@ -3475,7 +3475,7 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="absolute right-0 top-full z-30 mt-1 min-w-[168px] rounded border border-neutral-700 bg-neutral-900 text-xs shadow">
+          <ul className="absolute right-0 top-full z-30 mt-1 min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm">
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (
@@ -3522,7 +3522,7 @@ function PaintColorPicker() {
           const v = e.target.value.replace(/^#/, '').toUpperCase();
           set(`${aa}${v}`);
         }}
-        className="h-6 w-8 cursor-pointer rounded border border-neutral-700 bg-transparent"
+        className="h-6 w-8 cursor-pointer rounded-sm border border-neutral-700 bg-transparent"
       />
     </label>
   );
@@ -3543,7 +3543,7 @@ function SnapPicker() {
       <select
         value={value}
         onChange={(e) => set(parseFloat(e.target.value))}
-        className="rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
+        className="rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
       >
         {SNAP_STEPS.map((s) => (
           <option key={s} value={s}>
@@ -3568,7 +3568,7 @@ function RotationPicker() {
       <select
         value={value}
         onChange={(e) => set(parseFloat(e.target.value))}
-        className="rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
+        className="rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
       >
         {ROTATION_STEPS.map((s) => (
           <option key={s} value={s}>
@@ -3617,7 +3617,7 @@ function LoadingScreen() {
 function ErrorScreen({ err }: { err: Error }) {
   return (
     <div className="grid h-screen place-items-center">
-      <div className="max-w-sm rounded border border-red-900 bg-red-950/30 p-4 text-sm">
+      <div className="max-w-sm rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
         <p className="font-semibold text-red-400">Couldn't load this layout.</p>
         <p className="mt-2 text-neutral-300">{err.message}</p>
         <Link to="/" className="mt-4 inline-block text-blue-400 hover:underline">
@@ -3649,7 +3649,7 @@ function HeaderEditButtons({
   const selection = useEditorStore((s) => s.selection);
   const annoTotal = useEditorStore((s) => annoCount(s.annoSelection));
   const hasSel = selection.length > 0;
-  const btnCls = 'rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default';
+  const btnCls = 'rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default';
   return (
     <>
       <div className="h-4 w-px bg-neutral-700" />

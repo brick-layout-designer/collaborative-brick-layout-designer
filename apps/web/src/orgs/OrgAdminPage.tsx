@@ -25,7 +25,7 @@ function OrgAdmin({ slug }: { slug: string }) {
   if (detail.isError) {
     return (
       <div className="grid h-screen place-items-center">
-        <div className="rounded border border-red-900 bg-red-950/30 p-4 text-sm">
+        <div className="rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
           <p className="font-semibold text-red-400">Organization not found.</p>
           <Link to="/orgs" className="mt-2 inline-block text-blue-400 hover:underline">← back</Link>
         </div>
@@ -134,7 +134,7 @@ function MembersList({
 
   return (
     <div className="space-y-3">
-      <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+      <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
         {members.map((m) => {
           const isSelf = m.userId === myUserId;
           return (
@@ -151,7 +151,7 @@ function MembersList({
                   onChange={(e) =>
                     change.mutate({ userId: m.userId, role: e.target.value as 'admin' | 'member' })
                   }
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 >
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
@@ -161,7 +161,7 @@ function MembersList({
                     if (confirm(isSelf ? 'Leave this organization?' : `Remove ${m.displayName}?`))
                       remove.mutate(m.userId);
                   }}
-                  className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+                  className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
                 >
                   {isSelf ? 'Leave' : 'Remove'}
                 </button>
@@ -175,7 +175,7 @@ function MembersList({
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
             Pending invites
           </h3>
-          <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+          <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
             {invites.map((i) => (
               <li key={i.id} className="flex items-center justify-between px-3 py-2 text-sm">
                 <div>
@@ -186,7 +186,7 @@ function MembersList({
                 </div>
                 <button
                   onClick={() => revoke.mutate(i.id)}
-                  className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                  className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
                 >
                   Revoke
                 </button>
@@ -249,7 +249,7 @@ function InviteForm({ slug }: { slug: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="rounded border border-neutral-800 p-3 text-sm">
+    <form onSubmit={submit} className="rounded-sm border border-neutral-800 p-3 text-sm">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
         Invite member
       </h3>
@@ -263,12 +263,12 @@ function InviteForm({ slug }: { slug: string }) {
             onChange={(e) => { setEmail(e.target.value); setPickedUserId(null); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
             placeholder="Search by name or paste an email…"
             autoComplete="off"
           />
           {showSuggestions && pickedUserId === null && debouncedQuery.length >= 2 && (
-            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded border border-neutral-700 bg-neutral-900 shadow-lg">
+            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 shadow-lg">
               {suggestions.isLoading && (
                 <li className="px-2 py-1.5 text-xs text-neutral-500">Searching…</li>
               )}
@@ -306,7 +306,7 @@ function InviteForm({ slug }: { slug: string }) {
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-            className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
           >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
@@ -315,7 +315,7 @@ function InviteForm({ slug }: { slug: string }) {
         <button
           type="submit"
           disabled={invite.isPending}
-          className="rounded bg-blue-600 px-3 py-1.5 hover:bg-blue-500 disabled:opacity-50"
+          className="rounded-sm bg-blue-600 px-3 py-1.5 hover:bg-blue-500 disabled:opacity-50"
         >
           Invite
         </button>
@@ -326,9 +326,9 @@ function InviteForm({ slug }: { slug: string }) {
       </p>
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       {shareUrl && (
-        <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
+        <div className="mt-3 rounded-sm border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
           <p className="text-emerald-400">Invite created.</p>
-          <code className="mt-1 block break-all rounded bg-neutral-950 p-1 text-[11px]">{shareUrl}</code>
+          <code className="mt-1 block break-all rounded-sm bg-neutral-950 p-1 text-[11px]">{shareUrl}</code>
           <button
             type="button"
             onClick={() => navigator.clipboard.writeText(shareUrl)}
@@ -368,7 +368,7 @@ function LibrariesTab({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="overflow-auto rounded border border-neutral-800">
+    <div className="overflow-auto rounded-sm border border-neutral-800">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-neutral-800 text-left text-xs text-neutral-500">
@@ -385,7 +385,7 @@ function LibrariesTab({ slug }: { slug: string }) {
                 <span className="font-medium">{lib.name}</span>
                 <span className="ml-2 font-mono text-xs text-neutral-500">{lib.slug}</span>
                 {lib.locked && (
-                  <span className="ml-2 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400" title="This library is always enabled and cannot be disabled">
+                  <span className="ml-2 rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400" title="This library is always enabled and cannot be disabled">
                     locked
                   </span>
                 )}
@@ -450,13 +450,13 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
         </p>
         <button
           onClick={() => setShowUpload(true)}
-          className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+          className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
         >
           Upload part
         </button>
       </div>
       {parts.length === 0 ? (
-        <p className="rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+        <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
           No custom parts yet.
         </p>
       ) : (
@@ -464,7 +464,7 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
           {parts.map((p) => (
             <li
               key={p.id}
-              className="flex flex-col items-center rounded border border-neutral-800 p-2 text-xs"
+              className="flex flex-col items-center rounded-sm border border-neutral-800 p-2 text-xs"
             >
               <img
                 src={api.customParts.spriteUrl(p.id)}
@@ -571,7 +571,7 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             required
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
 
@@ -581,7 +581,7 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
 
@@ -607,14 +607,14 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
           >
             Upload
           </button>
@@ -645,17 +645,17 @@ function OrgModulesTab({ slug, orgId }: { slug: string; orgId: string }) {
         </p>
         <button
           onClick={() => setShowCreate(true)}
-          className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+          className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
         >
           New module
         </button>
       </div>
       {modules.length === 0 ? (
-        <p className="rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+        <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
           No modules yet.
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+        <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
           {modules.map((m) => (
             <li key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
               <div>
@@ -668,7 +668,7 @@ function OrgModulesTab({ slug, orgId }: { slug: string; orgId: string }) {
                 onClick={() => {
                   if (confirm(`Delete "${m.title}"?`)) remove.mutate(m.id);
                 }}
-                className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+                className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
               >
                 Delete
               </button>
@@ -722,7 +722,7 @@ function OrgNewModuleDialog({ slug, onClose }: { slug: string; onClose: () => vo
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Module"
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
         {error && <p className="text-xs text-red-400">{error}</p>}
@@ -730,14 +730,14 @@ function OrgNewModuleDialog({ slug, onClose }: { slug: string; onClose: () => vo
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
           >
             Create
           </button>
@@ -758,7 +758,7 @@ function AuditTab({ slug }: { slug: string }) {
     return <p className="text-sm text-neutral-500">No audit events yet.</p>;
   }
   return (
-    <div className="overflow-auto rounded border border-neutral-800">
+    <div className="overflow-auto rounded-sm border border-neutral-800">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-neutral-800 text-left text-neutral-500">
