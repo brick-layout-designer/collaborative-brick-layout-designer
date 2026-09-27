@@ -30,10 +30,10 @@ Web source root: this repository.
 - [x] **Undo / Redo** (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)
 - [x] **Cut / Copy / Paste** (`Ctrl+X` / `Ctrl+C` / `Ctrl+V`) — uses the OS clipboard so paste works across tabs
 - [x] **Duplicate** (`Ctrl+D`)
-- [x] **Delete** (`Del` / `Backspace`) — deletes the selection across all layers in one undo step. With a label or text cell selected it deletes that instead.
+- [x] **Delete** (`Del` / `Backspace`) — deletes the whole mixed selection (bricks on any layer, rulers, anchored labels, text cells) in one undo step (`MapView.cpp:2108-2179`, `mixedSelection.ts` `deleteMixedSelection`).
 - [x] **Find & Replace** (`Ctrl+F`) — scope (Text content / Part number), match case, click result to select; Replace all for text-cell scope.
 - [x] **Select All** (`Ctrl+A`) — every brick on every visible brick layer (`MapView.cpp:1417`); **Deselect All** (`Ctrl+Shift+A`)
-- [ ] **Mixed selection** — desktop selects bricks, rulers, text and labels together (rubber band / Ctrl+click). The web selection is either bricks, or one ruler, label or text cell.
+- [x] **Mixed selection** — bricks, rulers, anchored labels and text cells select together, like the desktop Qt scene selection. The rubber band picks all four kinds, and Shift/Ctrl+drag extends the selection. Shift/Ctrl+click toggles any item and a plain click selects just one. Dragging a selected brick, ruler or label moves the rest with it, live, and commits one undo step (`MapViewDrag.cpp:124-153, 412-450`). Arrow nudge moves bricks, rulers and labels (`MapView.cpp:985-1041`). Text cells are selectable but stay put, as desktop text items are not movable (`SceneBuilder.cpp:441`). Labels anchored to a moving brick are not offset twice (`mixedSelection.ts`, `editorStore.annoSelection`).
 - [x] **Select Path** (`Ctrl+P`) — BFS over connection links (`MapView.cpp:1481-1543`)
 - [x] **Group / Ungroup** (`Ctrl+G` / `Ctrl+Shift+G`) — group-aware selection in editor. A cross-layer selection makes one group per layer, like `GroupBricksCommand`.
 - [x] **Transform → Arrow nudge** by current snap step
@@ -127,7 +127,7 @@ Web source root: this repository.
 - [x] Left-click brick → select (replace; Shift / Ctrl modifiers); group-aware (clicking a grouped brick selects the whole group)
 - [x] Double-click brick → Edit Brick dialog (per-brick properties)
 - [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target.
-- [ ] **Grab anchor** — desktop remembers the connection nearest the click and uses it as the sole snap lead for the drag (`MapViewDrag.cpp:155`, `captureGrabAnchor`). Web tries every free connection of the moving set.
+- [x] **Grab anchor** — pressing a brick picks the connection nearest the click, free ends first (`nearestConnectionIndex`, `MapViewDrag.cpp:60-101`). It is stored as the brick's `activeConnectionPointIndex`, synced and saved but outside the undo stack, as `captureGrabAnchor` mutates it in place (`MapViewDrag.cpp:155-217`, `setActiveConnectionPoint`). A single-brick drag tries that connection first as the snap lead and falls back to the other free connections when it has no target in reach (`snap.ts` `leadConnIndex`). Note: the desktop's own snap loop never reads `grabActiveConnIdx_` (only written, `MapView.h:210`); the web uses it as the comment at `MapView.cpp:539-541` intends.
 - [x] Left-drag selection → group move across layers. It translates rigidly and live connection-snap tries every free connection of every moving brick. Multi-brick snaps are translation-only, with no rotation (`MapViewDrag.cpp:252-310`).
 - [x] Left-drag a single linear-ruler endpoint handle → reshape ruler (`EndpointHandle` in `RulerLayer.tsx`)
 - [x] Middle-button drag → pan
@@ -139,8 +139,8 @@ Web source root: this repository.
 - [x] Drag from Module Library panel → drop on canvas. The centroid lands under the cursor, the bbox top-left is grid-snapped, then a translation-only connection snap runs (`MapView.cpp:1900-2060`). Bricks go to host layers matched by name and are registered as a sidecar module.
 - [x] Paint / Erase tool: click + drag stamps cells once each; auto-creates Area layer
 - [x] Linear / Circular ruler tool: click-drag with live dashed preview snapped to grid step during drag; commits a ruler item on release
-- [x] Venue Outline / Obstacle tool: clicks add vertices (also over bricks), dashed preview with vertex dots + hint label. Enter or right-click commits, Esc cancels (`MapView.cpp:474-489`). Web also grid-snaps each vertex, which desktop does not.
-- [x] Click an anchored label or text cell to select it (Delete removes it); drag an anchored label to move it (`moveAnchoredLabel`). Text cells are not draggable, same as desktop.
+- [x] Venue Outline / Obstacle tool: clicks add vertices (also over bricks), dashed preview with vertex dots + hint label. Enter or right-click commits, Esc cancels (`MapView.cpp:474-489`). Vertices land where clicked, with no grid snap, as on desktop.
+- [x] Click an anchored label, ruler or text cell to select it (Shift/Ctrl+click adds it to the selection). Drag a label or ruler to move it with the rest of the selection. Text cells are not draggable, same as desktop.
 - [x] Click + place auto-selects new brick so chain-placing snaps off it (`MapView.cpp:1394-1408`)
 
 ### Right-click context menu (`MapViewContextMenu.cpp`)
@@ -164,7 +164,7 @@ Selection-aware; entries vary based on what's under the cursor:
 
 - [x] `R` / `Shift+R` — rotate by the configured rotation step about the selection centroid
 - [x] `Delete` / `Backspace` — delete selection
-- [x] Arrow keys — nudge by current snap step (also applies to rulers + anchored labels in desktop)
+- [x] Arrow keys — nudge by current snap step; moves selected bricks, rulers and anchored labels together (`MapView.cpp:985-1041`)
 - [x] `Enter` / `Esc` — commit / cancel venue-draw polygon (venueOutline / venueObstacle tools); right-click also commits
 - [x] `Escape` — cancel place / deselect (web extension, fine)
 - [x] All Edit-menu shortcuts that are wired (Ctrl+Z/Y, Ctrl+A, Ctrl+Shift+A, Ctrl+S, Ctrl+D, F)
@@ -188,11 +188,11 @@ Selection-aware; entries vary based on what's under the cursor:
 
 ### Layers Panel (`LayerPanel.cpp`)
 
-- [x] Toolbar: **+ (Add Layer)** with submenu (Brick/Area/Text/Ruler), **▲ / ▼**, **✕ Delete**, **Show all**, **Solo**.
+- [x] Toolbar: **+ (Add Layer)** with submenu (Grid/Parts/Area/Text/Ruler, `LayerPanel.cpp:85-89`), **▲ / ▼**, **✕ Delete**, **Show all**, **Solo**. A new Grid layer uses the desktop defaults (`core/LayerGrid.h:20-38`); a new Area layer paints 32-stud cells (`core/LayerArea.h:25`), and existing layers keep their saved size.
 - [x] List rows with kind glyph + name + visibility checkbox + transparency slider + active highlight
 - [x] Click row → set active layer
-- [x] Double-click name → inline rename (Enter commits, Escape cancels, blur commits; remote renames sync without clobbering in-progress edits)
-- [ ] Double-click layer row → **Layer Options** (desktop `LayerPanel.cpp:145`). Web double-click renames inline instead; options are only on right-click.
+- [x] Inline rename from the context menu or `F2` on the focused row (Enter commits, Escape cancels, blur commits; remote renames sync without clobbering in-progress edits)
+- [x] Double-click layer row → **Layer Options** (desktop `LayerPanel.cpp:145`)
 - [x] Right-click context menu — Show/Hide, Solo, Show all, Rename, Move up/down, Delete, **Layer Options…** (`LayersPanel.tsx` `LayerRow` → `LayerOptionsDialog.tsx`)
 
 ### Modules Panel (`ModulesPanel.cpp`) — **PARTIAL**
@@ -242,9 +242,10 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Part Library management** — platform-admin installs libraries, org-admin enables/disables per library (`apps/web/src/admin/AdminPage.tsx` Libraries tab; `apps/web/src/orgs/OrgDetailPage.tsx` Part libraries section)
 - [n/a] **Library Paths** dialog (legacy local-path model) — superseded by server-side part library manager
 - [x] **Find & Replace** — text-cell Replace All wired; part-number replace not applicable (part identity)
-- [~] **Layer Options** dialog — `LayerOptionsDialog.tsx`: name, hull visibility/colour/thickness, display-brick-elevation (brick layers only); accessible via right-click → "Layer Options…"
-  - [ ] Grid-layer options: cell size, line thickness/colour, display grid / sub-grid, cell index (`MainWindow.cpp:172-200`)
-  - [ ] Area-layer paint cell size (`MainWindow.cpp:220-262`); web paints with the stored `areaCellSize` (default 8) but has no UI to change it
+- [x] **Layer Options** dialog — `LayerOptionsDialog.tsx` (form model in `layerOptions.ts`), opened by double-clicking a layer row or from the context menu. Fields: name, transparency, visible, hull visibility/colour/thickness (`MainWindow.cpp:146-265`). OK writes only the changed fields, as one undo step.
+  - [x] Grid-layer options: cell size (1-512), line thickness, sub-divisions (2-32), display grid / sub-grid / cell-index labels (`MainWindow.cpp:172-202`). Grid, sub-grid and cell-index colours are a web extra (vanilla BlueBrick has them; the desktop dialog does not).
+  - [x] Brick-layer elevation labels (`MainWindow.cpp:205-216`)
+  - [x] Area-layer paint cell size, 1-256 studs (`MainWindow.cpp:218-231`)
 - [x] **General Info** dialog — Author / LUG / Event / Date / Comment (`GeneralInfoDialog`)
 - [x] **Background Image** dialog — `BackgroundImageDialog.tsx`
 - [x] **Edit Brick** dialog — Part #, X/Y studs, Rotation, Altitude, Active connection # (`EditBrickDialog`)
@@ -264,7 +265,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [n/a] **Background Task progress** — web model uses async mutations with inline pending states; no separate progress window needed
 - [n/a] **Restore autosave?** prompt at startup — Yjs provides continuous sync; there is no local autosave file to restore
 - [x] **Unsaved changes** prompt before New/Open — shown when sync is broken (reconnecting/offline/error)
-- [ ] **Missing-parts** modal when a layout references parts not in the library. Web renders placeholders silently. I could not find this dialog in the current desktop `src/`; the only missing-part count is in `ImportPreviewDialog.cpp:175`.
+- [n/a] **Missing-parts** modal — the desktop `src/` has no such dialog (the only missing-part count is in the import preview, `ImportPreviewDialog.cpp:175`). Web renders placeholders for unknown parts, like desktop.
 - [x] **About** — `/about` route (web equivalent of the desktop About message box)
 
 ---
@@ -292,7 +293,8 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Hull / outline polygon** — `<hull>` pixel-space polygon parsed from XML into `PartMetadata.hullPts` + `PartWire.hullPts`; rendered as a closed `<Line>` polygon in `BrickLayer.tsx` when ≥3 points available; falls back to sprite bounding rect for parts without a `<hull>` element (184 parts ship explicit hulls)
 - [x] **Elevation badge** labels (per `view/brickElevation` + per-layer `displayBrickElevation`; non-zero altitude only)
 - [x] **Electric circuit** overlay — `ElectricCircuitLayer.tsx`: port of `SceneBuilderElectric.cpp`; BFS polarity propagation across connected bricks; OrangeRed / Cyan parallel rail lines offset 2px perpendicular to circuit centreline; orange diamond shortcut markers; gated by `showElectricCircuits` toggle; rendered above bricks (z=500)
-- [x] Grid + sub-grid line drawing
+- [x] Grid + sub-grid line drawing, with colour alpha (the desktop default grid is half-transparent black)
+- [x] **Grid cell-index labels** ("A1", "B1", ...) when the Grid layer's `DisplayCellIndex` is on (`render/gridIndex.ts`, `GridLayer.tsx`). Letters or numbers per axis from `CellIndexColumnType` / `CellIndexRowType`, counted from `CellIndexCorner`, drawn at a constant screen size. The desktop port keeps the fields and the checkbox but draws nothing; this follows vanilla BlueBrick.
 - [x] **Sidecar background-image** painted under everything — `BackgroundImageLayer` in `EditorPage.tsx` renders sidecar `backgroundImage` as a `KonvaImage` below all canvas layers
 - [x] **Selection halo** — gold / green-when-snap-active polygon outline
 - [x] **Linear-ruler endpoint handles** drawn when one ruler selected; draggable to reshape
@@ -330,7 +332,7 @@ Selection-aware; entries vary based on what's under the cursor:
 
 **Bricks** (`EditCommands.cpp`): MoveBricksCommand [x], RotateBricksCommand [x] (about selection centroid), DeleteBricksCommand [x] (prunes module members), AddBrickCommand [x] (placeBrick), AddBricksCommand [x] (insertBricks), ReorderBricksCommand [x] (reorderBricks), EditBrickCommand [x], GroupBricksCommand [x], UngroupBricksCommand [x]
 
-**Layers** (`LayerCommands.cpp`): AddLayerCommand [x] (brick / area / text / ruler), DeleteLayerCommand [x], MoveLayerCommand [x], RenameLayerCommand [x], SetLayerTransparencyCommand [x], SetLayerVisibilityCommand [x], ChangeBackgroundColorCommand [x], ChangeGeneralInfoCommand [x], SetLayerHullPropertiesCommand [x] (`setLayerHullProperties`), SetDisplayBrickElevationCommand [x] (`setLayerDisplayBrickElevation`)
+**Layers** (`LayerCommands.cpp`): AddLayerCommand [x] (grid / brick / area / text / ruler), Layer options macro [x] (`applyLayerOptions`), DeleteLayerCommand [x], MoveLayerCommand [x], RenameLayerCommand [x], SetLayerTransparencyCommand [x], SetLayerVisibilityCommand [x], ChangeBackgroundColorCommand [x], ChangeGeneralInfoCommand [x], SetLayerHullPropertiesCommand [x] (`setLayerHullProperties`), SetDisplayBrickElevationCommand [x] (`setLayerDisplayBrickElevation`)
 
 **Text** (`TextCommands.cpp`): AddTextCellCommand [x], DeleteTextCellCommand [x], EditTextCellTextCommand [x]
 
