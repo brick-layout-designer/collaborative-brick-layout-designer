@@ -1,12 +1,24 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
+
+/**
+ * `?next=` target to return to after signing in (e.g. /device, /invite/…).
+ * Same-origin paths only, so the login page can't be used as an open
+ * redirect.
+ */
+export function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/';
+  return raw;
+}
 
 export function LoginPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const providers = useQuery({ queryKey: ['providers'], queryFn: api.providers });
-  if (me.data?.user) return <Navigate to="/" replace />;
+  const [params] = useSearchParams();
+  const next = safeNext(params.get('next'));
+  if (me.data?.user) return <Navigate to={next} replace />;
 
   return (
     <div className="grid min-h-screen place-items-center px-4">
@@ -33,13 +45,13 @@ export function LoginPage() {
           )}
         </div>
 
-        {providers.data?.passwordEnabled && <PasswordForm />}
+        {providers.data?.passwordEnabled && <PasswordForm next={next} />}
       </div>
     </div>
   );
 }
 
-function PasswordForm() {
+function PasswordForm({ next }: { next: string }) {
   const qc = useQueryClient();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -60,7 +72,7 @@ function PasswordForm() {
         return;
       }
       qc.invalidateQueries({ queryKey: ['me'] });
-      window.location.href = '/';
+      window.location.href = next;
     },
     onError: (e: Error) => setError(e.message),
   });

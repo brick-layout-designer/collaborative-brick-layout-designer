@@ -1,0 +1,168 @@
+// Personal access tokens (`bld_pat_…`) for non-browser clients — the
+// desktop app's live sync, issued through the device-code flow
+// (routes/auth/device.ts). Stored like sessions: only a sha256 of the
+// secret, so a DB dump can't be replayed. Unlike sessions they are
+// scoped and only honoured on an explicit route allow-list (see
+// `apiToken` route config and attachUser in cookie.ts).
+
+import { randomBytes, randomUUID } from 'node:crypto';
+import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
+import type { ApiToken, User } from '../db/schema.js';
+import { hashToken } from './session.js';
+import { notifyCredentialRevoked } from './revocation.js';
+
+export const TOKEN_PREFIX = 'bld_pat_';
+
+export const API_SCOPES = ['layouts:read', 'layouts:write'] as const;
+export type ApiScope = (typeof API_SCOPES)[number];
+
+/** Lifetime of a token, slid forward every time it is used. */
+export const TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * lastUsedAt / expiresAt are rewritten at most this often per token, so
+ * a busy client doesn't turn every request into a DB write.
+ */
+const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Parse a space-separated scope string (OAuth style). Returns null when
+ * it names an unknown scope; an empty/missing string means every scope.
+ * The result is de-duplicated and in canonical order.
+ */
+export function parseScopes(raw: string | undefined | null): ApiScope[] | null {
+  const parts = (raw ?? '').split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return [...API_SCOPES];
+  if (parts.some((p) => !(API_SCOPES as readonly string[]).includes(p))) return null;
+  return API_SCOPES.filter((s) => parts.includes(s));
+}
+
+export function scopesOf(row: Pick<ApiToken, 'scopes'>): ApiScope[] {
+  return parseScopes(row.scopes) ?? [];
+}
+
+/** `layouts:write` implies `layouts:read`. */
+export function hasScope(scopes: readonly ApiScope[], needed: ApiScope): boolean {
+  if (scopes.includes(needed)) return true;
+  return needed === 'layouts:read' && scopes.includes('layouts:write');
+}
+
+/** Mint a token. The plaintext is returned once and never stored. */
+export async function createApiToken(
+  userId: string,
+  name: string,
+  scopes: readonly ApiScope[],
+): Promise<{ token: string; row: ApiToken }> {
+  const secret = randomBytes(32).toString('base64url');
+  const token = `${TOKEN_PREFIX}${secret}`;
+  const now = new Date();
+  const row: ApiToken = {
+    id: randomUUID(),
+    userId,
+    name,
+    tokenHash: hashToken(token),
+    prefix: token.slice(0, TOKEN_PREFIX.length + 4),
+    last4: token.slice(-4),
+    scopes: scopes.join(' '),
+    createdAt: now,
+    lastUsedAt: null,
+    expiresAt: new Date(now.getTime() + TOKEN_TTL_MS),
+    revokedAt: null,
+  };
+  await db.insert(schema.apiTokens).values(row);
+  return { token, row };
+}
+
+function isLive(row: Pick<ApiToken, 'revokedAt' | 'expiresAt'>, now: number): boolean {
+  return row.revokedAt === null && row.expiresAt.getTime() >= now;
+}
+
+/** Slide expiry + stamp lastUsedAt, at most once per TOUCH_INTERVAL_MS. */
+async function touch(row: ApiToken, now: number): Promise<void> {
+  if (row.lastUsedAt && now - row.lastUsedAt.getTime() < TOUCH_INTERVAL_MS) return;
+  const lastUsedAt = new Date(now);
+  const expiresAt = new Date(now + TOKEN_TTL_MS);
+  await db
+    .update(schema.apiTokens)
+    .set({ lastUsedAt, expiresAt })
+    .where(eq(schema.apiTokens.id, row.id));
+  row.lastUsedAt = lastUsedAt;
+  row.expiresAt = expiresAt;
+}
+
+/**
+ * Resolve a presented `bld_pat_…` secret to its user. Null when unknown,
+ * revoked or expired. A successful validation counts as a use.
+ */
+export async function validateApiToken(
+  token: string,
+): Promise<{ user: User; token: ApiToken; scopes: ApiScope[] } | null> {
+  if (!token.startsWith(TOKEN_PREFIX)) return null;
+  const row = await db
+    .select({ token: schema.apiTokens, user: schema.users })
+    .from(schema.apiTokens)
+    .innerJoin(schema.users, eq(schema.apiTokens.userId, schema.users.id))
+    .where(eq(schema.apiTokens.tokenHash, hashToken(token)))
+    .get();
+  const now = Date.now();
+  if (!row || !isLive(row.token, now)) return null;
+  await touch(row.token, now);
+  return { user: row.user, token: row.token, scopes: scopesOf(row.token) };
+}
+
+/**
+ * True while the token exists, isn't revoked and hasn't expired. Used by
+ * the WebSocket's periodic revalidation; an open socket counts as use,
+ * so this also slides the expiry of a client that stays connected.
+ */
+export async function isApiTokenActive(tokenId: string): Promise<boolean> {
+  const row = await db.select().from(schema.apiTokens).where(eq(schema.apiTokens.id, tokenId)).get();
+  const now = Date.now();
+  if (!row || !isLive(row, now)) return false;
+  await touch(row, now);
+  return true;
+}
+
+/** The user's live (unrevoked, unexpired) tokens, newest first. */
+export async function listApiTokens(userId: string): Promise<ApiToken[]> {
+  return db
+    .select()
+    .from(schema.apiTokens)
+    .where(
+      and(
+        eq(schema.apiTokens.userId, userId),
+        isNull(schema.apiTokens.revokedAt),
+        gt(schema.apiTokens.expiresAt, new Date()),
+      ),
+    )
+    .orderBy(desc(schema.apiTokens.createdAt));
+}
+
+/**
+ * Revoke one of `userId`'s tokens and close the sockets it opened.
+ * Returns the revoked row, or null when there is no such live token.
+ */
+export async function revokeApiToken(userId: string, tokenId: string): Promise<ApiToken | null> {
+  const row = await db
+    .select()
+    .from(schema.apiTokens)
+    .where(and(eq(schema.apiTokens.id, tokenId), eq(schema.apiTokens.userId, userId)))
+    .get();
+  if (!row || row.revokedAt !== null) return null;
+  const revokedAt = new Date();
+  await db.update(schema.apiTokens).set({ revokedAt }).where(eq(schema.apiTokens.id, tokenId));
+  notifyCredentialRevoked({ tokenId });
+  return { ...row, revokedAt };
+}
+
+/** Revoke every live token of a user. Returns how many were revoked. */
+export async function revokeAllApiTokens(userId: string): Promise<number> {
+  const res = await db
+    .update(schema.apiTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(schema.apiTokens.userId, userId), isNull(schema.apiTokens.revokedAt)))
+    .returning({ id: schema.apiTokens.id });
+  for (const { id } of res) notifyCredentialRevoked({ tokenId: id });
+  return res.length;
+}

@@ -43,6 +43,8 @@ export function resetDb(): void {
     DELETE FROM org_members;
     DELETE FROM orgs;
     DELETE FROM sessions;
+    DELETE FROM api_tokens;
+    DELETE FROM device_codes;
     DELETE FROM email_verifications;
     DELETE FROM platform_settings;
     DELETE FROM users;
@@ -74,6 +76,30 @@ export async function loginAs(
   const res = await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${v.token}` });
   const sc = res.headers['set-cookie'];
   return { cookie: Array.isArray(sc) ? sc.join('; ') : (sc ?? ''), id: user.id };
+}
+
+/**
+ * Run the device-code flow (the app must have `deviceRoutes`) as the
+ * user behind `cookieStr` and return the minted `bld_pat_…` token.
+ */
+export async function issueToken(app: FastifyInstance, cookieStr: string, scope?: string): Promise<string> {
+  const code = await app.inject({
+    method: 'POST',
+    url: '/api/auth/device/code',
+    payload: { client_name: 'Brick Layout Designer (test)', ...(scope === undefined ? {} : { scope }) },
+  });
+  const { device_code, user_code } = code.json() as { device_code: string; user_code: string };
+  const approve = await app.inject({
+    method: 'POST',
+    url: '/api/auth/device/approve',
+    headers: { cookie: cookieStr },
+    payload: { user_code },
+  });
+  if (approve.statusCode !== 200) throw new Error(`issueToken: approve → ${approve.statusCode}`);
+  const res = await app.inject({ method: 'POST', url: '/api/auth/device/token', payload: { device_code } });
+  const token = (res.json() as { access_token?: string }).access_token;
+  if (!token) throw new Error(`issueToken: token → ${res.body}`);
+  return token;
 }
 
 export { db, schema };

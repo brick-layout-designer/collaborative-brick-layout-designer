@@ -16,6 +16,8 @@ const EXPECTED = [
   'modules_owner_org_id_idx',
   'audit_events_layout_id_created_at_idx',
   'audit_events_resource_created_at_idx',
+  'api_tokens_user_id_idx',
+  'device_codes_expires_at_idx',
 ];
 
 function plan(sql: string): string {

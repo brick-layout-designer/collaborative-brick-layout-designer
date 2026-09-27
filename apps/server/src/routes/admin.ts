@@ -14,7 +14,9 @@ import { join, resolve, extname } from 'node:path';
 import { db, schema } from '../db/index.js';
 import { requireGlobalAdmin } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { invalidateAllSessions, notifySessionRevoked } from '../auth/session.js';
+import { invalidateAllSessions } from '../auth/session.js';
+import { notifyCredentialRevoked } from '../auth/revocation.js';
+import { revokeAllApiTokens } from '../auth/apiTokens.js';
 import { parsePartXml } from '@cld/parts-catalog';
 import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
@@ -259,7 +261,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.layouts.ownerUserId, target.id));
     deleteUserAndReassign(target.id, me.id);
     // Their sessions cascaded away; drop any open realtime sockets too.
-    notifySessionRevoked({ userId: target.id });
+    notifyCredentialRevoked({ userId: target.id });
     await docHub.closeMany(ownedLayouts.map((l) => l.id));
     // Cascade handles sessions, oauth_accounts, org_members,
     // owner_user_id columns (SET NULL or CASCADE per schema).
@@ -284,12 +286,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         .get();
       if (!target) return reply.code(404).send({ error: 'not_found' });
       await invalidateAllSessions(target.id);
+      // Desktop sign-ins are sessions too, as far as the user is
+      // concerned: "revoke all" signs out every device.
+      const tokensRevoked = await revokeAllApiTokens(target.id);
       await writeAuditEvent({
         resourceKind: 'user',
         resourceId: target.id,
         userId: me.id,
         eventType: 'admin_revoke_sessions',
-        payload: { targetEmail: target.email },
+        payload: { targetEmail: target.email, tokensRevoked },
       });
       return { ok: true };
     },

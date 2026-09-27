@@ -1,0 +1,170 @@
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { api, type ApiScope, type DeviceRequest } from '../api';
+
+/** What each scope lets the device do, in the user's terms. */
+export const SCOPE_LABELS: Record<ApiScope, string> = {
+  'layouts:read': 'See your layouts and download them',
+  'layouts:write': 'Edit your layouts (live sync)',
+};
+
+/**
+ * Desktop sign-in approval (the "verification URI" of the device-code
+ * flow, see apps/server/src/routes/auth/device.ts). The desktop app
+ * shows a code like BCDF-GHJK and sends the user here; they confirm the
+ * code, see which app is asking and for what, and approve or deny. The
+ * app's `verification_uri_complete` link pre-fills the code.
+ */
+export function DevicePage() {
+  const [params] = useSearchParams();
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const [code, setCode] = useState(params.get('user_code') ?? '');
+  const [request, setRequest] = useState<DeviceRequest | null>(null);
+  const [outcome, setOutcome] = useState<'approved' | 'denied' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const lookup = useMutation({
+    mutationFn: (c: string) => api.device.lookup(c),
+    onSuccess: (r) => {
+      setRequest(r);
+      setError(null);
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+  const decide = useMutation({
+    mutationFn: (approve: boolean) => (approve ? api.device.approve(code) : api.device.deny(code)),
+    onSuccess: (_r, approve) => setOutcome(approve ? 'approved' : 'denied'),
+    onError: (e: Error) => {
+      setRequest(null);
+      setError(e.message);
+    },
+  });
+
+  // A pre-filled code (verification_uri_complete) is looked up straight
+  // away; approving still takes an explicit click.
+  const signedIn = !!me.data?.user;
+  const prefilled = params.get('user_code');
+  const { mutate: lookupMutate } = lookup;
+  useEffect(() => {
+    if (signedIn && prefilled) lookupMutate(prefilled);
+  }, [signedIn, prefilled, lookupMutate]);
+
+  if (me.isLoading) return <Centered>Loading…</Centered>;
+
+  if (!signedIn) {
+    const next = `/device${prefilled ? `?user_code=${encodeURIComponent(prefilled)}` : ''}`;
+    return (
+      <Centered>
+        <h1 className="text-lg font-semibold">Connect a device</h1>
+        <p className="text-sm text-neutral-400">Sign in to approve the desktop app's request.</p>
+        <Link
+          to={`/login?next=${encodeURIComponent(next)}`}
+          className="inline-block rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500"
+        >
+          Sign in
+        </Link>
+      </Centered>
+    );
+  }
+
+  if (outcome === 'approved') {
+    return (
+      <Centered>
+        <h1 className="text-lg font-semibold">Device connected</h1>
+        <p className="text-sm text-neutral-400">
+          You can return to the app. Manage connected devices from your{' '}
+          <Link to="/profile" className="text-blue-400 hover:underline">profile</Link>.
+        </p>
+      </Centered>
+    );
+  }
+  if (outcome === 'denied') {
+    return (
+      <Centered>
+        <h1 className="text-lg font-semibold">Request denied</h1>
+        <p className="text-sm text-neutral-400">The device was not given access to your account.</p>
+      </Centered>
+    );
+  }
+
+  if (request) {
+    return (
+      <Centered>
+        <h1 className="text-lg font-semibold">Allow {request.clientName}?</h1>
+        <p className="text-sm text-neutral-400">
+          Signed in as <span className="text-neutral-200">{me.data!.user!.email}</span>. Only approve
+          if the app is showing the code <span className="font-mono text-neutral-200">{code.toUpperCase()}</span>.
+        </p>
+        <div className="text-left">
+          <p className="text-sm text-neutral-300">It will be able to:</p>
+          <ul className="mt-1 list-disc pl-5 text-sm text-neutral-300">
+            {request.scopes.map((s) => (
+              <li key={s}>{SCOPE_LABELS[s] ?? s}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex justify-center gap-3">
+          <button
+            onClick={() => decide.mutate(true)}
+            disabled={decide.isPending}
+            className="rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50"
+          >
+            Approve
+          </button>
+          <button
+            onClick={() => decide.mutate(false)}
+            disabled={decide.isPending}
+            className="rounded-sm border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800 disabled:opacity-50"
+          >
+            Deny
+          </button>
+        </div>
+      </Centered>
+    );
+  }
+
+  return (
+    <Centered>
+      <h1 className="text-lg font-semibold">Connect a device</h1>
+      <p className="text-sm text-neutral-400">Enter the code shown in the desktop app.</p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (code.trim()) lookup.mutate(code.trim());
+        }}
+        className="space-y-3"
+      >
+        <input
+          aria-label="Device code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="XXXX-XXXX"
+          autoFocus
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={12}
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2 text-center font-mono text-lg uppercase tracking-widest"
+        />
+        <button
+          type="submit"
+          disabled={lookup.isPending || !code.trim()}
+          className="w-full rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50"
+        >
+          Continue
+        </button>
+      </form>
+      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+    </Centered>
+  );
+}
+
+function Centered({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid min-h-screen place-items-center px-4">
+      <div className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-8 text-center">
+        {children}
+      </div>
+    </div>
+  );
+}

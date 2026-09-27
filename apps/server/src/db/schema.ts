@@ -37,6 +37,62 @@ export const sessions = sqliteTable(
   }),
 );
 
+// Personal access tokens for non-browser clients (the desktop app's live
+// sync). Only a sha256 of the secret is stored, like sessions; `prefix`
+// and `last4` are kept in the clear so the settings page can tell tokens
+// apart. `scopes` is a space-separated list (see auth/apiTokens.ts).
+// Expiry slides forward on use; revocation keeps the row (revokedAt) so
+// the Devices list and audit trail still show it.
+export const apiTokens = sqliteTable(
+  'api_tokens',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: text('prefix').notNull(),
+    last4: text('last4').notNull(),
+    scopes: text('scopes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => ({
+    // The Devices list and "revoke everything for this user".
+    userIdx: index('api_tokens_user_id_idx').on(t.userId),
+  }),
+);
+
+// Pending OAuth 2.0 device-authorization grants (RFC 8628). Both codes
+// are stored as sha256 hashes: the device code is a bearer secret, and
+// the short user code would otherwise be readable from a DB dump while
+// it is still approvable. A row is single use — once its token is
+// minted, status becomes 'consumed' and further polls fail.
+export const deviceCodes = sqliteTable(
+  'device_codes',
+  {
+    id: text('id').primaryKey(),
+    deviceCodeHash: text('device_code_hash').notNull().unique(),
+    userCodeHash: text('user_code_hash').notNull().unique(),
+    clientName: text('client_name').notNull(),
+    scopes: text('scopes').notNull(),
+    status: text('status', { enum: ['pending', 'approved', 'denied', 'consumed'] }).notNull(),
+    /** The approving (or denying) user; null while pending. */
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** Current minimum poll interval in seconds (grows on slow_down). */
+    interval: integer('interval').notNull(),
+    lastPolledAt: integer('last_polled_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    expiresIdx: index('device_codes_expires_at_idx').on(t.expiresAt),
+  }),
+);
+
 export const oauthAccounts = sqliteTable(
   'oauth_accounts',
   {
@@ -498,6 +554,8 @@ export const orgPartLibraries = sqliteTable(
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
+export type ApiToken = typeof apiTokens.$inferSelect;
+export type DeviceCode = typeof deviceCodes.$inferSelect;
 export type OAuthAccount = typeof oauthAccounts.$inferSelect;
 export type EmailVerification = typeof emailVerifications.$inferSelect;
 export type PlatformSettings = typeof platformSettings.$inferSelect;

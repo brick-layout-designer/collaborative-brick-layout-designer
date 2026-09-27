@@ -33,7 +33,7 @@ export async function versionRoutes(app: FastifyInstance) {
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.get(
     '/api/version',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' }, apiToken: 'layouts:read' } },
     async () => body,
   );
 }

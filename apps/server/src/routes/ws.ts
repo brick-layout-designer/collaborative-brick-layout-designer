@@ -3,7 +3,18 @@
 // Auth: the session cookie is sent automatically with the WS handshake
 // because @fastify/websocket runs through the same HTTP pipeline. We
 // reuse `attachUser` (same as REST) to populate `req.user` and reject
-// the upgrade if the user lacks at least viewer role.
+// the upgrade if the user lacks at least viewer role. Non-browser
+// clients (the desktop app) instead send `Authorization: Bearer
+// bld_pat_…` on the upgrade request; this route is on the API-token
+// allow-list, and a token without `layouts:write` is held to viewer.
+// Tokens are never read from the query string.
+//
+// Cookie-authenticated handshakes must come from our own origin: a
+// browser attaches the session cookie to a WebSocket opened by ANY page
+// (WebSockets aren't subject to CORS), so without this check another
+// site could open a socket as the signed-in user (cross-site WebSocket
+// hijacking). Browsers can't set Authorization on a WebSocket, so
+// token handshakes carry no such ambient credential and skip the check.
 //
 // Phase 5 will distinguish viewer (read-only WS) from editor (writable);
 // for Phase 4 we accept any role >= viewer and let the editor's REST
@@ -15,7 +26,12 @@ import websocket from '@fastify/websocket';
 import { docHub } from '../ws/docHub.js';
 import { attachWsHandlers } from '../ws/handler.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
-import { onSessionRevoked, SESSION_COOKIE, sessionIdForToken } from '../auth/session.js';
+import { SESSION_COOKIE, sessionIdForToken } from '../auth/session.js';
+import { onCredentialRevoked } from '../auth/revocation.js';
+import { isRevokedBy, revokedReason, type Credential } from '../auth/credentials.js';
+import { bearerToken } from '../auth/cookie.js';
+import { hasScope } from '../auth/apiTokens.js';
+import { env } from '../env.js';
 
 // Per-user cap on concurrent WS connections. Prevents one tab fork-bomb
 // from exhausting the server. 8 is enough for a normal user across a
@@ -34,20 +50,38 @@ const userConnections = new Map<string, number>();
  */
 export const WS_MAX_PAYLOAD = 16 * 1024 * 1024;
 
-/** Open sockets and the session/user they authenticated as. */
-const openSockets = new Map<{ close(code?: number, reason?: string): void }, { userId: string; sessionId: string }>();
+/** Open sockets and the credential/user they authenticated as. */
+const openSockets = new Map<
+  { close(code?: number, reason?: string): void },
+  { userId: string; credential: Credential }
+>();
+
+/**
+ * True when a handshake may proceed as far as the Origin goes: token
+ * (Bearer) handshakes always; cookie handshakes when there's no Origin
+ * (a non-browser client — browsers always send one) or it is PUBLIC_URL's.
+ */
+export function isAllowedWsOrigin(origin: string | undefined, hasBearer: boolean): boolean {
+  if (hasBearer || origin === undefined) return true;
+  try {
+    return new URL(origin).origin === new URL(env.publicUrl).origin;
+  } catch {
+    return false;
+  }
+}
 
 export async function wsRoutes(app: FastifyInstance): Promise<void> {
   await app.register(websocket, { options: { maxPayload: WS_MAX_PAYLOAD } });
   docHub.startSnapshotWorker();
-  // Logout / "revoke all sessions" / user deletion: close the affected
-  // sockets now rather than when the client next reconnects. 1008 is the
-  // code the editor already maps to "not signed in".
-  const unsubscribe = onSessionRevoked((r) => {
+  // Logout / "revoke all sessions" / user deletion / token revoked:
+  // close the affected sockets now rather than when the client next
+  // reconnects. 1008 is the code the editor already maps to "not signed
+  // in".
+  const unsubscribe = onCredentialRevoked((r) => {
     for (const [sock, who] of openSockets) {
-      if ('sessionId' in r ? who.sessionId === r.sessionId : who.userId === r.userId) {
+      if (isRevokedBy(who.credential, who.userId, r)) {
         try {
-          sock.close(1008, 'session_revoked');
+          sock.close(1008, revokedReason(who.credential));
         } catch {
           /* already closed */
         }
@@ -61,7 +95,21 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { id: string } }>(
     '/ws/layout/:id',
-    { websocket: true },
+    {
+      websocket: true,
+      config: { apiToken: 'layouts:read' },
+      // Runs before the upgrade, so a refused Origin gets a plain 403
+      // instead of an accepted-then-closed socket.
+      preValidation: async (req, reply) => {
+        const origin = req.headers.origin;
+        if (!isAllowedWsOrigin(origin, bearerToken(req) !== null)) {
+          // Most often a misconfigured PUBLIC_URL (the app reached under
+          // another host/port), so say so in the log.
+          req.log.warn({ origin, publicUrl: env.publicUrl }, 'ws: refused cross-origin handshake');
+          return reply.code(403).send({ error: 'origin_not_allowed' });
+        }
+      },
+    },
     async (socket, req) => {
       const ws = socket;
       try {
@@ -88,10 +136,14 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
 
         // role.role is non-null here because hasAtLeast(role.role, 'viewer')
         // succeeded above. Cast for the type system.
-        const sessionId = sessionIdForToken(req.cookies[SESSION_COOKIE] ?? '');
+        const token = req.apiToken;
+        const credential: Credential = token
+          ? { kind: 'token', id: token.id }
+          : { kind: 'session', id: sessionIdForToken(req.cookies[SESSION_COOKIE] ?? '') };
+        const readOnly = token !== null && !hasScope(token.scopes, 'layouts:write');
         let detach: () => Promise<void>;
         try {
-          detach = await attachWsHandlers(ws, layoutId, userId, role.role!, sessionId);
+          detach = await attachWsHandlers(ws, layoutId, userId, role.role!, { credential, readOnly });
         } catch (err) {
           const n = (userConnections.get(userId) ?? 1) - 1;
           if (n <= 0) userConnections.delete(userId);
@@ -104,7 +156,7 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         // while we were hydrating. Run the cleanup exactly once either way:
         // a double detach used to double-decrement the connection count and
         // arm a second idle timer that destroyed the doc under a live client.
-        openSockets.set(ws, { userId, sessionId });
+        openSockets.set(ws, { userId, credential });
         let cleanedUp = false;
         const cleanup = async () => {
           if (cleanedUp) return;

@@ -8,6 +8,7 @@ import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
 import { InvitePage } from './auth/InvitePage';
 import { VerifyEmailPage } from './auth/VerifyEmailPage';
+import { DevicePage } from './auth/DevicePage';
 import { OrgsPage } from './orgs/OrgsPage';
 import { OrgDetailPage } from './orgs/OrgDetailPage';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
@@ -76,6 +77,7 @@ createRoot(root).render(
           <Route path="/login" element={<LoginPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/link" element={<LinkPage />} />
+          <Route path="/device" element={<DevicePage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
           <Route path="/transfer/:token" element={<TransferPage />} />

@@ -186,7 +186,7 @@ full list. Notable ones:
 | Variable                  | Default                 | Notes                                              |
 |---------------------------|-------------------------|----------------------------------------------------|
 | `HTTP_PORT`               | `3000`                  | Port the server listens on                         |
-| `PUBLIC_URL`              | `http://localhost:3000` | Used for OAuth callback URLs                       |
+| `PUBLIC_URL`              | `http://localhost:3000` | Used for OAuth callback URLs, the desktop sign-in link, and the only browser origin allowed to open the realtime WebSocket |
 | `DB_PATH`                 | `./data/cbld.sqlite`    | SQLite file path (use `/data/cbld.sqlite` in Docker) |
 | `PARTS_DIR`               | `./data/parts`          | Parts library root (use `/parts` in Docker)        |
 | `COOKIE_SECURE`           | `false`                 | Set `true` behind TLS                              |
@@ -204,6 +204,7 @@ full list. Notable ones:
 | `BACKUPS_DIR`             | `/backups`              | Where backups land                                 |
 | `DEMO_TTL_SWEEP_ENABLED`  | `true`                  | Daily sweep of expired demo layouts                |
 | `DAILY_COMPACTION_ENABLED`| `true`                  | Daily Yjs compaction worker                        |
+| `APP_VERSION`             | server package version  | Reported by `GET /api/version`                     |
 
 ### OAuth setup (one-time)
 
@@ -216,6 +217,30 @@ Each provider needs an authorised callback URL of the shape:
 For local development that's `http://localhost:3000/api/auth/google/callback`
 (and the GitHub / OIDC equivalents). Paste the resulting client ID + secret
 into `.env`.
+
+### Desktop sign-in
+
+The desktop app signs in with the OAuth 2.0 device-code flow (RFC 8628)
+and then syncs layouts live over the same y-websocket endpoint the
+browser uses:
+
+1. The app calls `POST /api/auth/device/code` and shows a code such as
+   `BCDF-GHJK` plus a link to `<PUBLIC_URL>/device`.
+2. The user opens that page signed in, checks the code, the app's name
+   and the requested scopes (`layouts:read`, `layouts:write`), and
+   approves or denies.
+3. The app polls `POST /api/auth/device/token` and receives a personal
+   access token (`bld_pat_…`, shown once, stored only as a hash).
+
+Tokens expire after 90 days without use and are only accepted — as an
+`Authorization: Bearer` header, never a query parameter — on the layout
+list/detail/export routes, `GET /api/version` and `/ws/layout/:id`;
+every other route refuses them. A read-only token joins the WebSocket as
+a viewer. Users see and revoke their devices under **Profile → Devices**
+(revoking closes the device's open connections); an admin "revoke all
+sessions" signs out devices too. `PUBLIC_URL` must be the URL browsers
+use, since cookie-authenticated WebSocket handshakes from any other
+origin are refused.
 
 ---
 

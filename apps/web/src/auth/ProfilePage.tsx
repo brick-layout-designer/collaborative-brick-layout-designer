@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
+import { DevicesSection } from './DevicesSection';
 
 export function ProfilePage() {
   const qc = useQueryClient();
@@ -115,6 +116,8 @@ export function ProfilePage() {
             })}
           </ul>
         </section>
+
+        <DevicesSection />
       </main>
     </div>
   );
