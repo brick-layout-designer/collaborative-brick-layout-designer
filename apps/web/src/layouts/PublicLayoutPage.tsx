@@ -233,9 +233,9 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
     <div className="relative h-screen w-screen overflow-hidden bg-neutral-900">
       {/* Banner — minimal, dismissable-feeling but kept up so the user
           knows they're on a public link. */}
-      <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-xs">
+      <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-sm border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-xs">
         <span className="text-neutral-300">{title}</span>
-        <span className="rounded bg-blue-900/40 px-1.5 py-0.5 text-blue-300">
+        <span className="rounded-sm bg-blue-900/40 px-1.5 py-0.5 text-blue-300">
           Public · view only
         </span>
         <Link to="/" className="ml-2 text-neutral-400 hover:underline">

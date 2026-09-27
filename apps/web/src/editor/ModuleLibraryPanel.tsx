@@ -57,7 +57,7 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter modules…"
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -68,7 +68,7 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
           </p>
         )}
         {error && (
-          <p className="mx-2 mt-2 rounded border border-red-900 bg-red-950/30 px-2 py-1 text-xs text-red-300">
+          <p className="mx-2 mt-2 rounded-sm border border-red-900 bg-red-950/30 px-2 py-1 text-xs text-red-300">
             {error}
           </p>
         )}
@@ -159,7 +159,7 @@ function ModuleLibraryRow({
               if (e.key === 'Escape') setEditing(false);
             }}
             disabled={renaming}
-            className="w-full rounded border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-neutral-100"
+            className="w-full rounded-sm border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-neutral-100"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
@@ -175,7 +175,7 @@ function ModuleLibraryRow({
             onClick={onInsert}
             disabled={isInserting}
             title="Insert into layout"
-            className="rounded px-1.5 py-0.5 text-[10px] text-blue-400 hover:bg-blue-900/40 disabled:opacity-40"
+            className="rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 hover:bg-blue-900/40 disabled:opacity-40"
           >
             {isInserting ? '…' : '↓'}
           </button>
@@ -184,21 +184,21 @@ function ModuleLibraryRow({
             target="_blank"
             rel="noreferrer"
             title="Open / edit module"
-            className="rounded px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
+            className="rounded-sm px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
           >
             ✎
           </a>
           <button
             onClick={startRename}
             title="Rename module"
-            className="rounded px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
+            className="rounded-sm px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
           >
             ⓘ
           </button>
           <button
             onClick={onDelete}
             title="Delete module"
-            className="rounded px-1.5 py-0.5 text-[10px] text-red-400 hover:bg-red-900/40"
+            className="rounded-sm px-1.5 py-0.5 text-[10px] text-red-400 hover:bg-red-900/40"
           >
             ✕
           </button>

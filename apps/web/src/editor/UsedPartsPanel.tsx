@@ -121,7 +121,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
           placeholder="Filter…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-xs outline-none placeholder:text-neutral-600"
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-xs outline-hidden placeholder:text-neutral-600"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
@@ -158,7 +158,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
                       {limit === undefined ? '—' : over > 0 ? `+${over}` : `${row.count}/${limit}`}
                     </td>
                   )}
-                  <td className="px-2 py-1 text-neutral-400 truncate max-w-[10rem]">{row.description || '—'}</td>
+                  <td className="px-2 py-1 text-neutral-400 truncate max-w-40">{row.description || '—'}</td>
                 </tr>
               );
             })}
@@ -176,7 +176,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[160px] rounded border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
+          className="min-w-[160px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
         >
           <button

@@ -49,7 +49,7 @@ export function LibraryPage() {
           </h2>
           <Link
             to="/"
-            className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
           >
             Manage layouts
           </Link>
@@ -65,7 +65,7 @@ export function LibraryPage() {
           {me.data?.user && !me.data.user.isDemoAccount && (
             <button
               onClick={() => setShowPart(true)}
-              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
             >
               Upload part
             </button>
@@ -82,7 +82,7 @@ export function LibraryPage() {
           {me.data?.user && (
             <button
               onClick={() => setShowModule(true)}
-              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
             >
               New module
             </button>
@@ -102,12 +102,12 @@ function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: 
   if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
   if (layouts.length === 0)
     return (
-      <p className="mt-2 rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+      <p className="mt-2 rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
         No layouts yet. <Link to="/" className="text-blue-400 hover:underline">Create one</Link> to get started.
       </p>
     );
   return (
-    <ul className="mt-2 divide-y divide-neutral-800 rounded border border-neutral-800">
+    <ul className="mt-2 divide-y divide-neutral-800 rounded-sm border border-neutral-800">
       {layouts.map((l) => (
         <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
           <div>
@@ -123,7 +123,7 @@ function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: 
           </div>
           <Link
             to={`/editor/${l.id}`}
-            className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500"
+            className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500"
           >
             Open
           </Link>
@@ -148,7 +148,7 @@ function CustomPartsList({
   if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
   if (parts.length === 0)
     return (
-      <p className="mt-2 rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+      <p className="mt-2 rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
         No custom parts yet.
       </p>
     );
@@ -157,7 +157,7 @@ function CustomPartsList({
       {parts.map((p) => (
         <li
           key={p.id}
-          className="flex flex-col items-center rounded border border-neutral-800 p-2 text-xs"
+          className="flex flex-col items-center rounded-sm border border-neutral-800 p-2 text-xs"
         >
           <img
             src={api.customParts.spriteUrl(p.id)}
@@ -196,12 +196,12 @@ function ModulesList({
   if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
   if (modules.length === 0)
     return (
-      <p className="mt-2 rounded border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+      <p className="mt-2 rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
         No saved modules yet.
       </p>
     );
   return (
-    <ul className="mt-2 divide-y divide-neutral-800 rounded border border-neutral-800">
+    <ul className="mt-2 divide-y divide-neutral-800 rounded-sm border border-neutral-800">
       {modules.map((m) => (
         <li key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
           <div>
@@ -214,7 +214,7 @@ function ModulesList({
             onClick={() => {
               if (confirm(`Delete "${m.title}"?`)) remove.mutate(m.id);
             }}
-            className="rounded border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+            className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
           >
             Delete
           </button>
@@ -298,7 +298,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             required
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
 
@@ -308,7 +308,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
 
@@ -324,7 +324,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -362,14 +362,14 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
           >
             Upload
           </button>
@@ -417,7 +417,7 @@ function NewModuleDialog({ onClose }: { onClose: () => void }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Module"
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
         {orgs.data && orgs.data.orgs.length > 0 && (
@@ -426,7 +426,7 @@ function NewModuleDialog({ onClose }: { onClose: () => void }) {
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -442,14 +442,14 @@ function NewModuleDialog({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
           >
             Create
           </button>
@@ -499,7 +499,7 @@ export function CategoryPicker({
         <select
           value={categories.includes(value) ? value : (categories[0] ?? '')}
           onChange={onSelect}
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
         >
           {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -513,12 +513,12 @@ export function CategoryPicker({
             onChange={(e) => onChange(e.target.value)}
             placeholder="My Category"
             autoFocus
-            className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+            className="flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
           />
           <button
             type="button"
             onClick={() => { setCustomMode(false); onChange(categories[0] ?? 'Custom'); }}
-            className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
             title="Pick from list"
           >
             ↩

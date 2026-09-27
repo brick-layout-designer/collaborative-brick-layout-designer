@@ -48,7 +48,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
           placeholder="Filter venues…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
         />
       </div>
 
@@ -77,7 +77,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
               <button
                 onClick={() => load(v.id)}
                 title="Load into layout"
-                className="rounded border border-neutral-700 px-1.5 py-0.5 hover:bg-neutral-700"
+                className="rounded-sm border border-neutral-700 px-1.5 py-0.5 hover:bg-neutral-700"
               >
                 ↓
               </button>
@@ -88,7 +88,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
                 remove.mutate(v.id);
               }}
               title="Delete from library"
-              className="rounded border border-red-900 px-1.5 py-0.5 text-red-400 hover:bg-red-950"
+              className="rounded-sm border border-red-900 px-1.5 py-0.5 text-red-400 hover:bg-red-950"
             >
               ✕
             </button>

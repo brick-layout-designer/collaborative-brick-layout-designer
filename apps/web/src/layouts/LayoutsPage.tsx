@@ -37,14 +37,14 @@ export function LayoutsPage() {
         <h2 className="text-lg font-semibold">Layouts</h2>
         <button
           onClick={() => setShowCreate(true)}
-          className="rounded bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
+          className="rounded-sm bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
         >
           New layout
         </button>
       </div>
 
       {Object.values(orgGroups).length > 0 && (
-        <div className="rounded border border-neutral-700 bg-neutral-800/40 px-4 py-3 text-sm text-neutral-400">
+        <div className="rounded-sm border border-neutral-700 bg-neutral-800/40 px-4 py-3 text-sm text-neutral-400">
           Some layouts are owned by your orgs and are not shown here.{' '}
           {Object.values(orgGroups).map((org) => (
             <Link
@@ -59,11 +59,11 @@ export function LayoutsPage() {
       )}
 
       {layouts.length === 0 ? (
-        <p className="rounded border border-dashed border-neutral-700 p-8 text-center text-neutral-500">
+        <p className="rounded-sm border border-dashed border-neutral-700 p-8 text-center text-neutral-500">
           No layouts yet. Click <em>New layout</em> to create or import one.
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
+        <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
           {layouts.map((l) => (
             <LayoutRow
               key={l.id}
@@ -161,26 +161,26 @@ function LayoutRow({
       <div className="flex items-center gap-2 text-sm">
         <Link
           to={`/editor/${layout.id}`}
-          className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-500"
+          className="rounded-sm bg-blue-600 px-3 py-1 text-white hover:bg-blue-500"
         >
           Open
         </Link>
         <button
           onClick={onShare}
-          className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          className="rounded-sm border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
         >
           Share
         </button>
         <a
           href={api.layouts.exportZipUrl(layout.id)}
-          className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          className="rounded-sm border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
           title={layout.hasSidecar ? 'Download .bbm + .bbm.cld sidecar as a .zip' : 'Download .bbm'}
         >
           Export .zip
         </a>
         <button
           onClick={onDelete}
-          className="rounded border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"
+          className="rounded-sm border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"
         >
           Delete
         </button>
@@ -255,7 +255,7 @@ function CreateLayoutDialog({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Layout"
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
           />
         </label>
 
@@ -265,7 +265,7 @@ function CreateLayoutDialog({
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -301,14 +301,14 @@ function CreateLayoutDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
           >
             Create
           </button>

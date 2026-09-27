@@ -81,7 +81,7 @@ export function PreferencesDialog({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-[34rem] rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl"
+        className="w-136 rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Tab bar */}
@@ -134,7 +134,7 @@ export function PreferencesDialog({ onClose }: Props) {
                     step={10}
                     value={undoStackDepth}
                     onChange={(e) => setUndoStackDepth(parseInt(e.target.value, 10) || 0)}
-                    className="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                    className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                   />
                   <span className="text-[10px] text-neutral-600">0 = unlimited</span>
                 </div>
@@ -149,7 +149,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 <select
                   value={snapStepStuds}
                   onChange={(e) => setSnapStep(Number(e.target.value))}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 >
                   {SNAP_STEPS.map((s) => (
                     <option key={s} value={s}>{s === 0 ? 'Off' : `${s} stud${s !== 1 ? 's' : ''}`}</option>
@@ -161,7 +161,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 <select
                   value={rotationStepDegrees}
                   onChange={(e) => setRotationStep(Number(e.target.value))}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 >
                   {ROTATION_STEPS.map((r) => (
                     <option key={r} value={r}>{r}°</option>
@@ -174,7 +174,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   type="color"
                   value={pickerColor}
                   onChange={(e) => onPickerChange(e.target.value)}
-                  className="h-7 w-12 cursor-pointer rounded border border-neutral-700 bg-neutral-800 p-0.5"
+                  className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
                 />
               </div>
             </div>
@@ -210,7 +210,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   type="color"
                   value={`#${selectionTint}`}
                   onChange={(e) => setSelectionTint(e.target.value.slice(1))}
-                  className="h-7 w-12 cursor-pointer rounded border border-neutral-700 bg-neutral-800 p-0.5"
+                  className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
@@ -221,7 +221,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   max={20}
                   value={moduleFrameThickness}
                   onChange={(e) => setModuleFrameThickness(parseInt(e.target.value, 10) || 2)}
-                  className="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
@@ -238,7 +238,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   step={5}
                   value={moduleLabelPercent}
                   onChange={(e) => setModuleLabelPercent(parseInt(e.target.value, 10) || 35)}
-                  className="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
@@ -250,7 +250,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   step={1}
                   value={venueLabelPx}
                   onChange={(e) => setVenueLabelPx(parseInt(e.target.value, 10) || 28)}
-                  className="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </div>
             </div>
@@ -260,7 +260,7 @@ export function PreferencesDialog({ onClose }: Props) {
         <div className="flex justify-end border-t border-neutral-700 px-5 py-3">
           <button
             onClick={onClose}
-            className="rounded bg-blue-600 px-4 py-1.5 text-xs text-white hover:bg-blue-500"
+            className="rounded-sm bg-blue-600 px-4 py-1.5 text-xs text-white hover:bg-blue-500"
           >
             Close
           </button>
