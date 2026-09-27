@@ -15,6 +15,7 @@ import { Group, Text as KonvaText } from 'react-konva';
 import type Konva from 'konva';
 import type { BbmMap, ColorSpec, LayerText, TextCell } from '@cld/model';
 import { studToPx, COLOR_DEFAULT } from './coords';
+import { textKey } from '../mixedSelection';
 
 const PROBE_PX = 100;
 
@@ -28,15 +29,16 @@ export function TextLayers({
   map,
   isViewer,
   onEditText,
-  selected,
+  selectedKeys,
   onSelectText,
 }: {
   map: BbmMap;
   isViewer?: boolean;
   onEditText?: (ref: TextCellRef) => void;
-  /** The selected cell (highlighted); Delete removes it. */
-  selected?: { layerId: string; cellIndex: number } | null;
-  onSelectText?: (ref: TextCellRef) => void;
+  /** Selected cells (`textKey(layerId, index)`), highlighted; part of the mixed selection. */
+  selectedKeys?: ReadonlySet<string>;
+  /** Click selects; `additive` = Shift/Ctrl held (toggle). */
+  onSelectText?: (key: string, additive: boolean) => void;
 }) {
   const layers = map.layers.filter((l): l is LayerText => l.type === 'text' && l.visible);
   if (layers.length === 0) return null;
@@ -51,9 +53,9 @@ export function TextLayers({
                 key={i}
                 cell={cell}
                 interactive={!isViewer && !!onEditText}
-                isSelected={!!selected && selected.layerId === layer.id && selected.cellIndex === i}
+                isSelected={!!selectedKeys && selectedKeys.has(textKey(layer.id, i))}
                 onDblClick={() => onEditText?.({ layerId: layer.id, cellIndex: i, cell })}
-                onClick={() => onSelectText?.({ layerId: layer.id, cellIndex: i, cell })}
+                onClick={(additive) => onSelectText?.(textKey(layer.id, i), additive)}
               />
             ))}
           </Group>
@@ -74,7 +76,7 @@ function FittedTextCell({
   interactive?: boolean;
   isSelected?: boolean;
   onDblClick?: () => void;
-  onClick?: () => void;
+  onClick?: (additive: boolean) => void;
 }) {
   const ref = useRef<Konva.Text | null>(null);
   const [layout, setLayout] = useState({ fontSize: PROBE_PX, w: 0, h: 0 });
@@ -141,7 +143,7 @@ function FittedTextCell({
             onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
               if (e.evt.button !== 0) return;
               e.cancelBubble = true;
-              onClick();
+              onClick(e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey);
             },
           }
         : {})}

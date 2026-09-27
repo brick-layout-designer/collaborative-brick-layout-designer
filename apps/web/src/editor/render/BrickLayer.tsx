@@ -8,17 +8,19 @@ import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { useEditorStore, type Tool } from '../editorStore';
 import { useShallow } from 'zustand/react/shallow';
+import { readSidecarFromDoc } from '@cld/ydoc';
 import {
-  bricksByLayer,
   deleteBricks,
-  deleteBricksAcrossLayers,
   moveBrick,
   moveBrickAndOrient,
-  translateBricksAcrossLayers,
+  setActiveConnectionPoint,
 } from '../mutations';
+import { annoCount, deleteMixedSelection, translateMixedSelection } from '../mixedSelection';
+import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { studToPx } from './coords';
 import { ensureSprite, getSpriteSync } from './spriteCache';
-import { liveDragSnap } from '../snap';
+import { liveDragSnap, nearestConnectionIndex } from '../snap';
+import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
 
 interface Props {
@@ -241,12 +243,13 @@ const BrickGlyph = memo(function BrickGlyph({
         : [brick.id];
 
       if (additive) {
-        // Shift/ctrl-click toggles the whole group on/off.
+        // Shift/ctrl-click toggles the whole group on/off, keeping any
+        // selected rulers / labels / text (mixed selection).
         const sel = new Set(useEditorStore.getState().selection);
         const allIn = groupMembers.every((id) => sel.has(id));
         if (allIn) for (const id of groupMembers) sel.delete(id);
         else for (const id of groupMembers) sel.add(id);
-        useEditorStore.getState().setSelection([...sel]);
+        useEditorStore.setState({ selection: [...sel] });
       } else {
         useEditorStore.getState().setSelection(groupMembers);
       }
@@ -255,6 +258,30 @@ const BrickGlyph = memo(function BrickGlyph({
       deleteBricks(doc, layerId, [brick.id]);
     }
   }
+
+  /**
+   * Grab anchor — the connection nearest the press, captured on
+   * mouse-down (desktop MapView.cpp:538-543 → captureGrabAnchor,
+   * MapViewDrag.cpp:155-217). Persisted as the brick's active connection
+   * and used as the snap lead of a single-brick drag.
+   */
+  const grabConnRef = useRef<number>(-1);
+
+  function handleMouseDown(e: KonvaEventObject<MouseEvent>) {
+    grabConnRef.current = -1;
+    if (isViewer || tool !== 'select' || e.evt.button !== 0) return;
+    const stage = e.target.getStage();
+    const ptr = stage?.getPointerPosition();
+    if (!stage || !ptr) return;
+    const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+    const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx());
+    if (idx < 0) return;
+    grabConnRef.current = idx;
+    setActiveConnectionPoint(doc, layerId, brick.id, idx);
+  }
+
+  /** Selected rulers / labels moving along with this brick's drag. */
+  const annoNodesRef = useRef<NodeSnap[]>([]);
 
   /**
    * Orientation the snap algorithm last suggested during a live drag.
@@ -293,7 +320,12 @@ const BrickGlyph = memo(function BrickGlyph({
     if (isViewer) return;
     if (tool !== 'select') return;
     const map = getMap();
-    const selection = useEditorStore.getState().selection;
+    const { selection, annoSelection } = useEditorStore.getState();
+    // Selected rulers and labels move with the bricks (mixed selection,
+    // MapViewDrag.cpp:124-153); only when this brick is part of it.
+    annoNodesRef.current = selection.includes(brick.id)
+      ? collectNodes(e.target.getStage(), annoNodeNames(annoSelection))
+      : [];
     // Only the brick under the cursor fires its own onDragStart in
     // Konva; the rest of the selection isn't dragged by Konva itself —
     // we translate them by hand on dragmove.
@@ -391,6 +423,7 @@ const BrickGlyph = memo(function BrickGlyph({
         mouseStudY,
         orientation: brick.orientation,
         snapStepStuds: useEditorStore.getState().snapStepStuds,
+        ...(!isMulti && grabConnRef.current >= 0 ? { leadConnIndex: grabConnRef.current } : {}),
       },
       getMap(),
       partsByKey,
@@ -423,6 +456,12 @@ const BrickGlyph = memo(function BrickGlyph({
           });
         }
       }
+    }
+
+    if (annoNodesRef.current.length > 0) {
+      const startX = isMulti ? dragStart.leaderStartCentre.x : brick.displayArea.x + brick.displayArea.width / 2;
+      const startY = isMulti ? dragStart.leaderStartCentre.y : brick.displayArea.y + brick.displayArea.height / 2;
+      shiftNodes(annoNodesRef.current, (result.centreX - startX) * studToPx(), (result.centreY - startY) * studToPx());
     }
 
     if (result.snappedToConnection && result.ringStudX !== null) {
@@ -466,11 +505,18 @@ const BrickGlyph = memo(function BrickGlyph({
     const snappedOrientation = snapOrientRef.current;
     dragStartRef.current = null;
     snapOrientRef.current = null;
+    const annoNodes = annoNodesRef.current;
+    annoNodesRef.current = [];
+    restoreNodes(annoNodes);
+    grabConnRef.current = -1;
     if (isViewer) return;
     if (tool !== 'select') return;
     void dragStart;
     const map = getMap();
-    const selection = useEditorStore.getState().selection;
+    const { selection, annoSelection } = useEditorStore.getState();
+    const inSelection = selection.includes(brick.id);
+    // Rulers / labels ride along only when they were captured at drag start.
+    const anno = annoNodes.length > 0 ? annoSelection : { rulers: [], labels: [], texts: [] };
 
     // Drag-out-of-viewport-to-delete — port of MapView.cpp:725-736.
     // If the user released the mouse outside the Konva stage rect
@@ -483,14 +529,13 @@ const BrickGlyph = memo(function BrickGlyph({
     const outOfBounds =
       !ptr || ptr.x < 0 || ptr.y < 0 || ptr.x >= stageW || ptr.y >= stageH;
     if (outOfBounds) {
-      // The selection can span layers — delete every selected brick
-      // wherever it lives (desktop MapView.cpp:725-736 deletes the whole
-      // selection), in one undo step.
-      const ids =
-        selection.includes(brick.id) && selection.length > 0
-          ? selection
-          : [brick.id];
-      deleteBricksAcrossLayers(doc, bricksByLayer(map, ids));
+      // Desktop deleteSelected() removes the whole selection — bricks on
+      // any layer plus rulers, labels and text — in one undo step.
+      if (inSelection) {
+        deleteMixedSelection(doc, map, selection, annoSelection);
+      } else {
+        deleteMixedSelection(doc, map, [brick.id], { rulers: [], labels: [], texts: [] });
+      }
       useEditorStore.getState().setSelection([]);
       // Snap the visible Group back to its original position so it
       // doesn't briefly render at the off-stage drop coords before the
@@ -505,19 +550,32 @@ const BrickGlyph = memo(function BrickGlyph({
 
     const newCentreStudX = e.target.x() / studToPx();
     const newCentreStudY = e.target.y() / studToPx();
+    const oldCentreStudX = brick.displayArea.x + brick.displayArea.width / 2;
+    const oldCentreStudY = brick.displayArea.y + brick.displayArea.height / 2;
+    const dx = newCentreStudX - oldCentreStudX;
+    const dy = newCentreStudY - oldCentreStudY;
+    const sidecar = annoCount(anno) > 0 ? readSidecarFromDoc(doc) : null;
+    const labels = sidecar?.anchoredLabels ?? [];
+    const modules = sidecar?.modules ?? [];
 
-    if (selection.includes(brick.id) && selection.length > 1) {
-      // Multi-select drag: translate every selected brick by the same delta,
-      // across ALL layers in one transaction so undo is one step.
-      const oldCentreStudX = brick.displayArea.x + brick.displayArea.width / 2;
-      const oldCentreStudY = brick.displayArea.y + brick.displayArea.height / 2;
-      const dx = newCentreStudX - oldCentreStudX;
-      const dy = newCentreStudY - oldCentreStudY;
-      translateBricksAcrossLayers(doc, bricksByLayer(map, selection), dx, dy);
-    } else if (snappedOrientation !== null) {
-      moveBrickAndOrient(doc, layerId, brick.id, newCentreStudX, newCentreStudY, snappedOrientation);
+    if (inSelection && selection.length > 1) {
+      // Multi-select drag: translate every selected brick (and ruler /
+      // label) by the same delta, across ALL layers in one transaction
+      // so undo is one step.
+      translateMixedSelection(doc, map, labels, modules, { bricks: selection, anno, dx, dy });
     } else {
-      moveBrick(doc, layerId, brick.id, newCentreStudX, newCentreStudY);
+      // Single brick: commit its snapped pose, plus any rulers / labels
+      // selected with it, as one undo step.
+      doc.transact(() => {
+        if (snappedOrientation !== null) {
+          moveBrickAndOrient(doc, layerId, brick.id, newCentreStudX, newCentreStudY, snappedOrientation);
+        } else {
+          moveBrick(doc, layerId, brick.id, newCentreStudX, newCentreStudY);
+        }
+        if (annoCount(anno) > 0) {
+          translateMixedSelection(doc, map, labels, modules, { bricks: [], anno, dx, dy, movedBricks: [brick.id] });
+        }
+      }, LOCAL_ORIGIN);
     }
     // Desktop confirms the commit in the status bar (MapViewDrag.cpp:594-597).
     useEditorStore.getState().showStatusMessage(wasSnapped ? 'Connection snap' : 'Moved', 1500);
@@ -533,6 +591,7 @@ const BrickGlyph = memo(function BrickGlyph({
       y={y + h / 2}
       rotation={brick.orientation}
       draggable={!isViewer && (tool === 'select')}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
       onTap={handleClick}
       onDblClick={(e) => {

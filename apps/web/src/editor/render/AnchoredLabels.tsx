@@ -16,10 +16,12 @@
 // Module anchors target a sidecar module id — same AABB approach.
 
 import { Group, Line, Text } from 'react-konva';
-import type { BbmMap, Brick } from '@cld/model';
+import type { BbmMap } from '@cld/model';
 import type { AnchoredLabel, SidecarModule } from '@cld/bbm';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { studToPx } from './coords';
+import { buildLabelIndex, labelAnchorStuds } from '../mixedSelection';
+import type { AnnoDragHandlers } from './groupDragNodes';
 
 interface Props {
   map: BbmMap;
@@ -29,15 +31,16 @@ interface Props {
   modules?: SidecarModule[];
   /** Called when the user double-clicks a label. */
   onDoubleClick?: (label: AnchoredLabel) => void;
-  /** Highlighted label (click selects; Delete removes). */
-  selectedId?: string | null;
-  onSelect?: (id: string) => void;
+  /** Highlighted labels (part of the mixed selection). */
+  selectedIds?: ReadonlySet<string>;
+  /** Mouse-down selects; `additive` = Shift/Ctrl held (toggle). */
+  onSelect?: (id: string, additive: boolean) => void;
   /**
-   * Drag a label to a new offset — desktop labels are movable items
-   * committing MoveAnchoredLabelCommand (MapViewDrag.cpp:420-446).
-   * Delta in studs.
+   * Drag a label (and the rest of the selection) — desktop labels are
+   * movable items committing MoveAnchoredLabelCommand inside the "Drag"
+   * macro (MapViewDrag.cpp:412-450).
    */
-  onMove?: (id: string, dxStuds: number, dyStuds: number) => void;
+  drag?: AnnoDragHandlers;
 }
 
 export function AnchoredLabels({
@@ -46,40 +49,13 @@ export function AnchoredLabels({
   zoom,
   modules = [],
   onDoubleClick,
-  selectedId = null,
+  selectedIds,
   onSelect,
-  onMove,
+  drag,
 }: Props) {
   if (!labels || labels.length === 0) return null;
 
-  // Index brick by id; also collect bricks by group id and module member set.
-  const brickById = new Map<string, Brick>();
-  const bricksByGroup = new Map<string, Brick[]>();
-  for (const layer of map.layers) {
-    if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      brickById.set(b.id, b);
-      if (b.myGroup) {
-        const arr = bricksByGroup.get(b.myGroup) ?? [];
-        arr.push(b);
-        bricksByGroup.set(b.myGroup, arr);
-      }
-    }
-  }
-
-  // Index module members by module id.
-  const bricksByModule = new Map<string, Brick[]>();
-  for (const mod of modules) {
-    const memberSet = new Set(mod.members);
-    const members: Brick[] = [];
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        if (memberSet.has(b.id)) members.push(b);
-      }
-    }
-    if (members.length > 0) bricksByModule.set(mod.id, members);
-  }
+  const index = buildLabelIndex(map, modules);
 
   return (
     <Group>
@@ -93,30 +69,15 @@ export function AnchoredLabels({
           isBold && isItalic ? 'bold italic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
         const fill = argbToCss(label.color);
 
-        let anchorPxX = 0;
-        let anchorPxY = 0;
-        let leaderTargetPx: { x: number; y: number } | null = null;
-
-        if (label.kind === 1 /* Brick */) {
-          const target = brickById.get(label.targetId);
-          if (!target) return null;
-          anchorPxX = (target.displayArea.x + target.displayArea.width / 2) * studToPx();
-          anchorPxY = (target.displayArea.y + target.displayArea.height / 2) * studToPx();
-        } else if (label.kind === 2 /* Group */ || label.kind === 3 /* Module */) {
-          const bricks =
-            label.kind === 2
-              ? (bricksByGroup.get(label.targetId) ?? null)
-              : (bricksByModule.get(label.targetId) ?? null);
-          if (!bricks || bricks.length === 0) return null;
-          const aabb = bricksAabb(bricks);
-          const cx = (aabb.minX + aabb.maxX) / 2;
-          const cy = (aabb.minY + aabb.maxY) / 2;
-          leaderTargetPx = { x: cx * studToPx(), y: cy * studToPx() };
-          // Label position is offset from the anchor centre.
-          anchorPxX = leaderTargetPx.x;
-          anchorPxY = leaderTargetPx.y;
-        }
-        // Kind 0 (World): anchorPx stays at origin; offset positions the label absolutely.
+        // Anchor: origin for World labels, the brick centre for Brick
+        // labels, the member AABB centre (leader-line end) for Group /
+        // Module labels. A lost anchor hides the label.
+        const anchor = labelAnchorStuds(label, index);
+        if (!anchor) return null;
+        const anchorPxX = anchor.x * studToPx();
+        const anchorPxY = anchor.y * studToPx();
+        const leaderTargetPx =
+          label.kind === 2 || label.kind === 3 ? { x: anchorPxX, y: anchorPxY } : null;
 
         const x = anchorPxX + label.offset.x * studToPx();
         const y = anchorPxY + label.offset.y * studToPx();
@@ -128,27 +89,25 @@ export function AnchoredLabels({
                 onMouseDown: (e: KonvaEventObject<MouseEvent>) => {
                   if (e.evt.button !== 0) return;
                   e.cancelBubble = true;
-                  onSelect(label.id);
+                  const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+                  // Pressing an already-selected label keeps the mixed
+                  // selection so the drag moves all of it.
+                  if (additive || !selectedIds?.has(label.id)) onSelect(label.id, additive);
                 },
               }
             : {}),
-          ...(onMove
+          ...(drag
             ? {
                 draggable: true,
-                onDragEnd: (e: KonvaEventObject<DragEvent>) => {
-                  // The Group sits at (0,0); its drag position IS the delta.
-                  const node = e.target;
-                  const dx = node.x() / studToPx();
-                  const dy = node.y() / studToPx();
-                  node.position({ x: 0, y: 0 });
-                  if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6) onMove(label.id, dx, dy);
-                },
+                onDragStart: (e: KonvaEventObject<DragEvent>) => drag.start('labels', label.id, e.target),
+                onDragMove: (e: KonvaEventObject<DragEvent>) => drag.move(e.target),
+                onDragEnd: (e: KonvaEventObject<DragEvent>) => drag.end(e.target),
               }
             : {}),
         };
-        const isSelected = selectedId === label.id;
+        const isSelected = !!selectedIds?.has(label.id);
         return (
-          <Group key={label.id} {...groupProps}>
+          <Group key={label.id} name={`label-${label.id}`} {...groupProps}>
             {leaderTargetPx && (
               <Line
                 points={[leaderTargetPx.x, leaderTargetPx.y, x, y]}
@@ -168,7 +127,7 @@ export function AnchoredLabels({
               fontStyle={fontStyle}
               fill={fill}
               rotation={label.rot}
-              listening={!!onDoubleClick || !!onSelect || !!onMove}
+              listening={!!onDoubleClick || !!onSelect || !!drag}
               {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
               perfectDrawEnabled={false}
             />
@@ -177,17 +136,6 @@ export function AnchoredLabels({
       })}
     </Group>
   );
-}
-
-function bricksAabb(bricks: Brick[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const b of bricks) {
-    minX = Math.min(minX, b.displayArea.x);
-    minY = Math.min(minY, b.displayArea.y);
-    maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-    maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-  }
-  return { minX, minY, maxX, maxY };
 }
 
 /**

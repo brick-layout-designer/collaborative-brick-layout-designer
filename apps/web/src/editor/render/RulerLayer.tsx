@@ -37,12 +37,19 @@ import type {
   LinearRulerItem,
 } from '@cld/model';
 import { studToPx, COLOR_DEFAULT } from './coords';
+import type { KonvaEventObject } from 'konva/lib/Node';
+import type { AnnoDragHandlers } from './groupDragNodes';
 
 interface Props {
   map: BbmMap;
-  /** When set, render the live snap ring + halo for that ruler id. */
-  selectedRulerId?: string | null;
-  onRulerClick?: (rulerId: string) => void;
+  /** Rulers in the (mixed) selection — drawn with a halo. */
+  selectedRulerIds?: ReadonlySet<string>;
+  /** The one ruler whose endpoint handles are shown (single ruler selected). */
+  handleRulerId?: string | null;
+  /** Mouse-down on a ruler; `additive` = Shift/Ctrl held (toggle). */
+  onRulerSelect?: (rulerId: string, additive: boolean) => void;
+  /** Drag a ruler together with the rest of the selection (MapViewDrag.cpp:412-450). */
+  drag?: AnnoDragHandlers;
   onRulerDoubleClick?: (rulerId: string) => void;
   /**
    * Called continuously while the user drags a linear-ruler endpoint
@@ -62,8 +69,10 @@ interface Props {
 
 export function RulerLayers({
   map,
-  selectedRulerId,
-  onRulerClick,
+  selectedRulerIds,
+  handleRulerId = null,
+  onRulerSelect,
+  drag,
   onRulerDoubleClick,
   onEndpointDrag,
 }: Props) {
@@ -90,18 +99,25 @@ export function RulerLayers({
         return (
           <Group key={layer.id} opacity={opacity}>
             {layer.rulerItems.map((item) => {
-              const sel = item.id === selectedRulerId;
+              const sel = !!selectedRulerIds?.has(item.id);
               // `key` must be passed directly to JSX, not spread from a
               // props object — React 19 warns (and doesn't reliably use
               // it for reconciliation) when key rides along in a spread.
               const props: {
                 brickCentres: typeof brickCentres;
                 selected: boolean;
+                showHandles: boolean;
+                rootProps: RulerRootProps;
                 onClick?: () => void;
                 onDoubleClick?: () => void;
                 onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, commit: boolean) => void;
-              } = { brickCentres, selected: sel };
-              if (onRulerClick) props.onClick = () => onRulerClick(item.id);
+              } = {
+                brickCentres,
+                selected: sel,
+                showHandles: item.id === handleRulerId,
+                rootProps: rulerRootProps(item.id, sel, onRulerSelect, drag),
+              };
+              if (onRulerSelect) props.onClick = () => undefined;
               if (onRulerDoubleClick) props.onDoubleClick = () => onRulerDoubleClick(item.id);
               if (onEndpointDrag) {
                 props.onEndpointDrag = (which, sx, sy, commit) =>
@@ -118,6 +134,46 @@ export function RulerLayers({
       })}
     </Group>
   );
+}
+
+/** Props for a ruler view's root Group: name, selection on press, drag. */
+interface RulerRootProps {
+  name: string;
+  draggable?: boolean;
+  onMouseDown?: (e: KonvaEventObject<MouseEvent>) => void;
+  onDragStart?: (e: KonvaEventObject<DragEvent>) => void;
+  onDragMove?: (e: KonvaEventObject<DragEvent>) => void;
+  onDragEnd?: (e: KonvaEventObject<DragEvent>) => void;
+}
+
+function rulerRootProps(
+  id: string,
+  selected: boolean,
+  onSelect: Props['onRulerSelect'],
+  drag: AnnoDragHandlers | undefined,
+): RulerRootProps {
+  const out: RulerRootProps = { name: `ruler-${id}` };
+  if (onSelect) {
+    out.onMouseDown = (e) => {
+      if (e.evt.button !== 0) return;
+      // Endpoint handles manage their own presses.
+      if (e.target.name() === 'ruler-endpoint') return;
+      e.cancelBubble = true;
+      const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+      // Pressing an already-selected ruler keeps the mixed selection so
+      // the drag moves all of it.
+      if (additive || !selected) onSelect(id, additive);
+    };
+  }
+  if (drag) {
+    // Drag events bubble up from the endpoint handles; only react to the
+    // ruler Group's own drag.
+    out.draggable = true;
+    out.onDragStart = (e) => { if (e.target === e.currentTarget) drag.start('rulers', id, e.target); };
+    out.onDragMove = (e) => { if (e.target === e.currentTarget) drag.move(e.target); };
+    out.onDragEnd = (e) => { if (e.target === e.currentTarget) drag.end(e.target); };
+  }
+  return out;
 }
 
 function brickCentreStuds(b: Brick): { x: number; y: number } {
@@ -140,6 +196,8 @@ function LinearRulerView({
   item,
   brickCentres,
   selected,
+  showHandles,
+  rootProps,
   onClick,
   onDoubleClick,
   onEndpointDrag,
@@ -147,6 +205,8 @@ function LinearRulerView({
   item: LinearRulerItem;
   brickCentres: Map<string, { x: number; y: number }>;
   selected: boolean;
+  showHandles: boolean;
+  rootProps: RulerRootProps;
   onClick?: () => void;
   onDoubleClick?: () => void;
   onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, commit: boolean) => void;
@@ -247,7 +307,7 @@ function LinearRulerView({
   const guidelineWidth = Math.max(0.5, item.guidelineThickness);
 
   return (
-    <Group>
+    <Group {...rootProps}>
       {/* Main measure line(s). */}
       {splitOnLine ? (
         <>
@@ -410,7 +470,7 @@ function LinearRulerView({
           MapView.cpp:399-444 (hit-test) + 547-589 (live drag) +
           680-724 (release commit). 0.8-stud * 1.5 = ~10px hit radius
           at native scale (port of MapView.cpp:409-410). */}
-      {selected && onEndpointDrag && (
+      {showHandles && onEndpointDrag && (
         <>
           <EndpointHandle x={a1.x} y={a1.y} which={0} onDrag={onEndpointDrag} />
           <EndpointHandle x={a2.x} y={a2.y} which={1} onDrag={onEndpointDrag} />
@@ -440,6 +500,7 @@ function EndpointHandle({
   const PX = studToPx();
   return (
     <KonvaCircle
+      name="ruler-endpoint"
       x={x}
       y={y}
       radius={6}
@@ -466,12 +527,15 @@ function CircularRulerView({
   item,
   brickCentres,
   selected,
+  rootProps,
   onClick,
   onDoubleClick,
 }: {
   item: CircularRulerItem;
   brickCentres: Map<string, { x: number; y: number }>;
   selected: boolean;
+  showHandles?: boolean;
+  rootProps: RulerRootProps;
   onClick?: () => void;
   onDoubleClick?: () => void;
 }) {
@@ -492,7 +556,7 @@ function CircularRulerView({
   const labelFontStyle = parseFontStyle(item.measureFont.style);
 
   return (
-    <Group>
+    <Group {...rootProps}>
       <KonvaCircle
         x={cx}
         y={cy}
