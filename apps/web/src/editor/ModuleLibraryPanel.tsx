@@ -12,7 +12,8 @@ import { api } from '../api';
 import { useEditorStore } from './editorStore';
 import { ensureBrickLayer, insertBricks } from './mutations';
 
-export const MODULE_MIME = 'application/x-cld-module';
+import { MODULE_MIME } from './mime';
+export { MODULE_MIME };
 
 interface Props {
   doc: Y.Doc;

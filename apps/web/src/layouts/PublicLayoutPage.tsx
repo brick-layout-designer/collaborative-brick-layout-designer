@@ -17,6 +17,7 @@ import * as Y from 'yjs';
 import type Konva from 'konva';
 import { decodeDoc, docToBbm } from '@cld/ydoc';
 import { api } from '../api';
+import '../konvaSetup';
 import { useViewportSize } from '../editor/useViewportSize';
 import { GridLayer } from '../editor/render/GridLayer';
 import { BrickLayer } from '../editor/render/BrickLayer';
