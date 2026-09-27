@@ -31,6 +31,7 @@ import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
 import { transferRoutes } from './routes/transfers.js';
 import { wsRoutes } from './routes/ws.js';
+import { registerSecurityHeaders } from './utils/securityHeaders.js';
 
 async function main() {
   // Run pending migrations on boot. Idempotent.
@@ -47,6 +48,11 @@ async function main() {
     contentSecurityPolicy: false, // SPA sets its own; API responses are JSON
     crossOriginEmbedderPolicy: false,
   });
+  // …but /api/* and /parts/* responses (which can carry user-uploaded
+  // bytes) get a locked-down sandbox policy. Registered on the root
+  // instance before any routes so it covers every plugin, including the
+  // static /parts/* servers below.
+  registerSecurityHeaders(app);
   await app.register(cors, {
     origin: env.publicUrl,
     credentials: true,
