@@ -2243,6 +2243,7 @@ function Canvas({
         <Group name={EXPORT_HIDE} listening={false}>
           <GridLayer
             map={map}
+            zoom={zoom}
             viewport={{
               studXMin: pxToStud(-panX / zoom),
               studYMin: pxToStud(-panY / zoom),

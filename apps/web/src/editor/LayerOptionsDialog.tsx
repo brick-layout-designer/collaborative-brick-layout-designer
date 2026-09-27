@@ -1,15 +1,21 @@
-// Layer Options dialog — port of desktop's LayerOptionsDialog.cpp.
-// Editable fields: name, hull visibility, hull colour, hull thickness,
-// and (for brick layers) display-brick-elevation toggle.
+// Layer Options dialog — port of the desktop dialog built in
+// MainWindow.cpp:146-265 (opened by double-clicking a layer row,
+// LayerPanel.cpp:145). Common fields: name, transparency, visibility,
+// hull. Per kind: Grid (cell size, line thickness, sub-divisions,
+// display grid / sub-grid / cell-index labels, colours), Brick
+// (elevation labels), Area (paint cell size). The form model and the
+// diffing live in layerOptions.ts; OK writes one undo step.
 
 import { useState } from 'react';
 import type * as Y from 'yjs';
 import type { Layer } from '@cld/model';
 import {
-  renameLayer,
-  setLayerHullProperties,
-  setLayerDisplayBrickElevation,
-} from './mutations';
+  applyLayerOptions,
+  formFromLayer,
+  layerOptionsPatch,
+  type GridOptions,
+  type LayerOptionsForm,
+} from './layerOptions';
 
 interface Props {
   layer: Layer;
@@ -17,105 +23,139 @@ interface Props {
   onClose: () => void;
 }
 
+const KIND_TITLE: Record<Layer['type'], string> = {
+  grid: 'Grid layer',
+  brick: 'Parts layer',
+  text: 'Text layer',
+  area: 'Area layer',
+  ruler: 'Ruler layer',
+};
+
 export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
-  const [name, setName] = useState(layer.name);
-  const hull = layer.hullProperties;
-  const [hullVisible, setHullVisible] = useState(hull.isVisible);
-  const [hullThickness, setHullThickness] = useState(hull.hullThickness);
-  const initHullHex =
-    hull.hullColor.kind === 'argb'
-      ? `#${hull.hullColor.argb.slice(2, 8).padStart(6, '0')}`
-      : '#000000';
-  const [hullHex, setHullHex] = useState(initHullHex);
-  const [dispElev, setDispElev] = useState(
-    layer.type === 'brick' ? layer.displayBrickElevation : false,
-  );
+  const [form, setForm] = useState<LayerOptionsForm>(() => formFromLayer(layer));
+  const set = <K extends keyof LayerOptionsForm>(k: K, v: LayerOptionsForm[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+  const setGrid = <K extends keyof GridOptions>(k: K, v: GridOptions[K]) =>
+    setForm((f) => (f.grid ? { ...f, grid: { ...f.grid, [k]: v } } : f));
 
   function commit() {
-    const trimmed = name.trim() || layer.name;
-    if (trimmed !== layer.name) renameLayer(doc, layer.id, trimmed);
-    setLayerHullProperties(doc, layer.id, hullVisible, {
-      kind: 'argb',
-      argb: `FF${hullHex.slice(1).toUpperCase()}`,
-    }, hullThickness);
-    if (layer.type === 'brick') {
-      setLayerDisplayBrickElevation(doc, layer.id, dispElev);
-    }
+    applyLayerOptions(doc, layer.id, layerOptionsPatch(layer, form));
     onClose();
   }
 
   const rowCls = 'flex items-center justify-between gap-4 py-1.5';
   const labelCls = 'text-xs text-neutral-400 w-40 shrink-0';
   const inputCls = 'flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
+  const colorCls = 'h-7 w-12 cursor-pointer rounded border border-neutral-700 bg-neutral-800 p-0.5';
+  const sectionCls = 'mt-3 border-t border-neutral-800 pt-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500';
+  const num = (v: string, fallback: number) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const check = (label: string, checked: boolean, onChange: (v: boolean) => void) => (
+    <label className={rowCls}>
+      <span className={labelCls}>{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-blue-500"
+      />
+    </label>
+  );
+  const number = (
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    onChange: (v: number) => void,
+    suffix?: string,
+  ) => (
+    <label className={rowCls}>
+      <span className={labelCls}>{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(num(e.target.value, value))}
+        className={inputCls}
+      />
+      {suffix && <span className="text-xs text-neutral-500">{suffix}</span>}
+    </label>
+  );
+  const color = (label: string, value: string, onChange: (v: string) => void) => (
+    <label className={rowCls}>
+      <span className={labelCls}>{label}</span>
+      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className={colorCls} />
+    </label>
+  );
 
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-label="Layer Options"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+        else if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') commit();
+      }}
     >
       <div
-        className="w-96 rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+        className="max-h-[90vh] w-[26rem] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-sm font-semibold text-neutral-200">Layer Options</h2>
 
         <div className="flex flex-col gap-0.5">
-          <div className={rowCls}>
+          <label className={rowCls}>
             <span className={labelCls}>Name</span>
             <input
               type="text"
               autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') onClose(); }}
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
               className={inputCls}
             />
-          </div>
+          </label>
+          {number('Transparency (%)', form.transparency, 0, 100, (v) => set('transparency', v))}
+          {check('Visible', form.visible, (v) => set('visible', v))}
+          {check('Display selection hulls', form.hullVisible, (v) => set('hullVisible', v))}
+          {color('Hull colour', form.hullHex, (v) => set('hullHex', v))}
+          {number('Hull thickness (px)', form.hullThickness, 1, 20, (v) => set('hullThickness', v))}
 
-          <div className={rowCls}>
-            <span className={labelCls}>Show hull outline</span>
-            <input
-              type="checkbox"
-              checked={hullVisible}
-              onChange={(e) => setHullVisible(e.target.checked)}
-              className="accent-blue-500"
-            />
-          </div>
+          {(form.grid || form.displayBrickElevation !== undefined || form.areaCellSize !== undefined) && (
+            <div className={sectionCls}>{KIND_TITLE[layer.type]}</div>
+          )}
 
-          <div className={rowCls}>
-            <span className={labelCls}>Hull colour</span>
-            <input
-              type="color"
-              value={hullHex}
-              onChange={(e) => setHullHex(e.target.value)}
-              className="h-7 w-12 cursor-pointer rounded border border-neutral-700 bg-neutral-800 p-0.5"
-            />
-          </div>
+          {form.grid && (
+            <>
+              {number('Cell size', form.grid.gridSizeInStud, 1, 512, (v) => setGrid('gridSizeInStud', v), 'studs')}
+              {number('Grid line thickness', form.grid.gridThickness, 1, 20, (v) => setGrid('gridThickness', v))}
+              {number('Sub-divisions per cell', form.grid.subDivisionNumber, 2, 32, (v) => setGrid('subDivisionNumber', v))}
+              {check('Display grid', form.grid.displayGrid, (v) => setGrid('displayGrid', v))}
+              {check('Display sub-grid', form.grid.displaySubGrid, (v) => setGrid('displaySubGrid', v))}
+              {check('Display cell index labels', form.grid.displayCellIndex, (v) => setGrid('displayCellIndex', v))}
+              {color('Grid colour', form.grid.gridHex, (v) => setGrid('gridHex', v))}
+              {color('Sub-grid colour', form.grid.subGridHex, (v) => setGrid('subGridHex', v))}
+              {color('Cell index colour', form.grid.cellIndexHex, (v) => setGrid('cellIndexHex', v))}
+            </>
+          )}
 
-          <div className={rowCls}>
-            <span className={labelCls}>Hull thickness (px)</span>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={hullThickness}
-              onChange={(e) => setHullThickness(Math.max(1, parseInt(e.target.value, 10) || 1))}
-              className={inputCls}
-            />
-          </div>
+          {form.displayBrickElevation !== undefined &&
+            check('Display brick elevation labels', form.displayBrickElevation, (v) => set('displayBrickElevation', v))}
 
-          {layer.type === 'brick' && (
-            <div className={rowCls}>
-              <span className={labelCls}>Show brick elevation</span>
-              <input
-                type="checkbox"
-                checked={dispElev}
-                onChange={(e) => setDispElev(e.target.checked)}
-                className="accent-blue-500"
-              />
-            </div>
+          {form.areaCellSize !== undefined && (
+            <>
+              {number('Paint cell size', form.areaCellSize, 1, 256, (v) => set('areaCellSize', v), 'studs')}
+              <p className="py-1 text-[11px] leading-snug text-neutral-500">
+                Changing cell size on a layer with painted cells leaves existing cells at their old
+                indexing — paint over to clean up.
+              </p>
+            </>
           )}
         </div>
 
