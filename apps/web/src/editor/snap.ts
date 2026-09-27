@@ -472,6 +472,15 @@ export interface DragSnapInput {
   orientation: number;
   /** Active grid snap step in studs (0 = off). */
   snapStepStuds: number;
+  /**
+   * Grab anchor: index into `part.connections` of the leader connection
+   * nearest the click that started the drag (desktop `captureGrabAnchor`,
+   * MapViewDrag.cpp:155-217 + MapView.cpp:538-543). For a single-brick
+   * drag this connection leads the snap: it is tried on its own first,
+   * and the other free connections are only considered when it has no
+   * target in reach. Ignored for multi-brick drags.
+   */
+  leadConnIndex?: number;
 }
 
 export interface DragSnapResult {
@@ -538,6 +547,9 @@ export function liveDragSnap(
   // conns that are already linked to another brick — desktop bails on
   // those at MapView::applyLiveConnectionSnap:277-279.
   interface MovingConn {
+    /** True for the leader's connections; `index` is into its part. */
+    leader: boolean;
+    index: number;
     worldX: number;
     worldY: number;
     type: string;
@@ -548,6 +560,7 @@ export function liveDragSnap(
   }
   const movingConns: MovingConn[] = [];
   const addConns = (
+    leader: boolean,
     part: PartWire | undefined,
     links: { linkedTo: string }[],
     cx: number,
@@ -568,6 +581,8 @@ export function liveDragSnap(
       const mdx = wx - drag.mouseStudX;
       const mdy = wy - drag.mouseStudY;
       movingConns.push({
+        leader,
+        index: i,
         worldX: wx,
         worldY: wy,
         type: cp.type,
@@ -578,35 +593,45 @@ export function liveDragSnap(
       });
     }
   };
-  addConns(drag.part, drag.movingLinks, drag.centreX, drag.centreY, drag.orientation);
+  addConns(true, drag.part, drag.movingLinks, drag.centreX, drag.centreY, drag.orientation);
   for (const s of siblings) {
-    addConns(s.part, s.links, drag.centreX + s.offsetX, drag.centreY + s.offsetY, s.orientation);
+    addConns(false, s.part, s.links, drag.centreX + s.offsetX, drag.centreY + s.offsetY, s.orientation);
   }
 
   if (movingConns.length === 0 || targets.length === 0) {
     return gridFallback(drag, movingConns.length);
   }
 
-  let best: { mc: MovingConn; tc: WorldConnection; transSq: number; mouseDistSq: number } | null =
-    null;
-
-  for (const mc of movingConns) {
-    for (const tc of targets) {
-      if (tc.type !== mc.type) continue;
-      const dx = tc.x - mc.worldX;
-      const dy = tc.y - mc.worldY;
-      const transSq = dx * dx + dy * dy;
-      if (transSq > reachSq) continue;
-      // Pick the smallest translation; tiebreak on mouse proximity.
-      // Same logic as MapViewDrag.cpp:313-319.
-      let take = false;
-      if (best === null || transSq + TIE_SQ < best.transSq) take = true;
-      else if (Math.abs(transSq - best.transSq) <= TIE_SQ && mc.mouseDistSq < best.mouseDistSq) {
-        take = true;
+  type Best = { mc: MovingConn; tc: WorldConnection; transSq: number; mouseDistSq: number };
+  const search = (candidates: MovingConn[]): Best | null => {
+    let best: Best | null = null;
+    for (const mc of candidates) {
+      for (const tc of targets) {
+        if (tc.type !== mc.type) continue;
+        const dx = tc.x - mc.worldX;
+        const dy = tc.y - mc.worldY;
+        const transSq = dx * dx + dy * dy;
+        if (transSq > reachSq) continue;
+        // Pick the smallest translation; tiebreak on mouse proximity.
+        // Same logic as MapViewDrag.cpp:313-319.
+        let take = false;
+        if (best === null || transSq + TIE_SQ < best.transSq) take = true;
+        else if (Math.abs(transSq - best.transSq) <= TIE_SQ && mc.mouseDistSq < best.mouseDistSq) {
+          take = true;
+        }
+        if (take) best = { mc, tc, transSq, mouseDistSq: mc.mouseDistSq };
       }
-      if (take) best = { mc, tc, transSq, mouseDistSq: mc.mouseDistSq };
     }
+    return best;
+  };
+
+  // Grab anchor leads a single-brick drag; fall back to every free
+  // connection when it has nothing in reach.
+  let best: Best | null = null;
+  if (single && drag.leadConnIndex !== undefined && drag.leadConnIndex >= 0) {
+    best = search(movingConns.filter((m) => m.leader && m.index === drag.leadConnIndex));
   }
+  if (best === null) best = search(movingConns);
 
   if (best === null) return gridFallback(drag, movingConns.length);
   const { mc, tc } = best;
@@ -633,6 +658,50 @@ export function liveDragSnap(
     newOrientation,
     movingConnCount: movingConns.length,
   };
+}
+
+/**
+ * Grab anchor — port of desktop `nearestConnectionIndex`
+ * (MapViewDrag.cpp:60-101). The connection of `brick` whose world
+ * position is nearest to the click, preferring free (unlinked) ones so
+ * clicking a brick already connected at one end grabs the OTHER end.
+ * Falls back to the nearest connection of any link state; -1 when the
+ * part has no typed connections.
+ */
+export function nearestConnectionIndex(
+  brick: Pick<Brick, 'displayArea' | 'orientation' | 'connexions'>,
+  part: PartWire | undefined,
+  clickX: number,
+  clickY: number,
+): number {
+  if (!part || part.connections.length === 0) return -1;
+  const cx = brick.displayArea.x + brick.displayArea.width / 2;
+  const cy = brick.displayArea.y + brick.displayArea.height / 2;
+  const t = (brick.orientation * Math.PI) / 180;
+  const cos = Math.cos(t);
+  const sin = Math.sin(t);
+  const pick = (freeOnly: boolean): number => {
+    let bestIdx = -1;
+    let bestSq = Infinity;
+    for (let i = 0; i < part.connections.length; i++) {
+      const c = part.connections[i]!;
+      if (!c.type) continue;
+      if (freeOnly) {
+        const link = brick.connexions[i];
+        if (link && link.linkedTo !== '') continue;
+      }
+      const wx = cx + c.x * cos - c.y * sin;
+      const wy = cy + c.x * sin + c.y * cos;
+      const sq = (wx - clickX) ** 2 + (wy - clickY) ** 2;
+      if (sq < bestSq) {
+        bestSq = sq;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  };
+  const free = pick(true);
+  return free >= 0 ? free : pick(false);
 }
 
 /**
