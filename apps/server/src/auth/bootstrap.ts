@@ -3,17 +3,15 @@ import { hash } from '@node-rs/argon2';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
+import { normalizeEmail } from '../utils/validate.js';
+import { findUserByEmail } from './users.js';
 
 export async function ensureBootstrapAdmin(): Promise<void> {
-  const email = env.bootstrapAdminEmail;
   const password = env.bootstrapAdminPassword;
-  if (!email || !password) return;
+  if (!env.bootstrapAdminEmail || !password) return;
+  const email = normalizeEmail(env.bootstrapAdminEmail);
 
-  const existing = await db
-    .select()
-    .from(schema.users)
-    .where(eq(schema.users.email, email))
-    .get();
+  const existing = await findUserByEmail(email);
   if (existing) {
     if (!existing.isGlobalAdmin) {
       await db

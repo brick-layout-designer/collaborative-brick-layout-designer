@@ -13,13 +13,13 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { createLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { isValidEmail } from '../utils/validate.js';
+import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 
 interface CreateModuleBody {
   title?: string;
@@ -47,12 +47,13 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   // ---- list modules the user can see -------------------------------------
   app.get('/api/modules', async (req) => {
     const user = requireUser(req);
+    // Metadata columns only — never the doc blobs.
     const personal = await db
-      .select()
+      .select(moduleListColumns)
       .from(schema.modules)
       .where(eq(schema.modules.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ module: schema.modules })
+      .select({ module: moduleListColumns })
       .from(schema.orgMembers)
       .innerJoin(
         schema.modules,
@@ -60,7 +61,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ module: schema.modules })
+      .select({ module: moduleListColumns })
       .from(schema.moduleCollaborators)
       .innerJoin(
         schema.modules,
@@ -94,7 +95,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
     const module = await db
-      .select()
+      .select(moduleListColumns)
       .from(schema.modules)
       .where(eq(schema.modules.id, req.params.id))
       .get();
@@ -299,7 +300,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       if (!hasAtLeast(role, 'owner')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
-      const { email, role: inviteRole } = req.body;
+      const { role: inviteRole } = req.body;
+      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
       if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
@@ -311,7 +313,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       const recipient = await db
         .select()
         .from(schema.users)
-        .where(eq(schema.users.email, email))
+        .where(sql`lower(${schema.users.email}) = ${email}`)
         .get();
       if (!recipient) {
         return reply.code(400).send({ error: 'recipient_not_registered' });
@@ -366,14 +368,30 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
-function toListItem(m: typeof schema.modules.$inferSelect) {
+const moduleListColumns = {
+  id: schema.modules.id,
+  title: schema.modules.title,
+  ownerUserId: schema.modules.ownerUserId,
+  ownerOrgId: schema.modules.ownerOrgId,
+  docVersion: schema.modules.docVersion,
+  hasSidecar: sql<number>`${schema.modules.sidecarSnapshot} IS NOT NULL`,
+  createdAt: schema.modules.createdAt,
+  updatedAt: schema.modules.updatedAt,
+};
+
+function toListItem(
+  m: Pick<
+    typeof schema.modules.$inferSelect,
+    'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'createdAt' | 'updatedAt'
+  > & { hasSidecar: number },
+) {
   return {
     id: m.id,
     title: m.title,
     ownerUserId: m.ownerUserId,
     ownerOrgId: m.ownerOrgId,
     docVersion: m.docVersion,
-    hasSidecar: m.sidecarSnapshot !== null,
+    hasSidecar: Boolean(m.hasSidecar),
     createdAt: m.createdAt.getTime(),
     updatedAt: m.updatedAt.getTime(),
   };
