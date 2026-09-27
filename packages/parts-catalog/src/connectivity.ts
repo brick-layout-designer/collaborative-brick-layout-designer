@@ -46,9 +46,10 @@ export function rebuildConnectivity(
   // truth on connection-point shapes).
   const bricks = collectBricks(map);
   const worldPoints: WorldConnection[] = [];
+  const lookup = makeCatalogLookup(catalog);
   for (let i = 0; i < bricks.length; i++) {
     const b = bricks[i]!;
-    const meta = catalogLookup(catalog, b.partNumber);
+    const meta = lookup(b.partNumber);
     if (meta) padConnexions(b, meta);
     for (let j = 0; j < b.connexions.length; j++) {
       const cp = catalogConnection(meta, j);
@@ -139,6 +140,21 @@ function catalogLookup(catalog: Catalog, partNumber: string): PartMetadata | und
     if (entry.partNumber.toLowerCase() === lower) return entry;
   }
   return undefined;
+}
+
+/**
+ * Memoised `catalogLookup` for one recompute. The colour-variant fallback
+ * is an O(catalog) scan; without the memo every brick whose part isn't
+ * keyed directly paid that scan again (hits AND misses are cached).
+ */
+function makeCatalogLookup(catalog: Catalog): (partNumber: string) => PartMetadata | undefined {
+  const memo = new Map<string, PartMetadata | undefined>();
+  return (partNumber) => {
+    if (memo.has(partNumber)) return memo.get(partNumber);
+    const meta = catalogLookup(catalog, partNumber);
+    memo.set(partNumber, meta);
+    return meta;
+  };
 }
 
 function catalogConnection(meta: PartMetadata | undefined, index: number): ConnectionPoint | undefined {
