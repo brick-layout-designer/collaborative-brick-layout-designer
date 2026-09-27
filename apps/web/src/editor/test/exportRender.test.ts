@@ -32,7 +32,7 @@ describe('contentBoundsStuds', () => {
       centreX: 0, centreY: 200, widthStuds: 10, heightStuds: 4, text: 'hi',
       font: { family: 'Arial', size: 12, style: 'Regular' }, fontColor: { kind: 'argb', argb: 'FF000000' }, orientation: 0,
     });
-    const a = ensureAreaLayer(doc);
+    const a = ensureAreaLayer(doc, 8);
     paintAreaCells(doc, a, [{ x: 10, y: -3, color: 'FFFF0000' }]); // cell size 8 → (80,-24)-(88,-16)
     addAnchoredLabel(doc, {
       id: 'l', text: 'x', font: { family: 'Arial', size: 10, style: '' }, color: { known: true, argb: 0, name: 'Black' },

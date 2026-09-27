@@ -1,8 +1,10 @@
 import type { JSX } from 'react';
-import { Group, Line, Rect } from 'react-konva';
-import type { BbmMap, ColorSpec, LayerGrid } from '@cld/model';
-import { studToPx, COLOR_DEFAULT } from './coords';
+import { Group, Line, Rect, Text } from 'react-konva';
+import type { BbmMap, LayerGrid } from '@cld/model';
+import { studToPx } from './coords';
 import { useEditorStore } from '../editorStore';
+import { colorSpecToCss, colorSpecToHex } from '../layerOptions';
+import { cellIndexLabels, parseCellIndexCorner } from './gridIndex';
 
 export interface ViewportRect {
   /** World-space (stud) bounds currently visible on the stage. */
@@ -23,10 +25,13 @@ export interface ViewportRect {
 export function GridLayer({
   map,
   viewport,
+  zoom = 1,
   showGrid: showGridProp,
 }: {
   map: BbmMap;
   viewport: ViewportRect;
+  /** Stage zoom — cell-index labels keep a constant on-screen size. */
+  zoom?: number;
   /** Override the editor-store value. Pass `true` from the public viewer to avoid a store subscription. */
   showGrid?: boolean;
 }) {
@@ -57,11 +62,14 @@ export function GridLayer({
         y={bgYMin * px}
         width={(bgXMax - bgXMin) * px}
         height={(bgYMax - bgYMin) * px}
-        fill={cssColor(map.backgroundColor)}
+        fill={colorSpecToHex(map.backgroundColor, '#404040')}
         listening={false}
       />
       {gridVisible && grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
       {gridVisible && grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
+      {gridVisible && grid.displayCellIndex && (
+        <CellIndexLabels grid={grid} bounds={{ xMin, yMin, xMax, yMax }} zoom={zoom} />
+      )}
     </Group>
   );
 }
@@ -79,12 +87,54 @@ interface Bounds {
 // max(subDivisionNumber, 2)` (line 77) so a single-division grid still
 // yields a meaningful sub-step.
 
+/**
+ * Column + row label in the top-left corner of each cell (vanilla
+ * BlueBrick; see gridIndex.ts). Drawn at the cell-index font size in
+ * screen pixels, like BlueBrick's unscaled text, and skipped when the
+ * cells are too small on screen to hold a label.
+ */
+function CellIndexLabels({ grid, bounds, zoom }: { grid: LayerGrid; bounds: Bounds; zoom: number }) {
+  const px = studToPx();
+  const z = zoom > 0 ? zoom : 1;
+  const fontScreenPx = Math.max(6, (grid.cellIndexFont.size || 10) * (4 / 3));
+  const cellScreenPx = grid.gridSizeInStud * px * z;
+  if (cellScreenPx < fontScreenPx * 2) return null;
+  const labels = cellIndexLabels(
+    bounds,
+    grid.gridSizeInStud,
+    parseCellIndexCorner(grid.cellIndexCorner),
+    grid.cellIndexColumnType,
+    grid.cellIndexRowType,
+  );
+  const style = (grid.cellIndexFont.style ?? '').toLowerCase();
+  const fontStyle = `${style.includes('italic') ? 'italic ' : ''}${style.includes('bold') ? 'bold' : 'normal'}`;
+  const pad = 4 / z;
+  return (
+    <Group>
+      {labels.map((l) => (
+        <Text
+          key={`${l.x},${l.y}`}
+          x={l.x * px + pad}
+          y={l.y * px + pad}
+          text={l.text}
+          fontFamily={grid.cellIndexFont.family || 'Arial'}
+          fontStyle={fontStyle}
+          fontSize={fontScreenPx / z}
+          fill={colorSpecToCss(grid.cellIndexColor)}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      ))}
+    </Group>
+  );
+}
+
 function MajorGridLines({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
   return (
     <GridLines
       stepStuds={grid.gridSizeInStud}
       bounds={bounds}
-      stroke={cssColor(grid.gridColor)}
+      stroke={colorSpecToCss(grid.gridColor)}
       thickness={grid.gridThickness}
       opacity={1}
       keyPrefix="g"
@@ -98,7 +148,7 @@ function SubGridLines({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
     <GridLines
       stepStuds={step}
       bounds={bounds}
-      stroke={cssColor(grid.subGridColor)}
+      stroke={colorSpecToCss(grid.subGridColor)}
       thickness={grid.subGridThickness}
       opacity={1}
       keyPrefix="s"
@@ -166,28 +216,3 @@ function GridLines({
   }
   return <Group>{lines}</Group>;
 }
-
-function cssColor(c: ColorSpec): string {
-  if (c.kind === 'known') return KNOWN_COLORS[c.name.toLowerCase()] ?? COLOR_DEFAULT;
-  // ARGB hex like "ffaabbcc" — strip the alpha for now (Konva supports rgba
-  // but real-world `.bbm` files use opaque colors almost always).
-  if (c.argb.length === 8) return `#${c.argb.slice(2)}`;
-  return `#${c.argb}`;
-}
-
-// Subset of System.Drawing.KnownColor that real `.bbm` files actually use.
-// Anything missing falls back to neutral grey — the export is faithful
-// either way because we preserve `kind: 'known'` in the model.
-const KNOWN_COLORS: Record<string, string> = {
-  black: '#000000',
-  white: '#ffffff',
-  cornflowerblue: '#6495ed',
-  lightgray: '#d3d3d3',
-  gray: '#808080',
-  darkgray: '#a9a9a9',
-  red: '#ff0000',
-  green: '#008000',
-  blue: '#0000ff',
-  yellow: '#ffff00',
-  orange: '#ffa500',
-};

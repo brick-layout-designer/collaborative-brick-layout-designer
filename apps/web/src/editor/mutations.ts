@@ -520,12 +520,19 @@ export function paintAreaCells(
 }
 
 /**
+ * Paint cell size of a NEW Area layer, in studs — desktop
+ * `LayerArea::areaCellSizeInStud = 32` (core/LayerArea.h:25). Existing
+ * layers keep whatever size they were saved with.
+ */
+export const AREA_CELL_SIZE_DEFAULT = 32;
+
+/**
  * Find the topmost (last in the layer order, matching desktop's
  * "for i = layers.size()-1 ... break" search at MapView.cpp:500-507)
  * visible Area layer. Creates a new Area layer with sane defaults
  * when no Area layer exists. Returns the layer id.
  */
-export function ensureAreaLayer(doc: Y.Doc, defaultCellSizeStuds = 8): string {
+export function ensureAreaLayer(doc: Y.Doc, defaultCellSizeStuds = AREA_CELL_SIZE_DEFAULT): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
   // Walk in reverse order: topmost first (desktop convention).
@@ -1436,9 +1443,30 @@ function findBrick(doc: Y.Doc, layerId: string, brickId: string): Y.Map<unknown>
 // their first interaction. We seed minimal defaults for layers / fonts.
 // ---------------------------------------------------------------------------
 
-export type LayerKind = 'brick' | 'area' | 'text' | 'ruler';
+export type LayerKind = 'grid' | 'brick' | 'area' | 'text' | 'ruler';
 
 const NEW_LAYER_DEFAULTS: Record<LayerKind, { name: string; extraFields: () => Record<string, unknown> }> = {
+  // Desktop LayerGrid defaults (core/LayerGrid.h:20-38): half-transparent
+  // black lines, 32-stud cells, 4 sub-divisions, no cell index.
+  grid: {
+    name: 'Grid',
+    extraFields: () => ({
+      gridColor: { kind: 'argb', argb: '80000000' } satisfies ColorSpec,
+      gridThickness: 2,
+      subGridColor: { kind: 'argb', argb: '40000000' } satisfies ColorSpec,
+      subGridThickness: 1,
+      gridSizeInStud: 32,
+      subDivisionNumber: 4,
+      displayGrid: true,
+      displaySubGrid: true,
+      displayCellIndex: false,
+      cellIndexFont: { family: 'Microsoft Sans Serif', size: 8.25, style: 'Regular' } satisfies FontSpec,
+      cellIndexColor: { kind: 'known', name: 'Black' } satisfies ColorSpec,
+      cellIndexColumnType: '0',
+      cellIndexRowType: '1',
+      cellIndexCorner: '',
+    }),
+  },
   brick: {
     name: 'Parts',
     extraFields: () => ({
@@ -1449,7 +1477,7 @@ const NEW_LAYER_DEFAULTS: Record<LayerKind, { name: string; extraFields: () => R
   area: {
     name: 'Area',
     extraFields: () => ({
-      areaCellSize: 8,
+      areaCellSize: AREA_CELL_SIZE_DEFAULT,
       areas: new Y.Array<{ x: number; y: number; color: string }>(),
     }),
   },
@@ -1564,7 +1592,6 @@ function seedDefaultMeta(meta: Y.Map<unknown>): void {
     exportConnectionPoints: false,
   });
   meta.set('selectedLayerIndex', 0);
-  void ({} as FontSpec); // type-touch to keep the import alive in case we add cellIndexFont later
 }
 
 // ---------------------------------------------------------------------------
