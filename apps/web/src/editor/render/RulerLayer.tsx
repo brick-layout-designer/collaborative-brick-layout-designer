@@ -372,6 +372,7 @@ function LinearRulerView({
       {selected && (
         <Line
           points={[o1.x, o1.y, o2.x, o2.y]}
+          name="export-hide"
           stroke="rgba(255, 215, 0, 0.5)"
           strokeWidth={Math.max(strokeWidth + 4, 6)}
           listening={false}
@@ -520,6 +521,7 @@ function CircularRulerView({
           x={cx}
           y={cy}
           radius={rPx}
+          name="export-hide"
           stroke="rgba(255, 215, 0, 0.5)"
           strokeWidth={Math.max(strokeWidth + 4, 6)}
           fillEnabled={false}
