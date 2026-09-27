@@ -22,36 +22,10 @@ import { invalidateTransporter } from '../email/transporter.js';
 import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLayoutId } from './adminLayoutStats.js';
 import { escapeLike } from '../utils/validate.js';
 import { docHub } from '../ws/docHub.js';
+import { safeFetch } from '../utils/safeFetch.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
-}
-
-/**
- * Validate a URL and perform a safe outbound fetch.
- * Throws if the URL is not https:// or resolves to a private/loopback network.
- * The fetch is issued from inside this function so no user-tainted string
- * ever appears at an external fetch call site.
- */
-async function safeFetch(raw: string, init?: RequestInit): Promise<Response> {
-  let parsed: URL;
-  try { parsed = new URL(raw); } catch { throw new Error('invalid URL'); }
-  if (parsed.protocol !== 'https:') throw new Error('only https:// URLs are allowed');
-  const host = parsed.hostname.toLowerCase();
-  if (
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host === '::1' ||
-    host.endsWith('.local') ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    /^169\.254\./.test(host)
-  ) {
-    throw new Error('URL resolves to a private network address');
-  }
-  // codeql[js/request-forgery] - URL validated: https-only, private-network blocked above
-  return fetch(parsed, init);
 }
 
 /**
@@ -806,6 +780,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
               'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
           },
           signal: AbortSignal.timeout(20_000),
+          maxBytes: 1024 * 1024,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const raw = await res.arrayBuffer();
@@ -1247,24 +1222,7 @@ export function detectTopLevelPrefix(names: string[]): string {
 export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
   const { writeFile: wf, mkdir: mk } = await import('node:fs/promises');
   const { join: j, dirname } = await import('node:path');
-  const { createInflateRaw } = await import('node:zlib');
-
-  // Returns Uint8Array rather than Buffer — under TypeScript 7's stricter
-  // ArrayBufferLike/SharedArrayBuffer variance, Buffer no longer
-  // structurally satisfies Uint8Array<ArrayBuffer> at every API boundary
-  // below (writeFile, etc.), so we normalise to a plain Uint8Array here
-  // once instead of casting at each call site.
-  function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
-    return new Promise<Uint8Array>((res, rej) => {
-      const z = createInflateRaw();
-      const chunks: Buffer[] = [];
-      z.on('data', (c: Buffer) => chunks.push(c));
-      z.on('end', () => res(new Uint8Array(Buffer.concat(chunks as unknown as Uint8Array<ArrayBuffer>[]))));
-      z.on('error', rej);
-      z.write(data);
-      z.end();
-    });
-  }
+  const { inflateRawSync } = await import('node:zlib');
 
   const MAX_ENTRY_SIZE = 200 * 1024 * 1024; // 200 MB per file
   const MAX_TOTAL_SIZE = 500 * 1024 * 1024; // 500 MB total uncompressed
@@ -1277,33 +1235,6 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
       throw new Error(`ZIP slip attempt: ${entryName}`);
     }
     return dest;
-  }
-
-  // Try adm-zip if installed (not a hard dep — optional optimisation).
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const AdmZip = require('adm-zip') as new (buf: Buffer) => {
-      getEntries(): Array<{ entryName: string; isDirectory: boolean; getData(): Buffer }>;
-    };
-    const zip = new AdmZip(buf);
-    const entries = zip.getEntries();
-    const prefix = detectTopLevelPrefix(entries.map((e) => e.entryName));
-    for (const entry of entries) {
-      if (entry.isDirectory) continue;
-      const stripped = prefix ? entry.entryName.slice(prefix.length) : entry.entryName;
-      if (!stripped) continue;
-      const dest = safeDestPath(destDir, stripped);
-      const data = entry.getData();
-      if (data.length > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${entry.entryName}`);
-      totalUncomp += data.length;
-      if (totalUncomp > MAX_TOTAL_SIZE) throw new Error('zip bomb: total uncompressed size exceeds limit');
-      await mk(dirname(dest), { recursive: true });
-      await wf(dest, new Uint8Array(data));
-    }
-    return;
-  } catch (e) {
-    if (e instanceof Error && (e.message.startsWith('ZIP slip') || e.message.startsWith('entry too large') || e.message.startsWith('zip bomb'))) throw e;
-    // adm-zip not available; fall through to built-in parser.
   }
 
   // Minimal local-file-entry parser (stored + deflate). Collect all names
@@ -1341,6 +1272,9 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     const stripped = prefix ? entry.name.slice(prefix.length) : entry.name;
     if (!stripped) continue;
     if (entry.uncompSize > MAX_ENTRY_SIZE) throw new Error(`entry too large: ${entry.name}`);
+    if (totalUncomp + entry.uncompSize > MAX_TOTAL_SIZE) {
+      throw new Error('zip bomb: total uncompressed size exceeds limit');
+    }
     const dest = safeDestPath(destDir, stripped);
     await mk(dirname(dest), { recursive: true });
     const compData = buf.subarray(entry.dataOff, entry.dataOff + entry.compSize);
@@ -1348,7 +1282,18 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
     if (entry.method === 0) {
       data = new Uint8Array(compData);
     } else if (entry.method === 8) {
-      data = await inflateRaw(new Uint8Array(compData));
+      // Never inflate past what the header declared (itself capped
+      // above): a small entry claiming 1 KB can otherwise expand to
+      // gigabytes in memory before the size check below ever runs.
+      const limit = Math.max(1, Math.min(entry.uncompSize, MAX_ENTRY_SIZE, MAX_TOTAL_SIZE - totalUncomp));
+      try {
+        data = new Uint8Array(inflateRawSync(new Uint8Array(compData), { maxOutputLength: limit }));
+      } catch (e) {
+        if (e instanceof RangeError) {
+          throw new Error(`zip bomb: ${entry.name} inflates beyond its declared size`);
+        }
+        throw e;
+      }
     } else {
       throw new Error(`unsupported compression method ${entry.method} for ${entry.name}`);
     }
