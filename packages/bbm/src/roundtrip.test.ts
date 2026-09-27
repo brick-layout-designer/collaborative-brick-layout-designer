@@ -23,13 +23,20 @@ describe('round-trip against vendored sample files', () => {
         expect(parsed.map.version).toBe(9);
       });
 
+      // These files are the desktop's own byte-exact golden corpus
+      // (brick-layout-designer/fixtures/bbm-corpus, enforced there by
+      // RealFixtureTest::ByteExactRoundTrip), so desktop load + save
+      // reproduces them exactly. The web writer must too.
+      it('round-trips byte-for-byte (default options, nbItems recomputed)', () => {
+        expect(writeBbm(parsed.map)).toBe(original);
+      });
+
+      it('round-trips byte-for-byte with nbItems preserved', () => {
+        expect(writeBbm(parsed.map, { recomputeNbItems: false })).toBe(original);
+      });
+
       it('round-trips: read → write → read produces equal models (semantic identity)', () => {
-        // We pass `recomputeNbItems: false` because the writer's recompute
-        // would drop the (currently unported) ruler-item count. Preserving
-        // the original value is the right call for unmodified imports —
-        // that's also what the desktop does when it reads + immediately
-        // re-saves a file. When ruler items are ported we can flip this on.
-        const written = writeBbm(parsed.map, { recomputeNbItems: false });
+        const written = writeBbm(parsed.map);
         const reparsed = readBbm(written);
         // Ruler items get a fresh in-memory `id` on every read — desktop
         // does the same (`<LinearRuler>` / `<CircularRuler>` XML has no

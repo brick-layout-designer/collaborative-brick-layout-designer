@@ -17,6 +17,44 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/** The sessions-table id for a raw session cookie value. */
+export function sessionIdForToken(token: string): string {
+  return hashToken(token);
+}
+
+/**
+ * Revocation notifications, so long-lived connections (the realtime
+ * WebSocket) authenticated by a session can be dropped the moment that
+ * session ends instead of living on until the socket closes by itself.
+ */
+export type SessionRevocation = { sessionId: string } | { userId: string };
+const revocationListeners = new Set<(r: SessionRevocation) => void>();
+
+export function onSessionRevoked(listener: (r: SessionRevocation) => void): () => void {
+  revocationListeners.add(listener);
+  return () => revocationListeners.delete(listener);
+}
+
+export function notifySessionRevoked(r: SessionRevocation): void {
+  for (const l of revocationListeners) {
+    try {
+      l(r);
+    } catch {
+      /* a listener's failure must not break logout */
+    }
+  }
+}
+
+/** True while the session behind `sessionId` exists and hasn't expired. */
+export async function isSessionActive(sessionId: string): Promise<boolean> {
+  const row = await db
+    .select({ expiresAt: schema.sessions.expiresAt })
+    .from(schema.sessions)
+    .where(eq(schema.sessions.id, sessionId))
+    .get();
+  return !!row && row.expiresAt.getTime() >= Date.now();
+}
+
 export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
   const token = generateToken();
   const id = hashToken(token);
@@ -56,9 +94,12 @@ export async function validateSession(
 }
 
 export async function invalidateSession(token: string): Promise<void> {
-  await db.delete(schema.sessions).where(eq(schema.sessions.id, hashToken(token)));
+  const sessionId = hashToken(token);
+  await db.delete(schema.sessions).where(eq(schema.sessions.id, sessionId));
+  notifySessionRevoked({ sessionId });
 }
 
 export async function invalidateAllSessions(userId: string): Promise<void> {
   await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+  notifySessionRevoked({ userId });
 }
