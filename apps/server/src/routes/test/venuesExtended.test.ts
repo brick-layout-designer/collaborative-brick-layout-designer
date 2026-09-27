@@ -148,6 +148,43 @@ describe('venues — update (PATCH)', () => {
   });
 });
 
+describe('venues — PATCH validation', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('rejects an empty body and non-object data', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const id = await createVenue(app, cookie);
+    const empty = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: {} });
+    expect(empty.statusCode).toBe(400);
+    const bad = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { data: 'nope' } });
+    expect(bad.statusCode).toBe(400);
+    const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie } });
+    expect((get.json() as { name: string; data: unknown }).data).toEqual(SAMPLE_VENUE);
+  });
+
+  it('trims the new name', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const id = await createVenue(app, cookie);
+    const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { name: '  Annex  ' } });
+    expect(res.json()).toEqual({ ok: true, id, name: 'Annex' });
+  });
+
+  it('a non-member cannot rename an org venue', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const eveCookie = await registerAndLogin(app, 'eve@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
+    const create = await app.inject({
+      method: 'POST', url: '/api/venues', headers: { cookie: aliceCookie },
+      payload: { name: 'Org Hall', data: SAMPLE_VENUE, orgSlug: 'acme' },
+    });
+    const id = (create.json() as { id: string }).id;
+    const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie: eveCookie }, payload: { name: 'X' } });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
 describe('venues — duplicate name', () => {
   let app: FastifyInstance;
   beforeEach(async () => { resetDb(); app = await buildApp(); });

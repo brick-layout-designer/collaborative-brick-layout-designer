@@ -281,6 +281,48 @@ describe('export — .bbm.bld (sidecar)', () => {
   });
 });
 
+describe('create — sidecar import', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('seeds the editor cache without a .bbm and exports it', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const sidecar = JSON.stringify({ schemaVersion: 1, bbmHashSha256: '', venue: { name: 'Hall', enabled: true, minWalkwayStuds: 0, bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [] } });
+    const res = await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie }, payload: { title: 'Venue only', sidecar } });
+    expect(res.statusCode).toBe(201);
+    const { id } = res.json() as { id: string };
+    const bld = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.bld`, headers: { cookie } });
+    expect(bld.statusCode).toBe(200);
+    const json = bld.json() as { venue: { name: string }; bbmHashSha256: string };
+    expect(json.venue.name).toBe('Hall');
+    // The default doc exports a .bbm, so the hash is filled in.
+    expect(json.bbmHashSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('rejects an unparseable sidecar', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const res = await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie }, payload: { title: 'Bad', sidecar: '{nope' } });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('sidecar_parse_failed');
+  });
+
+  it('zip sidecar hash matches the zipped .bbm', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const res = await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie },
+      payload: { title: 'Hash', bbm: FORDYCE_BBM, sidecar: MINIMAL_SIDECAR },
+    });
+    const { id } = res.json() as { id: string };
+    const bbm = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm`, headers: { cookie } });
+    const zip = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.zip`, headers: { cookie } });
+    // Entries are stored uncompressed, so the sidecar JSON appears verbatim.
+    const text = zip.rawPayload.toString('utf8');
+    const hash = createHash('sha256').update(bbm.payload).digest('hex');
+    expect(text).toContain(`"bbmHashSha256": "${hash}"`);
+  });
+});
+
 describe('export — .zip', () => {
   let app: FastifyInstance;
   beforeEach(async () => { resetDb(); app = await buildApp(); });
