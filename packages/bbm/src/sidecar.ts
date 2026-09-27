@@ -68,8 +68,18 @@ export interface Venue {
 }
 
 export interface BackgroundImage {
-  /** Server-relative URL (e.g. `/api/layouts/<id>/background-image`). */
+  /**
+   * Server-relative URL (e.g. `/api/layouts/<id>/background-image`).
+   * Empty when the sidecar came from the desktop app, which stores a local
+   * file `path` instead — the image itself isn't in the sidecar.
+   */
   url: string;
+  /**
+   * Desktop's local image file path (SidecarIO.cpp `backgroundImage.path`).
+   * Preserved so a desktop sidecar round-trips through the web without
+   * losing it; the web can't load it.
+   */
+  path?: string;
   /** Opacity 0..1. Desktop default 0.5. */
   opacity: number;
   /** Placement rect in studs. null/absent = stretch to scene bounds. */
@@ -111,6 +121,8 @@ export function readSidecar(raw: string): Sidecar {
   if (parsed.venue && typeof parsed.venue === 'object') {
     sidecar.venue = parsed.venue as Venue;
   }
+  const bg = readBackgroundImage(parsed.backgroundImage);
+  if (bg) sidecar.backgroundImage = bg;
 
   const knownKeys = new Set([
     'schemaVersion',
@@ -118,6 +130,7 @@ export function readSidecar(raw: string): Sidecar {
     'anchoredLabels',
     'modules',
     'venue',
+    'backgroundImage',
   ]);
   const extras: Record<string, unknown> = {};
   for (const key of Object.keys(parsed)) {
@@ -154,11 +167,63 @@ export function writeSidecar(sidecar: Sidecar, opts: WriteSidecarOptions = {}): 
   if (sidecar.anchoredLabels) out.anchoredLabels = sidecar.anchoredLabels;
   if (sidecar.modules) out.modules = sidecar.modules;
   if (sidecar.venue) out.venue = sidecar.venue;
+  if (sidecar.backgroundImage) out.backgroundImage = encodeBackgroundImage(sidecar.backgroundImage);
   if (sidecar.extras) {
     for (const [k, v] of Object.entries(sidecar.extras)) out[k] = v;
   }
 
   return JSON.stringify(out, null, indent);
+}
+
+/**
+ * Accepts both shapes:
+ *   - web:     { url, opacity, rect?: { x, y, w, h } }
+ *   - desktop: { path, opacity, rect?: [x, y, w, h] }   (SidecarIO.cpp readSidecar)
+ * and normalises to the web `BackgroundImage` shape, keeping `path`.
+ * Opacity defaults to 0.5 like desktop.
+ */
+function readBackgroundImage(raw: unknown): BackgroundImage | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const url = typeof o.url === 'string' ? o.url : '';
+  const path = typeof o.path === 'string' ? o.path : undefined;
+  if (!url && !path) return undefined;
+  const opacity = typeof o.opacity === 'number' && Number.isFinite(o.opacity) ? o.opacity : 0.5;
+  const bg: BackgroundImage = { url, opacity };
+  if (path !== undefined) bg.path = path;
+  const rect = readRect(o.rect);
+  if (rect) bg.rect = rect;
+  return bg;
+}
+
+function readRect(raw: unknown): BackgroundImage['rect'] {
+  const num = (v: unknown): number | undefined =>
+    typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+  let x, y, w, h;
+  if (Array.isArray(raw)) {
+    if (raw.length !== 4) return undefined;
+    [x, y, w, h] = raw.map(num);
+  } else if (raw && typeof raw === 'object') {
+    const r = raw as Record<string, unknown>;
+    [x, y, w, h] = [r.x, r.y, r.w, r.h].map(num);
+  } else {
+    return undefined;
+  }
+  if (x === undefined || y === undefined || w === undefined || h === undefined) return undefined;
+  return { x, y, w, h };
+}
+
+/**
+ * Written so both apps can read it: desktop reads `path` + `rect` as a
+ * 4-array and ignores `url`; `readSidecar` accepts either shape. Key
+ * order follows desktop's (QJsonObject sorts keys alphabetically).
+ */
+function encodeBackgroundImage(bg: BackgroundImage): Record<string, unknown> {
+  const out: Record<string, unknown> = { opacity: bg.opacity };
+  if (bg.path !== undefined) out.path = bg.path;
+  if (bg.rect) out.rect = [bg.rect.x, bg.rect.y, bg.rect.w, bg.rect.h];
+  out.url = bg.url;
+  return out;
 }
 
 function numberField(node: Record<string, unknown>, key: string): number {

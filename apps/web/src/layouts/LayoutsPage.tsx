@@ -1,11 +1,12 @@
 import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const list = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const [showCreate, setShowCreate] = useState(false);
@@ -79,9 +80,12 @@ export function LayoutsPage() {
       {showCreate && (
         <CreateLayoutDialog
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(id) => {
             qc.invalidateQueries({ queryKey: ['layouts'] });
             setShowCreate(false);
+            // Open the new layout straight away, like the desktop editor's
+            // File > New and the global .bbm drop handler in main.tsx do.
+            navigate(`/editor/${id}`);
           }}
         />
       )}
@@ -190,7 +194,7 @@ function CreateLayoutDialog({
   onCreated,
 }: {
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (id: string) => void;
 }) {
   const [title, setTitle] = useState('');
   const [bbm, setBbm] = useState<string | null>(null);
@@ -206,7 +210,7 @@ function CreateLayoutDialog({
 
   const create = useMutation({
     mutationFn: api.layouts.create,
-    onSuccess: () => onCreated(),
+    onSuccess: (res) => onCreated(res.id),
     onError: (e: Error) => setError(e.message),
   });
 
@@ -282,10 +286,10 @@ function CreateLayoutDialog({
         </label>
 
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Optional: sidecar (.bbm.cld)</span>
+          <span className="mb-1 block text-neutral-400">Optional: sidecar (.bbm.cld / desktop .bbm.bld)</span>
           <input
             type="file"
-            accept=".cld,.bbm.cld,application/json"
+            accept=".cld,.bbm.cld,.bld,.bbm.bld,application/json"
             onChange={pickSidecar}
             className="text-sm"
           />

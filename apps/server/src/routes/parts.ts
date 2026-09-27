@@ -12,7 +12,7 @@ import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { eq, or, isNull } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { parsePartXml, scanCatalog } from '@cld/parts-catalog';
 import type { PartMetadata } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
@@ -178,6 +178,67 @@ async function loadBundled(
   return bundledCache;
 }
 
+/** Custom-part columns needed for the catalog — no xml/sprite blobs. */
+const customCatalogColumns = {
+  id: schema.customParts.id,
+  partNumber: schema.customParts.partNumber,
+  displayName: schema.customParts.displayName,
+  isGlobal: schema.customParts.isGlobal,
+  ownerOrgId: schema.customParts.ownerOrgId,
+  category: schema.customParts.category,
+  updatedAt: schema.customParts.updatedAt,
+};
+type CustomCatalogRow = {
+  [K in keyof typeof customCatalogColumns]: (typeof schema.customParts.$inferSelect)[K];
+};
+
+interface ParsedCustomXml {
+  connections: ConnectionPointWire[];
+  pxPerStud: number;
+  kind: 'leaf' | 'group';
+}
+
+/**
+ * Parsed-XML cache keyed by part id and validated by updatedAt, so the
+ * catalog endpoint doesn't reload every XML blob and re-parse it on every
+ * request. Bounded; oldest entries are dropped first.
+ */
+const parsedCustomCache = new Map<string, { updatedAt: number; parsed: ParsedCustomXml }>();
+const PARSED_CUSTOM_CACHE_MAX = 5000;
+
+async function parsedCustomXml(rows: CustomCatalogRow[]): Promise<Map<string, ParsedCustomXml>> {
+  const out = new Map<string, ParsedCustomXml>();
+  const misses: CustomCatalogRow[] = [];
+  for (const r of rows) {
+    const hit = parsedCustomCache.get(r.id);
+    if (hit && hit.updatedAt === r.updatedAt.getTime()) out.set(r.id, hit.parsed);
+    else misses.push(r);
+  }
+  // Fetch blobs only for the misses, in bounded batches.
+  for (let i = 0; i < misses.length; i += 200) {
+    const batch = misses.slice(i, i + 200);
+    const blobs = await db
+      .select({ id: schema.customParts.id, xmlBlob: schema.customParts.xmlBlob })
+      .from(schema.customParts)
+      .where(inArray(schema.customParts.id, batch.map((r) => r.id)));
+    const byId = new Map(blobs.map((b) => [b.id, b.xmlBlob as Uint8Array]));
+    for (const r of batch) {
+      const blob = byId.get(r.id);
+      if (!blob) continue;
+      const parsed = parseCustomXml(r.partNumber, blob);
+      out.set(r.id, parsed);
+      parsedCustomCache.delete(r.id);
+      parsedCustomCache.set(r.id, { updatedAt: r.updatedAt.getTime(), parsed });
+      while (parsedCustomCache.size > PARSED_CUSTOM_CACHE_MAX) {
+        const oldest = parsedCustomCache.keys().next().value;
+        if (oldest === undefined) break;
+        parsedCustomCache.delete(oldest);
+      }
+    }
+  }
+  return out;
+}
+
 async function loadCustom(userId: string | null): Promise<PartWire[]> {
   // Four sources of custom parts a user can see:
   //   0. isGlobal === true (visible to everyone, including anonymous)
@@ -185,48 +246,48 @@ async function loadCustom(userId: string | null): Promise<PartWire[]> {
   //   2. ownerOrgId joined to org_members where user.id matches
   //   3. explicit collaborator on custom_part_collaborators
   const globals = await db
-    .select()
+    .select(customCatalogColumns)
     .from(schema.customParts)
     .where(eq(schema.customParts.isGlobal, true));
 
-  if (!userId) {
-    return globals.map(customRowToWire);
+  let rows: CustomCatalogRow[] = globals;
+  if (userId) {
+    const personal = await db
+      .select(customCatalogColumns)
+      .from(schema.customParts)
+      .where(eq(schema.customParts.ownerUserId, userId));
+    const orgOwned = await db
+      .select({ part: customCatalogColumns })
+      .from(schema.orgMembers)
+      .innerJoin(
+        schema.customParts,
+        eq(schema.customParts.ownerOrgId, schema.orgMembers.orgId),
+      )
+      .where(eq(schema.orgMembers.userId, userId));
+    const shared = await db
+      .select({ part: customCatalogColumns })
+      .from(schema.customPartCollaborators)
+      .innerJoin(
+        schema.customParts,
+        eq(schema.customParts.id, schema.customPartCollaborators.customPartId),
+      )
+      .where(eq(schema.customPartCollaborators.userId, userId));
+    const seen = new Set<string>();
+    rows = [];
+    for (const part of [
+      ...globals,
+      ...personal,
+      ...orgOwned.map((o) => o.part),
+      ...shared.map((s) => s.part),
+    ]) {
+      if (seen.has(part.id)) continue;
+      seen.add(part.id);
+      rows.push(part);
+    }
   }
 
-  const personal = await db
-    .select()
-    .from(schema.customParts)
-    .where(eq(schema.customParts.ownerUserId, userId));
-  const orgOwned = await db
-    .select({ part: schema.customParts })
-    .from(schema.orgMembers)
-    .innerJoin(
-      schema.customParts,
-      eq(schema.customParts.ownerOrgId, schema.orgMembers.orgId),
-    )
-    .where(eq(schema.orgMembers.userId, userId));
-  const shared = await db
-    .select({ part: schema.customParts })
-    .from(schema.customPartCollaborators)
-    .innerJoin(
-      schema.customParts,
-      eq(schema.customParts.id, schema.customPartCollaborators.customPartId),
-    )
-    .where(eq(schema.customPartCollaborators.userId, userId));
-
-  const seen = new Set<string>();
-  const all: PartWire[] = [];
-  for (const part of [
-    ...globals,
-    ...personal,
-    ...orgOwned.map((o) => o.part),
-    ...shared.map((s) => s.part),
-  ]) {
-    if (seen.has(part.id)) continue;
-    seen.add(part.id);
-    all.push(customRowToWire(part));
-  }
-  return all;
+  const parsed = await parsedCustomXml(rows);
+  return rows.map((r) => customRowToWire(r, parsed.get(r.id)));
 }
 
 function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
@@ -276,7 +337,7 @@ function categoryFromXmlRelPath(xmlRelPath: string): string {
   return xmlRelPath.slice(0, idx);
 }
 
-function customRowToWire(p: typeof schema.customParts.$inferSelect): PartWire {
+function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXml {
   // Parse the stored XML to extract connection points + pxPerStud so
   // the connectivity recompute treats custom parts the same way as
   // bundled. Wrap in try/catch — a malformed upload shouldn't break
@@ -285,9 +346,9 @@ function customRowToWire(p: typeof schema.customParts.$inferSelect): PartWire {
   let pxPerStud = 8;
   let kind: 'leaf' | 'group' = 'leaf';
   try {
-    const xml = Buffer.from(p.xmlBlob as Uint8Array).toString('utf8');
+    const xml = Buffer.from(xmlBlob).toString('utf8');
     const parsed = parsePartXml(xml, {
-      partNumber: p.partNumber,
+      partNumber,
       colorCode: '',
       spritePath: '',
     });
@@ -304,7 +365,11 @@ function customRowToWire(p: typeof schema.customParts.$inferSelect): PartWire {
   } catch {
     /* malformed — fall back to defaults; the part still renders as a sprite */
   }
+  return { connections, pxPerStud, kind };
+}
 
+function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefined): PartWire {
+  const { connections, pxPerStud, kind } = parsed ?? { connections: [], pxPerStud: 8, kind: 'leaf' as const };
   // The "key" namespace is `custom:<id>` so it can never collide with
   // a bundled part's `<partNumber>.<colorCode>` slug.
   return {

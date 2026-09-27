@@ -22,32 +22,43 @@
  *
  * Edge cases the C# format DOESN'T do:
  *   - "1." → C# emits "1", we must match
- *   - "1e+02" scientific → only kicks in past G's threshold
+ *   - scientific notation: we follow the desktop writer (Qt 'g'): below
+ *     1e-4 or at/above 10^precision, e.g. "1.5e-05", "1.234568e+07"
  *   - "-0" → C# emits "0", JS toFixed/toPrecision may emit "-0"; coerce to 0
  */
 export function formatNumber(n: number, precision: 'g7' | 'g15' = 'g15'): string {
   if (!Number.isFinite(n)) {
     throw new Error(`cannot format non-finite number: ${n}`);
   }
+  const digits = precision === 'g7' ? 7 : 15;
+  // Desktop holds g7 fields as `float` and formats the float
+  // (XmlPrimitives.cpp formatFloat), so round to single precision first.
+  if (precision === 'g7') n = Math.fround(n);
   // Normalise -0 → 0 so we never emit a leading minus on integral zero.
   if (Object.is(n, -0)) n = 0;
+  if (n === 0) return '0';
 
-  // C# integer-fast-path: integral values print without a decimal point.
-  if (Number.isInteger(n)) return n.toString();
-
-  const digits = precision === 'g7' ? 7 : 15;
-  // toPrecision uses N sig digits and may switch to exponential at the
-  // edges. C#'s G format uses the SAME pivot (~10^-5 lower, ~10^N upper),
-  // so the scientific edge cases are mostly aligned. Real `.bbm` files
-  // have no values in the scientific range, so this is good enough for v1.
-  let s = n.toPrecision(digits);
-
-  // Strip trailing zeros after the decimal point, then a trailing dot if
-  // any. ".25000" → ".25", "1.50" → "1.5", "1." → "1".
-  if (s.includes('.') && !s.includes('e') && !s.includes('E')) {
-    s = s.replace(/0+$/, '').replace(/\.$/, '');
+  // Desktop formats with QString::number(v, 'g', digits)
+  // (XmlPrimitives.cpp formatInvariantDouble), i.e. printf-%g rules:
+  // scientific when the decimal exponent is < -4 or >= digits, trailing
+  // zeros stripped, exponent signed and at least two digits ("1e-05").
+  // JS toPrecision switches at different pivots (< -6) and omits the
+  // exponent padding, so build it from toExponential instead.
+  const [mantissa, expStr] = n.toExponential(digits - 1).split('e') as [string, string];
+  const exp = parseInt(expStr, 10);
+  if (exp < -4 || exp >= digits) {
+    const m = stripZeros(mantissa);
+    const sign = exp < 0 ? '-' : '+';
+    return `${m}e${sign}${String(Math.abs(exp)).padStart(2, '0')}`;
   }
-  return s;
+  // Integral values within range print without a decimal point.
+  if (Number.isInteger(n)) return n.toString();
+  return stripZeros(n.toFixed(Math.max(0, digits - 1 - exp)));
+}
+
+/** ".25000" → ".25", "1.50" → "1.5", "1." → "1". */
+function stripZeros(s: string): string {
+  return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s;
 }
 
 /**

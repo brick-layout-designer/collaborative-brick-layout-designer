@@ -58,3 +58,44 @@ describe('bbmToDoc semantics', () => {
     expect(out.layers.length).toBe(tight.layers.length);
   });
 });
+
+describe('grid cellIndexCorner', () => {
+  function gridOf(map: ReturnType<typeof docToBbm>) {
+    const g = map.layers.find((l) => l.type === 'grid');
+    if (!g || g.type !== 'grid') throw new Error('no grid layer');
+    return g;
+  }
+
+  it('stores and restores an {x, y} point', () => {
+    const xml = readFileSync(resolve(BBM_FIXTURES, 'tight-corner.bbm'), 'utf8');
+    const map = readBbm(xml).map;
+    const layers = map.layers.map((l) =>
+      l.type === 'grid' ? { ...l, cellIndexCorner: { x: 4, y: -1 } } : l,
+    );
+    const doc = new Y.Doc();
+    bbmToDoc({ ...map, layers }, doc);
+    const b = new Y.Doc();
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(doc));
+    expect(gridOf(docToBbm(b)).cellIndexCorner).toEqual({ x: 4, y: -1 });
+  });
+
+  it('reads legacy docs that stored the corner as a string as {0, 0}', () => {
+    // Docs persisted before the point fix hold '' (seed) or the element's
+    // whitespace text (import) under this key.
+    for (const legacy of ['', '\r\n        \r\n        \r\n      ']) {
+      const xml = readFileSync(resolve(BBM_FIXTURES, 'tight-corner.bbm'), 'utf8');
+      const doc = new Y.Doc();
+      bbmToDoc(readBbm(xml).map, doc);
+      const layerData = doc.getMap<Y.Map<unknown>>('layerData');
+      let patched = 0;
+      for (const [, y] of layerData) {
+        if (y.get('type') === 'grid') {
+          y.set('cellIndexCorner', legacy);
+          patched++;
+        }
+      }
+      expect(patched).toBe(1);
+      expect(gridOf(docToBbm(doc)).cellIndexCorner).toEqual({ x: 0, y: 0 });
+    }
+  });
+});

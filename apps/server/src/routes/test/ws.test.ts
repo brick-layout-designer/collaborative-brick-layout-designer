@@ -85,15 +85,20 @@ class WsClient {
       return Promise.resolve(this.buffer.shift()!);
     }
     return new Promise((resolve, reject) => {
+      const waiter = (msg: Uint8Array) => {
+        clearTimeout(t);
+        resolve(msg);
+      };
       const t = setTimeout(() => {
-        const idx = this.waiters.indexOf(resolve);
+        // Remove THIS waiter (not `resolve`, which was never queued) so a
+        // timed-out wait doesn't swallow the next message. The old
+        // indexOf(resolve) never matched; tests only passed because the
+        // server used to send every broadcast once per open socket.
+        const idx = this.waiters.indexOf(waiter);
         if (idx !== -1) this.waiters.splice(idx, 1);
         reject(new Error(`nextMessage timed out after ${timeoutMs}ms`));
       }, timeoutMs);
-      this.waiters.push((msg) => {
-        clearTimeout(t);
-        resolve(msg);
-      });
+      this.waiters.push(waiter);
     });
   }
 
@@ -292,7 +297,7 @@ describe('WS /ws/layout/:id — sync protocol', () => {
     client.close();
   });
 
-  it('viewer sync messages are dropped — no reply arrives within 300ms', async () => {
+  it('viewer sync step-1 is answered with step-2; viewer updates are dropped', async () => {
     const viewerCookie = await registerAndLogin(app, 'ws-viewer@example.com');
     const meRes = await app.inject({
       method: 'GET',
@@ -313,19 +318,35 @@ describe('WS /ws/layout/:id — sync protocol', () => {
     // Drain the server's connect-time messages (step-1 + awareness).
     await drainConnect(client);
 
-    // Send a sync step-1 as viewer — server must drop it (no reply).
+    // A viewer's sync step-1 is a read request: the server must answer
+    // with step-2, or y-websocket viewers never receive the document.
     const clientDoc = new Y.Doc();
     const enc = encoding.createEncoder();
     encoding.writeVarUint(enc, MESSAGE_SYNC);
     syncProtocol.writeSyncStep1(enc, clientDoc);
     client.send(encoding.toUint8Array(enc));
+    const reply = decoding.createDecoder(await client.nextSyncMessage(2000));
+    expect(decoding.readVarUint(reply)).toBe(MESSAGE_SYNC);
+    expect(decoding.readVarUint(reply)).toBe(syncProtocol.messageYjsSyncStep2);
 
-    // No sync reply should arrive within 400ms.
-    const result = await Promise.race([
-      client.nextSyncMessage(400).then(() => 'got_sync' as const).catch(() => 'timeout' as const),
-      new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), 400)),
-    ]);
+    // Step-2 / update messages are writes and are dropped (no reply,
+    // nothing persisted).
+    const edit = new Y.Doc();
+    edit.getMap('m').set('evil', true);
+    const upd = encoding.createEncoder();
+    encoding.writeVarUint(upd, MESSAGE_SYNC);
+    syncProtocol.writeUpdate(upd, Y.encodeStateAsUpdate(edit));
+    client.send(encoding.toUint8Array(upd));
+    const result = await client
+      .nextSyncMessage(400)
+      .then(() => 'got_sync' as const)
+      .catch(() => 'timeout' as const);
     expect(result).toBe('timeout');
+    const rows = await db
+      .select()
+      .from(schema.layoutUpdates)
+      .where(eq(schema.layoutUpdates.layoutId, layoutId));
+    expect(rows.length).toBe(0);
     client.close();
   });
 });
