@@ -139,28 +139,29 @@ export function AnchoredLabels({
 }
 
 /**
- * `AnchoredLabel.color` is `{ known, argb, name }` — `argb` is a
- * 32-bit AARRGGBB integer when `known` is false, else use `name` (a
- * .NET KnownColor). For colours we don't have in the lookup, fall
- * back to black so the label is at least visible.
+ * `AnchoredLabel.color` is `{ known, argb, name }`. Desktop always writes
+ * `argb` (SidecarIO.cpp encodeColor) and reads the colour from it; `name`
+ * only records which .NET KnownColor it was. A known colour with no argb
+ * falls back to a small name lookup, then black so the label is visible.
+ * Returns `RRGGBB` (uppercase, no `#`).
  */
-function argbToCss(c: { known: boolean; argb: number; name: string }): string {
-  if (c.known) {
+export function labelColorHex(c: { known: boolean; argb: number; name: string }): string {
+  if (c.known && !c.argb) {
     const known: Record<string, string> = {
-      black: '#000000',
-      white: '#ffffff',
-      red: '#ff0000',
-      green: '#008000',
-      blue: '#0000ff',
-      yellow: '#ffff00',
-      orange: '#ffa500',
+      black: '000000',
+      white: 'FFFFFF',
+      red: 'FF0000',
+      green: '008000',
+      blue: '0000FF',
+      yellow: 'FFFF00',
+      orange: 'FFA500',
     };
-    return known[(c.name ?? '').toLowerCase()] ?? '#000000';
+    return known[(c.name ?? '').toLowerCase()] ?? '000000';
   }
-  // 32-bit AARRGGBB: extract RGB; alpha handled by Konva opacity if needed.
-  const argb = c.argb >>> 0;
-  const r = (argb >> 16) & 0xff;
-  const g = (argb >> 8) & 0xff;
-  const b = argb & 0xff;
-  return `rgb(${r}, ${g}, ${b})`;
+  // 32-bit AARRGGBB: keep RGB; alpha handled by Konva opacity if needed.
+  return ((c.argb >>> 0) & 0xffffff).toString(16).toUpperCase().padStart(6, '0');
+}
+
+function argbToCss(c: { known: boolean; argb: number; name: string }): string {
+  return `#${labelColorHex(c)}`;
 }

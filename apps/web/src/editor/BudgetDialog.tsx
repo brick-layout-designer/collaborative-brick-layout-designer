@@ -1,6 +1,8 @@
 // Port of BudgetDialog.cpp — modeless budget editor.
 // Reads/writes BlueBrick `.bbb` XML format (Budget > BudgetEntry > PartNumber + Limit).
 // Usage counts are computed from the live Yjs doc. Rows with used > limit are highlighted.
+// The limits themselves are stored in the doc's meta (`setBudgetLimits`), so
+// they persist and sync; .bbb Open/Save import and export them.
 
 import { useState, useMemo } from 'react';
 import type { BbmMap } from '@cld/model';
