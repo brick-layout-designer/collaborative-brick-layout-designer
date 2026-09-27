@@ -1,5 +1,5 @@
 // Extended integration tests for venue routes:
-//   PATCH  /api/venues/:id  — update name / data
+//   PATCH  /api/venues/:id  — rename (Venue Library "Rename") / update data
 // (Create, read, delete, org-scoped already covered in venues.test.ts)
 
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -75,12 +75,44 @@ describe('venues — update (PATCH)', () => {
       headers: { cookie },
       payload: { name: 'New Name' },
     });
-    // Accept 200 or 404-if-PATCH-not-implemented; we prefer 200.
-    expect([200, 404, 405]).toContain(patch.statusCode);
-    if (patch.statusCode === 200) {
-      const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie } });
-      expect((get.json() as { name: string }).name).toBe('New Name');
-    }
+    expect(patch.statusCode).toBe(200);
+    expect((patch.json() as { name: string }).name).toBe('New Name');
+    const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie } });
+    expect((get.json() as { name: string }).name).toBe('New Name');
+    // The venue data is untouched by a rename.
+    expect((get.json() as { data: typeof SAMPLE_VENUE }).data).toEqual(SAMPLE_VENUE);
+    const list = await app.inject({ method: 'GET', url: '/api/venues', headers: { cookie } });
+    expect((list.json() as { venues: { name: string }[] }).venues.map((v) => v.name)).toEqual(['New Name']);
+  });
+
+  it('rejects a blank name', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const id = await createVenue(app, cookie);
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/venues/${id}`,
+      headers: { cookie },
+      payload: { name: '   ' },
+    });
+    expect(patch.statusCode).toBe(400);
+  });
+
+  it('returns 404 for an unknown venue', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: '/api/venues/00000000-0000-0000-0000-000000000000',
+      headers: { cookie },
+      payload: { name: 'X' },
+    });
+    expect(patch.statusCode).toBe(404);
+  });
+
+  it('requires a session', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const id = await createVenue(app, cookie);
+    const patch = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, payload: { name: 'X' } });
+    expect(patch.statusCode).toBe(401);
   });
 
   it('owner can update the venue data', async () => {
@@ -93,12 +125,10 @@ describe('venues — update (PATCH)', () => {
       headers: { cookie },
       payload: { data: UPDATED_VENUE },
     });
-    expect([200, 404, 405]).toContain(patch.statusCode);
-    if (patch.statusCode === 200) {
-      const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie } });
-      const body = get.json() as { data: typeof UPDATED_VENUE };
-      expect(body.data.minWalkwayStuds).toBe(2);
-    }
+    expect(patch.statusCode).toBe(200);
+    const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie } });
+    const body = get.json() as { data: typeof UPDATED_VENUE };
+    expect(body.data.minWalkwayStuds).toBe(2);
   });
 
   it('non-owner cannot update venue', async () => {
@@ -112,8 +142,46 @@ describe('venues — update (PATCH)', () => {
       headers: { cookie: bobCookie },
       payload: { name: 'Stolen Name' },
     });
-    // Should be 403 or 404 (existence-leak) or 405 if PATCH not implemented.
-    expect([403, 404, 405]).toContain(patch.statusCode);
+    expect(patch.statusCode).toBe(403);
+    const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie: aliceCookie } });
+    expect((get.json() as { name: string }).name).toBe('Hall A');
+  });
+});
+
+describe('venues — PATCH validation', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('rejects an empty body and non-object data', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const id = await createVenue(app, cookie);
+    const empty = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: {} });
+    expect(empty.statusCode).toBe(400);
+    const bad = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { data: 'nope' } });
+    expect(bad.statusCode).toBe(400);
+    const get = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: { cookie } });
+    expect((get.json() as { name: string; data: unknown }).data).toEqual(SAMPLE_VENUE);
+  });
+
+  it('trims the new name', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    const id = await createVenue(app, cookie);
+    const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { name: '  Annex  ' } });
+    expect(res.json()).toEqual({ ok: true, id, name: 'Annex' });
+  });
+
+  it('a non-member cannot rename an org venue', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const eveCookie = await registerAndLogin(app, 'eve@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
+    const create = await app.inject({
+      method: 'POST', url: '/api/venues', headers: { cookie: aliceCookie },
+      payload: { name: 'Org Hall', data: SAMPLE_VENUE, orgSlug: 'acme' },
+    });
+    const id = (create.json() as { id: string }).id;
+    const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie: eveCookie }, payload: { name: 'X' } });
+    expect(res.statusCode).toBe(403);
   });
 });
 
@@ -138,10 +206,16 @@ describe('venues — org admin can update org venue', () => {
   beforeEach(async () => { resetDb(); app = await buildApp(); });
   afterEach(async () => { await app.close(); });
 
-  it('org admin update returns 200 or 405 (not 403)', async () => {
+  it('org admin can rename an org venue', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
-    const id = await createVenue(app, aliceCookie);
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/venues',
+      headers: { cookie: aliceCookie },
+      payload: { name: 'Org Hall', data: SAMPLE_VENUE, orgSlug: 'acme' },
+    });
+    const id = (create.json() as { id: string }).id;
 
     const patch = await app.inject({
       method: 'PATCH',
@@ -149,12 +223,10 @@ describe('venues — org admin can update org venue', () => {
       headers: { cookie: aliceCookie },
       payload: { name: 'Admin Update' },
     });
-    // Either the endpoint exists (200) or it hasn't been implemented yet (405).
-    expect([200, 404, 405]).toContain(patch.statusCode);
-    expect(patch.statusCode).not.toBe(403);
+    expect(patch.statusCode).toBe(200);
   });
 
-  it('org member (non-admin) gets 403 or 405 on update', async () => {
+  it('org member (non-admin) gets 403 on update', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     const bobCookie = await registerAndLogin(app, 'bob@example.com');
     await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
@@ -177,6 +249,6 @@ describe('venues — org admin can update org venue', () => {
       headers: { cookie: bobCookie },
       payload: { name: 'Member Update' },
     });
-    expect([403, 404, 405]).toContain(patch.statusCode);
+    expect(patch.statusCode).toBe(403);
   });
 });

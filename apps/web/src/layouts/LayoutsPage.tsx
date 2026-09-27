@@ -174,7 +174,7 @@ function LayoutRow({
         <a
           href={api.layouts.exportZipUrl(layout.id)}
           className="rounded-sm border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
-          title={layout.hasSidecar ? 'Download .bbm + .bbm.cld sidecar as a .zip' : 'Download .bbm'}
+          title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
         >
           Export .zip
         </a>

@@ -110,6 +110,39 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // ---- rename / update a venue ---------------------------------------------
+  // Venue Library "Rename" (desktop VenueLibraryPanel.cpp:244-255 renames
+  // the file). Same rights as delete: the personal owner or an org admin.
+  app.patch<{ Params: { id: string }; Body: { name?: string; data?: unknown } }>(
+    '/api/venues/:id',
+    async (req, reply) => {
+      const user = requireUser(req);
+      const row = await db
+        .select()
+        .from(schema.venueLibrary)
+        .where(eq(schema.venueLibrary.id, req.params.id))
+        .get();
+      if (!row) return reply.code(404).send({ error: 'Not found' });
+      if (!(await canManage(row, user.id))) return reply.code(403).send({ error: 'Forbidden' });
+
+      const { name, data } = req.body ?? {};
+      const updates: { name?: string; data?: string } = {};
+      if (name !== undefined) {
+        const t = typeof name === 'string' ? name.trim() : '';
+        if (!t) return reply.code(400).send({ error: 'invalid name' });
+        updates.name = t;
+      }
+      if (data !== undefined) {
+        if (!data || typeof data !== 'object') return reply.code(400).send({ error: 'invalid data' });
+        updates.data = JSON.stringify(data);
+      }
+      if (Object.keys(updates).length === 0) return reply.code(400).send({ error: 'no updates' });
+
+      await db.update(schema.venueLibrary).set(updates).where(eq(schema.venueLibrary.id, row.id));
+      return { ok: true, id: row.id, name: updates.name ?? row.name };
+    },
+  );
+
   // ---- delete a venue -----------------------------------------------------
   app.delete<{ Params: { id: string } }>('/api/venues/:id', async (req, reply) => {
     const user = requireUser(req);
@@ -119,23 +152,28 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.venueLibrary.id, req.params.id))
       .get();
     if (!row) return reply.code(404).send({ error: 'Not found' });
-
-    // Only owner (personal) or org admin can delete.
-    if (row.ownerUserId && row.ownerUserId !== user.id) {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
-    if (row.ownerOrgId) {
-      const mem = await db
-        .select()
-        .from(schema.orgMembers)
-        .where(
-          and(eq(schema.orgMembers.orgId, row.ownerOrgId), eq(schema.orgMembers.userId, user.id)),
-        )
-        .get();
-      if (!mem || mem.role !== 'admin') return reply.code(403).send({ error: 'Forbidden' });
-    }
+    if (!(await canManage(row, user.id))) return reply.code(403).send({ error: 'Forbidden' });
 
     await db.delete(schema.venueLibrary).where(eq(schema.venueLibrary.id, req.params.id));
     return { ok: true };
   });
+}
+
+/** Only the owner (personal venue) or an org admin (org venue) may change or delete it. */
+async function canManage(
+  row: { ownerUserId: string | null; ownerOrgId: string | null },
+  userId: string,
+): Promise<boolean> {
+  if (row.ownerUserId && row.ownerUserId !== userId) return false;
+  if (row.ownerOrgId) {
+    const mem = await db
+      .select()
+      .from(schema.orgMembers)
+      .where(
+        and(eq(schema.orgMembers.orgId, row.ownerOrgId), eq(schema.orgMembers.userId, userId)),
+      )
+      .get();
+    if (!mem || mem.role !== 'admin') return false;
+  }
+  return true;
 }

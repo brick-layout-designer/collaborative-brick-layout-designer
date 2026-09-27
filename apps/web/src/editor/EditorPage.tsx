@@ -65,10 +65,13 @@ import {
   insertBricks,
   paintAreaCells,
   placeBrick,
+  readBudgetLimits,
   reorderBricks,
+  setBudgetLimits,
   rotateBricksAboutCentroid,
   ungroupBricksAcrossLayers,
   setVenue,
+  type ModuleBatch,
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
@@ -76,6 +79,7 @@ import { readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } 
 import { pxToStud, studToPx } from './render/coords';
 import { ensureSprite, getSpriteSync } from './render/spriteCache';
 import { PlaceGhost } from './render/PlaceGhost';
+import { ModuleGhost } from './render/ModuleGhost';
 import { snapPlacement, snapToAnchorBrick, type AnchorSnapResult } from './snap';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
@@ -84,11 +88,12 @@ import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
-import { MODULE_MIME, MODULE_NAME_MIME } from './mime';
+import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { EXPORT_HIDE, renderMapToCanvas } from './exportRender';
+import { EXPORT_HIDE, exportSceneSize, renderMapToCanvas } from './exportRender';
+import { dropdownAnchor, dropTargetHint, viewCentreStuds } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -167,7 +172,6 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showVenueProps, setShowVenueProps] = useState(false);
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
-  const [budgetLimits, setBudgetLimits] = useState<Map<string, number>>(new Map());
   const [showVenueSaveLibrary, setShowVenueSaveLibrary] = useState(false);
 
   // Imperative handle so the PartsPanel can trigger click-to-place
@@ -185,15 +189,11 @@ function Editor({ layoutId }: { layoutId: string }) {
     setShowExportImage(true);
   }, []);
 
-  // Imperative clipboard / delete handle: Canvas writes the async
-  // functions on every render so the header toolbar can call them
-  // without lifting all clipboard state up to Editor.
-  const clipboardRef = useRef<{
-    cut: () => void;
-    copy: () => void;
-    paste: () => void;
-    delete: () => void;
-  } | null>(null);
+  // Imperative canvas-action handle (clipboard, delete, rotate, z-order,
+  // zoom, insert text): Canvas writes the functions on every render so the
+  // header toolbar and menus can call them without lifting canvas state
+  // up to Editor.
+  const canvasActionsRef = useRef<CanvasActions | null>(null);
 
   // Unsaved-changes guard. The useLayoutDoc hook tracks save status;
   // we block navigation when there are pending writes by returning a
@@ -247,6 +247,13 @@ function Editor({ layoutId }: { layoutId: string }) {
   // Subscribe to ALL doc changes; the projection is shared (cached per
   // doc) with the canvas and panels, so this costs no extra docToBbm.
   const docMap = useDocMap(doc);
+  // Budget limits live in the doc's meta (shared with collaborators,
+  // undoable). A meta change yields a new docMap, so re-read on that.
+  const budgetLimits = useMemo(
+    () => (doc ? readBudgetLimits(doc) : new Map<string, number>()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc, docMap],
+  );
 
   // The active layer defaults to the first brick layer in the doc, if any.
   // Without an active layer the place tool has nowhere to put bricks.
@@ -402,7 +409,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           {!isViewer && (
             <HeaderEditButtons
               saveNow={saveNow}
-              clipboardRef={clipboardRef}
+              canvasActionsRef={canvasActionsRef}
             />
           )}
           {!isViewer && <Toolbar />}
@@ -431,6 +438,11 @@ function Editor({ layoutId }: { layoutId: string }) {
               onCreateModule={() => createModuleFromSelection(doc)}
               onSaveAsSet={() => setShowSaveAsSet(true)}
               onInsertLabel={() => setShowAddLabel(true)}
+              onInsertText={() => canvasActionsRef.current?.insertText()}
+              onZoomIn={() => canvasActionsRef.current?.zoom(ZOOM_STEP)}
+              onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
+              onFit={() => canvasActionsRef.current?.fit()}
+              onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
               onVenueDimensions={() => setShowVenueDimensions(true)}
@@ -535,7 +547,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         className="relative overflow-hidden"
         style={{ gridColumn: '2', gridRow: '2' }}
       >
-        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} clipboardRef={clipboardRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
+        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
       </main>
       {showRight && (
         <DockColumn
@@ -655,6 +667,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               ? (useEditorStore.getState().selection[0] ?? null)
               : null
           }
+          viewCentre={viewCentreStuds(viewport)}
           onClose={() => setShowAddLabel(false)}
         />
       )}
@@ -695,7 +708,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         <BudgetDialog
           map={docMap}
           limits={budgetLimits}
-          onLimitsChange={setBudgetLimits}
+          onLimitsChange={(next) => setBudgetLimits(doc, next)}
           onClose={() => setShowBudget(false)}
         />
       )}
@@ -712,7 +725,7 @@ function Canvas({
   status,
   placeAtCenterRef,
   exportImageRef,
-  clipboardRef,
+  canvasActionsRef,
   undo,
   onOpenVenueProps,
   onSaveModule,
@@ -724,7 +737,7 @@ function Canvas({
   status: import('./useLayoutDoc').SaveStatus;
   placeAtCenterRef: React.MutableRefObject<((part: PartWire) => void) | null>;
   exportImageRef: React.MutableRefObject<import('./ExportImageDialog').ExportHandle | null>;
-  clipboardRef: React.MutableRefObject<{ cut: () => void; copy: () => void; paste: () => void; delete: () => void } | null>;
+  canvasActionsRef: React.MutableRefObject<CanvasActions | null>;
   undo: { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void };
   onOpenVenueProps: () => void;
   onSaveModule: () => void;
@@ -765,6 +778,11 @@ function Canvas({
   // user sees a live preview with snap-to-connection. Mirrors desktop
   // `MapView::dragMoveEvent` + `updateDragPreview` (MapView.cpp:1678-1761).
   const [dropPart, setDropPart] = useState<{ key: string; studX: number; studY: number } | null>(null);
+  // Same for a module dragged from the Module Library: cursor position
+  // plus the module's snapshot, fetched once per drag (MapView.cpp:1796-1900).
+  const [dropModule, setDropModule] = useState<{ studX: number; studY: number } | null>(null);
+  const moduleDragRef = useRef<{ key: string; batches: Promise<ModuleBatch[]>; ready: ModuleBatch[] | null } | null>(null);
+  const [, setModuleDragReady] = useState(0);
 
   // Marquee state. Active while the user is dragging in select mode on
   // empty stage. Mouse-up commits the intersection to selection.
@@ -1081,6 +1099,24 @@ function Canvas({
       }
     }
 
+    /** The module snapshot for this drag — fetched once, shared by ghost and drop. */
+    function moduleDragBatches(id: string) {
+      const key = `${activeModuleDrag.session}:${id}`;
+      let entry = moduleDragRef.current;
+      if (!entry || entry.key !== key) {
+        const batches = fetchModuleBatches(id);
+        const next = { key, batches, ready: null as ModuleBatch[] | null };
+        batches
+          .then((b) => {
+            next.ready = b;
+            setModuleDragReady((n) => n + 1);
+          })
+          .catch(() => undefined);
+        moduleDragRef.current = entry = next;
+      }
+      return entry;
+    }
+
     function onDragOver(e: DragEvent) {
       const dt = e.dataTransfer;
       if (!dt) return;
@@ -1090,9 +1126,17 @@ function Canvas({
       if (!isModule && !types.includes(PART_MIME) && !types.includes('text/plain')) return;
       e.preventDefault();
       dt.dropEffect = 'copy';
-      if (isModule) return; // no ghost needed for module drops
+      useEditorStore.getState().setDropTargetHint(dropTargetHint(map?.layers ?? [], activeLayerId));
       const studs = clientToStuds(e.clientX, e.clientY);
       if (!studs) return;
+      if (isModule) {
+        // Ghost of the whole module where the drop will put it.
+        const id = activeModuleDrag.id;
+        if (!id) return;
+        moduleDragBatches(id);
+        setDropModule({ studX: studs.x, studY: studs.y });
+        return;
+      }
       const key = readPartKey(dt);
       // dragover on Firefox doesn't expose getData payloads — fall back
       // to the most-recently-stored key from a previous dragover.
@@ -1105,6 +1149,8 @@ function Canvas({
 
     function onDragLeave(_e: DragEvent) {
       updateDropPart(null);
+      setDropModule(null);
+      useEditorStore.getState().setDropTargetHint(null);
     }
 
     function onDrop(e: DragEvent) {
@@ -1112,6 +1158,10 @@ function Canvas({
       const dt = e.dataTransfer;
       const lastDropPart = dropPartRef.current;
       updateDropPart(null);
+      setDropModule(null);
+      useEditorStore.getState().setDropTargetHint(null);
+      const dragged = moduleDragRef.current;
+      moduleDragRef.current = null;
 
       // Module drop — fetch snapshot and insert bricks.
       const moduleIdRaw = dt?.getData(MODULE_MIME);
@@ -1123,7 +1173,11 @@ function Canvas({
         const catalog = partsByKey;
         void (async () => {
           try {
-            const batches = await fetchModuleBatches(moduleId);
+            // Reuse the snapshot the ghost was drawn from, so the drop
+            // lands exactly on the ghost.
+            const batches = await (dragged && dragged.key === `${activeModuleDrag.session}:${moduleId}`
+              ? dragged.batches
+              : fetchModuleBatches(moduleId));
             // Desktop drop (MapView.cpp:1900-2060): centroid under the
             // cursor, bbox top-left on the grid, then a translation-only
             // connection snap onto the host's free ends.
@@ -1373,13 +1427,13 @@ function Canvas({
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === ']' || e.key === '}')) {
         e.preventDefault();
         if (isViewer || selection.length === 0) return;
-        reorderBricks(doc, activeLayerId ?? '', selection, 'front');
+        reorderBricks(doc, selection, 'front');
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '[' || e.key === '{')) {
         e.preventDefault();
         if (isViewer || selection.length === 0) return;
-        reorderBricks(doc, activeLayerId ?? '', selection, 'back');
+        reorderBricks(doc, selection, 'back');
         return;
       }
 
@@ -1475,7 +1529,7 @@ function Canvas({
       // anchor stays under the canvas centre.
       if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+' || e.key === '-')) {
         e.preventDefault();
-        const factor = e.key === '-' ? 1 / 1.2 : 1.2;
+        const factor = e.key === '-' ? 1 / ZOOM_STEP : ZOOM_STEP;
         const live = useEditorStore.getState().zoom;
         useEditorStore.getState().zoomAround(live * factor, width / 2, height / 2);
         return;
@@ -2134,24 +2188,50 @@ function Canvas({
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
   // Renders the whole map (content bounds + margin), not the viewport.
   exportImageRef.current = {
-    render: ({ pixelRatio, transparent }) => {
+    render: ({ pixelRatio, transparent, size, antialias }) => {
       const stage = stageRef.current;
       if (!stage || !map) return null;
       const stamp = [map.author, map.lug, map.event].filter(Boolean).join(' / ');
       return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
         pixelRatio,
         transparent,
+        ...(size ? { size } : {}),
+        ...(antialias !== undefined ? { antialias } : {}),
         hudLayer: hudLayerRef.current,
         ...(showExportWatermark && stamp ? { watermark: stamp } : {}),
       });
     },
+    sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
   };
 
-  clipboardRef.current = {
+  canvasActionsRef.current = {
     cut: () => void cutSelection(),
     copy: () => void copySelection(),
     paste: () => void pasteAtCursor(),
     delete: () => deleteSelection(),
+    // Toolbar Rotate CCW / CW and Send to Back / Bring to Front
+    // (MainWindow.cpp:733-742) — same actions as R / Shift+R and
+    // Ctrl+Shift+[ / ].
+    rotate: (cw) => {
+      if (isViewer || selection.length === 0) return;
+      rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees);
+    },
+    reorder: (to) => {
+      if (isViewer || selection.length === 0) return;
+      reorderBricks(doc, selection, to);
+    },
+    // View ▸ Zoom In / Zoom Out / Fit (MainWindowMenus.cpp:493-503).
+    zoom: (factor) => {
+      const live = useEditorStore.getState().zoom;
+      useEditorStore.getState().zoomAround(live * factor, width / 2, height / 2);
+    },
+    fit: () => void fitToContent(),
+    // Insert ▸ Text... at the view centre (MapView::addTextAtViewCenter).
+    insertText: () => {
+      if (isViewer) return;
+      setAddTextAt(viewCentreStuds({ width, height }));
+      setShowAddText(true);
+    },
   };
 
   if (!map) return <EmptyDoc />;
@@ -2399,6 +2479,17 @@ function Canvas({
           );
           return <PlaceGhost part={part} cursorStudX={snapped.centreX} cursorStudY={snapped.centreY} />;
         })()}
+        {dropModule && moduleDragRef.current?.ready && (() => {
+          const batches = moduleDragRef.current.ready;
+          const offset = moduleDropTranslation(
+            batches,
+            { x: dropModule.studX, y: dropModule.studY },
+            snapStepStuds,
+            map,
+            partsByKey,
+          );
+          return <ModuleGhost batches={batches} offset={offset} partsByKey={partsByKey} />;
+        })()}
         <MarqueeOverlay marquee={marquee} />
         <SnapRing />
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
@@ -2431,7 +2522,7 @@ function Canvas({
     // over the canvas yet). `addTextCell` infers a stud-size box from
     // the requested font size so the renderer's probe-and-fit lands
     // somewhere reasonable.
-    const target = addTextAt ?? pointerStuds() ?? { x: width / 2 / 8, y: height / 2 / 8 };
+    const target = addTextAt ?? pointerStuds() ?? viewCentreStuds({ width, height });
     setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
     // Heuristic: 1 stud ≈ 8 px, so a 24-px font wants ~3 studs tall;
@@ -2537,10 +2628,10 @@ function Canvas({
           onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees)}
           onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees)}
           onBringToFront={() => {
-            if (selection.length > 0) reorderBricks(doc, activeLayerId ?? '', selection, 'front');
+            if (selection.length > 0) reorderBricks(doc, selection, 'front');
           }}
           onSendToBack={() => {
-            if (selection.length > 0) reorderBricks(doc, activeLayerId ?? '', selection, 'back');
+            if (selection.length > 0) reorderBricks(doc, selection, 'back');
           }}
           onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
           onUngroup={() => ungroupBricksAcrossLayers(doc, selectionByLayer())}
@@ -3178,6 +3269,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   const mapW = useEditorStore((s) => s.hudMapWidthStuds);
   const mapH = useEditorStore((s) => s.hudMapHeightStuds);
   const statusMessage = useEditorStore((s) => s.statusMessage);
+  const dropTargetHint = useEditorStore((s) => s.dropTargetHint);
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
   // Surfaced here so the active layer is visible even when the Layers
   // panel is collapsed or scrolled out of view (issue #61).
@@ -3221,8 +3313,8 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
             {activeLayer ? activeLayer.name || 'unnamed' : 'none'}
           </span>
         </span>
-        {statusMessage ? (
-          <span className="text-blue-400 transition-opacity">{statusMessage}</span>
+        {dropTargetHint || statusMessage ? (
+          <span className="text-blue-400 transition-opacity">{dropTargetHint ?? statusMessage}</span>
         ) : (
           <>
             <span>
@@ -3319,6 +3411,11 @@ function MapMenu({
   onCreateModule,
   onSaveAsSet,
   onInsertLabel,
+  onInsertText,
+  onZoomIn,
+  onZoomOut,
+  onFit,
+  onDownloadBbm,
   onPreferences,
   onVenueProps,
   onVenueDimensions,
@@ -3341,6 +3438,11 @@ function MapMenu({
   onCreateModule: () => void;
   onSaveAsSet: () => void;
   onInsertLabel: () => void;
+  onInsertText: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFit: () => void;
+  onDownloadBbm: () => void;
   onPreferences: () => void;
   onVenueProps: () => void;
   onVenueDimensions: () => void;
@@ -3353,6 +3455,7 @@ function MapMenu({
   onBudget: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<React.CSSProperties>({});
   const showConnectionPoints = useEditorStore((s) => s.showConnectionPoints);
   const showGrid = useEditorStore((s) => s.showGrid);
   const showBrickHulls = useEditorStore((s) => s.showBrickHulls);
@@ -3389,11 +3492,16 @@ function MapMenu({
     { label: 'Save Selection as Module...', action: onSaveModule },
     { label: 'Import .bbm as Module...', action: onImportBbm },
     { label: 'Save Selection as Set...', action: onSaveAsSet },
+    { label: 'Insert Text...  Ctrl+T', action: onInsertText },
     { label: 'Insert Anchored Label...  Ctrl+L', action: onInsertLabel },
     { label: '—', action: () => {} },
+    { label: 'Download .bbm', action: onDownloadBbm },
     { label: 'Export as Image...', action: onExportImage },
     { label: 'Export Part List (CSV)...', action: onExportCsv },
     { label: '—', action: () => {} },
+    { label: 'Zoom In  Ctrl+=', action: onZoomIn },
+    { label: 'Zoom Out  Ctrl+-', action: onZoomOut },
+    { label: 'Fit to View  F', action: onFit },
     { label: 'Show Grid', action: () => setShowGrid(!showGrid), checked: showGrid },
     { label: 'Show Connection Points', action: () => setShowConnectionPoints(!showConnectionPoints), checked: showConnectionPoints },
     { label: 'Show Brick Hulls', action: () => setShowBrickHulls(!showBrickHulls), checked: showBrickHulls },
@@ -3403,7 +3511,6 @@ function MapMenu({
     { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
     { label: 'Show Module Frames', action: () => setShowModuleFrames(!showModuleFrames), checked: showModuleFrames },
     { label: '—', action: () => {} },
-    { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
@@ -3411,14 +3518,20 @@ function MapMenu({
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          setAnchor(dropdownAnchor(e.currentTarget));
+          setOpen((v) => !v);
+        }}
         className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
       >
         Map
       </button>
       {open && (
         <ul
-          className="absolute right-0 top-full z-30 mt-1 w-52 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          // Fixed, not absolute: the header row scrolls horizontally, which
+          // would clip an absolutely positioned dropdown.
+          className="fixed z-30 max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          style={anchor}
           onClick={() => setOpen(false)}
         >
           {items.map((it, i) =>
@@ -3461,11 +3574,15 @@ function PanelsMenu({
   onToggle: (id: string, visible: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<React.CSSProperties>({});
   const allIds = Object.keys(PANEL_TITLES);
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          setAnchor(dropdownAnchor(e.currentTarget));
+          setOpen((v) => !v);
+        }}
         className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
         title="Toggle panels"
       >
@@ -3475,7 +3592,7 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="absolute right-0 top-full z-30 mt-1 min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm">
+          <ul className="fixed z-30 min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (
@@ -3641,15 +3758,16 @@ function EmptyDoc() {
 
 function HeaderEditButtons({
   saveNow,
-  clipboardRef,
+  canvasActionsRef,
 }: {
   saveNow: () => Promise<void> | void;
-  clipboardRef: React.MutableRefObject<{ cut: () => void; copy: () => void; paste: () => void; delete: () => void } | null>;
+  canvasActionsRef: React.MutableRefObject<CanvasActions | null>;
 }) {
   const selection = useEditorStore((s) => s.selection);
   const annoTotal = useEditorStore((s) => annoCount(s.annoSelection));
   const hasSel = selection.length > 0;
   const btnCls = 'rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default';
+  const act = () => canvasActionsRef.current;
   return (
     <>
       <div className="h-4 w-px bg-neutral-700" />
@@ -3657,22 +3775,36 @@ function HeaderEditButtons({
         Save
       </button>
       <div className="h-4 w-px bg-neutral-700" />
-      <button onClick={() => clipboardRef.current?.cut()} disabled={!hasSel} title="Cut (Ctrl+X)" className={btnCls}>
+      <button onClick={() => act()?.cut()} disabled={!hasSel} title="Cut (Ctrl+X)" className={btnCls}>
         Cut
       </button>
-      <button onClick={() => clipboardRef.current?.copy()} disabled={!hasSel} title="Copy (Ctrl+C)" className={btnCls}>
+      <button onClick={() => act()?.copy()} disabled={!hasSel} title="Copy (Ctrl+C)" className={btnCls}>
         Copy
       </button>
-      <button onClick={() => clipboardRef.current?.paste()} title="Paste (Ctrl+V)" className={btnCls}>
+      <button onClick={() => act()?.paste()} title="Paste (Ctrl+V)" className={btnCls}>
         Paste
       </button>
       <button
-        onClick={() => clipboardRef.current?.delete()}
+        onClick={() => act()?.delete()}
         disabled={!hasSel && annoTotal === 0}
         title="Delete (Del)"
         className={btnCls + ' hover:bg-red-900/40'}
       >
         Delete
+      </button>
+      {/* Rotate + z-order, as on the desktop toolbar (MainWindow.cpp:733-742). */}
+      <div className="h-4 w-px bg-neutral-700" />
+      <button onClick={() => act()?.rotate(false)} disabled={!hasSel} title="Rotate CCW (R)" aria-label="Rotate CCW" className={btnCls}>
+        ⟲
+      </button>
+      <button onClick={() => act()?.rotate(true)} disabled={!hasSel} title="Rotate CW (Shift+R)" aria-label="Rotate CW" className={btnCls}>
+        ⟳
+      </button>
+      <button onClick={() => act()?.reorder('back')} disabled={!hasSel} title="Send to Back (Ctrl+Shift+[)" aria-label="Send to Back" className={btnCls + ' whitespace-nowrap'}>
+        To back
+      </button>
+      <button onClick={() => act()?.reorder('front')} disabled={!hasSel} title="Bring to Front (Ctrl+Shift+])" aria-label="Bring to Front" className={btnCls + ' whitespace-nowrap'}>
+        To front
       </button>
     </>
   );
@@ -3730,4 +3862,20 @@ async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
   a.download = `${title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout'}.bbm`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Keyboard / View-menu zoom step (desktop MainWindowMenus.cpp:493-498). */
+const ZOOM_STEP = 1.2;
+
+/** Imperative canvas actions shared with the header toolbar and menus. */
+interface CanvasActions {
+  cut: () => void;
+  copy: () => void;
+  paste: () => void;
+  delete: () => void;
+  rotate: (cw: boolean) => void;
+  reorder: (to: 'front' | 'back') => void;
+  zoom: (factor: number) => void;
+  fit: () => void;
+  insertText: () => void;
 }

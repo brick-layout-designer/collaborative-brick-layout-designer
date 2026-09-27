@@ -1,6 +1,6 @@
 // Integration tests for layout export endpoints:
 //   GET /api/layouts/:id/export.bbm
-//   GET /api/layouts/:id/export.bbm.cld
+//   GET /api/layouts/:id/export.bbm.bld (and the legacy export.bbm.cld URL)
 //   GET /api/layouts/:id/export.zip
 // And layout background image endpoints:
 //   POST   /api/layouts/:id/background-image
@@ -14,7 +14,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import * as Y from 'yjs';
 import { bufConcat, db, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
@@ -154,7 +156,7 @@ describe('export — .bbm', () => {
   });
 });
 
-describe('export — .bbm.cld (sidecar)', () => {
+describe('export — .bbm.bld (sidecar)', () => {
   let app: FastifyInstance;
   beforeEach(async () => { resetDb(); app = await buildApp(); });
   afterEach(async () => { await app.close(); });
@@ -165,14 +167,10 @@ describe('export — .bbm.cld (sidecar)', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/api/layouts/${id}/export.bbm.cld`,
+      url: `/api/layouts/${id}/export.bbm.bld`,
       headers: { cookie },
     });
-    // Sidecar is optional — expect either 200 (if generated) or 404.
-    expect([200, 404]).toContain(res.statusCode);
-    if (res.statusCode === 200) {
-      expect(res.headers['content-type']).toContain('json');
-    }
+    expect(res.statusCode).toBe(404);
   });
 
   it('returns 404 to non-collaborator', async () => {
@@ -182,7 +180,7 @@ describe('export — .bbm.cld (sidecar)', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/api/layouts/${id}/export.bbm.cld`,
+      url: `/api/layouts/${id}/export.bbm.bld`,
       headers: { cookie: outsiderCookie },
     });
     expect(res.statusCode).toBe(404);
@@ -201,11 +199,127 @@ describe('export — .bbm.cld (sidecar)', () => {
 
     const cld = await app.inject({
       method: 'GET',
-      url: `/api/layouts/${id}/export.bbm.cld`,
+      url: `/api/layouts/${id}/export.bbm.bld`,
       headers: { cookie },
     });
     expect(cld.statusCode).toBe(200);
     expect(cld.headers['content-type']).toContain('json');
+  });
+
+  it('uses the desktop file name and hashes the exported .bbm', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie },
+      payload: { title: 'Desktop Pair', bbm: FORDYCE_BBM, sidecar: MINIMAL_SIDECAR },
+    });
+    const { id } = res.json() as { id: string };
+
+    const bld = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.bld`, headers: { cookie } });
+    expect(bld.statusCode).toBe(200);
+    // Desktop only opens `<file>.bbm.bld` (SidecarIO.cpp sidecarPathFor).
+    expect(bld.headers['content-disposition']).toContain('Desktop Pair.bbm.bld');
+    const json = bld.json() as { schemaVersion: number; bbmHashSha256: string };
+    expect(json.schemaVersion).toBe(1);
+
+    const bbm = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm`, headers: { cookie } });
+    const hash = createHash('sha256').update(bbm.payload).digest('hex');
+    expect(json.bbmHashSha256).toBe(hash);
+  });
+
+  it('keeps the legacy export.bbm.cld URL working', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie },
+      payload: { title: 'Legacy', bbm: FORDYCE_BBM, sidecar: MINIMAL_SIDECAR },
+    });
+    const { id } = res.json() as { id: string };
+    const cld = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.cld`, headers: { cookie } });
+    expect(cld.statusCode).toBe(200);
+    expect(cld.headers['content-disposition']).toContain('.bbm.bld');
+  });
+
+  it('seeds the editor doc from an imported desktop sidecar and exports its edits', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const desktopSidecar = JSON.stringify({
+      schemaVersion: 1,
+      bbmHashSha256: '',
+      anchoredLabels: [{
+        id: '42', text: 'Yard', font: { family: 'Arial', size: 12, style: 'Regular' },
+        color: { known: true, argb: 4278190080, name: 'Black' },
+        kind: 0, targetId: '', offset: { x: 10, y: 20 }, rot: 0, minZoom: 0,
+      }],
+      modules: [],
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie },
+      payload: { title: 'Labels', bbm: FORDYCE_BBM, sidecar: desktopSidecar },
+    });
+    const { id } = res.json() as { id: string };
+
+    // The editor edits the sidecar held in the main doc's meta.cache.
+    const layout = await db.select().from(schema.layouts).where(eq(schema.layouts.id, id)).get();
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, layout!.docSnapshot as Uint8Array);
+    const cache = doc.getMap('meta').get('cache') as { anchoredLabels: { text: string }[] };
+    expect(cache.anchoredLabels[0]!.text).toBe('Yard');
+    doc.getMap('meta').set('cache', { ...cache, anchoredLabels: [{ ...cache.anchoredLabels[0]!, text: 'Depot' }] });
+    await db
+      .update(schema.layouts)
+      .set({ docSnapshot: Buffer.from(Y.encodeStateAsUpdate(doc)) })
+      .where(eq(schema.layouts.id, id));
+
+    const bld = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.bld`, headers: { cookie } });
+    const out = bld.json() as { anchoredLabels: { text: string; color: { known: boolean; name: string } }[] };
+    expect(out.anchoredLabels[0]!.text).toBe('Depot');
+    expect(out.anchoredLabels[0]!.color).toMatchObject({ known: true, name: 'Black' });
+  });
+});
+
+describe('create — sidecar import', () => {
+  let app: FastifyInstance;
+  beforeEach(async () => { resetDb(); app = await buildApp(); });
+  afterEach(async () => { await app.close(); });
+
+  it('seeds the editor cache without a .bbm and exports it', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const sidecar = JSON.stringify({ schemaVersion: 1, bbmHashSha256: '', venue: { name: 'Hall', enabled: true, minWalkwayStuds: 0, bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [] } });
+    const res = await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie }, payload: { title: 'Venue only', sidecar } });
+    expect(res.statusCode).toBe(201);
+    const { id } = res.json() as { id: string };
+    const bld = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.bld`, headers: { cookie } });
+    expect(bld.statusCode).toBe(200);
+    const json = bld.json() as { venue: { name: string }; bbmHashSha256: string };
+    expect(json.venue.name).toBe('Hall');
+    // The default doc exports a .bbm, so the hash is filled in.
+    expect(json.bbmHashSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('rejects an unparseable sidecar', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const res = await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie }, payload: { title: 'Bad', sidecar: '{nope' } });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('sidecar_parse_failed');
+  });
+
+  it('zip sidecar hash matches the zipped .bbm', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const res = await app.inject({
+      method: 'POST', url: '/api/layouts', headers: { cookie },
+      payload: { title: 'Hash', bbm: FORDYCE_BBM, sidecar: MINIMAL_SIDECAR },
+    });
+    const { id } = res.json() as { id: string };
+    const bbm = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm`, headers: { cookie } });
+    const zip = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.zip`, headers: { cookie } });
+    // Entries are stored uncompressed, so the sidecar JSON appears verbatim.
+    const text = zip.rawPayload.toString('utf8');
+    const hash = createHash('sha256').update(bbm.payload).digest('hex');
+    expect(text).toContain(`"bbmHashSha256": "${hash}"`);
   });
 });
 
@@ -282,7 +396,7 @@ describe('export — .zip', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('zip includes .bbm.cld entry when sidecar was provided', async () => {
+  it('zip includes a .bbm.bld entry when sidecar was provided', async () => {
     const cookie = await registerAndLogin(app, 'owner@example.com');
     const res = await app.inject({
       method: 'POST',
@@ -302,6 +416,10 @@ describe('export — .zip', () => {
     // PK magic bytes
     expect(zip.rawPayload[0]).toBe(0x50);
     expect(zip.rawPayload[1]).toBe(0x4b);
+    // Entry names are stored uncompressed in the local headers.
+    const names = zip.rawPayload.toString('latin1');
+    expect(names).toContain('Zip With Sidecar.bbm.bld');
+    expect(names).not.toContain('.bbm.cld');
   });
 });
 

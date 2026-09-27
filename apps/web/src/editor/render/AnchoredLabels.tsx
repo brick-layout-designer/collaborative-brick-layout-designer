@@ -20,6 +20,7 @@ import type { BbmMap } from '@cld/model';
 import type { AnchoredLabel, SidecarModule } from '@cld/bbm';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { studToPx } from './coords';
+import { labelColorHex } from '../labelColor';
 import { buildLabelIndex, labelAnchorStuds } from '../mixedSelection';
 import type { AnnoDragHandlers } from './groupDragNodes';
 
@@ -138,29 +139,6 @@ export function AnchoredLabels({
   );
 }
 
-/**
- * `AnchoredLabel.color` is `{ known, argb, name }` — `argb` is a
- * 32-bit AARRGGBB integer when `known` is false, else use `name` (a
- * .NET KnownColor). For colours we don't have in the lookup, fall
- * back to black so the label is at least visible.
- */
 function argbToCss(c: { known: boolean; argb: number; name: string }): string {
-  if (c.known) {
-    const known: Record<string, string> = {
-      black: '#000000',
-      white: '#ffffff',
-      red: '#ff0000',
-      green: '#008000',
-      blue: '#0000ff',
-      yellow: '#ffff00',
-      orange: '#ffa500',
-    };
-    return known[(c.name ?? '').toLowerCase()] ?? '#000000';
-  }
-  // 32-bit AARRGGBB: extract RGB; alpha handled by Konva opacity if needed.
-  const argb = c.argb >>> 0;
-  const r = (argb >> 16) & 0xff;
-  const g = (argb >> 8) & 0xff;
-  const b = argb & 0xff;
-  return `rgb(${r}, ${g}, ${b})`;
+  return `#${labelColorHex(c)}`;
 }

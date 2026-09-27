@@ -149,6 +149,12 @@ export interface EditorState {
    */
   statusMessage: string | null;
   statusMessageTimerId: ReturnType<typeof setTimeout> | null;
+  /**
+   * Where a part / module being dragged over the canvas will land
+   * ("Drop onto: <layer> ..."), shown in the status bar until the drag
+   * leaves or drops. Port of MapView::showDropTargetHint (MapView.cpp:1653-1683).
+   */
+  dropTargetHint: string | null;
 
   setTool: (t: Tool) => void;
   /** Replace the selection with these bricks (clears rulers / labels / text). */
@@ -185,6 +191,7 @@ export interface EditorState {
   setHudMapBounds: (w: number | null, h: number | null) => void;
   /** Show a transient message in the status bar; auto-clears after `durationMs` (default 3000). */
   showStatusMessage: (msg: string, durationMs?: number) => void;
+  setDropTargetHint: (hint: string | null) => void;
   /**
    * Atomic zoom-around-point. Used by the wheel handler so the world
    * coordinate under the cursor stays put across the zoom step — desktop
@@ -204,6 +211,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   panY: 0,
   statusMessage: null,
   statusMessageTimerId: null,
+  dropTargetHint: null,
   snapStepStuds: (() => {
     const v = localStorage.getItem('cld:snapStepStuds');
     const n = v !== null ? parseFloat(v) : 1;
@@ -345,6 +353,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set({ venueLabelPx: clamped });
   },
   setHudMapBounds: (hudMapWidthStuds, hudMapHeightStuds) => set({ hudMapWidthStuds, hudMapHeightStuds }),
+  setDropTargetHint: (dropTargetHint) => set((s) => (s.dropTargetHint === dropTargetHint ? s : { dropTargetHint })),
   showStatusMessage: (msg, durationMs = 3000) =>
     set((s) => {
       if (s.statusMessageTimerId !== null) clearTimeout(s.statusMessageTimerId);

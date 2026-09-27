@@ -12,7 +12,7 @@ import { useEditorStore } from './editorStore';
 import { importBricksAsModule } from './mutations';
 import { fetchModuleBatches } from './moduleSnapshot';
 
-import { MODULE_MIME, MODULE_NAME_MIME } from './mime';
+import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 export { MODULE_MIME };
 
 interface Props {
@@ -144,6 +144,11 @@ function ModuleLibraryRow({
         e.dataTransfer.setData(MODULE_MIME, module.id);
         e.dataTransfer.setData(MODULE_NAME_MIME, module.title);
         e.dataTransfer.setData('text/plain', module.id);
+        activeModuleDrag.id = module.id;
+        activeModuleDrag.session++;
+      }}
+      onDragEnd={() => {
+        activeModuleDrag.id = null;
       }}
       className="group flex cursor-grab items-start justify-between gap-2 px-2 py-2 hover:bg-neutral-800/60 active:cursor-grabbing"
     >

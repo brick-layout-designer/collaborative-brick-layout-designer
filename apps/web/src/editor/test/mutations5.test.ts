@@ -21,7 +21,10 @@ import {
   rescanModuleFromBricks,
   setSidecarModuleMembers,
   addSidecarModule,
+  readBudgetLimits,
+  setBudgetLimits,
 } from '../mutations';
+import { createUndoManager } from '../useUndoManager';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,7 +107,7 @@ describe('reorderBricks', () => {
     const { doc, layerId } = docWithBrickLayer();
     const id1 = placeBrick(doc, layerId, { partNumber: 'A', x: 0, y: 0, width: 2, height: 2 });
     const id2 = placeBrick(doc, layerId, { partNumber: 'B', x: 2, y: 0, width: 2, height: 2 });
-    reorderBricks(doc, layerId, [], 'front');
+    reorderBricks(doc, [], 'front');
     const [b1, b2] = bricksInLayer(doc, layerId);
     expect(b1?.get('id')).toBe(id1);
     expect(b2?.get('id')).toBe(id2);
@@ -117,7 +120,7 @@ describe('reorderBricks', () => {
     const id3 = placeBrick(doc, layerId, { partNumber: 'C', x: 4, y: 0, width: 2, height: 2 });
 
     // Bring id1 to front.
-    reorderBricks(doc, layerId, [id1], 'front');
+    reorderBricks(doc, [id1], 'front');
     const bricks = bricksInLayer(doc, layerId);
     expect(bricks[bricks.length - 1]?.get('id')).toBe(id1);
     expect(bricks[0]?.get('id')).toBe(id2);
@@ -131,7 +134,7 @@ describe('reorderBricks', () => {
     const id3 = placeBrick(doc, layerId, { partNumber: 'C', x: 4, y: 0, width: 2, height: 2 });
 
     // Send id3 to back.
-    reorderBricks(doc, layerId, [id3], 'back');
+    reorderBricks(doc, [id3], 'back');
     const bricks = bricksInLayer(doc, layerId);
     expect(bricks[0]?.get('id')).toBe(id3);
     expect(bricks[1]?.get('id')).toBe(id1);
@@ -311,5 +314,37 @@ describe('rescanModuleFromBricks', () => {
     expect(bricks[1]?.get('partNumber')).toBe('new2');
     // Old brick removed.
     expect(bricks.some((b) => b.get('id') === oldId)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// budget limits (doc meta)
+// ---------------------------------------------------------------------------
+
+describe('budget limits', () => {
+  it('round-trips through the doc and syncs to another replica', () => {
+    const doc = blankDoc();
+    expect(readBudgetLimits(doc).size).toBe(0);
+    setBudgetLimits(doc, new Map([['3001.1', 4], ['3003.1', 0]]));
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    expect([...readBudgetLimits(peer)]).toEqual([['3001.1', 4], ['3003.1', 0]]);
+  });
+
+  it('drops removed and negative entries', () => {
+    const doc = blankDoc();
+    setBudgetLimits(doc, new Map([['a', 1], ['b', 2]]));
+    setBudgetLimits(doc, new Map([['b', 3], ['c', -1]]));
+    expect([...readBudgetLimits(doc)]).toEqual([['b', 3]]);
+  });
+
+  it('a change is one undo step', () => {
+    const doc = blankDoc();
+    const um = createUndoManager(doc);
+    setBudgetLimits(doc, new Map([['a', 1], ['b', 2]]));
+    um.stopCapturing();
+    setBudgetLimits(doc, new Map([['a', 5]]));
+    um.undo();
+    expect([...readBudgetLimits(doc)]).toEqual([['a', 1], ['b', 2]]);
   });
 });
