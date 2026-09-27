@@ -8,7 +8,14 @@ import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { useEditorStore, type Tool } from '../editorStore';
 import { useShallow } from 'zustand/react/shallow';
-import { deleteBricks, moveBrick, moveBrickAndOrient, translateBricksAcrossLayers } from '../mutations';
+import {
+  bricksByLayer,
+  deleteBricks,
+  deleteBricksAcrossLayers,
+  moveBrick,
+  moveBrickAndOrient,
+  translateBricksAcrossLayers,
+} from '../mutations';
 import { studToPx } from './coords';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap } from '../snap';
@@ -254,6 +261,8 @@ const BrickGlyph = memo(function BrickGlyph({
    * Null when no connection snap is active.
    */
   const snapOrientRef = useRef<number | null>(null);
+  /** Last status-bar snap hint, to avoid a store write per drag frame. */
+  const snapHintRef = useRef<string | null>(null);
 
   /**
    * Snapshot of every selected brick at drag-start. Lets `handleDragMove`
@@ -266,7 +275,14 @@ const BrickGlyph = memo(function BrickGlyph({
     | {
         leaderId: string;
         leaderStartCentre: { x: number; y: number };
-        siblings: { id: string; startCentre: { x: number; y: number }; node: Konva.Node | null }[];
+        siblings: {
+          id: string;
+          startCentre: { x: number; y: number };
+          node: Konva.Node | null;
+          part: PartWire | undefined;
+          links: { linkedTo: string }[];
+          orientation: number;
+        }[];
       }
     | null
   >(null);
@@ -294,7 +310,7 @@ const BrickGlyph = memo(function BrickGlyph({
     // `stage.findOne` on every dragmove frame walked the whole scene graph
     // per sibling per frame.
     const stage = e.target.getStage();
-    const siblings: { id: string; startCentre: { x: number; y: number }; node: Konva.Node | null }[] = [];
+    const siblings: NonNullable<typeof dragStartRef.current>['siblings'] = [];
     for (const layer of map.layers) {
       if (layer.type !== 'brick') continue;
       for (const b of layer.bricks) {
@@ -306,6 +322,9 @@ const BrickGlyph = memo(function BrickGlyph({
             y: b.displayArea.y + b.displayArea.height / 2,
           },
           node: stage?.findOne(`.brick-${b.id}`) ?? null,
+          part: partsByKey.get(b.partNumber.toLowerCase()),
+          links: b.connexions,
+          orientation: b.orientation,
         });
       }
     }
@@ -327,7 +346,6 @@ const BrickGlyph = memo(function BrickGlyph({
    */
   function handleDragMove(e: KonvaEventObject<DragEvent>) {
     if (isViewer) return;
-    if (!meta) return; // can't snap without catalog metadata
     if (tool !== 'select') return;
 
     const node = e.target;
@@ -344,19 +362,30 @@ const BrickGlyph = memo(function BrickGlyph({
       mouseStudY = scenePos.y / studToPx();
     }
 
-    const isMulti = dragStartRef.current && dragStartRef.current.siblings.length > 0;
-    const movingIds = isMulti
-      ? [brick.id, ...dragStartRef.current!.siblings.map((s) => s.id)]
-      : [brick.id];
+    const dragStart = dragStartRef.current;
+    const isMulti = !!dragStart && dragStart.siblings.length > 0;
 
     const result = liveDragSnap(
       {
         part: meta,
         movingId: brick.id,
-        movingIds,
+        ...(isMulti
+          ? {
+              siblings: dragStart.siblings.map((s) => ({
+                id: s.id,
+                part: s.part,
+                links: s.links,
+                offsetX: s.startCentre.x - dragStart.leaderStartCentre.x,
+                offsetY: s.startCentre.y - dragStart.leaderStartCentre.y,
+                orientation: s.orientation,
+              })),
+            }
+          : {}),
         movingLinks: brick.connexions,
         centreX: centreStudX,
         centreY: centreStudY,
+        width: brick.displayArea.width,
+        height: brick.displayArea.height,
         mouseStudX,
         mouseStudY,
         orientation: brick.orientation,
@@ -366,22 +395,22 @@ const BrickGlyph = memo(function BrickGlyph({
       partsByKey,
     );
 
-    // Position the leader at the snapped centre; also rotate it if the
-    // connection snap resolved a new orientation (mouth-to-mouth alignment).
+    // Position the leader at the snapped centre. A single-brick connection
+    // snap also rotates it (mouth-to-mouth); the centre is already
+    // rotation-aligned for that orientation, so the joint meets exactly.
+    // Without a snap, restore the stored orientation (a previous frame may
+    // have rotated it towards a target the cursor has since left).
     node.position({
       x: result.centreX * studToPx(),
       y: result.centreY * studToPx(),
     });
     snapOrientRef.current = result.newOrientation;
-    if (result.newOrientation !== null) {
-      node.rotation(result.newOrientation);
-    }
+    node.rotation(result.newOrientation ?? brick.orientation);
 
     // Translate every other selected brick by the same delta so the
     // group moves rigidly. Match desktop's MapViewDrag.cpp:386-395 —
     // shiftPx applied to every item in dragStart_.
     if (isMulti && stage) {
-      const dragStart = dragStartRef.current!;
       const dxStud = result.centreX - dragStart.leaderStartCentre.x;
       const dyStud = result.centreY - dragStart.leaderStartCentre.y;
       for (const sib of dragStart.siblings) {
@@ -401,6 +430,19 @@ const BrickGlyph = memo(function BrickGlyph({
       useEditorStore.getState().setLiveSnap(null);
     }
 
+    // Status-bar snap diagnostic, as desktop shows during a live drag
+    // (MapViewDrag.cpp:352-376). Only written when the text changes so a
+    // drag doesn't hit the store every frame.
+    const hint = result.snappedToConnection
+      ? `Connection snap active (${result.movingConnCount} candidate conn(s))`
+      : result.movingConnCount === 0
+        ? 'Connection snap: no free connections in selection'
+        : `Connection snap: ${result.movingConnCount} moving conn(s), no target in reach`;
+    if (hint !== snapHintRef.current) {
+      snapHintRef.current = hint;
+      useEditorStore.getState().showStatusMessage(hint, 1500);
+    }
+
     // Drag-out-to-delete cursor hint — port of MapView.cpp:584-587.
     const container = stage?.container();
     if (container) {
@@ -412,7 +454,9 @@ const BrickGlyph = memo(function BrickGlyph({
   }
 
   function handleDragEnd(e: KonvaEventObject<DragEvent>) {
+    const wasSnapped = useEditorStore.getState().liveSnap !== null;
     useEditorStore.getState().setLiveSnap(null);
+    snapHintRef.current = null;
     const container = e.target.getStage()?.container();
     if (container) container.style.cursor = '';
     // Clear the multi-brick snapshot so the next single-brick drag
@@ -438,11 +482,14 @@ const BrickGlyph = memo(function BrickGlyph({
     const outOfBounds =
       !ptr || ptr.x < 0 || ptr.y < 0 || ptr.x >= stageW || ptr.y >= stageH;
     if (outOfBounds) {
+      // The selection can span layers — delete every selected brick
+      // wherever it lives (desktop MapView.cpp:725-736 deletes the whole
+      // selection), in one undo step.
       const ids =
         selection.includes(brick.id) && selection.length > 0
           ? selection
           : [brick.id];
-      deleteBricks(doc, layerId, ids);
+      deleteBricksAcrossLayers(doc, bricksByLayer(map, ids));
       useEditorStore.getState().setSelection([]);
       // Snap the visible Group back to its original position so it
       // doesn't briefly render at the off-stage drop coords before the
@@ -465,19 +512,14 @@ const BrickGlyph = memo(function BrickGlyph({
       const oldCentreStudY = brick.displayArea.y + brick.displayArea.height / 2;
       const dx = newCentreStudX - oldCentreStudX;
       const dy = newCentreStudY - oldCentreStudY;
-      const selSet = new Set(selection);
-      const byLayer = new Map<string, string[]>();
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-        if (ids.length > 0) byLayer.set(layer.id, ids);
-      }
-      translateBricksAcrossLayers(doc, byLayer, dx, dy);
+      translateBricksAcrossLayers(doc, bricksByLayer(map, selection), dx, dy);
     } else if (snappedOrientation !== null) {
       moveBrickAndOrient(doc, layerId, brick.id, newCentreStudX, newCentreStudY, snappedOrientation);
     } else {
       moveBrick(doc, layerId, brick.id, newCentreStudX, newCentreStudY);
     }
+    // Desktop confirms the commit in the status bar (MapViewDrag.cpp:594-597).
+    useEditorStore.getState().showStatusMessage(wasSnapped ? 'Connection snap' : 'Moved', 1500);
   }
 
   return (

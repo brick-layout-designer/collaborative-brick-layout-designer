@@ -1,18 +1,15 @@
 // Import .bbm as Module — port of ImportBbmAsModuleCommand (ModuleCommands.cpp).
-// Opens a file picker, reads the .bbm XML, collects bricks from all brick
-// layers, translates their centroid to the origin, and inserts them into
-// the active brick layer of the current layout.
-//
-// Unlike the full ImportBbmAsModuleCommand, we flatten all source layers
-// into one target layer (matching the web model where modules are a
-// single layer grouping, not separate layers).
+// Opens a file picker, reads the .bbm XML, and inserts the bricks of every
+// brick layer onto the host layer with the same name (creating it when
+// missing), centred on the origin. The inserted bricks are registered as
+// a sidecar module named after the file, in the same undo step.
 
 import { useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { readBbm } from '@cld/bbm';
 import { useEditorStore } from './editorStore';
-import { ensureBrickLayer, insertBricks } from './mutations';
-import { docToBbm } from '@cld/ydoc';
+import { importBricksAsModule } from './mutations';
+import { moduleBatchesFromMap } from './moduleDrop';
 
 interface Props {
   doc: Y.Doc;
@@ -20,7 +17,6 @@ interface Props {
 }
 
 export function ImportBbmDialog({ doc, onClose }: Props) {
-  const activeLayerId = useEditorStore((s) => s.activeLayerId);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -35,10 +31,8 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
       const result = readBbm(xml);
       const map = result.map;
 
-      // Collect all bricks from all brick layers.
-      const allBricks = map.layers.flatMap((l) =>
-        l.type === 'brick' ? l.bricks : [],
-      );
+      const batches = moduleBatchesFromMap(map);
+      const allBricks = batches.flatMap((b) => b.bricks);
       if (allBricks.length === 0) throw new Error('No bricks found in this .bbm file');
 
       // Translate centroid to origin so the module inserts at the viewport
@@ -51,34 +45,18 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
       const cx = sumX / allBricks.length;
       const cy = sumY / allBricks.length;
 
-      // Use the active layer if it's a brick layer; otherwise ensure one exists.
-      let targetLayerId = activeLayerId;
-      if (!targetLayerId) {
-        try {
-          const current = docToBbm(doc);
-          const first = current.layers.find((l) => l.type === 'brick');
-          if (first) targetLayerId = first.id;
-        } catch { /* fall through */ }
+      const name = file.name.replace(/\.bbm$/i, '') || 'Module';
+      const res = importBricksAsModule(doc, batches, {
+        name,
+        offset: { dx: -cx, dy: -cy },
+        sourceFile: file.name,
+      });
+      if (res) {
+        useEditorStore.getState().setSelection(res.ids);
+        useEditorStore
+          .getState()
+          .showStatusMessage(`Imported ${res.ids.length} bricks as module '${name}'`, 4000);
       }
-      if (!targetLayerId) {
-        targetLayerId = ensureBrickLayer(doc);
-      }
-
-      insertBricks(
-        doc,
-        targetLayerId,
-        allBricks.map((b) => ({
-          partNumber: b.partNumber,
-          displayArea: {
-            x: b.displayArea.x - cx,
-            y: b.displayArea.y - cy,
-            width: b.displayArea.width,
-            height: b.displayArea.height,
-          },
-          orientation: b.orientation,
-          altitude: b.altitude,
-        })),
-      );
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -98,8 +76,8 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
       >
         <h2 className="mb-1 text-sm font-semibold text-neutral-200">Import .bbm as Module</h2>
         <p className="mb-4 text-xs text-neutral-500">
-          Bricks from all layers will be imported into the active brick layer,
-          centred at the viewport origin.
+          Bricks keep their layers (matched by name, created when missing),
+          are centred at the map origin and become a module named after the file.
         </p>
 
         <input

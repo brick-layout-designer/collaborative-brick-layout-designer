@@ -33,7 +33,6 @@ import {
   addLinearRuler,
   addTextCell,
   attachRulerEndpoint,
-  deleteBricks,
   deleteRulerItem,
   editTextCellFull,
   moveRulerEndpoint,
@@ -41,16 +40,21 @@ import {
   ensureBrickLayer,
   ensureRulerLayer,
   ensureTextLayer,
-  groupBricks,
+  allVisibleBrickIds,
+  bricksByLayer,
+  deleteBricksAcrossLayers,
+  groupBricksAcrossLayers,
+  importBricksAsModule,
+  insertBricksAcrossLayers,
   insertBricks,
   moveRulerItem,
   paintAreaCells,
   placeBrick,
   reorderBricks,
-  rotateBricks,
+  rotateBricksAboutCentroid,
   translateBricks,
   translateBricksAcrossLayers,
-  ungroupBricks,
+  ungroupBricksAcrossLayers,
   setVenue,
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
@@ -67,7 +71,10 @@ import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
-import { MODULE_MIME } from './mime';
+import { MODULE_MIME, MODULE_NAME_MIME } from './mime';
+import { fetchModuleBatches } from './moduleSnapshot';
+import { moduleDropTranslation } from './moduleDrop';
+import { createModuleFromSelection } from './moduleActions';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -392,6 +399,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               }}
               onSaveModule={() => setShowSaveModule(true)}
               onImportBbm={() => setShowImportBbm(true)}
+              onCreateModule={() => createModuleFromSelection(doc)}
               onSaveAsSet={() => setShowSaveAsSet(true)}
               onInsertLabel={() => setShowAddLabel(true)}
               onPreferences={() => setShowPreferences(true)}
@@ -992,40 +1000,34 @@ function Canvas({
       const moduleIdRaw = dt?.getData(MODULE_MIME);
       const moduleId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(moduleIdRaw ?? '')?.[1];
       if (moduleId) {
-        // Relative URL — same-origin browser fetch, not a server-side request.
-        // Path is /api/modules/<validated-uuid>/snapshot with no user-controlled host.
-        const moduleSnapshotPath = `/api/modules/${moduleId}/snapshot` as const;
-        const layerId = resolveBrickLayerForPlacement();
+        const moduleName = dt?.getData(MODULE_NAME_MIME) || 'Module';
         const dropStuds = clientToStuds(e.clientX, e.clientY);
+        const hostMap = map;
+        const catalog = partsByKey;
         void (async () => {
           try {
-            const res = await fetch(moduleSnapshotPath, { credentials: 'include' }); // codeql[js/request-forgery] - browser same-origin fetch, UUID validated by regex above
-            if (!res.ok) return;
-            const buf = await res.arrayBuffer();
-            const moduleDoc = new Y.Doc();
-            Y.applyUpdate(moduleDoc, new Uint8Array(buf));
-            let bbmMap: ReturnType<typeof docToBbm>;
-            try { bbmMap = docToBbm(moduleDoc); } catch { moduleDoc.destroy(); return; }
-            moduleDoc.destroy();
-            const bricks = bbmMap.layers
-              .filter((l): l is Extract<typeof l, { type: 'brick' }> => l.type === 'brick')
-              .flatMap((l) => l.bricks);
-            if (bricks.length === 0) return;
-            // Land the module's centroid under the drop point (modules
-            // are saved centred on the origin, so inserting at the saved
-            // coordinates dropped them at 0,0 regardless of the cursor).
-            let offset = { dx: 0, dy: 0 };
-            if (dropStuds) {
-              let cx = 0;
-              let cy = 0;
-              for (const b of bricks) {
-                cx += b.displayArea.x + b.displayArea.width / 2;
-                cy += b.displayArea.y + b.displayArea.height / 2;
-              }
-              offset = { dx: dropStuds.x - cx / bricks.length, dy: dropStuds.y - cy / bricks.length };
+            const batches = await fetchModuleBatches(moduleId);
+            // Desktop drop (MapView.cpp:1900-2060): centroid under the
+            // cursor, bbox top-left on the grid, then a translation-only
+            // connection snap onto the host's free ends.
+            const offset = dropStuds
+              ? moduleDropTranslation(
+                  batches,
+                  dropStuds,
+                  useEditorStore.getState().snapStepStuds,
+                  hostMap,
+                  catalog,
+                )
+              : { dx: 0, dy: 0 };
+            // Bricks go to host layers named like the module's layers and
+            // are registered as a sidecar module in the same undo step.
+            const res = importBricksAsModule(doc, batches, { name: moduleName, offset });
+            if (res) {
+              setSelection(res.ids);
+              useEditorStore
+                .getState()
+                .showStatusMessage(`Imported ${res.ids.length} bricks from module '${moduleName}'`, 4000);
             }
-            const ids = insertBricks(doc, layerId, bricks, offset);
-            if (ids.length > 0) setSelection(ids);
           } catch { /* silent */ }
         })();
         return;
@@ -1197,11 +1199,10 @@ function Canvas({
         e.preventDefault();
         if (e.shiftKey) {
           setSelection([]);
-        } else if (activeLayerId && map) {
-          const layer = map.layers.find((l) => l.id === activeLayerId && l.type === 'brick');
-          if (layer && layer.type === 'brick') {
-            setSelection(layer.bricks.map((b) => b.id));
-          }
+        } else if (map) {
+          // Every brick on every visible brick layer, like desktop
+          // MapView::selectAll (MapView.cpp:1417).
+          setSelection(allVisibleBrickIds(map));
         }
         return;
       }
@@ -1238,7 +1239,7 @@ function Canvas({
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0 || !activeLayerId) return;
+        if (isViewer || selection.length === 0) return;
         void duplicateSelection();
         return;
       }
@@ -1247,14 +1248,14 @@ function Canvas({
       // Desktop MainWindowMenus.cpp:391-396.
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === ']' || e.key === '}')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0 || !activeLayerId) return;
-        reorderBricks(doc, activeLayerId, selection, 'front');
+        if (isViewer || selection.length === 0) return;
+        reorderBricks(doc, activeLayerId ?? '', selection, 'front');
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '[' || e.key === '{')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0 || !activeLayerId) return;
-        reorderBricks(doc, activeLayerId, selection, 'back');
+        if (isViewer || selection.length === 0) return;
+        reorderBricks(doc, activeLayerId ?? '', selection, 'back');
         return;
       }
 
@@ -1295,14 +1296,9 @@ function Canvas({
       // Desktop MainWindowMenus.cpp:371-374.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
         e.preventDefault();
-        if (isViewer || !activeLayerId) return;
-        if (e.shiftKey) {
-          if (selection.length === 0) return;
-          ungroupBricks(doc, activeLayerId, selection);
-        } else {
-          if (selection.length < 2) return;
-          groupBricks(doc, activeLayerId, selection);
-        }
+        if (isViewer) return;
+        if (e.shiftKey) ungroupBricksAcrossLayers(doc, selectionByLayer());
+        else groupBricksAcrossLayers(doc, selectionByLayer());
         return;
       }
 
@@ -1404,35 +1400,19 @@ function Canvas({
       if (selection.length === 0) return;
 
       if (e.key === 'r' || e.key === 'R') {
-        if (!activeLayerId) return;
         // Shift+R = CW (+step), R = CCW (-step). Matches desktop's MainWindow
         // keys (MainWindowMenus.cpp:418,423) where Shift+R is CW and
-        // bare R is CCW; step is the configured rotation step.
+        // bare R is CCW; step is the configured rotation step. The whole
+        // selection (any layer) turns about its centroid.
         e.preventDefault();
-        rotateBricks(doc, activeLayerId, selection, e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
+        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        // Group selected brick IDs by which layer they live in.  The
-        // activeLayerId may be stale or the selection may span layers, so
-        // we search all brick layers. Desktop's deleteSelected() does the
-        // same (MapViewContextMenu.cpp deleteSelected walks all layers).
-        if (map) {
-          const selSet = new Set(selection);
-          for (const layer of map.layers) {
-            if (layer.type !== 'brick') continue;
-            const layerBrickIds = layer.bricks
-              .filter((b) => selSet.has(b.id))
-              .map((b) => b.id);
-            if (layerBrickIds.length > 0) {
-              deleteBricks(doc, layer.id, layerBrickIds);
-            }
-          }
-        } else if (activeLayerId) {
-          deleteBricks(doc, activeLayerId, selection);
-        }
-        setSelection([]);
+        // The selection may span layers; desktop's deleteSelected() walks
+        // every layer too. One transaction → one undo step.
+        deleteSelectedBricks();
         return;
       }
       // Arrow-key nudge by the active grid-snap step (or 1 stud when
@@ -1739,16 +1719,18 @@ function Canvas({
   async function cutSelection(): Promise<void> {
     await copySelection();
     if (selection.length === 0) return;
-    if (map) {
-      const selSet = new Set(selection);
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-        if (ids.length > 0) deleteBricks(doc, layer.id, ids);
-      }
-    } else if (activeLayerId) {
-      deleteBricks(doc, activeLayerId, selection);
-    }
+    deleteSelectedBricks();
+  }
+
+  /** The selection's brick ids grouped by the layer that holds them. */
+  function selectionByLayer(): Map<string, string[]> {
+    return map ? bricksByLayer(map, selection) : new Map();
+  }
+
+  /** Delete every selected brick, whatever its layer, as one undo step. */
+  function deleteSelectedBricks(): void {
+    if (selection.length === 0) return;
+    deleteBricksAcrossLayers(doc, selectionByLayer());
     setSelection([]);
   }
 
@@ -1808,21 +1790,24 @@ function Canvas({
     // Paste in-place + 1-stud offset (matches the previous Ctrl+D
     // behaviour while still going through the clipboard so cross-tab
     // duplicate works).
-    const entries = await readBricksFromClipboard();
-    if (!entries || entries.length === 0) return;
-    if (!activeLayerId) return;
-    const targetLayerId = activeLayerId;
-    const ids = insertBricks(
-      doc,
-      targetLayerId,
-      entries.map((e) => ({
-        partNumber: e.brick.partNumber,
-        displayArea: { ...e.brick.displayArea },
-        orientation: e.brick.orientation,
-        altitude: e.brick.altitude,
-      })),
-      { dx: 1, dy: 1 },
-    );
+    // Each copy lands on its source brick's own layer (desktop pastes by
+    // source layer — MapViewClipboard.cpp:74-110), in one undo step.
+    if (!map) return;
+    const sel = new Set(selection);
+    const perLayer = new Map<string, Parameters<typeof insertBricks>[2]>();
+    for (const layer of map.layers) {
+      if (layer.type !== 'brick') continue;
+      const bricks = layer.bricks
+        .filter((b) => sel.has(b.id))
+        .map((b) => ({
+          partNumber: b.partNumber,
+          displayArea: { ...b.displayArea },
+          orientation: b.orientation,
+          altitude: b.altitude,
+        }));
+      if (bricks.length > 0) perLayer.set(layer.id, bricks);
+    }
+    const ids = insertBricksAcrossLayers(doc, perLayer, { dx: 1, dy: 1 });
     if (ids.length > 0) setSelection(ids);
   }
 
@@ -2050,20 +2035,7 @@ function Canvas({
     cut: () => void cutSelection(),
     copy: () => void copySelection(),
     paste: () => void pasteAtCursor(),
-    delete: () => {
-      if (selection.length === 0) return;
-      if (map) {
-        const selSet = new Set(selection);
-        for (const layer of map.layers) {
-          if (layer.type !== 'brick') continue;
-          const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-          if (ids.length > 0) deleteBricks(doc, layer.id, ids);
-        }
-      } else if (activeLayerId) {
-        deleteBricks(doc, activeLayerId, selection);
-      }
-      setSelection([]);
-    },
+    delete: () => deleteSelectedBricks(),
   };
 
   if (!map) return <EmptyDoc />;
@@ -2412,44 +2384,17 @@ function Canvas({
           onCut={() => void cutSelection()}
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
-          onDelete={() => {
-            if (selection.length === 0) return;
-            if (map) {
-              const selSet = new Set(selection);
-              for (const layer of map.layers) {
-                if (layer.type !== 'brick') continue;
-                const ids = layer.bricks.filter((b) => selSet.has(b.id)).map((b) => b.id);
-                if (ids.length > 0) deleteBricks(doc, layer.id, ids);
-              }
-            } else if (activeLayerId) {
-              deleteBricks(doc, activeLayerId, selection);
-            }
-            setSelection([]);
-          }}
-          onRotateCCW={() => {
-            if (activeLayerId && selection.length > 0)
-              rotateBricks(doc, activeLayerId, selection, -rotationStepDegrees);
-          }}
-          onRotateCW={() => {
-            if (activeLayerId && selection.length > 0)
-              rotateBricks(doc, activeLayerId, selection, rotationStepDegrees);
-          }}
+          onDelete={() => deleteSelectedBricks()}
+          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees)}
+          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees)}
           onBringToFront={() => {
-            if (activeLayerId && selection.length > 0)
-              reorderBricks(doc, activeLayerId, selection, 'front');
+            if (selection.length > 0) reorderBricks(doc, activeLayerId ?? '', selection, 'front');
           }}
           onSendToBack={() => {
-            if (activeLayerId && selection.length > 0)
-              reorderBricks(doc, activeLayerId, selection, 'back');
+            if (selection.length > 0) reorderBricks(doc, activeLayerId ?? '', selection, 'back');
           }}
-          onGroup={() => {
-            if (activeLayerId && selection.length >= 2)
-              groupBricks(doc, activeLayerId, selection);
-          }}
-          onUngroup={() => {
-            if (activeLayerId && selection.length > 0)
-              ungroupBricks(doc, activeLayerId, selection);
-          }}
+          onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
+          onUngroup={() => ungroupBricksAcrossLayers(doc, selectionByLayer())}
           onSelectConnected={() => {
             if (!map) return;
             const adj = buildConnectedAdj(map);
@@ -3230,6 +3175,7 @@ function MapMenu({
   onExportCsv,
   onSaveModule,
   onImportBbm,
+  onCreateModule,
   onSaveAsSet,
   onInsertLabel,
   onPreferences,
@@ -3251,6 +3197,7 @@ function MapMenu({
   onExportCsv: () => void;
   onSaveModule: () => void;
   onImportBbm: () => void;
+  onCreateModule: () => void;
   onSaveAsSet: () => void;
   onInsertLabel: () => void;
   onPreferences: () => void;
@@ -3297,6 +3244,7 @@ function MapMenu({
     { label: 'Venue → Load from File...', action: onVenueLoadFromFile },
     { label: 'Venue → Clear', action: onVenueClear },
     { label: '—', action: () => {} },
+    { label: 'Create Module from Selection...', action: onCreateModule },
     { label: 'Save Selection as Module...', action: onSaveModule },
     { label: 'Import .bbm as Module...', action: onImportBbm },
     { label: 'Save Selection as Set...', action: onSaveAsSet },
