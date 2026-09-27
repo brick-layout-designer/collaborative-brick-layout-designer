@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { useEditorStore } from './editorStore';
+import { isEditableTarget } from './keyboardGuard';
 
 export interface UndoState {
   manager: Y.UndoManager | null;
@@ -78,9 +79,7 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
 
     function onKey(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
-      }
+      if (isEditableTarget(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
