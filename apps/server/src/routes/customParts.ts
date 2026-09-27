@@ -140,7 +140,12 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.customParts.id, req.params.id))
         .get();
       if (!part) return reply.code(404).send({ error: 'not_found' });
-      reply.header('Content-Type', 'application/xml; charset=utf-8');
+      // User-uploaded bytes: never let a browser render them as a
+      // document on our origin (an XHTML payload served inline as
+      // application/xml runs script). Plain text, forced download.
+      reply.header('Content-Type', 'text/plain; charset=utf-8');
+      reply.header('Content-Disposition', 'attachment; filename="part.xml"');
+      reply.header('X-Content-Type-Options', 'nosniff');
       return reply.send(Buffer.from(part.xmlBlob as Uint8Array).toString('utf8'));
     },
   );
