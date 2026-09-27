@@ -66,13 +66,18 @@ export async function layoutRoutes(app: FastifyInstance) {
       .from(schema.layouts)
       .where(eq(schema.layouts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ layout: layoutListColumns, orgName: schema.orgs.name, orgSlug: schema.orgs.slug })
+      .select({
+        layout: layoutListColumns,
+        orgName: schema.orgs.name,
+        orgSlug: schema.orgs.slug,
+        memberRole: schema.orgMembers.role,
+      })
       .from(schema.orgMembers)
       .innerJoin(schema.layouts, eq(schema.layouts.ownerOrgId, schema.orgMembers.orgId))
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ layout: layoutListColumns })
+      .select({ layout: layoutListColumns, role: schema.layoutCollaborators.role })
       .from(schema.layoutCollaborators)
       .innerJoin(schema.layouts, eq(schema.layouts.id, schema.layoutCollaborators.layoutId))
       .where(eq(schema.layoutCollaborators.userId, user.id));
@@ -82,17 +87,17 @@ export async function layoutRoutes(app: FastifyInstance) {
     for (const l of personal) {
       if (seen.has(l.id)) continue;
       seen.add(l.id);
-      all.push(toListItem(l));
+      all.push(toListItem(l, 'owner'));
     }
-    for (const { layout, orgName, orgSlug } of orgOwned) {
+    for (const { layout, orgName, orgSlug, memberRole } of orgOwned) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout, orgName, orgSlug));
+      all.push(toListItem(layout, memberRole === 'admin' ? 'owner' : 'editor', orgName, orgSlug));
     }
-    for (const { layout } of shared) {
+    for (const { layout, role } of shared) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout));
+      all.push(toListItem(layout, role));
     }
     return { layouts: all };
   });
@@ -111,7 +116,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
     return {
-      layout: toListItem(layout),
+      layout: toListItem(layout, role.role),
       role: role.role,
     };
   });
@@ -632,7 +637,18 @@ type LayoutListRow = {
     : (typeof schema.layouts.$inferSelect)[K & keyof typeof schema.layouts.$inferSelect];
 };
 
-function toListItem(l: LayoutListRow, ownerOrgName?: string, ownerOrgSlug?: string) {
+/**
+ * `role` is the caller's role on the layout. The public-share token is
+ * the layout's read-anywhere secret and only its owners (who alone can
+ * enable / disable sharing) get to see it; it used to be returned to
+ * every viewer and collaborator.
+ */
+function toListItem(
+  l: LayoutListRow,
+  role: 'owner' | 'editor' | 'viewer' | null,
+  ownerOrgName?: string,
+  ownerOrgSlug?: string,
+) {
   return {
     id: l.id,
     title: l.title,
@@ -645,7 +661,7 @@ function toListItem(l: LayoutListRow, ownerOrgName?: string, ownerOrgSlug?: stri
     expiresAt: l.expiresAt,
     docVersion: l.docVersion,
     hasSidecar: Boolean(l.hasSidecar),
-    publicShareToken: l.publicShareToken ?? null,
+    publicShareToken: role === 'owner' ? (l.publicShareToken ?? null) : null,
   };
 }
 
