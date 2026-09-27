@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Group, Line, Rect, Text } from 'react-konva';
 import type { Awareness } from 'y-protocols/awareness';
 import type { BbmMap, Brick } from '@cld/model';
@@ -17,16 +18,18 @@ export function RemoteCursors({
   map: BbmMap;
 }) {
   const peers = useRemotePeers(awareness);
-  if (!awareness || peers.length === 0) return null;
-
-  // Index every brick by id once so the per-peer selection lookup is
-  // O(selection-size) rather than O(layers × bricks × selection-size).
-  const brickIndex = new Map<string, Brick>();
-  for (const layer of map.layers) {
-    if (layer.type === 'brick') {
-      for (const b of layer.bricks) brickIndex.set(b.id, b);
+  // Index every brick by id once per map (not per peer cursor move) so the
+  // per-peer selection lookup is O(selection-size).
+  const brickIndex = useMemo(() => {
+    const index = new Map<string, Brick>();
+    for (const layer of map.layers) {
+      if (layer.type === 'brick') {
+        for (const b of layer.bricks) index.set(b.id, b);
+      }
     }
-  }
+    return index;
+  }, [map]);
+  if (!awareness || peers.length === 0) return null;
 
   return (
     <Group>
