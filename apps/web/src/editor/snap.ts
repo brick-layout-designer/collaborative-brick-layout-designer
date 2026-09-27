@@ -231,7 +231,31 @@ function collectFreeConnectionsInWorld(
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
 ): WorldConnection[] {
-  const out: WorldConnection[] = [];
+  return freeConnectionsCached(map, partsByKey);
+}
+
+interface OwnedWorldConnection extends WorldConnection {
+  brickId: string;
+}
+
+// Free-connection lists per (map, catalog). A drag fires dragmove at
+// frame rate against the same map object, and the placement ghost
+// re-snaps on every dragover; rebuilding every free connection point of
+// every brick each time cost ~3.6 ms per frame at 5k bricks. Maps are
+// immutable snapshots (the editor's shared projection gets a new object
+// on every doc change), so keying on identity is safe.
+const freeConnCache = new WeakMap<
+  BbmMap,
+  { partsByKey: Map<string, PartWire>; conns: OwnedWorldConnection[] }
+>();
+
+function freeConnectionsCached(
+  map: BbmMap,
+  partsByKey: Map<string, PartWire>,
+): OwnedWorldConnection[] {
+  const hit = freeConnCache.get(map);
+  if (hit && hit.partsByKey === partsByKey) return hit.conns;
+  const conns: OwnedWorldConnection[] = [];
   for (const layer of map.layers) {
     if (!isBrickLayer(layer)) continue;
     for (const brick of layer.bricks) {
@@ -243,11 +267,18 @@ function collectFreeConnectionsInWorld(
         const link = brick.connexions[i];
         if (link && link.linkedTo !== '') continue; // already taken
         const [wx, wy] = transformLocalToWorld(cp.x, cp.y, brick);
-        out.push({ x: wx, y: wy, type: cp.type, angle: mod360(cp.angle + brick.orientation) });
+        conns.push({
+          x: wx,
+          y: wy,
+          type: cp.type,
+          angle: mod360(cp.angle + brick.orientation),
+          brickId: brick.id,
+        });
       }
     }
   }
-  return out;
+  freeConnCache.set(map, { partsByKey, conns });
+  return conns;
 }
 
 interface MatchOffset {
@@ -342,11 +373,27 @@ function lookupPart(
   const lower = partNumber.toLowerCase();
   const direct = partsByKey.get(lower);
   if (direct) return direct;
-  for (const p of partsByKey.values()) {
-    if (p.partNumber.toLowerCase() === lower) return p;
+  // The partNumber-only fallback is an O(catalog) scan; memoise it per
+  // catalog (hits AND misses) instead of rescanning for every brick on
+  // every drag frame (~166 ms/frame at 5k bricks of an unknown part).
+  let memo = fallbackMemo.get(partsByKey);
+  if (!memo) {
+    memo = new Map();
+    fallbackMemo.set(partsByKey, memo);
   }
-  return undefined;
+  if (memo.has(lower)) return memo.get(lower);
+  let found: PartWire | undefined;
+  for (const p of partsByKey.values()) {
+    if (p.partNumber.toLowerCase() === lower) {
+      found = p;
+      break;
+    }
+  }
+  memo.set(lower, found);
+  return found;
 }
+
+const fallbackMemo = new WeakMap<Map<string, PartWire>, Map<string, PartWire | undefined>>();
 
 function roundToStep(v: number, step: number): number {
   return Math.round(v / step) * step;
@@ -556,22 +603,10 @@ function collectFreeConnectionsExcludingSet(
   partsByKey: Map<string, PartWire>,
   excludeIds: Set<string>,
 ): WorldConnection[] {
+  const all = freeConnectionsCached(map, partsByKey);
   const out: WorldConnection[] = [];
-  for (const layer of map.layers) {
-    if (!isBrickLayer(layer)) continue;
-    for (const brick of layer.bricks) {
-      if (excludeIds.has(brick.id)) continue;
-      const meta = lookupPart(partsByKey, brick.partNumber);
-      if (!meta) continue;
-      for (let i = 0; i < meta.connections.length; i++) {
-        const cp = meta.connections[i]!;
-        if (!cp.type) continue;
-        const link = brick.connexions[i];
-        if (link && link.linkedTo !== '') continue;
-        const [wx, wy] = transformLocalToWorld(cp.x, cp.y, brick);
-        out.push({ x: wx, y: wy, type: cp.type, angle: mod360(cp.angle + brick.orientation) });
-      }
-    }
+  for (const c of all) {
+    if (!excludeIds.has(c.brickId)) out.push(c);
   }
   return out;
 }
