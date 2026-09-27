@@ -62,6 +62,7 @@ import { PlaceGhost } from './render/PlaceGhost';
 import { snapPlacement, snapToAnchorBrick, type AnchorSnapResult } from './snap';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
+import { isEditableTarget } from './keyboardGuard';
 import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
@@ -1121,9 +1122,7 @@ function Canvas({
   //   Ctrl+Shift+A          — select none                       (MainWindowMenus.cpp:362)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
-      }
+      if (isEditableTarget(e.target)) return;
 
       // Escape — works regardless of viewer state.
       if (e.key === 'Escape') {
