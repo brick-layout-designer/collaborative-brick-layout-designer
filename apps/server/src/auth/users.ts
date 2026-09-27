@@ -1,8 +1,38 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import type { NormalisedProfile, ProviderId } from './providers.js';
+import { getPlatformSettings } from './platformSettings.js';
+import { normalizeEmail } from '../utils/validate.js';
+
+/**
+ * Look a user up by email, case-insensitively. Rows written before
+ * emails were normalised may be mixed-case; if case-variant duplicates
+ * exist, the exact (normalised) match wins.
+ */
+export async function findUserByEmail(email: string): Promise<User | undefined> {
+  const wanted = normalizeEmail(email);
+  const rows = await db
+    .select()
+    .from(schema.users)
+    .where(sql`lower(${schema.users.email}) = ${wanted}`)
+    .limit(5);
+  return rows.find((r) => r.email === wanted) ?? rows[0];
+}
+
+/**
+ * Whether `user` has proven control of their email address, as far as
+ * the current platform policy requires. Accepting an invite or transfer
+ * addressed to an email must only work for someone who controls it.
+ * When an admin has switched verification off, unverified accounts are
+ * treated as verified (same as login does).
+ */
+export async function hasVerifiedEmail(user: Pick<User, 'emailVerified'>): Promise<boolean> {
+  if (user.emailVerified) return true;
+  const settings = await getPlatformSettings();
+  return !settings.requireEmailVerification;
+}
 
 /**
  * Resolve or create a user from an OAuth profile.
@@ -32,17 +62,13 @@ export async function resolveOauthUser(
     .get();
   if (existingLink) return { user: existingLink.user, linkPrompt: false };
 
-  const emailMatch = await db
-    .select()
-    .from(schema.users)
-    .where(eq(schema.users.email, profile.email))
-    .get();
+  const emailMatch = await findUserByEmail(profile.email);
   if (emailMatch) return { user: emailMatch, linkPrompt: true };
 
   const id = randomUUID();
   const created: User = {
     id,
-    email: profile.email,
+    email: normalizeEmail(profile.email),
     displayName: profile.displayName,
     avatarUrl: profile.avatarUrl,
     passwordHash: null,

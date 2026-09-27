@@ -296,3 +296,115 @@ describe('DocHub — startSnapshotWorker / stopSnapshotWorker', () => {
     expect(session.pendingUpdates).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: session lifecycle hardening
+// ---------------------------------------------------------------------------
+
+interface FakePeer {
+  readyState: number;
+  OPEN: number;
+  sent: Uint8Array[];
+  closedWith: number | null;
+  send(b: Uint8Array): void;
+  close(code?: number): void;
+}
+
+function fakePeer(): FakePeer {
+  return {
+    readyState: 1,
+    OPEN: 1,
+    sent: [],
+    closedWith: null,
+    send(b) { this.sent.push(b); },
+    close(code) { this.closedWith = code ?? 1000; this.readyState = 3; },
+  };
+}
+
+describe('DocHub — lifecycle hardening', () => {
+  beforeEach(() => { resetDb(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('a double detach of the same client arms only one idle timer and never evicts a re-attached session', async () => {
+    vi.useFakeTimers();
+    const userId = await createUser();
+    const layoutId = await createLayout(userId);
+    const session = await docHub.getOrCreate(layoutId);
+    const c1 = {};
+    docHub.attach(session, c1);
+    // 'error' then 'close' on the same socket.
+    await docHub.detach(session, c1);
+    const firstTimer = session.idleTimer;
+    await docHub.detach(session, c1);
+    expect(session.idleTimer).toBe(firstTimer);
+
+    const c2 = {};
+    docHub.attach(session, c2);
+    await vi.advanceTimersByTimeAsync(120_000);
+    // Still the live session for this layout, doc not destroyed.
+    expect(await docHub.getOrCreate(layoutId)).toBe(session);
+    expect(docHub.peek(layoutId)).toBe(session);
+  });
+
+  it('persists and broadcasts each doc update exactly once regardless of client count', async () => {
+    const userId = await createUser();
+    const layoutId = await createLayout(userId);
+    const session = await docHub.getOrCreate(layoutId);
+    const peers = [fakePeer(), fakePeer(), fakePeer()];
+    for (const p of peers) docHub.attach(session, p, userId);
+
+    const other = new Y.Doc();
+    other.getMap('m').set('k', 'v');
+    Y.applyUpdate(session.doc, Y.encodeStateAsUpdate(other), peers[0]);
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(peers[0]!.sent.length).toBe(0); // origin is skipped
+    expect(peers[1]!.sent.length).toBe(1);
+    expect(peers[2]!.sent.length).toBe(1);
+    const rows = await db.select().from(schema.layoutUpdates).where(eq(schema.layoutUpdates.layoutId, layoutId));
+    expect(rows.length).toBe(1);
+  });
+
+  it('close() shuts attached sockets with 4404 and evicts the session', async () => {
+    const userId = await createUser();
+    const layoutId = await createLayout(userId);
+    const session = await docHub.getOrCreate(layoutId);
+    const peer = fakePeer();
+    docHub.attach(session, peer, userId);
+
+    await docHub.close(layoutId);
+    expect(peer.closedWith).toBe(4404);
+    expect(session.closed).toBe(true);
+    expect(session.clients.size).toBe(0);
+    expect(docHub.peek(layoutId)).toBeUndefined();
+  });
+
+  it('a persist failure (layout deleted under a live session) is caught, not an unhandled rejection', async () => {
+    const userId = await createUser();
+    const layoutId = await createLayout(userId);
+    const session = await docHub.getOrCreate(layoutId);
+    const peer = fakePeer();
+    docHub.attach(session, peer, userId);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (r: unknown) => { unhandled.push(r); };
+    process.on('unhandledRejection', onUnhandled);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      // Delete the row without going through a route (as an ON DELETE
+      // CASCADE from the owner would).
+      await db.delete(schema.layouts).where(eq(schema.layouts.id, layoutId));
+      const other = new Y.Doc();
+      other.getMap('m').set('k', 1);
+      Y.applyUpdate(session.doc, Y.encodeStateAsUpdate(other), 'remote');
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      errSpy.mockRestore();
+    }
+    expect(unhandled).toEqual([]);
+    // The fallback noticed the row is gone and closed the session.
+    expect(peer.closedWith).toBe(4404);
+    expect(docHub.peek(layoutId)).toBeUndefined();
+  });
+});

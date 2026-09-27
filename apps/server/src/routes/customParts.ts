@@ -13,14 +13,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { isValidEmail } from '../utils/validate.js';
+import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -50,12 +50,13 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- list parts the user can see ---------------------------------------
   app.get('/api/custom-parts', async (req) => {
     const user = requireUser(req);
+    // Metadata columns only — never the xml/sprite blobs.
     const personal = await db
-      .select()
+      .select(partListColumns)
       .from(schema.customParts)
       .where(eq(schema.customParts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ part: schema.customParts })
+      .select({ part: partListColumns })
       .from(schema.orgMembers)
       .innerJoin(
         schema.customParts,
@@ -63,7 +64,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ part: schema.customParts })
+      .select({ part: partListColumns })
       .from(schema.customPartCollaborators)
       .innerJoin(
         schema.customParts,
@@ -97,7 +98,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
     const part = await db
-      .select()
+      .select(partListColumns)
       .from(schema.customParts)
       .where(eq(schema.customParts.id, req.params.id))
       .get();
@@ -140,7 +141,12 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.customParts.id, req.params.id))
         .get();
       if (!part) return reply.code(404).send({ error: 'not_found' });
-      reply.header('Content-Type', 'application/xml; charset=utf-8');
+      // User-uploaded bytes: never let a browser render them as a
+      // document on our origin (an XHTML payload served inline as
+      // application/xml runs script). Plain text, forced download.
+      reply.header('Content-Type', 'text/plain; charset=utf-8');
+      reply.header('Content-Disposition', 'attachment; filename="part.xml"');
+      reply.header('X-Content-Type-Options', 'nosniff');
       return reply.send(Buffer.from(part.xmlBlob as Uint8Array).toString('utf8'));
     },
   );
@@ -317,7 +323,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       if (!hasAtLeast(role, 'owner')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
-      const { email, role: inviteRole } = req.body;
+      const { role: inviteRole } = req.body;
+      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
       if (!isValidEmail(email)) {
         return reply.code(400).send({ error: 'invalid_email' });
       }
@@ -332,7 +339,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       const recipient = await db
         .select()
         .from(schema.users)
-        .where(eq(schema.users.email, email))
+        .where(sql`lower(${schema.users.email}) = ${email}`)
         .get();
       if (!recipient) {
         // Persist the invite as a pending row; once the recipient
@@ -459,7 +466,23 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
-function toListItem(p: typeof schema.customParts.$inferSelect) {
+const partListColumns = {
+  id: schema.customParts.id,
+  partNumber: schema.customParts.partNumber,
+  displayName: schema.customParts.displayName,
+  ownerUserId: schema.customParts.ownerUserId,
+  ownerOrgId: schema.customParts.ownerOrgId,
+  spriteMime: schema.customParts.spriteMime,
+  createdAt: schema.customParts.createdAt,
+  updatedAt: schema.customParts.updatedAt,
+};
+
+function toListItem(
+  p: Pick<
+    typeof schema.customParts.$inferSelect,
+    'id' | 'partNumber' | 'displayName' | 'ownerUserId' | 'ownerOrgId' | 'spriteMime' | 'createdAt' | 'updatedAt'
+  >,
+) {
   return {
     id: p.id,
     partNumber: p.partNumber,

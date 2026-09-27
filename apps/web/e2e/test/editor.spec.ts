@@ -5,7 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getVerificationToken } from '../dbHelpers';
+import { signIn } from '../helpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -17,52 +17,17 @@ const FORDYCE_BBM = readFileSync(
 
 const ts = Date.now();
 const EMAIL = `editor-e2e-${ts}@example.com`;
-const PASS = 'correct horse battery';
 
-/**
- * /api/auth/password/register and /login are both rate-limited (10/min)
- * — a real, intentional anti-abuse control. This file's ~18 tests all
- * call loginAndCreateLayout, which register/login every time (harmless
- * since it's the same account — register just 409s after the first),
- * easily exceeding 10/min. Retry on 429 using the server's own
- * `retry-after` header rather than guessing a backoff.
- */
-async function postWithRateLimitRetry(page: Page, path: string, data: Record<string, string>): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await page.request.post(path, { data });
-    if (res.ok() || res.status() === 409) return; // 409 email_taken is fine — account exists
-    if (res.status() === 429 && attempt < 3) {
-      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
-      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
-      continue;
-    }
-    return; // give up silently, matching this helper's original fire-and-forget style
-  }
-}
-
-// This file's ~18 tests all share the one EMAIL account across the
-// whole run and each register/login it independently (409 on repeat
-// register is fine — see postWithRateLimitRetry). Verification only
-// needs to happen once: this flag makes every call site's "register,
-// then ensure verified, then login" sequence safe to repeat.
-let verified = false;
-
-/** Verify EMAIL's account if this run hasn't already — safe to call after every register. */
-async function ensureVerified(page: Page): Promise<void> {
-  if (verified) return;
-  const token = await getVerificationToken(EMAIL);
-  await page.request.post(`/api/auth/password/verify-email/${token}`);
-  verified = true;
+// This file's tests all act as the one EMAIL account; signIn registers
+// and verifies it once and reuses that session afterwards (see
+// helpers.ts), so the rate-limited register/login endpoints are hit once
+// per run rather than once per test.
+async function login(page: Page): Promise<void> {
+  await signIn(page, EMAIL, 'Editor Tester');
 }
 
 async function loginAndCreateLayout(page: Page): Promise<string> {
-  await postWithRateLimitRetry(page, '/api/auth/password/register', {
-    email: EMAIL,
-    password: PASS,
-    displayName: 'Editor Tester',
-  });
-  await ensureVerified(page);
-  await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+  await login(page);
   const res = await page.request.post('/api/layouts', { data: { title: 'Editor Test Layout' } });
   const { id } = await res.json() as { id: string };
   return id;
@@ -231,11 +196,7 @@ test.describe('editor — export', () => {
 
 test.describe('editor — Fordyce 2026 import', () => {
   test('imports Fordyce 2026 .bbm and opens editor without crashing', async ({ page }) => {
-    await postWithRateLimitRetry(page, '/api/auth/password/register', {
-      email: EMAIL, password: PASS, displayName: 'Editor Tester',
-    });
-    await ensureVerified(page);
-    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+    await login(page);
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026', bbm: FORDYCE_BBM },
@@ -248,11 +209,7 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 layout title is shown in the editor', async ({ page }) => {
-    await postWithRateLimitRetry(page, '/api/auth/password/register', {
-      email: EMAIL, password: PASS, displayName: 'Editor Tester',
-    });
-    await ensureVerified(page);
-    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+    await login(page);
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 Title Test', bbm: FORDYCE_BBM },
@@ -264,11 +221,7 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 snapshot returns substantial bytes', async ({ page }) => {
-    await postWithRateLimitRetry(page, '/api/auth/password/register', {
-      email: EMAIL, password: PASS, displayName: 'Editor Tester',
-    });
-    await ensureVerified(page);
-    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+    await login(page);
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 Snapshot', bbm: FORDYCE_BBM },
@@ -283,11 +236,7 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 export round-trip preserves XML structure', async ({ page }) => {
-    await postWithRateLimitRetry(page, '/api/auth/password/register', {
-      email: EMAIL, password: PASS, displayName: 'Editor Tester',
-    });
-    await ensureVerified(page);
-    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+    await login(page);
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 Round-trip', bbm: FORDYCE_BBM },
@@ -307,11 +256,7 @@ test.describe('editor — Fordyce 2026 import', () => {
   });
 
   test('Fordyce 2026 undo/redo does not crash the editor', async ({ page }) => {
-    await postWithRateLimitRetry(page, '/api/auth/password/register', {
-      email: EMAIL, password: PASS, displayName: 'Editor Tester',
-    });
-    await ensureVerified(page);
-    await postWithRateLimitRetry(page, '/api/auth/password/login', { email: EMAIL, password: PASS });
+    await login(page);
 
     const res = await page.request.post('/api/layouts', {
       data: { title: 'Fordyce 2026 UndoRedo', bbm: FORDYCE_BBM },

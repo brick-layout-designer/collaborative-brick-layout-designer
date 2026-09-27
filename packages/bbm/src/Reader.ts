@@ -183,7 +183,9 @@ function readLayerGrid(n: Node, c: Omit<LayerGrid, 'type' | keyof LayerGridOnly>
     cellIndexColor: readColorSpec(required<Node>(n, 'CellIndexColor')),
     cellIndexColumnType: stringField(n, 'CellIndexColumnType'),
     cellIndexRowType: stringField(n, 'CellIndexRowType'),
-    cellIndexCorner: stringField(n, 'CellIndexCorner'),
+    // Desktop reads this via xml::readPoint (LayerIO.cpp:132) — an integer
+    // point with <X>/<Y> children, defaulting missing children to 0.
+    cellIndexCorner: readIntPoint(required<Node>(n, 'CellIndexCorner')),
   };
 }
 type LayerGridOnly = Omit<LayerGrid, keyof LayerBrick & keyof LayerGrid>;
@@ -306,17 +308,39 @@ function readPoint(node: Node): { x: number; y: number } {
 }
 
 /**
- * `<GuidelineDashPattern><double>1.5</double><double>2</double>…</GuidelineDashPattern>`
- * fast-xml-parser collapses single-child arrays to a string, so accept
- * both shapes.
+ * Mirrors desktop `xml::readPoint` (XmlPrimitives.cpp:85): integer X/Y,
+ * missing children default to 0. A self-closed `<CellIndexCorner />`
+ * parses to '' and yields {0,0}.
+ */
+function readIntPoint(node: unknown): { x: number; y: number } {
+  if (!node || typeof node !== 'object') return { x: 0, y: 0 };
+  const n = node as Node;
+  const x = optionalString(n, 'X');
+  const y = optionalString(n, 'Y');
+  const px = x === undefined ? 0 : parseInt(x, 10);
+  const py = y === undefined ? 0 : parseInt(y, 10);
+  return { x: Number.isFinite(px) ? px : 0, y: Number.isFinite(py) ? py : 0 };
+}
+
+/**
+ * `<GuidelineDashPattern><value>2</value><value>4</value></GuidelineDashPattern>`
+ * — the element name desktop reads/writes (XmlPrimitives.cpp:122,207) and
+ * what real BlueBrick files contain. Earlier web builds wrote `<double>`
+ * children, so accept those too. fast-xml-parser collapses single-child
+ * arrays to a string, so accept both shapes.
  */
 function readFloatArray(node: unknown): number[] {
   if (!node || typeof node !== 'object') return [];
-  const inner = (node as Node).double;
-  if (inner === undefined) return [];
-  return asArray(inner)
-    .map((v) => (typeof v === 'string' ? parseFloat(v) : Number(v)))
+  const n = node as Node;
+  const inner = [...asArray<unknown>(n.value as unknown), ...asArray<unknown>(n.double as unknown)];
+  return inner
+    .map((v) => parseFloat(textOf(v)))
     .filter((v) => Number.isFinite(v));
+}
+
+function textOf(v: unknown): string {
+  if (v && typeof v === 'object' && '#text' in (v as Node)) return String((v as Node)['#text']);
+  return String(v);
 }
 
 function asArray<T>(v: T | T[] | undefined): T[] {
