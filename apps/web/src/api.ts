@@ -240,7 +240,7 @@ export const api = {
       patch<{ ok: true }>(`/api/layouts/${id}`, { title }),
     remove: (id: string) => del(`/api/layouts/${id}`),
     exportBbmUrl: (id: string) => `/api/layouts/${id}/export.bbm`,
-    exportSidecarUrl: (id: string) => `/api/layouts/${id}/export.bbm.cld`,
+    exportSidecarUrl: (id: string) => `/api/layouts/${id}/export.bbm.bld`,
     exportZipUrl: (id: string) => `/api/layouts/${id}/export.zip`,
     snapshot: (id: string) => getBytes(`/api/layouts/${id}/snapshot`),
     saveSnapshot: (id: string, bytes: Uint8Array) =>
@@ -423,6 +423,8 @@ export const api = {
     get: (id: string) => get<{ id: string; name: string; data: unknown }>(`/api/venues/${id}`),
     create: (body: { name: string; data: unknown; orgSlug?: string }) =>
       post<{ id: string; name: string }>('/api/venues', body),
+    rename: (id: string, name: string) =>
+      patch<{ ok: true; id: string; name: string }>(`/api/venues/${id}`, { name }),
     remove: (id: string) => del(`/api/venues/${id}`),
   },
 
