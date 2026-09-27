@@ -118,9 +118,16 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
 
     const onConnectionClose = (event: CloseEvent | null): void => {
       if (!event) return;
-      if (event.code === 4404) setLoadError(new Error('layout not found'));
-      else if (event.code === 1008) setLoadError(new Error('not signed in'));
-      else if (event.code === 4429) setLoadError(new Error('too many connections'));
+      if (event.code === 4404 || event.code === 1008) {
+        // Terminal: retrying can't succeed, and y-websocket would
+        // otherwise keep reconnecting with backoff forever.
+        provider.disconnect();
+        if (syncTimer) {
+          clearTimeout(syncTimer);
+          syncTimer = null;
+        }
+        setLoadError(new Error(event.code === 4404 ? 'layout not found' : 'not signed in'));
+      } else if (event.code === 4429) setLoadError(new Error('too many connections'));
     };
 
     provider.on('sync', onSync);

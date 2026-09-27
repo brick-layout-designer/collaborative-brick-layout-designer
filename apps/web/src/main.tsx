@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from 'react';
+import { lazy, StrictMode, Suspense, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
@@ -8,27 +8,21 @@ import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
 import { InvitePage } from './auth/InvitePage';
 import { VerifyEmailPage } from './auth/VerifyEmailPage';
-import { EditorPage } from './editor/EditorPage';
 import { OrgsPage } from './orgs/OrgsPage';
 import { OrgDetailPage } from './orgs/OrgDetailPage';
-import { OrgAdminPage } from './orgs/OrgAdminPage';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
-import { LibraryPage } from './library/LibraryPage';
-import { AdminPage } from './admin/AdminPage';
 import { AboutPage } from './AboutPage';
-import { PublicLayoutPage } from './layouts/PublicLayoutPage';
 import { api } from './api';
-import Konva from 'konva';
 import './styles.css';
 
-// Only the LEFT mouse button starts a Konva drag. Default is `[0, 1, 2]`
-// — i.e. middle and right clicks also drag, which clobbers our
-// middle-click-pan and right-click-cancel behaviours (the editor's
-// stage handlers can't fire when Konva eats the event for a drag).
-// Mirrors the desktop, where pan is `Qt::MiddleButton` and drag is
-// `Qt::LeftButton` only (MapView.cpp:392-541).
-Konva.dragButtons = [0];
+// Heavy routes are code-split so the landing / auth pages don't download
+// the editor (Konva, Yjs, parts rendering) or the admin console.
+const EditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ default: m.EditorPage })));
+const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })));
+const LibraryPage = lazy(() => import('./library/LibraryPage').then((m) => ({ default: m.LibraryPage })));
+const OrgAdminPage = lazy(() => import('./orgs/OrgAdminPage').then((m) => ({ default: m.OrgAdminPage })));
+const PublicLayoutPage = lazy(() => import('./layouts/PublicLayoutPage').then((m) => ({ default: m.PublicLayoutPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -76,6 +70,7 @@ createRoot(root).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <GlobalBbmDrop />
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/login" element={<LoginPage />} />
@@ -94,6 +89,7 @@ createRoot(root).render(
           <Route path="/about" element={<AboutPage />} />
           <Route path="/p/:token" element={<PublicLayoutPage />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

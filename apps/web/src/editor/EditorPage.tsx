@@ -7,7 +7,7 @@ import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
-import { useYjsSnapshot } from './useYjsSnapshot';
+import { useDocMap, projectDoc } from './useDocMap';
 import { useEditorStore, SNAP_STEPS, ROTATION_STEPS } from './editorStore';
 import { Toolbar } from './Toolbar';
 import { GridLayer } from './render/GridLayer';
@@ -62,11 +62,13 @@ import { PlaceGhost } from './render/PlaceGhost';
 import { snapPlacement, snapToAnchorBrick, type AnchorSnapResult } from './snap';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
+import { isEditableTarget } from './keyboardGuard';
 import { useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
-import { MODULE_MIME } from './ModuleLibraryPanel';
+import { MODULE_MIME } from './mime';
+import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -206,8 +208,9 @@ function Editor({ layoutId }: { layoutId: string }) {
   });
   useConnectivity(doc, catalog.data?.parts);
 
-  // Subscribe to ALL doc changes so the canvas re-renders.
-  useYjsSnapshot(doc);
+  // Subscribe to ALL doc changes; the projection is shared (cached per
+  // doc) with the canvas and panels, so this costs no extra docToBbm.
+  const docMap = useDocMap(doc);
 
   // The active layer defaults to the first brick layer in the doc, if any.
   // Without an active layer the place tool has nowhere to put bricks.
@@ -230,7 +233,8 @@ function Editor({ layoutId }: { layoutId: string }) {
   useEffect(() => {
     if (!doc) return;
     try {
-      const map = docToBbm(doc);
+      const map = projectDoc(doc);
+      if (!map) return;
       const firstBrick = map.layers.find((l) => l.type === 'brick');
       if (!firstBrick) return;
       // If the current activeLayerId still exists in this map (of ANY
@@ -384,7 +388,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onExportImage={onExportImage}
               onExportCsv={() => {
                 if (!doc) return;
-                try { exportPartListCsv(docToBbm(doc)); } catch { /* not ready */ }
+                if (docMap) exportPartListCsv(docMap);
               }}
               onSaveModule={() => setShowSaveModule(true)}
               onImportBbm={() => setShowImportBbm(true)}
@@ -551,53 +555,33 @@ function Editor({ layoutId }: { layoutId: string }) {
         status={status}
         venue={doc ? (readSidecarFromDoc(doc)?.venue ?? null) : null}
         budgetLimits={budgetLimits}
-        budgetMap={(() => { try { return doc ? docToBbm(doc) : null; } catch { return null; } })()}
+        budgetMap={docMap}
       />
 
       {showInsertModule && (
         <InsertModuleDialog doc={doc} onClose={() => setShowInsertModule(false)} />
       )}
-      {showSaveModule && (() => {
-        try {
-          const m = docToBbm(doc);
-          const sel = useEditorStore.getState().selection;
-          return (
-            <SaveModuleDialog
-              map={m}
-              selection={sel}
-              onClose={() => setShowSaveModule(false)}
-              onSaved={(_id, title) => {
-                setShowSaveModule(false);
-                alert(`Module "${title}" saved.`);
-              }}
-            />
-          );
-        } catch {
-          return null;
-        }
-      })()}
-      {showGeneralInfo && (() => {
-        try {
-          const m = docToBbm(doc);
-          return <GeneralInfoDialog map={m} doc={doc} onClose={() => setShowGeneralInfo(false)} />;
-        } catch {
-          return null;
-        }
-      })()}
-      {showBackgroundColor && (() => {
-        try {
-          const m = docToBbm(doc);
-          return (
-            <BackgroundColorDialog
-              current={m.backgroundColor}
-              doc={doc}
-              onClose={() => setShowBackgroundColor(false)}
-            />
-          );
-        } catch {
-          return null;
-        }
-      })()}
+      {showSaveModule && docMap && (
+        <SaveModuleDialog
+          map={docMap}
+          selection={useEditorStore.getState().selection}
+          onClose={() => setShowSaveModule(false)}
+          onSaved={(_id, title) => {
+            setShowSaveModule(false);
+            alert(`Module "${title}" saved.`);
+          }}
+        />
+      )}
+      {showGeneralInfo && docMap && (
+        <GeneralInfoDialog map={docMap} doc={doc} onClose={() => setShowGeneralInfo(false)} />
+      )}
+      {showBackgroundColor && docMap && (
+        <BackgroundColorDialog
+          current={docMap.backgroundColor}
+          doc={doc}
+          onClose={() => setShowBackgroundColor(false)}
+        />
+      )}
       {showBackgroundImage && (
         <BackgroundImageDialog
           layoutId={layoutId}
@@ -605,14 +589,9 @@ function Editor({ layoutId }: { layoutId: string }) {
           onClose={() => setShowBackgroundImage(false)}
         />
       )}
-      {showFind && (() => {
-        try {
-          const m = docToBbm(doc);
-          return <FindDialog map={m} doc={doc} onClose={() => setShowFind(false)} />;
-        } catch {
-          return null;
-        }
-      })()}
+      {showFind && docMap && (
+        <FindDialog map={docMap} doc={doc} onClose={() => setShowFind(false)} />
+      )}
       {showExportImage && (
         <ExportImageDialog
           layoutTitle={meta.data?.layout.title ?? 'layout'}
@@ -676,18 +655,14 @@ function Editor({ layoutId }: { layoutId: string }) {
           onClose={() => setShowVenueDimensions(false)}
         />
       )}
-      {showBudget && (() => {
-        let budgetMap = null;
-        try { budgetMap = doc ? docToBbm(doc) : null; } catch { /* not ready */ }
-        return (
-          <BudgetDialog
-            map={budgetMap}
-            limits={budgetLimits}
-            onLimitsChange={setBudgetLimits}
-            onClose={() => setShowBudget(false)}
-          />
-        );
-      })()}
+      {showBudget && (
+        <BudgetDialog
+          map={docMap}
+          limits={budgetLimits}
+          onLimitsChange={setBudgetLimits}
+          onClose={() => setShowBudget(false)}
+        />
+      )}
       </Suspense>
     </div>
   );
@@ -776,6 +751,12 @@ function Canvas({
     { brick: import('@cld/model').Brick; layerId: string; meta: PartWire | undefined } | null
   >(null);
 
+  const onEditBrick = useCallback(
+    (brick: import('@cld/model').Brick, layerId: string, meta: PartWire | undefined) =>
+      setEditing({ brick, layerId, meta }),
+    [],
+  );
+
   // Edit-AnchoredLabel dialog state — opened by double-click on a label.
   const [editingLabel, setEditingLabel] = useState<import('@cld/bbm').AnchoredLabel | null>(null);
 
@@ -858,17 +839,10 @@ function Canvas({
   // desktop's `strokeCellsTouched_` (MapView.cpp:493-523).
   const paintStrokeRef = useRef<Set<string> | null>(null);
 
-  // Reconstruct the BbmMap on every render to feed the layer renderers.
-  // Cheap because we already re-rendered on Yjs change; the projection is
-  // pure JS over Y.Maps. Real layouts (~500 bricks) are <1ms to project.
-  const rev = useYjsSnapshot(doc);
-  const map = useMemo(() => {
-    try {
-      return docToBbm(doc);
-    } catch {
-      return null;
-    }
-  }, [doc, rev]);
+  // Shared cached projection (see useDocMap): same object until the doc
+  // changes, and unchanged bricks keep their identity across edits so the
+  // memoised brick glyphs skip re-rendering.
+  const map = useDocMap(doc);
 
   /**
    * Resolve the layer that new parts should be placed into. `activeLayerId`
@@ -889,7 +863,7 @@ function Canvas({
   // Push map bounding-box into the store so the StatusBar can show it
   // without prop-drilling. Runs whenever the map changes.
   const setHudMapBounds = useEditorStore((s) => s.setHudMapBounds);
-  useMemo(() => {
+  useEffect(() => {
     if (!map) { setHudMapBounds(null, null); return; }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const layer of map.layers) {
@@ -933,22 +907,34 @@ function Canvas({
   // emitted by PartsPanel, render a live ghost via `dropPart` while
   // dragover, and commit a `placePartAt` on drop. Direct port of
   // MapView::dragEnterEvent / dragMoveEvent / dropEvent (lines 1659-2042).
-  useEffect(() => {
-    const stage = stageRef.current;
-    const container = stage?.container();
-    if (!container) return;
+  // Latest drag-hover part, readable synchronously from the drop handler
+  // (the Firefox fallback used to read a stale `dropPart` closure).
+  const dropPartRef = useRef<{ key: string; studX: number; studY: number } | null>(null);
+  const dropHandlersRef = useRef<{
+    onDragOver: (e: DragEvent) => void;
+    onDragLeave: (e: DragEvent) => void;
+    onDrop: (e: DragEvent) => void;
+  } | null>(null);
+  {
     const PART_MIME = 'application/x-cld-part';
 
     function clientToStuds(clientX: number, clientY: number): { x: number; y: number } | null {
-      if (!stage) return null;
-      const rect = container!.getBoundingClientRect();
+      const container = stageRef.current?.container();
+      if (!container) return null;
+      const rect = container.getBoundingClientRect();
       const px = clientX - rect.left;
       const py = clientY - rect.top;
-      // Apply inverse of stage transform.
+      // Apply inverse of stage transform (live values, not the render's).
+      const { panX: livePanX, panY: livePanY, zoom: liveZoom } = useEditorStore.getState();
       return {
-        x: pxToStud((px - panX) / zoom),
-        y: pxToStud((py - panY) / zoom),
+        x: pxToStud((px - livePanX) / liveZoom),
+        y: pxToStud((py - livePanY) / liveZoom),
       };
+    }
+
+    function updateDropPart(next: { key: string; studX: number; studY: number } | null) {
+      dropPartRef.current = next;
+      setDropPart(next);
     }
 
     function readPartKey(dt: DataTransfer | null): string | null {
@@ -984,23 +970,23 @@ function Canvas({
       if (!studs) return;
       const key = readPartKey(dt);
       // dragover on Firefox doesn't expose getData payloads — fall back
-      // to the most-recently-stored key from a previous dragenter via
-      // local state when missing.
-      setDropPart((prev) => ({
-        key: key || prev?.key || '',
+      // to the most-recently-stored key from a previous dragover.
+      updateDropPart({
+        key: key || dropPartRef.current?.key || '',
         studX: studs.x,
         studY: studs.y,
-      }));
+      });
     }
 
     function onDragLeave(_e: DragEvent) {
-      setDropPart(null);
+      updateDropPart(null);
     }
 
     function onDrop(e: DragEvent) {
       e.preventDefault();
       const dt = e.dataTransfer;
-      setDropPart(null);
+      const lastDropPart = dropPartRef.current;
+      updateDropPart(null);
 
       // Module drop — fetch snapshot and insert bricks.
       const moduleIdRaw = dt?.getData(MODULE_MIME);
@@ -1010,6 +996,7 @@ function Canvas({
         // Path is /api/modules/<validated-uuid>/snapshot with no user-controlled host.
         const moduleSnapshotPath = `/api/modules/${moduleId}/snapshot` as const;
         const layerId = resolveBrickLayerForPlacement();
+        const dropStuds = clientToStuds(e.clientX, e.clientY);
         void (async () => {
           try {
             const res = await fetch(moduleSnapshotPath, { credentials: 'include' }); // codeql[js/request-forgery] - browser same-origin fetch, UUID validated by regex above
@@ -1023,13 +1010,28 @@ function Canvas({
             const bricks = bbmMap.layers
               .filter((l): l is Extract<typeof l, { type: 'brick' }> => l.type === 'brick')
               .flatMap((l) => l.bricks);
-            if (bricks.length > 0) insertBricks(doc, layerId, bricks);
+            if (bricks.length === 0) return;
+            // Land the module's centroid under the drop point (modules
+            // are saved centred on the origin, so inserting at the saved
+            // coordinates dropped them at 0,0 regardless of the cursor).
+            let offset = { dx: 0, dy: 0 };
+            if (dropStuds) {
+              let cx = 0;
+              let cy = 0;
+              for (const b of bricks) {
+                cx += b.displayArea.x + b.displayArea.width / 2;
+                cy += b.displayArea.y + b.displayArea.height / 2;
+              }
+              offset = { dx: dropStuds.x - cx / bricks.length, dy: dropStuds.y - cy / bricks.length };
+            }
+            const ids = insertBricks(doc, layerId, bricks, offset);
+            if (ids.length > 0) setSelection(ids);
           } catch { /* silent */ }
         })();
         return;
       }
 
-      const key = readPartKey(dt) || dropPart?.key || '';
+      const key = readPartKey(dt) || lastDropPart?.key || '';
       const studs = clientToStuds(e.clientX, e.clientY);
       if (!key || !studs) return;
       const meta = partsByKey.get(key.toLowerCase());
@@ -1037,6 +1039,17 @@ function Canvas({
       void placePartAt(meta, studs.x, studs.y);
     }
 
+    // Refreshed every render so the listeners below (attached once per
+    // stage) always run against the latest state / closures.
+    dropHandlersRef.current = { onDragOver, onDragLeave, onDrop };
+  }
+  const hasStage = map !== null;
+  useEffect(() => {
+    const container = stageRef.current?.container();
+    if (!container) return;
+    const onDragOver = (e: DragEvent) => dropHandlersRef.current?.onDragOver(e);
+    const onDragLeave = (e: DragEvent) => dropHandlersRef.current?.onDragLeave(e);
+    const onDrop = (e: DragEvent) => dropHandlersRef.current?.onDrop(e);
     container.addEventListener('dragover', onDragOver);
     container.addEventListener('dragleave', onDragLeave);
     container.addEventListener('drop', onDrop);
@@ -1045,11 +1058,7 @@ function Canvas({
       container.removeEventListener('dragleave', onDragLeave);
       container.removeEventListener('drop', onDrop);
     };
-    // `placePartAt` and `dropPart` close over the latest state via
-    // setDropPart; we rebind whenever the canvas dimensions / map
-    // change so the closure has fresh refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partsByKey, panX, panY, zoom, doc, activeLayerId, map]);
+  }, [hasStage]);
 
   /**
    * Fit the canvas to the brick AABB and centre on it. Shared between
@@ -1119,11 +1128,16 @@ function Canvas({
   //   Arrow keys            — nudge selection by 1 stud         (MapView.cpp:970-980)
   //   Ctrl+A                — select all bricks in active layer (MainWindowMenus.cpp:359)
   //   Ctrl+Shift+A          — select none                       (MainWindowMenus.cpp:362)
-  useEffect(() => {
+  // The handler is rebuilt every render (so it always sees the current
+  // venueDraft / selection / map / status ...) and a single window
+  // listener dispatches to the latest one. The previous effect listed its
+  // deps by hand and missed several (venueDraft, pan/zoom, status), so
+  // Enter/Escape for venue drawing never fired and Ctrl+V pasted at a
+  // stale pointer position.
+  const keyHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(null);
+  {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
-      }
+      if (isEditableTarget(e.target)) return;
 
       // Escape — works regardless of viewer state.
       if (e.key === 'Escape') {
@@ -1183,15 +1197,10 @@ function Canvas({
         e.preventDefault();
         if (e.shiftKey) {
           setSelection([]);
-        } else if (activeLayerId) {
-          try {
-            const m = docToBbm(doc);
-            const layer = m.layers.find((l) => l.id === activeLayerId && l.type === 'brick');
-            if (layer && layer.type === 'brick') {
-              setSelection(layer.bricks.map((b) => b.id));
-            }
-          } catch {
-            /* doc not ready */
+        } else if (activeLayerId && map) {
+          const layer = map.layers.find((l) => l.id === activeLayerId && l.type === 'brick');
+          if (layer && layer.type === 'brick') {
+            setSelection(layer.bricks.map((b) => b.id));
           }
         }
         return;
@@ -1302,21 +1311,17 @@ function Canvas({
       // MapView.cpp:1481-1543.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
-        try {
-          const m = docToBbm(doc);
-          const adj = buildConnectedAdj(m);
-          const visited = new Set<string>(selection);
-          const queue = [...selection];
-          while (queue.length > 0) {
-            const id = queue.shift()!;
-            for (const nb of adj.get(id) ?? []) {
-              if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
-            }
+        if (!map) return;
+        const adj = buildConnectedAdj(map);
+        const visited = new Set<string>(selection);
+        const queue = [...selection];
+        while (queue.length > 0) {
+          const id = queue.shift()!;
+          for (const nb of adj.get(id) ?? []) {
+            if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
           }
-          setSelection([...visited]);
-        } catch {
-          /* doc not ready */
         }
+        setSelection([...visited]);
         return;
       }
 
@@ -1457,34 +1462,69 @@ function Canvas({
         }
       }
     }
+    keyHandlerRef.current = onKey;
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyHandlerRef.current?.(e);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [
-    doc,
-    selection,
-    activeLayerId,
-    setSelection,
-    isViewer,
-    saveNow,
-    width,
-    height,
-    snapStepStuds,
-    rotationStepDegrees,
-    selectedRulerId,
-    map,
-  ]);
+  }, []);
 
-  /** Read the pointer's stud-space coordinates. */
+  /** Read the pointer's stud-space coordinates (live pan/zoom). */
   function pointerStuds(): { x: number; y: number } | null {
     const stage = stageRef.current;
     if (!stage) return null;
     const ptr = stage.getPointerPosition();
     if (!ptr) return null;
+    const { panX: livePanX, panY: livePanY, zoom: liveZoom } = useEditorStore.getState();
     return {
-      x: pxToStud((ptr.x - panX) / zoom),
-      y: pxToStud((ptr.y - panY) / zoom),
+      x: pxToStud((ptr.x - livePanX) / liveZoom),
+      y: pxToStud((ptr.y - livePanY) / liveZoom),
     };
   }
+
+  // Per-frame coalescing for mousemove-driven React state (middle-button
+  // pan, marquee, ruler / venue drafts). Raw mousemove fires at 60-240 Hz;
+  // each state write re-rendered the canvas, so apply at most once per
+  // animation frame using the latest pointer position.
+  const moveRafRef = useRef<{
+    raf: number | null;
+    panDx: number;
+    panDy: number;
+    studs: { x: number; y: number } | null;
+  }>({ raf: null, panDx: 0, panDy: 0, studs: null });
+  function flushPointerMove() {
+    const m = moveRafRef.current;
+    if (m.raf !== null) {
+      cancelAnimationFrame(m.raf);
+      m.raf = null;
+    }
+    if (m.panDx !== 0 || m.panDy !== 0) {
+      const st = useEditorStore.getState();
+      st.setPan(st.panX + m.panDx, st.panY + m.panDy);
+      m.panDx = 0;
+      m.panDy = 0;
+    }
+    const studs = m.studs;
+    m.studs = null;
+    if (!studs) return;
+    setMarquee((prev) => (prev ? { ...prev, x1: studs.x, y1: studs.y } : prev));
+    const step = useEditorStore.getState().snapStepStuds;
+    const cx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
+    const cy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
+    setRulerDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
+    setVenueDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
+  }
+  function schedulePointerMove() {
+    const m = moveRafRef.current;
+    if (m.raf === null) m.raf = requestAnimationFrame(flushPointerMove);
+  }
+  useEffect(() => {
+    const m = moveRafRef.current;
+    return () => {
+      if (m.raf !== null) cancelAnimationFrame(m.raf);
+    };
+  }, []);
 
   function handleStageMouseDown(e: KonvaEventObject<MouseEvent>) {
     const evt = e.evt as MouseEvent;
@@ -1550,29 +1590,22 @@ function Canvas({
       const dx = evt.clientX - middlePanRef.current.lastX;
       const dy = evt.clientY - middlePanRef.current.lastY;
       middlePanRef.current = { lastX: evt.clientX, lastY: evt.clientY };
-      useEditorStore.getState().setPan(panX + dx, panY + dy);
+      moveRafRef.current.panDx += dx;
+      moveRafRef.current.panDy += dy;
+      schedulePointerMove();
       return;
     }
 
     const studs = pointerStuds();
     if (!studs) return;
     scheduleHudMouse(studs);
-    if (marquee) setMarquee({ ...marquee, x1: studs.x, y1: studs.y });
     // Continue the paint/erase stroke while the button is held.
     if ((tool === 'paint' || tool === 'erase') && paintStrokeRef.current && evt.buttons & 1) {
       doPaintStroke(studs.x, studs.y);
     }
-    if (rulerDraft) {
-      const step = useEditorStore.getState().snapStepStuds;
-      const cx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-      const cy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
-      setRulerDraft({ ...rulerDraft, curX: cx, curY: cy });
-    }
-    if (venueDraft) {
-      const step = useEditorStore.getState().snapStepStuds;
-      const cx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-      const cy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
-      setVenueDraft({ ...venueDraft, curX: cx, curY: cy });
+    if (marquee || rulerDraft || venueDraft) {
+      moveRafRef.current.studs = studs;
+      schedulePointerMove();
     }
     // Always broadcast cursor so peers can see us — even when we're
     // panning or hovering empty space.
@@ -1613,9 +1646,14 @@ function Canvas({
     const evt = e.evt as MouseEvent;
     if (evt.button === 1 && middlePanRef.current) {
       middlePanRef.current = null;
+      flushPointerMove();
       return;
     }
     paintStrokeRef.current = null;
+    // Pending (not yet rendered) pointer move: the marquee must commit
+    // against the final pointer position, not the last painted frame.
+    const pendingStuds = moveRafRef.current.studs;
+    flushPointerMove();
 
     // Commit a ruler draft if one is active. Snap end point to grid.
     if (rulerDraft) {
@@ -1648,6 +1686,7 @@ function Canvas({
     }
 
     if (!marquee) return;
+    const finalMarquee = pendingStuds ? { ...marquee, x1: pendingStuds.x, y1: pendingStuds.y } : marquee;
     // Commit selection across EVERY visible brick layer — matches the
     // desktop's `MapView::mouseReleaseEvent` rubber-band, which calls
     // `QGraphicsView::mouseReleaseEvent` and lets Qt's scene selection
@@ -1660,7 +1699,7 @@ function Canvas({
       const ids: string[] = [];
       for (const layer of map.layers) {
         if (layer.type !== 'brick' || !layer.visible) continue;
-        ids.push(...bricksInMarquee(marquee, layer.bricks));
+        ids.push(...bricksInMarquee(finalMarquee, layer.bricks));
       }
       setSelection(ids);
     }
@@ -2186,7 +2225,7 @@ function Canvas({
           map={map}
           doc={doc}
           isViewer={isViewer}
-          onEditBrick={(brick, layerId, meta) => setEditing({ brick, layerId, meta })}
+          onEditBrick={onEditBrick}
         />
         <Group listening={!isViewer}>
           <TextLayers
@@ -3057,6 +3096,26 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   // Surfaced here so the active layer is visible even when the Layers
   // panel is collapsed or scrolled out of view (issue #61).
   const activeLayer = activeLayerId ? budgetMap?.layers.find((l) => l.id === activeLayerId) : null;
+  // The status bar re-renders on every HUD mouse update; keep the
+  // O(edges x bricks) walkway scan and the budget tally off that path.
+  const walkwayViolations = useMemo(
+    () => (venue ? countWalkwayViolations(venue, budgetMap) : 0),
+    [venue, budgetMap],
+  );
+  const budgetOver = useMemo(() => {
+    let over = 0;
+    if (budgetMap && budgetLimits.size > 0) {
+      const usage = new Map<string, number>();
+      for (const layer of budgetMap.layers) {
+        if (layer.type !== 'brick') continue;
+        for (const b of layer.bricks) usage.set(b.partNumber, (usage.get(b.partNumber) ?? 0) + 1);
+      }
+      for (const [part, limit] of budgetLimits) {
+        if (limit >= 0 && (usage.get(part) ?? 0) > limit) over++;
+      }
+    }
+    return over;
+  }, [budgetMap, budgetLimits]);
   // 1 stud = 8mm for standard LEGO; display in m when ≥100 studs
   function studDisplay(studs: number): string {
     if (studs >= 100) return `${(studs * 0.008).toFixed(1)} m`;
@@ -3102,57 +3161,17 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
             Venue: {venue.enabled ? (venue.name || 'unnamed') : 'disabled'}
           </span>
         )}
-        {venue?.enabled && venue.minWalkwayStuds > 0 && budgetMap && (() => {
-          // Simplified AABB clearance check: for each non-Wall edge segment
-          // compute the walkway buffer band AABB and flag bricks that overlap it.
-          const buf = venue.minWalkwayStuds;
-          let violations = 0;
-          for (const edge of venue.edges) {
-            if (edge.kind === 0 /* Wall */ || !edge.poly || edge.poly.length < 2) continue;
-            for (let i = 1; i < edge.poly.length; i++) {
-              const a = edge.poly[i - 1]!;
-              const b = edge.poly[i]!;
-              const segMinX = Math.min(a.x, b.x) - buf;
-              const segMaxX = Math.max(a.x, b.x) + buf;
-              const segMinY = Math.min(a.y, b.y) - buf;
-              const segMaxY = Math.max(a.y, b.y) + buf;
-              for (const layer of budgetMap.layers) {
-                if (layer.type !== 'brick') continue;
-                for (const brick of layer.bricks) {
-                  const { x, y, width, height } = brick.displayArea;
-                  if (x < segMaxX && x + width > segMinX && y < segMaxY && y + height > segMinY) {
-                    violations++;
-                  }
-                }
-              }
-            }
-          }
-          if (violations === 0) return null;
-          return (
-            <span className="text-orange-400" title={`${violations} brick(s) inside the ${buf} stud walkway buffer`}>
-              ⚠ {violations} in walkway
-            </span>
-          );
-        })()}
-        {budgetLimits.size > 0 && (() => {
-          let over = 0;
-          if (budgetMap) {
-            const usage = new Map<string, number>();
-            for (const layer of budgetMap.layers) {
-              if (layer.type !== 'brick') continue;
-              for (const b of layer.bricks) usage.set(b.partNumber, (usage.get(b.partNumber) ?? 0) + 1);
-            }
-            for (const [part, limit] of budgetLimits) {
-              if (limit >= 0 && (usage.get(part) ?? 0) > limit) over++;
-            }
-          }
-          return (
-            <span className={over > 0 ? 'text-red-400' : 'text-green-400'}
-              title="Budget status">
-              Budget: {over > 0 ? `${over} over` : 'OK'}
-            </span>
-          );
-        })()}
+        {walkwayViolations > 0 && venue && (
+          <span className="text-orange-400" title={`${walkwayViolations} brick(s) inside the ${venue.minWalkwayStuds} stud walkway buffer`}>
+            ⚠ {walkwayViolations} in walkway
+          </span>
+        )}
+        {budgetLimits.size > 0 && (
+          <span className={budgetOver > 0 ? 'text-red-400' : 'text-green-400'}
+            title="Budget status">
+            Budget: {budgetOver > 0 ? `${budgetOver} over` : 'OK'}
+          </span>
+        )}
         <span>
           {selectionCount === 0
             ? 'no selection'
@@ -3162,6 +3181,40 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
       </div>
     </footer>
   );
+}
+
+/**
+ * Simplified AABB clearance check: for each non-Wall edge segment compute
+ * the walkway buffer band AABB and count bricks that overlap it.
+ */
+function countWalkwayViolations(
+  venue: import('@cld/bbm').Venue,
+  map: import('@cld/model').BbmMap | null,
+): number {
+  if (!venue.enabled || venue.minWalkwayStuds <= 0 || !map) return 0;
+  const buf = venue.minWalkwayStuds;
+  let violations = 0;
+  for (const edge of venue.edges) {
+    if (edge.kind === 0 /* Wall */ || !edge.poly || edge.poly.length < 2) continue;
+    for (let i = 1; i < edge.poly.length; i++) {
+      const a = edge.poly[i - 1]!;
+      const b = edge.poly[i]!;
+      const segMinX = Math.min(a.x, b.x) - buf;
+      const segMaxX = Math.max(a.x, b.x) + buf;
+      const segMinY = Math.min(a.y, b.y) - buf;
+      const segMaxY = Math.max(a.y, b.y) + buf;
+      for (const layer of map.layers) {
+        if (layer.type !== 'brick') continue;
+        for (const brick of layer.bricks) {
+          const { x, y, width, height } = brick.displayArea;
+          if (x < segMaxX && x + width > segMinX && y < segMaxY && y + height > segMinY) {
+            violations++;
+          }
+        }
+      }
+    }
+  }
+  return violations;
 }
 
 /**
@@ -3303,20 +3356,10 @@ function MapMenu({
 }
 
 function LayersPanelHost({ doc, isViewer }: { doc: import('yjs').Doc; isViewer: boolean }) {
-  // Re-project on every Yjs update so layer ops (visibility, transparency,
-  // rename, add, delete, move, name change) show immediately. Earlier
-  // versions of this component held the useMemo deps on `[doc]` only,
-  // which meant the projection was cached forever — every Yjs change
-  // triggered a re-render but the same `BbmMap` was reused. Including
-  // `rev` from the snapshot hook ties the memo to actual doc mutations.
-  const rev = useYjsSnapshot(doc);
-  const map = useMemo(() => {
-    try {
-      return docToBbm(doc);
-    } catch {
-      return null;
-    }
-  }, [doc, rev]);
+  // Re-renders on every Yjs update so layer ops (visibility, transparency,
+  // rename, add, delete, move, name change) show immediately; the shared
+  // cached projection means this costs no extra docToBbm.
+  const map = useDocMap(doc);
   if (!map) return null;
   return <LayersPanel map={map} doc={doc} isViewer={isViewer} />;
 }

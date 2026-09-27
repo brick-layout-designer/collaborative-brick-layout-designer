@@ -9,8 +9,7 @@ import type { BbmMap } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';
-import { docToBbm } from '@cld/ydoc';
-import { useYjsSnapshot } from './useYjsSnapshot';
+import { useDocMap } from './useDocMap';
 
 type SortKey = 'partNumber' | 'count' | 'description' | 'budget';
 type SortDir = 'asc' | 'desc';
@@ -22,10 +21,7 @@ interface Row {
 }
 
 export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; budgetLimits?: Map<string, number> }) {
-  const rev = useYjsSnapshot(doc);
-  const map = useMemo(() => {
-    try { return docToBbm(doc); } catch { return null; }
-  }, [doc, rev]);
+  const map = useDocMap(doc);
 
   const catalog = useQuery({
     queryKey: ['parts-catalog'],
