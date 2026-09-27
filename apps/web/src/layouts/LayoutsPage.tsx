@@ -280,10 +280,10 @@ function CreateLayoutDialog({
         </label>
 
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Optional: sidecar (.bbm.cld)</span>
+          <span className="mb-1 block text-neutral-400">Optional: sidecar (.bbm.cld / desktop .bbm.bld)</span>
           <input
             type="file"
-            accept=".cld,.bbm.cld,application/json"
+            accept=".cld,.bbm.cld,.bld,.bbm.bld,application/json"
             onChange={pickSidecar}
             className="text-sm"
           />
