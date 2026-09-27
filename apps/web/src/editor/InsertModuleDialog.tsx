@@ -10,12 +10,11 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as Y from 'yjs';
-import { docToBbm } from '@cld/ydoc';
-import type { BbmMap, LayerBrick } from '@cld/model';
+import type * as Y from 'yjs';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';
-import { insertBricks } from './mutations';
+import { importBricksAsModule } from './mutations';
+import { fetchModuleBatches } from './moduleSnapshot';
 
 interface Props {
   doc: Y.Doc;
@@ -24,40 +23,18 @@ interface Props {
 
 export function InsertModuleDialog({ doc, onClose }: Props) {
   const list = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
-  const activeLayerId = useEditorStore((s) => s.activeLayerId);
   const [error, setError] = useState<string | null>(null);
 
   const insert = useMutation({
     mutationFn: async (moduleId: string) => {
-      // Fetch the module's snapshot bytes.
-      const res = await fetch(`/api/modules/${moduleId}/snapshot`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(`snapshot fetch failed: ${res.status}`);
-      const buf = await res.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      // Reconstruct the doc, project to BbmMap, walk brick layers.
-      const moduleDoc = new Y.Doc();
-      Y.applyUpdate(moduleDoc, bytes);
-      let map: BbmMap;
-      try {
-        map = docToBbm(moduleDoc);
-      } catch {
-        moduleDoc.destroy();
-        throw new Error('module snapshot is empty or invalid');
-      }
-      moduleDoc.destroy();
-      const bricks = collectBricks(map);
-      if (bricks.length === 0) {
-        throw new Error('module has no bricks to insert');
-      }
-      if (!activeLayerId) {
-        throw new Error('no active parts layer in this layout');
-      }
-      // Centre the inserted block at the viewport's stud-origin (0,0).
-      // A future polish: drop at the cursor like the place tool. For
-      // now the user pans to wherever they want it after insert.
-      insertBricks(doc, activeLayerId, bricks);
+      const batches = await fetchModuleBatches(moduleId);
+      // Modules are saved centred on the origin, so the block lands at
+      // (0,0); drag from the Module Library to drop it at the cursor.
+      // Bricks keep their source layer names and become a sidecar module
+      // in the same undo step (desktop ImportBbmAsModuleCommand).
+      const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';
+      const res = importBricksAsModule(doc, batches, { name: title });
+      if (res) useEditorStore.getState().setSelection(res.ids);
     },
     onSuccess: () => onClose(),
     onError: (e: Error) => setError(e.message),
@@ -122,10 +99,3 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
   );
 }
 
-function collectBricks(map: BbmMap): LayerBrick['bricks'] {
-  const out: LayerBrick['bricks'] = [];
-  for (const layer of map.layers) {
-    if (layer.type === 'brick') out.push(...layer.bricks);
-  }
-  return out;
-}

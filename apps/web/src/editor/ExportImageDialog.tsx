@@ -1,8 +1,11 @@
 // Export as Image / Tiled Print dialog — port of MainWindowMenus.cpp:97-201
 // and desktop's multi-page A3 tiling (PrintDialog.cpp).
 //
-// Single-image export: uses the Konva stage's toDataURL at the chosen
-// pixel ratio, downloads as PNG.
+// Both modes render the WHOLE map (content bounds + margin, over the map
+// background colour, without grid/selection/cursors) — see exportRender.ts;
+// desktop exports scene->itemsBoundingRect(), never just the viewport.
+//
+// Single-image export: renders at the chosen pixel ratio, downloads as PNG.
 //
 // Tiled print: renders the full map at the chosen DPI, slices it into
 // page-sized tiles with a configurable overlap (registration marks), then
@@ -11,13 +14,15 @@
 // (PDF, physical printer, etc.).
 
 import { useState } from 'react';
-import type Konva from 'konva';
 
 export interface ExportHandle {
-  /** Render the full viewport to a data URL. */
-  toDataURL: (opts: { pixelRatio: number; transparent: boolean }) => string | null;
-  /** Raw Konva stage — used by tiled print to call toCanvas(). */
-  getStage: () => Konva.Stage | null;
+  /**
+   * Render the full map to a canvas. `pixelRatio` is output px per scene
+   * px (8 per stud); the returned ratio is what was actually used after
+   * clamping to the browser's canvas limits. Null when the map is empty.
+   */
+  render: (opts: { pixelRatio: number; transparent: boolean }) =>
+    { canvas: HTMLCanvasElement; pixelRatio: number } | null;
 }
 
 interface Props {
@@ -52,8 +57,9 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
     setExporting(true);
     setError('');
     try {
-      const dataUrl = handle.toDataURL({ pixelRatio, transparent });
-      if (!dataUrl) { setError('Nothing to export.'); return; }
+      const result = handle.render({ pixelRatio, transparent });
+      if (!result) { setError('The map is empty.'); return; }
+      const dataUrl = result.canvas.toDataURL('image/png');
       const safe = layoutTitle.replace(/[^a-z0-9_\-]/gi, '_') || 'layout';
       const a = document.createElement('a');
       a.href = dataUrl;
@@ -69,8 +75,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
 
   function doTiledPrint() {
     const handle = exportImageRef.current;
-    const stage = handle?.getStage();
-    if (!stage) return;
+    if (!handle) return;
     setExporting(true);
     setError('');
 
@@ -86,7 +91,9 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       // pixelRatio = dpi/96 scales the stage's CSS-pixel dimensions to
       // physical pixels at the target DPI (Konva stages are laid out at 96 dpi).
       const pr = dpi / 96;
-      const fullCanvas = stage.toCanvas({ pixelRatio: pr });
+      const rendered = handle.render({ pixelRatio: pr, transparent: false });
+      if (!rendered) { setError('The map is empty.'); return; }
+      const fullCanvas = rendered.canvas;
       const fullW = fullCanvas.width;
       const fullH = fullCanvas.height;
 
@@ -97,7 +104,6 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       const rows = Math.max(1, Math.ceil((fullH - overlapPx) / stepY));
 
       const tiles: string[] = [];
-      const ctx = fullCanvas.getContext('2d')!;
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {

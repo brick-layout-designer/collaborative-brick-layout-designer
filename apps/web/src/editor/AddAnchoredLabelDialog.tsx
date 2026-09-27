@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import type * as Y from 'yjs';
 import type { AnchoredLabel } from '@cld/bbm';
-import { addAnchoredLabel, editAnchoredLabel } from './mutations';
+import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel } from './mutations';
 
 interface Props {
   doc: Y.Doc;
@@ -66,7 +66,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
       minZoom,
     };
     if (isEdit && initialLabel) {
-      editAnchoredLabel(doc, initialLabel.id, label);
+      // Keep the label's id so anything referencing it stays valid.
+      editAnchoredLabel(doc, initialLabel.id, { ...label, id: initialLabel.id });
     } else {
       addAnchoredLabel(doc, label);
     }
@@ -172,6 +173,17 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, onC
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
+          {isEdit && initialLabel && (
+            <button
+              onClick={() => {
+                deleteAnchoredLabel(doc, initialLabel.id);
+                onClose();
+              }}
+              className="mr-auto rounded border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40"
+            >
+              Delete
+            </button>
+          )}
           <button onClick={onClose} className="rounded px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">
             Cancel
           </button>

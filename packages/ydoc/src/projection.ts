@@ -460,7 +460,10 @@ function readLayerText(y: Y.Map<unknown>, c: CommonFields): LayerText {
   };
 }
 
-function yMapToTextCell(y: Y.Map<unknown>): TextCell {
+function yMapToTextCell(cell: Y.Map<unknown> | Record<string, unknown>): TextCell {
+  // Older web builds pushed text cells as plain objects; read those too
+  // rather than failing the whole projection.
+  const y = cell instanceof Y.Map ? cell : plainAsMap(cell);
   return {
     displayArea: cloneRect(requireScalar(y, 'displayArea') as RectangleF),
     myGroup: requireScalar(y, 'myGroup') as string,
@@ -515,6 +518,10 @@ function cloneExportInfo(info: ExportInfo): ExportInfo {
     exportElectricCircuit: info.exportElectricCircuit,
     exportConnectionPoints: info.exportConnectionPoints,
   };
+}
+
+function plainAsMap(o: Record<string, unknown>): Y.Map<unknown> {
+  return { get: (k: string) => o[k] } as unknown as Y.Map<unknown>;
 }
 
 function requireScalar(y: Y.Map<unknown>, key: string): unknown {

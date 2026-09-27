@@ -24,9 +24,11 @@ interface Props {
   initial?: TextCell;
   onClose: () => void;
   onCommit: (r: TextDialogResult) => void;
+  /** Edit mode: remove the text cell (desktop DeleteTextCellCommand). */
+  onDelete?: () => void;
 }
 
-export function TextDialog({ initial, onClose, onCommit }: Props) {
+export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
   const [text, setText] = useState(initial?.text ?? '');
   const [fontFamily, setFontFamily] = useState(initial?.font.family ?? 'Arial');
   const [fontSize, setFontSize] = useState(initial?.font.size ?? 24);
@@ -122,6 +124,14 @@ export function TextDialog({ initial, onClose, onCommit }: Props) {
           />
         </div>
         <div className="mt-5 flex justify-end gap-2">
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className="mr-auto rounded border border-red-900 px-3 py-1 text-sm text-red-300 hover:bg-red-950/40"
+            >
+              Delete
+            </button>
+          )}
           <button
             onClick={onClose}
             className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"

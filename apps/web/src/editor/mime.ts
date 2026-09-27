@@ -4,3 +4,6 @@
 
 /** Module-library panel → canvas drag payload (the module id). */
 export const MODULE_MIME = 'application/x-cld-module';
+
+/** Companion payload carrying the module's display name (sidecar entry name). */
+export const MODULE_NAME_MIME = 'application/x-cld-module-name';

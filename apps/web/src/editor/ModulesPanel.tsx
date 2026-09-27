@@ -22,6 +22,7 @@ import {
   rescanModuleFromBricks,
   rotateModuleBricks,
 } from './mutations';
+import { createModuleFromSelection } from './moduleActions';
 
 interface Props {
   doc: Y.Doc;
@@ -32,19 +33,35 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   const sidecar = readSidecarFromDoc(doc);
   const modules = sidecar?.modules ?? [];
 
+  // Desktop ModulesPanel's "Create from selection" (createModuleRequested
+  // → MainWindow::onCreateModuleFromSelection).
+  const createButton = isViewer ? null : (
+    <button
+      onClick={() => createModuleFromSelection(doc)}
+      className="rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-neutral-800"
+      title="Register the selected bricks as a module"
+    >
+      + From selection
+    </button>
+  );
+
   if (modules.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-neutral-600">
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-neutral-600">
         No modules in this layout
+        {createButton}
       </div>
     );
   }
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-neutral-925 text-sm">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-2 py-1.5 text-xs uppercase tracking-wider text-neutral-400">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-2 py-1.5 text-xs uppercase tracking-wider text-neutral-400">
         <span>Modules</span>
-        <span className="text-neutral-600">{modules.length}</span>
+        <span className="flex items-center gap-2">
+          {createButton}
+          <span className="text-neutral-600">{modules.length}</span>
+        </span>
       </div>
       <ul className="flex-1 min-h-0 overflow-y-auto">
         {modules.map((mod) => (

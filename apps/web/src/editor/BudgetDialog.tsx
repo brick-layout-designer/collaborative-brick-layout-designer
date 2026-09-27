@@ -4,43 +4,13 @@
 
 import { useState, useMemo } from 'react';
 import type { BbmMap } from '@cld/model';
-
-interface BudgetEntry {
-  part: string;
-  limit: number; // -1 = unlimited
-}
+import { parseBbb, writeBbb, type BudgetEntry } from './budgetFile';
 
 interface Props {
   map: BbmMap | null;
   limits: Map<string, number>;
   onLimitsChange: (limits: Map<string, number>) => void;
   onClose: () => void;
-}
-
-// --- .bbb XML parse/write ---
-
-function parseBbb(xml: string): BudgetEntry[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'application/xml');
-  const entries: BudgetEntry[] = [];
-  for (const el of Array.from(doc.querySelectorAll('BudgetEntry'))) {
-    const part = el.querySelector('PartNumber')?.textContent?.trim() ?? '';
-    const limitText = el.querySelector('Limit')?.textContent?.trim() ?? '';
-    const limit = parseInt(limitText, 10);
-    if (part) entries.push({ part, limit: isNaN(limit) ? -1 : limit });
-  }
-  return entries;
-}
-
-function writeBbb(entries: BudgetEntry[]): string {
-  const sorted = [...entries].sort((a, b) => a.part.localeCompare(b.part));
-  const rows = sorted
-    .map(
-      (e) =>
-        `  <BudgetEntry>\n    <PartNumber>${e.part}</PartNumber>\n    <Limit>${e.limit}</Limit>\n  </BudgetEntry>`,
-    )
-    .join('\n');
-  return `<?xml version="1.0"?>\n<Budget>\n  <Version>1</Version>\n${rows}\n</Budget>\n`;
 }
 
 // --- Usage from map ---

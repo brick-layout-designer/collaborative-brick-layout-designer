@@ -399,7 +399,7 @@ describe('addLinearRuler', () => {
     const layerId = ensureRulerLayer(doc);
     addLinearRuler(doc, layerId, { x: 5, y: 2 }, { x: 1, y: 8 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<unknown>).get(0) as {
+    const item = (layer.get('rulerItems') as Y.Array<unknown>).toJSON()[0] as {
       displayArea: { x: number; y: number; width: number; height: number };
     };
     expect(item.displayArea).toEqual({ x: 1, y: 2, width: 4, height: 6 });
@@ -430,7 +430,7 @@ describe('addCircularRuler', () => {
     const layerId = ensureRulerLayer(doc);
     addCircularRuler(doc, layerId, { x: 0, y: 0 }, -5);
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<unknown>).get(0) as { radius: number };
+    const item = (layer.get('rulerItems') as Y.Array<unknown>).toJSON()[0] as { radius: number };
     expect(item.radius).toBe(0);
   });
 
@@ -479,7 +479,7 @@ describe('editRulerItem', () => {
     const id = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 5, y: 0 });
     editRulerItem(doc, layerId, id, { displayDistance: false });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<unknown>).get(0) as {
+    const item = (layer.get('rulerItems') as Y.Array<unknown>).toJSON()[0] as {
       displayDistance: boolean;
     };
     expect(item.displayDistance).toBe(false);
@@ -491,7 +491,7 @@ describe('editRulerItem', () => {
     const id = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 5, y: 0 });
     editRulerItem(doc, layerId, id, { lineThickness: 5 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<unknown>).get(0) as {
+    const item = (layer.get('rulerItems') as Y.Array<unknown>).toJSON()[0] as {
       lineThickness: number;
     };
     expect(item.lineThickness).toBe(5);
@@ -543,7 +543,7 @@ describe('addTextCell', () => {
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
     const cells = layer.get('textCells') as Y.Array<unknown>;
     expect(cells.length).toBe(1);
-    const cell = cells.get(0) as { text: string };
+    const cell = cells.toJSON()[0] as { text: string };
     expect(cell.text).toBe('Hello World');
   });
 
@@ -560,7 +560,7 @@ describe('addTextCell', () => {
       fontColor: { kind: 'known', name: 'Black' },
     });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const cell = (layer.get('textCells') as Y.Array<unknown>).get(0) as {
+    const cell = (layer.get('textCells') as Y.Array<unknown>).toJSON()[0] as {
       displayArea: { x: number; y: number; width: number; height: number };
     };
     expect(cell.displayArea).toEqual({ x: 16, y: 8, width: 8, height: 4 });
@@ -597,7 +597,7 @@ describe('editTextCell', () => {
     });
     editTextCell(doc, layerId, 0, 'Updated');
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const cell = (layer.get('textCells') as Y.Array<unknown>).get(0) as { text: string };
+    const cell = (layer.get('textCells') as Y.Array<unknown>).toJSON()[0] as { text: string };
     expect(cell.text).toBe('Updated');
   });
 
@@ -630,7 +630,7 @@ describe('editTextCellFull', () => {
     });
     editTextCellFull(doc, layerId, 0, { text: 'After' });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const cell = (layer.get('textCells') as Y.Array<unknown>).get(0) as {
+    const cell = (layer.get('textCells') as Y.Array<unknown>).toJSON()[0] as {
       text: string;
       font: { family: string };
     };
@@ -652,7 +652,7 @@ describe('editTextCellFull', () => {
     });
     editTextCellFull(doc, layerId, 0, { orientation: 90 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const cell = (layer.get('textCells') as Y.Array<unknown>).get(0) as { orientation: number };
+    const cell = (layer.get('textCells') as Y.Array<unknown>).toJSON()[0] as { orientation: number };
     expect(cell.orientation).toBe(90);
   });
 
@@ -698,7 +698,7 @@ describe('deleteTextCell', () => {
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
     const cells = layer.get('textCells') as Y.Array<unknown>;
     expect(cells.length).toBe(1);
-    expect((cells.get(0) as { text: string }).text).toBe('Second');
+    expect((cells.toJSON()[0] as { text: string }).text).toBe('Second');
   });
 
   it('is a no-op for out-of-bounds index', () => {
