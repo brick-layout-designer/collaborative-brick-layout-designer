@@ -259,6 +259,11 @@ class DocHub {
     }
   }
 
+  /** True while a session for this layout is loaded or hydrating. */
+  has(layoutId: string): boolean {
+    return this.sessions.has(layoutId);
+  }
+
   /** The hydrated in-memory session for a layout, if one is loaded. */
   peek(layoutId: string): DocSession | undefined {
     const session = this.live.get(layoutId);
