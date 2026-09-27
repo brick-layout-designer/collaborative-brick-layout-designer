@@ -15,6 +15,7 @@ import websocket from '@fastify/websocket';
 import { docHub } from '../ws/docHub.js';
 import { attachWsHandlers } from '../ws/handler.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
+import { onSessionRevoked, SESSION_COOKIE, sessionIdForToken } from '../auth/session.js';
 
 // Per-user cap on concurrent WS connections. Prevents one tab fork-bomb
 // from exhausting the server. 8 is enough for a normal user across a
@@ -22,11 +23,40 @@ import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.j
 const MAX_WS_PER_USER = 8;
 const userConnections = new Map<string, number>();
 
+/**
+ * Largest single WS message accepted. `ws` defaults to 100 MiB, which
+ * lets one socket make the server buffer (and Yjs decode) a huge frame.
+ * 16 MiB rather than something tighter: a y-websocket client's sync
+ * step 2 / first update after a long offline session can carry a large
+ * slice of a big layout, and an over-limit frame closes the socket (1009)
+ * — the client would reconnect and resend it forever. (The REST snapshot
+ * endpoint allows 50 MiB for whole documents.)
+ */
+export const WS_MAX_PAYLOAD = 16 * 1024 * 1024;
+
+/** Open sockets and the session/user they authenticated as. */
+const openSockets = new Map<{ close(code?: number, reason?: string): void }, { userId: string; sessionId: string }>();
+
 export async function wsRoutes(app: FastifyInstance): Promise<void> {
-  await app.register(websocket);
+  await app.register(websocket, { options: { maxPayload: WS_MAX_PAYLOAD } });
   docHub.startSnapshotWorker();
+  // Logout / "revoke all sessions" / user deletion: close the affected
+  // sockets now rather than when the client next reconnects. 1008 is the
+  // code the editor already maps to "not signed in".
+  const unsubscribe = onSessionRevoked((r) => {
+    for (const [sock, who] of openSockets) {
+      if ('sessionId' in r ? who.sessionId === r.sessionId : who.userId === r.userId) {
+        try {
+          sock.close(1008, 'session_revoked');
+        } catch {
+          /* already closed */
+        }
+      }
+    }
+  });
   app.addHook('onClose', async () => {
     docHub.stopSnapshotWorker();
+    unsubscribe();
   });
 
   app.get<{ Params: { id: string } }>(
@@ -58,9 +88,10 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
 
         // role.role is non-null here because hasAtLeast(role.role, 'viewer')
         // succeeded above. Cast for the type system.
+        const sessionId = sessionIdForToken(req.cookies[SESSION_COOKIE] ?? '');
         let detach: () => Promise<void>;
         try {
-          detach = await attachWsHandlers(ws, layoutId, userId, role.role!);
+          detach = await attachWsHandlers(ws, layoutId, userId, role.role!, sessionId);
         } catch (err) {
           const n = (userConnections.get(userId) ?? 1) - 1;
           if (n <= 0) userConnections.delete(userId);
@@ -73,10 +104,12 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         // while we were hydrating. Run the cleanup exactly once either way:
         // a double detach used to double-decrement the connection count and
         // arm a second idle timer that destroyed the doc under a live client.
+        openSockets.set(ws, { userId, sessionId });
         let cleanedUp = false;
         const cleanup = async () => {
           if (cleanedUp) return;
           cleanedUp = true;
+          openSockets.delete(ws);
           const n = (userConnections.get(userId) ?? 1) - 1;
           if (n <= 0) userConnections.delete(userId);
           else userConnections.set(userId, n);

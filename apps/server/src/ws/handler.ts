@@ -24,6 +24,7 @@ import {
   sendBytes,
 } from './protocol.js';
 import { resolveResourceRole } from '../access/resolveResourceRole.js';
+import { isSessionActive } from '../auth/session.js';
 
 /**
  * How often we re-check whether the connected user still has access to
@@ -56,6 +57,8 @@ export async function attachWsHandlers(
   layoutId: string,
   userId: string,
   role: 'owner' | 'editor' | 'viewer' = 'editor',
+  /** Session the socket authenticated with; re-checked periodically. */
+  sessionId?: string,
 ): Promise<() => Promise<void>> {
   const session = await docHub.getOrCreate(layoutId);
   docHub.attach(session, ws, userId);
@@ -100,6 +103,12 @@ export async function attachWsHandlers(
   const revalidateTimer = setInterval(() => {
     void (async () => {
       try {
+        // The session may have expired or been revoked (logout
+        // elsewhere, admin "revoke all") without us hearing about it.
+        if (sessionId !== undefined && !(await isSessionActive(sessionId))) {
+          ws.close(1008, 'session_revoked');
+          return;
+        }
         const { role: refreshedRole } = await resolveResourceRole(
           userId,
           'layout',
