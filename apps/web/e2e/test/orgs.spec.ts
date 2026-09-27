@@ -5,13 +5,12 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getVerificationToken } from '../dbHelpers';
+import { ensureUser, signIn } from '../helpers';
 
 const ts = Date.now();
 const ADMIN_EMAIL = `orgs-admin-${ts}@example.com`;
 const MEMBER_EMAIL = `orgs-member-${ts}@example.com`;
 const OUTSIDER_EMAIL = `orgs-outsider-${ts}@example.com`;
-const PASS = 'correct horse battery';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -21,59 +20,18 @@ const FORDYCE_BBM = readFileSync(
   'utf-8',
 );
 
-/**
- * /api/auth/password/register and /login are both rate-limited
- * (10/min) — a real, intentional anti-abuse control. This file alone
- * registers a dozen-plus accounts, so running it back-to-back with
- * other specs can legitimately trip the limit. Retry on 429 using the
- * server's own `retry-after` header rather than guessing a backoff.
- */
-async function postWithRateLimitRetry(
-  page: Page,
-  path: string,
-  data: Record<string, string>,
-): Promise<{ ok: () => boolean; status: () => number }> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await page.request.post(path, { data });
-    if (res.status() === 429 && attempt < 3) {
-      const retryAfterSec = Number(res.headers()['retry-after'] ?? '5');
-      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1000));
-      continue;
-    }
-    return res;
-  }
-}
+// Auth goes through helpers.ts: each account is registered + verified
+// once per run (ADMIN_EMAIL is "registered" by several tests — that's a
+// cached no-op after the first) and contexts are signed in by reusing
+// its session, keeping this file inside the register/login rate limits.
 
-/**
- * Register AND verify. A few tests re-register the same email across
- * multiple `test()` blocks (e.g. ADMIN_EMAIL) — register itself already
- * tolerates that (see the pre-existing 409-on-repeat pattern elsewhere
- * in this file), and on a repeat the server never issues a second
- * verification token, so skip the verify round-trip when the account is
- * already known to be verified from an earlier call in this run.
- */
-const verifiedEmails = new Set<string>();
-
-async function registerUser(
-  page: Page,
-  email: string,
-  displayName: string,
-): Promise<void> {
-  const res = await postWithRateLimitRetry(page, '/api/auth/password/register', {
-    email, password: PASS, displayName,
-  });
-  if (res.status() !== 409) expect(res.ok()).toBe(true);
-  if (!verifiedEmails.has(email)) {
-    const token = await getVerificationToken(email);
-    const verifyRes = await page.request.post(`/api/auth/password/verify-email/${token}`);
-    expect(verifyRes.ok()).toBe(true);
-    verifiedEmails.add(email);
-  }
+/** Register AND verify — does not change who `page` is signed in as. */
+async function registerUser(_page: Page, email: string, displayName: string): Promise<void> {
+  await ensureUser(email, displayName);
 }
 
 async function loginUser(page: Page, email: string): Promise<void> {
-  const res = await postWithRateLimitRetry(page, '/api/auth/password/login', { email, password: PASS });
-  expect(res.ok()).toBe(true);
+  await signIn(page, email);
 }
 
 async function createOrg(
@@ -428,9 +386,9 @@ test.describe('orgs — UI flows', () => {
 
     const org = await createOrg(page, 'UI Org Flow');
     await page.goto(`/orgs/${org.slug}`);
-    // The page should render without crashing — show the org name or an error.
+    // The page should render the org itself, headed by its name.
     await expect(
-      page.getByText('UI Org Flow').or(page.getByText(/org/i)),
+      page.getByRole('heading', { name: 'UI Org Flow' }),
     ).toBeVisible({ timeout: 8000 });
   });
 
