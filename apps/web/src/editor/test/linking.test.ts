@@ -52,3 +52,24 @@ describe('connectivity write-back', () => {
     expect(um.undoStack.length).toBe(undoSteps);
   });
 });
+
+describe('placing a set (desktop MapView.cpp:1344-1390)', () => {
+  it('wraps the set\'s bricks in a module named after it, as one undo step', async () => {
+    const { insertSet } = await import('../mutations');
+    const { readSidecarFromDoc } = await import('@cld/ydoc');
+    const doc = createDefaultLayoutDoc();
+    const layerId = docToBbm(doc).layers.find((l) => l.type === 'brick')!.id;
+    const um = new Y.UndoManager([doc.getMap('layerData'), doc.getMap('meta')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
+    const brick = (x: number) => ({ partNumber: 'straight.8', displayArea: { x, y: 0, width: 16, height: 8 }, orientation: 0 });
+
+    const ids = insertSet(doc, layerId, [brick(0), brick(16)], 'Straight Track Pack');
+
+    expect(ids).toHaveLength(2);
+    const modules = readSidecarFromDoc(doc)?.modules ?? [];
+    expect(modules.map((m) => [m.name, [...m.members].sort()])).toEqual([['Straight Track Pack', [...ids].sort()]]);
+    expect(um.undoStack.length).toBe(1);
+    um.undo();
+    expect(docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks : []))).toHaveLength(0);
+    expect(readSidecarFromDoc(doc)?.modules ?? []).toHaveLength(0);
+  });
+});

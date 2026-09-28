@@ -776,3 +776,22 @@ test.describe('chained placement', () => {
     expect(run.map((b) => b.links).sort()).toEqual([1, 1, 2]);
   });
 });
+
+test.describe('placing a set', () => {
+  test('a set lands as a module named after it, its pieces linked', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByPlaceholder(/Fuzzy filter/).fill('rail_yard_left_turn');
+    const tile = page.locator('aside li button[draggable="true"]').filter({ hasText: /Rail yard/ }).first();
+    await expect(tile).toBeVisible({ timeout: 10000 });
+    await tile.click();
+    await expect(page.locator('footer')).toContainText('Placed set: Rail yard on the right (12 parts)');
+
+    const sidecar = async () =>
+      (await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as { modules?: { name: string; members: string[] }[] };
+    await expect.poll(async () => (await sidecar()).modules?.map((m) => [m.name, m.members.length])).toEqual([['Rail yard on the right', 12]]);
+    // Set files carry positions only; the pieces are linked on placement.
+    const links = async () => ((await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<LinkedTo>[^<]+<\/LinkedTo>/g) ?? []).length;
+    await expect.poll(links).toBeGreaterThanOrEqual(22);
+  });
+});

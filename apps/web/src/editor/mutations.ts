@@ -1749,6 +1749,25 @@ export function createSidecarModule(doc: Y.Doc, name: string, memberIds: string[
   return id;
 }
 
+/**
+ * Place a set's bricks and wrap them in a sidecar module named after the
+ * set, as one undo step — desktop places a set this way so it moves as a
+ * unit (MapView.cpp:1344-1390). Returns the new brick ids.
+ */
+export function insertSet(
+  doc: Y.Doc,
+  layerId: string,
+  bricks: Parameters<typeof insertBricks>[2],
+  setName: string,
+): string[] {
+  let ids: string[] = [];
+  doc.transact(() => {
+    ids = insertBricks(doc, layerId, bricks, { dx: 0, dy: 0 });
+    createSidecarModule(doc, setName, ids);
+  }, LOCAL_ORIGIN);
+  return ids;
+}
+
 /** One source brick layer of a module file — desktop `LayerBatch`. */
 export interface ModuleBatch {
   layerName: string;

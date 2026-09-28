@@ -71,6 +71,7 @@ import {
   importBricksAsModule,
   insertBricksAcrossLayers,
   insertBricks,
+  insertSet,
   paintAreaCells,
   placeBrick,
   readBudgetLimits,
@@ -2184,8 +2185,14 @@ function Canvas({
         orientation: angle,
       });
     }
-    const newIds = insertBricks(doc, layerId, bricks, { dx: 0, dy: 0 });
+    // Wrapped in a module named after the set (its English description,
+    // else its key) so it moves as a unit, and linked straight away: set
+    // files carry positions, not links.
+    const setName = group.description || group.key;
+    const newIds = insertSet(doc, layerId, bricks, setName);
+    recomputeConnectivity(doc, linkCatalog);
     if (newIds.length > 0) setSelection(newIds);
+    useEditorStore.getState().showStatusMessage(`Placed set: ${setName} (${newIds.length} parts)`, 3000);
   }
 
   // Keep the imperative "place at view center" handle fresh every render
