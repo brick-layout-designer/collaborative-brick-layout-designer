@@ -246,7 +246,7 @@ Selection-aware; entries vary based on what's under the cursor:
 ## Dialogs (modal/modeless)
 
 - [x] **Preferences** (`Ctrl+,`) — all three relevant tabs fully shipped:
-  - General: wheel zoom factor [x], undo stack depth [x], reopen-last-file [x]; show-splash [n/a], new-map template [n/a], language [n/a]
+  - General: wheel zoom factor [x], undo stack depth [x], reopen-last-file [x], new-map template [x] (on the layouts page: "Template for new layouts" marks one of your layouts, and New layout starts from its .bbm and sidecar unless unticked — `newLayoutTemplate.ts`, desktop `general/newMapTemplate`); show-splash [n/a], language [n/a]
   - Editing: default snap step [x], default rotation step [x], default paint colour [x]
   - Appearance: show grid [x], always-show connections [x], selection tint [x], module frame thickness [x], show module names [x], show module frames [x], electric circuits toggle [x], export watermark [x], module label % [x], venue label px [x] (persisted `cld:venueLabelPx`, wired to `VenueOverlay` label fontSize)
   - Library: module library folder [n/a — server-side]; additional parts library paths → replaced by admin-installed part libraries (org-selectable)

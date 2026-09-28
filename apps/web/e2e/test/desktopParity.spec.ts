@@ -1156,3 +1156,36 @@ test.describe('part list export', () => {
     expect(html).toMatch(/<img src="data:image\/png;base64,[A-Za-z0-9+/=]+"><br\/>3857/);
   });
 });
+
+test.describe('new layout template', () => {
+  test('a layout marked as the template is where new layouts start', async ({ page }) => {
+    const templateId = await createLayout(page, FORDYCE_BBM);
+    const rename = await page.request.patch(`/api/layouts/${templateId}`, { data: { title: `Club base ${Date.now()}` } });
+    expect(rename.ok()).toBe(true);
+    await page.goto('/');
+    const row = page.locator('li', { has: page.getByRole('link', { name: 'Open' }) }).filter({ hasText: 'Club base' }).first();
+    await row.getByLabel('Template for new layouts').check();
+
+    await page.getByRole('button', { name: 'New layout' }).click();
+    const startFrom = page.getByLabel(/Start from template “Club base/);
+    await expect(startFrom).toBeChecked();
+    await page.getByPlaceholder('Untitled Layout').fill('From template');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    const newId = page.url().split('/editor/')[1]!;
+    const bbm = await (await page.request.get(`/api/layouts/${newId}/export.bbm`)).text();
+    expect(countPart(bbm, '3857.0')).toBe(72);
+
+    // Unticked, a new layout starts empty.
+    await page.goto('/');
+    await page.getByRole('button', { name: 'New layout' }).click();
+    await page.getByLabel(/Start from template/).uncheck();
+    await page.getByRole('button', { name: 'Create' }).click();
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    const emptyId = page.url().split('/editor/')[1]!;
+    expect(countPart(await (await page.request.get(`/api/layouts/${emptyId}/export.bbm`)).text(), '3857.0')).toBe(0);
+
+    // Clean up the preference for the other tests.
+    await page.evaluate(() => localStorage.removeItem('cld:newLayoutTemplate'));
+  });
+});

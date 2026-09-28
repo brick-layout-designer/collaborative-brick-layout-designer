@@ -1,7 +1,8 @@
-import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
+import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -142,6 +143,13 @@ function LayoutRow({
   onDelete: () => void;
   onShare: () => void;
 }) {
+  // New layouts can start as a copy of this one (desktop's File > New template).
+  const [isTemplate, setIsTemplate] = useState(() => getNewLayoutTemplate()?.id === layout.id);
+  useEffect(() => {
+    const sync = () => setIsTemplate(getNewLayoutTemplate()?.id === layout.id);
+    window.addEventListener('cld:template-changed', sync);
+    return () => window.removeEventListener('cld:template-changed', sync);
+  }, [layout.id]);
   return (
     <li className="flex items-center justify-between px-4 py-3">
       <div>
@@ -178,6 +186,17 @@ function LayoutRow({
         >
           Export .zip
         </a>
+        <label className="flex items-center gap-1 text-xs text-neutral-400" title="New layouts start as a copy of this one">
+          <input
+            type="checkbox"
+            checked={isTemplate}
+            onChange={(e) => {
+              setNewLayoutTemplate(e.target.checked ? { id: layout.id, title: layout.title } : null);
+              window.dispatchEvent(new Event('cld:template-changed'));
+            }}
+          />
+          Template for new layouts
+        </label>
         <button
           onClick={onDelete}
           className="rounded-sm border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"
@@ -203,6 +222,9 @@ function CreateLayoutDialog({
   // Owner: empty string = personal; otherwise the org slug.
   const [ownerSlug, setOwnerSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Start from the template layout, when one is set (desktop onNew).
+  const [template] = useState(getNewLayoutTemplate);
+  const [fromTemplate, setFromTemplate] = useState(template !== null);
 
   // Fetch the user's orgs so the dialog can offer them as owner options.
   // Cheap; cached by react-query so this almost never hits the network.
@@ -229,7 +251,7 @@ function CreateLayoutDialog({
     setSidecar(await file.text());
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const body: { title?: string; bbm?: string; sidecar?: string; orgSlug?: string } = {};
@@ -237,6 +259,17 @@ function CreateLayoutDialog({
     if (t) body.title = t;
     if (bbm) body.bbm = bbm;
     if (sidecar) body.sidecar = sidecar;
+    // A picked .bbm wins over the template.
+    if (!bbm && fromTemplate && template) {
+      try {
+        const c = await templateContent(template.id);
+        body.bbm = c.bbm;
+        if (c.sidecar !== undefined) body.sidecar = c.sidecar;
+      } catch (err) {
+        setError((err as Error).message);
+        return;
+      }
+    }
     if (ownerSlug) body.orgSlug = ownerSlug;
     create.mutate(body);
   }
@@ -244,10 +277,17 @@ function CreateLayoutDialog({
   return (
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
       <form
-        onSubmit={submit}
+        onSubmit={(e) => void submit(e)}
         className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
       >
         <h3 className="text-lg font-semibold">New layout</h3>
+
+        {template && !bbm && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={fromTemplate} onChange={(e) => setFromTemplate(e.target.checked)} />
+            Start from template “{template.title}”
+          </label>
+        )}
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">Title</span>
