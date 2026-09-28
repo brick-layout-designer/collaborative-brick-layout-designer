@@ -832,3 +832,28 @@ test.describe('connection points', () => {
     await expect.poll(dots).toBe(0);
   });
 });
+
+test.describe('unresolved parts', () => {
+  test('parts the library lacks draw as desktop\'s dashed pink placeholder', async ({ page }) => {
+    // Fordyce with one more brick renamed to a part no library has.
+    const bbm = FORDYCE_BBM.replace('<PartNumber>3857.0</PartNumber>', '<PartNumber>NO_SUCH_PART.1</PartNumber>');
+    const id = await createLayout(page, bbm);
+    await openEditor(page, id);
+    // Bricks whose part the catalog can't resolve by key, part number or old name.
+    const catalog = (await (await page.request.get('/api/parts/catalog')).json()) as {
+      parts: { key: string; partNumber: string; oldNames?: string[] }[];
+    };
+    const known = new Set(catalog.parts.flatMap((p) => [p.key, p.partNumber, ...(p.oldNames ?? [])].map((k) => k.toLowerCase())));
+    const unknown = [...bbm.matchAll(/<PartNumber>([^<]+)<\/PartNumber>/g)].filter((m) => !known.has(m[1]!.toLowerCase())).length;
+    expect(unknown).toBeGreaterThan(0);
+
+    const placeholders = () =>
+      page.evaluate(() => {
+        type Node = { stroke: () => string; dash: () => number[]; fill: () => string };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('.brick-unresolved')).map((r) => `${r.stroke()}|${r.dash().join(',')}|${r.fill()}`);
+      });
+    await expect.poll(async () => (await placeholders()).length).toBe(unknown);
+    expect(new Set(await placeholders())).toEqual(new Set(['rgb(200,80,80)|4,2|rgba(255,200,200,0.314)']));
+  });
+});

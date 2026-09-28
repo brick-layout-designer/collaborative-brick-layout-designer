@@ -621,12 +621,17 @@ const BrickGlyph = memo(function BrickGlyph({
         />
       ) : (
         <Rect
+          name={meta ? 'brick-loading' : 'brick-unresolved'}
           x={-w / 2}
           y={-h / 2}
           width={w}
           height={h}
-          fill="#404040"
-          stroke="#888"
+          // A part the library doesn't know: desktop's placeholder, a dashed
+          // red outline over a translucent pink fill (SceneBuilder.cpp:230-242).
+          // A known part whose sprite is still loading: a neutral box.
+          {...(meta
+            ? { fill: '#404040', stroke: '#888' }
+            : { fill: 'rgba(255,200,200,0.314)', stroke: 'rgb(200,80,80)', dash: [4, 2], strokeScaleEnabled: false })}
           strokeWidth={1}
           perfectDrawEnabled={false}
         />

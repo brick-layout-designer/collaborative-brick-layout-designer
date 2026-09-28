@@ -45,6 +45,7 @@ Web source root: this repository.
 - [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint colour), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
 - [x] **Desktop defaults** — snap off, paint colour opaque #008000, Connection Points off (a selected brick still shows its free connections, `SceneBuilder.cpp:250-310`), one Module Names toggle for names and frames, on by default, frame thickness 5 px in 0.5 steps from 0.5 to 20 (`PreferencesDialog.cpp:137,152,200-207`, `SceneBuilderSidecar.cpp:233-236`).
 - [x] **Colours with alpha** — paint colour, text, ruler (line, measure, guideline), hull and grid colours all edit alpha as desktop's QColorDialog::ShowAlphaChannel (`ColorAlphaInput.tsx`); an untouched named colour is kept as named.
+- [x] **Unresolved parts** — a brick whose part the library doesn't have draws as desktop's placeholder: a dashed red outline over a translucent pink fill at its stored size (`SceneBuilder.cpp:230-242`).
 
 ---
 
