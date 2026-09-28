@@ -306,6 +306,10 @@ describe('BudgetDialog', () => {
 });
 
 describe('ExportImageDialog', () => {
+  // The dialog remembers its settings (like desktop QSettings export/*);
+  // start each test from a first-time export.
+  afterEach(() => localStorage.removeItem('cld:exportImage'));
+
   function handle() {
     const canvas = document.createElement('canvas');
     canvas.toDataURL = vi.fn(() => 'data:,');
@@ -325,6 +329,36 @@ describe('ExportImageDialog', () => {
     expect(h.value).toBe('250');
     fireEvent.click(screen.getByRole('button', { name: '4×' }));
     expect(w.value).toBe('1600');
+  });
+
+  it('remembers the last export\'s settings for the next one (desktop QSettings export/*)', () => {
+    const { ref } = handle();
+    const first = render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    fireEvent.click(screen.getByLabelText('Keep aspect ratio (height auto)'));
+    fireEvent.change(screen.getByLabelText('Width (px)'), { target: { value: '640' } });
+    fireEvent.change(screen.getByLabelText('Height (px)'), { target: { value: '480' } });
+    fireEvent.change(screen.getByDisplayValue('PNG'), { target: { value: 'jpeg' } });
+    fireEvent.change(screen.getByLabelText('JPEG quality'), { target: { value: '70' } });
+    fireEvent.click(screen.getByLabelText('Antialias'));
+    fireEvent.click(screen.getByRole('button', { name: 'Export JPEG' }));
+    first.unmount();
+
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    expect((screen.getByLabelText('Width (px)') as HTMLInputElement).value).toBe('640');
+    expect((screen.getByLabelText('Height (px)') as HTMLInputElement).value).toBe('480');
+    expect((screen.getByLabelText('Keep aspect ratio (height auto)') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('JPEG quality') as HTMLInputElement).value).toBe('70');
+    expect((screen.getByLabelText('Antialias') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('ignores unreadable saved settings', async () => {
+    const { loadExportSettings } = await import('../exportSettings');
+    localStorage.setItem('cld:exportImage', '{nope');
+    expect(loadExportSettings()).toBeNull();
+    localStorage.setItem('cld:exportImage', JSON.stringify({ width: 'x', height: 10 }));
+    expect(loadExportSettings()).toBeNull();
+    localStorage.setItem('cld:exportImage', JSON.stringify({ width: 10, height: 10, quality: 500, format: 'gif' }));
+    expect(loadExportSettings()).toMatchObject({ quality: 100, format: 'png', keepAspect: true, antialias: true });
   });
 
   it('exports JPEG at the chosen size and quality, without transparency or antialias', () => {

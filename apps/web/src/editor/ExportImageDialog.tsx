@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { MAX_CANVAS_SIDE, aspectHeight, type StudRect } from './exportRender';
 import { useEditorStore } from './editorStore';
 import { buildImagePdf, dataUrlBytes, pdfPageLayout, printPixelRatio, printTiles } from './printLayout';
+import { loadExportSettings, saveExportSettings } from './exportSettings';
 
 export interface ExportHandle {
   /**
@@ -71,17 +72,19 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
   // Native (1×) export size; the image defaults to 2×, like the old
   // resolution picker.
   const [scene] = useState(() => exportImageRef.current?.sceneSize() ?? null);
+  // Settings from the last export, like desktop's QSettings export/*.
+  const [saved] = useState(loadExportSettings);
   const [width, setWidth] = useState(() =>
-    scene ? Math.min(MAX_CANVAS_SIDE, scene.width * 2) : 1600,
+    saved ? Math.min(MAX_CANVAS_SIDE, saved.width) : scene ? Math.min(MAX_CANVAS_SIDE, scene.width * 2) : 1600,
   );
-  const [keepAspect, setKeepAspect] = useState(true);
+  const [keepAspect, setKeepAspect] = useState(saved?.keepAspect ?? true);
   const [customHeight, setCustomHeight] = useState(() =>
-    scene ? Math.min(MAX_CANVAS_SIDE, scene.height * 2) : 1200,
+    saved ? Math.min(MAX_CANVAS_SIDE, saved.height) : scene ? Math.min(MAX_CANVAS_SIDE, scene.height * 2) : 1200,
   );
-  const [format, setFormat] = useState<'png' | 'jpeg'>('png');
-  const [quality, setQuality] = useState(90);
-  const [antialias, setAntialias] = useState(true);
-  const [transparent, setTransparent] = useState(false);
+  const [format, setFormat] = useState<'png' | 'jpeg'>(saved?.format ?? 'png');
+  const [quality, setQuality] = useState(saved?.quality ?? 90);
+  const [antialias, setAntialias] = useState(saved?.antialias ?? true);
+  const [transparent, setTransparent] = useState(saved?.transparent ?? false);
   const [dpi, setDpi] = useState(150);
   const [paperKey, setPaperKey] = useState('a3');
   const [marginMm, setMarginMm] = useState(10);
@@ -115,6 +118,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       });
       if (!result) { setError('The map is empty.'); return; }
       useEditorStore.getState().setShowExportWatermark(watermark);
+      saveExportSettings({ width, height, keepAspect, transparent, antialias, format, quality });
       const dataUrl = jpeg
         ? result.canvas.toDataURL('image/jpeg', quality / 100)
         : result.canvas.toDataURL('image/png');
