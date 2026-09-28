@@ -5,6 +5,7 @@ import { studToPx } from './coords';
 import { useEditorStore } from '../editorStore';
 import { colorSpecToCss } from '../layerOptions';
 import { cellIndexLabels, parseCellIndexCorner } from './gridIndex';
+import { fontStack } from './fontStack';
 
 export interface ViewportRect {
   /** World-space (stud) bounds currently visible on the stage. */
@@ -117,7 +118,7 @@ function CellIndexLabels({ grid, bounds, zoom }: { grid: LayerGrid; bounds: Boun
           x={l.x * px + pad}
           y={l.y * px + pad}
           text={l.text}
-          fontFamily={grid.cellIndexFont.family || 'Arial'}
+          fontFamily={fontStack(grid.cellIndexFont.family)}
           fontStyle={fontStyle}
           fontSize={fontScreenPx / z}
           fill={colorSpecToCss(grid.cellIndexColor)}

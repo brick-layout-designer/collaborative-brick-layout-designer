@@ -39,6 +39,8 @@ import type {
 import { studToPx, COLOR_DEFAULT } from './coords';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { AnnoDragHandlers } from './groupDragNodes';
+import { fontStack } from './fontStack';
+import { colorSpecToCss } from '../layerOptions';
 
 interface Props {
   map: BbmMap;
@@ -346,7 +348,7 @@ function LinearRulerView({
           x={midX}
           y={midY}
           text={labelText}
-          fontFamily={item.measureFont.family || 'Arial'}
+          fontFamily={fontStack(item.measureFont.family)}
           fontStyle={labelFontStyle}
           fontSize={labelFontPx}
           fill={cssColor(item.measureFontColor)}
@@ -572,7 +574,7 @@ function CircularRulerView({
           x={cx + rPx + 4}
           y={cy - labelFontPx / 2}
           text={labelText}
-          fontFamily={item.measureFont.family || 'Arial'}
+          fontFamily={fontStack(item.measureFont.family)}
           fontStyle={labelFontStyle}
           fontSize={labelFontPx}
           fill={cssColor(item.measureFontColor)}
@@ -656,21 +658,6 @@ export function formatDistance(studs: number, unit: number): string {
 }
 
 function cssColor(c: ColorSpec): string {
-  if (c.kind === 'known') {
-    const known: Record<string, string> = {
-      black: '#000000',
-      white: '#ffffff',
-      red: '#ff0000',
-      green: '#008000',
-      blue: '#0000ff',
-      yellow: '#ffff00',
-      orange: '#ffa500',
-      gray: '#808080',
-      darkgray: '#a9a9a9',
-      lightgray: '#d3d3d3',
-    };
-    return known[(c.name ?? '').toLowerCase()] ?? COLOR_DEFAULT;
-  }
-  return c.argb.length === 8 ? `#${c.argb.slice(2)}` : `#${c.argb}`;
+  return colorSpecToCss(c, COLOR_DEFAULT);
 }
 
