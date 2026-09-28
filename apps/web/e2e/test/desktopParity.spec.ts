@@ -620,3 +620,47 @@ test.describe('scale bar', () => {
     await expect(bar).toHaveText(/\d+ studs\s*(\d+ mm|\d+\.\d\d m)/);
   });
 });
+
+test.describe('use budget limitation', () => {
+  test('duplicate over budget is refused with the Budget reached box, then status only', async ({ page }) => {
+    test.slow();
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
+
+    // Budget 3857.0 at exactly its 72 uses, and turn the limitation on.
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click();
+    const row = page.locator('tbody tr', { hasText: '3857.0' });
+    await row.locator('input[placeholder="—"]').fill('72');
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Use Budget Limitation' }).click();
+    // Close the Budget panel so it doesn't cover the Find panel.
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click();
+
+    // Select one 3857.0 through Find, then duplicate it.
+    await page.keyboard.press('Control+f');
+    const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByPlaceholder('Search…').fill('3857.0');
+    await find.locator('ul button').first().click();
+    await find.getByRole('button', { name: 'Close' }).click();
+    await expect(page.locator('footer')).toContainText('selected: 1');
+
+    await page.keyboard.press('Control+d');
+    const box = page.getByRole('dialog', { name: 'Budget reached' });
+    await expect(box).toBeVisible();
+    await expect(page.locator('footer')).toContainText('Budget reached: part not added');
+    await shot(page, 'budget-reached.png');
+    await box.getByLabel("Don't show this message again").check();
+    await box.getByRole('button', { name: 'OK' }).click();
+    await expect(box).toHaveCount(0);
+
+    // Again: refused silently apart from the status bar.
+    await page.keyboard.press('Control+d');
+    await expect(page.locator('footer')).toContainText('Budget reached: part not added');
+    await expect(box).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(countPart(await bbm(), '3857.0')).toBe(72);
+  });
+});

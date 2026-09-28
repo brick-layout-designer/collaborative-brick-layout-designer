@@ -46,7 +46,8 @@ import { useViewportSize } from './useViewportSize';
 import { localBbmDownload, sha256Hex } from '../bbmFiles';
 import { backgroundImageRectPx } from './background';
 import { scaleBar } from './scaleBar';
-import { overBudgetCount } from './budgetUsage';
+import { canAddToBudget, countUsage, overBudgetCount, withinBudget } from './budgetUsage';
+import { BudgetReachedDialog, BUDGET_REFUSED_STATUS } from './BudgetReachedDialog';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
@@ -1886,10 +1887,42 @@ function Canvas({
     setSelection([]);
   }
 
+  // Use Budget Limitation (Budget menu): refuse parts over budget, like
+  // MapView::budgetAllows. The layout has a budget when it has a limit.
+  const [budgetBox, setBudgetBox] = useState(false);
+  function reportBudgetRefusal() {
+    const st = useEditorStore.getState();
+    st.showStatusMessage(BUDGET_REFUSED_STATUS, 3000);
+    if (st.warnBudgetLimitation) setBudgetBox(true);
+  }
+  function budgetLimitsInForce(): Map<string, number> | null {
+    if (!useEditorStore.getState().useBudgetLimitation) return null;
+    const limits = readBudgetLimits(doc);
+    return limits.size > 0 ? limits : null;
+  }
+  function budgetAllows(part: string, quantity = 1): boolean {
+    const limits = budgetLimitsInForce();
+    if (!limits) return true;
+    const { budgetDefaultInfinite } = useEditorStore.getState();
+    if (canAddToBudget(limits, countUsage(map), part, quantity, budgetDefaultInfinite, partsByKey)) return true;
+    reportBudgetRefusal();
+    return false;
+  }
+  /** Paste / duplicate: leave out bricks beyond their budget (MapViewClipboard.cpp:84-95). */
+  function keepWithinBudget<T>(bricks: T[], partOf: (brick: T) => string): T[] {
+    const limits = budgetLimitsInForce();
+    if (!limits) return bricks;
+    const { kept, refused } = withinBudget(limits, map, bricks, partOf, useEditorStore.getState().budgetDefaultInfinite);
+    if (refused > 0) reportBudgetRefusal();
+    return kept;
+  }
+
   async function pasteAtCursor(): Promise<void> {
-    const entries = await readBricksFromClipboard();
-    if (!entries || entries.length === 0) return;
+    const clipped = await readBricksFromClipboard();
+    if (!clipped || clipped.length === 0) return;
     if (!map) return;
+    const entries = keepWithinBudget(clipped, (e) => e.brick.partNumber);
+    if (entries.length === 0) return;
 
     // Translate the group to land its centre under the cursor (or stage
     // centre if the cursor is off-stage). Mirrors MapViewClipboard.cpp:62-72.
@@ -1959,6 +1992,12 @@ function Canvas({
         }));
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
+    // Bricks beyond their budget are left out, in layer order.
+    const flat = [...perLayer].flatMap(([layerId, bricks]) => bricks.map((brick) => ({ layerId, brick })));
+    perLayer.clear();
+    for (const { layerId, brick } of keepWithinBudget(flat, (f) => f.brick.partNumber)) {
+      perLayer.set(layerId, [...(perLayer.get(layerId) ?? []), brick]);
+    }
     const ids = insertBricksAcrossLayers(doc, perLayer, { dx: 1, dy: 1 });
     if (ids.length > 0) setSelection(ids);
   }
@@ -1986,6 +2025,7 @@ function Canvas({
    * into one brick per subpart — port of MapView.cpp:1279-1360.
    */
   async function placePartAt(meta: PartWire, studX: number, studY: number) {
+    if (!budgetAllows(meta.key)) return;
     // Group / set placement — expand into individual bricks at the
     // subpart-relative offsets the .set.xml declares. Single Yjs
     // transaction so undo unwinds the whole expansion.
@@ -2666,6 +2706,7 @@ function Canvas({
         />
       )}
       <ScaleBarHud zoom={zoom} />
+      {budgetBox && <BudgetReachedDialog onClose={() => setBudgetBox(false)} />}
     </>
   );
 }
@@ -3360,6 +3401,9 @@ function MapMenu({
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
   const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
 
+  const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
+  const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
+
   const items: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
     { label: 'General info...', action: onGeneralInfo },
     { label: 'Background colour...', action: onBackgroundColor },
@@ -3399,6 +3443,7 @@ function MapMenu({
     { label: 'Show Module Frames', action: () => setShowModuleFrames(!showModuleFrames), checked: showModuleFrames },
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
+    { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
 

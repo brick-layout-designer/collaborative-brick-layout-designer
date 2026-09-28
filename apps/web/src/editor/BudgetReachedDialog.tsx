@@ -1,0 +1,37 @@
+// "Budget reached" box shown when Use Budget Limitation refuses a part —
+// port of MapView::reportBudgetRefusal (MapView.cpp:1675-1690), with its
+// "don't show again" check box (`general/warnBudgetLimitation`).
+
+import { useState } from 'react';
+import { useEditorStore } from './editorStore';
+
+export const BUDGET_REFUSED_STATUS = 'Budget reached: part not added';
+
+export function BudgetReachedDialog({ onClose }: { onClose: () => void }) {
+  const setWarn = useEditorStore((s) => s.setWarnBudgetLimitation);
+  const [dontShow, setDontShow] = useState(false);
+  const close = () => {
+    if (dontShow) setWarn(false);
+    onClose();
+  };
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Budget reached" className="fixed inset-0 z-50 grid place-items-center bg-black/60" onClick={close}>
+      <div onClick={(e) => e.stopPropagation()} className="w-lg rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl">
+        <h2 className="text-base font-semibold text-red-400">Budget reached</h2>
+        <p className="mt-3 text-sm text-neutral-300">
+          Cannot add this part because the budget is reached. If you want to add this part, increase the budget for this
+          part, disable the Budget Limitation or close the budget file.
+        </p>
+        <label className="mt-4 flex items-center gap-2 text-sm text-neutral-400">
+          <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
+          Don't show this message again
+        </label>
+        <div className="mt-4 flex justify-end">
+          <button autoFocus onClick={close} className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

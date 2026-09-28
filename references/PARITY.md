@@ -89,6 +89,7 @@ Web source root: this repository.
 ## Budget menu (`MainWindowMenus.cpp:563-570`)
 
 - [x] **Open Budget Editor...** — modeless `BudgetDialog`: New (also desktop's Close Budget, since the budget lives in the layout)/Open `.bbb`/Import and Merge (limits add up, `Budget::mergeWith`)/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Use Budget Limitation** (Map menu → Budget → Use Budget Limitation, per user, default off) — placing a part, and each brick of a paste or duplicate, is refused once over budget; a set counts its leaf parts (`canAddToBudget`, `MapView::budgetAllows`, `MapViewClipboard.cpp:84-95`). A refusal says "Budget reached: part not added" in the status bar and shows the Budget reached box with "Don't show this message again". Preferences → General: parts without a budget are Unlimited or Forbidden (`budget/defaultInfinite`), and the warning toggle.
 
 ---
 
