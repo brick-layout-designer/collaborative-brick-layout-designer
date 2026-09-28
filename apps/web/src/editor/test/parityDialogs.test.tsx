@@ -204,6 +204,17 @@ describe('FindDialog — modeless, live selection', () => {
     expect(useEditorStore.getState().selection).toEqual([]);
   });
 
+  it('a result clicked before the live selection fires keeps just that match selected (regression)', () => {
+    vi.useFakeTimers();
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001' } });
+    act(() => { vi.advanceTimersByTime(50); });
+    fireEvent.click(screen.getAllByRole('listitem')[0]!.querySelector('button')!);
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().selection).toEqual([bricksOf(doc, '3001.1')[0]]);
+  });
+
   it('selects matching text cells live, and a clicked text result selects just it (regression)', () => {
     vi.useFakeTimers();
     const doc = withText();

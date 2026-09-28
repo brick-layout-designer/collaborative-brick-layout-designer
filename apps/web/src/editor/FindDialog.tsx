@@ -7,7 +7,7 @@
 // scope rewrites the matched text inside part numbers (e.g. 3001.1 →
 // 3001.5), keeping each brick's position.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import type { BbmMap } from '@cld/model';
 import { useEditorStore } from './editorStore';
@@ -36,16 +36,21 @@ export function FindDialog({ map, doc, onClose }: Props) {
   // changes (desktop also re-runs on every undo-stack change). An empty
   // query deselects everything.
   const hitKey = hits.map((h) => h.brickId ?? `${h.layerId}#${h.textIndex}`).join('|');
+  const liveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const t = setTimeout(() => {
       const sel = hitsSelection(hits);
       setMixedSelection(sel.bricks, sel.anno);
     }, 200);
+    liveTimer.current = t;
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hitKey, setMixedSelection]);
 
   function selectHit(h: FindHit) {
+    // A click inside the debounce window must win over the pending
+    // select-all, or the clicked match is replaced by every match.
+    clearTimeout(liveTimer.current);
     const sel = hitsSelection([h]);
     setMixedSelection(sel.bricks, sel.anno);
   }
