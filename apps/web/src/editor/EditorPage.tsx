@@ -3416,8 +3416,9 @@ function MapMenu({
       {open && (
         <ul
           // Fixed, not absolute: the header row scrolls horizontally, which
-          // would clip an absolutely positioned dropdown.
-          className="fixed z-30 max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          // would clip an absolutely positioned dropdown. Above the modeless
+          // Find / Budget panels (z-40), below modal dialogs (z-50).
+          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
           style={anchor}
           onClick={() => setOpen(false)}
         >
@@ -3479,7 +3480,7 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="fixed z-30 min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
+          <ul className="fixed z-[45] min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (
