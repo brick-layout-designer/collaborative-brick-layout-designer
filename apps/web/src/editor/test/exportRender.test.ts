@@ -14,7 +14,7 @@ import {
   setLayerVisible,
   setVenue,
 } from '../mutations';
-import { aspectHeight, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE, renderMapToCanvas } from '../exportRender';
+import { aspectHeight, exportBackground, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE, renderMapToCanvas } from '../exportRender';
 
 describe('contentBoundsStuds', () => {
   it('is null for an empty map', () => {
@@ -170,5 +170,19 @@ describe('renderMapToCanvas output size and antialias', () => {
     expect(ctx.fillText).toHaveBeenCalledWith('a / b / c', 590, 590);
     expect(ctx.fillStyle).toBe('rgba(0,0,0,0.549)');
     expect(ctx.font).toBe(`${(10 * 96) / 72}px sans-serif`);
+  });
+});
+
+describe('exportBackground', () => {
+  it('paints the layout colour, including names outside the old 11-colour table', () => {
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'CornflowerBlue' } })).toBe('#6495ed');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Cornsilk' } })).toBe('#fff8dc');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'DarkOliveGreen' } })).toBe('#556b2f');
+  });
+
+  it('keeps the background alpha and resolves unknown names to black like desktop', () => {
+    expect(exportBackground({ backgroundColor: { kind: 'argb', argb: '806495ed' } })).toBe('rgba(100, 149, 237, 0.502)');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Control' } })).toBe('#000000');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Transparent' } })).toBe('rgba(0, 0, 0, 0)');
   });
 });
