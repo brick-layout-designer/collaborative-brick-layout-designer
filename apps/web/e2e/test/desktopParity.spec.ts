@@ -1029,3 +1029,54 @@ test.describe('fit to view', () => {
     expect(view.z).toBeCloseTo((view.w - 4) / 420, 2);
   });
 });
+
+test.describe('selection while snapping', () => {
+  test('the dragged brick\'s outline turns green while a connection snap is live', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    const tile = page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first();
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const bricks = async () => ((await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<Brick id=/g) ?? []).length;
+    // One straight, dragged 40 studs left, then a second at the view
+    // centre: their facing ends are 24 studs apart, too far to snap.
+    await tile.dblclick();
+    await expect.poll(bricks).toBe(1);
+    // Placing the first brick auto-fits the view; zoom out so the drags stay
+    // on the canvas (a drop outside it deletes), and work in studs.
+    const zoom = () =>
+      page.evaluate(() => (window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX());
+    await page.waitForTimeout(300);
+    for (let i = 0; i < 8; i++) await page.keyboard.press('Control+-');
+    await page.waitForTimeout(300);
+    const studPx = 8 * (await zoom());
+    expect(40 * studPx).toBeLessThan(box.width / 2 - 20);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx - 40 * studPx, cy, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.press('Escape');
+    await tile.dblclick();
+    await expect.poll(bricks).toBe(2);
+
+    const haloStrokes = () =>
+      page.evaluate(() => {
+        type Node = { getClassName: () => string; stroke: () => string; strokeWidth: () => number };
+        const K = (window as unknown as { Konva: { stages: { find: (s: (n: Node) => boolean) => Node[] }[] } }).Konva;
+        return K.stages
+          .flatMap((st) => st.find((n: Node) => n.getClassName() === 'Rect' && n.strokeWidth() === 2.5))
+          .map((r) => r.stroke());
+      });
+    // The new piece is selected; drag it left until its free end is half a
+    // stud from the other's.
+    await expect.poll(haloStrokes).toEqual(['#FFD700']);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx - 23.5 * studPx, cy, { steps: 16 });
+    await expect.poll(haloStrokes).toEqual(['rgb(80,255,120)']);
+    await page.mouse.up();
+    await expect.poll(haloStrokes).toEqual(['#FFD700']);
+  });
+});

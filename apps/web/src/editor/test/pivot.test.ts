@@ -216,3 +216,11 @@ describe('drawing order (G5)', () => {
     expect(drawOrder(inOrder)).toBe(inOrder);
   });
 });
+
+describe('selection halo (I10)', () => {
+  it('uses the tint, or desktop\'s green while a connection snap is live', async () => {
+    const { selectionHalo } = await import('../render/BrickLayer');
+    expect(selectionHalo('FFD700', false)).toEqual({ stroke: '#FFD700', fill: '#FFD7004D' });
+    expect(selectionHalo('FFD700', true)).toEqual({ stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' });
+  });
+});

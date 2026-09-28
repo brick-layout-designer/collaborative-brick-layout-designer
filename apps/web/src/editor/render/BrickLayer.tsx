@@ -77,6 +77,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
       showBrickHulls: s.showBrickHulls,
       showBrickElevation: s.showBrickElevation,
       selectionTint: s.selectionTint,
+      snapActive: s.liveSnap !== null,
     })),
   );
   const selectedIds = useMemo(() => new Set(selection), [selection]);
@@ -121,6 +122,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
                   selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
+                  snapActive={!isViewer && view.snapActive}
                   getMap={getMap}
                   partsByKey={partsByKey}
                   {...(onEditBrick ? { onEditBrick } : {})}
@@ -149,6 +151,7 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness,
   showElevation,
   selectionTint,
+  snapActive,
   getMap,
   partsByKey,
   onEditBrick,
@@ -167,6 +170,8 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness: number;
   showElevation: boolean;
   selectionTint: string;
+  /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
+  snapActive: boolean;
   getMap: () => BbmMap;
   partsByKey: Map<string, PartWire>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
@@ -698,10 +703,10 @@ const BrickGlyph = memo(function BrickGlyph({
             y={-spriteHpx / 2 - 1}
             width={spriteWpx + 2}
             height={spriteHpx + 2}
-            stroke={`#${selectionTint}`}
+            stroke={selectionHalo(selectionTint, snapActive).stroke}
             strokeWidth={2.5}
             strokeScaleEnabled={false}
-            fill={`#${selectionTint}4D`}
+            fill={selectionHalo(selectionTint, snapActive).fill}
             listening={false}
             perfectDrawEnabled={false}
           />
@@ -804,4 +809,14 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * Selection halo colours: the selection tint, or desktop's green while a
+ * connection snap is live (SelectionOverlay.cpp:26-29).
+ */
+export function selectionHalo(tint: string, snapActive: boolean): { stroke: string; fill: string } {
+  return snapActive
+    ? { stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' }
+    : { stroke: `#${tint}`, fill: `#${tint}4D` };
 }
