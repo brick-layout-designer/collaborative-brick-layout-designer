@@ -23,7 +23,7 @@ import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
-import { pivotOf } from '../brickGeometry';
+import { drawOrder, pivotOf } from '../brickGeometry';
 
 interface Props {
   map: BbmMap;
@@ -102,7 +102,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
         const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
           <Group key={layer.id} opacity={opacity}>
-            {layer.bricks.map((brick) => {
+            {drawOrder(layer.bricks).map((brick) => {
               const lower = brick.partNumber.toLowerCase();
               return (
                 <BrickGlyph

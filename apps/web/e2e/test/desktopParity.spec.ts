@@ -857,3 +857,24 @@ test.describe('unresolved parts', () => {
     expect(new Set(await placeholders())).toEqual(new Set(['rgb(200,80,80)|4,2|rgba(255,200,200,0.314)']));
   });
 });
+
+test.describe('brick stacking', () => {
+  test('a brick with a higher altitude is drawn above the rest of its layer', async ({ page }) => {
+    // The first brick in the file, lifted to altitude 5.
+    const bbm = FORDYCE_BBM.replace(/(<Brick id="5">[\s\S]*?<Altitude>)0(<\/Altitude>)/, '$15$2');
+    const id = await createLayout(page, bbm);
+    await openEditor(page, id);
+    const position = () =>
+      page.evaluate(() => {
+        type Node = { name: () => string; getParent: () => { getChildren: () => Node[] } };
+        const K = (window as unknown as { Konva: { stages: { findOne: (s: string) => Node | undefined }[] } }).Konva;
+        const g = K.stages.map((st) => st.findOne('.brick-5')).find(Boolean);
+        if (!g) return null;
+        const siblings = g.getParent().getChildren();
+        return { index: siblings.indexOf(g), last: siblings.length - 1 };
+      });
+    await expect.poll(async () => (await position())?.index).not.toBeUndefined();
+    const p = (await position())!;
+    expect(p.index).toBe(p.last);
+  });
+});

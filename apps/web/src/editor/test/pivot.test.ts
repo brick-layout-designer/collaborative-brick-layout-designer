@@ -206,3 +206,13 @@ describe('stale boxes are repaired in the doc', () => {
     expect(fixStaleAreasInDoc(doc, parts)).toBe(0);
   });
 });
+
+describe('drawing order (G5)', () => {
+  it('stacks by altitude, keeping array order among equal altitudes', async () => {
+    const { drawOrder } = await import('../brickGeometry');
+    const b = (id: string, altitude: number) => ({ id, altitude });
+    expect(drawOrder([b('a', 2), b('b', 0), b('c', 2), b('d', -1), b('e', 0)]).map((x) => x.id)).toEqual(['d', 'b', 'e', 'a', 'c']);
+    const inOrder = [b('a', 0), b('b', 0), b('c', 1)];
+    expect(drawOrder(inOrder)).toBe(inOrder);
+  });
+});
