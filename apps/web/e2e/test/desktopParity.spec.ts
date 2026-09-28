@@ -906,3 +906,39 @@ test.describe('grid cell indices', () => {
     await shot(page, 'grid-cell-index.png');
   });
 });
+
+test.describe('venue obstacles', () => {
+  test('an obstacle needs a venue outline first; with one, the tool says how to draw', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const footer = page.locator('footer');
+    const drawObstacle = async () => {
+      await page.getByRole('button', { name: 'Map', exact: true }).click();
+      await page.getByRole('button', { name: 'Venue → Draw Obstacle...' }).click();
+    };
+
+    let message = '';
+    page.once('dialog', (d) => {
+      message = d.message();
+      void d.accept();
+    });
+    await drawObstacle();
+    await expect.poll(() => message).toBe('Draw the venue outline first.');
+    await expect(footer).toContainText('Tool: select');
+
+    // Draw an outline, then the obstacle tool is allowed.
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Venue → Draw Outline...' }).click();
+    await expect(footer).toContainText('Click points to outline the venue.');
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    for (const [dx, dy] of [[-60, -60], [60, -60], [0, 60]] as const) {
+      await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy);
+    }
+    await page.keyboard.press('Enter');
+    await expect(footer).toContainText('Venue: OK');
+
+    await drawObstacle();
+    await expect(footer).toContainText('Click points to outline an obstacle.');
+    await expect(footer).toContainText('Tool: venueObstacle');
+  });
+});

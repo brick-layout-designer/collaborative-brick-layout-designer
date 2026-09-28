@@ -1315,6 +1315,24 @@ function Canvas({
   // select tool. Enter or right-click, like desktop
   // MapView::finishVenueDraw (MapView.cpp:891-925): fewer than 3 points
   // drops them, says so and stays in the tool; drawing enables the venue.
+  // Entering a venue drawing tool: an obstacle needs a venue outline
+  // first, and the status bar says how to draw (MainWindowMapMenu.cpp:160-212).
+  useEffect(() => {
+    if (tool !== 'venueOutline' && tool !== 'venueObstacle') return;
+    const st = useEditorStore.getState();
+    if (tool === 'venueObstacle' && !readSidecarFromDoc(doc)?.venue) {
+      st.setTool('select');
+      window.alert('Draw the venue outline first.');
+      return;
+    }
+    st.showStatusMessage(
+      tool === 'venueOutline'
+        ? 'Click points to outline the venue. Right-click / Enter to finish, Escape to cancel.'
+        : 'Click points to outline an obstacle. Right-click / Enter to finish, Escape to cancel.',
+      8000,
+    );
+  }, [tool, doc]);
+
   function finishVenueDraft() {
     if (isViewer) return;
     const kind = venueDraft?.kind ?? (tool === 'venueObstacle' ? 'obstacle' : 'outline');
