@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { eq, inArray } from 'drizzle-orm';
-import { parsePartXml, scanCatalog } from '@cld/parts-catalog';
+import { imageSize, parsePartXml, scanCatalog } from '@cld/parts-catalog';
 import type { PartMetadata } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
@@ -86,6 +86,8 @@ interface PartWire {
   customPartId: string | null;
   /** Earlier part numbers that resolve to this part (<OldNameList>); omitted when none. */
   oldNames?: string[];
+  /** Sprite size in pixels, for the BlueBrick footprint; omitted when unreadable. */
+  spriteSize?: { w: number; h: number };
 }
 
 let bundledCache: { etag: string; wire: PartWire[] } | null = null;
@@ -198,6 +200,8 @@ interface ParsedCustomXml {
   connections: ConnectionPointWire[];
   pxPerStud: number;
   kind: 'leaf' | 'group';
+  hullPts: { x: number; y: number }[];
+  spriteSize?: { w: number; h: number };
 }
 
 /**
@@ -220,14 +224,16 @@ async function parsedCustomXml(rows: CustomCatalogRow[]): Promise<Map<string, Pa
   for (let i = 0; i < misses.length; i += 200) {
     const batch = misses.slice(i, i + 200);
     const blobs = await db
-      .select({ id: schema.customParts.id, xmlBlob: schema.customParts.xmlBlob })
+      .select({ id: schema.customParts.id, xmlBlob: schema.customParts.xmlBlob, spriteBlob: schema.customParts.spriteBlob })
       .from(schema.customParts)
       .where(inArray(schema.customParts.id, batch.map((r) => r.id)));
-    const byId = new Map(blobs.map((b) => [b.id, b.xmlBlob as Uint8Array]));
+    const byId = new Map(blobs.map((b) => [b.id, b]));
     for (const r of batch) {
-      const blob = byId.get(r.id);
-      if (!blob) continue;
-      const parsed = parseCustomXml(r.partNumber, blob);
+      const row = byId.get(r.id);
+      if (!row) continue;
+      const parsed = parseCustomXml(r.partNumber, row.xmlBlob as Uint8Array);
+      const size = imageSize(row.spriteBlob as Uint8Array);
+      if (size) parsed.spriteSize = size;
       out.set(r.id, parsed);
       parsedCustomCache.delete(r.id);
       parsedCustomCache.set(r.id, { updatedAt: r.updatedAt.getTime(), parsed });
@@ -319,6 +325,7 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
     })),
     hullPts: p.hullPts,
     ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
+    ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
     source: 'bundled',
     customPartId: null,
   };
@@ -348,6 +355,7 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
   let connections: ConnectionPointWire[] = [];
   let pxPerStud = 8;
   let kind: 'leaf' | 'group' = 'leaf';
+  let hullPts: { x: number; y: number }[] = [];
   try {
     const xml = Buffer.from(xmlBlob).toString('utf8');
     const parsed = parsePartXml(xml, {
@@ -365,14 +373,20 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
     }));
     pxPerStud = parsed.pxPerStud;
     kind = parsed.kind;
+    hullPts = parsed.hullPts;
   } catch {
     /* malformed — fall back to defaults; the part still renders as a sprite */
   }
-  return { connections, pxPerStud, kind };
+  return { connections, pxPerStud, kind, hullPts };
 }
 
 function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefined): PartWire {
-  const { connections, pxPerStud, kind } = parsed ?? { connections: [], pxPerStud: 8, kind: 'leaf' as const };
+  const { connections, pxPerStud, kind, hullPts, spriteSize } = parsed ?? {
+    connections: [],
+    pxPerStud: 8,
+    kind: 'leaf' as const,
+    hullPts: [],
+  };
   // The "key" namespace is `custom:<id>` so it can never collide with
   // a bundled part's `<partNumber>.<colorCode>` slug.
   return {
@@ -394,7 +408,8 @@ function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefine
     // Custom parts don't currently expose subparts (the upload is a
     // single XML + sprite). Leave empty so the type matches.
     subparts: [],
-    hullPts: [],
+    hullPts,
+    ...(spriteSize ? { spriteSize } : {}),
     source: 'custom',
     customPartId: p.id,
   };
