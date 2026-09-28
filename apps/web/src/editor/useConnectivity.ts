@@ -41,38 +41,7 @@ export const CONNECTIVITY_ORIGIN = Symbol('cld-connectivity-origin');
 
 export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined): void {
   const partIndex = useMemo(() => indexParts(parts), [parts]);
-  // Build a Catalog from the wire shape. The recompute only reads
-  // `connections` and `partNumber`/`key` — we leave the other fields
-  // empty since the algorithm doesn't touch them.
-  const catalog: Catalog = useMemo(() => {
-    const m: Catalog = new Map();
-    for (const p of parts ?? []) {
-      const meta: PartMetadata = {
-        key: p.key,
-        partNumber: p.partNumber,
-        colorCode: p.colorCode,
-        kind: p.kind,
-        descriptions: {},
-        author: '',
-        sortingKey: p.sortingKey,
-        spritePath: p.spritePath,
-        pxPerStud: p.pxPerStud,
-        connections: p.connections.map((c) => ({
-          type: c.type,
-          x: c.x,
-          y: c.y,
-          angle: c.angle,
-          electricPlug: c.electricPlug,
-        })),
-        subparts: [],
-        canUngroup: true,
-        hullPts: p.hullPts ?? [],
-        ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
-      };
-      m.set(p.key, meta);
-    }
-    return m;
-  }, [parts]);
+  const catalog: Catalog = useMemo(() => catalogFromParts(parts), [parts]);
 
   useEffect(() => {
     if (!doc) return;
@@ -141,7 +110,8 @@ export function recomputeConnectivity(doc: Y.Doc, catalog: Catalog): void {
 }
 
 /**
- * Mirror updated `connexions[].linkedTo` back into the Yjs structure.
+ * Mirror updated `connexions[].linkedTo` and `activeConnectionPointIndex`
+ * back into the Yjs structure.
  * Only writes when the value actually changed. Bricks are resolved via a
  * per-layer id index built once (a linear scan per brick was O(n^2):
  * ~8 s at 5k bricks).
@@ -162,12 +132,17 @@ function writeBackConnexions(doc: Y.Doc, map: import('@cld/model').BbmMap): void
     for (const brick of layer.bricks) {
       const yBrick = byId.get(brick.id);
       if (!yBrick) continue;
+      // The active connection moves when a link is made or broken
+      // (BlueBrick's hand-over, rebuildConnectivity).
+      if ((yBrick.get('activeConnectionPointIndex') ?? 0) !== brick.activeConnectionPointIndex) {
+        yBrick.set('activeConnectionPointIndex', brick.activeConnectionPointIndex);
+      }
       const current = (yBrick.get('connexions') ?? []) as { id: string; linkedTo: string }[];
       const next = brick.connexions;
-      // Cheap deep-equal: same length AND same linkedTo strings.
+      // Cheap deep-equal: same length, ids AND linkedTo strings.
       if (
         current.length === next.length &&
-        current.every((c, i) => c.linkedTo === next[i]?.linkedTo)
+        current.every((c, i) => c.id === next[i]?.id && c.linkedTo === next[i]?.linkedTo)
       ) {
         continue;
       }
@@ -203,4 +178,42 @@ export function fixStaleAreasInDoc(doc: Y.Doc, partIndex: ReadonlyMap<string, Pa
     }, CONNECTIVITY_ORIGIN);
   }
   return fixes.length;
+}
+
+/**
+ * The catalog shape `rebuildConnectivity` reads, from the wire parts:
+ * connections, pivot geometry (sprite size, hull) and old names. Other
+ * fields are left empty since the algorithm doesn't touch them.
+ */
+export function catalogFromParts(parts: readonly PartWire[] | undefined): Catalog {
+  const m: Catalog = new Map();
+  for (const p of parts ?? []) {
+    const meta: PartMetadata = {
+      key: p.key,
+      partNumber: p.partNumber,
+      colorCode: p.colorCode,
+      kind: p.kind,
+      descriptions: {},
+      author: '',
+      sortingKey: p.sortingKey,
+      spritePath: p.spritePath,
+      pxPerStud: p.pxPerStud,
+      connections: p.connections.map((c) => ({
+        type: c.type,
+        x: c.x,
+        y: c.y,
+        angle: c.angle,
+        electricPlug: c.electricPlug,
+        // Where the active connection moves after a link (onLinked).
+        ...(c.nextConnexionPreference !== undefined ? { nextConnexionPreference: c.nextConnexionPreference } : {}),
+      })),
+      subparts: [],
+      canUngroup: true,
+      hullPts: p.hullPts ?? [],
+      ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
+      ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
+    };
+    m.set(p.key, meta);
+  }
+  return m;
 }
