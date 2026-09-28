@@ -110,6 +110,7 @@ import '../konvaSetup';
 import { actualPartNumber, indexParts } from './partIndex';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { fitView } from './viewFit';
+import { PartListDialog } from './PartListDialog';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -186,6 +187,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showVenueProps, setShowVenueProps] = useState(false);
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
+  const [showPartList, setShowPartList] = useState(false);
   const [showVenueSaveLibrary, setShowVenueSaveLibrary] = useState(false);
 
   // Imperative handle so the PartsPanel can trigger click-to-place
@@ -444,10 +446,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onBackgroundImage={() => setShowBackgroundImage(true)}
               onFind={() => setShowFind(true)}
               onExportImage={onExportImage}
-              onExportCsv={() => {
-                if (!doc) return;
-                if (docMap) exportPartListCsv(docMap);
-              }}
+              onExportCsv={() => setShowPartList(true)}
               onSaveModule={() => setShowSaveModule(true)}
               onImportBbm={() => setShowImportBbm(true)}
               onCreateModule={() => createModuleFromSelection(doc)}
@@ -717,6 +716,15 @@ function Editor({ layoutId }: { layoutId: string }) {
         <VenueDimensionsDialog
           doc={doc}
           onClose={() => setShowVenueDimensions(false)}
+        />
+      )}
+      {showPartList && docMap && (
+        <PartListDialog
+          map={docMap}
+          parts={partIndex}
+          limits={budgetLimits}
+          layoutTitle={meta.data?.layout.title ?? 'parts'}
+          onClose={() => setShowPartList(false)}
         />
       )}
       {showBudget && (
@@ -2734,37 +2742,6 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
 }
 
 /**
- * Export the part list of a map as a CSV file (download). Port of
- * MainWindowFileIO.cpp:253-293. Aggregates brick counts by part number.
- */
-function exportPartListCsv(map: import('@cld/model').BbmMap): void {
-  const counts = new Map<string, { description: string; count: number }>();
-  for (const layer of map.layers) {
-    if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      const key = b.partNumber;
-      const existing = counts.get(key);
-      if (existing) {
-        existing.count++;
-      } else {
-        counts.set(key, { description: b.partNumber, count: 1 });
-      }
-    }
-  }
-  const rows = ['Part Number,Count'];
-  for (const [key, { count }] of [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    rows.push(`${JSON.stringify(key)},${count}`);
-  }
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'parts.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/**
  * Selection-aware right-click context menu — port of
  * MapViewContextMenu.cpp:39-244. Implemented as a fixed-position DOM
  * overlay (not a Konva layer) so it can hold interactive HTML elements
@@ -3431,7 +3408,7 @@ function MapMenu({
     { label: '—', action: () => {} },
     { label: 'Download .bbm', action: onDownloadBbm },
     { label: 'Export as Image...', action: onExportImage },
-    { label: 'Export Part List (CSV)...', action: onExportCsv },
+    { label: 'Export Part List...', action: onExportCsv },
     { label: '—', action: () => {} },
     { label: 'Zoom In  Ctrl+=', action: onZoomIn },
     { label: 'Zoom Out  Ctrl+-', action: onZoomOut },

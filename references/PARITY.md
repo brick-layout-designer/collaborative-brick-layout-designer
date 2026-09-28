@@ -69,7 +69,7 @@ Web source root: this repository.
 - [n/a] **Import → LDraw (.ldr/.dat/.mpd)...** — not planned for web
 - [n/a] **Import → Studio (.io)...** — not planned for web
 - [n/a] **Import → LDD (.lxf/.lxfml)...** — not planned for web
-- [x] **Export Part List (CSV)...** — aggregated counts by part number, CSV download (`MainWindowFileIO.cpp:253-293`)
+- [x] **Export Part List...** — like `MainWindow::onExportPartList` and `PartList.cpp`, in vanilla BlueBrick's PartUsageView layouts: HTML with each part's picture (160 px PNG), text or CSV; columns Part, In Use, Color (LDraw names from `ColorTable.xml`), Description, Budgeted, Missing, Part Usage % with a total row; one table or one per layer, hidden layers in or out (remembered per user) (`partList.ts`, `PartListDialog.tsx`).
 - [n/a] **Download Additional Parts...** — superseded by server-side part library manager (admin installs zip from URL; org admins enable/disable per org)
 
 ---
