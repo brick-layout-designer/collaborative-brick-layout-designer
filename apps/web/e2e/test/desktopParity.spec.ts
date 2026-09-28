@@ -970,3 +970,34 @@ test.describe('venue obstacles', () => {
     await expect(footer).toContainText('Tool: venueObstacle');
   });
 });
+
+test.describe('drawing a ruler', () => {
+  test('the preview reads studs and mm, and the ruler lands with desktop defaults on a Rulers layer', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByRole('button', { name: 'Ruler ─' }).click();
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const x0 = box.x + 200;
+    const y0 = box.y + 200;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    // 160 px at zoom 1 = 20 studs.
+    await page.mouse.move(x0 + 160, y0, { steps: 8 });
+    const previewText = () =>
+      page.evaluate(() => {
+        type Node = { text: () => string };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('Text')).map((t) => t.text()).filter((t) => t.includes('studs ('));
+      });
+    await expect.poll(previewText).toContain('20.0 studs (160 mm)');
+    await page.mouse.up();
+
+    const xml = async () => (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    await expect.poll(async () => /<LinearRuler/.test(await xml())).toBe(true);
+    const x = await xml();
+    expect(x).toMatch(/<Layer type="ruler" id="[^"]+">\s*<Name>Rulers<\/Name>/);
+    const ruler = x.slice(x.indexOf('<LinearRuler'), x.indexOf('</LinearRuler>'));
+    expect(ruler).toMatch(/<LineThickness>1<\/LineThickness>/);
+    expect(ruler).toMatch(/<Color>\s*<IsKnownColor>true<\/IsKnownColor>\s*<Name>Black<\/Name>/);
+  });
+});

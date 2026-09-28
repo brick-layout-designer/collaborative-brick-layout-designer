@@ -65,6 +65,7 @@ import {
   ensureRulerLayer,
   ensureTextLayer,
   newTextBox,
+  rulerPreviewLabel,
   allVisibleBrickIds,
   bricksByLayer,
   deleteBricksAcrossLayers,
@@ -3117,7 +3118,7 @@ function RulerDraftPreview({
   const by = draft.curY * PX;
   if (draft.kind === 'linear') {
     const lenStuds = Math.hypot(draft.curX - draft.startX, draft.curY - draft.startY);
-    const labelText = `${lenStuds.toFixed(1)} studs`;
+    const labelText = rulerPreviewLabel(lenStuds, false);
     return (
       <Group>
         <Line
@@ -3146,7 +3147,7 @@ function RulerDraftPreview({
   // Circular
   const rStuds = Math.hypot(draft.curX - draft.startX, draft.curY - draft.startY);
   const rPx = rStuds * PX;
-  const labelText = `r = ${rStuds.toFixed(1)} studs`;
+  const labelText = rulerPreviewLabel(rStuds, true);
   return (
     <Group>
       <Circle

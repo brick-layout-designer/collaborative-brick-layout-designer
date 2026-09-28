@@ -353,6 +353,8 @@ Selection-aware; entries vary based on what's under the cursor:
 
 **Rulers** (`RulerCommands.cpp`): AddRulerItemCommand [x] (linear + circular via `addLinearRuler`/`addCircularRuler`), DeleteRulerItemCommand [x] (`deleteRulerItem`), MoveRulerItemCommand [x] (`moveRulerItem`), MoveRulerEndpointCommand [x] (`moveRulerEndpoint`), AttachRulerCommand [x] (`attachRulerEndpoint`), EditRulerItemCommand [x] (`editRulerItem`)
 
+New rulers take desktop's defaults (known Black line, guideline and text, 1-thick solid lines, Microsoft Sans Serif 8.25) on the first ruler layer, or a new "Rulers" layer; the drawing preview reads "N studs (mm / m)", with "r=" for circles (`RulerItem.h:22-31`, `MapView.cpp:818-829, 941-946`).
+
 **Areas** (`AreaCommands.cpp`): PaintAreaCellsCommand [x]
 
 **Modules** (`ModuleCommands.cpp`): CreateModuleCommand [x] (`createSidecarModule`), DeleteModuleCommand [x] (`deleteSidecarModule`), MoveModuleCommand [x] (`moveModuleBricks`), RotateModuleCommand [x] (`rotateModuleBricks`), RenameModuleCommand [x] (`renameSidecarModule`), CloneModuleCommand [x] (`cloneModuleBricks`), FlattenModuleCommand [x] (`flattenSidecarModule`), RescanModuleCommand [x] (`rescanModuleFromBricks`), ImportBbmAsModuleCommand [x] (`importBricksAsModule`)
