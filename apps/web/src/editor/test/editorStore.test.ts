@@ -35,7 +35,6 @@ function resetStore() {
     wheelZoomFactor: 1,
     selectionTint: 'FFD700',
     showModuleNames: false,
-    showModuleFrames: false,
     moduleFrameThickness: 2,
     showElectricCircuits: false,
     showExportWatermark: false,
@@ -194,9 +193,12 @@ describe('editorStore — appearance toggles', () => {
     expect(useEditorStore.getState().wheelZoomFactor).toBe(10);
   });
 
-  it('setModuleFrameThickness clamps to [1, 20]', () => {
+  it('setModuleFrameThickness clamps to [0.5, 20] in half-pixel steps (PreferencesDialog.cpp:200-207)', () => {
     useEditorStore.getState().setModuleFrameThickness(0);
-    expect(useEditorStore.getState().moduleFrameThickness).toBe(1);
+    expect(useEditorStore.getState().moduleFrameThickness).toBe(0.5);
+
+    useEditorStore.getState().setModuleFrameThickness(2.7);
+    expect(useEditorStore.getState().moduleFrameThickness).toBe(2.5);
 
     useEditorStore.getState().setModuleFrameThickness(100);
     expect(useEditorStore.getState().moduleFrameThickness).toBe(20);

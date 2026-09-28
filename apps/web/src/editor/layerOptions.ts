@@ -46,6 +46,11 @@ export function colorSpecToCss(c: ColorSpec, fallback = '#404040'): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${+(a / 255).toFixed(3)})`;
 }
 
+/** `aarrggbb` (lowercase) for a colour, alpha included — what ColorAlphaInput edits. */
+export function colorSpecToArgb(c: ColorSpec, fallback = '#000000'): string {
+  return colorSpecAlpha(c).toString(16).padStart(2, '0') + colorSpecToHex(c, fallback).slice(1);
+}
+
 /** New ARGB spec with `hex`'s RGB, keeping the original colour's alpha. */
 export function withRgb(original: ColorSpec, hex: string): ColorSpec {
   const a = colorSpecAlpha(original).toString(16).padStart(2, '0');
@@ -63,9 +68,9 @@ export interface GridOptions {
   displayGrid: boolean;
   displaySubGrid: boolean;
   displayCellIndex: boolean;
-  gridHex: string;
-  subGridHex: string;
-  cellIndexHex: string;
+  gridArgb: string;
+  subGridArgb: string;
+  cellIndexArgb: string;
 }
 
 export interface LayerOptionsForm {
@@ -74,7 +79,7 @@ export interface LayerOptionsForm {
   transparency: number;
   visible: boolean;
   hullVisible: boolean;
-  hullHex: string;
+  hullArgb: string;
   hullThickness: number;
   /** Brick layers only. */
   displayBrickElevation?: boolean;
@@ -90,7 +95,7 @@ export function formFromLayer(layer: Layer): LayerOptionsForm {
     transparency: layer.transparency,
     visible: layer.visible,
     hullVisible: layer.hullProperties.isVisible,
-    hullHex: colorSpecToHex(layer.hullProperties.hullColor),
+    hullArgb: colorSpecToArgb(layer.hullProperties.hullColor),
     hullThickness: layer.hullProperties.hullThickness,
   };
   if (layer.type === 'brick') form.displayBrickElevation = layer.displayBrickElevation;
@@ -103,9 +108,9 @@ export function formFromLayer(layer: Layer): LayerOptionsForm {
       displayGrid: layer.displayGrid,
       displaySubGrid: layer.displaySubGrid,
       displayCellIndex: layer.displayCellIndex,
-      gridHex: colorSpecToHex(layer.gridColor),
-      subGridHex: colorSpecToHex(layer.subGridColor),
-      cellIndexHex: colorSpecToHex(layer.cellIndexColor),
+      gridArgb: colorSpecToArgb(layer.gridColor),
+      subGridArgb: colorSpecToArgb(layer.subGridColor),
+      cellIndexArgb: colorSpecToArgb(layer.cellIndexColor),
     };
   }
   return form;
@@ -130,11 +135,11 @@ export function layerOptionsPatch(layer: Layer, form: LayerOptionsForm): Record<
   if (transparency !== cur.transparency) patch.transparency = transparency;
   if (form.visible !== cur.visible) patch.visible = form.visible;
   const hullThickness = clampInt(form.hullThickness, 1, 20, cur.hullThickness);
-  if (form.hullVisible !== cur.hullVisible || form.hullHex !== cur.hullHex || hullThickness !== cur.hullThickness) {
+  if (form.hullVisible !== cur.hullVisible || form.hullArgb !== cur.hullArgb || hullThickness !== cur.hullThickness) {
     patch.hullProperties = {
       isVisible: form.hullVisible,
-      hullColor: form.hullHex !== cur.hullHex
-        ? withRgb(layer.hullProperties.hullColor, form.hullHex)
+      hullColor: form.hullArgb !== cur.hullArgb
+        ? { kind: 'argb', argb: form.hullArgb }
         : layer.hullProperties.hullColor,
       hullThickness,
     };
@@ -159,9 +164,11 @@ export function layerOptionsPatch(layer: Layer, form: LayerOptionsForm): Record<
     if (g.displayGrid !== c.displayGrid) patch.displayGrid = g.displayGrid;
     if (g.displaySubGrid !== c.displaySubGrid) patch.displaySubGrid = g.displaySubGrid;
     if (g.displayCellIndex !== c.displayCellIndex) patch.displayCellIndex = g.displayCellIndex;
-    if (g.gridHex !== c.gridHex) patch.gridColor = withRgb(layer.gridColor, g.gridHex);
-    if (g.subGridHex !== c.subGridHex) patch.subGridColor = withRgb(layer.subGridColor, g.subGridHex);
-    if (g.cellIndexHex !== c.cellIndexHex) patch.cellIndexColor = withRgb(layer.cellIndexColor, g.cellIndexHex);
+    // Colours are edited with alpha (desktop's colour buttons use
+    // QColorDialog::ShowAlphaChannel, EditDialogs.cpp:68).
+    if (g.gridArgb !== c.gridArgb) patch.gridColor = { kind: 'argb', argb: g.gridArgb };
+    if (g.subGridArgb !== c.subGridArgb) patch.subGridColor = { kind: 'argb', argb: g.subGridArgb };
+    if (g.cellIndexArgb !== c.cellIndexArgb) patch.cellIndexColor = { kind: 'argb', argb: g.cellIndexArgb };
   }
   return patch;
 }

@@ -43,6 +43,8 @@ Web source root: this repository.
 - [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / colour / rotation. The menu entry places the text at the view centre (`MapView::addTextAtViewCenter`); `Ctrl+T` places it at the cursor.
 - [x] **Insert → Anchored Label...** (`Ctrl+L`) — `AddAnchoredLabelDialog`: text, font, size, bold/italic, colour, World/Brick anchor, offset, rotation, minZoom; mutations via sidecar cache patch (`addAnchoredLabel` / `editAnchoredLabel` / `deleteAnchoredLabel` in `mutations.ts`). A new World label is placed at the viewport centre; a Brick label defaults to offset (2, −2) (`MainWindowMenus.cpp:447-457`). Editing keeps a known colour (e.g. desktop "Black") unless a new colour is picked.
 - [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint colour), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
+- [x] **Desktop defaults** — snap off, paint colour opaque #008000, Connection Points off (a selected brick still shows its free connections, `SceneBuilder.cpp:250-310`), one Module Names toggle for names and frames, on by default, frame thickness 5 px in 0.5 steps from 0.5 to 20 (`PreferencesDialog.cpp:137,152,200-207`, `SceneBuilderSidecar.cpp:233-236`).
+- [x] **Colours with alpha** — paint colour, text, ruler (line, measure, guideline), hull and grid colours all edit alpha as desktop's QColorDialog::ShowAlphaChannel (`ColorAlphaInput.tsx`); an untouched named colour is kept as named.
 
 ---
 

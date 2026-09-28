@@ -30,11 +30,11 @@ export function moduleLabelFontPx(frameWpx: number, frameHpx: number, percent: n
 
 export function ModuleOverlay({ map, modules }: Props) {
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const frameThickness = useEditorStore((s) => s.moduleFrameThickness);
   const labelPercent = useEditorStore((s) => s.moduleLabelPercent);
 
-  if ((!showModuleNames && !showModuleFrames) || modules.length === 0) return null;
+  // Names and frames share one toggle, like desktop view/moduleNames.
+  if (!showModuleNames || modules.length === 0) return null;
 
   // Index brick positions by id.
   const brickById = new Map<string, { x: number; y: number; w: number; h: number }>();
@@ -81,7 +81,7 @@ export function ModuleOverlay({ map, modules }: Props) {
 
         return (
           <Group key={mod.id}>
-            {showModuleFrames && (
+            {(
               <Rect
                 x={px - PAD}
                 y={py - PAD}
@@ -95,7 +95,7 @@ export function ModuleOverlay({ map, modules }: Props) {
                 perfectDrawEnabled={false}
               />
             )}
-            {showModuleNames && (
+            {(
               <Text
                 {...(portrait
                   ? { x: px - PAD - GAP - fontPx, y: py + ph + PAD, rotation: -90 }

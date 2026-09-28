@@ -106,6 +106,7 @@ import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from '
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 import { actualPartNumber, indexParts } from './partIndex';
+import { ColorAlphaInput } from './ColorAlphaInput';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -3397,9 +3398,7 @@ function MapMenu({
   const setShowRulerAttachPoints = useEditorStore((s) => s.setShowRulerAttachPoints);
   const setAlwaysShowConnections = useEditorStore((s) => s.setAlwaysShowConnections);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
-  const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
 
   const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
   const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
@@ -3444,7 +3443,6 @@ function MapMenu({
     { label: 'Show Ruler Attach Points', action: () => setShowRulerAttachPoints(!showRulerAttachPoints), checked: showRulerAttachPoints },
     { label: 'Always Show Connections', action: () => setAlwaysShowConnections(!alwaysShowConnections), checked: alwaysShowConnections },
     { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
-    { label: 'Show Module Frames', action: () => setShowModuleFrames(!showModuleFrames), checked: showModuleFrames },
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
     { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
@@ -3557,29 +3555,17 @@ function PanelsMenu({
 
 /**
  * Paint colour swatch — port of desktop's MainWindow toolbar colour
- * button (MainWindow.cpp:578-845, "Paint colour" entry). Shows a
- * coloured square; clicking it pops up a native colour input. Stored
- * value is AARRGGBB hex; the input emits #RRGGBB so we keep the
- * existing alpha when changing.
+ * button (MainWindow.cpp:578-845, "Paint colour" entry): a colour swatch
+ * and an alpha slider. Stored value is AARRGGBB hex.
  */
 function PaintColorPicker() {
   const value = useEditorStore((s) => s.paintColor);
   const set = useEditorStore((s) => s.setPaintColor);
-  // Strip alpha for the <input type=color> (which only handles RGB).
-  const aa = value.slice(0, 2);
-  const rgb = '#' + value.slice(2);
+  // Colour and alpha, like desktop's paint colour dialog (R6).
   return (
     <label className="flex items-center gap-1 text-xs text-neutral-400" title="Paint colour">
       <span>Colour</span>
-      <input
-        type="color"
-        value={rgb}
-        onChange={(e) => {
-          const v = e.target.value.replace(/^#/, '').toUpperCase();
-          set(`${aa}${v}`);
-        }}
-        className="h-6 w-8 cursor-pointer rounded-sm border border-neutral-700 bg-transparent"
-      />
+      <ColorAlphaInput compact label="Paint colour" value={value} onChange={(v) => set(v.toUpperCase())} />
     </label>
   );
 }

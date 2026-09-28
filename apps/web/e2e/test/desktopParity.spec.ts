@@ -794,8 +794,41 @@ test.describe('placing a set', () => {
     const sidecar = async () =>
       (await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as { modules?: { name: string; members: string[] }[] };
     await expect.poll(async () => (await sidecar()).modules?.map((m) => [m.name, m.members.length])).toEqual([['Rail yard on the right', 12]]);
+    // Module names (and frames) are on by default, like desktop view/moduleNames.
+    const moduleLabels = () =>
+      page.evaluate(() => {
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => { text: () => string }[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('Text')).map((t) => t.text()).filter((t) => t === 'Rail yard on the right').length;
+      });
+    await expect.poll(moduleLabels).toBeGreaterThan(0);
     // Set files carry positions only; the pieces are linked on placement.
     const links = async () => ((await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<LinkedTo>[^<]+<\/LinkedTo>/g) ?? []).length;
     await expect.poll(links).toBeGreaterThanOrEqual(22);
+  });
+});
+
+test.describe('connection points', () => {
+  test('free connection dots show only on the selected brick by default', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const dots = () =>
+      page.evaluate(() => {
+        type Node = { getClassName: () => string; isVisible: () => boolean; getParent: () => { name: () => string } | null };
+        const K = (window as unknown as { Konva: { stages: { find: (s: (n: Node) => boolean) => Node[] }[] } }).Konva;
+        return K.stages
+          .flatMap((st) => st.find((n: Node) => n.getClassName() === 'Circle'))
+          .filter((c) => c.isVisible() && (c.getParent()?.name() ?? '').startsWith('brick-')).length;
+      });
+
+    // A placed piece is selected: its two free ends show.
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    await page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first().click();
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    await expect.poll(dots).toBe(2);
+
+    // Deselected: none, since Connection Points is off by default.
+    await page.locator('.konvajs-content').first().click({ position: { x: 20, y: 20 } });
+    await expect(page.locator('footer')).not.toContainText('selected: 1');
+    await expect.poll(dots).toBe(0);
   });
 });

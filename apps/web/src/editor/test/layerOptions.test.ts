@@ -88,7 +88,7 @@ describe('layerOptionsPatch', () => {
     const patch = layerOptionsPatch(layer, {
       ...f,
       transparency: 50,
-      grid: { ...f.grid!, gridSizeInStud: 96, gridThickness: 3, subDivisionNumber: 1, displaySubGrid: false, displayCellIndex: true, gridHex: '#ff0000' },
+      grid: { ...f.grid!, gridSizeInStud: 96, gridThickness: 3, subDivisionNumber: 1, displaySubGrid: false, displayCellIndex: true, gridArgb: '80ff0000' },
     });
     applyLayerOptions(doc, id, patch);
     const g = layerById<LayerGrid>(doc, id);

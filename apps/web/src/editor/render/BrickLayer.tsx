@@ -632,13 +632,14 @@ const BrickGlyph = memo(function BrickGlyph({
         />
       )}
       {/*
-        Connection-point dots — port of SceneBuilder.cpp:238-289.
-        Always shown for free (unlinked) CPs; brightness varies by
-        selection state. Linked CPs render nothing — connectivity rebuild
+        Connection-point dots — port of SceneBuilder.cpp:238-310.
+        Free (unlinked) CPs of a selected brick, or of every brick when
+        Always Show Connections or the Connection Points view toggle is on
+        (both off by default); brightness varies by selection state. Linked CPs render nothing — connectivity rebuild
         (Connectivity.cpp) links coincident CPs, preventing stacked dots
         at shared edges. The active CP gets bigger + gold when selected.
       */}
-      {showConnectionPoints && meta && meta.connections.map((cp, ci) => {
+      {(showConnectionPoints || isSelected || alwaysShowConnections) && meta && meta.connections.map((cp, ci) => {
         // Skip non-numeric "type" values (custom non-snap joints) — same
         // gate desktop applies at SceneBuilder.cpp:262-267.
         if (!cp.type || !/^\d+$/.test(cp.type)) return null;

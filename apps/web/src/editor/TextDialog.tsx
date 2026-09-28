@@ -7,6 +7,8 @@
 
 import { useState } from 'react';
 import type { TextCell } from '@cld/model';
+import { ColorAlphaInput } from './ColorAlphaInput';
+import { colorSpecToArgb } from './layerOptions';
 
 export interface TextDialogResult {
   text: string;
@@ -35,13 +37,11 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
   const styleStr = (initial?.font.style ?? '').toLowerCase();
   const [isBold, setIsBold] = useState(styleStr.includes('bold'));
   const [isItalic, setIsItalic] = useState(styleStr.includes('italic'));
-  // Initial colour: if known-color, fall back to black; else use the argb hex.
-  const initArgb = initial?.fontColor.kind === 'argb' ? initial.fontColor.argb : 'FF000000';
+  // Initial colour with alpha; a known colour (e.g. "Red") resolves to its value.
+  const initArgb = initial ? colorSpecToArgb(initial.fontColor) : 'FF000000';
   const [colorArgb, setColorArgb] = useState(initArgb.toUpperCase());
   const [rotation, setRotation] = useState(initial?.orientation ?? 0);
 
-  const rgb = `#${colorArgb.slice(2)}`;
-  const aa = colorArgb.slice(0, 2);
 
   return (
     <div
@@ -102,15 +102,7 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
             </label>
           </div>
           <label className="self-center">Colour:</label>
-          <input
-            type="color"
-            value={rgb}
-            onChange={(e) => {
-              const v = e.target.value.replace(/^#/, '').toUpperCase();
-              setColorArgb(`${aa}${v}`);
-            }}
-            className="h-8 w-16 rounded-sm border border-neutral-700 bg-transparent"
-          />
+          <ColorAlphaInput label="Text colour" value={colorArgb} onChange={(v) => setColorArgb(v.toUpperCase())} />
           <label className="self-center">Rotation (°):</label>
           <input
             type="number"

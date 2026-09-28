@@ -19,6 +19,8 @@ import type {
   RulerItem,
 } from '@cld/model';
 import { attachRulerEndpoint, editRulerItem } from './mutations';
+import { ColorAlphaInput } from './ColorAlphaInput';
+import { colorSpecToArgb } from './layerOptions';
 
 interface Props {
   item: RulerItem;
@@ -37,12 +39,12 @@ const UNITS = [
 ];
 
 export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
-  const [color, setColor] = useState<string>(colorToHex(item.color));
+  const [color, setColor] = useState<string>(colorSpecToArgb(item.color));
   const [lineThickness, setLineThickness] = useState(item.lineThickness);
   const [displayDistance, setDisplayDistance] = useState(item.displayDistance);
   const [displayUnit, setDisplayUnit] = useState(item.displayUnit);
   const [unit, setUnit] = useState(item.unit);
-  const [guidelineColor, setGuidelineColor] = useState<string>(colorToHex(item.guidelineColor));
+  const [guidelineColor, setGuidelineColor] = useState<string>(colorSpecToArgb(item.guidelineColor));
   const [guidelineThickness, setGuidelineThickness] = useState(item.guidelineThickness);
   const [dashCsv, setDashCsv] = useState(item.guidelineDashPattern.join(', '));
   const [fontFamily, setFontFamily] = useState(item.measureFont.family);
@@ -50,7 +52,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
   const styleStr = (item.measureFont.style ?? '').toLowerCase();
   const [bold, setBold] = useState(styleStr.includes('bold'));
   const [italic, setItalic] = useState(styleStr.includes('italic'));
-  const [fontColor, setFontColor] = useState<string>(colorToHex(item.measureFontColor));
+  const [fontColor, setFontColor] = useState<string>(colorSpecToArgb(item.measureFontColor));
 
   // Linear extras.
   const linear = item.kind === 'linear' ? (item as LinearRulerItem) : null;
@@ -75,16 +77,16 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
       .map((s) => parseFloat(s.trim()))
       .filter((n) => Number.isFinite(n) && n > 0);
     editRulerItem(doc, layerId, item.id, {
-      color: hexToColor(color),
+      color: colorOut(item.color, color),
       lineThickness,
       displayDistance,
       displayUnit,
       unit,
-      guidelineColor: hexToColor(guidelineColor),
+      guidelineColor: colorOut(item.guidelineColor, guidelineColor),
       guidelineThickness,
       guidelineDashPattern: dash,
       measureFont,
-      measureFontColor: hexToColor(fontColor),
+      measureFontColor: colorOut(item.measureFontColor, fontColor),
       ...(linear ? { offsetDistance, allowOffset } : {}),
       ...(circular ? { radius } : {}),
     });
@@ -113,7 +115,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
         <fieldset className="mt-4 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Line</legend>
           <Row label="Colour">
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
+            <ColorAlphaInput label="Line colour" value={color} onChange={setColor} />
           </Row>
           <Row label="Thickness">
             <NumberField value={lineThickness} setValue={setLineThickness} step={0.5} min={0.5} />
@@ -176,18 +178,14 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             </div>
           </Row>
           <Row label="Colour">
-            <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} />
+            <ColorAlphaInput label="Measure colour" value={fontColor} onChange={setFontColor} />
           </Row>
         </fieldset>
 
         <fieldset className="mt-3 space-y-2 rounded-sm border border-neutral-800 p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-neutral-500">Guidelines</legend>
           <Row label="Colour">
-            <input
-              type="color"
-              value={guidelineColor}
-              onChange={(e) => setGuidelineColor(e.target.value)}
-            />
+            <ColorAlphaInput label="Guideline colour" value={guidelineColor} onChange={setGuidelineColor} />
           </Row>
           <Row label="Thickness">
             <NumberField
@@ -321,20 +319,10 @@ function NumberField({
   );
 }
 
-const KNOWN_HEX: Record<string, string> = {
-  black: '#000000',
-  white: '#ffffff',
-  red: '#ff0000',
-  green: '#008000',
-  blue: '#0000ff',
-};
-
-function colorToHex(c: ColorSpec): string {
-  if (c.kind === 'known') return KNOWN_HEX[(c.name ?? '').toLowerCase()] ?? '#000000';
-  return c.argb.length === 8 ? `#${c.argb.slice(2)}` : `#${c.argb}`;
-}
-
-function hexToColor(hex: string): ColorSpec {
-  const h = hex.replace(/^#/, '').toUpperCase();
-  return { kind: 'argb', argb: `FF${h}` };
+/**
+ * The colour to write: the original when unchanged (so a known colour
+ * like "Black" stays named), else the edited `aarrggbb`, alpha included.
+ */
+function colorOut(original: ColorSpec, argb: string): ColorSpec {
+  return argb === colorSpecToArgb(original) ? original : { kind: 'argb', argb };
 }
