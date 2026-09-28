@@ -103,12 +103,13 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
+import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 import { actualPartNumber, indexParts } from './partIndex';
 import { ColorAlphaInput } from './ColorAlphaInput';
+import { fitView } from './viewFit';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -1267,37 +1268,16 @@ function Canvas({
    * to land — important for fresh blank-create layouts where the doc
    * arrives empty and bricks come in via `.bbm` import a few ms later).
    */
+  // Fit to View: every item (bricks, text, rulers, areas, labels, venue)
+  // plus 50 scene px, like desktop's onFitToView (MainWindow.cpp:1372-1376).
   function fitToContent(): boolean {
     if (!map) return false;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        minX = Math.min(minX, b.displayArea.x);
-        minY = Math.min(minY, b.displayArea.y);
-        maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-        maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-      }
-    }
-    if (!Number.isFinite(minX)) return false;
-    const wPx = (maxX - minX) * 8;
-    const hPx = (maxY - minY) * 8;
-    if (wPx <= 0 || hPx <= 0) return false;
-    const PAD = 1.1;
-    const fitZoom = Math.min(width / (wPx * PAD), height / (hPx * PAD));
-    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
-    const cxPx = ((minX + maxX) / 2) * 8;
-    const cyPx = ((minY + maxY) / 2) * 8;
-    useEditorStore.setState({
-      zoom: z,
-      panX: width / 2 - cxPx * z,
-      panY: height / 2 - cyPx * z,
-    });
+    const fit = fitView(contentBoundsStuds(map, readSidecarFromDoc(doc)), width, height, { min: MIN_ZOOM, max: MAX_ZOOM });
+    if (!fit) return false;
+    useEditorStore.setState(fit);
     return true;
   }
+
 
   // Auto-fit on first open. Mirrors desktop's `MapView::setMap` final
   // call to `fitInView` (MapView.cpp:300-308). Fires once per browser

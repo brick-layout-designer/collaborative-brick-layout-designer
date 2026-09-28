@@ -1001,3 +1001,31 @@ test.describe('drawing a ruler', () => {
     expect(ruler).toMatch(/<Color>\s*<IsKnownColor>true<\/IsKnownColor>\s*<Name>Black<\/Name>/);
   });
 });
+
+test.describe('fit to view', () => {
+  test('fits text as well as bricks, centred, with desktop\'s 50 px margin', async ({ page }) => {
+    // A map whose only content is a text cell far from the origin.
+    const withText = FORDYCE_BBM
+      .replace(/<Layer type="brick"[\s\S]*?<\/Layer>/g, '')
+      .replace(/<Layer type="ruler"[\s\S]*?<\/Layer>/g, '')
+      .replace(/(<Layer type="text" id="\d+">[\s\S]*?<TextCells>)[\s\S]*?(<\/TextCells>)/, (_m, a: string, b: string) =>
+        `${a}<TextCell><DisplayArea><X>2000</X><Y>1000</Y><Width>40</Width><Height>10</Height></DisplayArea>` +
+        '<Text>Far away</Text><Orientation>0</Orientation><FontColor><IsKnownColor>true</IsKnownColor><Name>Black</Name></FontColor>' +
+        `<Font><FontFamily>Arial</FontFamily><Size>12</Size><Style>Regular</Style></Font><TextAlignment>Center</TextAlignment></TextCell>${b}`);
+    const id = await createLayout(page, withText);
+    await openEditor(page, id);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: /^Fit to View/ }).click();
+    const view = await page.evaluate(() => {
+      type Stage = { x: () => number; y: () => number; scaleX: () => number; width: () => number; height: () => number };
+      const K = (window as unknown as { Konva: { stages: Stage[] } }).Konva;
+      const st = K.stages[0]!;
+      return { x: st.x(), y: st.y(), z: st.scaleX(), w: st.width(), h: st.height() };
+    });
+    // The text's centre, (2020, 1005) studs, is on the view centre.
+    expect((2020 * 8 * view.z + view.x) - view.w / 2).toBeCloseTo(0, 0);
+    expect((1005 * 8 * view.z + view.y) - view.h / 2).toBeCloseTo(0, 0);
+    // The 320 x 80 px box plus 100 px fits the width.
+    expect(view.z).toBeCloseTo((view.w - 4) / 420, 2);
+  });
+});

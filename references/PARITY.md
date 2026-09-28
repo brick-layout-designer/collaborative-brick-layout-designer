@@ -54,7 +54,7 @@ Web source root: this repository.
 ## View menu (`MainWindowMenus.cpp:491-554`)
 
 - [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — range 0.02–40 like desktop (`MapView.cpp:77-78`); the wheel step is 1.0015^(−delta·factor), capped at ±480 (`wheelZoomStep`); wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
-- [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`)
+- [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`) — fits every item (bricks, text, rulers, areas, labels, venue) plus 50 scene px, aspect kept, like `MainWindow::onFitToView` (`viewFit.ts`); the same fit runs on first open.
 - [x] **Status Bar** — mouse studs / selection count / zoom % / current tool
 - [n/a] **Show Map Scroll Bars** toggle — web uses middle-click pan; scrollbars don't apply
 - [x] Render toggles (persisted): Connection Points, Grid, Brick Hulls, Brick Elevation, Ruler Attach Points, Always Show Connections, Electric Circuits, Export Watermark, Module Label Percent — all persisted to localStorage. Electric Circuits drives the `ElectricCircuitLayer.tsx` overlay (see Rendering features).
