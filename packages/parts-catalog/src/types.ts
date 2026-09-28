@@ -27,9 +27,10 @@ export interface ConnectionPoint {
   /** Outward angle in degrees. */
   angle: number;
   /**
-   * -1 means no electrical plug. 0 / 1 / ... are plug indices; circuits form
-   * only between two connection points where `electricPlug != -1`. NOT used
-   * by the geometric matching pass — purely metadata.
+   * 0 (the default when absent) means no electrical plug. A circuit joins
+   * two connection points of one part whose plugs are opposite (+1 / -1,
+   * +2 / -2; desktop PartsLibrary.cpp buildElectricCircuits). NOT used by
+   * the geometric matching pass — purely metadata.
    */
   electricPlug: number;
   /** UI hint for "tab next" routing. 0-based index into the part's connection list. */

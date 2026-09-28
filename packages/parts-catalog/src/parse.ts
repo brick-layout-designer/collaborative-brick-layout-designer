@@ -119,7 +119,7 @@ function readConnexion(n: RawNode): ConnectionPoint {
     x,
     y,
     angle: Number.parseFloat(stringField(n, 'angle', '0')),
-    electricPlug: Number.parseInt(stringField(n, 'electricPlug', '-1'), 10),
+    electricPlug: Number.parseInt(stringField(n, 'electricPlug', '0'), 10) || 0,
   };
   const nextPref = optionalNumber(n, 'nextConnexionPreference');
   if (nextPref !== undefined) out.nextConnexionPreference = nextPref;
