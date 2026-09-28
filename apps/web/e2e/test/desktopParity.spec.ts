@@ -240,6 +240,8 @@ test.describe('drag and drop', () => {
 
 test.describe('module drag ghost', () => {
   test('dragging a library module draws its ghost, then drops it', async ({ page }) => {
+    // Loads the Fordyce map twice (source and module); up to ~30 s on a dev machine.
+    test.slow();
     // A module made from the Fordyce layout's snapshot.
     const sourceId = await createLayout(page, FORDYCE_BBM);
     const snapshot = await (await page.request.get(`/api/layouts/${sourceId}/snapshot`)).body();
@@ -286,7 +288,9 @@ test.describe('module drag ghost', () => {
     await shot(page, 'module-ghost.png');
     await page.mouse.up();
 
-    await expect(page.locator('footer')).toContainText('Imported ');
+    // The drop selects the imported bricks. (The "Imported …" status
+    // message fades after a moment, so it is not a reliable check.)
+    await expect(page.locator('footer')).toContainText(/selected: \d{3,}/);
     const bbm = await (await page.request.get(`/api/layouts/${hostId}/export.bbm`)).text();
     expect(bbm.split('<Brick id=').length - 1).toBeGreaterThan(900);
   });
