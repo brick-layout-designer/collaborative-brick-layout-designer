@@ -3,7 +3,8 @@
 // O(N) connectivity recompute via spatial bucketing:
 //   - bucket size = 2 studs
 //   - candidate set = own bucket + 8 neighbours (3x3 block)
-//   - match if same non-empty `type` AND Euclidean distance ≤ 1 stud
+//   - match if same layer AND same non-empty `type` AND Euclidean
+//     distance ≤ 1 stud (vanilla links within a layer only)
 //   - tie-break by nearest squared distance
 //
 // Operates on @cld/model `BbmMap`. Mutates `Brick.connexions[i].linkedTo`
@@ -29,6 +30,8 @@ interface WorldConnection {
   type: string;
   /** Already linked at start (preserved when no better match exists). */
   preLinked: boolean;
+  /** Index of the brick's layer: links never cross layers (Connectivity.cpp:83). */
+  layer: number;
 }
 
 export interface RebuildConnectivityResult {
@@ -44,7 +47,7 @@ export function rebuildConnectivity(
   // catalog connection list. Bricks whose part is unknown to the catalog
   // get their existing connection list left intact (we don't have ground
   // truth on connection-point shapes).
-  const bricks = collectBricks(map);
+  const { bricks, layerOf } = collectBricks(map);
   const worldPoints: WorldConnection[] = [];
   const lookup = makeCatalogLookup(catalog);
   for (let i = 0; i < bricks.length; i++) {
@@ -62,6 +65,7 @@ export function rebuildConnectivity(
         y: wy,
         type: cp.type,
         preLinked: b.connexions[j]!.linkedTo !== '',
+        layer: layerOf[i]!,
       });
       // Reset linkage; we'll re-establish it in phase 2.
       b.connexions[j]!.linkedTo = '';
@@ -89,7 +93,7 @@ export function rebuildConnectivity(
         for (const qi of indices) {
           if (qi <= pi) continue; // pair each unordered match once
           const b = worldPoints[qi]!;
-          if (b.type !== a.type) continue;
+          if (b.type !== a.type || b.layer !== a.layer) continue;
           const ax = a.x - b.x;
           const ay = a.y - b.y;
           const distSq = ax * ax + ay * ay;
@@ -117,12 +121,18 @@ export function rebuildConnectivity(
   return { linkedCount };
 }
 
-function collectBricks(map: BbmMap): Brick[] {
-  const out: Brick[] = [];
-  for (const layer of map.layers) {
-    if (isBrickLayer(layer)) out.push(...layer.bricks);
-  }
-  return out;
+/** Every brick of every brick layer, with the index of its layer. */
+function collectBricks(map: BbmMap): { bricks: Brick[]; layerOf: number[] } {
+  const bricks: Brick[] = [];
+  const layerOf: number[] = [];
+  map.layers.forEach((layer, li) => {
+    if (!isBrickLayer(layer)) return;
+    for (const b of layer.bricks) {
+      bricks.push(b);
+      layerOf.push(li);
+    }
+  });
+  return { bricks, layerOf };
 }
 
 function isBrickLayer(layer: Layer): layer is LayerBrick {

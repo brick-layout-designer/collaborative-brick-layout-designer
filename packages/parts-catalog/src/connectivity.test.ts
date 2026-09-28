@@ -237,4 +237,20 @@ describe('rebuildConnectivity', () => {
 
     expect(a.connexions).toHaveLength(1);
   });
+
+  it('never links bricks on different layers (vanilla links within a layer)', () => {
+    const meta = makeMeta('TRACK', [
+      { x: -5, y: 0, type: 'rail' },
+      { x: 5, y: 0, type: 'rail' },
+    ]);
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    const a = makeBrick('a', 'TRACK', 0, 0);
+    const b = makeBrick('b', 'TRACK', 10, 0);
+    const other = { ...makeBrickLayer([b]), id: 'L2' };
+    const map = makeMap([makeBrickLayer([a]), other]);
+
+    expect(rebuildConnectivity(map, catalog).linkedCount).toBe(0);
+    expect(a.connexions.every((c) => c.linkedTo === '')).toBe(true);
+    expect(b.connexions.every((c) => c.linkedTo === '')).toBe(true);
+  });
 });
