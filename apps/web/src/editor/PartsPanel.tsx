@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { ensureSetThumbnail, getSetThumbnailSync } from './render/setThumbnail';
+import { indexParts } from './partIndex';
 
 interface PartContextMenu {
   part: PartWire;
@@ -49,15 +50,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
   // Index by lowercase key + bare partNumber so the set-thumbnail
   // compositor can resolve each subpart's metadata.
   const partsByKey = useMemo(() => {
-    const m = new Map<string, PartWire>();
-    if (data) {
-      for (const p of data.parts) {
-        m.set(p.key.toLowerCase(), p);
-        const bare = p.partNumber.toLowerCase();
-        if (!m.has(bare)) m.set(bare, p);
-      }
-    }
-    return m;
+    return indexParts(data?.parts);
   }, [data]);
 
   // Categories come straight from the wire's `category` field — derived

@@ -253,4 +253,21 @@ describe('rebuildConnectivity', () => {
     expect(a.connexions.every((c) => c.linkedTo === '')).toBe(true);
     expect(b.connexions.every((c) => c.linkedTo === '')).toBe(true);
   });
+
+  it('resolves a brick saved under an old part number (<OldNameList>)', () => {
+    const meta = {
+      ...makeMeta('TRACK', [
+        { x: -5, y: 0, type: 'rail' },
+        { x: 5, y: 0, type: 'rail' },
+      ]),
+      oldNames: ['OLDTRACK'],
+    };
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    const a = makeBrick('a', 'TRACK', 0, 0);
+    const b = makeBrick('b', 'OldTrack', 10, 0);
+    const map = makeMap([makeBrickLayer([a, b])]);
+
+    expect(rebuildConnectivity(map, catalog).linkedCount).toBe(2);
+    expect(b.connexions).toHaveLength(2);
+  });
 });

@@ -101,6 +101,7 @@ import { EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, wat
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
+import { actualPartNumber, indexParts } from './partIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -248,6 +249,7 @@ function Editor({ layoutId }: { layoutId: string }) {
     staleTime: 5 * 60 * 1000,
   });
   useConnectivity(doc, catalog.data?.parts);
+  const partIndex = useMemo(() => indexParts(catalog.data?.parts), [catalog.data]);
 
   // Subscribe to ALL doc changes; the projection is shared (cached per
   // doc) with the canvas and panels, so this costs no extra docToBbm.
@@ -714,6 +716,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           map={docMap}
           limits={budgetLimits}
           onLimitsChange={(next) => setBudgetLimits(doc, next)}
+          resolvePart={(id) => actualPartNumber(partIndex, id)}
           onClose={() => setShowBudget(false)}
         />
       )}
@@ -1040,13 +1043,7 @@ function Canvas({
     // arriving without a colour code (group parts / some custom uploads).
     // Inconsistent indexing was breaking the snap helpers — see
     // editor/snap.ts `lookupPart`.
-    const m = new Map<string, PartWire>();
-    for (const p of catalog.data?.parts ?? []) {
-      m.set(p.key.toLowerCase(), p);
-      const bare = p.partNumber.toLowerCase();
-      if (!m.has(bare)) m.set(bare, p);
-    }
-    return m;
+    return indexParts(catalog.data?.parts);
   }, [catalog.data]);
 
   /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */

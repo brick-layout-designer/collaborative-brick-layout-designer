@@ -11,6 +11,7 @@ import { api } from '../api';
 import { useEditorStore } from './editorStore';
 import { useDocMap } from './useDocMap';
 import { limitFor } from './budgetUsage';
+import { indexParts } from './partIndex';
 
 type SortKey = 'partNumber' | 'count' | 'description' | 'budget';
 type SortDir = 'asc' | 'desc';
@@ -32,11 +33,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
 
   const descByKey = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of catalog.data?.parts ?? []) {
-      m.set(p.key.toLowerCase(), p.description || p.partNumber);
-      const bare = p.partNumber.toLowerCase();
-      if (!m.has(bare)) m.set(bare, p.description || p.partNumber);
-    }
+    for (const [k, p] of indexParts(catalog.data?.parts)) m.set(k, p.description || p.partNumber);
     return m;
   }, [catalog.data]);
 

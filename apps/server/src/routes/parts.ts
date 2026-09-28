@@ -84,6 +84,8 @@ interface PartWire {
    * lookup. Always null for bundled parts.
    */
   customPartId: string | null;
+  /** Earlier part numbers that resolve to this part (<OldNameList>); omitted when none. */
+  oldNames?: string[];
 }
 
 let bundledCache: { etag: string; wire: PartWire[] } | null = null;
@@ -316,6 +318,7 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
       angle: s.angle,
     })),
     hullPts: p.hullPts,
+    ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
     source: 'bundled',
     customPartId: null,
   };

@@ -164,3 +164,17 @@ describe('parsePartXml — error handling', () => {
       .toThrow(/<part> or <group>/);
   });
 });
+
+describe('parsePartXml — old part names', () => {
+  const input = { partNumber: '3811', colorCode: '1', spritePath: '' };
+  it('reads <OldNameList> (one or several names)', () => {
+    const one = '<part><OldNameList><OldName> 4186P01 </OldName></OldNameList></part>';
+    expect(parsePartXml(one, input).oldNames).toEqual(['4186P01']);
+    const two = '<part><OldNameList><OldName>A</OldName><OldName>B</OldName></OldNameList></part>';
+    expect(parsePartXml(two, input).oldNames).toEqual(['A', 'B']);
+  });
+
+  it('no list means no old names', () => {
+    expect(parsePartXml('<part></part>', input).oldNames).toEqual([]);
+  });
+});

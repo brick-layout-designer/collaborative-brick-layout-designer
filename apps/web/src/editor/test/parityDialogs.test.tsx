@@ -253,6 +253,30 @@ describe('BudgetDialog', () => {
     fireEvent.change(screen.getByPlaceholderText('—'), { target: { value: '5' } });
     expect([...readBudgetLimits(doc)]).toEqual([['3001.1', 5]]);
   });
+  it('opening a .bbb maps old part numbers to the part that replaced them (first entry wins)', async () => {
+    const file = new File(
+      ['<Budget><PartList><Part id="4186P01">3</Part><Part id="3001.1">2</Part><Part id="4186p01.2">9</Part></PartList></Budget>'],
+      'old.bbb',
+    );
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+      Object.defineProperty(this, 'files', { value: [file] });
+      this.onchange?.(new Event('change'));
+    });
+    const onChange = vi.fn();
+    render(
+      <BudgetDialog
+        map={null}
+        limits={new Map()}
+        onLimitsChange={onChange}
+        resolvePart={(id) => (id.toLowerCase() === '4186p01' ? '4186P01.2' : id)}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Open/ }));
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect([...(onChange.mock.calls[0]![0] as Map<string, number>)]).toEqual([['4186P01.2', 3], ['3001.1', 2]]);
+    click.mockRestore();
+  });
 });
 
 describe('ExportImageDialog', () => {

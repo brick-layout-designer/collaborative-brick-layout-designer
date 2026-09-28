@@ -159,12 +159,30 @@ function catalogLookup(catalog: Catalog, partNumber: string): PartMetadata | und
  */
 function makeCatalogLookup(catalog: Catalog): (partNumber: string) => PartMetadata | undefined {
   const memo = new Map<string, PartMetadata | undefined>();
+  let renamed: Map<string, PartMetadata> | undefined;
   return (partNumber) => {
     if (memo.has(partNumber)) return memo.get(partNumber);
-    const meta = catalogLookup(catalog, partNumber);
+    let meta = catalogLookup(catalog, partNumber);
+    if (!meta) {
+      // An old part number resolves to the part that replaced it.
+      renamed ??= oldNameIndex(catalog);
+      meta = renamed.get(partNumber.toLowerCase());
+    }
     memo.set(partNumber, meta);
     return meta;
   };
+}
+
+/** Lower-cased old part number → the part that lists it in `<OldNameList>`. */
+function oldNameIndex(catalog: Catalog): Map<string, PartMetadata> {
+  const out = new Map<string, PartMetadata>();
+  for (const meta of catalog.values()) {
+    for (const old of meta.oldNames ?? []) {
+      const k = old.toLowerCase();
+      if (!out.has(k)) out.set(k, meta);
+    }
+  }
+  return out;
 }
 
 function catalogConnection(meta: PartMetadata | undefined, index: number): ConnectionPoint | undefined {

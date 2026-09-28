@@ -13,10 +13,12 @@ interface Props {
   map: BbmMap | null;
   limits: Map<string, number>;
   onLimitsChange: (limits: Map<string, number>) => void;
+  /** Current id for an old part number read from a .bbb (BlueBrick getActualPartNumber); identity by default. */
+  resolvePart?: (id: string) => string;
   onClose: () => void;
 }
 
-export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
+export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) => id, onClose }: Props) {
   const setLimits = onLimitsChange;
   const [fileName, setFileName] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -46,8 +48,16 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
           window.alert(`Could not open ${file.name}: ${(e as Error).message}`);
           return;
         }
+        // Old part numbers become the part that replaced them; the first
+        // entry for a part wins, as when BlueBrick reads the file.
         const m = new Map<string, number>();
-        for (const e of entries) if (e.limit >= 0) m.set(e.part, e.limit);
+        const seen = new Set<string>();
+        for (const e of entries) {
+          const part = resolvePart(e.part);
+          if (seen.has(part.toUpperCase())) continue;
+          seen.add(part.toUpperCase());
+          if (e.limit >= 0) m.set(part, e.limit);
+        }
         setLimits(m);
         setFileName(file.name);
       });

@@ -358,6 +358,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Vendored parts library
 - [n/a] User library paths + `imports/` subfolder — superseded by server-side part library manager
 - [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`, byte for byte like vanilla (`Budget.cpp`): `<PartList><Part id="…">N</Part></PartList>`, CRLF, lowercase `utf-8`, file order kept, `<PartList />` when empty, no trailing newline. Ids are case-insensitive (first of a duplicate wins); a non-integer value or a Part without an id rejects the file. Files from earlier web builds (`<BudgetEntry>`) still open.
+- [x] Old part numbers (`<OldNameList>`) resolve to the part that replaced them in the editor, connectivity and Used Parts (`partIndex.ts`, desktop `PartsLibrary::canonicalKey`); a `.bbb` read maps them to `PARTNUMBER.COLOR` like BlueBrick's getActualPartNumber. Maps keep the name they were saved with.
 
 ---
 
