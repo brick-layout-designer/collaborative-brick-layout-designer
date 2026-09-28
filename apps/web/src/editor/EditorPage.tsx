@@ -46,6 +46,7 @@ import { useViewportSize } from './useViewportSize';
 import { localBbmDownload, sha256Hex } from '../bbmFiles';
 import { backgroundImageRectPx } from './background';
 import { scaleBar } from './scaleBar';
+import { overBudgetCount } from './budgetUsage';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
@@ -3218,20 +3219,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
     () => venueStatus(venue, validateVenue(venue, budgetMap)),
     [venue, budgetMap],
   );
-  const budgetOver = useMemo(() => {
-    let over = 0;
-    if (budgetMap && budgetLimits.size > 0) {
-      const usage = new Map<string, number>();
-      for (const layer of budgetMap.layers) {
-        if (layer.type !== 'brick') continue;
-        for (const b of layer.bricks) usage.set(b.partNumber, (usage.get(b.partNumber) ?? 0) + 1);
-      }
-      for (const [part, limit] of budgetLimits) {
-        if (limit >= 0 && (usage.get(part) ?? 0) > limit) over++;
-      }
-    }
-    return over;
-  }, [budgetMap, budgetLimits]);
+  const budgetOver = useMemo(() => overBudgetCount(budgetMap, budgetLimits), [budgetMap, budgetLimits]);
   // 1 stud = 8mm for standard LEGO; display in m when ≥100 studs
   function studDisplay(studs: number): string {
     if (studs >= 100) return `${(studs * 0.008).toFixed(1)} m`;
