@@ -16,11 +16,11 @@ Web source root: this repository.
 - [x] **New** (`Ctrl+N`) — navigates to layouts page; confirms if sync is broken. (`MainWindowMenus.cpp:76-78`)
 - [x] **Open...** (`Ctrl+O`) — navigates to layouts page; confirms if sync is broken. (`MainWindowMenus.cpp:80-82`)
 - [n/a] **Open Recent** submenu — layout list page is the equivalent; a "Recent" submenu would be redundant
-- [~] **Save** (`Ctrl+S`) — edits persist continuously over Yjs, so there is no separate flush. Save confirms the state instead: "Saved" when the WebSocket is connected and synced. When offline it offers a local `.bbm` download of the current doc (`useLayoutDoc.saveNow`, `EditorPage.tsx` `downloadLocalBbm`). Map menu → **Download .bbm** writes the same local `.bbm` at any time, online or not. The server does not write a `.bbm` + sidecar on save; it writes them on export. (`MainWindowMenus.cpp:88-90`)
+- [~] **Save** (`Ctrl+S`) — edits persist continuously over Yjs, so there is no separate flush. Save confirms the state instead: "Saved" when the WebSocket is connected and synced. When offline it offers a local `.bbm` download of the current doc (`useLayoutDoc.saveNow`, `EditorPage.tsx` `downloadLocalBbm`). Map menu → **Download .bbm** writes the same local `.bbm` at any time, online or not. When the layout has a sidecar, both downloads deliver `<title>.zip` holding `<title>.bbm` + `<title>.bbm.bld`, with the sidecar hashed against that `.bbm`. Dropping a `.bbm` with its `.bbm.bld`, or such a `.zip`, onto any page opens a layout with both (`bbmFiles.ts`, `MainWindowFileIO.cpp:84-94`). The server does not write a `.bbm` + sidecar on save; it writes them on export. (`MainWindowMenus.cpp:88-90`)
 - [n/a] **Save As...** (`Ctrl+Shift+S`) — layouts are server-side; "Save As" doesn't map to the web model
 - [x] **Export as Image...** — `ExportImageDialog`: width/height in px with "Keep aspect ratio (height auto)" (1×/2×/4× presets), PNG or JPEG with quality, antialias and transparent-background (PNG only) toggles; download client-side (`MainWindowMenus.cpp:132-163`). Antialias controls sprite smoothing; the browser canvas always antialiases vector shapes. Renders the whole map (content bounds ± 20 px, like desktop `itemsBoundingRect` export), not the viewport. The grid, selection halo, snap ring and HUD are hidden and the background colour is painted (`exportRender.ts`, `MainWindowMenus.cpp:97-201`).
-- [x] **Export as PDF...** — tiled print mode in `ExportImageDialog` (tiles the whole map, same renderer as the PNG export): paper size (A4/A3/Letter portrait+landscape), DPI (96/150/300), tile overlap; opens print window with `@page` CSS → browser Print → PDF
-- [x] **Print...** (`Ctrl+P`) — covered by tiled print mode in `ExportImageDialog` (same as above)
+- [x] **Export as PDF...** — one A3 page, orientation from the layout's aspect, 12 mm margins, map fitted and centred, written by a small built-in PDF writer (`ExportImageDialog`)
+- [x] **Print...** (`Ctrl+P`) — tiled at actual size (1 stud = 8 mm, like desktop File → Print): each page is a paper-sized map region at the chosen DPI, with page margin and optional overlap; opens the browser print window (`ExportImageDialog`)
 - [n/a] **Quit** (`Ctrl+Q`) — browser tab close; no equivalent needed
 
 ---
@@ -31,7 +31,7 @@ Web source root: this repository.
 - [x] **Cut / Copy / Paste** (`Ctrl+X` / `Ctrl+C` / `Ctrl+V`) — uses the OS clipboard so paste works across tabs
 - [x] **Duplicate** (`Ctrl+D`)
 - [x] **Delete** (`Del` / `Backspace`) — deletes the whole mixed selection (bricks on any layer, rulers, anchored labels, text cells) in one undo step (`MapView.cpp:2108-2179`, `mixedSelection.ts` `deleteMixedSelection`).
-- [x] **Find & Replace** (`Ctrl+F`) — scope (Text content / Part number), match case, click a result to select it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
+- [x] **Find & Replace** (`Ctrl+F`) — modeless panel like desktop (`setModal(false)`): the canvas stays usable, and every match is selected live as you type (200 ms debounce). Scope (Text content / Part number), match case, click a result to select just it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
 - [x] **Select All** (`Ctrl+A`) — every brick on every visible brick layer (`MapView.cpp:1417`); **Deselect All** (`Ctrl+Shift+A`)
 - [x] **Mixed selection** — bricks, rulers, anchored labels and text cells select together, like the desktop Qt scene selection. The rubber band picks all four kinds, and Shift/Ctrl+drag extends the selection. Shift/Ctrl+click toggles any item and a plain click selects just one. Dragging a selected brick, ruler or label moves the rest with it, live, and commits one undo step (`MapViewDrag.cpp:124-153, 412-450`). Arrow nudge moves bricks, rulers and labels (`MapView.cpp:985-1041`). Text cells are selectable but stay put, as desktop text items are not movable (`SceneBuilder.cpp:441`). Labels anchored to a moving brick are not offset twice (`mixedSelection.ts`, `editorStore.annoSelection`).
 - [x] **Select Path** (`Ctrl+P`) — BFS over connection links (`MapView.cpp:1481-1543`)
@@ -48,7 +48,7 @@ Web source root: this repository.
 
 ## View menu (`MainWindowMenus.cpp:491-554`)
 
-- [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
+- [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — range 0.02–40 like desktop (`MapView.cpp:77-78`); the wheel step is 1.0015^(−delta·factor), capped at ±480 (`wheelZoomStep`); wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
 - [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`)
 - [x] **Status Bar** — mouse studs / selection count / zoom % / current tool
 - [n/a] **Show Map Scroll Bars** toggle — web uses middle-click pan; scrollbars don't apply
@@ -71,8 +71,8 @@ Web source root: this repository.
 
 ## Map menu (`MainWindowMapMenu.cpp`)
 
-- [x] **Background Colour...** — colour picker → `setBackgroundColor` mutation
-- [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs; stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
+- [x] **Background Colour...** — colour picker with alpha → `setBackgroundColor` mutation; written to the `.bbm` as desktop's lowercase `aarrggbb`, and the canvas renders the translucency
+- [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs (without one the image is drawn at native size, top-left at the origin); stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
 - [x] **General Info...** — Author / LUG / Event / Date / Comment dialog
 - [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar.
 - [x] **Venue → Draw by Dimensions...** — `VenueDimensionsDialog`: unit (ft/in), start X/Y, segment table (length/angle/kind/label), compass-preset angle dropdown, Rectangle preset helper; builds polygon and calls `setVenue`
@@ -123,7 +123,7 @@ Web source root: this repository.
 
 ## Canvas mouse behaviours (`MapView.cpp`, `MapViewDrag.cpp`, `MapViewContextMenu.cpp`)
 
-- [x] Left-click empty space → marquee
+- [x] Left-click empty space → marquee (hit-tests the rotated brick and label shapes, not their bounding boxes)
 - [x] Left-click brick → select (replace; Shift / Ctrl modifiers); group-aware (clicking a grouped brick selects the whole group)
 - [x] Double-click brick → Edit Brick dialog (per-brick properties)
 - [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target.
@@ -241,7 +241,7 @@ Selection-aware; entries vary based on what's under the cursor:
   - Import: LDraw/Studio/LDD [n/a] — not planned
 - [x] **Part Library management** — platform-admin installs libraries, org-admin enables/disables per library (`apps/web/src/admin/AdminPage.tsx` Libraries tab; `apps/web/src/orgs/OrgDetailPage.tsx` Part libraries section)
 - [n/a] **Library Paths** dialog (legacy local-path model) — superseded by server-side part library manager
-- [x] **Find & Replace** — Replace (current match) and Replace All for text cells and part numbers, one undo step each (`FindDialog.cpp:150-189`)
+- [x] **Find & Replace** — modeless, live selection of matches; Replace (current match) and Replace All for text cells and part numbers, one undo step each (`FindDialog.cpp:150-189`)
 - [x] **Layer Options** dialog — `LayerOptionsDialog.tsx` (form model in `layerOptions.ts`), opened by double-clicking a layer row or from the context menu. Fields: name, transparency, visible, hull visibility/colour/thickness (`MainWindow.cpp:146-265`). OK writes only the changed fields, as one undo step.
   - [x] Grid-layer options: cell size (1-512), line thickness, sub-divisions (2-32), display grid / sub-grid / cell-index labels (`MainWindow.cpp:172-202`). Grid, sub-grid and cell-index colours are a web extra (vanilla BlueBrick has them; the desktop dialog does not).
   - [x] Brick-layer elevation labels (`MainWindow.cpp:205-216`)
@@ -301,9 +301,9 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Foreground scale-bar HUD** — bottom-right overlay, auto-picks round stud count, labels in mm/cm/m
 - [x] **Module name label** (gated by `view/moduleNames` → `cld:showModuleNames`; `ModuleOverlay.tsx`). Font is Module Label Percent (default 35) of the module's long side, clamped 16–400 px, rotated along the long axis (`SceneBuilderSidecar.cpp`).
 - [x] **Module frame outline** (gated by `view/moduleFrameThickness` → `cld:showModuleFrames`; dashed blue rect over member-brick AABB; thickness from `cld:moduleFrameThickness`)
-- [x] **Anchored labels** — World [x], Brick [x], Group [x], Module [x] anchors all render; Group/Module show dashed leader-line from AABB centre to label; add/edit/delete mutations [x]; minZoom gate [x]
+- [x] **Anchored labels** — World [x], Brick [x] (follows the brick's rotation), Group [x], Module [x] anchors all render; sizes are points at 96 dpi with desktop's 8.25 pt Microsoft Sans Serif default; Group/Module show dashed leader-line from AABB centre to label; add/edit/delete mutations [x]; minZoom gate [x]
 - [x] **Venue outline + obstacles + edge labels** — Wall/Door/Open kinds with desktop pen styles, walkway buffer band on non-Wall edges, ft/in distance labels
-- [x] **Watermark** — Konva `Text` layer bottom-right: `"author / lug / event"`, semi-transparent, gated by `showExportWatermark`; drawn into full-map PNG/print exports
+- [x] **Watermark** — an Export Image checkbox that writes `"author / LUG / event"` bottom-right into the exported image, print or PDF; no longer drawn on the live canvas
 - [x] Live drag/place ghost item
 - [x] **Snap ring** overlay at the live snap point (green ring) during single-brick drag
 - [x] Live area cell rendering
@@ -323,7 +323,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Permanent zoom % indicator
 - [x] Permanent mouse-position-in-studs indicator
 - [x] Permanent current-tool indicator
-- [x] Permanent venue-validator status — status bar right side shows "Venue: <name>" in green when a venue is defined and enabled, "Venue: disabled" in grey otherwise; hidden when no venue; orange "⚠ N in walkway" badge when bricks overlap the min-walkway AABB buffer around non-Wall edges
+- [x] Permanent venue-validator status — port of `VenueValidator.cpp` (`venueValidator.ts`): outside-outline, distance-based walkway buffer and obstacle overlap. The status bar shows green "Venue: OK" or orange "Venue: N issue(s)" with the issues in its tooltip; hidden when there is no enabled venue. New venues default to a 112.5-stud walkway; drawing an outline or obstacle enables the venue, and fewer than 3 points keeps the tool and says "Venue polygon needs at least 3 points".
 - [x] Permanent budget status — status bar shows "Budget: OK" (green) or "Budget: N over" (red) when the layout has budget limits; hidden when it has none
 - [x] Dirty `*` indicator — appended to tool name in status bar when connection is reconnecting or in error state
 
