@@ -135,6 +135,7 @@ describe('FindDialog', () => {
   it('Replace changes only the current match; clicking a result makes it current', () => {
     const doc = seeded();
     const { rerender } = render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'part' } });
     fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001.1' } });
     fireEvent.change(screen.getByPlaceholderText('New part-number text…'), { target: { value: '3001.5' } });
     const results = screen.getAllByRole('listitem');
@@ -151,6 +152,7 @@ describe('FindDialog', () => {
     const doc = seeded();
     const um = createUndoManager(doc);
     render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'part' } });
     fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '.1' } });
     fireEvent.change(screen.getByPlaceholderText('New part-number text…'), { target: { value: '.7' } });
     fireEvent.click(screen.getByRole('button', { name: 'Replace all' }));
@@ -184,6 +186,14 @@ describe('FindDialog — modeless, live selection', () => {
     useEditorStore.setState({ selection: [], annoSelection: { rulers: [], labels: [], texts: [] } });
   });
 
+  it('opens on the "Text content" scope, listed first, like desktop', () => {
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    const scope = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(scope.value).toBe('text');
+    expect([...scope.options].map((o) => o.value)).toEqual(['text', 'part']);
+  });
+
   it('is not modal: no backdrop covers the canvas', () => {
     const doc = withText();
     render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
@@ -196,6 +206,7 @@ describe('FindDialog — modeless, live selection', () => {
     vi.useFakeTimers();
     const doc = withText();
     render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'part' } });
     fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001' } });
     act(() => { vi.advanceTimersByTime(250); });
     expect(useEditorStore.getState().selection).toEqual(bricksOf(doc, '3001.1'));
@@ -208,6 +219,7 @@ describe('FindDialog — modeless, live selection', () => {
     vi.useFakeTimers();
     const doc = withText();
     render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'part' } });
     fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001' } });
     act(() => { vi.advanceTimersByTime(50); });
     fireEvent.click(screen.getAllByRole('listitem')[0]!.querySelector('button')!);

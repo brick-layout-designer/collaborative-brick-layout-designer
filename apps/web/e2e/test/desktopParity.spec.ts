@@ -91,6 +91,7 @@ test.describe('anchored labels — default placement', () => {
     // Select exactly one brick through Find (clicking a match selects it).
     await page.keyboard.press('Control+f');
     const find = page.getByRole('dialog');
+    await find.getByRole('combobox').selectOption('part');
     await find.getByPlaceholder('Search…').fill('3857.0');
     await find.locator('ul button').first().click();
     await find.getByRole('button', { name: 'Close' }).click();
@@ -117,6 +118,7 @@ test.describe('find & replace — part numbers', () => {
 
     await page.keyboard.press('Control+f');
     const dialog = page.getByRole('dialog');
+    await dialog.getByRole('combobox').selectOption('part');
     await dialog.getByPlaceholder('Search…').fill('3857.0');
     await expect(dialog).toContainText('72 matches');
     await dialog.getByPlaceholder('New part-number text…').fill('3857.5');
@@ -472,6 +474,7 @@ test.describe('find — modeless', () => {
 
     await page.keyboard.press('Control+f');
     const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByRole('combobox').selectOption('part');
     await find.getByPlaceholder('Search…').fill('3857.0');
     // No click on a result: typing alone selects all 72 matches.
     await expect(page.locator('footer')).toContainText('selected: 72');
@@ -646,6 +649,7 @@ test.describe('use budget limitation', () => {
     // Select one 3857.0 through Find, then duplicate it.
     await page.keyboard.press('Control+f');
     const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByRole('combobox').selectOption('part');
     await find.getByPlaceholder('Search…').fill('3857.0');
     await find.locator('ul button').first().click();
     await find.getByRole('button', { name: 'Close' }).click();
