@@ -165,7 +165,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Group** (≥ 2) / **Ungroup**
 - [x] **Select Connected**
 - [x] **Cut / Copy / Duplicate / Delete**
-- [x] Empty area: **Paste**, **Add Text Here...** (opens the text dialog at the click point)
+- [x] Empty area only (nothing selected): **Paste** (when this session has copied bricks — the system clipboard can't be read without a permission prompt; Ctrl+V still reads it), **Add Text Here...** (opens the text dialog at the click point) (`MapViewContextMenu.cpp:183-203`)
 - [x] Ruler-attach flow: when a single ruler is selected and user right-clicks a brick, offers **Attach Endpoint 1/2** / **Attach Centre**
 - [x] Tail: **Undo / Redo**
 

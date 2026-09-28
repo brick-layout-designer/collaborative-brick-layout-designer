@@ -86,7 +86,7 @@ import {
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
-import { readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { hasClipboardBricks, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
 import { pxToStud, studToPx } from './render/coords';
 import { ensureSprite, getSpriteSync } from './render/spriteCache';
 import { PlaceGhost } from './render/PlaceGhost';
@@ -2893,9 +2893,13 @@ function CanvasContextMenu({
     entries.push(sep('s5'));
   }
 
-  entries.push(item('Paste', onPaste));
-  entries.push(item('Add Text Here…', onAddTextHere));
-  entries.push(sep('s6'));
+  // Empty-area menu only, Paste only with something to paste
+  // (MapViewContextMenu.cpp:183-203).
+  if (!hasSel) {
+    if (hasClipboardBricks()) entries.push(item('Paste', onPaste));
+    entries.push(item('Add Text Here…', onAddTextHere));
+    entries.push(sep('s6'));
+  }
   entries.push(item('Undo', undo.undo, !undo.canUndo));
   entries.push(item('Redo', undo.redo, !undo.canRedo));
 

@@ -1080,3 +1080,39 @@ test.describe('selection while snapping', () => {
     await expect.poll(haloStrokes).toEqual(['#FFD700']);
   });
 });
+
+test.describe('context menu paste', () => {
+  test('Paste and Add Text Here are for empty space; Paste only once something is copied', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    await page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first().dblclick();
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const menu = page.locator('[data-ctx-menu]');
+    const entries = async () => (await menu.locator('button').allInnerTexts()).map((t) => t.trim());
+
+    // On the selected brick: its actions, no Paste or Add Text Here.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+    await expect(menu).toBeVisible();
+    expect(await entries()).not.toContain('Paste');
+    expect(await entries()).not.toContain('Add Text Here…');
+    await page.keyboard.press('Escape');
+
+    // Empty space, nothing copied yet: Add Text Here but no Paste.
+    await page.keyboard.press('Escape'); // deselect
+    await page.mouse.click(box.x + 20, box.y + 20, { button: 'right' });
+    await expect(menu).toBeVisible();
+    expect(await entries()).toContain('Add Text Here…');
+    expect(await entries()).not.toContain('Paste');
+    await page.keyboard.press('Escape');
+
+    // Copy the brick, then empty space offers Paste.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Escape');
+    await page.mouse.click(box.x + 20, box.y + 20, { button: 'right' });
+    await expect.poll(entries).toContain('Paste');
+  });
+});
