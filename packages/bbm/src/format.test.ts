@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBool, formatInt, formatNumber, parseBool } from './format.js';
+import { formatBool, formatInt, formatNumber, parseBool, parseXmlFloat, parseXmlInt } from './format.js';
 
 describe('formatNumber', () => {
   it('emits integers without a decimal point', () => {
@@ -43,17 +43,17 @@ describe("formatNumber matches desktop QString::number(v, 'g', p)", () => {
   it('switches to scientific below 1e-4 with a two-digit exponent', () => {
     expect(formatNumber(0.0001)).toBe('0.0001');
     expect(formatNumber(0.00012345678, 'g7')).toBe('0.0001234568');
-    expect(formatNumber(0.00001)).toBe('1e-05');
-    expect(formatNumber(-1.5e-5, 'g7')).toBe('-1.5e-05');
-    expect(formatNumber(1.4210854715202004e-14, 'g7')).toBe('1.421085e-14');
-    expect(formatNumber(2.5e-7)).toBe('2.5e-07');
+    expect(formatNumber(0.00001)).toBe('1E-05');
+    expect(formatNumber(-1.5e-5, 'g7')).toBe('-1.5E-05');
+    expect(formatNumber(1.4210854715202004e-14, 'g7')).toBe('1.421085E-14');
+    expect(formatNumber(2.5e-7)).toBe('2.5E-07');
   });
 
   it('switches to scientific at 10^precision', () => {
     expect(formatNumber(1234567, 'g7')).toBe('1234567');
     expect(formatNumber(1234567.5, 'g7')).toBe('1234568');
-    expect(formatNumber(12345678, 'g7')).toBe('1.234568e+07');
-    expect(formatNumber(1e7, 'g7')).toBe('1e+07');
+    expect(formatNumber(12345678, 'g7')).toBe('1.234568E+07');
+    expect(formatNumber(1e7, 'g7')).toBe('1E+07');
     expect(formatNumber(12345678)).toBe('12345678');
   });
 
@@ -100,5 +100,28 @@ describe('formatBool / parseBool', () => {
   it('throws on garbage', () => {
     expect(() => parseBool('yes')).toThrow();
     expect(() => parseBool('')).toThrow();
+  });
+});
+
+describe('parseXmlFloat / parseXmlInt read like desktop QString::toFloat / toInt', () => {
+  it('reads plain and scientific decimals, either exponent case', () => {
+    expect(parseXmlFloat('190.5')).toBe(190.5);
+    expect(parseXmlFloat(' -4.768372E-07 ')).toBeCloseTo(-4.768372e-7, 12);
+    expect(parseXmlFloat('1.5e-05')).toBe(1.5e-5);
+    expect(parseXmlFloat('.25')).toBe(0.25);
+  });
+
+  it('reads anything non-numeric or non-finite as 0 (XmlPrimitives.cpp:47-57)', () => {
+    for (const bad of ['', 'abc', 'NaN', 'nan', '-INF', 'Infinity', '1e999', '12abc', '0x10', undefined]) {
+      expect(parseXmlFloat(bad), String(bad)).toBe(0);
+    }
+  });
+
+  it('reads only plain in-range integers', () => {
+    expect(parseXmlInt('42')).toBe(42);
+    expect(parseXmlInt('-7')).toBe(-7);
+    for (const bad of ['', 'abc', '12.5', '1e3', '99999999999', undefined]) {
+      expect(parseXmlInt(bad), String(bad)).toBe(0);
+    }
   });
 });
