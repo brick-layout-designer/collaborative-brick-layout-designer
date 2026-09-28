@@ -98,6 +98,8 @@ export interface PartMetadata {
    * Optional so hand-built test metadata can leave it out.
    */
   oldNames?: string[];
+  /** Sprite size in pixels, read from the image header by the scanner; needed for the footprint. */
+  spriteSize?: { w: number; h: number };
 }
 
 /** A loaded library — a flat map keyed by lowercased `<partNumber>.<colorCode>`. */
