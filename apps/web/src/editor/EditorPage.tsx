@@ -45,6 +45,7 @@ import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
 import { localBbmDownload, sha256Hex } from '../bbmFiles';
 import { backgroundImageRectPx } from './background';
+import { scaleBar } from './scaleBar';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
@@ -2672,38 +2673,26 @@ function Canvas({
 }
 
 /**
- * Scale-bar HUD — fixed overlay in the bottom-right corner of the canvas.
- * Port of MapViewPaint.cpp:40-63 ("scale bar"). Shows a rounded-rect
- * bar whose width represents a round number of studs at the current zoom.
- * One stud = 8mm; displays in mm below 100 studs, m above.
+ * Scale-bar HUD pinned to the lower-left corner of the canvas, like
+ * desktop (MapViewPaint.cpp:195-243): a white pill with a bar of a
+ * track-friendly stud count, labelled "N studs" above and mm / m below.
  */
 function ScaleBarHud({ zoom }: { zoom: number }) {
-  // Target bar width: ~80 px at current zoom. Find the nearest "round"
-  // stud count (1, 2, 5, 10, 20, 50, 100, …).
-  const TARGET_PX = 80;
-  const studsPerPx = 1 / (zoom * 8); // pxPerStud = 8 at zoom=1
-  const targetStuds = TARGET_PX * studsPerPx;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(targetStuds)));
-  const nice = [1, 2, 5, 10].map((f) => f * magnitude);
-  const barStuds = nice.reduce((best, v) =>
-    Math.abs(v - targetStuds) < Math.abs(best - targetStuds) ? v : best
-  );
-  const barPx = Math.round(barStuds * zoom * 8);
-  const label =
-    barStuds >= 125 ? `${(barStuds * 0.008).toFixed(0)} m`
-    : barStuds >= 12.5 ? `${(barStuds * 8).toFixed(0)} cm`
-    : `${(barStuds * 8).toFixed(0)} mm`;
-
+  const bar = scaleBar(zoom * 8); // 8 px per stud at zoom 1
+  if (!bar) return null;
   return (
     <div
-      className="pointer-events-none absolute bottom-3 right-3 flex flex-col items-end gap-1"
-      style={{ userSelect: 'none' }}
+      data-testid="scale-bar"
+      className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-black/50 bg-white/80 px-3 py-0.5 text-[11px] leading-tight text-neutral-900"
+      style={{ userSelect: 'none', width: bar.px + 60 }}
     >
-      <span className="text-[10px] text-neutral-300 drop-shadow-sm">{label}</span>
-      <div
-        className="rounded-sm bg-neutral-200/80"
-        style={{ width: barPx, height: 4 }}
-      />
+      <div>{bar.primary}</div>
+      <div className="relative my-0.5 h-2" style={{ width: bar.px }}>
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-neutral-900" />
+        <div className="absolute left-0 top-0 h-2 w-0.5 bg-neutral-900" />
+        <div className="absolute right-0 top-0 h-2 w-0.5 bg-neutral-900" />
+      </div>
+      <div>{bar.secondary}</div>
     </div>
   );
 }
