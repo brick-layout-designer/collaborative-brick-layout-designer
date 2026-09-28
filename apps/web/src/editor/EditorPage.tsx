@@ -328,7 +328,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // Returns just the inner content for a panel (shared by docked + floating).
   function panelBody(panelId: string): React.ReactNode {
     if (!doc) return null;
-    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} />;
+    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
@@ -3403,6 +3403,10 @@ function MapMenu({
 
   const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
   const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
+  const showOnlyBudgetedParts = useEditorStore((s) => s.showOnlyBudgetedParts);
+  const setShowOnlyBudgetedParts = useEditorStore((s) => s.setShowOnlyBudgetedParts);
+  const showBudgetNumbers = useEditorStore((s) => s.showBudgetNumbers);
+  const setShowBudgetNumbers = useEditorStore((s) => s.setShowBudgetNumbers);
 
   const items: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
     { label: 'General info...', action: onGeneralInfo },
@@ -3444,6 +3448,8 @@ function MapMenu({
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
     { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
+    { label: 'Budget → Show Only Budgeted Parts', action: () => setShowOnlyBudgetedParts(!showOnlyBudgetedParts), checked: showOnlyBudgetedParts },
+    { label: 'Budget → Show Budget Numbers', action: () => setShowBudgetNumbers(!showBudgetNumbers), checked: showBudgetNumbers },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
 

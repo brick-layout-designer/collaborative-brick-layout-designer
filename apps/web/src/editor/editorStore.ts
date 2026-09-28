@@ -125,6 +125,10 @@ export interface EditorState {
   budgetDefaultInfinite: boolean;
   /** Show the "Budget reached" box on a refusal (`general/warnBudgetLimitation`, default true). */
   warnBudgetLimitation: boolean;
+  /** Budget → Show Only Budgeted Parts in the parts panel (`budget/showOnlyBudgetedParts`). */
+  showOnlyBudgetedParts: boolean;
+  /** Budget → Show Budget Numbers (used/limit) under part tiles (`budget/showBudgetNumbers`). */
+  showBudgetNumbers: boolean;
   /** Module frame thickness in px (`view/moduleFrameThickness`). */
   moduleFrameThickness: number;
   /** Show electric circuit overlay (`view/electricCircuits`). No-op until circuit data exists. */
@@ -190,6 +194,8 @@ export interface EditorState {
   setUseBudgetLimitation: (v: boolean) => void;
   setBudgetDefaultInfinite: (v: boolean) => void;
   setWarnBudgetLimitation: (v: boolean) => void;
+  setShowOnlyBudgetedParts: (v: boolean) => void;
+  setShowBudgetNumbers: (v: boolean) => void;
   setModuleFrameThickness: (v: number) => void;
   setShowElectricCircuits: (v: boolean) => void;
   setShowExportWatermark: (v: boolean) => void;
@@ -257,6 +263,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   useBudgetLimitation: localStorage.getItem('cld:useBudgetLimitation') === 'true',
   budgetDefaultInfinite: localStorage.getItem('cld:budgetDefaultInfinite') !== 'false',
   warnBudgetLimitation: localStorage.getItem('cld:warnBudgetLimitation') !== 'false',
+  showOnlyBudgetedParts: localStorage.getItem('cld:showOnlyBudgetedParts') === 'true',
+  showBudgetNumbers: localStorage.getItem('cld:showBudgetNumbers') === 'true',
   moduleFrameThickness: (() => {
     const v = localStorage.getItem('cld:moduleFrameThickness');
     const n = v !== null ? parseFloat(v) : 2;
@@ -343,6 +351,14 @@ export const useEditorStore = create<EditorState>((set) => ({
   setWarnBudgetLimitation: (v) => {
     localStorage.setItem('cld:warnBudgetLimitation', String(v));
     set({ warnBudgetLimitation: v });
+  },
+  setShowOnlyBudgetedParts: (v) => {
+    localStorage.setItem('cld:showOnlyBudgetedParts', String(v));
+    set({ showOnlyBudgetedParts: v });
+  },
+  setShowBudgetNumbers: (v) => {
+    localStorage.setItem('cld:showBudgetNumbers', String(v));
+    set({ showBudgetNumbers: v });
   },
   setModuleFrameThickness: (v) => {
     const clamped = Math.max(1, Math.min(20, v));

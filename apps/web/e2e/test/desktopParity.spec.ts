@@ -664,3 +664,38 @@ test.describe('use budget limitation', () => {
     expect(countPart(await bbm(), '3857.0')).toBe(72);
   });
 });
+
+test.describe('budget in the parts panel', () => {
+  test('Show Budget Numbers and Show Only Budgeted Parts', async ({ page }) => {
+    test.slow();
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const tiles = page.locator('aside li button[draggable="true"]');
+    await expect(tiles.first()).toBeVisible({ timeout: 10000 });
+    const allTiles = await tiles.count();
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click();
+    await page.locator('tbody tr', { hasText: '3857.0' }).locator('input[placeholder="—"]').fill('10');
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click(); // close the panel
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Show Only Budgeted Parts' }).click();
+    // Only parts with a limit above 0 remain: 3857.0.
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles.first()).toHaveAttribute('title', /3857\.0/);
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Show Budget Numbers' }).click();
+    await expect(tiles.first().getByTestId('budget-numbers')).toHaveText('72/10');
+    await expect(tiles.first()).toHaveClass(/bg-red-900/);
+    await shot(page, 'parts-budget.png');
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Show Only Budgeted Parts' }).click();
+    await expect(tiles).toHaveCount(allTiles);
+    // Unbudgeted parts read "used/?".
+    await expect(page.getByTestId('budget-numbers').filter({ hasText: /\/\?$/ }).first()).toBeVisible();
+  });
+});
