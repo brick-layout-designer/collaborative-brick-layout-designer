@@ -59,13 +59,14 @@ export function brickFootprint(area: Rect, orientation: number, size?: { w: numb
 }
 
 /**
- * Item shape of a brick: its footprint rotated about the display-area
- * centre — the rotated pixmap bounding rect Qt's rubber band tests
- * against (IntersectsItemShape; SceneBuilder.cpp:192-216).
+ * Item shape of a brick: its footprint rotated about the sprite centre
+ * (`centre`, the brick's pivot; default the display-area centre) — the
+ * rotated pixmap bounding rect Qt's rubber band tests against
+ * (IntersectsItemShape; SceneBuilder.cpp:192-216).
  */
-export function brickShape(area: Rect, orientation: number, size?: { w: number; h: number } | null): Pt[] {
+export function brickShape(area: Rect, orientation: number, size?: { w: number; h: number } | null, centre?: Pt): Pt[] {
   const { w, h } = brickFootprint(area, orientation, size);
-  const centre = { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+  centre ??= { x: area.x + area.width / 2, y: area.y + area.height / 2 };
   return rotatedRectCorners(centre, w, h, orientation, w / 2, h / 2);
 }
 
@@ -114,10 +115,11 @@ export function bricksInMarquee<B extends { id: string; orientation?: number; di
   marquee: Marquee,
   bricks: readonly B[],
   sizeOf?: (b: B) => { w: number; h: number } | null,
+  centreOf?: (b: B) => Pt,
 ): string[] {
   const ids: string[] = [];
   for (const b of bricks) {
-    const shape = brickShape(b.displayArea, b.orientation ?? 0, sizeOf?.(b));
+    const shape = brickShape(b.displayArea, b.orientation ?? 0, sizeOf?.(b), centreOf?.(b));
     if (polygonIntersectsMarquee(shape, marquee)) ids.push(b.id);
   }
   return ids;

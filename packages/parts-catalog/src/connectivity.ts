@@ -13,6 +13,7 @@
 // imported `.bbm` files routinely have stale or missing entries that the
 // desktop also patches up on every recompute.
 
+import { imageOffset } from './footprint.js';
 import type { BbmMap, Brick, Layer, LayerBrick } from '@cld/model';
 import type { Catalog, ConnectionPoint, PartMetadata } from './types.js';
 
@@ -57,7 +58,7 @@ export function rebuildConnectivity(
     for (let j = 0; j < b.connexions.length; j++) {
       const cp = catalogConnection(meta, j);
       if (!cp || cp.type === '') continue;
-      const [wx, wy] = transformLocal(cp.x, cp.y, b);
+      const [wx, wy] = transformLocal(cp.x, cp.y, b, meta);
       worldPoints.push({
         brickIndex: i,
         connIndex: j,
@@ -213,9 +214,15 @@ function padConnexions(brick: Brick, meta: PartMetadata): void {
  *   world = displayArea.center + rotate(localCp, brick.orientation)
  * Orientation is in degrees; positive = clockwise (BlueBrick convention).
  */
-function transformLocal(localX: number, localY: number, brick: Brick): [number, number] {
-  const cx = brick.displayArea.x + brick.displayArea.width / 2;
-  const cy = brick.displayArea.y + brick.displayArea.height / 2;
+/**
+ * World position of a local connection point: rotated around the brick's
+ * pivot, its sprite centre — displayArea centre + imageOffset, non-zero
+ * for parts with a <hull> (BrickPlacement connectionWorld).
+ */
+function transformLocal(localX: number, localY: number, brick: Brick, meta: PartMetadata | undefined): [number, number] {
+  const off = meta ? imageOffset(meta, brick.orientation) : { x: 0, y: 0 };
+  const cx = brick.displayArea.x + brick.displayArea.width / 2 + off.x;
+  const cy = brick.displayArea.y + brick.displayArea.height / 2 + off.y;
   const theta = (brick.orientation * Math.PI) / 180;
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);

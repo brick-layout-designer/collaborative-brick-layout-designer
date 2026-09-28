@@ -14,6 +14,12 @@
 // step and the first Ctrl+Z after a move appeared to do nothing. Links
 // are instead re-derived after undo/redo, which is why undo/redo origins
 // also schedule a recompute.
+//
+// Before connectivity, the first pass (and every remote update, including
+// the initial sync) repairs stale brick boxes: earlier builds kept a
+// brick's displayArea size when turning or placing it, which BlueBrick
+// shows shifted. Like desktop fixStaleAreas on every load, such boxes are
+// resized to the part's footprint, keeping the sprite where it was drawn.
 
 import { useEffect, useMemo } from 'react';
 import * as Y from 'yjs';
@@ -21,6 +27,9 @@ import { rebuildConnectivity, type Catalog, type PartMetadata } from '@cld/parts
 import { docToBbm } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import type { PartWire } from '../api';
+import type { RectangleF } from '@cld/model';
+import { staleAreaFix } from './brickGeometry';
+import { indexParts } from './partIndex';
 
 const DEBOUNCE_MS = 250;
 
@@ -31,6 +40,7 @@ const DEBOUNCE_MS = 250;
 export const CONNECTIVITY_ORIGIN = Symbol('cld-connectivity-origin');
 
 export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined): void {
+  const partIndex = useMemo(() => indexParts(parts), [parts]);
   // Build a Catalog from the wire shape. The recompute only reads
   // `connections` and `partNumber`/`key` — we leave the other fields
   // empty since the algorithm doesn't touch them.
@@ -57,6 +67,7 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
         subparts: [],
         canUngroup: true,
         hullPts: p.hullPts ?? [],
+        ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
       };
       m.set(p.key, meta);
     }
@@ -74,11 +85,24 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
 
     function runRecompute() {
       if (!doc) return;
+      if (partIndex.size > 0) fixStaleAreasInDoc(doc, partIndex);
       recomputeConnectivity(doc, catalog);
     }
 
+    let staleTimer: ReturnType<typeof setTimeout> | null = null;
+    function scheduleStaleFix() {
+      if (staleTimer) clearTimeout(staleTimer);
+      staleTimer = setTimeout(() => {
+        if (doc && partIndex.size > 0) fixStaleAreasInDoc(doc, partIndex);
+      }, DEBOUNCE_MS);
+    }
+
     function onUpdate(_u: Uint8Array, origin: unknown) {
-      if (origin !== LOCAL_ORIGIN && !(origin instanceof Y.UndoManager)) return;
+      if (origin === CONNECTIVITY_ORIGIN) return;
+      if (origin !== LOCAL_ORIGIN && !(origin instanceof Y.UndoManager)) {
+        scheduleStaleFix();
+        return;
+      }
       schedule();
     }
 
@@ -90,8 +114,9 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
     return () => {
       doc.off('update', onUpdate);
       if (timer) clearTimeout(timer);
+      if (staleTimer) clearTimeout(staleTimer);
     };
-  }, [doc, catalog]);
+  }, [doc, catalog, partIndex]);
 }
 
 /**
@@ -149,4 +174,33 @@ function writeBackConnexions(doc: Y.Doc, map: import('@cld/model').BbmMap): void
       yBrick.set('connexions', next.map((c) => ({ id: c.id, linkedTo: c.linkedTo })));
     }
   }
+}
+
+/**
+ * Resize every brick whose displayArea doesn't match its part's footprint
+ * (desktop fixStaleAreas), writing under CONNECTIVITY_ORIGIN so it is not
+ * an undo step. Returns how many bricks changed. Exported for tests.
+ */
+export function fixStaleAreasInDoc(doc: Y.Doc, partIndex: ReadonlyMap<string, PartWire>): number {
+  const fixes: Array<[Y.Map<unknown>, RectangleF]> = [];
+  doc.getMap('layerData').forEach((layer) => {
+    if (!(layer instanceof Y.Map)) return;
+    const bricks = layer.get('bricks');
+    if (!(bricks instanceof Y.Array)) return;
+    bricks.forEach((b) => {
+      if (!(b instanceof Y.Map)) return;
+      const partNumber = b.get('partNumber');
+      const displayArea = b.get('displayArea') as RectangleF | undefined;
+      if (typeof partNumber !== 'string' || !displayArea) return;
+      const orientation = (b.get('orientation') as number) ?? 0;
+      const fixed = staleAreaFix({ displayArea, orientation }, partIndex.get(partNumber.toLowerCase()));
+      if (fixed) fixes.push([b, fixed]);
+    });
+  });
+  if (fixes.length > 0) {
+    doc.transact(() => {
+      for (const [b, area] of fixes) b.set('displayArea', area);
+    }, CONNECTIVITY_ORIGIN);
+  }
+  return fixes.length;
 }

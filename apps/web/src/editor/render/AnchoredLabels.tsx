@@ -25,6 +25,7 @@ import { studToPx } from './coords';
 import { labelColorHex } from '../labelColor';
 import { buildLabelIndex, labelFontFamily, labelFontPx, labelPlacement } from '../mixedSelection';
 import type { AnnoDragHandlers } from './groupDragNodes';
+import type { PartWire } from '../../api';
 
 interface Props {
   map: BbmMap;
@@ -44,6 +45,8 @@ interface Props {
    * macro (MapViewDrag.cpp:412-450).
    */
   drag?: AnnoDragHandlers;
+  /** Catalog, so Brick labels hang off the brick's sprite centre (its pivot). */
+  partsByKey?: ReadonlyMap<string, PartWire>;
 }
 
 export function AnchoredLabels({
@@ -55,10 +58,11 @@ export function AnchoredLabels({
   selectedIds,
   onSelect,
   drag,
+  partsByKey,
 }: Props) {
   if (!labels || labels.length === 0) return null;
 
-  const index = buildLabelIndex(map, modules);
+  const index = buildLabelIndex(map, modules, partsByKey);
 
   return (
     <Group>

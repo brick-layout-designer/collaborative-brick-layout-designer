@@ -32,6 +32,8 @@ import {
   moveRulerItem,
   translateBricksAcrossLayers,
 } from './mutations';
+import { pivotOf } from './brickGeometry';
+import type { PartWire } from '../api';
 
 // ---------------------------------------------------------------------------
 // Keys and set helpers
@@ -99,9 +101,15 @@ export interface LabelIndex {
   brickById: Map<string, Brick>;
   bricksByGroup: Map<string, Brick[]>;
   bricksByModule: Map<string, Brick[]>;
+  /** A brick's pivot (sprite centre); absent = its displayArea centre. */
+  pivot?: (b: Brick) => { x: number; y: number };
 }
 
-export function buildLabelIndex(map: BbmMap, modules: readonly SidecarModule[]): LabelIndex {
+export function buildLabelIndex(
+  map: BbmMap,
+  modules: readonly SidecarModule[],
+  partsByKey?: ReadonlyMap<string, PartWire>,
+): LabelIndex {
   const brickById = new Map<string, Brick>();
   const bricksByGroup = new Map<string, Brick[]>();
   for (const layer of map.layers) {
@@ -124,7 +132,12 @@ export function buildLabelIndex(map: BbmMap, modules: readonly SidecarModule[]):
     }
     if (members.length > 0) bricksByModule.set(mod.id, members);
   }
-  return { brickById, bricksByGroup, bricksByModule };
+  return {
+    brickById,
+    bricksByGroup,
+    bricksByModule,
+    ...(partsByKey ? { pivot: (b: Brick) => pivotOf(b, partsByKey.get(b.partNumber.toLowerCase())) } : {}),
+  };
 }
 
 /**
@@ -140,12 +153,14 @@ export function labelAnchorBricks(label: AnchoredLabel, index: LabelIndex): Bric
 }
 
 /**
- * Anchor point in studs: the brick centre for an attached Brick label,
- * else the origin (the offset is then the label's world position).
+ * Anchor point in studs: the brick's sprite centre (its pivot, as desktop
+ * SceneBuilder brickCentreByGuid_) for an attached Brick label, else the
+ * origin (the offset is then the label's world position).
  */
 export function labelAnchorStuds(label: AnchoredLabel, index: LabelIndex): { x: number; y: number } {
   const b = labelAnchorBricks(label, index)[0];
   if (!b) return { x: 0, y: 0 };
+  if (index.pivot) return index.pivot(b);
   return { x: b.displayArea.x + b.displayArea.width / 2, y: b.displayArea.y + b.displayArea.height / 2 };
 }
 
@@ -262,6 +277,7 @@ export function annotationsInMarquee(
   labels: readonly AnchoredLabel[],
   modules: readonly SidecarModule[],
   zoom: number,
+  partsByKey?: ReadonlyMap<string, PartWire>,
 ): AnnoSelection {
   const rulers: string[] = [];
   const texts: string[] = [];
@@ -277,7 +293,7 @@ export function annotationsInMarquee(
   }
   const out: string[] = [];
   if (labels.length > 0) {
-    const index = buildLabelIndex(map, modules);
+    const index = buildLabelIndex(map, modules, partsByKey);
     for (const l of labels) {
       if (l.minZoom > 0 && zoom < l.minZoom) continue;
       if (polygonIntersectsMarquee(labelShapeStuds(l, index), marquee)) out.push(l.id);

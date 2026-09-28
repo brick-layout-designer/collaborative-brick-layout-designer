@@ -12,6 +12,8 @@ import * as Y from 'yjs';
 import type { ColorSpec, FontSpec, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SidecarModule } from '@cld/bbm';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import { imageOffset } from '@cld/parts-catalog/browser';
+import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
 
 export interface BrickInsertSpec {
   partNumber: string;
@@ -117,21 +119,27 @@ function pruneModuleMembers(doc: Y.Doc, deleted: Set<string>): void {
   if (changed) writeSidecarCache(doc, { ...cache, modules: next });
 }
 
+/**
+ * Move a brick so its pivot (sprite centre, `pivotOf`) is at
+ * (`pivotX`, `pivotY`). Without `part` the pivot is the displayArea centre.
+ */
 export function moveBrick(
   doc: Y.Doc,
   layerId: string,
   brickId: string,
-  newCentreX: number,
-  newCentreY: number,
+  pivotX: number,
+  pivotY: number,
+  part?: PartGeom,
 ): void {
   doc.transact(() => {
     const yBrick = findBrick(doc, layerId, brickId);
     if (!yBrick) return;
     const area = yBrick.get('displayArea') as RectangleF;
+    const off = part ? imageOffset(part, (yBrick.get('orientation') as number) ?? 0) : { x: 0, y: 0 };
     yBrick.set('displayArea', {
       ...area,
-      x: newCentreX - area.width / 2,
-      y: newCentreY - area.height / 2,
+      x: pivotX - off.x - area.width / 2,
+      y: pivotY - off.y - area.height / 2,
     });
   }, LOCAL_ORIGIN);
 }
@@ -144,20 +152,19 @@ export function moveBrickAndOrient(
   doc: Y.Doc,
   layerId: string,
   brickId: string,
-  newCentreX: number,
-  newCentreY: number,
+  pivotX: number,
+  pivotY: number,
   newOrientation: number,
+  part?: PartGeom,
 ): void {
   doc.transact(() => {
     const yBrick = findBrick(doc, layerId, brickId);
     if (!yBrick) return;
     const area = yBrick.get('displayArea') as RectangleF;
-    yBrick.set('displayArea', {
-      ...area,
-      x: newCentreX - area.width / 2,
-      y: newCentreY - area.height / 2,
-    });
-    yBrick.set('orientation', mod360(newOrientation));
+    const orientation = mod360(newOrientation);
+    // The box follows the turned footprint (BrickPlacement placeByImageCentre).
+    yBrick.set('displayArea', areaForPivot(part, orientation, { x: pivotX, y: pivotY }, area));
+    yBrick.set('orientation', orientation);
   }, LOCAL_ORIGIN);
 }
 
@@ -354,47 +361,21 @@ export function deleteBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string
 }
 
 /**
- * New centres + orientation delta for rotating a set of bricks about
- * their collective centroid — port of `MapView::rotateSelected`
- * (MapView.cpp:1043-1110). The pivot is the mean of the displayArea
- * centres; a single brick therefore rotates in place.
- */
-export function rotateAboutCentroid(
-  centres: ReadonlyArray<{ x: number; y: number }>,
-  degrees: number,
-): Array<{ x: number; y: number }> {
-  if (centres.length === 0) return [];
-  let px = 0;
-  let py = 0;
-  for (const c of centres) {
-    px += c.x;
-    py += c.y;
-  }
-  px /= centres.length;
-  py /= centres.length;
-  const rad = (degrees * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return centres.map((c) => {
-    const rx = c.x - px;
-    const ry = c.y - py;
-    return { x: px + rx * cos - ry * sin, y: py + rx * sin + ry * cos };
-  });
-}
-
-/**
- * Rotate a (possibly multi-layer) selection by `degrees` about its
- * centroid: every brick's orientation changes by `degrees` and its centre
- * orbits the pivot. displayArea keeps its size (desktop's
- * RotateBricksCommand only touches orientation). One transaction.
+ * Rotate a (possibly multi-layer) selection by `degrees` around its pivot
+ * — the mean of the bricks' sprite centres, so one brick turns in place —
+ * with each displayArea following the turned footprint
+ * (MapView::rotateSelected). `partOf` resolves a brick's catalog part;
+ * without it the pivot is the displayArea centre and sizes are kept.
+ * One transaction.
  */
 export function rotateBricksAboutCentroid(
   doc: Y.Doc,
   byLayer: Map<string, string[]>,
   degrees: number,
+  partOf: (partNumber: string) => PartGeom | undefined = () => undefined,
 ): void {
   if (byLayer.size === 0 || degrees === 0) return;
-  const found: Array<{ yBrick: Y.Map<unknown>; area: RectangleF }> = [];
+  const found: Array<{ yBrick: Y.Map<unknown>; area: RectangleF; orientation: number; part: PartGeom | undefined }> = [];
   for (const [layerId, ids] of byLayer) {
     const layerData = doc.getMap('layerData').get(layerId);
     if (!(layerData instanceof Y.Map)) continue;
@@ -404,25 +385,31 @@ export function rotateBricksAboutCentroid(
     for (let i = 0; i < bricks.length; i++) {
       const b = bricks.get(i);
       if (b instanceof Y.Map && idSet.has(b.get('id') as string)) {
-        found.push({ yBrick: b, area: b.get('displayArea') as RectangleF });
+        found.push({
+          yBrick: b,
+          area: b.get('displayArea') as RectangleF,
+          orientation: (b.get('orientation') as number) ?? 0,
+          part: partOf(b.get('partNumber') as string),
+        });
       }
     }
   }
   if (found.length === 0) return;
-  const next = rotateAboutCentroid(
-    found.map(({ area }) => ({ x: area.x + area.width / 2, y: area.y + area.height / 2 })),
+  const next = rotateAroundPivots(
+    found.map(({ area, orientation, part }) => ({ brick: { displayArea: area, orientation }, part })),
     degrees,
   );
   doc.transact(() => {
     found.forEach(({ yBrick, area }, i) => {
-      const c = next[i]!;
-      const x = c.x - area.width / 2;
-      const y = c.y - area.height / 2;
-      if (Math.abs(x - area.x) > 1e-9 || Math.abs(y - area.y) > 1e-9) {
-        yBrick.set('displayArea', { ...area, x, y });
+      const n = next[i]!;
+      const a = n.displayArea;
+      if (
+        Math.abs(a.x - area.x) > 1e-9 || Math.abs(a.y - area.y) > 1e-9 ||
+        Math.abs(a.width - area.width) > 1e-9 || Math.abs(a.height - area.height) > 1e-9
+      ) {
+        yBrick.set('displayArea', a);
       }
-      const current = (yBrick.get('orientation') as number) ?? 0;
-      yBrick.set('orientation', mod360(current + degrees));
+      yBrick.set('orientation', mod360(n.orientation));
     });
   }, LOCAL_ORIGIN);
 }
