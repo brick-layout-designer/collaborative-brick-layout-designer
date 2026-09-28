@@ -878,3 +878,24 @@ test.describe('brick stacking', () => {
     expect(p.index).toBe(p.last);
   });
 });
+
+test.describe('grid cell indices', () => {
+  test('columns and rows are labelled along the origin cell only, one axis per label', async ({ page }) => {
+    // Fordyce's grid layer shows cell indices (letters across, numbers down).
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const labels = () =>
+      page.evaluate(() => {
+        type Node = { text: () => string; find: (s: string) => Node[] };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('.cell-index')).flatMap((g) => g.find('Text')).map((t) => t.text());
+      });
+    await expect.poll(async () => (await labels()).length).toBeGreaterThan(0);
+    const texts = await labels();
+    // Never the old "A1" per-cell labels: letters or numbers, never both.
+    expect(texts.every((t) => /^[A-Z]+$/.test(t) || /^\d+$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^[A-Z]+$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^\d+$/.test(t))).toBe(true);
+    await shot(page, 'grid-cell-index.png');
+  });
+});
