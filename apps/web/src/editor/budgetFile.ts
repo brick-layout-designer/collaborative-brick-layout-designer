@@ -79,3 +79,23 @@ export function writeBbb(entries: readonly BudgetEntry[]): string {
   }
   return `${out}</Budget>`;
 }
+
+/**
+ * Add `incoming`'s limits to `current` (desktop Budget::mergeWith): a new
+ * part is appended; a part already budgeted (ids match case-insensitively)
+ * gets the sum of both limits, keeps its spelling and moves to the end, as
+ * BlueBrick removes and re-adds it.
+ */
+export function mergeBudgets(current: readonly BudgetEntry[], incoming: readonly BudgetEntry[]): BudgetEntry[] {
+  const out = current.map((e) => ({ ...e }));
+  for (const e of incoming) {
+    const i = out.findIndex((c) => c.part.toUpperCase() === e.part.toUpperCase());
+    if (i < 0) {
+      out.push({ ...e });
+    } else {
+      const [kept] = out.splice(i, 1);
+      out.push({ part: kept!.part, limit: kept!.limit + e.limit });
+    }
+  }
+  return out;
+}

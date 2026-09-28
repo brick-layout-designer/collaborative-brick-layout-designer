@@ -277,6 +277,20 @@ describe('BudgetDialog', () => {
     expect([...(onChange.mock.calls[0]![0] as Map<string, number>)]).toEqual([['4186P01.2', 3], ['3001.1', 2]]);
     click.mockRestore();
   });
+
+  it('Import and Merge adds the file\'s limits to the current ones', async () => {
+    const file = new File(['<Budget><PartList><Part id="3001.1">2</Part><Part id="3710.1">1</Part></PartList></Budget>'], 'more.bbb');
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+      Object.defineProperty(this, 'files', { value: [file] });
+      this.onchange?.(new Event('change'));
+    });
+    const onChange = vi.fn();
+    render(<BudgetDialog map={null} limits={new Map([['3001.1', 5]])} onLimitsChange={onChange} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Import and Merge…' }));
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect([...(onChange.mock.calls[0]![0] as Map<string, number>)]).toEqual([['3001.1', 7], ['3710.1', 1]]);
+    click.mockRestore();
+  });
 });
 
 describe('ExportImageDialog', () => {

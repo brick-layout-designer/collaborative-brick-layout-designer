@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Venue } from '@cld/bbm';
-import { parseBbb, writeBbb } from '../budgetFile';
+import { mergeBudgets, parseBbb, writeBbb } from '../budgetFile';
 // Saved by vanilla BlueBrick 1.9.2 (desktop fixtures/bluebrick-oracle).
 import BUDGET from '../../../../../packages/bbm/tests/fixtures/oracle/budget.bbb?raw';
 import BUDGET_EMPTY from '../../../../../packages/bbm/tests/fixtures/oracle/budget-empty.bbb?raw';
@@ -43,6 +43,19 @@ describe('.bbb budget files (vanilla BlueBrick format, Budget.cpp)', () => {
     expect(() => parseBbb('<Budget><PartList><Part id="a">x</Part></PartList></Budget>')).toThrow();
     expect(() => parseBbb('<Budget><PartList><Part>3</Part></PartList></Budget>')).toThrow();
     expect(() => parseBbb('<NotABudget/>')).toThrow();
+  });
+
+  it('Import and Merge adds limits, keeps the current spelling and moves merged parts to the end', () => {
+    const merged = mergeBudgets(
+      [{ part: '2865.8', limit: 12 }, { part: 'TS_X', limit: 1 }, { part: '3001.1', limit: 4 }],
+      [{ part: 'ts_x', limit: 2 }, { part: '9999.1', limit: 5 }],
+    );
+    expect(merged).toEqual([
+      { part: '2865.8', limit: 12 },
+      { part: '3001.1', limit: 4 },
+      { part: 'TS_X', limit: 3 },
+      { part: '9999.1', limit: 5 },
+    ]);
   });
 
   it('still opens files saved by earlier web builds', () => {

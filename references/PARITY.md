@@ -88,7 +88,7 @@ Web source root: this repository.
 
 ## Budget menu (`MainWindowMenus.cpp:563-570`)
 
-- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New/Open `.bbb`/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New (also desktop's Close Budget, since the budget lives in the layout)/Open `.bbb`/Import and Merge (limits add up, `Budget::mergeWith`)/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
 
 ---
 
