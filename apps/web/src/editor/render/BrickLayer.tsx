@@ -122,7 +122,9 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
                   selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
-                  snapActive={!isViewer && view.snapActive}
+                  // Only a selected glyph shows the halo, so only it re-renders
+                  // when a snap starts or ends.
+                  snapActive={!isViewer && view.snapActive && selectedIds.has(brick.id)}
                   getMap={getMap}
                   partsByKey={partsByKey}
                   {...(onEditBrick ? { onEditBrick } : {})}

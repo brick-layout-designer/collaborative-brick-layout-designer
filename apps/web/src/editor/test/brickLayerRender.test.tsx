@@ -67,10 +67,16 @@ describe('BrickLayer re-render scope', () => {
     await act(async () => root.render(render(map)));
     expect(prims).toBeLessThan(10);
 
-    // Live-snap updates during a drag touch no glyph.
+    // A snap starting re-renders only the selected glyph (its halo turns
+    // green); further live-snap updates during the drag touch no glyph.
     prims = 0;
     await act(async () => useEditorStore.getState().setLiveSnap({ studX: 1, studY: 0 }));
+    expect(prims).toBeGreaterThan(0);
+    expect(prims).toBeLessThan(10);
+    prims = 0;
+    await act(async () => useEditorStore.getState().setLiveSnap({ studX: 2, studY: 0 }));
     expect(prims).toBe(0);
+    await act(async () => useEditorStore.getState().setLiveSnap(null));
 
     await act(async () => root.unmount());
   });

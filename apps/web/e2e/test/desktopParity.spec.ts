@@ -314,9 +314,14 @@ test.describe('anchored labels — colour round-trip', () => {
     const { id } = (await res.json()) as { id: string };
     await openEditor(page, id);
 
-    // Empty map → pan 0 / zoom 1, so the label's top-left is at (320, 240) px.
+    // The view fits to the label on open; its top-left is at (40, 30)
+    // studs = (320, 240) scene px, mapped through the stage transform.
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
-    await page.mouse.dblclick(box.x + 320 + 20, box.y + 240 + 10);
+    const t = await page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { x: () => number; y: () => number; scaleX: () => number }[] } }).Konva.stages[0]!;
+      return { x: st.x(), y: st.y(), z: st.scaleX() };
+    });
+    await page.mouse.dblclick(box.x + t.x + (320 + 6) * t.z, box.y + t.y + (240 + 6) * t.z);
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Edit Anchored Label');
     await expect(dialog.locator('input[type="color"]')).toHaveValue('#ff0000');
