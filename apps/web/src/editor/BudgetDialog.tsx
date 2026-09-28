@@ -1,5 +1,5 @@
 // Port of BudgetDialog.cpp — modeless budget editor.
-// Reads/writes BlueBrick `.bbb` XML format (Budget > BudgetEntry > PartNumber + Limit).
+// Reads/writes BlueBrick `.bbb` XML (Budget > PartList > Part id="…"), see budgetFile.ts.
 // Usage counts are computed from the live Yjs doc. Rows with used > limit are highlighted.
 // The limits themselves are stored in the doc's meta (`setBudgetLimits`), so
 // they persist and sync; .bbb Open/Save import and export them.
@@ -39,9 +39,15 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
       const file = input.files?.[0];
       if (!file) return;
       file.text().then((text) => {
-        const entries = parseBbb(text);
+        let entries: BudgetEntry[];
+        try {
+          entries = parseBbb(text);
+        } catch (e) {
+          window.alert(`Could not open ${file.name}: ${(e as Error).message}`);
+          return;
+        }
         const m = new Map<string, number>();
-        for (const e of entries) m.set(e.part, e.limit);
+        for (const e of entries) if (e.limit >= 0) m.set(e.part, e.limit);
         setLimits(m);
         setFileName(file.name);
       });

@@ -357,7 +357,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] `.set.xml` write — `SaveAsSetDialog.tsx`; Map menu → "Save Selection as Set…"
 - [x] Vendored parts library
 - [n/a] User library paths + `imports/` subfolder — superseded by server-side part library manager
-- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`. Reads `<Budget><BudgetEntry><PartNumber><Limit>`, ignoring negative or missing limits. Writes XML-escaped entries sorted by part number and drops unlimited (−1) entries, as desktop `Budget.cpp:36-58` does.
+- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`, byte for byte like vanilla (`Budget.cpp`): `<PartList><Part id="…">N</Part></PartList>`, CRLF, lowercase `utf-8`, file order kept, `<PartList />` when empty, no trailing newline. Ids are case-insensitive (first of a duplicate wins); a non-integer value or a Part without an id rejects the file. Files from earlier web builds (`<BudgetEntry>`) still open.
 
 ---
 

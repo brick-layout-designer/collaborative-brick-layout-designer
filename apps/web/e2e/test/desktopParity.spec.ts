@@ -414,8 +414,9 @@ test.describe('budget limits', () => {
     const download = await dl;
     const file = await download.path();
     const xml = readFileSync(file, 'utf-8');
-    expect(xml).toContain(`<PartNumber>${part}</PartNumber>`);
-    expect(xml).toContain('<Limit>5</Limit>');
+    // Vanilla BlueBrick's layout (Budget.cpp): <PartList><Part id="…">N</Part>, CRLF.
+    expect(xml).toContain(`    <Part id="${part}">5</Part>\r\n`);
+    expect(xml.startsWith('<?xml version="1.0" encoding="utf-8"?>\r\n<Budget>\r\n')).toBe(true);
 
     // …and importing it restores the limit after New cleared it.
     await page.getByRole('button', { name: 'New', exact: true }).last().click();
