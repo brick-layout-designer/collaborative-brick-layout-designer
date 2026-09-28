@@ -1125,12 +1125,15 @@ export interface AddTextSpec {
   textAlignment?: string;
 }
 
-/** Top-most existing text layer, or create a fresh one. */
+/**
+ * The first text layer, or a new one named "Labels" at the top — where
+ * desktop's Insert Text puts a cell (MapView::addTextAtScenePos).
+ */
 export function ensureTextLayer(doc: Y.Doc): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
   const ids = layerOrder.toArray();
-  for (let i = ids.length - 1; i >= 0; i--) {
+  for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
     const l = layerData.get(id);
     if (l instanceof Y.Map && l.get('type') === 'text') return id;
@@ -1140,7 +1143,7 @@ export function ensureTextLayer(doc: Y.Doc): string {
     const yLayer = new Y.Map<unknown>();
     yLayer.set('id', id);
     yLayer.set('type', 'text');
-    yLayer.set('name', 'Text');
+    yLayer.set('name', 'Labels');
     yLayer.set('visible', true);
     yLayer.set('transparency', 100);
     yLayer.set('hullProperties', {
@@ -1154,6 +1157,15 @@ export function ensureTextLayer(doc: Y.Doc): string {
     layerOrder.push([id]);
   }, LOCAL_ORIGIN);
   return id;
+}
+
+/**
+ * Box for new text, in studs: 10 studs high, 0.6 of that per character
+ * wide and at least twice the height (MapView::addTextAtScenePos).
+ */
+export function newTextBox(text: string): { width: number; height: number } {
+  const height = 10;
+  return { width: Math.max(height * 0.6 * text.length, height * 2), height };
 }
 
 /**

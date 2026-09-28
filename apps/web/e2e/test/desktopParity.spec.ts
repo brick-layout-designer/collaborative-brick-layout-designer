@@ -355,6 +355,34 @@ test.describe('insert text', () => {
     expect(c.x).toBeCloseTo(centre.x, 1);
     expect(c.y).toBeCloseTo(centre.y, 1);
   });
+
+  test('Ctrl+T puts Arial 12 black text at the view centre on a Labels layer, whatever the mouse', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const { iw, ih } = await page.evaluate(() => ({ iw: window.innerWidth, ih: window.innerHeight }));
+    const centre = { x: (iw - 260) / 2 / 8, y: (ih - 48) / 2 / 8 };
+    // Mouse over the canvas, well away from its centre.
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    await page.mouse.move(box.x + 40, box.y + 40);
+
+    await page.keyboard.press('Control+t');
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('input[type="text"], textarea').first().fill('Yard');
+    await dialog.getByRole('button', { name: 'OK' }).click();
+
+    const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
+    await expect.poll(async () => /<TextCell>/.test(await bbm())).toBe(true);
+    const xml = await bbm();
+    const cellXml = xml.slice(xml.indexOf('<TextCell>'), xml.indexOf('</TextCell>'));
+    const num = (tag: string) => Number(new RegExp(`<${tag}>([^<]+)</${tag}>`).exec(cellXml)![1]);
+    expect(num('X') + num('Width') / 2).toBeCloseTo(centre.x, 1);
+    expect(num('Y') + num('Height') / 2).toBeCloseTo(centre.y, 1);
+    expect(num('Height')).toBe(10);
+    expect(num('Width')).toBe(24); // max(10 * 0.6 * 4 characters, 20)
+    expect(cellXml).toMatch(/<FontColor>\s*<IsKnownColor>true<\/IsKnownColor>\s*<Name>Black<\/Name>/);
+    expect(cellXml).toMatch(/<Size>12<\/Size>/);
+    expect(xml).toMatch(/<Layer type="text" id="[^"]+">\s*<Name>Labels<\/Name>/);
+  });
 });
 
 test.describe('venue library', () => {

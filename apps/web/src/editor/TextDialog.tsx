@@ -33,7 +33,8 @@ interface Props {
 export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
   const [text, setText] = useState(initial?.text ?? '');
   const [fontFamily, setFontFamily] = useState(initial?.font.family ?? 'Arial');
-  const [fontSize, setFontSize] = useState(initial?.font.size ?? 24);
+  // New text: Arial 12 pt, like desktop (MapView::addTextAtScenePos).
+  const [fontSize, setFontSize] = useState(initial?.font.size ?? 12);
   const styleStr = (initial?.font.style ?? '').toLowerCase();
   const [isBold, setIsBold] = useState(styleStr.includes('bold'));
   const [isItalic, setIsItalic] = useState(styleStr.includes('italic'));

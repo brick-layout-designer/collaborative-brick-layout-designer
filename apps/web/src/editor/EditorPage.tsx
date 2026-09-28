@@ -64,6 +64,7 @@ import {
   ensureBrickLayer,
   ensureRulerLayer,
   ensureTextLayer,
+  newTextBox,
   allVisibleBrickIds,
   bricksByLayer,
   deleteBricksAcrossLayers,
@@ -2550,28 +2551,25 @@ function Canvas({
   );
 
   function commitAddText(r: TextDialogResult) {
-    // Place at the current cursor (or stage centre if cursor isn't
-    // over the canvas yet). `addTextCell` infers a stud-size box from
-    // the requested font size so the renderer's probe-and-fit lands
-    // somewhere reasonable.
-    const target = addTextAt ?? pointerStuds() ?? viewCentreStuds({ width, height });
+    // Like desktop's Insert Text (MapView::addTextAtScenePos): at the view
+    // centre, or where "Add Text Here" was picked, on the first text
+    // layer, in a 10-stud-high box.
+    const target = addTextAt ?? viewCentreStuds({ width, height });
     setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
-    // Heuristic: 1 stud ≈ 8 px, so a 24-px font wants ~3 studs tall;
-    // width is 0.6 × height per character.
-    const heightStuds = Math.max(2, r.fontSize / 8);
-    const widthStuds = Math.max(2, r.text.length * heightStuds * 0.6);
+    const box = newTextBox(r.text);
     const styleParts: string[] = [];
     if (r.isBold) styleParts.push('Bold');
     if (r.isItalic) styleParts.push('Italic');
     addTextCell(doc, layerId, {
       centreX: target.x,
       centreY: target.y,
-      widthStuds,
-      heightStuds,
+      widthStuds: box.width,
+      heightStuds: box.height,
       text: r.text,
       font: { family: r.fontFamily, size: r.fontSize, style: styleParts.join(',') || 'Regular' },
-      fontColor: { kind: 'argb', argb: r.colorArgb },
+      // Desktop's new text is the known colour Black.
+      fontColor: r.colorArgb.toUpperCase() === 'FF000000' ? { kind: 'known', name: 'Black' } : { kind: 'argb', argb: r.colorArgb },
       orientation: r.rotation,
     });
     setShowAddText(false);
