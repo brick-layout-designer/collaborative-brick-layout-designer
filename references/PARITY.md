@@ -193,6 +193,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Category dropdown (parent-folder buckets)
 - [x] Fuzzy filter line edit (subsequence match, run-length scoring)
 - [x] Icon grid: S/M/L icon size toggle (`PartsPanel.tsx`; S=32px, M=48px, L=64px; persisted `cld:partsIconSize`); grid auto-reflows on resize matching desktop's `QListView::Adjust`
+- [x] A click picks a tile; double-click or Enter adds the part to the map (`QListWidget::itemActivated`, `PartsBrowser.cpp:145`)
 - [x] **Drag thumbnail to canvas** — HTML5 drag with live ghost + connection-snap on drop
 - [x] **Item activation (click)** places at view centre with selection-anchor snap + chain placement
 - [x] Right-click: **Add to map** [x], **Copy part number** [x], **Delete imported part...** [n/a] (LDraw/Studio/LDD import not planned for web; no `imports/` subfolder)

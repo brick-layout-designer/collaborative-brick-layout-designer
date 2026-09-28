@@ -39,6 +39,7 @@ export function PartsPanel({
   const showNumbers = useEditorStore((s) => s.showBudgetNumbers);
   const defaultInfinite = useEditorStore((s) => s.budgetDefaultInfinite);
   const hasBudget = (budgetLimits?.size ?? 0) > 0;
+  const [selectedTile, setSelectedTile] = useState<string | null>(null);
   const usage = useMemo(() => (hasBudget && showNumbers ? countUsage(map) : null), [hasBudget, showNumbers, map]);
   const [ctxMenu, setCtxMenu] = useState<PartContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -187,7 +188,18 @@ export function PartsPanel({
             return (
               <li key={p.key}>
                 <button
-                  onClick={() => onPlacePart(p)}
+                  // Like desktop's parts browser (QListWidget::itemActivated,
+                  // PartsBrowser.cpp:145): a click picks the tile, a
+                  // double-click or Enter adds the part to the map.
+                  aria-pressed={selectedTile === p.key}
+                  onClick={() => setSelectedTile(p.key)}
+                  onDoubleClick={() => onPlacePart(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onPlacePart(p);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setCtxMenu({ part: p, x: e.clientX, y: e.clientY });
@@ -201,7 +213,7 @@ export function PartsPanel({
                     }
                   }}
                   title={tooltip}
-                  className={`flex w-full flex-col items-center rounded-sm p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-neutral-900 hover:bg-neutral-800'}`}
+                  className={`flex w-full flex-col items-center rounded-sm p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-neutral-900 hover:bg-neutral-800'} ${selectedTile === p.key ? 'ring-2 ring-blue-500' : ''}`}
                 >
                   <PartThumbnail part={p} partsByKey={partsByKey} imgCls={cfg.imgCls} />
                   <span className="mt-1 line-clamp-2 text-center leading-tight">

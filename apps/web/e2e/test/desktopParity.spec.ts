@@ -721,7 +721,7 @@ test.describe('pivot geometry', () => {
     expect(part.spriteSize).toBeTruthy();
 
     await page.getByPlaceholder(/Fuzzy filter/).fill('2861.8');
-    await page.locator('aside li button[draggable="true"]', { hasText: /./ }).filter({ has: page.locator('img') }).first().click();
+    await page.locator('aside li button[draggable="true"]', { hasText: /./ }).filter({ has: page.locator('img') }).first().dblclick();
 
     const brick = async () => {
       const xml = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
@@ -748,7 +748,7 @@ test.describe('pivot geometry', () => {
 });
 
 test.describe('chained placement', () => {
-  test('clicking a track tile three times builds a straight run, each piece on the last one\'s free end', async ({ page }) => {
+  test('double-clicking a track tile three times builds a straight run, each piece on the last one\'s free end', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
     await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
@@ -764,8 +764,13 @@ test.describe('chained placement', () => {
         links: [...m[0].matchAll(/<LinkedTo>([^<]+)<\/LinkedTo>/g)].length,
       }));
     };
+    // A single click only picks the tile (desktop places on activation).
+    await tile.click();
+    await expect(tile).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(500);
+    expect(await bricks()).toHaveLength(0);
     for (let n = 1; n <= 3; n++) {
-      await tile.click();
+      await tile.dblclick();
       await expect.poll(async () => (await bricks()).length).toBe(n);
     }
     // Wait for the links to reach the server.
@@ -788,7 +793,9 @@ test.describe('placing a set', () => {
     await page.getByPlaceholder(/Fuzzy filter/).fill('rail_yard_left_turn');
     const tile = page.locator('aside li button[draggable="true"]').filter({ hasText: /Rail yard/ }).first();
     await expect(tile).toBeVisible({ timeout: 10000 });
-    await tile.click();
+    // Enter on the focused tile adds it, like a double-click (PartsBrowser.cpp:145).
+    await tile.focus();
+    await page.keyboard.press('Enter');
     await expect(page.locator('footer')).toContainText('Placed set: Rail yard on the right (12 parts)');
 
     const sidecar = async () =>
@@ -822,7 +829,7 @@ test.describe('connection points', () => {
 
     // A placed piece is selected: its two free ends show.
     await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
-    await page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first().click();
+    await page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first().dblclick();
     await expect(page.locator('footer')).toContainText('selected: 1');
     await expect.poll(dots).toBe(2);
 
