@@ -78,3 +78,35 @@ function stripRulerIds(map: ReturnType<typeof readBbm>['map']): ReturnType<typeo
     ),
   } as ReturnType<typeof readBbm>['map'];
 }
+
+// Files written by vanilla BlueBrick 1.9.2 itself (desktop
+// fixtures/bluebrick-oracle), including its conversions of LDraw,
+// TrackDesigner and 4DBrix maps. Vanilla writes exponents as "E-07".
+describe('round-trip against vanilla BlueBrick output (oracle fixtures)', () => {
+  const ORACLE = [
+    'flex-a.bbm', 'flex-b.bbm', 'flex-c.bbm', 'flex-in.bbm', 'fourdbrix.bbm',
+    'fourdbrix.from-ncp.bbm', 'tight-corner.from-ldr.bbm', 'tight-corner.from-mpd.bbm', 'tight-corner.from-tdl.bbm',
+  ];
+  for (const file of ORACLE) {
+    it(`${file} round-trips byte-for-byte`, () => {
+      const original = readFileSync(resolve(FIXTURES, 'oracle', file), 'utf8');
+      const parsed = readBbm(original);
+      expect(parsed.warnings).toEqual([]);
+      // flex-in's stored nbItems is stale; vanilla recomputes on save.
+      expect(writeBbm(parsed.map, { recomputeNbItems: false })).toBe(original);
+    });
+  }
+});
+
+describe('damaged numbers', () => {
+  it('a non-numeric float reads as 0 and the map still saves (desktop XmlPrimitives.cpp:47-57)', () => {
+    const original = readFileSync(resolve(FIXTURES, 'tight-corner.bbm'), 'utf8');
+    for (const bad of ['abc', 'NaN', '-INF', '1e999']) {
+      const damaged = original.replace(/<Orientation>[^<]*<\/Orientation>/, `<Orientation>${bad}</Orientation>`);
+      const parsed = readBbm(damaged);
+      const first = parsed.map.layers.flatMap((l) => (l.type === 'brick' ? l.bricks : []))[0]!;
+      expect(first.orientation).toBe(0);
+      expect(() => writeBbm(parsed.map)).not.toThrow();
+    }
+  });
+});

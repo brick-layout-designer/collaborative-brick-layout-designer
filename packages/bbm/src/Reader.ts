@@ -21,7 +21,7 @@ import type {
   TextCell,
 } from '@cld/model';
 import { readColorSpec } from './color.js';
-import { parseBool } from './format.js';
+import { parseBool, parseXmlFloat, parseXmlInt } from './format.js';
 
 // Parser config:
 //   - preserve attributes under a stable key (`@`)
@@ -51,8 +51,8 @@ export function readBbm(xml: string): ReadResult {
   const warnings: string[] = [];
 
   const map: BbmMap = {
-    version: parseInt(stringField(root, 'Version'), 10),
-    nbItems: parseInt(stringField(root, 'nbItems'), 10),
+    version: parseXmlInt(stringField(root, 'Version')),
+    nbItems: parseXmlInt(stringField(root, 'nbItems')),
     backgroundColor: readColorSpec(required<Node>(root, 'BackgroundColor')),
     author: stringField(root, 'Author'),
     lug: stringField(root, 'LUG'),
@@ -60,7 +60,7 @@ export function readBbm(xml: string): ReadResult {
     date: readDate(required<Node>(root, 'Date')),
     comment: optionalString(root, 'Comment') ?? '',
     exportInfo: readExportInfo(required<Node>(root, 'ExportInfo')),
-    selectedLayerIndex: parseInt(stringField(root, 'SelectedLayerIndex'), 10),
+    selectedLayerIndex: parseXmlInt(stringField(root, 'SelectedLayerIndex')),
     layers: readLayers(root.Layers, warnings),
   };
 
@@ -73,18 +73,18 @@ export function readBbm(xml: string): ReadResult {
 
 function readDate(node: Node): { day: number; month: number; year: number } {
   return {
-    day: parseInt(stringField(node, 'Day'), 10),
-    month: parseInt(stringField(node, 'Month'), 10),
-    year: parseInt(stringField(node, 'Year'), 10),
+    day: parseXmlInt(stringField(node, 'Day')),
+    month: parseXmlInt(stringField(node, 'Month')),
+    year: parseXmlInt(stringField(node, 'Year')),
   };
 }
 
 function readExportInfo(node: Node): ExportInfo {
   return {
     exportPath: stringField(node, 'ExportPath'),
-    exportFileType: parseInt(stringField(node, 'ExportFileType'), 10),
+    exportFileType: parseXmlInt(stringField(node, 'ExportFileType')),
     exportArea: readRect(required<Node>(node, 'ExportArea')),
-    exportScale: parseFloat(stringField(node, 'ExportScale')),
+    exportScale: parseXmlFloat(stringField(node, 'ExportScale')),
     exportWatermark: parseBool(stringField(node, 'ExportWatermark')),
     exportElectricCircuit: parseBool(stringField(node, 'ExportElectricCircuit')),
     exportConnectionPoints: parseBool(stringField(node, 'ExportConnectionPoints')),
@@ -93,10 +93,10 @@ function readExportInfo(node: Node): ExportInfo {
 
 function readRect(node: Node): RectangleF {
   return {
-    x: parseFloat(stringField(node, 'X')),
-    y: parseFloat(stringField(node, 'Y')),
-    width: parseFloat(stringField(node, 'Width')),
-    height: parseFloat(stringField(node, 'Height')),
+    x: parseXmlFloat(stringField(node, 'X')),
+    y: parseXmlFloat(stringField(node, 'Y')),
+    width: parseXmlFloat(stringField(node, 'Width')),
+    height: parseXmlFloat(stringField(node, 'Height')),
   };
 }
 
@@ -104,14 +104,14 @@ function readHullProperties(node: Node): HullProperties {
   return {
     isVisible: parseBool(stringAttr(node, 'isVisible')),
     hullColor: readColorSpec(required<Node>(node, 'hullColor')),
-    hullThickness: parseInt(stringField(node, 'hullThickness'), 10),
+    hullThickness: parseXmlInt(stringField(node, 'hullThickness')),
   };
 }
 
 function readFont(node: Node): FontSpec {
   return {
     family: stringField(node, 'FontFamily'),
-    size: parseFloat(stringField(node, 'Size')),
+    size: parseXmlFloat(stringField(node, 'Size')),
     style: stringField(node, 'Style'),
   };
 }
@@ -136,7 +136,7 @@ function readLayers(layersNode: unknown, warnings: string[]): Layer[] {
       id,
       name: optionalString(layerNode, 'Name') ?? '',
       visible: parseBool(stringField(layerNode, 'Visible')),
-      transparency: parseInt(stringField(layerNode, 'Transparency'), 10),
+      transparency: parseXmlInt(stringField(layerNode, 'Transparency')),
       hullProperties: readHullProperties(required<Node>(layerNode, 'HullProperties')),
     };
 
@@ -171,11 +171,11 @@ function readLayerGrid(n: Node, c: Omit<LayerGrid, 'type' | keyof LayerGridOnly>
     // Desktop reads these as float (LayerIO.cpp:120,122), so do the same
     // here — otherwise fractional thickness from a desktop-saved file is
     // lost on round-trip.
-    gridThickness: parseFloat(stringField(n, 'GridThickness')),
+    gridThickness: parseXmlFloat(stringField(n, 'GridThickness')),
     subGridColor: readColorSpec(required<Node>(n, 'SubGridColor')),
-    subGridThickness: parseFloat(stringField(n, 'SubGridThickness')),
-    gridSizeInStud: parseInt(stringField(n, 'GridSizeInStud'), 10),
-    subDivisionNumber: parseInt(stringField(n, 'SubDivisionNumber'), 10),
+    subGridThickness: parseXmlFloat(stringField(n, 'SubGridThickness')),
+    gridSizeInStud: parseXmlInt(stringField(n, 'GridSizeInStud')),
+    subDivisionNumber: parseXmlInt(stringField(n, 'SubDivisionNumber')),
     displayGrid: parseBool(stringField(n, 'DisplayGrid')),
     displaySubGrid: parseBool(stringField(n, 'DisplaySubGrid')),
     displayCellIndex: parseBool(stringField(n, 'DisplayCellIndex')),
@@ -213,7 +213,7 @@ function readLayerArea(n: Node, c: Omit<LayerArea, 'type' | 'areaCellSize' | 'ar
   return {
     ...c,
     type: 'area',
-    areaCellSize: parseInt(stringField(n, 'AreaCellSize'), 10),
+    areaCellSize: parseXmlInt(stringField(n, 'AreaCellSize')),
     areas: readAreas(n.Areas),
   };
 }
@@ -256,7 +256,7 @@ function readLinearRuler(n: Node): LinearRulerItem {
     point2: readPoint(required<Node>(n, 'Point2')),
     attachedBrick1Id: optionalString(n, 'AttachedBrick1') ?? '',
     attachedBrick2Id: optionalString(n, 'AttachedBrick2') ?? '',
-    offsetDistance: parseFloat(stringField(n, 'OffsetDistance')),
+    offsetDistance: parseXmlFloat(stringField(n, 'OffsetDistance')),
     allowOffset: parseBool(stringField(n, 'AllowOffset')),
   };
 }
@@ -266,7 +266,7 @@ function readCircularRuler(n: Node): CircularRulerItem {
     kind: 'circular',
     ...readRulerCommon(n),
     center: readPoint(required<Node>(n, 'Center')),
-    radius: parseFloat(stringField(n, 'Radius')),
+    radius: parseXmlFloat(stringField(n, 'Radius')),
     attachedBrickId: optionalString(n, 'AttachedBrick') ?? '',
   };
 }
@@ -282,13 +282,13 @@ function readRulerCommon(n: Node) {
     displayArea: readRect(required<Node>(n, 'DisplayArea')),
     myGroup: optionalString(n, 'MyGroup') ?? '',
     color: readColorSpec(required<Node>(n, 'Color')),
-    lineThickness: parseFloat(stringField(n, 'LineThickness')),
+    lineThickness: parseXmlFloat(stringField(n, 'LineThickness')),
     displayDistance: parseBool(stringField(n, 'DisplayDistance')),
     displayUnit: parseBool(stringField(n, 'DisplayUnit')),
     guidelineColor: readColorSpec(required<Node>(n, 'GuidelineColor')),
-    guidelineThickness: parseFloat(stringField(n, 'GuidelineThickness')),
+    guidelineThickness: parseXmlFloat(stringField(n, 'GuidelineThickness')),
     guidelineDashPattern: readFloatArray(n.GuidelineDashPattern),
-    unit: parseInt(stringField(n, 'Unit'), 10),
+    unit: parseXmlInt(stringField(n, 'Unit')),
     measureFont: readFont(required<Node>(n, 'MeasureFont')),
     measureFontColor: readColorSpec(required<Node>(n, 'MeasureFontColor')),
   };
@@ -302,8 +302,8 @@ function mintRulerId(): string {
 
 function readPoint(node: Node): { x: number; y: number } {
   return {
-    x: parseFloat(stringField(node, 'X')),
-    y: parseFloat(stringField(node, 'Y')),
+    x: parseXmlFloat(stringField(node, 'X')),
+    y: parseXmlFloat(stringField(node, 'Y')),
   };
 }
 
@@ -317,9 +317,7 @@ function readIntPoint(node: unknown): { x: number; y: number } {
   const n = node as Node;
   const x = optionalString(n, 'X');
   const y = optionalString(n, 'Y');
-  const px = x === undefined ? 0 : parseInt(x, 10);
-  const py = y === undefined ? 0 : parseInt(y, 10);
-  return { x: Number.isFinite(px) ? px : 0, y: Number.isFinite(py) ? py : 0 };
+  return { x: parseXmlInt(x), y: parseXmlInt(y) };
 }
 
 /**
@@ -333,9 +331,7 @@ function readFloatArray(node: unknown): number[] {
   if (!node || typeof node !== 'object') return [];
   const n = node as Node;
   const inner = [...asArray<unknown>(n.value as unknown), ...asArray<unknown>(n.double as unknown)];
-  return inner
-    .map((v) => parseFloat(textOf(v)))
-    .filter((v) => Number.isFinite(v));
+  return inner.map((v) => parseXmlFloat(textOf(v)));
 }
 
 function textOf(v: unknown): string {
@@ -366,9 +362,9 @@ function readBrick(n: Node): Brick {
     displayArea: readRect(required<Node>(n, 'DisplayArea')),
     myGroup: optionalString(n, 'MyGroup') ?? '',
     partNumber: stringField(n, 'PartNumber'),
-    orientation: parseFloat(stringField(n, 'Orientation')),
-    activeConnectionPointIndex: parseInt(stringField(n, 'ActiveConnectionPointIndex'), 10),
-    altitude: parseFloat(stringField(n, 'Altitude')),
+    orientation: parseXmlFloat(stringField(n, 'Orientation')),
+    activeConnectionPointIndex: parseXmlInt(stringField(n, 'ActiveConnectionPointIndex')),
+    altitude: parseXmlFloat(stringField(n, 'Altitude')),
     connexions: readConnexions(n.Connexions),
   };
 }
@@ -401,7 +397,7 @@ function readTextCell(n: Node): TextCell {
     displayArea: readRect(required<Node>(n, 'DisplayArea')),
     myGroup: optionalString(n, 'MyGroup') ?? '',
     text: optionalString(n, 'Text') ?? '',
-    orientation: parseFloat(stringField(n, 'Orientation')),
+    orientation: parseXmlFloat(stringField(n, 'Orientation')),
     fontColor: readColorSpec(required<Node>(n, 'FontColor')),
     font: readFont(required<Node>(n, 'Font')),
     textAlignment: stringField(n, 'TextAlignment'),
@@ -416,8 +412,8 @@ function readAreas(node: unknown): { x: number; y: number; color: string }[] {
   return list.map((a) => {
     const an = a as Node;
     return {
-      x: parseInt(stringField(an, 'x'), 10),
-      y: parseInt(stringField(an, 'y'), 10),
+      x: parseXmlInt(stringField(an, 'x')),
+      y: parseXmlInt(stringField(an, 'y')),
       color: stringField(an, 'color'),
     };
   });
@@ -434,9 +430,9 @@ function readGroups(node: unknown): Group[] {
     const partNumber = optionalString(gn, 'PartNumber');
     if (partNumber !== undefined) out.partNumber = partNumber;
     const orientation = optionalString(gn, 'Orientation');
-    if (orientation !== undefined) out.orientation = parseFloat(orientation);
+    if (orientation !== undefined) out.orientation = parseXmlFloat(orientation);
     const altitude = optionalString(gn, 'Altitude');
-    if (altitude !== undefined) out.altitude = parseFloat(altitude);
+    if (altitude !== undefined) out.altitude = parseXmlFloat(altitude);
     const myGroup = optionalString(gn, 'MyGroup');
     if (myGroup !== undefined) out.myGroup = myGroup;
     return out;
