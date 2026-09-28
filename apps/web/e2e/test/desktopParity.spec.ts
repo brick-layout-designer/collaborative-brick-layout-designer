@@ -742,3 +742,37 @@ test.describe('pivot geometry', () => {
     expect(turned.y + turned.h / 2 + fp1.imageOffset.y).toBeCloseTo(pivot0.y, 2);
   });
 });
+
+test.describe('chained placement', () => {
+  test('clicking a track tile three times builds a straight run, each piece on the last one\'s free end', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    const tile = page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first();
+    await expect(tile).toHaveAttribute('title', /2865\.8/);
+
+    const bricks = async () => {
+      const xml = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+      return [...xml.matchAll(/<Brick id="([^"]+)">[\s\S]*?<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>[\s\S]*?<\/Brick>/g)].map((m) => ({
+        id: m[1]!,
+        x: Number(m[2]),
+        y: Number(m[3]),
+        links: [...m[0].matchAll(/<LinkedTo>([^<]+)<\/LinkedTo>/g)].length,
+      }));
+    };
+    for (let n = 1; n <= 3; n++) {
+      await tile.click();
+      await expect.poll(async () => (await bricks()).length).toBe(n);
+    }
+    // Wait for the links to reach the server.
+    await expect.poll(async () => (await bricks()).reduce((s, b) => s + b.links, 0)).toBe(4);
+    const run = await bricks();
+    const xs = run.map((b) => b.x).sort((a, b) => a - b);
+    // Three 16-stud pieces in a row: no piece placed on top of another.
+    expect(xs[1]! - xs[0]!).toBeCloseTo(16, 3);
+    expect(xs[2]! - xs[1]!).toBeCloseTo(16, 3);
+    expect(new Set(run.map((b) => b.y.toFixed(3))).size).toBe(1);
+    // The middle piece is linked at both ends, the outer ones at one.
+    expect(run.map((b) => b.links).sort()).toEqual([1, 1, 2]);
+  });
+});

@@ -107,29 +107,15 @@ export function snapToAnchorBrick(
   const cosA = Math.cos(rA);
   const sinA = Math.sin(rA);
 
-  const hasConnectivityData = anchorBrick.connexions.length > 0;
-
-  // Build the iteration order for anchor connections. When connectivity
-  // data is absent (freshly placed brick), try `activeConnectionPointIndex`
-  // first so we chain off the outgoing end rather than doubling back.
-  const n = anchorMeta.connections.length;
-  const preferred = anchorBrick.activeConnectionPointIndex ?? 0;
-  const order: number[] = [];
-  if (!hasConnectivityData && preferred >= 0 && preferred < n) {
-    order.push(preferred);
-    for (let i = 0; i < n; i++) { if (i !== preferred) order.push(i); }
-  } else {
-    for (let i = 0; i < n; i++) order.push(i);
-  }
-
-  for (const i of order) {
+  // Desktop tries the anchor's connections in order and takes the first
+  // free one with a compatible connection on the new part
+  // (MapView.cpp:1226-1258). Links are current: placement rebuilds
+  // connectivity straight away.
+  for (let i = 0; i < anchorMeta.connections.length; i++) {
     const ac = anchorMeta.connections[i]!;
     if (!ac.type) continue;
-    // Skip already-linked connections when connectivity data is available.
-    if (hasConnectivityData) {
-      const link = anchorBrick.connexions[i];
-      if (link && link.linkedTo !== '') continue;
-    }
+    const link = anchorBrick.connexions[i];
+    if (link && link.linkedTo !== '') continue;
 
     // Find the first compatible connection on the new part.
     let newCi = -1;

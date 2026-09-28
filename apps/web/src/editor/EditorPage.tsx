@@ -88,11 +88,11 @@ import { pxToStud, studToPx } from './render/coords';
 import { ensureSprite, getSpriteSync } from './render/spriteCache';
 import { PlaceGhost } from './render/PlaceGhost';
 import { ModuleGhost } from './render/ModuleGhost';
-import { snapPlacement, snapToAnchorBrick, type AnchorSnapResult } from './snap';
+import { snapPlacement, snapToAnchorBrick } from './snap';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
 import { isEditableTarget } from './keyboardGuard';
-import { useConnectivity } from './useConnectivity';
+import { catalogFromParts, recomputeConnectivity, useConnectivity } from './useConnectivity';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
@@ -1049,6 +1049,7 @@ function Canvas({
     return indexParts(catalog.data?.parts);
   }, [catalog.data]);
   const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
+  const linkCatalog = useMemo(() => catalogFromParts(catalog.data?.parts), [catalog.data]);
 
   /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
   function brickSpriteStuds(b: { partNumber: string }): { w: number; h: number } | null {
@@ -2062,7 +2063,6 @@ function Canvas({
     // connection. Takes priority over cursor-proximity snap. Port of
     // MapView::resolvePartPlacement lines 1147-1202 (MapView.cpp).
     let snapped = null as import('./snap').SnapResult | null;
-    let anchorSnapResult = null as AnchorSnapResult | null;
     if (map && selection.length === 1 && meta.kind !== 'group') {
       for (const layer of map.layers) {
         if (layer.type !== 'brick') continue;
@@ -2071,8 +2071,7 @@ function Canvas({
         const anchorMeta = partsByKey.get(anchorBrick.partNumber.toLowerCase())
           ?? partsByKey.get(anchorBrick.partNumber.toLowerCase().split('.')[0] ?? '');
         if (anchorMeta) {
-          anchorSnapResult = snapToAnchorBrick(anchorBrick, anchorMeta, meta, widthStuds, heightStuds);
-          snapped = anchorSnapResult;
+          snapped = snapToAnchorBrick(anchorBrick, anchorMeta, meta, widthStuds, heightStuds);
         }
         break;
       }
@@ -2108,22 +2107,6 @@ function Canvas({
     // fired, `newOrientation` is null and we default to 0°.
     const placeOrientation = snapped.newOrientation ?? 0;
 
-    // Determine which connection on the NEW brick was used for the snap,
-    // and set its `nextConnexionPreference` as the active (outgoing) index.
-    // This lets the NEXT chain click know which end is the free outgoing
-    // end without waiting for the async connectivity worker to populate
-    // connexions — matches desktop's synchronous rebuildScene + selection.
-    let activeConnIdx = 0;
-    if (anchorSnapResult !== null) {
-      const usedConn = meta.connections[anchorSnapResult.newConnIndex];
-      activeConnIdx = usedConn?.nextConnexionPreference ?? anchorSnapResult.newConnIndex;
-      // If nextConnexionPreference points back to itself (or is absent),
-      // fall back to the other connection (for simple 2-CP parts like tracks).
-      if (activeConnIdx === anchorSnapResult.newConnIndex && meta.connections.length > 1) {
-        activeConnIdx = anchorSnapResult.newConnIndex === 0 ? 1 : 0;
-      }
-    }
-
     // The snap result is the pivot (sprite centre); the box is the
     // footprint at the final orientation around it (placeByImageCentre).
     const area = areaForPivot(meta, placeOrientation, { x: snapped.centreX, y: snapped.centreY }, { width: widthStuds, height: heightStuds });
@@ -2139,8 +2122,11 @@ function Canvas({
       width: area.width,
       height: area.height,
       orientation: placeOrientation,
-      activeConnectionPointIndex: activeConnIdx,
     });
+    // Link it now, like desktop's rebuild after AddBrickCommand: the new
+    // links hand the active connection over (BlueBrick onLinked), so the
+    // next chained placement anchors on the right end.
+    recomputeConnectivity(doc, linkCatalog);
     // Auto-select the placed brick so chain-placing snaps off it.
     // Port of MapView.cpp:1394-1408.
     setSelection([newId]);
