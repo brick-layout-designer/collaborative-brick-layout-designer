@@ -30,6 +30,7 @@ Both apps must read and write every field below the same way. `packages/bbm/test
 | `power[]` | `{x, y, kind: "wall" \| "floor", label?, amps?, volts?}` | only when there is at least one |
 | `notes[]` | `{x, y, text, estimated?}` | only when there is at least one |
 | `dimensions[]` | `{from{x,y}, to{x,y}, label?, estimated?}`, drawn as a dimension line | only when there is at least one |
+| `floorPlan` | `{image, x, y, studsPerPx, opacity}`: the floor-plan image traced in the Venue Designer. `image` is a `data:image/…` URL, downscaled to at most 2400 px. `x`, `y` place its top-left corner. `studsPerPx` comes from calibration, and `opacity` is 0–1 | only when there is one; drawn only in the designer |
 
 Rules for optional fields:
 
@@ -78,3 +79,31 @@ Stairs with an `upDegrees` also get:
 - A line between the two points, with end ticks 5 studs to each side of the line, in `rgb(40,90,140)` 1.5 px.
 - The label is centred 8 studs to the line's left (above a left-to-right line) and turned to read left to right.
 - Estimated measurements are dashed and grey, and their labels end in " (est.)".
+## Venue Designer
+
+Both apps open the venue in the same full-screen editor, with the same tools and rules. On the web the tools live in `venues/designer/`, and `designerState.ts` holds each tool's clicks, typed sizes, Enter and Esc. The desktop has the same in `src/venue/`.
+
+**Tools, with their keys:** Select V, Wall W, Room R, Door D, Opening O, Column C, Stairs S, Elevator E, Counter K, Railing L, Power P, Note N, Measure M.
+
+**Typed lengths** can be written as `12'6"`, `40′ 4″`, `12ft 6in`, `6 1/2"`, `3.2m` or `80 studs`. A bare number is inches in feet-and-inches mode.
+- A two-corner tool takes a size such as `40' x 20'`.
+- Lengths are shown to the quarter inch.
+
+**Snapping** goes, in order of priority:
+1. to a corner within 8 px;
+2. to 45° steps from the last point (Shift turns this off);
+3. onto a wall;
+4. to whole inches.
+
+**Editing with Select**
+- Moves go in whole inches.
+- Dragging a corner of the outline moves every wall that meets there.
+- Each drag is one undo step.
+
+**Doors and openings** are cut into a wall. The wall is split into the part before, the door or opening, and the part after, and both wall parts keep its label and estimated flag.
+
+**Rooms** become four walls, one per side, labelled north, east, south and west. They are ordered clockwise from the north-west corner.
+
+**Power** placed on a wall is a wall outlet; placed anywhere else, it is a floor outlet.
+
+**Floor plan calibration:** click two points, then enter the real distance between them. The image is rescaled and the first point stays where it is.
