@@ -21,11 +21,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@cld/bbm": "workspace:*",
     "@cld/model": "workspace:*",
     "fast-xml-parser": "5.11.1"
   },
   "devDependencies": {
-    "@cld/bbm": "workspace:*",
     "@types/node": "26.6.3",
     "typescript": "7.0.2",
     "vite": "^8.3.1",

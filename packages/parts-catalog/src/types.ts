@@ -100,6 +100,58 @@ export interface PartMetadata {
   oldNames?: string[];
   /** Sprite size in pixels, read from the image header by the scanner; needed for the footprint. */
   spriteSize?: { w: number; h: number };
+  /** `<LDraw>` remap, for LDraw (.ldr/.mpd) maps. */
+  ldraw?: LDrawRemap;
+  /** `<TrackDesigner>` remap, for TrackDesigner (.tdl) maps. */
+  trackDesigner?: TrackDesignerRemap;
+  /** `<FourDBrix>` remap, for 4DBrix nControl (.ncp) maps. */
+  fourDBrix?: FourDBrixRemap;
+}
+
+/**
+ * How the LDraw part's origin and orientation map onto this part's
+ * sprite centre (desktop PartsLibrary readLDrawRemap).
+ */
+export interface LDrawRemap {
+  /** Degrees. */
+  angle: number;
+  /** LDU. */
+  translation: { x: number; y: number };
+  /** LDU; written when the brick's altitude is 0. */
+  preferredHeight: number;
+  /** `"<part>.<colour>"` sleeper put under the rails on save, or ''. */
+  sleeper: string;
+  /** `"<part>[.<colour>]"` written instead of this part, or ''. */
+  alias: string;
+}
+
+export interface TrackDesignerPort {
+  /** BlueBrick connection used as the TrackDesigner origin. */
+  bbConnectionIndex: number;
+  /** TrackDesigner piece type (0 straight, 1 left curve, ... 20 custom). */
+  type: number;
+  /** TrackDesigner angle minus BlueBrick angle, degrees. */
+  angleDifference: number;
+}
+
+export interface TrackDesignerRemap {
+  defaultId: number;
+  /** TrackDesigner "registry" (part set) → id. */
+  registryIds: Record<string, number>;
+  flags: number;
+  hasSeveralPorts: boolean;
+  ports: TrackDesignerPort[];
+}
+
+export type FourDBrixType = 'segment' | 'table' | 'baseplate' | 'structure';
+
+export interface FourDBrixRemap {
+  type: FourDBrixType;
+  /** Segment name, or svg path, in nControl. */
+  partName: string;
+  orientationDifference: number;
+  /** Connection used as the segment origin. */
+  originConnection: number;
 }
 
 /** A loaded library — a flat map keyed by lowercased `<partNumber>.<colorCode>`. */
