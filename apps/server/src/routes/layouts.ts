@@ -130,7 +130,9 @@ export async function layoutRoutes(app: FastifyInstance) {
   });
 
   // ---- create --------------------------------------------------------------
-  app.post<{ Body: CreateLayoutBody }>('/api/layouts', async (req, reply) => {
+  // Desktop "Publish to Server" (sync P1b): a layouts:create token may
+  // create a layout, personal or in an org where the user can.
+  app.post<{ Body: CreateLayoutBody }>('/api/layouts', { config: { apiToken: 'layouts:create' } }, async (req, reply) => {
     const user = requireUser(req);
     const body = req.body ?? {};
 
