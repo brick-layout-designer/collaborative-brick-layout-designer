@@ -176,6 +176,8 @@ export interface PartWire {
   customPartId: string | null;
   /** Earlier part numbers that resolve to this part (<OldNameList>); absent when none. */
   oldNames?: string[];
+  /** Sprite size in pixels, for the BlueBrick footprint; absent when unreadable. */
+  spriteSize?: { w: number; h: number };
 }
 
 /** Resolve the sprite URL for any part, regardless of source. */

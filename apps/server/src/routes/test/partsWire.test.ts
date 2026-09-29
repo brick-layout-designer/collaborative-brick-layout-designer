@@ -1,5 +1,6 @@
 // The bundled catalog carries each part's old part numbers
-// (<OldNameList>) so the editor can resolve maps and budgets that use them.
+// (<OldNameList>) so the editor can resolve maps and budgets that use
+// them, and each sprite's pixel size for the brick footprint.
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -26,6 +27,8 @@ describe('parts catalog — old part names', () => {
       '<part><OldNameList><OldName>4186P01</OldName></OldNameList></part>',
     );
     writeFileSync(join(dir, 'parts', 'Baseplate', '3811.2.xml'), '<part></part>');
+    // A 256 x 128 GIF header for 3811.2's sprite.
+    writeFileSync(join(dir, 'parts', 'Baseplate', '3811.2.gif'), Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x00, 0x01, 0x80, 0x00]));
     savedPartsDir = env.partsDir;
     env.partsDir = dir;
     invalidatePartsCache();
@@ -48,5 +51,12 @@ describe('parts catalog — old part names', () => {
     const parts = (res.json() as { parts: { key: string; oldNames?: string[] }[] }).parts;
     expect(parts.find((p) => p.key === '4186p01.2')?.oldNames).toEqual(['4186P01']);
     expect(parts.find((p) => p.key === '3811.2')).not.toHaveProperty('oldNames');
+  });
+
+  it('sends each sprite\'s pixel size for the footprint, and omits it without a sprite', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/parts/catalog' });
+    const parts = (res.json() as { parts: { key: string; spriteSize?: unknown }[] }).parts;
+    expect(parts.find((p) => p.key === '3811.2')?.spriteSize).toEqual({ w: 256, h: 128 });
+    expect(parts.find((p) => p.key === '4186p01.2')).not.toHaveProperty('spriteSize');
   });
 });

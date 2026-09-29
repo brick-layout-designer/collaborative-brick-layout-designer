@@ -151,6 +151,24 @@ describe('parts catalog — authenticated with custom parts', () => {
     const custom = parts.find((p) => p.source === 'custom' && p.partNumber === 'P1');
     expect(custom).toBeTruthy();
     expect(custom!.customPartId).toBe(id);
+    // Read from the uploaded sprite's header, for the brick footprint.
+    expect((custom as { spriteSize?: unknown }).spriteSize).toEqual({ w: 1, h: 1 });
+  });
+
+  it('custom parts carry their XML <hull> points', async () => {
+    const cookie = await registerAndLogin(app, 'hull@example.com');
+    const xml = Buffer.from(
+      '<part><hull><point><x>0</x><y>0</y></point><point><x>7</x><y>0</y></point><point><x>7</x><y>7</y></point></hull></part>',
+    ).toString('base64');
+    await app.inject({
+      method: 'POST',
+      url: '/api/custom-parts',
+      headers: { cookie },
+      payload: { partNumber: 'HULL1', displayName: 'Hull', xmlBase64: xml, spriteBase64: FAKE_GIF, spriteMime: 'image/gif' },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie } });
+    const parts = (res.json() as { parts: { partNumber: string; hullPts: unknown }[] }).parts;
+    expect(parts.find((p) => p.partNumber === 'HULL1')?.hullPts).toEqual([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 7 }]);
   });
 
   it('authenticated ETag differs from anonymous ETag (user-scoped cache)', async () => {

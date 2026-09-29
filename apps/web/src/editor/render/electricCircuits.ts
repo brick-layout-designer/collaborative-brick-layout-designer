@@ -14,6 +14,7 @@
 
 import type { BbmMap, Brick } from '@cld/model';
 import type { PartWire } from '../../api';
+import { pivotOf } from '../brickGeometry';
 
 const PX = 8; // studs → pixels (standard pxPerStud)
 const HALF_OFFSET = 2; // world-px perpendicular offset per rail (matches desktop)
@@ -41,6 +42,7 @@ export function deriveCircuits(connections: PartWire['connections']): Circuit[] 
 
 interface BrickEntry {
   brick: Brick;
+  part: PartWire;
   connections: PartWire['connections'];
   circuits: Circuit[];
   // polarity[i]: 0 = unvisited, ±stamp = visited in the current walk
@@ -49,12 +51,12 @@ interface BrickEntry {
 }
 
 /** World-pixel position of a connection point on a placed brick. */
-function connWorldPx(brick: Brick, cx: number, cy: number): { x: number; y: number } {
+function connWorldPx(brick: Brick, part: PartWire, cx: number, cy: number): { x: number; y: number } {
   const r = (brick.orientation * Math.PI) / 180;
   const cos = Math.cos(r);
   const sin = Math.sin(r);
-  const centreX = brick.displayArea.x + brick.displayArea.width / 2;
-  const centreY = brick.displayArea.y + brick.displayArea.height / 2;
+  // Connection points hang off the sprite centre (BlueBrick's pivot).
+  const { x: centreX, y: centreY } = pivotOf(brick, part);
   return {
     x: (centreX + cx * cos - cy * sin) * PX,
     y: (centreY + cx * sin + cy * cos) * PX,
@@ -78,6 +80,7 @@ export function electricOverlay(map: BbmMap, partsByKey: Map<string, PartWire>):
       if (circuits.length === 0) continue;
       entries.set(brick.id, {
         brick,
+        part,
         connections: part.connections,
         circuits,
         polarity: new Array<number>(part.connections.length).fill(0),
@@ -171,8 +174,8 @@ export function electricOverlay(map: BbmMap, partsByKey: Map<string, PartWire>):
     for (const { index1, index2 } of e.circuits) {
       const posIdx = e.connections[index1]!.electricPlug > 0 ? index1 : index2;
       const negIdx = posIdx === index1 ? index2 : index1;
-      const pPos = connWorldPx(e.brick, e.connections[posIdx]!.x, e.connections[posIdx]!.y);
-      const pNeg = connWorldPx(e.brick, e.connections[negIdx]!.x, e.connections[negIdx]!.y);
+      const pPos = connWorldPx(e.brick, e.part, e.connections[posIdx]!.x, e.connections[posIdx]!.y);
+      const pNeg = connWorldPx(e.brick, e.part, e.connections[negIdx]!.x, e.connections[negIdx]!.y);
       const dx = pNeg.x - pPos.x;
       const dy = pNeg.y - pPos.y;
       const len = Math.hypot(dx, dy);
@@ -186,7 +189,7 @@ export function electricOverlay(map: BbmMap, partsByKey: Map<string, PartWire>):
       for (const idx of [index1, index2]) {
         if (!e.shortcut[idx]) continue;
         const c = e.connections[idx]!;
-        diamonds.push(connWorldPx(e.brick, c.x, c.y));
+        diamonds.push(connWorldPx(e.brick, e.part, c.x, c.y));
       }
     }
   }

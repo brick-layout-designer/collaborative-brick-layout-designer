@@ -20,12 +20,12 @@ import {
   importBricksAsModule,
   placeBrick,
   renameLayer,
-  rotateAboutCentroid,
   rotateBricksAboutCentroid,
   setLayerVisible,
 } from '../mutations';
 import { moduleBatchesFromMap, moduleDropTranslation } from '../moduleDrop';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
+import { rotateAroundPivots } from '../brickGeometry';
 
 function twoLayerDoc() {
   const doc = new Y.Doc();
@@ -55,15 +55,17 @@ describe('multi-layer selection commands (D)', () => {
     expect(allVisibleBrickIds(docToBbm(doc))).toEqual([a]);
   });
 
-  it('rotateAboutCentroid orbits centres about their mean', () => {
-    const out = rotateAboutCentroid([{ x: 0, y: 0 }, { x: 10, y: 0 }], 90);
-    expect(out[0]!.x).toBeCloseTo(5);
-    expect(out[0]!.y).toBeCloseTo(-5);
-    expect(out[1]!.x).toBeCloseTo(5);
-    expect(out[1]!.y).toBeCloseTo(5);
-    const single = rotateAboutCentroid([{ x: 3, y: 4 }], 45);
-    expect(single[0]!.x).toBeCloseTo(3);
-    expect(single[0]!.y).toBeCloseTo(4);
+  it('rotateAroundPivots orbits pivots about their mean; one brick turns in place', () => {
+    const box = (x: number) => ({ displayArea: { x: x - 1, y: -1, width: 2, height: 2 }, orientation: 0 });
+    const out = rotateAroundPivots([{ brick: box(0), part: undefined }, { brick: box(10), part: undefined }], 90);
+    expect(out[0]!.displayArea.x + 1).toBeCloseTo(5);
+    expect(out[0]!.displayArea.y + 1).toBeCloseTo(-5);
+    expect(out[1]!.displayArea.x + 1).toBeCloseTo(5);
+    expect(out[1]!.displayArea.y + 1).toBeCloseTo(5);
+    expect(out[0]!.orientation).toBe(90);
+    const single = rotateAroundPivots([{ brick: { displayArea: { x: 2, y: 3, width: 2, height: 2 }, orientation: 0 }, part: undefined }], 45);
+    expect(single[0]!.displayArea.x).toBeCloseTo(2);
+    expect(single[0]!.displayArea.y).toBeCloseTo(3);
   });
 
   it('rotates a cross-layer selection about its centroid as one undo step', () => {

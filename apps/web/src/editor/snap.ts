@@ -16,6 +16,7 @@
 
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import type { PartWire } from '../api';
+import { pivotOf } from './brickGeometry';
 
 /**
  * Connection-snap reach in studs — port of desktop's
@@ -37,6 +38,12 @@ export interface PlaceCandidate {
   /** Brick width/height in studs (display area). */
   width: number;
   height: number;
+  /**
+   * Pivot minus displayArea centre, in studs (non-zero only for parts
+   * with a <hull>). `centreX/Y` are the pivot; the grid rounds the box.
+   */
+  pivotOffsetX?: number;
+  pivotOffsetY?: number;
   /** Active grid snap step in studs (0 = grid snap disabled). */
   snapStepStuds: number;
 }
@@ -94,8 +101,8 @@ export function snapToAnchorBrick(
 ): AnchorSnapResult | null {
   if (newPart.connections.length === 0) return null;
 
-  const anchorCx = anchorBrick.displayArea.x + anchorBrick.displayArea.width / 2;
-  const anchorCy = anchorBrick.displayArea.y + anchorBrick.displayArea.height / 2;
+  // Connection points hang off the sprite centre (BlueBrick's pivot).
+  const { x: anchorCx, y: anchorCy } = pivotOf(anchorBrick, anchorMeta);
   const rA = (anchorBrick.orientation * Math.PI) / 180;
   const cosA = Math.cos(rA);
   const sinA = Math.sin(rA);
@@ -201,13 +208,11 @@ export function snapPlacement(
       newOrientation: null,
     };
   }
-  const tlX = candidate.centreX - candidate.width / 2;
-  const tlY = candidate.centreY - candidate.height / 2;
-  const snappedTlX = roundToStep(tlX, candidate.snapStepStuds);
-  const snappedTlY = roundToStep(tlY, candidate.snapStepStuds);
+  const ox = (candidate.pivotOffsetX ?? 0) + candidate.width / 2;
+  const oy = (candidate.pivotOffsetY ?? 0) + candidate.height / 2;
   return {
-    centreX: snappedTlX + candidate.width / 2,
-    centreY: snappedTlY + candidate.height / 2,
+    centreX: roundToStep(candidate.centreX - ox, candidate.snapStepStuds) + ox,
+    centreY: roundToStep(candidate.centreY - oy, candidate.snapStepStuds) + oy,
     snappedToConnection: false,
     newOrientation: null,
   };
@@ -266,7 +271,7 @@ export function freeConnectionsCached(
         if (!cp.type) continue;
         const link = brick.connexions[i];
         if (link && link.linkedTo !== '') continue; // already taken
-        const [wx, wy] = transformLocalToWorld(cp.x, cp.y, brick);
+        const [wx, wy] = transformLocalToWorld(cp.x, cp.y, brick, meta);
         conns.push({
           x: wx,
           y: wy,
@@ -343,14 +348,14 @@ function findBestConnectionMatch(
   return best;
 }
 
-/** displayArea (top-left, w, h) → centre, then rotate local point into world. */
+/** The brick's pivot (sprite centre), then rotate the local point into world. */
 function transformLocalToWorld(
   localX: number,
   localY: number,
   brick: Brick,
+  part: PartWire,
 ): [number, number] {
-  const cx = brick.displayArea.x + brick.displayArea.width / 2;
-  const cy = brick.displayArea.y + brick.displayArea.height / 2;
+  const { x: cx, y: cy } = pivotOf(brick, part);
   const theta = (brick.orientation * Math.PI) / 180;
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
@@ -455,7 +460,7 @@ export interface DragSnapInput {
    * `masterBrickSnap` (ConnectionSnap.cpp:93-94).
    */
   movingLinks: { linkedTo: string }[];
-  /** Current (mid-drag) centre of the LEADER in studs. */
+  /** Current (mid-drag) pivot (sprite centre) of the LEADER in studs. */
   centreX: number;
   centreY: number;
   /**
@@ -465,6 +470,9 @@ export interface DragSnapInput {
    */
   width?: number;
   height?: number;
+  /** Leader pivot minus displayArea centre (parts with a <hull>); omitted = 0. */
+  pivotOffsetX?: number;
+  pivotOffsetY?: number;
   /** Mouse position in studs — used as a tiebreaker between snap candidates. */
   mouseStudX: number;
   mouseStudY: number;
@@ -675,8 +683,7 @@ export function nearestConnectionIndex(
   clickY: number,
 ): number {
   if (!part || part.connections.length === 0) return -1;
-  const cx = brick.displayArea.x + brick.displayArea.width / 2;
-  const cy = brick.displayArea.y + brick.displayArea.height / 2;
+  const { x: cx, y: cy } = pivotOf(brick, part);
   const t = (brick.orientation * Math.PI) / 180;
   const cos = Math.cos(t);
   const sin = Math.sin(t);
@@ -737,8 +744,8 @@ function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapRes
     movingConnCount,
   };
   if (drag.snapStepStuds <= 0) return { ...base, centreX: drag.centreX, centreY: drag.centreY };
-  const hw = (drag.width ?? 0) / 2;
-  const hh = (drag.height ?? 0) / 2;
+  const hw = (drag.width ?? 0) / 2 + (drag.pivotOffsetX ?? 0);
+  const hh = (drag.height ?? 0) / 2 + (drag.pivotOffsetY ?? 0);
   return {
     ...base,
     centreX: roundToStep(drag.centreX - hw, drag.snapStepStuds) + hw,

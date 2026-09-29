@@ -270,4 +270,27 @@ describe('rebuildConnectivity', () => {
     expect(rebuildConnectivity(map, catalog).linkedCount).toBe(2);
     expect(b.connexions).toHaveLength(2);
   });
+
+  it('measures connection points from the sprite centre of a part with a <hull>', () => {
+    // 32 x 16 px sprite whose hull is its left half: the 2 x 2 displayArea
+    // centre sits 1 stud left of the sprite centre (the pivot).
+    const meta: PartMetadata = {
+      ...makeMeta('HULL', [
+        { x: -2, y: 0, type: 'rail' },
+        { x: 2, y: 0, type: 'rail' },
+      ]),
+      spriteSize: { w: 32, h: 16 },
+      hullPts: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+    };
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    // a: pivot 0, box centre -1. b turned 180°: pivot 4, hull now to the
+    // right, box centre 5. Their right-hand connections meet at x = 2 from
+    // the pivots; from the box centres they would sit at 1 and 3.
+    const a = { ...makeBrick('a', 'HULL', 0, 0), displayArea: { x: -2, y: -1, width: 2, height: 2 } };
+    const b = { ...makeBrick('b', 'HULL', 0, 0, 180), displayArea: { x: 4, y: -1, width: 2, height: 2 } };
+    const map = makeMap([makeBrickLayer([a, b])]);
+
+    expect(rebuildConnectivity(map, catalog).linkedCount).toBe(2);
+    expect(a.connexions[1]!.linkedTo).toBe(b.connexions[1]!.id);
+  });
 });

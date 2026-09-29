@@ -46,6 +46,8 @@ import { useViewportSize } from './useViewportSize';
 import { localBbmDownload, sha256Hex } from '../bbmFiles';
 import { backgroundImageRectPx } from './background';
 import { scaleBar } from './scaleBar';
+import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
+import { imageOffset } from '@cld/parts-catalog/browser';
 import { canAddToBudget, countUsage, overBudgetCount, withinBudget } from './budgetUsage';
 import { BudgetReachedDialog, BUDGET_REFUSED_STATUS } from './BudgetReachedDialog';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
@@ -1046,14 +1048,18 @@ function Canvas({
     // editor/snap.ts `lookupPart`.
     return indexParts(catalog.data?.parts);
   }, [catalog.data]);
+  const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
 
   /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
   function brickSpriteStuds(b: { partNumber: string }): { w: number; h: number } | null {
     const meta = partsByKey.get(b.partNumber.toLowerCase());
-    const sprite = meta ? getSpriteSync(spriteUrlFor(meta)) : null;
-    if (!meta || !sprite) return null;
+    if (!meta) return null;
     const pxPerStud = meta.pxPerStud && meta.pxPerStud > 0 ? meta.pxPerStud : 8;
-    return { w: sprite.naturalWidth / pxPerStud, h: sprite.naturalHeight / pxPerStud };
+    const px = meta.spriteSize ?? (() => {
+      const sprite = getSpriteSync(spriteUrlFor(meta));
+      return sprite ? { w: sprite.naturalWidth, h: sprite.naturalHeight } : null;
+    })();
+    return px ? { w: px.w / pxPerStud, h: px.h / pxPerStud } : null;
   }
 
   // Drag-from-Parts-panel → drop on canvas. The Stage's container <div>
@@ -1566,7 +1572,7 @@ function Canvas({
         // bare R is CCW; step is the configured rotation step. The whole
         // selection (any layer) turns about its centroid.
         e.preventDefault();
-        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
+        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees, partOf);
         return;
       }
     }
@@ -1819,10 +1825,10 @@ function Canvas({
       const ids: string[] = [];
       for (const layer of map.layers) {
         if (layer.type !== 'brick' || !layer.visible) continue;
-        ids.push(...bricksInMarquee(finalMarquee, layer.bricks, brickSpriteStuds));
+        ids.push(...bricksInMarquee(finalMarquee, layer.bricks, brickSpriteStuds, (b) => pivotOf(b, partOf(b.partNumber))));
       }
       const sc = readSidecarFromDoc(doc);
-      let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom);
+      let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom, partsByKey);
       let bricks = ids;
       if (marqueeAdditiveRef.current) {
         const st = useEditorStore.getState();
@@ -2034,14 +2040,14 @@ function Canvas({
       return;
     }
 
-    // Sprite-aware sizing. Load the GIF/PNG (cached), then derive stud
-    // size as `naturalSize / pxPerStud` — matches the desktop's
-    // SceneBuilder. Fall back to 16x16 studs if the sprite is missing
-    // (rare; usually means the part XML lists no spritePath).
+    // Unturned size, used only when the catalog has no sprite size for the
+    // footprint: the loaded sprite's `naturalSize / pxPerStud`, else 16x16.
     let widthStuds = 16;
     let heightStuds = 16;
-    const spriteUrl = spriteUrlFor(meta);
-    if (spriteUrl) {
+    const spriteUrl = meta.spriteSize ? '' : spriteUrlFor(meta);
+    if (meta.spriteSize) {
+      ({ width: widthStuds, height: heightStuds } = areaSize(meta, 0));
+    } else if (spriteUrl) {
       try {
         const img = await ensureSprite(spriteUrl);
         widthStuds = img.naturalWidth / meta.pxPerStud;
@@ -2083,6 +2089,8 @@ function Canvas({
               orientation: 0,
               width: widthStuds,
               height: heightStuds,
+              pivotOffsetX: imageOffset(meta, 0).x,
+              pivotOffsetY: imageOffset(meta, 0).y,
               snapStepStuds,
             },
             map,
@@ -2116,6 +2124,9 @@ function Canvas({
       }
     }
 
+    // The snap result is the pivot (sprite centre); the box is the
+    // footprint at the final orientation around it (placeByImageCentre).
+    const area = areaForPivot(meta, placeOrientation, { x: snapped.centreX, y: snapped.centreY }, { width: widthStuds, height: heightStuds });
     const newId = placeBrick(doc, layerId, {
       // Desktop stores the FULL catalog key (e.g. "2865.8") as the
       // brick's partNumber — see MapView.cpp:1380 `b.partNumber = partKey`.
@@ -2123,10 +2134,10 @@ function Canvas({
       // runtime via the lookup fallback but writes a divergent value to
       // disk on export. Use `meta.key` so .bbm round-trip is byte-clean.
       partNumber: meta.key,
-      x: snapped.centreX - widthStuds / 2,
-      y: snapped.centreY - heightStuds / 2,
-      width: widthStuds,
-      height: heightStuds,
+      x: area.x,
+      y: area.y,
+      width: area.width,
+      height: area.height,
       orientation: placeOrientation,
       activeConnectionPointIndex: activeConnIdx,
     });
@@ -2136,20 +2147,12 @@ function Canvas({
   }
 
   /**
-   * Place a `.set` group — port of MapView.cpp:1279-1360. The .set.xml
-   * lists SubPartList children with local positions and angles; we
-   * emit one brick per subpart positioned at
-   *
-   *   subCentre = setCentre + subpart.position    (rotated nothing —
-   *               the position is already in set-local studs)
-   *
-   * NOTE: desktop also adds a `hullBboxOffsetStuds(subKey, angle)`
-   * correction that aligns the IMAGE bbox centre with the HULL bbox
-   * centre (MapView.cpp:1323-1325). The web port doesn't compute hulls
-   * so it skips that correction; for symmetric track sets the result
-   * is identical, but asymmetric rotated curves / switches may sit a
-   * fraction of a stud off-centre. The sets are still connected and
-   * snap correctly afterwards via `rebuildConnectivity`.
+   * Place a `.set` group — port of MapView.cpp:1344-1370. The .set.xml
+   * lists SubPartList children with local positions and angles; as in
+   * BlueBrick's Group constructor each position is the subpart's
+   * displayArea centre (Brick.Center) in set-local studs, and the box is
+   * the subpart's footprint at its angle (placeByAreaCentre) — parts with
+   * an XML hull draw their sprite off that centre.
    *
    * Multi-brick placement is wrapped in `insertBricks` so undo unwinds
    * the whole set as one step.
@@ -2166,10 +2169,16 @@ function Canvas({
     }> = [];
     for (const sub of group.subparts) {
       const subMeta = partsByKey.get(sub.subKey.toLowerCase());
+      // Normalise orientation to (-180, 180].
+      let angle = sub.angle % 360;
+      if (angle > 180) angle -= 360;
+      if (angle <= -180) angle += 360;
       // Default to a 2×2 placeholder if the subpart isn't catalogued.
       let wStuds = 2;
       let hStuds = 2;
-      if (subMeta) {
+      if (subMeta?.spriteSize) {
+        ({ width: wStuds, height: hStuds } = areaSize(subMeta, angle));
+      } else if (subMeta) {
         const url = spriteUrlFor(subMeta);
         if (url) {
           try {
@@ -2181,10 +2190,6 @@ function Canvas({
           }
         }
       }
-      // Normalise orientation to (-180, 180].
-      let angle = sub.angle % 360;
-      if (angle > 180) angle -= 360;
-      if (angle <= -180) angle += 360;
       const cx = studX + sub.x;
       const cy = studY + sub.y;
       bricks.push({
@@ -2247,7 +2252,7 @@ function Canvas({
     // Ctrl+Shift+[ / ].
     rotate: (cw) => {
       if (isViewer || selection.length === 0) return;
-      rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees);
+      rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees, partOf);
     },
     reorder: (to) => {
       if (isViewer || selection.length === 0) return;
@@ -2445,6 +2450,7 @@ function Canvas({
           />
           <RulerLayers
             map={map}
+            partsByKey={partsByKey}
             selectedRulerIds={selectedRulerIds}
             handleRulerId={selection.length === 0 && annoCount(annoSelection) === 1 ? selectedRulerId : null}
             onRulerSelect={(id, additive) => selectAnno('rulers', id, additive)}
@@ -2474,8 +2480,9 @@ function Canvas({
             }}
           />
           {isViewer
-            ? <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
+            ? <AnchoredLabels map={map} partsByKey={partsByKey} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
             : <AnchoredLabels
+                partsByKey={partsByKey}
                 map={map}
                 labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []}
                 modules={readSidecarFromDoc(doc)?.modules ?? []}
@@ -2639,8 +2646,8 @@ function Canvas({
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
           onDelete={() => deleteSelection()}
-          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees)}
-          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees)}
+          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees, partOf)}
+          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees, partOf)}
           onBringToFront={() => {
             if (selection.length > 0) reorderBricks(doc, selection, 'front');
           }}

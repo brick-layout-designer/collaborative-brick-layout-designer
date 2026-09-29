@@ -240,6 +240,8 @@ test.describe('drag and drop', () => {
 
 test.describe('module drag ghost', () => {
   test('dragging a library module draws its ghost, then drops it', async ({ page }) => {
+    // Loads the Fordyce map twice (source and module); up to ~30 s on a dev machine.
+    test.slow();
     // A module made from the Fordyce layout's snapshot.
     const sourceId = await createLayout(page, FORDYCE_BBM);
     const snapshot = await (await page.request.get(`/api/layouts/${sourceId}/snapshot`)).body();
@@ -286,7 +288,9 @@ test.describe('module drag ghost', () => {
     await shot(page, 'module-ghost.png');
     await page.mouse.up();
 
-    await expect(page.locator('footer')).toContainText('Imported ');
+    // The drop selects the imported bricks. (The "Imported …" status
+    // message fades after a moment, so it is not a reliable check.)
+    await expect(page.locator('footer')).toContainText(/selected: \d{3,}/);
     const bbm = await (await page.request.get(`/api/layouts/${hostId}/export.bbm`)).text();
     expect(bbm.split('<Brick id=').length - 1).toBeGreaterThan(900);
   });
@@ -697,5 +701,44 @@ test.describe('budget in the parts panel', () => {
     await expect(tiles).toHaveCount(allTiles);
     // Unbudgeted parts read "used/?".
     await expect(page.getByTestId('budget-numbers').filter({ hasText: /\/\?$/ }).first()).toBeVisible();
+  });
+});
+
+test.describe('pivot geometry', () => {
+  test('a part with a <hull> is placed with its footprint box and turns around its sprite centre', async ({ page }) => {
+    const { footprint } = await import('@cld/parts-catalog');
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const catalog = (await (await page.request.get('/api/parts/catalog')).json()) as {
+      parts: { key: string; pxPerStud: number; spriteSize?: { w: number; h: number }; hullPts: { x: number; y: number }[] }[];
+    };
+    const part = catalog.parts.find((p) => p.key === '2861.8')!;
+    expect(part.hullPts.length).toBeGreaterThan(0);
+    expect(part.spriteSize).toBeTruthy();
+
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2861.8');
+    await page.locator('aside li button[draggable="true"]', { hasText: /./ }).filter({ has: page.locator('img') }).first().click();
+
+    const brick = async () => {
+      const xml = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+      const m = /<Brick id="[^"]+">[\s\S]*?<DisplayArea>\s*<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>\s*<Width>([^<]+)<\/Width>\s*<Height>([^<]+)<\/Height>[\s\S]*?<Orientation>([^<]+)<\/Orientation>/.exec(xml);
+      return m ? { x: +m[1]!, y: +m[2]!, w: +m[3]!, h: +m[4]!, o: +m[5]! } : null;
+    };
+    await expect.poll(brick).not.toBeNull();
+    const placed = (await brick())!;
+    const fp0 = footprint(part, placed.o)!;
+    expect(placed.w).toBeCloseTo(fp0.size.w, 3);
+    expect(placed.h).toBeCloseTo(fp0.size.h, 3);
+    const pivot0 = { x: placed.x + placed.w / 2 + fp0.imageOffset.x, y: placed.y + placed.h / 2 + fp0.imageOffset.y };
+
+    await page.getByRole('button', { name: 'Rotate CW' }).click();
+    await expect.poll(async () => (await brick())?.o).not.toBe(placed.o);
+    const turned = (await brick())!;
+    const fp1 = footprint(part, turned.o)!;
+    expect(turned.w).toBeCloseTo(fp1.size.w, 3);
+    expect(turned.h).toBeCloseTo(fp1.size.h, 3);
+    // The sprite centre stays put: the brick turned in place.
+    expect(turned.x + turned.w / 2 + fp1.imageOffset.x).toBeCloseTo(pivot0.x, 2);
+    expect(turned.y + turned.h / 2 + fp1.imageOffset.y).toBeCloseTo(pivot0.y, 2);
   });
 });

@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parsePartXml } from './parse.js';
 import type { Catalog, PartMetadata } from './types.js';
+import { imageSize } from './imageSize.js';
 
 const SPRITE_EXTS = ['.gif', '.png', '.jpg', '.jpeg'] as const;
 
@@ -68,7 +69,12 @@ async function parseOne(rootDir: string, xmlPath: string): Promise<PartMetadata>
   }
 
   const xmlRelPath = relative(rootDir, xmlPath);
-  return parsePartXml(xml, { partNumber, colorCode, spritePath, xmlRelPath });
+  const part = parsePartXml(xml, { partNumber, colorCode, spritePath, xmlRelPath });
+  if (spritePath) {
+    const size = imageSize(await readFile(join(rootDir, spritePath)));
+    if (size) part.spriteSize = size;
+  }
+  return part;
 }
 
 async function* walkXml(dir: string): AsyncIterable<string> {
