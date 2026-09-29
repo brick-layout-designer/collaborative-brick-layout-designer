@@ -41,10 +41,12 @@ const attr = (n: unknown, name: string): string => {
   const v = (n as Raw)[`@${name}`];
   return v === undefined ? '' : String(v);
 };
-// QString::toFloat / toInt: 0 for anything unparseable.
+// QString::toFloat / toInt: 0 for anything unparseable, and (like the
+// .bbm reader) for numbers out of range, so the map can be saved.
 const toFloat = (s: string): number => {
   const t = s.trim();
-  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) ? f(Number(t)) : 0;
+  const v = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) ? f(Number(t)) : 0;
+  return Number.isFinite(v) ? v : 0;
 };
 const toInt = (s: string): number | undefined => {
   const t = s.trim();

@@ -45,10 +45,12 @@ function splitLine(line: string): string[] {
 const restAfterToken = (line: string, token: string | undefined) =>
   token === undefined ? line.trim() : line.slice(line.indexOf(token) + token.length).trim();
 
-// QString::toDouble / toFloat / toInt: 0 for anything unparseable.
+// QString::toDouble / toFloat / toInt: 0 for anything unparseable, and
+// (like the .bbm reader) for numbers out of range, so the map can be saved.
 const toDouble = (s: string | undefined): number => {
   const t = (s ?? '').trim();
-  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) ? Number(t) : 0;
+  const v = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) ? Number(t) : 0;
+  return Number.isFinite(v) ? v : 0;
 };
 const toInt = (s: string | undefined): number => {
   const t = (s ?? '').trim();

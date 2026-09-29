@@ -3,6 +3,7 @@
 // fourdbrix.bbm, and fourdbrix.from-ncp.bbm what it read back from it.
 
 import { existsSync } from 'node:fs';
+import { writeBbm } from '@cld/bbm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { rebuildConnectivity } from '../connectivity.js';
 import { scanCatalog } from '../scan.js';
@@ -72,5 +73,13 @@ describe.skipIf(!existsSync(PARTS))('4DBrix maps match vanilla BlueBrick', () =>
     );
     // Segments are placed after everything else is read, as in BlueBrick.
     expect(bad.warnings).toEqual(['No part is mapped to these 4DBrix parts: none.svg, NOPE']);
+  });
+
+  it('reads numbers out of range as 0, so the map can be saved', () => {
+    // A table's x overflows a float.
+    const ncp = oracleText('fourdbrix.ncp').replace('<coordinates x ="2304" y="1536"/>', '<coordinates x ="1e39" y="1536"/>');
+    expect(ncp).toContain('1e39');
+    const r = readFourDBrixMap(ncp, lib);
+    expect(() => writeBbm(r.map)).not.toThrow();
   });
 });

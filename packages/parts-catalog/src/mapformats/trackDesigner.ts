@@ -53,11 +53,12 @@ class Reader {
     this.pos += 4;
     return v;
   }
+  /** A double; NaN and infinities (damaged files) read as 0, so the map can be saved. */
   f64(): number {
     if (!this.need(8)) return 0;
     const v = this.view.getFloat64(this.pos, true);
     this.pos += 8;
-    return v;
+    return Number.isFinite(v) ? v : 0;
   }
   /** One UTF-8 character, as BinaryReader.ReadChar. */
   char(): number {

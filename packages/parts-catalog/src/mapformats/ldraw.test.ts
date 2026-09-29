@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { readBbm } from '@cld/bbm';
+import { readBbm, writeBbm } from '@cld/bbm';
 import type { LayerRuler } from '@cld/model';
 import { rebuildConnectivity } from '../connectivity.js';
 import { scanCatalog } from '../scan.js';
@@ -190,5 +190,13 @@ describe.skipIf(!existsSync(PARTS))('LDraw maps match vanilla BlueBrick', () => 
     expect(chain(['GREYA.1', '3228AC02.1'])).toEqual([1, 2]);
     // Plain then grey: the plate is already there.
     expect(chain(['3228AC02.1', 'GREYA.1'])).toEqual([1, 2]);
+  });
+
+  it('reads numbers out of range as 0, so the map can be saved', () => {
+    const r = readLDrawMap('1 8 1e999 -24 60 1 0 0 0 1 0 0 0 1 2865.dat', lib, { mpd: false });
+    const l = r.map.layers[0]!;
+    if (l.type !== 'brick') throw new Error('brick layer');
+    expect(lib.imageCentre(l.bricks[0]!).x).toBeCloseTo(0);
+    expect(() => writeBbm(r.map)).not.toThrow();
   });
 });

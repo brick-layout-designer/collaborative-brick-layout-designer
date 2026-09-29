@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { readBbm } from '@cld/bbm';
+import { readBbm, writeBbm } from '@cld/bbm';
 import { rebuildConnectivity } from '../connectivity.js';
 import { scanCatalog } from '../scan.js';
 import { MapLibrary, newBrickLayer, newMap } from './library.js';
@@ -113,6 +113,24 @@ describe.skipIf(!existsSync(PARTS))('TrackDesigner maps match vanilla BlueBrick'
     expect(() => readTrackDesignerMap(bytes.slice(0, 40), lib)).toThrow('Truncated');
     new DataView(bytes.buffer).setInt32(12, 19, true);
     expect(() => readTrackDesignerMap(bytes, lib)).toThrow('version 20');
+  });
+
+  it('reads NaN and infinite numbers as 0, so the map can be saved', () => {
+    const map = newMap();
+    const b = lib.newBrick(lib.meta('2865.8')!);
+    lib.placeByImageCentre(b, { x: 10, y: 20 });
+    map.layers.push(newBrickLayer('Track', [b]));
+    const bytes = writeTrackDesignerMap(map, lib);
+    // The piece's angle and x: after id, instance (4 + 4 bytes) of the only piece.
+    const piece = bytes.length - (4 + 4 + 8 * 4 + 4 + 4 + 4 * 12 + 4 + 4);
+    const v = new DataView(bytes.buffer);
+    v.setFloat64(piece + 8, Number.NaN, true);
+    v.setFloat64(piece + 16, Number.POSITIVE_INFINITY, true);
+    const r = readTrackDesignerMap(bytes, lib);
+    expect(() => writeBbm(r.map)).not.toThrow();
+    const l = r.map.layers[0]!;
+    if (l.type !== 'brick') throw new Error('brick layer');
+    expect(l.bricks[0]!.orientation).toBe(0);
   });
 });
 
