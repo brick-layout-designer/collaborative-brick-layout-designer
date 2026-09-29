@@ -178,3 +178,65 @@ describe('parsePartXml — old part names', () => {
     expect(parsePartXml('<part></part>', input).oldNames).toEqual([]);
   });
 });
+
+describe('parsePartXml map-format remaps', () => {
+  const input = { partNumber: 'X', colorCode: '1', spritePath: '' };
+
+  it('reads <LDraw>, <TrackDesigner> and <FourDBrix>', () => {
+    const meta = parsePartXml(
+      `<part>
+        <LDraw>
+          <Angle>90</Angle>
+          <Translation><x>-10</x><y>2.5</y></Translation>
+          <PreferredHeight>-24</PreferredHeight>
+          <SleeperID>4166a</SleeperID>
+          <Alias>3001.4</Alias>
+        </LDraw>
+        <TrackDesigner>
+          <IDList><!-- ID of this part in Track Designer -->
+            <ID registry="default">627</ID>
+            <ID registry="freelug">10003811</ID>
+          </IDList>
+          <Flag>3</Flag> <!-- attachment -->
+          <HasSeveralGeometries>true</HasSeveralGeometries>
+          <TDBitmapList>
+            <TDBitmap><BBConnexionPointIndex>1</BBConnexionPointIndex><Type>2</Type><AngleBetweenTDandBB>-22.5</AngleBetweenTDandBB></TDBitmap>
+            <TDBitmap><BBConnexionPointIndex>0</BBConnexionPointIndex></TDBitmap>
+          </TDBitmapList>
+        </TrackDesigner>
+        <FourDBrix>
+          <PartType>SEGMENT</PartType>
+          <PartName>TS_MONORAILUPPERRAMP</PartName>
+          <OrientationDifference>180</OrientationDifference>
+          <ConnectionIndexUsedAsOrigin>1</ConnectionIndexUsedAsOrigin>
+        </FourDBrix>
+      </part>`,
+      input,
+    );
+    expect(meta.ldraw).toEqual({ angle: 90, translation: { x: -10, y: 2.5 }, preferredHeight: -24, sleeper: '4166A.0', alias: '3001.4' });
+    expect(meta.trackDesigner).toEqual({
+      defaultId: 627,
+      registryIds: { freelug: 10003811 },
+      flags: 3,
+      hasSeveralPorts: true,
+      ports: [
+        { bbConnectionIndex: 1, type: 2, angleDifference: -22.5 },
+        { bbConnectionIndex: 0, type: 20, angleDifference: 0 },
+      ],
+    });
+    expect(meta.fourDBrix).toEqual({ type: 'segment', partName: 'TS_MONORAILUPPERRAMP', orientationDifference: 180, originConnection: 1 });
+  });
+
+  it('reads a single <ID>, a registry-only id and the other 4DBrix types', () => {
+    expect(parsePartXml('<part><TrackDesigner><ID>42</ID></TrackDesigner></part>', input).trackDesigner?.defaultId).toBe(42);
+    expect(parsePartXml('<part><TrackDesigner><IDList><ID registry="lug">7</ID></IDList></TrackDesigner></part>', input).trackDesigner)
+      .toMatchObject({ defaultId: 7, registryIds: { lug: 7 } });
+    // No id: not a TrackDesigner part.
+    expect(parsePartXml('<part><TrackDesigner><Flag>1</Flag></TrackDesigner></part>', input).trackDesigner).toBeUndefined();
+    for (const [raw, type] of [['table', 'table'], ['BASEPLATE', 'baseplate'], ['Structure', 'structure'], ['?', 'segment']] as const) {
+      expect(parsePartXml(`<part><FourDBrix><PartType>${raw}</PartType><PartName>a/b.svg</PartName></FourDBrix></part>`, input).fourDBrix)
+        .toEqual({ type, partName: 'a/b.svg', orientationDifference: 0, originConnection: 0 });
+    }
+    expect(parsePartXml(SIMPLE_XML, input)).not.toHaveProperty('ldraw');
+  });
+});

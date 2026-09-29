@@ -248,6 +248,9 @@ importers:
 
   packages/parts-catalog:
     dependencies:
+      '@cld/bbm':
+        specifier: workspace:*
+        version: link:../bbm
       '@cld/model':
         specifier: workspace:*
         version: link:../model
@@ -255,9 +258,6 @@ importers:
         specifier: 5.11.1
         version: 5.11.1
     devDependencies:
-      '@cld/bbm':
-        specifier: workspace:*
-        version: link:../bbm
       '@types/node':
         specifier: 26.6.3
         version: 26.6.3

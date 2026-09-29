@@ -1,0 +1,109 @@
+// Download As — the web side of desktop MainWindow::onSaveAs
+// (MainWindowFileIO.cpp): the layout as .bbm, LDraw (.ldr / .mpd),
+// TrackDesigner (.tdl) or 4DBrix (.ncp). Formats other than .bbm can't
+// hold the whole layout, so choosing one shows the desktop's warning,
+// with "Don't show this again".
+
+import { useState } from 'react';
+import type { BbmMap } from '@cld/model';
+import type { PartWire } from '../api';
+import { LOSSY_FORMAT_WARNING, MAP_FORMATS, mapDownload, type MapFormat } from '../mapFormats';
+
+const WARN_KEY = 'cld:warnNonBbmSave';
+
+export function warnsOnNonBbmSave(): boolean {
+  try {
+    return localStorage.getItem(WARN_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function stopWarning() {
+  try {
+    localStorage.setItem(WARN_KEY, 'false');
+  } catch {
+    /* per-browser convenience only */
+  }
+}
+
+function download(file: { filename: string; type: string; data: Uint8Array }) {
+  const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+interface Props {
+  map: BbmMap;
+  parts: readonly PartWire[];
+  title: string;
+  /** The .bbm download (with its sidecar), as File → Download .bbm does. */
+  onDownloadBbm: () => void;
+  onClose: () => void;
+}
+
+export function DownloadAsDialog({ map, parts, title, onDownloadBbm, onClose }: Props) {
+  const [format, setFormat] = useState<MapFormat | 'bbm'>('bbm');
+  const [warn] = useState(warnsOnNonBbmSave);
+  const [dontShow, setDontShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const lossy = format !== 'bbm';
+
+  async function onDownload() {
+    if (format === 'bbm') {
+      onDownloadBbm();
+      onClose();
+      return;
+    }
+    if (warn && dontShow) stopWarning();
+    setBusy(true);
+    setError(null);
+    try {
+      download(await mapDownload(map, parts, format, title));
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Download As" className="fixed inset-0 z-50 grid place-items-center bg-black/60" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-md rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl">
+        <h2 className="text-base font-semibold">Download As</h2>
+        <fieldset className="mt-4 space-y-1 text-sm">
+          <legend className="sr-only">Format</legend>
+          {[{ format: 'bbm' as const, label: 'BlueBrick map (.bbm)' }, ...MAP_FORMATS].map((f) => (
+            <label key={f.format} className="flex items-center gap-2">
+              <input type="radio" name="download-format" checked={format === f.format} onChange={() => setFormat(f.format)} />
+              {f.label}
+            </label>
+          ))}
+        </fieldset>
+        {lossy && warn && (
+          <div className="mt-4 rounded-sm border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+            <p>{LOSSY_FORMAT_WARNING}</p>
+            <label className="mt-2 flex items-center gap-2">
+              <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
+              Don&apos;t show this again
+            </label>
+          </div>
+        )}
+        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800">
+            Cancel
+          </button>
+          <button onClick={() => void onDownload()} disabled={busy} className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:opacity-50">
+            {lossy && warn ? 'Download anyway' : 'Download'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

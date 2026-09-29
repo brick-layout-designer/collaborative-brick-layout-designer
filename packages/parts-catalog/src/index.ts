@@ -5,3 +5,8 @@ export { rebuildConnectivity, type RebuildConnectivityResult } from './connectiv
 export { footprint, imageOffset, type Footprint, type FootprintPart } from './footprint.js';
 export { imageSize, type ImageSize } from './imageSize.js';
 export { connectionHingeAngle, FlexMove, type FlexState } from './flexMove.js';
+export type { FourDBrixRemap, FourDBrixType, LDrawRemap, TrackDesignerPort, TrackDesignerRemap } from './types.js';
+export { MapLibrary, newBrickLayer, newGridLayer, newMap, type MapReadResult } from './mapformats/library.js';
+export { readFourDBrixMap, writeFourDBrixMap, type FourDBrixWriteOptions } from './mapformats/fourDBrix.js';
+export { partForTrackDesignerId, readTrackDesignerMap, writeTrackDesignerMap } from './mapformats/trackDesigner.js';
+export { readLDrawMap, writeLDrawMap, type LDrawReadOptions } from './mapformats/ldraw.js';

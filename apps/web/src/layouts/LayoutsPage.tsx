@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
+import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -81,12 +82,12 @@ export function LayoutsPage() {
       {showCreate && (
         <CreateLayoutDialog
           onClose={() => setShowCreate(false)}
-          onCreated={(id) => {
+          onCreated={(id, openWarnings) => {
             qc.invalidateQueries({ queryKey: ['layouts'] });
             setShowCreate(false);
             // Open the new layout straight away, like the desktop editor's
             // File > New and the global .bbm drop handler in main.tsx do.
-            navigate(`/editor/${id}`);
+            navigate(`/editor/${id}`, openWarnings?.length ? { state: { openWarnings } } : undefined);
           }}
         />
       )}
@@ -213,10 +214,13 @@ function CreateLayoutDialog({
   onCreated,
 }: {
   onClose: () => void;
-  onCreated: (id: string) => void;
+  onCreated: (id: string, openWarnings?: string[]) => void;
 }) {
   const [title, setTitle] = useState('');
   const [bbm, setBbm] = useState<string | null>(null);
+  // What converting a picked LDraw / TrackDesigner / 4DBrix file skipped.
+  const [openWarnings, setOpenWarnings] = useState<string[]>([]);
+  const qc = useQueryClient();
   const [sidecar, setSidecar] = useState<string | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
@@ -232,17 +236,32 @@ function CreateLayoutDialog({
 
   const create = useMutation({
     mutationFn: api.layouts.create,
-    onSuccess: (res) => onCreated(res.id),
+    onSuccess: (res) => onCreated(res.id, openWarnings),
     onError: (e: Error) => setError(e.message),
   });
 
   async function pickBbm(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
+    setError(null);
+    let text: string;
+    let warnings: string[] = [];
+    if (mapFormatOf(file.name)) {
+      // Other map formats are converted with the parts' remaps.
+      try {
+        const catalog = await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
+        ({ bbm: text, warnings } = await mapFileToBbm(file.name, new Uint8Array(await file.arrayBuffer()), catalog.parts));
+      } catch (err) {
+        setError(`Could not open ${file.name}: ${(err as Error).message}`);
+        return;
+      }
+    } else {
+      text = await file.text();
+    }
     setBbm(text);
+    setOpenWarnings(warnings);
     setBbmFilename(file.name);
-    if (!title) setTitle(file.name.replace(/\.bbm$/i, ''));
+    if (!title) setTitle(file.name.replace(/\.(bbm|ldr|mpd|tdl|ncp)$/i, ''));
   }
 
   async function pickSidecar(e: ChangeEvent<HTMLInputElement>) {
@@ -319,10 +338,13 @@ function CreateLayoutDialog({
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">
-            Optional: import from .bbm
+            Optional: import from .bbm, LDraw, TrackDesigner or 4DBrix
           </span>
-          <input type="file" accept=".bbm" onChange={pickBbm} className="text-sm" />
+          <input type="file" accept={LAYOUT_ACCEPT} onChange={pickBbm} className="text-sm" />
           {bbmFilename && <p className="mt-1 text-xs text-neutral-500">{bbmFilename}</p>}
+          {openWarnings.map((w) => (
+            <p key={w} className="mt-1 text-xs text-amber-400">{w}</p>
+          ))}
         </label>
 
         <label className="block text-sm">

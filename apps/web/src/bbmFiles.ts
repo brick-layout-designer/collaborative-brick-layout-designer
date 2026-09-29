@@ -176,7 +176,14 @@ export interface DroppedLayout {
   name: string;
   bbm: string;
   sidecar?: string;
+  /** What the conversion from another map format skipped. */
+  warnings?: string[];
 }
+
+/** Turns an LDraw / TrackDesigner / 4DBrix file into .bbm text (mapFormats.ts). */
+export type MapConverter = (name: string, bytes: Uint8Array) => Promise<{ bbm: string; warnings: string[] }>;
+
+const MAP_FILE = /\.(ldr|mpd|tdl|ncp)$/i;
 
 interface NamedText {
   name: string;
@@ -209,13 +216,21 @@ export async function pairLayoutFiles(files: readonly NamedText[]): Promise<Drop
   return out;
 }
 
-/** Layouts in dropped files: loose `.bbm` / `.bbm.bld` files plus the contents of any `.zip`. */
-export async function layoutsFromFiles(files: readonly File[]): Promise<DroppedLayout[]> {
+/**
+ * Layouts in dropped files: loose `.bbm` / `.bbm.bld` files plus the
+ * contents of any `.zip`, and — given a converter — LDraw, TrackDesigner
+ * and 4DBrix maps.
+ */
+export async function layoutsFromFiles(files: readonly File[], convertMap?: MapConverter): Promise<DroppedLayout[]> {
   const loose: NamedText[] = [];
   const out: DroppedLayout[] = [];
   const dec = new TextDecoder();
   for (const f of files) {
-    if (/\.zip$/i.test(f.name)) {
+    if (MAP_FILE.test(f.name)) {
+      if (!convertMap) continue;
+      const { bbm, warnings } = await convertMap(f.name, new Uint8Array(await f.arrayBuffer()));
+      out.push({ name: f.name, bbm, ...(warnings.length ? { warnings } : {}) });
+    } else if (/\.zip$/i.test(f.name)) {
       const entries = await readZip(new Uint8Array(await f.arrayBuffer()));
       const named = entries.map((e) => ({ name: e.name.split('/').pop() ?? e.name, text: async () => dec.decode(e.data) }));
       out.push(...(await pairLayoutFiles(named)));
