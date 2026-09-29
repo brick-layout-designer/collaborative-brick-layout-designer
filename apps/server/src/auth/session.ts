@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
+import { notifyCredentialRevoked } from './revocation.js';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
@@ -13,36 +14,13 @@ function generateToken(): string {
   return randomBytes(24).toString('hex');
 }
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
 /** The sessions-table id for a raw session cookie value. */
 export function sessionIdForToken(token: string): string {
   return hashToken(token);
-}
-
-/**
- * Revocation notifications, so long-lived connections (the realtime
- * WebSocket) authenticated by a session can be dropped the moment that
- * session ends instead of living on until the socket closes by itself.
- */
-export type SessionRevocation = { sessionId: string } | { userId: string };
-const revocationListeners = new Set<(r: SessionRevocation) => void>();
-
-export function onSessionRevoked(listener: (r: SessionRevocation) => void): () => void {
-  revocationListeners.add(listener);
-  return () => revocationListeners.delete(listener);
-}
-
-export function notifySessionRevoked(r: SessionRevocation): void {
-  for (const l of revocationListeners) {
-    try {
-      l(r);
-    } catch {
-      /* a listener's failure must not break logout */
-    }
-  }
 }
 
 /** True while the session behind `sessionId` exists and hasn't expired. */
@@ -96,10 +74,10 @@ export async function validateSession(
 export async function invalidateSession(token: string): Promise<void> {
   const sessionId = hashToken(token);
   await db.delete(schema.sessions).where(eq(schema.sessions.id, sessionId));
-  notifySessionRevoked({ sessionId });
+  notifyCredentialRevoked({ sessionId });
 }
 
 export async function invalidateAllSessions(userId: string): Promise<void> {
   await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
-  notifySessionRevoked({ userId });
+  notifyCredentialRevoked({ userId });
 }

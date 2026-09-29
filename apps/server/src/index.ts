@@ -15,6 +15,9 @@ import { ensureBootstrapAdmin } from './auth/bootstrap.js';
 import { oauthRoutes } from './routes/auth/oauth.js';
 import { passwordRoutes } from './routes/auth/password.js';
 import { sessionRoutes } from './routes/auth/session.js';
+import { deviceRoutes } from './routes/auth/device.js';
+import { tokenRoutes } from './routes/tokens.js';
+import { versionRoutes } from './routes/version.js';
 import { auditRoutes } from './routes/audit.js';
 import { adminRoutes, syncLibrariesFromDisk } from './routes/admin.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
@@ -85,9 +88,12 @@ async function main() {
     }
   });
 
+  await app.register(versionRoutes);
   await app.register(oauthRoutes);
   await app.register(passwordRoutes);
   await app.register(sessionRoutes);
+  await app.register(deviceRoutes);
+  await app.register(tokenRoutes);
   await app.register(layoutRoutes);
   await app.register(partsRoutes);
   await app.register(collaboratorRoutes);

@@ -35,6 +35,13 @@ interface PatchLayoutBody {
   title?: string;
 }
 
+/**
+ * Route config opting a read-only route in to API-token (desktop) auth.
+ * Only the list, detail and export routes carry it; every other layout
+ * route rejects token-authenticated requests (see attachUser).
+ */
+const TOKEN_READ = { apiToken: 'layouts:read' } as const;
+
 /** Background-image file extensions, in the order GET probes them. */
 const BG_EXTS = ['png', 'jpg', 'gif', 'webp'] as const;
 
@@ -51,7 +58,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   }
 
   // ---- list ----------------------------------------------------------------
-  app.get('/api/layouts', async (req) => {
+  app.get('/api/layouts', { config: TOKEN_READ }, async (req) => {
     const user = requireUser(req);
     // Three sources of layouts the user can see:
     //   1. ownerUserId === user.id          (personal)
@@ -104,7 +111,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   });
 
   // ---- get -----------------------------------------------------------------
-  app.get<{ Params: { id: string } }>('/api/layouts/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/layouts/:id', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
     if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
@@ -253,7 +260,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   });
 
   // ---- export (.bbm) -------------------------------------------------------
-  app.get<{ Params: { id: string } }>('/api/layouts/:id/export.bbm', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/layouts/:id/export.bbm', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
     if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
@@ -361,7 +368,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // schema desktop's readSidecar decodes. `export.bbm.cld` is the legacy
   // URL, kept so old links still work.
   for (const path of ['/api/layouts/:id/export.bbm.bld', '/api/layouts/:id/export.bbm.cld']) {
-    app.get<{ Params: { id: string } }>(path, async (req, reply) => {
+    app.get<{ Params: { id: string } }>(path, { config: TOKEN_READ }, async (req, reply) => {
       const user = requireUser(req);
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
       if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
@@ -389,7 +396,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // Single-download equivalent of the two separate export routes above.
   // The .bbm.bld entry is omitted when the layout has no sidecar; unzipped
   // side by side, desktop opens both.
-  app.get<{ Params: { id: string } }>('/api/layouts/:id/export.zip', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/layouts/:id/export.zip', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
     if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });

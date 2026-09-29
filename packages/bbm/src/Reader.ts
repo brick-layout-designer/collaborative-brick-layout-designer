@@ -393,7 +393,9 @@ function readTextCells(node: unknown): TextCell[] {
 }
 
 function readTextCell(n: Node): TextCell {
+  const id = n['@id'];
   return {
+    ...(typeof id === 'string' && id !== '' ? { id } : {}),
     displayArea: readRect(required<Node>(n, 'DisplayArea')),
     myGroup: optionalString(n, 'MyGroup') ?? '',
     text: optionalString(n, 'Text') ?? '',

@@ -37,6 +37,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   verification_not_found: 'That verification link is invalid.',
   verification_expired: 'That verification link has expired. Request a new one below.',
   invalid_display_name: 'Display name must be between 1 and 60 characters.',
+  invalid_code: 'That code is invalid or has expired. Check the code shown in the app.',
 };
 
 /** `some_error_code` -> "Some error code." */
@@ -220,6 +221,28 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
   return res.json() as Promise<{ updatedAt: number }>;
 }
 
+/** Scopes an API token (desktop sign-in) can carry. */
+export type ApiScope = 'layouts:read' | 'layouts:write';
+
+/** A pending desktop sign-in, as shown on the /device approval page. */
+export interface DeviceRequest {
+  clientName: string;
+  scopes: ApiScope[];
+  expiresAt: number;
+}
+
+/** An API token in the Devices list. The secret itself is never returned. */
+export interface ApiTokenSummary {
+  id: string;
+  name: string;
+  prefix: string;
+  last4: string;
+  scopes: ApiScope[];
+  createdAt: number;
+  lastUsedAt: number | null;
+  expiresAt: number;
+}
+
 export const api = {
   me: () => get<{ user: Me | null }>('/api/auth/me'),
   updateDisplayName: (displayName: string) =>
@@ -239,6 +262,17 @@ export const api = {
     post<{ ok: true }>('/api/auth/password/resend-verification', { email }),
   verifyEmail: (token: string) =>
     post<{ ok: true }>(`/api/auth/password/verify-email/${encodeURIComponent(token)}`),
+
+  /** Desktop sign-in (device-code flow), the signed-in user's side. */
+  device: {
+    lookup: (userCode: string) => post<DeviceRequest>('/api/auth/device/lookup', { user_code: userCode }),
+    approve: (userCode: string) => post<{ ok: true }>('/api/auth/device/approve', { user_code: userCode }),
+    deny: (userCode: string) => post<{ ok: true }>('/api/auth/device/deny', { user_code: userCode }),
+  },
+  tokens: {
+    list: () => get<{ tokens: ApiTokenSummary[] }>('/api/tokens'),
+    revoke: (id: string) => del(`/api/tokens/${encodeURIComponent(id)}`),
+  },
 
   layouts: {
     list: () => get<{ layouts: LayoutSummary[] }>('/api/layouts'),

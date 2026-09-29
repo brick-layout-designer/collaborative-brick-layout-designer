@@ -13,11 +13,14 @@ import { BBM_FORMAT_VERSION, type BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import { bbmToDoc, docToBbm } from './projection.js';
 
+import { DOC_SCHEMA_VERSION } from './ids.js';
+
 export { bbmToDoc, docToBbm, createDocProjector, type DocProjector } from './projection.js';
+export { DOC_SCHEMA_VERSION, makeId, upgradeDoc } from './ids.js';
 
 export function createLayoutDoc(): Y.Doc {
   const doc = new Y.Doc();
-  doc.getMap('meta');
+  doc.getMap('meta').set('schemaVersion', DOC_SCHEMA_VERSION);
   doc.getArray('layers');
   doc.getMap('layerData');
   doc.getMap('venue');

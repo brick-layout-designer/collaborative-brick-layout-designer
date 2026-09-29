@@ -24,16 +24,27 @@ import {
   sendBytes,
 } from './protocol.js';
 import { resolveResourceRole } from '../access/resolveResourceRole.js';
-import { isSessionActive } from '../auth/session.js';
+import { isCredentialActive, revokedReason, type Credential } from '../auth/credentials.js';
 
 /**
  * How often we re-check whether the connected user still has access to
- * this layout. Catches the "admin removes a collaborator while they're
- * editing" case so a removed user can't keep editing until they refresh.
- * 30s is short enough that real users barely notice; long enough that
- * the database load is negligible.
+ * this layout (and that their session / token is still live). Catches
+ * the "admin removes a collaborator while they're editing" case so a
+ * removed user can't keep editing until they refresh. 30s is short
+ * enough that real users barely notice; long enough that the database
+ * load is negligible. Mutable only so tests can shorten it.
  */
-const ROLE_REVALIDATE_MS = 30_000;
+export const wsTiming = { revalidateMs: 30_000 };
+
+export interface WsAuth {
+  /** Credential the socket authenticated with; re-checked periodically. */
+  credential?: Credential;
+  /**
+   * Cap the connection at viewer regardless of the user's layout role —
+   * an API token without the `layouts:write` scope.
+   */
+  readOnly?: boolean;
+}
 
 /**
  * Per-connection lifecycle. The handler does NOT close the WS itself;
@@ -57,9 +68,10 @@ export async function attachWsHandlers(
   layoutId: string,
   userId: string,
   role: 'owner' | 'editor' | 'viewer' = 'editor',
-  /** Session the socket authenticated with; re-checked periodically. */
-  sessionId?: string,
+  auth: WsAuth = {},
 ): Promise<() => Promise<void>> {
+  const { credential, readOnly = false } = auth;
+  const cap = (r: 'owner' | 'editor' | 'viewer') => (readOnly ? 'viewer' : r);
   const session = await docHub.getOrCreate(layoutId);
   docHub.attach(session, ws, userId);
   if (session.closed) {
@@ -85,7 +97,7 @@ export async function attachWsHandlers(
   //    pinning) are handled by the session's single listeners.
 
   // 4. Wire up message handling.
-  let currentRole = role;
+  let currentRole = cap(role);
   ws.on('message', (data: Buffer) => {
     try {
       handleMessage(ws, session, new Uint8Array(data), currentRole);
@@ -103,10 +115,11 @@ export async function attachWsHandlers(
   const revalidateTimer = setInterval(() => {
     void (async () => {
       try {
-        // The session may have expired or been revoked (logout
-        // elsewhere, admin "revoke all") without us hearing about it.
-        if (sessionId !== undefined && !(await isSessionActive(sessionId))) {
-          ws.close(1008, 'session_revoked');
+        // The session / token may have expired or been revoked (logout
+        // elsewhere, admin "revoke all", token revoked on the Devices
+        // page) without us hearing about it.
+        if (credential !== undefined && !(await isCredentialActive(credential))) {
+          ws.close(1008, revokedReason(credential));
           return;
         }
         const { role: refreshedRole } = await resolveResourceRole(
@@ -120,19 +133,19 @@ export async function attachWsHandlers(
           ws.close(4404, 'access_revoked');
           return;
         }
-        if (refreshedRole !== currentRole) {
+        if (cap(refreshedRole) !== currentRole) {
           // Role downgraded (or upgraded). Update the in-memory copy so
           // subsequent message handling honours the new tier. We don't
           // disconnect on role change because the user still has access;
           // the editor's UI will catch up next time it refetches the
           // layout-detail query.
-          currentRole = refreshedRole;
+          currentRole = cap(refreshedRole);
         }
       } catch {
         /* DB transient — try again next tick */
       }
     })();
-  }, ROLE_REVALIDATE_MS);
+  }, wsTiming.revalidateMs);
 
   return async () => {
     clearInterval(revalidateTimer);

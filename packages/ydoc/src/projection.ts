@@ -8,7 +8,8 @@
 //
 //   doc.getMap('meta')          → version, nbItems, BackgroundColor, author,
 //                                 lug, event, date, comment, exportInfo,
-//                                 selectedLayerIndex
+//                                 selectedLayerIndex, schemaVersion (see
+//                                 ids.ts DOC_SCHEMA_VERSION)
 //   doc.getArray('layers')      → ordered list of layer ids (string)
 //   doc.getMap('layerData')     → layerId → Y.Map of layer fields. Every
 //                                 layer kind keeps its scalar fields directly
@@ -16,7 +17,8 @@
 //                                 textCells, areas, groups) are nested
 //                                 Y.Arrays of Y.Maps so per-item edits are
 //                                 small Yjs updates rather than full-layer
-//                                 rewrites.
+//                                 rewrites. Text cells carry a stable
+//                                 `id` (schemaVersion ≥ 1; see ids.ts).
 //
 // Two design choices worth highlighting:
 //
@@ -52,6 +54,7 @@ import type {
   RulerItem,
   TextCell,
 } from '@cld/model';
+import { DOC_SCHEMA_VERSION, makeId } from './ids.js';
 
 // ---------------------------------------------------------------------------
 // Top-level projection
@@ -75,6 +78,7 @@ export function bbmToDoc(map: BbmMap, doc: Y.Doc): void {
     meta.set('comment', map.comment);
     meta.set('exportInfo', cloneExportInfo(map.exportInfo));
     meta.set('selectedLayerIndex', map.selectedLayerIndex);
+    meta.set('schemaVersion', DOC_SCHEMA_VERSION);
 
     const layerOrder = doc.getArray<string>('layers');
     const layerData = doc.getMap<Y.Map<unknown>>('layerData');
@@ -311,6 +315,12 @@ function writeLayerText(layer: LayerText, y: Y.Map<unknown>): void {
 
 function textCellToYMap(t: TextCell): Y.Map<unknown> {
   const y = new Y.Map<unknown>();
+  // Every text cell gets a stable id so live-sync clients can address it
+  // without relying on its array index. A .bbm id is reused so it round-
+  // trips; `idInBbm` remembers that, because only such ids are written
+  // back out — minting one for an id-less file must not change its export.
+  y.set('id', t.id ?? makeId());
+  if (t.id !== undefined) y.set('idInBbm', true);
   y.set('displayArea', cloneRect(t.displayArea));
   y.set('myGroup', t.myGroup);
   y.set('text', t.text);
@@ -464,7 +474,10 @@ function yMapToTextCell(cell: Y.Map<unknown> | Record<string, unknown>): TextCel
   // Older web builds pushed text cells as plain objects; read those too
   // rather than failing the whole projection.
   const y = cell instanceof Y.Map ? cell : plainAsMap(cell);
+  // `id` is tolerated missing (docs from before schemaVersion 1).
+  const id = y.get('id');
   return {
+    ...(y.get('idInBbm') === true && typeof id === 'string' ? { id } : {}),
     displayArea: cloneRect(requireScalar(y, 'displayArea') as RectangleF),
     myGroup: requireScalar(y, 'myGroup') as string,
     text: requireScalar(y, 'text') as string,

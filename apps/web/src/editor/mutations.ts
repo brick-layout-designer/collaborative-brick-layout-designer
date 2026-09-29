@@ -11,6 +11,7 @@
 import * as Y from 'yjs';
 import type { ColorSpec, FontSpec, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SidecarModule } from '@cld/bbm';
+import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
 import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
@@ -27,22 +28,9 @@ export interface BrickInsertSpec {
   activeConnectionPointIndex?: number;
 }
 
-/**
- * Generate a fresh decimal-numeric id (bricks, layers, groups, ...).
- *
- * Vanilla BlueBrick ids must be parseable as `ulong`, so we emit a random
- * 63-bit unsigned integer in decimal. The previous `Date.now() + rand(0..999)`
- * scheme collided constantly when many ids were minted in the same
- * millisecond (a 50-brick paste produced duplicates in ~65% of runs).
- */
-export function makeId(): string {
-  const a = new BigUint64Array(1);
-  crypto.getRandomValues(a);
-  // Drop the top bit so the value also fits a signed 64-bit long, and
-  // avoid the (astronomically unlikely) zero id.
-  const v = a[0]! >> 1n;
-  return (v === 0n ? 1n : v).toString();
-}
+// Fresh decimal-numeric ids (bricks, layers, groups, text cells, ...).
+// Lives in @cld/ydoc so the server's .bbm seeding mints the same shape.
+export { makeId };
 
 export function placeBrick(
   doc: Y.Doc,
@@ -1224,6 +1212,8 @@ export function addTextCell(doc: Y.Doc, layerId: string, spec: AddTextSpec): voi
     // Y.Map#get, so a plain object here made the whole doc unprojectable.
     yCells.push([
       textCellYMap({
+        // Stable id for live-sync clients (doc schemaVersion 1).
+        id: makeId(),
         displayArea: {
           x: spec.centreX - spec.widthStuds / 2,
           y: spec.centreY - spec.heightStuds / 2,
@@ -1250,24 +1240,29 @@ function textCellYMap(fields: Record<string, unknown>): Y.Map<unknown> {
 /**
  * Apply `patch` to the text cell at `cellIndex`. Y.Map cells are edited
  * in place; a legacy plain-object cell (written by older web builds) is
- * replaced by an equivalent Y.Map.
+ * replaced by an equivalent Y.Map. Either way a cell from a doc that
+ * predates text-cell ids gets one here (lazy upgrade on edit).
  */
 function patchTextCell(yCells: Y.Array<unknown>, cellIndex: number, patch: Record<string, unknown>): void {
   if (cellIndex < 0 || cellIndex >= yCells.length) return;
   const cell = yCells.get(cellIndex);
   if (cell instanceof Y.Map) {
+    if (typeof cell.get('id') !== 'string') cell.set('id', makeId());
     for (const [k, v] of Object.entries(patch)) cell.set(k, v);
     return;
   }
   if (!cell || typeof cell !== 'object') return;
+  const plain = cell as Record<string, unknown>;
   yCells.delete(cellIndex, 1);
-  yCells.insert(cellIndex, [textCellYMap({ ...(cell as Record<string, unknown>), ...patch })]);
+  yCells.insert(cellIndex, [
+    textCellYMap({ ...plain, id: typeof plain.id === 'string' ? plain.id : makeId(), ...patch }),
+  ]);
 }
 
 /**
  * Edit an existing text cell's `text` field by index — port of
- * `EditTextCellTextCommand`. We address by index because text cells
- * have no GUID in the .bbm format.
+ * `EditTextCellTextCommand`. Still addressed by index (like desktop);
+ * the cell's stable `id` is for live-sync clients.
  */
 export function editTextCell(doc: Y.Doc, layerId: string, cellIndex: number, newText: string): void {
   doc.transact(() => {
@@ -1700,6 +1695,7 @@ function seedDefaultMeta(meta: Y.Map<unknown>): void {
     exportConnectionPoints: false,
   });
   meta.set('selectedLayerIndex', 0);
+  meta.set('schemaVersion', DOC_SCHEMA_VERSION);
 }
 
 // ---------------------------------------------------------------------------

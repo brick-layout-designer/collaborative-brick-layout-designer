@@ -41,7 +41,11 @@ export type AuditEventType =
   | 'admin_part_library_update'
   | 'admin_part_library_delete'
   | 'org_part_library_toggle'
-  | 'admin_settings_patch';
+  | 'admin_settings_patch'
+  // API tokens (desktop sign-in). Subject is the token's owner
+  // (`resourceKind: 'user'`); the payload names the token.
+  | 'api_token_issue'
+  | 'api_token_revoke';
 
 export type AuditResourceKind =
   | 'layout'
