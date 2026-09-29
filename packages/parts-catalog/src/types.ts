@@ -27,9 +27,10 @@ export interface ConnectionPoint {
   /** Outward angle in degrees. */
   angle: number;
   /**
-   * -1 means no electrical plug. 0 / 1 / ... are plug indices; circuits form
-   * only between two connection points where `electricPlug != -1`. NOT used
-   * by the geometric matching pass — purely metadata.
+   * 0 (the default when absent) means no electrical plug. A circuit joins
+   * two connection points of one part whose plugs are opposite (+1 / -1,
+   * +2 / -2; desktop PartsLibrary.cpp buildElectricCircuits). NOT used by
+   * the geometric matching pass — purely metadata.
    */
   electricPlug: number;
   /** UI hint for "tab next" routing. 0-based index into the part's connection list. */
@@ -91,6 +92,66 @@ export interface PartMetadata {
    * for parts without an explicit hull).
    */
   hullPts: { x: number; y: number }[];
+  /**
+   * Earlier part numbers (`<OldNameList><OldName>`); maps and budgets
+   * that use one resolve to this part (desktop PartsLibrary canonicalKey).
+   * Optional so hand-built test metadata can leave it out.
+   */
+  oldNames?: string[];
+  /** Sprite size in pixels, read from the image header by the scanner; needed for the footprint. */
+  spriteSize?: { w: number; h: number };
+  /** `<LDraw>` remap, for LDraw (.ldr/.mpd) maps. */
+  ldraw?: LDrawRemap;
+  /** `<TrackDesigner>` remap, for TrackDesigner (.tdl) maps. */
+  trackDesigner?: TrackDesignerRemap;
+  /** `<FourDBrix>` remap, for 4DBrix nControl (.ncp) maps. */
+  fourDBrix?: FourDBrixRemap;
+}
+
+/**
+ * How the LDraw part's origin and orientation map onto this part's
+ * sprite centre (desktop PartsLibrary readLDrawRemap).
+ */
+export interface LDrawRemap {
+  /** Degrees. */
+  angle: number;
+  /** LDU. */
+  translation: { x: number; y: number };
+  /** LDU; written when the brick's altitude is 0. */
+  preferredHeight: number;
+  /** `"<part>.<colour>"` sleeper put under the rails on save, or ''. */
+  sleeper: string;
+  /** `"<part>[.<colour>]"` written instead of this part, or ''. */
+  alias: string;
+}
+
+export interface TrackDesignerPort {
+  /** BlueBrick connection used as the TrackDesigner origin. */
+  bbConnectionIndex: number;
+  /** TrackDesigner piece type (0 straight, 1 left curve, ... 20 custom). */
+  type: number;
+  /** TrackDesigner angle minus BlueBrick angle, degrees. */
+  angleDifference: number;
+}
+
+export interface TrackDesignerRemap {
+  defaultId: number;
+  /** TrackDesigner "registry" (part set) → id. */
+  registryIds: Record<string, number>;
+  flags: number;
+  hasSeveralPorts: boolean;
+  ports: TrackDesignerPort[];
+}
+
+export type FourDBrixType = 'segment' | 'table' | 'baseplate' | 'structure';
+
+export interface FourDBrixRemap {
+  type: FourDBrixType;
+  /** Segment name, or svg path, in nControl. */
+  partName: string;
+  orientationDifference: number;
+  /** Connection used as the segment origin. */
+  originConnection: number;
 }
 
 /** A loaded library — a flat map keyed by lowercased `<partNumber>.<colorCode>`. */

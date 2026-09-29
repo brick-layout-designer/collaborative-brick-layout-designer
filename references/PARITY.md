@@ -16,11 +16,12 @@ Web source root: this repository.
 - [x] **New** (`Ctrl+N`) — navigates to layouts page; confirms if sync is broken. (`MainWindowMenus.cpp:76-78`)
 - [x] **Open...** (`Ctrl+O`) — navigates to layouts page; confirms if sync is broken. (`MainWindowMenus.cpp:80-82`)
 - [n/a] **Open Recent** submenu — layout list page is the equivalent; a "Recent" submenu would be redundant
-- [~] **Save** (`Ctrl+S`) — edits persist continuously over Yjs, so there is no separate flush. Save confirms the state instead: "Saved" when the WebSocket is connected and synced. When offline it offers a local `.bbm` download of the current doc (`useLayoutDoc.saveNow`, `EditorPage.tsx` `downloadLocalBbm`). Map menu → **Download .bbm** writes the same local `.bbm` at any time, online or not. The server does not write a `.bbm` + sidecar on save; it writes them on export. (`MainWindowMenus.cpp:88-90`)
-- [n/a] **Save As...** (`Ctrl+Shift+S`) — layouts are server-side; "Save As" doesn't map to the web model
-- [x] **Export as Image...** — `ExportImageDialog`: width/height in px with "Keep aspect ratio (height auto)" (1×/2×/4× presets), PNG or JPEG with quality, antialias and transparent-background (PNG only) toggles; download client-side (`MainWindowMenus.cpp:132-163`). Antialias controls sprite smoothing; the browser canvas always antialiases vector shapes. Renders the whole map (content bounds ± 20 px, like desktop `itemsBoundingRect` export), not the viewport. The grid, selection halo, snap ring and HUD are hidden and the background colour is painted (`exportRender.ts`, `MainWindowMenus.cpp:97-201`).
-- [x] **Export as PDF...** — tiled print mode in `ExportImageDialog` (tiles the whole map, same renderer as the PNG export): paper size (A4/A3/Letter portrait+landscape), DPI (96/150/300), tile overlap; opens print window with `@page` CSS → browser Print → PDF
-- [x] **Print...** (`Ctrl+P`) — covered by tiled print mode in `ExportImageDialog` (same as above)
+- [~] **Save** (`Ctrl+S`) — edits persist continuously over Yjs, so there is no separate flush. Save confirms the state instead: "Saved" when the WebSocket is connected and synced. When offline it offers a local `.bbm` download of the current doc (`useLayoutDoc.saveNow`, `EditorPage.tsx` `downloadLocalBbm`). Map menu → **Download .bbm** writes the same local `.bbm` at any time, online or not. When the layout has a sidecar, both downloads deliver `<title>.zip` holding `<title>.bbm` + `<title>.bbm.bld`, with the sidecar hashed against that `.bbm`. Dropping a `.bbm` with its `.bbm.bld`, or such a `.zip`, onto any page opens a layout with both (`bbmFiles.ts`, `MainWindowFileIO.cpp:84-94`). The server does not write a `.bbm` + sidecar on save; it writes them on export. (`MainWindowMenus.cpp:88-90`)
+- [x] **Save As...** — layouts are server-side, so this is Map → **Download As...**: the layout as `.bbm`, LDraw `.ldr` / `.mpd`, TrackDesigner `.tdl` or 4DBrix `.ncp`. The other formats show desktop's warning that they can't hold everything (text / area / grid layers, module, label and venue data), with "Don't show this again" remembered per browser (`DownloadAsDialog.tsx`, `MainWindowFileIO.cpp` `onSaveAs`).
+- [x] **Open** other map formats — the New layout dialog and a drop on any page open `.ldr`, `.mpd`, `.tdl` and `.ncp` as well as `.bbm`, converted in the browser with each part's `<LDraw>` / `<TrackDesigner>` / `<FourDBrix>` remap from the catalog; parts the conversion skipped show in the editor's status bar, as on desktop (`mapFormats.ts`, `MainWindowFileIO.cpp:86-105`).
+- [x] **Export as Image...** — `ExportImageDialog`: width/height in px with "Keep aspect ratio (height auto)" (1×/2×/4× presets), PNG or JPEG with quality, antialias and transparent-background (PNG only) toggles; download client-side (`MainWindowMenus.cpp:132-163`). Antialias controls sprite smoothing; the browser canvas always antialiases vector shapes. Renders the whole map (content bounds ± 20 px, like desktop `itemsBoundingRect` export), not the viewport. The grid, selection halo, snap ring and HUD are hidden and the background colour is painted (`exportRender.ts`, `MainWindowMenus.cpp:97-201`). Size, aspect lock, format, JPEG quality, transparency and antialias are remembered for the next export, like desktop's `export/*` settings (`exportSettings.ts`).
+- [x] **Export as PDF...** — one A3 page, orientation from the layout's aspect, 12 mm margins, map fitted and centred, written by a small built-in PDF writer (`ExportImageDialog`)
+- [x] **Print...** (`Ctrl+P`) — tiled at actual size (1 stud = 8 mm, like desktop File → Print): each page is a paper-sized map region at the chosen DPI, with page margin and optional overlap; opens the browser print window (`ExportImageDialog`)
 - [n/a] **Quit** (`Ctrl+Q`) — browser tab close; no equivalent needed
 
 ---
@@ -29,9 +30,9 @@ Web source root: this repository.
 
 - [x] **Undo / Redo** (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)
 - [x] **Cut / Copy / Paste** (`Ctrl+X` / `Ctrl+C` / `Ctrl+V`) — uses the OS clipboard so paste works across tabs
-- [x] **Duplicate** (`Ctrl+D`)
+- [x] **Duplicate** (`Ctrl+D`) — copy + paste like desktop (`MapViewClipboard.cpp:144-147`): the copies land centred under the cursor, or the view centre (pan and zoom included) when the cursor is off the map.
 - [x] **Delete** (`Del` / `Backspace`) — deletes the whole mixed selection (bricks on any layer, rulers, anchored labels, text cells) in one undo step (`MapView.cpp:2108-2179`, `mixedSelection.ts` `deleteMixedSelection`).
-- [x] **Find & Replace** (`Ctrl+F`) — scope (Text content / Part number), match case, click a result to select it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
+- [x] **Find & Replace** (`Ctrl+F`) — opens on the "Text content" scope, listed first (`FindDialog.cpp:36-38`); modeless panel like desktop (`setModal(false)`): the canvas stays usable, and every match is selected live as you type (200 ms debounce). Scope (Text content / Part number), match case, click a result to select just it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
 - [x] **Select All** (`Ctrl+A`) — every brick on every visible brick layer (`MapView.cpp:1417`); **Deselect All** (`Ctrl+Shift+A`)
 - [x] **Mixed selection** — bricks, rulers, anchored labels and text cells select together, like the desktop Qt scene selection. The rubber band picks all four kinds, and Shift/Ctrl+drag extends the selection. Shift/Ctrl+click toggles any item and a plain click selects just one. Dragging a selected brick, ruler or label moves the rest with it, live, and commits one undo step (`MapViewDrag.cpp:124-153, 412-450`). Arrow nudge moves bricks, rulers and labels (`MapView.cpp:985-1041`). Text cells are selectable but stay put, as desktop text items are not movable (`SceneBuilder.cpp:441`). Labels anchored to a moving brick are not offset twice (`mixedSelection.ts`, `editorStore.annoSelection`).
 - [x] **Select Path** (`Ctrl+P`) — BFS over connection links (`MapView.cpp:1481-1543`)
@@ -40,17 +41,23 @@ Web source root: this repository.
 - [x] **Bring to Front / Send to Back** (`Ctrl+Shift+]` / `Ctrl+Shift+[`)
 - [x] **Rotation Step** — dropdown `90 / 45 / 22.5 / 11.25 / 5 / 1°` in editor toolbar (`editorStore.rotationStepDegrees`)
 - [x] **Rotate CW / CCW** (`Shift+R` / `R`) — uses the configured rotation step. Rotates the selection about its centroid, across layers (`MapView.cpp:1043-1110`).
-- [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / colour / rotation. The menu entry places the text at the view centre (`MapView::addTextAtViewCenter`); `Ctrl+T` places it at the cursor.
+- [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / colour / rotation. Both place the text at the view centre (`MapView::addTextAtViewCenter`) on the first text layer (a new one is named "Labels"), Arial 12 pt, known colour Black, in a 10-stud-high box 0.6 × 10 per character wide, at least 20 (`MapView::addTextAtScenePos`). "Add Text Here" places it at the clicked point.
 - [x] **Insert → Anchored Label...** (`Ctrl+L`) — `AddAnchoredLabelDialog`: text, font, size, bold/italic, colour, World/Brick anchor, offset, rotation, minZoom; mutations via sidecar cache patch (`addAnchoredLabel` / `editAnchoredLabel` / `deleteAnchoredLabel` in `mutations.ts`). A new World label is placed at the viewport centre; a Brick label defaults to offset (2, −2) (`MainWindowMenus.cpp:447-457`). Editing keeps a known colour (e.g. desktop "Black") unless a new colour is picked.
 - [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint colour), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
+- [x] **Desktop defaults** — snap off, paint colour opaque #008000, Connection Points off (a selected brick still shows its free connections, `SceneBuilder.cpp:250-310`), one Module Names toggle for names and frames, on by default, frame thickness 5 px in 0.5 steps from 0.5 to 20 (`PreferencesDialog.cpp:137,152,200-207`, `SceneBuilderSidecar.cpp:233-236`).
+- [x] **Colours with alpha** — paint colour, text, ruler (line, measure, guideline), hull and grid colours all edit alpha as desktop's QColorDialog::ShowAlphaChannel (`ColorAlphaInput.tsx`); an untouched named colour is kept as named.
+- [x] **Unresolved parts** — a brick whose part the library doesn't have draws as desktop's placeholder: a dashed red outline over a translucent pink fill at its stored size (`SceneBuilder.cpp:230-242`).
+- [x] **Stacking** — within a layer bricks are drawn by altitude, lowest first, in file order among equals (`setZValue(altitude)`, `SceneBuilder.cpp:221`).
+- [x] **Grid cell indices** — like `MapView::drawCellIndices`: column labels along the origin cell's row and row labels down its column, centred in their cells, counting from 1 / A after the origin (blank at and before it), in the cell-index font sized in map units so it scales with zoom (`gridIndex.ts`). The first visible grid layer draws (`MapViewPaint.cpp:71-73`).
+- [x] **Grid origin drag** — with the active layer a visible grid showing cell indices, dragging empty space moves the index origin by whole cells, live, committed as one undo step on release; right-click cancels (`MapView.cpp:415-438, 590-600, 737-746`, `MoveGridOriginCommand`).
 
 ---
 
 ## View menu (`MainWindowMenus.cpp:491-554`)
 
-- [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
-- [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`)
-- [x] **Status Bar** — mouse studs / selection count / zoom % / current tool
+- [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — range 0.02–40 like desktop (`MapView.cpp:77-78`); the wheel step is 1.0015^(−delta·factor), capped at ±480 (`wheelZoomStep`); wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
+- [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`) — fits every item (bricks, text, rulers, areas, labels, venue) plus 50 scene px, aspect kept, like `MainWindow::onFitToView` (`viewFit.ts`); the same fit runs on first open.
+- [x] **Status Bar** — mouse studs / selection count / zoom % / current tool. Map menu → Show Status Bar hides it for the session, like desktop's View → Status Bar (`MainWindowMenus.cpp:524-527`). Drawing a ruler shows "Ruler length / radius: N studs  (mm)" there as well as by the cursor (`MapView.cpp:661-680`).
 - [n/a] **Show Map Scroll Bars** toggle — web uses middle-click pan; scrollbars don't apply
 - [x] Render toggles (persisted): Connection Points, Grid, Brick Hulls, Brick Elevation, Ruler Attach Points, Always Show Connections, Electric Circuits, Export Watermark, Module Label Percent — all persisted to localStorage. Electric Circuits drives the `ElectricCircuitLayer.tsx` overlay (see Rendering features).
 - [x] Dock toggles — Panels menu shows hidden panels and lets the user un-hide them; per-user persisted via localStorage. Modules [x], Module Library [x], Used Parts [x], Venue Library [x] panels all shipped.
@@ -64,22 +71,22 @@ Web source root: this repository.
 - [n/a] **Import → LDraw (.ldr/.dat/.mpd)...** — not planned for web
 - [n/a] **Import → Studio (.io)...** — not planned for web
 - [n/a] **Import → LDD (.lxf/.lxfml)...** — not planned for web
-- [x] **Export Part List (CSV)...** — aggregated counts by part number, CSV download (`MainWindowFileIO.cpp:253-293`)
+- [x] **Export Part List...** — like `MainWindow::onExportPartList` and `PartList.cpp`, in vanilla BlueBrick's PartUsageView layouts: HTML with each part's picture (160 px PNG), text or CSV; columns Part, In Use, Color (LDraw names from `ColorTable.xml`), Description, Budgeted, Missing, Part Usage % with a total row; one table or one per layer, hidden layers in or out (remembered per user) (`partList.ts`, `PartListDialog.tsx`).
 - [n/a] **Download Additional Parts...** — superseded by server-side part library manager (admin installs zip from URL; org admins enable/disable per org)
 
 ---
 
 ## Map menu (`MainWindowMapMenu.cpp`)
 
-- [x] **Background Colour...** — colour picker → `setBackgroundColor` mutation
-- [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs; stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
+- [x] **Background Colour...** — colour picker with alpha → `setBackgroundColor` mutation; written to the `.bbm` as desktop's lowercase `aarrggbb`, and the canvas renders the translucency
+- [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs (without one the image is drawn at native size, top-left at the origin); stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
 - [x] **General Info...** — Author / LUG / Event / Date / Comment dialog
-- [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar.
+- [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar. The status bar says how to draw on entering the tool; an obstacle needs a venue outline first ("Draw the venue outline first.", `MainWindowMapMenu.cpp:160-212`).
 - [x] **Venue → Draw by Dimensions...** — `VenueDimensionsDialog`: unit (ft/in), start X/Y, segment table (length/angle/kind/label), compass-preset angle dropdown, Rectangle preset helper; builds polygon and calls `setVenue`
 - [x] **Venue → Add Obstacle...** — `venueObstacle` tool: same click-polygon flow; Enter appends a `VenueObstacle` to existing venue (or creates bare venue if none); accessible from Map menu and Toolbar
 - [x] **Venue → Edit Properties...** — `VenuePropertiesDialog`: name, render toggle, min walkway (ft), per-edge kind/door-width/label table; Clear Venue button; wired into Map menu → "Venue → Edit Properties..."
 - [x] **Venue → Clear** (with confirmation) — Map menu → "Venue → Clear" calls `setVenue(doc, null)` after `window.confirm`
-- [x] **Venue → Save to Library...** — `VenueSaveLibraryDialog`: personal or org dropdown (orgs fetched via `api.orgs.list`), `POST /api/venues` with optional `orgSlug`; status bar confirms; shown in Venue Library panel
+- [x] **Venue → Save to Library...** — `VenueSaveLibraryDialog`: personal or org dropdown (orgs fetched via `api.orgs.list`), `POST /api/venues` with optional `orgSlug`; status bar confirms; shown in Venue Library panel. The Venue Library panel selects a venue and shows its walls / doors / obstacles / walkway (`detailText`), loads, renames (refused onto another of the owner's venues, also by the server with 409) and deletes it, and has **Save Current Venue**: a name prompt that asks before overwriting a venue of that name (`venueLibrary.ts`, `VenueLibraryPanel.cpp`)
 - [x] **Venue → Export as File...** — downloads `<name>.bld-venue` with `"schema": "bld-venue/1"`, like desktop `VenueIO.cpp` (`venueFile.ts`)
 - [x] **Venue → Load from Library...** — `VenueLibraryPanel` dock panel: lists server venues, ↓ button loads into layout via `setVenue`; filter input; ✎ **Rename** per row (`PATCH /api/venues/:id`, owner or org admin, like delete; `VenueLibraryPanel.cpp:91-94, 244-255`); delete per row
 - [x] **Venue → Load from File...** — accepts `.bld-venue`, legacy web `.cld-venue` and `.json`. Validates the schema and fields before `setVenue` (`venueFile.ts`).
@@ -88,7 +95,9 @@ Web source root: this repository.
 
 ## Budget menu (`MainWindowMenus.cpp:563-570`)
 
-- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New/Open `.bbb`/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New (also desktop's Close Budget, since the budget lives in the layout)/Open `.bbb`/Import and Merge (limits add up, `Budget::mergeWith`)/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Use Budget Limitation** (Map menu → Budget → Use Budget Limitation, per user, default off) — placing a part, and each brick of a paste or duplicate, is refused once over budget; a set counts its leaf parts (`canAddToBudget`, `MapView::budgetAllows`, `MapViewClipboard.cpp:84-95`). A refusal says "Budget reached: part not added" in the status bar and shows the Budget reached box with "Don't show this message again". Preferences → General: parts without a budget are Unlimited or Forbidden (`budget/defaultInfinite`), and the warning toggle.
+- [x] **Show Only Budgeted Parts** / **Show Budget Numbers** (Map menu → Budget, per user, default off) — the parts panel hides parts whose limit isn't above 0, and shows `used/limit` (`?` when unlimited) under each tile, red when over (`PartsBrowser.cpp` refreshBudget / applyFilter).
 
 ---
 
@@ -123,10 +132,15 @@ Web source root: this repository.
 
 ## Canvas mouse behaviours (`MapView.cpp`, `MapViewDrag.cpp`, `MapViewContextMenu.cpp`)
 
-- [x] Left-click empty space → marquee
+- [x] Left-click empty space → marquee (hit-tests the rotated brick and label shapes, not their bounding boxes)
 - [x] Left-click brick → select (replace; Shift / Ctrl modifiers); group-aware (clicking a grouped brick selects the whole group)
 - [x] Double-click brick → Edit Brick dialog (per-brick properties)
-- [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target.
+- [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target. While a connection snap is live the selection outline and fill turn green, like `SelectionOverlay.cpp:26-29`.
+- [x] **Pivot and footprint** (`BrickPlacement.h`, `PartsLibrary::footprint`) — a brick's displayArea is the box around its rotated hull, computed in BlueBrick's float arithmetic (`footprint.ts`, sprite sizes from the image headers); its sprite centre, the pivot, sits `imageOffset` off the box centre for parts with an XML `<hull>`. Drawing, placing, rotating (the box follows the turned footprint), snapping, grabbing, connectivity, the electric overlay, ruler attachments, Brick labels and the marquee all work from the pivot (`brickGeometry.ts`). Boxes saved by earlier builds with the wrong size are resized on load, keeping the sprite where it was (desktop `fixStaleAreas`). On eleven vanilla maps every brick's box size and every linked connection pair match exactly.
+- [x] **Linking** (`Connectivity.cpp`) — per layer, each free connection links to the first free matching point within half a stud on each axis (not the nearest); a new link on a brick's active connection hands it over to `<nextConnexionPreference>` or the next free one, and a broken link frees its connection (BlueBrick's ConnectionLink setter). The active connection is written back with the links.
+- [x] **Flex track bending** — double-click-drag on a brick of a selected hinged chain (PFS flex, magnet couplings, hinges) bends the chain with BlueBrick's CCD solve, each joint within its connection type's hinge angle, snapping the grabbed end to a free connection nearby; one undo step. A double-click without moving opens the brick's properties. Port of `FlexMove.cpp` (`flexMove.ts`, `flexSession.ts`); matches vanilla's own flex-a/b/c results.
+- [x] **Place next to the selected brick** — the first free compatible connection of the selected brick, in order, measured from its sprite centre (`MapView.cpp:1226-1258`); placement rebuilds connectivity at once, so chained clicks build a run.
+- [x] **Sets** — sub-part boxes are their footprints at their angles around `setCentre + position` (`placeByAreaCentre`); the pieces are wrapped in a module named after the set, linked at once, in one undo step, with "Placed set: …" in the status bar (`MapView.cpp:1344-1390`).
 - [x] **Grab anchor** — pressing a brick picks the connection nearest the click, free ends first (`nearestConnectionIndex`, `MapViewDrag.cpp:60-101`). It is stored as the brick's `activeConnectionPointIndex`, synced and saved but outside the undo stack, as `captureGrabAnchor` mutates it in place (`MapViewDrag.cpp:155-217`, `setActiveConnectionPoint`). A single-brick drag tries that connection first as the snap lead and falls back to the other free connections when it has no target in reach (`snap.ts` `leadConnIndex`). Note: the desktop's own snap loop never reads `grabActiveConnIdx_` (only written, `MapView.h:210`); the web uses it as the comment at `MapView.cpp:539-541` intends.
 - [x] Left-drag selection → group move across layers. It translates rigidly and live connection-snap tries every free connection of every moving brick. Multi-brick snaps are translation-only, with no rotation (`MapViewDrag.cpp:252-310`).
 - [x] Left-drag a single linear-ruler endpoint handle → reshape ruler (`EndpointHandle` in `RulerLayer.tsx`)
@@ -154,7 +168,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Group** (≥ 2) / **Ungroup**
 - [x] **Select Connected**
 - [x] **Cut / Copy / Duplicate / Delete**
-- [x] Empty area: **Paste**, **Add Text Here...** (opens the text dialog at the click point)
+- [x] Empty area only (nothing selected): **Paste** (when this session has copied bricks — the system clipboard can't be read without a permission prompt; Ctrl+V still reads it), **Add Text Here...** (opens the text dialog at the click point) (`MapViewContextMenu.cpp:183-203`)
 - [x] Ruler-attach flow: when a single ruler is selected and user right-clicks a brick, offers **Attach Endpoint 1/2** / **Attach Centre**
 - [x] Tail: **Undo / Redo**
 
@@ -182,6 +196,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Category dropdown (parent-folder buckets)
 - [x] Fuzzy filter line edit (subsequence match, run-length scoring)
 - [x] Icon grid: S/M/L icon size toggle (`PartsPanel.tsx`; S=32px, M=48px, L=64px; persisted `cld:partsIconSize`); grid auto-reflows on resize matching desktop's `QListView::Adjust`
+- [x] A click picks a tile; double-click or Enter adds the part to the map (`QListWidget::itemActivated`, `PartsBrowser.cpp:145`)
 - [x] **Drag thumbnail to canvas** — HTML5 drag with live ghost + connection-snap on drop
 - [x] **Item activation (click)** places at view centre with selection-anchor snap + chain placement
 - [x] Right-click: **Add to map** [x], **Copy part number** [x], **Delete imported part...** [n/a] (LDraw/Studio/LDD import not planned for web; no `imports/` subfolder)
@@ -213,11 +228,11 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Delete button per row
 - [n/a] Local `.bbm` folder picker — superseded by server-side module library
 
-### Used Parts Panel (`PartUsagePanel.cpp`) — **PARTIAL**
+### Used Parts Panel (`PartUsagePanel.cpp`)
 
-- [x] Filter line edit (matches part # + description)
+- [x] Filter line edit (matches part # + description; "over" shows only parts past their budget)
 - [x] 4-column sortable table: Part / Count / Budget / Description — Budget column hidden when no limits set; shows `count/limit` (green) or `+over` (red) per row; row tinted red when over limit
-- [x] Summary line: distinct parts / total bricks in panel header
+- [x] Summary line: "N distinct part(s), M brick(s) total — K kind(s) over budget" under the table (`usedParts.ts`)
 - [x] Double-click → Select All of This Part
 - [x] Right-click on row → Select All of This Part (context menu)
 
@@ -234,14 +249,14 @@ Selection-aware; entries vary based on what's under the cursor:
 ## Dialogs (modal/modeless)
 
 - [x] **Preferences** (`Ctrl+,`) — all three relevant tabs fully shipped:
-  - General: wheel zoom factor [x], undo stack depth [x], reopen-last-file [x]; show-splash [n/a], new-map template [n/a], language [n/a]
+  - General: wheel zoom factor [x], undo stack depth [x], reopen-last-file [x], new-map template [x] (on the layouts page: "Template for new layouts" marks one of your layouts, and New layout starts from its .bbm and sidecar unless unticked — `newLayoutTemplate.ts`, desktop `general/newMapTemplate`); show-splash [n/a], language [n/a]
   - Editing: default snap step [x], default rotation step [x], default paint colour [x]
   - Appearance: show grid [x], always-show connections [x], selection tint [x], module frame thickness [x], show module names [x], show module frames [x], electric circuits toggle [x], export watermark [x], module label % [x], venue label px [x] (persisted `cld:venueLabelPx`, wired to `VenueOverlay` label fontSize)
   - Library: module library folder [n/a — server-side]; additional parts library paths → replaced by admin-installed part libraries (org-selectable)
   - Import: LDraw/Studio/LDD [n/a] — not planned
 - [x] **Part Library management** — platform-admin installs libraries, org-admin enables/disables per library (`apps/web/src/admin/AdminPage.tsx` Libraries tab; `apps/web/src/orgs/OrgDetailPage.tsx` Part libraries section)
 - [n/a] **Library Paths** dialog (legacy local-path model) — superseded by server-side part library manager
-- [x] **Find & Replace** — Replace (current match) and Replace All for text cells and part numbers, one undo step each (`FindDialog.cpp:150-189`)
+- [x] **Find & Replace** — modeless, live selection of matches; Replace (current match) and Replace All for text cells and part numbers, one undo step each (`FindDialog.cpp:150-189`)
 - [x] **Layer Options** dialog — `LayerOptionsDialog.tsx` (form model in `layerOptions.ts`), opened by double-clicking a layer row or from the context menu. Fields: name, transparency, visible, hull visibility/colour/thickness (`MainWindow.cpp:146-265`). OK writes only the changed fields, as one undo step.
   - [x] Grid-layer options: cell size (1-512), line thickness, sub-divisions (2-32), display grid / sub-grid / cell-index labels (`MainWindow.cpp:172-202`). Grid, sub-grid and cell-index colours are a web extra (vanilla BlueBrick has them; the desktop dialog does not).
   - [x] Brick-layer elevation labels (`MainWindow.cpp:205-216`)
@@ -292,18 +307,18 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Connection-point dots** (free vs linked colour, gold for active CP); always rendered (dimmed when unselected, full-bright on selection)
 - [x] **Hull / outline polygon** — `<hull>` pixel-space polygon parsed from XML into `PartMetadata.hullPts` + `PartWire.hullPts`; rendered as a closed `<Line>` polygon in `BrickLayer.tsx` when ≥3 points available; falls back to sprite bounding rect for parts without a `<hull>` element (184 parts ship explicit hulls)
 - [x] **Elevation badge** labels (per `view/brickElevation` + per-layer `displayBrickElevation`; non-zero altitude only)
-- [x] **Electric circuit** overlay — `ElectricCircuitLayer.tsx`: port of `SceneBuilderElectric.cpp`; BFS polarity propagation across connected bricks; OrangeRed / Cyan parallel rail lines offset 2px perpendicular to circuit centreline; orange diamond shortcut markers; gated by `showElectricCircuits` toggle; rendered above bricks (z=500)
+- [x] **Electric circuit** overlay — `ElectricCircuitLayer.tsx` / `electricCircuits.ts`: port of `SceneBuilderElectric.cpp`. A circuit joins a part's opposite plugs (+N / −N, 0 = none, `PartsLibrary.cpp` buildElectricCircuits); BFS polarity propagation follows `LinkedTo` (a connection id) into the partner brick; OrangeRed / Cyan parallel rail lines offset 2px perpendicular to circuit centreline; orange diamond shortcut markers; gated by `showElectricCircuits` toggle; rendered above bricks (z=500)
 - [x] Grid + sub-grid line drawing, with colour alpha (the desktop default grid is half-transparent black)
 - [x] **Grid cell-index labels** ("A1", "B1", ...) when the Grid layer's `DisplayCellIndex` is on (`render/gridIndex.ts`, `GridLayer.tsx`). Letters or numbers per axis from `CellIndexColumnType` / `CellIndexRowType`, counted from `CellIndexCorner`, drawn at a constant screen size. The desktop port keeps the fields and the checkbox but draws nothing; this follows vanilla BlueBrick.
 - [x] **Sidecar background-image** painted under everything — `BackgroundImageLayer` in `EditorPage.tsx` renders sidecar `backgroundImage` as a `KonvaImage` below all canvas layers
 - [x] **Selection halo** — gold / green-when-snap-active polygon outline
 - [x] **Linear-ruler endpoint handles** drawn when one ruler selected; draggable to reshape
-- [x] **Foreground scale-bar HUD** — bottom-right overlay, auto-picks round stud count, labels in mm/cm/m
+- [x] **Foreground scale-bar HUD** — bottom-left white pill like `MapViewPaint.cpp:195-243`: track-friendly stud step (16, 32, 48, 96…) nearest 120 px, labelled "N studs" over mm / m (`scaleBar.ts`)
 - [x] **Module name label** (gated by `view/moduleNames` → `cld:showModuleNames`; `ModuleOverlay.tsx`). Font is Module Label Percent (default 35) of the module's long side, clamped 16–400 px, rotated along the long axis (`SceneBuilderSidecar.cpp`).
 - [x] **Module frame outline** (gated by `view/moduleFrameThickness` → `cld:showModuleFrames`; dashed blue rect over member-brick AABB; thickness from `cld:moduleFrameThickness`)
-- [x] **Anchored labels** — World [x], Brick [x], Group [x], Module [x] anchors all render; Group/Module show dashed leader-line from AABB centre to label; add/edit/delete mutations [x]; minZoom gate [x]
+- [x] **Anchored labels** — World [x], Brick [x] (follows the brick's rotation), Group [x], Module [x] anchors all render; sizes are points at 96 dpi with desktop's 8.25 pt Microsoft Sans Serif default; Group/Module show dashed leader-line from AABB centre to label; add/edit/delete mutations [x]; minZoom gate [x]
 - [x] **Venue outline + obstacles + edge labels** — Wall/Door/Open kinds with desktop pen styles, walkway buffer band on non-Wall edges, ft/in distance labels
-- [x] **Watermark** — Konva `Text` layer bottom-right: `"author / lug / event"`, semi-transparent, gated by `showExportWatermark`; drawn into full-map PNG/print exports
+- [x] **Watermark** — an Export Image checkbox that writes `"author / LUG / event"` bottom-right into the exported image, print or PDF; no longer drawn on the live canvas
 - [x] Live drag/place ghost item
 - [x] **Snap ring** overlay at the live snap point (green ring) during single-brick drag
 - [x] Live area cell rendering
@@ -323,7 +338,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Permanent zoom % indicator
 - [x] Permanent mouse-position-in-studs indicator
 - [x] Permanent current-tool indicator
-- [x] Permanent venue-validator status — status bar right side shows "Venue: <name>" in green when a venue is defined and enabled, "Venue: disabled" in grey otherwise; hidden when no venue; orange "⚠ N in walkway" badge when bricks overlap the min-walkway AABB buffer around non-Wall edges
+- [x] Permanent venue-validator status — port of `VenueValidator.cpp` (`venueValidator.ts`): outside-outline, distance-based walkway buffer and obstacle overlap. The status bar shows green "Venue: OK" or orange "Venue: N issue(s)" with the issues in its tooltip; hidden when there is no enabled venue. New venues default to a 112.5-stud walkway; drawing an outline or obstacle enables the venue, and fewer than 3 points keeps the tool and says "Venue polygon needs at least 3 points".
 - [x] Permanent budget status — status bar shows "Budget: OK" (green) or "Budget: N over" (red) when the layout has budget limits; hidden when it has none
 - [x] Dirty `*` indicator — appended to tool name in status bar when connection is reconnecting or in error state
 
@@ -341,6 +356,8 @@ Selection-aware; entries vary based on what's under the cursor:
 
 **Rulers** (`RulerCommands.cpp`): AddRulerItemCommand [x] (linear + circular via `addLinearRuler`/`addCircularRuler`), DeleteRulerItemCommand [x] (`deleteRulerItem`), MoveRulerItemCommand [x] (`moveRulerItem`), MoveRulerEndpointCommand [x] (`moveRulerEndpoint`), AttachRulerCommand [x] (`attachRulerEndpoint`), EditRulerItemCommand [x] (`editRulerItem`)
 
+New rulers take desktop's defaults (known Black line, guideline and text, 1-thick solid lines, Microsoft Sans Serif 8.25) on the first ruler layer, or a new "Rulers" layer; the drawing preview reads "N studs (mm / m)", with "r=" for circles (`RulerItem.h:22-31`, `MapView.cpp:818-829, 941-946`).
+
 **Areas** (`AreaCommands.cpp`): PaintAreaCellsCommand [x]
 
 **Modules** (`ModuleCommands.cpp`): CreateModuleCommand [x] (`createSidecarModule`), DeleteModuleCommand [x] (`deleteSidecarModule`), MoveModuleCommand [x] (`moveModuleBricks`), RotateModuleCommand [x] (`rotateModuleBricks`), RenameModuleCommand [x] (`renameSidecarModule`), CloneModuleCommand [x] (`cloneModuleBricks`), FlattenModuleCommand [x] (`flattenSidecarModule`), RescanModuleCommand [x] (`rescanModuleFromBricks`), ImportBbmAsModuleCommand [x] (`importBricksAsModule`)
@@ -351,13 +368,15 @@ Selection-aware; entries vary based on what's under the cursor:
 
 ## File-format features
 
-- [x] `.bbm` reader/writer (Grid / Brick / Text / Area / Ruler layers all round-trip)
+- [x] LDraw (`.ldr` steps / `.mpd` submodels as layers, MLCAD hide and groups, `!BLUEBRICK RULER`, header fields, aliases, sleepers under rails, ignorable parts), TrackDesigner (`.tdl` v20, per-port remap, monorail ramp split) and 4DBrix (`.ncp`) readers and writers, ported from desktop `import/mapformats` (`packages/parts-catalog/src/mapformats`). Tested against vanilla BlueBrick's own conversions: written files match line for line (LDraw digit for digit, in BlueBrick's float arithmetic; `.ncp` within 1e-3; `.tdl` piece for piece), and read maps give vanilla's bricks, positions and active connections. Parts sharing a TrackDesigner id resolve by key rather than directory order.
+- [x] `.bbm` reader/writer (Grid / Brick / Text / Area / Ruler layers all round-trip). Maps saved by vanilla BlueBrick 1.9.2, including its LDraw / TrackDesigner / 4DBrix conversions, write back byte-for-byte (float exponents as `E-07`). A damaged number (`abc`, `NaN`, `1e999`) reads as 0 like desktop `XmlPrimitives.cpp`, so the map still saves. Rebuilt connectivity links within each layer only and matches vanilla's links on every oracle map.
 - [x] Sidecar (anchored labels, modules, venue, sha256) — round-trip OK; anchored labels [x], modules [x], venue [x] all render. Exported as `<name>.bbm.bld`, the only name desktop loads (`SidecarIO.cpp:201-202`), with `bbmHashSha256` of the `.bbm` exported beside it; the export reads the editor's live sidecar. Import accepts `.bbm.bld` and legacy web `.bbm.cld`, and seeds the editor's sidecar.
 - [x] `.bld-venue` standalone files (`"schema": "bld-venue/1"`, `VenueIO.cpp:28`) written; `.bld-venue` and legacy `.cld-venue` read with validation (`venueFile.ts`)
 - [x] `.set.xml` write — `SaveAsSetDialog.tsx`; Map menu → "Save Selection as Set…"
 - [x] Vendored parts library
 - [n/a] User library paths + `imports/` subfolder — superseded by server-side part library manager
-- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`. Reads `<Budget><BudgetEntry><PartNumber><Limit>`, ignoring negative or missing limits. Writes XML-escaped entries sorted by part number and drops unlimited (−1) entries, as desktop `Budget.cpp:36-58` does.
+- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`, byte for byte like vanilla (`Budget.cpp`): `<PartList><Part id="…">N</Part></PartList>`, CRLF, lowercase `utf-8`, file order kept, `<PartList />` when empty, no trailing newline. Ids are case-insensitive (first of a duplicate wins); a non-integer value or a Part without an id rejects the file. Files from earlier web builds (`<BudgetEntry>`) still open.
+- [x] Old part numbers (`<OldNameList>`) resolve to the part that replaced them in the editor, connectivity and Used Parts (`partIndex.ts`, desktop `PartsLibrary::canonicalKey`); a `.bbb` read maps them to `PARTNUMBER.COLOR` like BlueBrick's getActualPartNumber. Maps keep the name they were saved with.
 
 ---
 
@@ -461,7 +480,7 @@ mix of: server-side (per-user, sync across devices) and `localStorage`
    - Per-tool cursor swap
    - View-menu render toggles + their state persistence
 8. **Imports**
-   - LDraw / Studio / LDD importers (browser-side parsers)
+   - LDraw / Studio / LDD part importers (browser-side parsers); LDraw / TrackDesigner / 4DBrix *maps* open and save already
    - Download Center
 9. **Recent files / Open Recent submenu** (already covered by layout list)
 

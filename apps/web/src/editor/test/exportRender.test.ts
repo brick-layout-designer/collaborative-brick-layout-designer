@@ -14,7 +14,7 @@ import {
   setLayerVisible,
   setVenue,
 } from '../mutations';
-import { aspectHeight, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE, renderMapToCanvas } from '../exportRender';
+import { aspectHeight, exportBackground, clampExportSize, clampPixelRatio, contentBoundsStuds, exportSceneSize, MAX_CANVAS_SIDE, renderMapToCanvas } from '../exportRender';
 
 describe('contentBoundsStuds', () => {
   it('is null for an empty map', () => {
@@ -49,6 +49,17 @@ describe('contentBoundsStuds', () => {
     expect(b.y).toBe(-40);
     expect(b.x + b.width).toBe(120);
     expect(b.y + b.height).toBe(202);
+  });
+
+  it('counts Group/Module labels at their world offset, not Brick labels', () => {
+    const doc = new Y.Doc();
+    const l = ensureBrickLayer(doc);
+    placeBrick(doc, l, { partNumber: 'p', x: 0, y: 0, width: 1, height: 1 });
+    const base = { font: { family: 'Arial', size: 10, style: '' }, color: { known: true, argb: 0, name: 'Black' }, rot: 0, minZoom: 0, text: 'x' };
+    addAnchoredLabel(doc, { ...base, id: 'g', kind: 2, targetId: 'grp', offset: { x: 40, y: 0 } });
+    addAnchoredLabel(doc, { ...base, id: 'm', kind: 3, targetId: 'mod', offset: { x: 0, y: 30 } });
+    addAnchoredLabel(doc, { ...base, id: 'b', kind: 1, targetId: 'x', offset: { x: 900, y: 900 } });
+    expect(contentBoundsStuds(docToBbm(doc), readSidecarFromDoc(doc))).toEqual({ x: 0, y: 0, width: 40, height: 30 });
   });
 
   it('ignores hidden layers', () => {
@@ -138,5 +149,40 @@ describe('renderMapToCanvas output size and antialias', () => {
     expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ pixelRatio: 2, imageSmoothingEnabled: false }));
     expect(ctx.imageSmoothingEnabled).toBe(false);
     expect(ctx.fillRect).not.toHaveBeenCalled();
+  });
+
+  it('renders just a print tile region, even past the content', () => {
+    const { map, stage, toCanvas } = setup();
+    let pos = { x: 0, y: 0 };
+    const origPosition = stage.position.bind(stage);
+    (stage as unknown as { position: (p: { x: number; y: number }) => void }).position = (p) => {
+      if (toCanvas.mock.calls.length === 0) pos = p;
+      origPosition(p);
+    };
+    renderMapToCanvas(stage, map, null, { pixelRatio: 3, transparent: false, regionStuds: { x: 100, y: -4, width: 20, height: 10 } });
+    expect(pos).toEqual({ x: -800, y: 32 });
+    expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ x: 0, y: 0, width: 160, height: 80, pixelRatio: 3 }));
+  });
+
+  it('stamps the watermark bottom-right in QColor(0,0,0,140)', () => {
+    const { map, stage, ctx } = setup();
+    renderMapToCanvas(stage, map, null, { pixelRatio: 1, transparent: false, size: { width: 600, height: 600 }, watermark: 'a / b / c' });
+    expect(ctx.fillText).toHaveBeenCalledWith('a / b / c', 590, 590);
+    expect(ctx.fillStyle).toBe('rgba(0,0,0,0.549)');
+    expect(ctx.font).toBe(`${(10 * 96) / 72}px sans-serif`);
+  });
+});
+
+describe('exportBackground', () => {
+  it('paints the layout colour, including names outside the old 11-colour table', () => {
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'CornflowerBlue' } })).toBe('#6495ed');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Cornsilk' } })).toBe('#fff8dc');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'DarkOliveGreen' } })).toBe('#556b2f');
+  });
+
+  it('keeps the background alpha and resolves unknown names to black like desktop', () => {
+    expect(exportBackground({ backgroundColor: { kind: 'argb', argb: '806495ed' } })).toBe('rgba(100, 149, 237, 0.502)');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Control' } })).toBe('#000000');
+    expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Transparent' } })).toBe('rgba(0, 0, 0, 0)');
   });
 });

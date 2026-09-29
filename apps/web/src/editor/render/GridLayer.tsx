@@ -3,8 +3,9 @@ import { Group, Line, Rect, Text } from 'react-konva';
 import type { BbmMap, LayerGrid } from '@cld/model';
 import { studToPx } from './coords';
 import { useEditorStore } from '../editorStore';
-import { colorSpecToCss, colorSpecToHex } from '../layerOptions';
-import { cellIndexLabels, parseCellIndexCorner } from './gridIndex';
+import { colorSpecToCss } from '../layerOptions';
+import { cellIndexLabels, drawnGridLayer, parseCellIndexCorner } from './gridIndex';
+import { fontStack } from './fontStack';
 
 export interface ViewportRect {
   /** World-space (stud) bounds currently visible on the stage. */
@@ -25,19 +26,19 @@ export interface ViewportRect {
 export function GridLayer({
   map,
   viewport,
-  zoom = 1,
   showGrid: showGridProp,
+  cornerOverride,
 }: {
   map: BbmMap;
   viewport: ViewportRect;
-  /** Stage zoom — cell-index labels keep a constant on-screen size. */
-  zoom?: number;
+  /** Live cell-index origin while it is being dragged (not yet in the doc). */
+  cornerOverride?: { layerId: string; corner: { x: number; y: number } } | null;
   /** Override the editor-store value. Pass `true` from the public viewer to avoid a store subscription. */
   showGrid?: boolean;
 }) {
   const showGridStore = useEditorStore((s) => s.showGrid);
   const showGrid = showGridProp ?? showGridStore;
-  const grid = map.layers.find((l): l is LayerGrid => l.type === 'grid');
+  const grid = drawnGridLayer(map.layers) as LayerGrid | undefined;
 
   // Background always covers the full visible area regardless of grid visibility.
   const bgPad = (grid?.gridSizeInStud ?? 32) * 2;
@@ -62,13 +63,16 @@ export function GridLayer({
         y={bgYMin * px}
         width={(bgXMax - bgXMin) * px}
         height={(bgYMax - bgYMin) * px}
-        fill={colorSpecToHex(map.backgroundColor, '#404040')}
+        fill={colorSpecToCss(map.backgroundColor, '#404040')}
         listening={false}
       />
       {gridVisible && grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
       {gridVisible && grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
       {gridVisible && grid.displayCellIndex && (
-        <CellIndexLabels grid={grid} bounds={{ xMin, yMin, xMax, yMax }} zoom={zoom} />
+        <CellIndexLabels
+          grid={cornerOverride && cornerOverride.layerId === grid.id ? { ...grid, cellIndexCorner: cornerOverride.corner } : grid}
+          bounds={{ xMin, yMin, xMax, yMax }}
+        />
       )}
     </Group>
   );
@@ -88,17 +92,15 @@ interface Bounds {
 // yields a meaningful sub-step.
 
 /**
- * Column + row label in the top-left corner of each cell (vanilla
- * BlueBrick; see gridIndex.ts). Drawn at the cell-index font size in
- * screen pixels, like BlueBrick's unscaled text, and skipped when the
- * cells are too small on screen to hold a label.
+ * Cell indices along the origin row and column (see gridIndex.ts), centred
+ * in their cells. The font is in map units, pt * 4/3 scene px per stud
+ * scale, so it grows and shrinks with the zoom like desktop's
+ * (MapViewPaint.cpp:115-140).
  */
-function CellIndexLabels({ grid, bounds, zoom }: { grid: LayerGrid; bounds: Bounds; zoom: number }) {
+function CellIndexLabels({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
   const px = studToPx();
-  const z = zoom > 0 ? zoom : 1;
-  const fontScreenPx = Math.max(6, (grid.cellIndexFont.size || 10) * (4 / 3));
-  const cellScreenPx = grid.gridSizeInStud * px * z;
-  if (cellScreenPx < fontScreenPx * 2) return null;
+  const fontPx = Math.max(1, Math.round((grid.cellIndexFont.size || 10) * (4 / 3) * px));
+  const cellPx = grid.gridSizeInStud * px;
   const labels = cellIndexLabels(
     bounds,
     grid.gridSizeInStud,
@@ -108,18 +110,21 @@ function CellIndexLabels({ grid, bounds, zoom }: { grid: LayerGrid; bounds: Boun
   );
   const style = (grid.cellIndexFont.style ?? '').toLowerCase();
   const fontStyle = `${style.includes('italic') ? 'italic ' : ''}${style.includes('bold') ? 'bold' : 'normal'}`;
-  const pad = 4 / z;
   return (
-    <Group>
+    <Group name="cell-index">
       {labels.map((l) => (
         <Text
           key={`${l.x},${l.y}`}
-          x={l.x * px + pad}
-          y={l.y * px + pad}
+          x={l.x * px}
+          y={l.y * px}
+          width={cellPx}
+          height={cellPx}
+          align="center"
+          verticalAlign="middle"
           text={l.text}
-          fontFamily={grid.cellIndexFont.family || 'Arial'}
+          fontFamily={fontStack(grid.cellIndexFont.family)}
           fontStyle={fontStyle}
-          fontSize={fontScreenPx / z}
+          fontSize={fontPx}
           fill={colorSpecToCss(grid.cellIndexColor)}
           listening={false}
           perfectDrawEnabled={false}

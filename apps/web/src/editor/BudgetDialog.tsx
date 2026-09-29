@@ -1,59 +1,44 @@
 // Port of BudgetDialog.cpp — modeless budget editor.
-// Reads/writes BlueBrick `.bbb` XML format (Budget > BudgetEntry > PartNumber + Limit).
+// Reads/writes BlueBrick `.bbb` XML (Budget > PartList > Part id="…"), see budgetFile.ts.
 // Usage counts are computed from the live Yjs doc. Rows with used > limit are highlighted.
 // The limits themselves are stored in the doc's meta (`setBudgetLimits`), so
 // they persist and sync; .bbb Open/Save import and export them.
 
 import { useState, useMemo } from 'react';
 import type { BbmMap } from '@cld/model';
-import { parseBbb, writeBbb, type BudgetEntry } from './budgetFile';
+import { mergeBudgets, parseBbb, writeBbb, type BudgetEntry } from './budgetFile';
+import { budgetRows } from './budgetUsage';
 
 interface Props {
   map: BbmMap | null;
   limits: Map<string, number>;
   onLimitsChange: (limits: Map<string, number>) => void;
+  /** Current id for an old part number read from a .bbb (BlueBrick getActualPartNumber); identity by default. */
+  resolvePart?: (id: string) => string;
   onClose: () => void;
 }
 
-// --- Usage from map ---
-
-function countUsage(map: BbmMap | null): Map<string, number> {
-  const usage = new Map<string, number>();
-  if (!map) return usage;
-  for (const layer of map.layers) {
-    if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      usage.set(b.partNumber, (usage.get(b.partNumber) ?? 0) + 1);
-    }
-  }
-  return usage;
-}
-
-export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
+export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) => id, onClose }: Props) {
   const setLimits = onLimitsChange;
   const [fileName, setFileName] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // One row per part placed or limited; part ids match case-insensitively.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const usage = useMemo(() => countUsage(map), [map, refreshKey]);
-
-  // Union of parts in usage OR in budget limits.
-  const parts = useMemo(() => {
-    const all = new Set<string>([...usage.keys(), ...limits.keys()]);
-    return [...all].sort();
-  }, [usage, limits]);
-
-  const overBudgetCount = parts.filter((p) => {
-    const limit = limits.get(p) ?? -1;
-    return limit >= 0 && (usage.get(p) ?? 0) > limit;
-  }).length;
+  const rows = useMemo(() => budgetRows(map, limits), [map, limits, refreshKey]);
+  const overBudgetCount = rows.filter((r) => r.limit !== undefined && r.used > r.limit).length;
 
   function handleNew() {
     setLimits(new Map());
     setFileName(null);
   }
 
-  function handleOpen() {
+  /**
+   * Pick a .bbb and hand its entries — old part numbers already mapped to
+   * the part that replaced them, first entry per part kept, as BlueBrick
+   * reads the file — to `use`.
+   */
+  function pickBudgetFile(use: (entries: BudgetEntry[], name: string) => void) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.bbb,.xml';
@@ -61,14 +46,47 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
       const file = input.files?.[0];
       if (!file) return;
       file.text().then((text) => {
-        const entries = parseBbb(text);
-        const m = new Map<string, number>();
-        for (const e of entries) m.set(e.part, e.limit);
-        setLimits(m);
-        setFileName(file.name);
+        let entries: BudgetEntry[];
+        try {
+          entries = parseBbb(text);
+        } catch (e) {
+          window.alert(`Could not open ${file.name}: ${(e as Error).message}`);
+          return;
+        }
+        const out: BudgetEntry[] = [];
+        const seen = new Set<string>();
+        for (const e of entries) {
+          const part = resolvePart(e.part);
+          if (seen.has(part.toUpperCase())) continue;
+          seen.add(part.toUpperCase());
+          out.push({ part, limit: e.limit });
+        }
+        use(out, file.name);
       });
     };
     input.click();
+  }
+
+  const toMap = (entries: readonly BudgetEntry[]) => {
+    const m = new Map<string, number>();
+    for (const e of entries) if (e.limit >= 0) m.set(e.part, e.limit);
+    return m;
+  };
+
+  function handleOpen() {
+    pickBudgetFile((entries, name) => {
+      setLimits(toMap(entries));
+      setFileName(name);
+    });
+  }
+
+  // Budget → Import and Merge (MainWindowBudgetMenu.cpp:73-80): the file's
+  // limits are added to the current ones.
+  function handleMerge() {
+    pickBudgetFile((entries) => {
+      const current = [...limits].map(([part, limit]) => ({ part, limit }));
+      setLimits(toMap(mergeBudgets(current, entries)));
+    });
   }
 
   function handleSave() {
@@ -106,10 +124,13 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
 
       {/* Toolbar */}
       <div className="flex gap-2 border-b border-neutral-800 px-3 py-2">
-        <button onClick={handleNew}
+        {/* The budget lives in the layout, so desktop's New and Close both mean: no limits. */}
+        <button onClick={handleNew} title="Remove every limit (desktop New / Close Budget)"
           className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">New</button>
         <button onClick={handleOpen}
           className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Open…</button>
+        <button onClick={handleMerge} title="Add the limits of another budget file to the current budget"
+          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Import and Merge…</button>
         <button onClick={handleSave}
           className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Save…</button>
         <button onClick={() => setRefreshKey((k) => k + 1)}
@@ -127,16 +148,15 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
             </tr>
           </thead>
           <tbody>
-            {parts.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td colSpan={3} className="px-2 py-3 text-center text-neutral-500">
                   No parts in map or budget. Use "Open…" to load a .bbb file.
                 </td>
               </tr>
             )}
-            {parts.map((part) => {
-              const used = usage.get(part) ?? 0;
-              const limit = limits.get(part) ?? -1;
+            {rows.map(({ part, used, limit: lim, limitKey }) => {
+              const limit = lim ?? -1;
               const over = limit >= 0 && used > limit;
               return (
                 <tr key={part} className={over ? 'bg-red-950/60' : 'odd:bg-neutral-800/30'}>
@@ -148,7 +168,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, onClose }: Props) {
                       min="0"
                       placeholder="—"
                       value={limit >= 0 ? limit : ''}
-                      onChange={(e) => setLimit(part, e.target.value)}
+                      onChange={(e) => setLimit(limitKey ?? part, e.target.value)}
                       className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
                     />
                   </td>

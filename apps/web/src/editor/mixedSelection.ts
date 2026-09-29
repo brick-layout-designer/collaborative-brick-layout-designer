@@ -20,7 +20,7 @@ import * as Y from 'yjs';
 import type { BbmMap, Brick, RectangleF } from '@cld/model';
 import type { AnchoredLabel, SidecarModule } from '@cld/bbm';
 import type { AnnoSelection } from './editorStore';
-import type { Marquee } from './render/marqueeMath';
+import { polygonIntersectsMarquee, rotatedRectCorners, type Marquee, type Pt } from './render/marqueeMath';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import {
   bricksByLayer,
@@ -32,6 +32,8 @@ import {
   moveRulerItem,
   translateBricksAcrossLayers,
 } from './mutations';
+import { pivotOf } from './brickGeometry';
+import type { PartWire } from '../api';
 
 // ---------------------------------------------------------------------------
 // Keys and set helpers
@@ -99,9 +101,15 @@ export interface LabelIndex {
   brickById: Map<string, Brick>;
   bricksByGroup: Map<string, Brick[]>;
   bricksByModule: Map<string, Brick[]>;
+  /** A brick's pivot (sprite centre); absent = its displayArea centre. */
+  pivot?: (b: Brick) => { x: number; y: number };
 }
 
-export function buildLabelIndex(map: BbmMap, modules: readonly SidecarModule[]): LabelIndex {
+export function buildLabelIndex(
+  map: BbmMap,
+  modules: readonly SidecarModule[],
+  partsByKey?: ReadonlyMap<string, PartWire>,
+): LabelIndex {
   const brickById = new Map<string, Brick>();
   const bricksByGroup = new Map<string, Brick[]>();
   for (const layer of map.layers) {
@@ -124,57 +132,126 @@ export function buildLabelIndex(map: BbmMap, modules: readonly SidecarModule[]):
     }
     if (members.length > 0) bricksByModule.set(mod.id, members);
   }
-  return { brickById, bricksByGroup, bricksByModule };
-}
-
-/** Bricks a label is anchored to (empty for World labels or a lost target). */
-export function labelAnchorBricks(label: AnchoredLabel, index: LabelIndex): Brick[] {
-  if (label.kind === 1) {
-    const b = index.brickById.get(label.targetId);
-    return b ? [b] : [];
-  }
-  if (label.kind === 2) return index.bricksByGroup.get(label.targetId) ?? [];
-  if (label.kind === 3) return index.bricksByModule.get(label.targetId) ?? [];
-  return [];
+  return {
+    brickById,
+    bricksByGroup,
+    bricksByModule,
+    ...(partsByKey ? { pivot: (b: Brick) => pivotOf(b, partsByKey.get(b.partNumber.toLowerCase())) } : {}),
+  };
 }
 
 /**
- * Anchor point in studs (the leader-line end for Group / Module labels),
- * or null when the anchor is gone and the label is not drawn. World labels
- * anchor at the origin: their offset is their absolute position.
+ * The brick a label is attached to: only Brick labels (kind 1) are
+ * children of a scene item on desktop (SceneBuilderSidecar.cpp:216-224).
+ * Group and Module labels — and a Brick label whose brick is gone — are
+ * placed at their offset as a world position.
  */
-export function labelAnchorStuds(
+export function labelAnchorBricks(label: AnchoredLabel, index: LabelIndex): Brick[] {
+  if (label.kind !== 1) return [];
+  const b = index.brickById.get(label.targetId);
+  return b ? [b] : [];
+}
+
+/**
+ * Anchor point in studs: the brick's sprite centre (its pivot, as desktop
+ * SceneBuilder brickCentreByGuid_) for an attached Brick label, else the
+ * origin (the offset is then the label's world position).
+ */
+export function labelAnchorStuds(label: AnchoredLabel, index: LabelIndex): { x: number; y: number } {
+  const b = labelAnchorBricks(label, index)[0];
+  if (!b) return { x: 0, y: 0 };
+  if (index.pivot) return index.pivot(b);
+  return { x: b.displayArea.x + b.displayArea.width / 2, y: b.displayArea.y + b.displayArea.height / 2 };
+}
+
+/**
+ * Where a label's text origin (top-left) lands, in studs, and its total
+ * rotation. A Brick label is a child of the brick item, which sits at the
+ * brick centre rotated by its orientation: the offset is in the brick's
+ * local frame and the text rotation adds to the brick's
+ * (SceneBuilderSidecar.cpp:208-221, SceneBuilder.cpp:215-216).
+ */
+export function labelPlacement(
   label: AnchoredLabel,
   index: LabelIndex,
-): { x: number; y: number } | null {
-  if (label.kind === 0) return { x: 0, y: 0 };
-  const bricks = labelAnchorBricks(label, index);
-  if (bricks.length === 0) return null;
-  if (label.kind === 1) {
-    const b = bricks[0]!;
-    return { x: b.displayArea.x + b.displayArea.width / 2, y: b.displayArea.y + b.displayArea.height / 2 };
-  }
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const b of bricks) {
-    minX = Math.min(minX, b.displayArea.x);
-    minY = Math.min(minY, b.displayArea.y);
-    maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-    maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-  }
-  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+): { x: number; y: number; rotation: number } {
+  const b = labelAnchorBricks(label, index)[0];
+  if (!b) return { x: label.offset.x, y: label.offset.y, rotation: label.rot };
+  const a = labelAnchorStuds(label, index);
+  const r = (b.orientation * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return {
+    x: a.x + label.offset.x * c - label.offset.y * s,
+    y: a.y + label.offset.x * s + label.offset.y * c,
+    rotation: b.orientation + label.rot,
+  };
 }
 
 /**
- * Approximate text box of a label in studs, for marquee hit-testing.
- * The font size is in world pixels (8 px per stud); width is estimated
- * at 0.6 em per character since text metrics need a canvas.
+ * Turn a world-space move (studs) into the label offset change. For an
+ * attached Brick label the offset lives in the brick's rotated frame, so
+ * the world delta is rotated back by the brick orientation; the label
+ * then lands where it was dropped.
  */
-export function labelBoxStuds(label: AnchoredLabel, index: LabelIndex): RectangleF | null {
-  const a = labelAnchorStuds(label, index);
-  if (!a) return null;
-  const hPx = Math.max(1, label.font.size);
-  const wPx = Math.max(1, label.text.length) * hPx * 0.6;
-  return { x: a.x + label.offset.x, y: a.y + label.offset.y, width: wPx / 8, height: hPx / 8 };
+export function labelOffsetDelta(
+  label: AnchoredLabel,
+  index: LabelIndex,
+  dx: number,
+  dy: number,
+): { dx: number; dy: number } {
+  const b = labelAnchorBricks(label, index)[0];
+  if (!b || b.orientation % 360 === 0) return { dx, dy };
+  const r = (-b.orientation * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return { dx: dx * c - dy * s, dy: dx * s + dy * c };
+}
+
+/** Desktop's default label font (core/FontSpec.h:11-14). */
+export const DEFAULT_LABEL_FONT = { family: 'Microsoft Sans Serif', size: 8.25, style: 'Regular' } as const;
+
+/** C# FontStyle.ToString() form the sidecar carries: "Regular", "Bold", "Bold, Italic". */
+export function labelFontStyle(bold: boolean, italic: boolean): string {
+  return [bold && 'Bold', italic && 'Italic'].filter(Boolean).join(', ') || 'Regular';
+}
+
+/**
+ * Scene-unit (world px at zoom 1, 8 px per stud) height of a label font.
+ * Desktop builds `QFont(family, int(sizePt))` — the point size truncated
+ * to an integer — and Qt lays points out at 96 logical DPI, so one point
+ * is 96/72 scene px (SceneBuilderSidecar.cpp:205). A size that truncates
+ * to 0 is invalid for QFont, which keeps its default (9 pt).
+ */
+export function labelFontPx(sizePt: number): number {
+  const pt = Math.trunc(sizePt);
+  return ((pt > 0 ? pt : 9) * 96) / 72;
+}
+
+/**
+ * CSS font stack for a label family. "Microsoft Sans Serif" (the .NET
+ * default the files carry) is missing off Windows, so fall back to its
+ * closest metric matches.
+ */
+export function labelFontFamily(family: string): string {
+  const fallback = 'Tahoma, "Segoe UI", Arial, sans-serif';
+  const f = family.replace(/["\\]/g, '').trim();
+  if (!f) return `"${DEFAULT_LABEL_FONT.family}", ${fallback}`;
+  return f === DEFAULT_LABEL_FONT.family ? `"${f}", ${fallback}` : `"${f}", "${DEFAULT_LABEL_FONT.family}", ${fallback}`;
+}
+
+/**
+ * Approximate text outline of a label in studs (four rotated corners), for
+ * marquee hit-testing. Width is estimated at 0.6 em per character of the
+ * longest line since text metrics need a canvas.
+ */
+export function labelShapeStuds(label: AnchoredLabel, index: LabelIndex): Pt[] {
+  const p = labelPlacement(label, index);
+  const hPx = labelFontPx(label.font.size);
+  const lines = label.text.split('\n');
+  const longest = Math.max(1, ...lines.map((l) => l.length));
+  const wPx = longest * hPx * 0.6;
+  return rotatedRectCorners({ x: p.x, y: p.y }, wPx / 8, (hPx * lines.length) / 8, p.rotation);
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +277,7 @@ export function annotationsInMarquee(
   labels: readonly AnchoredLabel[],
   modules: readonly SidecarModule[],
   zoom: number,
+  partsByKey?: ReadonlyMap<string, PartWire>,
 ): AnnoSelection {
   const rulers: string[] = [];
   const texts: string[] = [];
@@ -215,11 +293,10 @@ export function annotationsInMarquee(
   }
   const out: string[] = [];
   if (labels.length > 0) {
-    const index = buildLabelIndex(map, modules);
+    const index = buildLabelIndex(map, modules, partsByKey);
     for (const l of labels) {
       if (l.minZoom > 0 && zoom < l.minZoom) continue;
-      const box = labelBoxStuds(l, index);
-      if (box && overlaps(marquee, box)) out.push(l.id);
+      if (polygonIntersectsMarquee(labelShapeStuds(l, index), marquee)) out.push(l.id);
     }
   }
   return { rulers, labels: out, texts };
@@ -303,8 +380,11 @@ export function translateMixedSelection(
       const moving = new Set<string>(move.movedBricks ?? []);
       if (bdx !== 0 || bdy !== 0) for (const id of move.bricks) moving.add(id);
       const index = buildLabelIndex(map, modules);
+      const byId = new Map(labels.map((l) => [l.id, l]));
       for (const id of labelsToOffset(move.anno.labels, labels, index, moving)) {
-        moveAnchoredLabel(doc, id, move.dx, move.dy);
+        const l = byId.get(id);
+        const d = l ? labelOffsetDelta(l, index, move.dx, move.dy) : { dx: move.dx, dy: move.dy };
+        moveAnchoredLabel(doc, id, d.dx, d.dy);
       }
     }
   }, LOCAL_ORIGIN);

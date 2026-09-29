@@ -30,7 +30,6 @@ import {
 import type Konva from 'konva';
 import type {
   BbmMap,
-  Brick,
   CircularRulerItem,
   ColorSpec,
   LayerRuler,
@@ -39,9 +38,15 @@ import type {
 import { studToPx, COLOR_DEFAULT } from './coords';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { AnnoDragHandlers } from './groupDragNodes';
+import { fontStack } from './fontStack';
+import { colorSpecToCss } from '../layerOptions';
+import { pivotOf } from '../brickGeometry';
+import type { PartWire } from '../../api';
 
 interface Props {
   map: BbmMap;
+  /** Catalog, so an attached end sits on the brick's sprite centre (its pivot). */
+  partsByKey?: ReadonlyMap<string, PartWire>;
   /** Rulers in the (mixed) selection — drawn with a halo. */
   selectedRulerIds?: ReadonlySet<string>;
   /** The one ruler whose endpoint handles are shown (single ruler selected). */
@@ -69,6 +74,7 @@ interface Props {
 
 export function RulerLayers({
   map,
+  partsByKey,
   selectedRulerIds,
   handleRulerId = null,
   onRulerSelect,
@@ -85,11 +91,13 @@ export function RulerLayers({
     for (const layer of map.layers) {
       if (layer.type !== 'brick') continue;
       for (const b of layer.bricks) {
-        m.set(b.id, brickCentreStuds(b));
+        // Attached ends follow the sprite centre, like desktop
+        // SceneBuilder brickCentreByGuid_ (imageCentre).
+        m.set(b.id, pivotOf(b, partsByKey?.get(b.partNumber.toLowerCase())));
       }
     }
     return m;
-  }, [map]);
+  }, [map, partsByKey]);
 
   if (layers.length === 0) return null;
   return (
@@ -174,13 +182,6 @@ function rulerRootProps(
     out.onDragEnd = (e) => { if (e.target === e.currentTarget) drag.end(e.target); };
   }
   return out;
-}
-
-function brickCentreStuds(b: Brick): { x: number; y: number } {
-  return {
-    x: b.displayArea.x + b.displayArea.width / 2,
-    y: b.displayArea.y + b.displayArea.height / 2,
-  };
 }
 
 function resolveAnchor(
@@ -346,7 +347,7 @@ function LinearRulerView({
           x={midX}
           y={midY}
           text={labelText}
-          fontFamily={item.measureFont.family || 'Arial'}
+          fontFamily={fontStack(item.measureFont.family)}
           fontStyle={labelFontStyle}
           fontSize={labelFontPx}
           fill={cssColor(item.measureFontColor)}
@@ -572,7 +573,7 @@ function CircularRulerView({
           x={cx + rPx + 4}
           y={cy - labelFontPx / 2}
           text={labelText}
-          fontFamily={item.measureFont.family || 'Arial'}
+          fontFamily={fontStack(item.measureFont.family)}
           fontStyle={labelFontStyle}
           fontSize={labelFontPx}
           fill={cssColor(item.measureFontColor)}
@@ -656,21 +657,6 @@ export function formatDistance(studs: number, unit: number): string {
 }
 
 function cssColor(c: ColorSpec): string {
-  if (c.kind === 'known') {
-    const known: Record<string, string> = {
-      black: '#000000',
-      white: '#ffffff',
-      red: '#ff0000',
-      green: '#008000',
-      blue: '#0000ff',
-      yellow: '#ffff00',
-      orange: '#ffa500',
-      gray: '#808080',
-      darkgray: '#a9a9a9',
-      lightgray: '#d3d3d3',
-    };
-    return known[(c.name ?? '').toLowerCase()] ?? COLOR_DEFAULT;
-  }
-  return c.argb.length === 8 ? `#${c.argb.slice(2)}` : `#${c.argb}`;
+  return colorSpecToCss(c, COLOR_DEFAULT);
 }
 

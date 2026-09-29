@@ -1,14 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
-import { Link, Navigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useDocMap, projectDoc } from './useDocMap';
-import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, type AnnoSelection } from './editorStore';
+import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -43,6 +43,14 @@ import { ModuleOverlay } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
+import { localBbmDownload, sha256Hex } from '../bbmFiles';
+import { backgroundImageRectPx } from './background';
+import { scaleBar } from './scaleBar';
+import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
+import { imageOffset } from '@cld/parts-catalog/browser';
+import { canAddToBudget, countUsage, overBudgetCount, withinBudget } from './budgetUsage';
+import { BudgetReachedDialog, BUDGET_REFUSED_STATUS } from './BudgetReachedDialog';
+import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
   addCircularRuler,
@@ -56,6 +64,10 @@ import {
   ensureBrickLayer,
   ensureRulerLayer,
   ensureTextLayer,
+  moveGridOrigin,
+  newTextBox,
+  rulerPreviewLabel,
+  rulerStatusMessage,
   allVisibleBrickIds,
   bricksByLayer,
   deleteBricksAcrossLayers,
@@ -63,6 +75,7 @@ import {
   importBricksAsModule,
   insertBricksAcrossLayers,
   insertBricks,
+  insertSet,
   paintAreaCells,
   placeBrick,
   readBudgetLimits,
@@ -75,16 +88,17 @@ import {
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
-import { readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
 import { pxToStud, studToPx } from './render/coords';
 import { ensureSprite, getSpriteSync } from './render/spriteCache';
 import { PlaceGhost } from './render/PlaceGhost';
 import { ModuleGhost } from './render/ModuleGhost';
-import { snapPlacement, snapToAnchorBrick, type AnchorSnapResult } from './snap';
+import { snapPlacement, snapToAnchorBrick } from './snap';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
 import { isEditableTarget } from './keyboardGuard';
-import { useConnectivity } from './useConnectivity';
+import { catalogFromParts, recomputeConnectivity, useConnectivity } from './useConnectivity';
+import type { OpenedMapState } from '../mapFormats';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
@@ -92,10 +106,17 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { EXPORT_HIDE, exportSceneSize, renderMapToCanvas } from './exportRender';
-import { dropdownAnchor, dropTargetHint, viewCentreStuds } from './viewHelpers';
+import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
+import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
+import { actualPartNumber, indexParts } from './partIndex';
+import { ColorAlphaInput } from './ColorAlphaInput';
+import { fitView } from './viewFit';
+import { PartListDialog } from './PartListDialog';
+import { DownloadAsDialog } from './DownloadAsDialog';
+import { saveVenueToLibrary } from './venueLibrary';
+import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -130,6 +151,12 @@ export function EditorPage() {
 
 function Editor({ layoutId }: { layoutId: string }) {
   const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = useLayoutDoc(layoutId);
+  // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
+  // shows it in the status bar after the open).
+  const openWarnings = (useLocation().state as OpenedMapState | null)?.openWarnings;
+  useEffect(() => {
+    if (doc && openWarnings?.length) useEditorStore.getState().showStatusMessage(`Opened with warnings: ${openWarnings.join('; ')}`, 10000);
+  }, [doc, openWarnings]);
   const meta = useQuery({
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
@@ -172,6 +199,10 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showVenueProps, setShowVenueProps] = useState(false);
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
+  const [showPartList, setShowPartList] = useState(false);
+  const [showDownloadAs, setShowDownloadAs] = useState(false);
+  const qc = useQueryClient();
+  const showStatusBar = useEditorStore((s) => s.showStatusBar);
   const [showVenueSaveLibrary, setShowVenueSaveLibrary] = useState(false);
 
   // Imperative handle so the PartsPanel can trigger click-to-place
@@ -243,6 +274,7 @@ function Editor({ layoutId }: { layoutId: string }) {
     staleTime: 5 * 60 * 1000,
   });
   useConnectivity(doc, catalog.data?.parts);
+  const partIndex = useMemo(() => indexParts(catalog.data?.parts), [catalog.data]);
 
   // Subscribe to ALL doc changes; the projection is shared (cached per
   // doc) with the canvas and panels, so this costs no extra docToBbm.
@@ -320,7 +352,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // Returns just the inner content for a panel (shared by docked + floating).
   function panelBody(panelId: string): React.ReactNode {
     if (!doc) return null;
-    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} />;
+    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
@@ -429,10 +461,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onBackgroundImage={() => setShowBackgroundImage(true)}
               onFind={() => setShowFind(true)}
               onExportImage={onExportImage}
-              onExportCsv={() => {
-                if (!doc) return;
-                if (docMap) exportPartListCsv(docMap);
-              }}
+              onExportCsv={() => setShowPartList(true)}
               onSaveModule={() => setShowSaveModule(true)}
               onImportBbm={() => setShowImportBbm(true)}
               onCreateModule={() => createModuleFromSelection(doc)}
@@ -443,6 +472,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
               onFit={() => canvasActionsRef.current?.fit()}
               onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
+              onDownloadAs={() => setShowDownloadAs(true)}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
               onVenueDimensions={() => setShowVenueDimensions(true)}
@@ -598,13 +628,13 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       {/* Status bar — port of MainWindow.cpp:861-1014 status widgets.
           Spans every column. Shows mouse coords / selection count / zoom. */}
-      <StatusBar
+      {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
         status={status}
         venue={doc ? (readSidecarFromDoc(doc)?.venue ?? null) : null}
         budgetLimits={budgetLimits}
         budgetMap={docMap}
-      />
+      />}
 
       {showInsertModule && (
         <InsertModuleDialog doc={doc} onClose={() => setShowInsertModule(false)} />
@@ -667,7 +697,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               ? (useEditorStore.getState().selection[0] ?? null)
               : null
           }
-          viewCentre={viewCentreStuds(viewport)}
+          viewCentre={canvasActionsRef.current?.viewCentre() ?? viewCentreStuds(viewport)}
           onClose={() => setShowAddLabel(false)}
         />
       )}
@@ -678,14 +708,16 @@ function Editor({ layoutId }: { layoutId: string }) {
           <VenueSaveLibraryDialog
             venueName={venue.name || ''}
             orgs={myOrgs.data?.orgs ?? []}
-            onSave={(orgSlug) => {
-              const createArgs = orgSlug
-                ? { name: venue.name || 'Unnamed Venue', data: venue, orgSlug }
-                : { name: venue.name || 'Unnamed Venue', data: venue };
-              void api.venues.create(createArgs).then(() => {
-                useEditorStore.getState().showStatusMessage('Venue saved to library.');
-              }).catch(() => alert('Failed to save venue to library.'));
+            onSave={(orgSlug, name) => {
               setShowVenueSaveLibrary(false);
+              const orgId = orgSlug ? (myOrgs.data?.orgs.find((o) => o.slug === orgSlug)?.id ?? null) : null;
+              void (async () => {
+                const saved = (await qc.fetchQuery({ queryKey: ['venue-library'], queryFn: api.venues.list })).venues;
+                const r = await saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, saved, api.venues, (m) => confirm(m));
+                if (r === 'cancelled') return;
+                useEditorStore.getState().showStatusMessage('Venue saved to library.');
+                await qc.invalidateQueries({ queryKey: ['venue-library'] });
+              })().catch((e) => alert(`Failed to save venue to library: ${(e as Error).message}`));
             }}
             onClose={() => setShowVenueSaveLibrary(false)}
           />
@@ -704,11 +736,30 @@ function Editor({ layoutId }: { layoutId: string }) {
           onClose={() => setShowVenueDimensions(false)}
         />
       )}
+      {showDownloadAs && docMap && (
+        <DownloadAsDialog
+          map={docMap}
+          parts={catalog.data?.parts ?? []}
+          title={meta.data?.layout.title ?? 'layout'}
+          onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
+          onClose={() => setShowDownloadAs(false)}
+        />
+      )}
+      {showPartList && docMap && (
+        <PartListDialog
+          map={docMap}
+          parts={partIndex}
+          limits={budgetLimits}
+          layoutTitle={meta.data?.layout.title ?? 'parts'}
+          onClose={() => setShowPartList(false)}
+        />
+      )}
       {showBudget && (
         <BudgetDialog
           map={docMap}
           limits={budgetLimits}
           onLimitsChange={(next) => setBudgetLimits(doc, next)}
+          resolvePart={(id) => actualPartNumber(partIndex, id)}
           onClose={() => setShowBudget(false)}
         />
       )}
@@ -766,7 +817,6 @@ function Canvas({
   const snapStepStuds = useEditorStore((s) => s.snapStepStuds);
   const rotationStepDegrees = useEditorStore((s) => s.rotationStepDegrees);
   const setSelection = useEditorStore((s) => s.setSelection);
-  const showExportWatermark = useEditorStore((s) => s.showExportWatermark);
   const showElectricCircuits = useEditorStore((s) => s.showElectricCircuits);
   const venueLabelPx = useEditorStore((s) => s.venueLabelPx);
 
@@ -853,6 +903,15 @@ function Canvas({
     curX: number;
     curY: number;
   } | null>(null);
+
+  // While a ruler is drawn, the status bar also shows its length or
+  // radius (MapView.cpp:661-680), as a backup to the floating label.
+  useEffect(() => {
+    if (!rulerDraft) return;
+    const len = Math.hypot(rulerDraft.curX - rulerDraft.startX, rulerDraft.curY - rulerDraft.startY);
+    if (len === 0) return;
+    useEditorStore.getState().showStatusMessage(rulerStatusMessage(len, rulerDraft.kind === 'circular'), 1200);
+  }, [rulerDraft]);
 
   // Venue-draw draft — accumulated polygon vertices in stud space.
   // `curX/curY` tracks the live preview cursor vertex.
@@ -1036,14 +1095,22 @@ function Canvas({
     // arriving without a colour code (group parts / some custom uploads).
     // Inconsistent indexing was breaking the snap helpers — see
     // editor/snap.ts `lookupPart`.
-    const m = new Map<string, PartWire>();
-    for (const p of catalog.data?.parts ?? []) {
-      m.set(p.key.toLowerCase(), p);
-      const bare = p.partNumber.toLowerCase();
-      if (!m.has(bare)) m.set(bare, p);
-    }
-    return m;
+    return indexParts(catalog.data?.parts);
   }, [catalog.data]);
+  const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
+  const linkCatalog = useMemo(() => catalogFromParts(catalog.data?.parts), [catalog.data]);
+
+  /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
+  function brickSpriteStuds(b: { partNumber: string }): { w: number; h: number } | null {
+    const meta = partsByKey.get(b.partNumber.toLowerCase());
+    if (!meta) return null;
+    const pxPerStud = meta.pxPerStud && meta.pxPerStud > 0 ? meta.pxPerStud : 8;
+    const px = meta.spriteSize ?? (() => {
+      const sprite = getSpriteSync(spriteUrlFor(meta));
+      return sprite ? { w: sprite.naturalWidth, h: sprite.naturalHeight } : null;
+    })();
+    return px ? { w: px.w / pxPerStud, h: px.h / pxPerStud } : null;
+  }
 
   // Drag-from-Parts-panel → drop on canvas. The Stage's container <div>
   // receives native HTML5 drag events. We accept the custom MIME type
@@ -1245,37 +1312,16 @@ function Canvas({
    * to land — important for fresh blank-create layouts where the doc
    * arrives empty and bricks come in via `.bbm` import a few ms later).
    */
+  // Fit to View: every item (bricks, text, rulers, areas, labels, venue)
+  // plus 50 scene px, like desktop's onFitToView (MainWindow.cpp:1372-1376).
   function fitToContent(): boolean {
     if (!map) return false;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        minX = Math.min(minX, b.displayArea.x);
-        minY = Math.min(minY, b.displayArea.y);
-        maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-        maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-      }
-    }
-    if (!Number.isFinite(minX)) return false;
-    const wPx = (maxX - minX) * 8;
-    const hPx = (maxY - minY) * 8;
-    if (wPx <= 0 || hPx <= 0) return false;
-    const PAD = 1.1;
-    const fitZoom = Math.min(width / (wPx * PAD), height / (hPx * PAD));
-    const z = Math.max(0.1, Math.min(8, fitZoom));
-    const cxPx = ((minX + maxX) / 2) * 8;
-    const cyPx = ((minY + maxY) / 2) * 8;
-    useEditorStore.setState({
-      zoom: z,
-      panX: width / 2 - cxPx * z,
-      panY: height / 2 - cyPx * z,
-    });
+    const fit = fitView(contentBoundsStuds(map, readSidecarFromDoc(doc)), width, height, { min: MIN_ZOOM, max: MAX_ZOOM });
+    if (!fit) return false;
+    useEditorStore.setState(fit);
     return true;
   }
+
 
   // Auto-fit on first open. Mirrors desktop's `MapView::setMap` final
   // call to `fitInView` (MapView.cpp:300-308). Fires once per browser
@@ -1291,47 +1337,38 @@ function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, width, height]);
 
-  // Finish the venue outline / obstacle being drawn (≥3 points) and
-  // return to the select tool. Enter or right-click, like desktop
-  // MapView::finishVenueDraw (MapView.cpp:484-489).
-  function finishVenueDraft() {
-    if (!venueDraft || isViewer) return;
-    const pts = venueDraft.pts;
-    const kind = venueDraft.kind;
-    if (pts.length >= 3 && doc) {
-      void (async () => {
-
-        const existing = readSidecarFromDoc(doc);
-        if (kind === 'outline') {
-          const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
-            kind: 0,
-            doorWidthStuds: 0,
-            label: '',
-            poly: [pt, pts[(i + 1) % pts.length]!],
-          }));
-          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-          const minX = Math.min(...xs), minY = Math.min(...ys);
-          const maxX = Math.max(...xs), maxY = Math.max(...ys);
-          const venue: import('@cld/bbm').Venue = {
-            name: existing?.venue?.name ?? '',
-            enabled: existing?.venue?.enabled ?? true,
-            minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
-            bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-            edges,
-            obstacles: existing?.venue?.obstacles ?? [],
-          };
-          setVenue(doc, venue);
-        } else {
-          const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
-          const base = existing?.venue ?? {
-            name: '', enabled: true, minWalkwayStuds: 0,
-            bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
-          };
-          setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
-        }
-      })();
+  // Finish the venue outline / obstacle being drawn and return to the
+  // select tool. Enter or right-click, like desktop
+  // MapView::finishVenueDraw (MapView.cpp:891-925): fewer than 3 points
+  // drops them, says so and stays in the tool; drawing enables the venue.
+  // Entering a venue drawing tool: an obstacle needs a venue outline
+  // first, and the status bar says how to draw (MainWindowMapMenu.cpp:160-212).
+  useEffect(() => {
+    if (tool !== 'venueOutline' && tool !== 'venueObstacle') return;
+    const st = useEditorStore.getState();
+    if (tool === 'venueObstacle' && !readSidecarFromDoc(doc)?.venue) {
+      st.setTool('select');
+      window.alert('Draw the venue outline first.');
+      return;
     }
+    st.showStatusMessage(
+      tool === 'venueOutline'
+        ? 'Click points to outline the venue. Right-click / Enter to finish, Escape to cancel.'
+        : 'Click points to outline an obstacle. Right-click / Enter to finish, Escape to cancel.',
+      8000,
+    );
+  }, [tool, doc]);
+
+  function finishVenueDraft() {
+    if (isViewer) return;
+    const kind = venueDraft?.kind ?? (tool === 'venueObstacle' ? 'obstacle' : 'outline');
+    const next = venueAfterDraw(readSidecarFromDoc(doc)?.venue, kind, venueDraft?.pts ?? []);
     setVenueDraft(null);
+    if (!next) {
+      useEditorStore.getState().showStatusMessage(VENUE_MIN_POINTS_MESSAGE, 2500);
+      return;
+    }
+    setVenue(doc, next);
     useEditorStore.getState().setTool('select');
   }
 
@@ -1366,7 +1403,7 @@ function Canvas({
       }
 
       // Enter — commit venue-draw polygon (≥3 pts) or obstacle.
-      if (e.key === 'Enter' && venueDraft && !isViewer) {
+      if (e.key === 'Enter' && (venueDraft || tool === 'venueOutline' || tool === 'venueObstacle') && !isViewer) {
         e.preventDefault();
         finishVenueDraft();
         return;
@@ -1396,7 +1433,7 @@ function Canvas({
 
       // Ctrl/Cmd + C — copy selection to clipboard.
       // Ctrl/Cmd + X — cut. Ctrl/Cmd + V — paste at the current cursor.
-      // Ctrl/Cmd + D — duplicate (= copy + paste in place + tiny offset).
+      // Ctrl/Cmd + D — duplicate (= copy + paste at the cursor).
       // All ports of MapViewClipboard.cpp.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
@@ -1582,7 +1619,7 @@ function Canvas({
         // bare R is CCW; step is the configured rotation step. The whole
         // selection (any layer) turns about its centroid.
         e.preventDefault();
-        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
+        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees, partOf);
         return;
       }
     }
@@ -1651,8 +1688,29 @@ function Canvas({
     };
   }, []);
 
+  // Grid origin drag (MapView.cpp:415-438, 590-600, 737-746): with the
+  // active layer a visible grid showing cell indices, dragging empty space
+  // moves the index origin by whole cells; right-click cancels.
+  const gridDragRef = useRef<{ layerId: string; cellSize: number; before: { x: number; y: number }; start: { x: number; y: number }; last: { x: number; y: number } } | null>(null);
+  const skipContextMenuRef = useRef(false);
+  const [gridPreview, setGridPreview] = useState<{ layerId: string; corner: { x: number; y: number } } | null>(null);
+  function endGridDrag(commit: boolean) {
+    const g = gridDragRef.current;
+    gridDragRef.current = null;
+    setGridPreview(null);
+    const stage = stageRef.current;
+    if (stage) stage.container().style.cursor = '';
+    if (g && commit) moveGridOrigin(doc, g.layerId, g.last.x - g.start.x, g.last.y - g.start.y);
+  }
+
   function handleStageMouseDown(e: KonvaEventObject<MouseEvent>) {
     const evt = e.evt as MouseEvent;
+
+    if (gridDragRef.current && evt.button === 2) {
+      endGridDrag(false);
+      skipContextMenuRef.current = true; // the right-click only cancels
+      return;
+    }
 
     // Middle-button pan — port of MapView.cpp:446-451 (desktop). Works on
     // any tool, on any target (brick or empty stage), so the user can
@@ -1673,6 +1731,18 @@ function Canvas({
     const studs = pointerStuds();
     if (!studs) return;
 
+    if (tool === 'select' && !isViewer && evt.button === 0) {
+      const grid = map?.layers.find((l) => l.id === activeLayerId);
+      if (grid && grid.type === 'grid' && grid.visible && grid.displayCellIndex) {
+        const cell = gridCellAt(studs.x, studs.y, grid.gridSizeInStud);
+        const before = parseCellIndexCorner(grid.cellIndexCorner);
+        gridDragRef.current = { layerId: grid.id, cellSize: grid.gridSizeInStud, before, start: cell, last: cell };
+        setGridPreview({ layerId: grid.id, corner: before });
+        const stage = stageRef.current;
+        if (stage) stage.container().style.cursor = 'move';
+        return;
+      }
+    }
     if (tool === 'select') {
       // Empty-space click in select mode → start marquee. Shift/Ctrl
       // extends the current selection instead of replacing it (Qt
@@ -1731,6 +1801,15 @@ function Canvas({
     const studs = pointerStuds();
     if (!studs) return;
     scheduleHudMouse(studs);
+    const g = gridDragRef.current;
+    if (g) {
+      const cell = gridCellAt(studs.x, studs.y, g.cellSize);
+      if (cell.x !== g.last.x || cell.y !== g.last.y) {
+        g.last = cell;
+        setGridPreview({ layerId: g.layerId, corner: { x: g.before.x + cell.x - g.start.x, y: g.before.y + cell.y - g.start.y } });
+      }
+      return;
+    }
     // Continue the paint/erase stroke while the button is held.
     if ((tool === 'paint' || tool === 'erase') && paintStrokeRef.current && evt.buttons & 1) {
       doPaintStroke(studs.x, studs.y);
@@ -1776,6 +1855,10 @@ function Canvas({
 
   function handleStageMouseUp(e: KonvaEventObject<MouseEvent>) {
     const evt = e.evt as MouseEvent;
+    if (gridDragRef.current && evt.button === 0) {
+      endGridDrag(true);
+      return;
+    }
     if (evt.button === 1 && middlePanRef.current) {
       middlePanRef.current = null;
       flushPointerMove();
@@ -1826,7 +1909,8 @@ function Canvas({
     //
     // Hidden layers are skipped so the user can't accidentally select
     // bricks they can't see; the brick z-order across layers doesn't
-    // affect the result because the marquee is purely AABB-based.
+    // affect the result. Each brick is tested by its rotated shape, like
+    // Qt's IntersectsItemShape rubber band (render/marqueeMath.ts).
     //
     // Rulers, anchored labels and text cells in the band join the
     // selection too (mixed selection, like desktop's scene selection).
@@ -1834,10 +1918,10 @@ function Canvas({
       const ids: string[] = [];
       for (const layer of map.layers) {
         if (layer.type !== 'brick' || !layer.visible) continue;
-        ids.push(...bricksInMarquee(finalMarquee, layer.bricks));
+        ids.push(...bricksInMarquee(finalMarquee, layer.bricks, brickSpriteStuds, (b) => pivotOf(b, partOf(b.partNumber))));
       }
       const sc = readSidecarFromDoc(doc);
-      let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom);
+      let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom, partsByKey);
       let bricks = ids;
       if (marqueeAdditiveRef.current) {
         const st = useEditorStore.getState();
@@ -1902,27 +1986,50 @@ function Canvas({
     setSelection([]);
   }
 
-  async function pasteAtCursor(): Promise<void> {
-    const entries = await readBricksFromClipboard();
-    if (!entries || entries.length === 0) return;
-    if (!map) return;
+  // Use Budget Limitation (Budget menu): refuse parts over budget, like
+  // MapView::budgetAllows. The layout has a budget when it has a limit.
+  const [budgetBox, setBudgetBox] = useState(false);
+  function reportBudgetRefusal() {
+    const st = useEditorStore.getState();
+    st.showStatusMessage(BUDGET_REFUSED_STATUS, 3000);
+    if (st.warnBudgetLimitation) setBudgetBox(true);
+  }
+  function budgetLimitsInForce(): Map<string, number> | null {
+    if (!useEditorStore.getState().useBudgetLimitation) return null;
+    const limits = readBudgetLimits(doc);
+    return limits.size > 0 ? limits : null;
+  }
+  function budgetAllows(part: string, quantity = 1): boolean {
+    const limits = budgetLimitsInForce();
+    if (!limits) return true;
+    const { budgetDefaultInfinite } = useEditorStore.getState();
+    if (canAddToBudget(limits, countUsage(map), part, quantity, budgetDefaultInfinite, partsByKey)) return true;
+    reportBudgetRefusal();
+    return false;
+  }
+  /** Paste / duplicate: leave out bricks beyond their budget (MapViewClipboard.cpp:84-95). */
+  function keepWithinBudget<T>(bricks: T[], partOf: (brick: T) => string): T[] {
+    const limits = budgetLimitsInForce();
+    if (!limits) return bricks;
+    const { kept, refused } = withinBudget(limits, map, bricks, partOf, useEditorStore.getState().budgetDefaultInfinite);
+    if (refused > 0) reportBudgetRefusal();
+    return kept;
+  }
 
-    // Translate the group to land its centre under the cursor (or stage
-    // centre if the cursor is off-stage). Mirrors MapViewClipboard.cpp:62-72.
-    const target = pointerStuds() ?? {
-      x: width / 2 / 8,
-      y: height / 2 / 8,
-    };
-    let cx = 0;
-    let cy = 0;
-    for (const e of entries) {
-      cx += e.brick.displayArea.x + e.brick.displayArea.width / 2;
-      cy += e.brick.displayArea.y + e.brick.displayArea.height / 2;
-    }
-    cx /= entries.length;
-    cy /= entries.length;
-    const dx = target.x - cx;
-    const dy = target.y - cy;
+  /** Where a paste or duplicate lands: under the cursor, else the view centre. */
+  function currentPasteTarget(): { x: number; y: number } {
+    const { panX: livePanX, panY: livePanY, zoom: liveZoom } = useEditorStore.getState();
+    return pasteTarget(pointerStuds(), { width, height, panX: livePanX, panY: livePanY, zoom: liveZoom });
+  }
+
+  async function pasteAtCursor(): Promise<void> {
+    const clipped = await readBricksFromClipboard();
+    if (!clipped || clipped.length === 0) return;
+    if (!map) return;
+    // The group's centre lands under the cursor (MapViewClipboard.cpp:62-73).
+    const { dx, dy } = pasteOffset(clipped.map((e) => e.brick.displayArea), currentPasteTarget());
+    const entries = keepWithinBudget(clipped, (e) => e.brick.partNumber);
+    if (entries.length === 0) return;
 
     // Group entries by source-layer name; find or create a brick layer
     // with that name in the current map.
@@ -1955,11 +2062,9 @@ function Canvas({
 
   async function duplicateSelection(): Promise<void> {
     await copySelection();
-    // Paste in-place + 1-stud offset (matches the previous Ctrl+D
-    // behaviour while still going through the clipboard so cross-tab
-    // duplicate works).
-    // Each copy lands on its source brick's own layer (desktop pastes by
-    // source layer — MapViewClipboard.cpp:74-110), in one undo step.
+    // Desktop Duplicate is copy + paste (MapViewClipboard.cpp:144-147):
+    // the copies land centred under the cursor. Each lands on its source
+    // brick's own layer (desktop pastes by source layer), in one undo step.
     if (!map) return;
     const sel = new Set(selection);
     const perLayer = new Map<string, Parameters<typeof insertBricks>[2]>();
@@ -1975,7 +2080,14 @@ function Canvas({
         }));
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
-    const ids = insertBricksAcrossLayers(doc, perLayer, { dx: 1, dy: 1 });
+    const offset = pasteOffset([...perLayer.values()].flat().map((b) => b.displayArea), currentPasteTarget());
+    // Bricks beyond their budget are left out, in layer order.
+    const flat = [...perLayer].flatMap(([layerId, bricks]) => bricks.map((brick) => ({ layerId, brick })));
+    perLayer.clear();
+    for (const { layerId, brick } of keepWithinBudget(flat, (f) => f.brick.partNumber)) {
+      perLayer.set(layerId, [...(perLayer.get(layerId) ?? []), brick]);
+    }
+    const ids = insertBricksAcrossLayers(doc, perLayer, offset);
     if (ids.length > 0) setSelection(ids);
   }
 
@@ -2002,6 +2114,7 @@ function Canvas({
    * into one brick per subpart — port of MapView.cpp:1279-1360.
    */
   async function placePartAt(meta: PartWire, studX: number, studY: number) {
+    if (!budgetAllows(meta.key)) return;
     // Group / set placement — expand into individual bricks at the
     // subpart-relative offsets the .set.xml declares. Single Yjs
     // transaction so undo unwinds the whole expansion.
@@ -2010,14 +2123,14 @@ function Canvas({
       return;
     }
 
-    // Sprite-aware sizing. Load the GIF/PNG (cached), then derive stud
-    // size as `naturalSize / pxPerStud` — matches the desktop's
-    // SceneBuilder. Fall back to 16x16 studs if the sprite is missing
-    // (rare; usually means the part XML lists no spritePath).
+    // Unturned size, used only when the catalog has no sprite size for the
+    // footprint: the loaded sprite's `naturalSize / pxPerStud`, else 16x16.
     let widthStuds = 16;
     let heightStuds = 16;
-    const spriteUrl = spriteUrlFor(meta);
-    if (spriteUrl) {
+    const spriteUrl = meta.spriteSize ? '' : spriteUrlFor(meta);
+    if (meta.spriteSize) {
+      ({ width: widthStuds, height: heightStuds } = areaSize(meta, 0));
+    } else if (spriteUrl) {
       try {
         const img = await ensureSprite(spriteUrl);
         widthStuds = img.naturalWidth / meta.pxPerStud;
@@ -2032,7 +2145,6 @@ function Canvas({
     // connection. Takes priority over cursor-proximity snap. Port of
     // MapView::resolvePartPlacement lines 1147-1202 (MapView.cpp).
     let snapped = null as import('./snap').SnapResult | null;
-    let anchorSnapResult = null as AnchorSnapResult | null;
     if (map && selection.length === 1 && meta.kind !== 'group') {
       for (const layer of map.layers) {
         if (layer.type !== 'brick') continue;
@@ -2041,8 +2153,7 @@ function Canvas({
         const anchorMeta = partsByKey.get(anchorBrick.partNumber.toLowerCase())
           ?? partsByKey.get(anchorBrick.partNumber.toLowerCase().split('.')[0] ?? '');
         if (anchorMeta) {
-          anchorSnapResult = snapToAnchorBrick(anchorBrick, anchorMeta, meta, widthStuds, heightStuds);
-          snapped = anchorSnapResult;
+          snapped = snapToAnchorBrick(anchorBrick, anchorMeta, meta, widthStuds, heightStuds);
         }
         break;
       }
@@ -2059,6 +2170,8 @@ function Canvas({
               orientation: 0,
               width: widthStuds,
               height: heightStuds,
+              pivotOffsetX: imageOffset(meta, 0).x,
+              pivotOffsetY: imageOffset(meta, 0).y,
               snapStepStuds,
             },
             map,
@@ -2076,22 +2189,9 @@ function Canvas({
     // fired, `newOrientation` is null and we default to 0°.
     const placeOrientation = snapped.newOrientation ?? 0;
 
-    // Determine which connection on the NEW brick was used for the snap,
-    // and set its `nextConnexionPreference` as the active (outgoing) index.
-    // This lets the NEXT chain click know which end is the free outgoing
-    // end without waiting for the async connectivity worker to populate
-    // connexions — matches desktop's synchronous rebuildScene + selection.
-    let activeConnIdx = 0;
-    if (anchorSnapResult !== null) {
-      const usedConn = meta.connections[anchorSnapResult.newConnIndex];
-      activeConnIdx = usedConn?.nextConnexionPreference ?? anchorSnapResult.newConnIndex;
-      // If nextConnexionPreference points back to itself (or is absent),
-      // fall back to the other connection (for simple 2-CP parts like tracks).
-      if (activeConnIdx === anchorSnapResult.newConnIndex && meta.connections.length > 1) {
-        activeConnIdx = anchorSnapResult.newConnIndex === 0 ? 1 : 0;
-      }
-    }
-
+    // The snap result is the pivot (sprite centre); the box is the
+    // footprint at the final orientation around it (placeByImageCentre).
+    const area = areaForPivot(meta, placeOrientation, { x: snapped.centreX, y: snapped.centreY }, { width: widthStuds, height: heightStuds });
     const newId = placeBrick(doc, layerId, {
       // Desktop stores the FULL catalog key (e.g. "2865.8") as the
       // brick's partNumber — see MapView.cpp:1380 `b.partNumber = partKey`.
@@ -2099,33 +2199,28 @@ function Canvas({
       // runtime via the lookup fallback but writes a divergent value to
       // disk on export. Use `meta.key` so .bbm round-trip is byte-clean.
       partNumber: meta.key,
-      x: snapped.centreX - widthStuds / 2,
-      y: snapped.centreY - heightStuds / 2,
-      width: widthStuds,
-      height: heightStuds,
+      x: area.x,
+      y: area.y,
+      width: area.width,
+      height: area.height,
       orientation: placeOrientation,
-      activeConnectionPointIndex: activeConnIdx,
     });
+    // Link it now, like desktop's rebuild after AddBrickCommand: the new
+    // links hand the active connection over (BlueBrick onLinked), so the
+    // next chained placement anchors on the right end.
+    recomputeConnectivity(doc, linkCatalog);
     // Auto-select the placed brick so chain-placing snaps off it.
     // Port of MapView.cpp:1394-1408.
     setSelection([newId]);
   }
 
   /**
-   * Place a `.set` group — port of MapView.cpp:1279-1360. The .set.xml
-   * lists SubPartList children with local positions and angles; we
-   * emit one brick per subpart positioned at
-   *
-   *   subCentre = setCentre + subpart.position    (rotated nothing —
-   *               the position is already in set-local studs)
-   *
-   * NOTE: desktop also adds a `hullBboxOffsetStuds(subKey, angle)`
-   * correction that aligns the IMAGE bbox centre with the HULL bbox
-   * centre (MapView.cpp:1323-1325). The web port doesn't compute hulls
-   * so it skips that correction; for symmetric track sets the result
-   * is identical, but asymmetric rotated curves / switches may sit a
-   * fraction of a stud off-centre. The sets are still connected and
-   * snap correctly afterwards via `rebuildConnectivity`.
+   * Place a `.set` group — port of MapView.cpp:1344-1370. The .set.xml
+   * lists SubPartList children with local positions and angles; as in
+   * BlueBrick's Group constructor each position is the subpart's
+   * displayArea centre (Brick.Center) in set-local studs, and the box is
+   * the subpart's footprint at its angle (placeByAreaCentre) — parts with
+   * an XML hull draw their sprite off that centre.
    *
    * Multi-brick placement is wrapped in `insertBricks` so undo unwinds
    * the whole set as one step.
@@ -2142,10 +2237,16 @@ function Canvas({
     }> = [];
     for (const sub of group.subparts) {
       const subMeta = partsByKey.get(sub.subKey.toLowerCase());
+      // Normalise orientation to (-180, 180].
+      let angle = sub.angle % 360;
+      if (angle > 180) angle -= 360;
+      if (angle <= -180) angle += 360;
       // Default to a 2×2 placeholder if the subpart isn't catalogued.
       let wStuds = 2;
       let hStuds = 2;
-      if (subMeta) {
+      if (subMeta?.spriteSize) {
+        ({ width: wStuds, height: hStuds } = areaSize(subMeta, angle));
+      } else if (subMeta) {
         const url = spriteUrlFor(subMeta);
         if (url) {
           try {
@@ -2157,10 +2258,6 @@ function Canvas({
           }
         }
       }
-      // Normalise orientation to (-180, 180].
-      let angle = sub.angle % 360;
-      if (angle > 180) angle -= 360;
-      if (angle <= -180) angle += 360;
       const cx = studX + sub.x;
       const cy = studY + sub.y;
       bricks.push({
@@ -2169,8 +2266,14 @@ function Canvas({
         orientation: angle,
       });
     }
-    const newIds = insertBricks(doc, layerId, bricks, { dx: 0, dy: 0 });
+    // Wrapped in a module named after the set (its English description,
+    // else its key) so it moves as a unit, and linked straight away: set
+    // files carry positions, not links.
+    const setName = group.description || group.key;
+    const newIds = insertSet(doc, layerId, bricks, setName);
+    recomputeConnectivity(doc, linkCatalog);
     if (newIds.length > 0) setSelection(newIds);
+    useEditorStore.getState().showStatusMessage(`Placed set: ${setName} (${newIds.length} parts)`, 3000);
   }
 
   // Keep the imperative "place at view center" handle fresh every render
@@ -2188,21 +2291,30 @@ function Canvas({
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
   // Renders the whole map (content bounds + margin), not the viewport.
   exportImageRef.current = {
-    render: ({ pixelRatio, transparent, size, antialias }) => {
+    render: ({ pixelRatio, transparent, size, antialias, watermark, regionStuds }) => {
       const stage = stageRef.current;
       if (!stage || !map) return null;
-      const stamp = [map.author, map.lug, map.event].filter(Boolean).join(' / ');
       return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
         pixelRatio,
         transparent,
         ...(size ? { size } : {}),
         ...(antialias !== undefined ? { antialias } : {}),
+        ...(regionStuds ? { regionStuds } : {}),
         hudLayer: hudLayerRef.current,
-        ...(showExportWatermark && stamp ? { watermark: stamp } : {}),
+        // Per-export option, desktop's "Embed general-info watermark".
+        ...(watermark ? { watermark: watermarkText(map) } : {}),
       });
     },
+    region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc)) : null),
     sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
   };
+
+  // The Stage's own size (not a window estimate): World labels and
+  // Insert Text land under its centre (mapToScene(viewport centre)).
+  function stageCentreStuds(): { x: number; y: number } {
+    const st = stageRef.current;
+    return viewCentreStuds({ width: st?.width() ?? width, height: st?.height() ?? height });
+  }
 
   canvasActionsRef.current = {
     cut: () => void cutSelection(),
@@ -2214,7 +2326,7 @@ function Canvas({
     // Ctrl+Shift+[ / ].
     rotate: (cw) => {
       if (isViewer || selection.length === 0) return;
-      rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees);
+      rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees, partOf);
     },
     reorder: (to) => {
       if (isViewer || selection.length === 0) return;
@@ -2229,9 +2341,10 @@ function Canvas({
     // Insert ▸ Text... at the view centre (MapView::addTextAtViewCenter).
     insertText: () => {
       if (isViewer) return;
-      setAddTextAt(viewCentreStuds({ width, height }));
+      setAddTextAt(stageCentreStuds());
       setShowAddText(true);
     },
+    viewCentre: () => stageCentreStuds(),
   };
 
   if (!map) return <EmptyDoc />;
@@ -2253,8 +2366,8 @@ function Canvas({
       onWheel={(e) => {
         e.evt.preventDefault();
         // Wheel = zoom only, anchored under the cursor. Mirrors desktop
-        // MapView::wheelEvent (MapView.cpp:351-385) + AnchorUnderMouse
-        // (MapView.cpp:89): step is 1.0015^deltaY clamped to ±480.
+        // MapView::wheelEvent (MapView.cpp:354-390) + AnchorUnderMouse
+        // (MapView.cpp:89): see wheelZoomStep.
         //
         // High-res trackpads emit wheel events at >60 Hz; processing
         // each one synchronously with a Yjs+catalog re-projection makes
@@ -2276,10 +2389,8 @@ function Canvas({
           const a = zoomAccumRef.current;
           a.raf = null;
           if (a.deltaY === 0) return;
-          const clamped = Math.max(-480, Math.min(480, a.deltaY));
+          const step = wheelZoomStep(a.deltaY, useEditorStore.getState().wheelZoomFactor);
           a.deltaY = 0;
-          const wzf = useEditorStore.getState().wheelZoomFactor;
-          const step = Math.pow(1.0015 * wzf, -clamped);
           // Read the live zoom from the store at apply-time, not from
           // the closure — by now multiple frames may have elapsed.
           const live = useEditorStore.getState().zoom;
@@ -2292,6 +2403,10 @@ function Canvas({
       onMouseLeave={handleStageMouseLeave}
       onContextMenu={(e) => {
         e.evt.preventDefault();
+        if (skipContextMenuRef.current) {
+          skipContextMenuRef.current = false;
+          return;
+        }
         if (isViewer) return;
         if (tool === 'venueOutline' || tool === 'venueObstacle') {
           finishVenueDraft();
@@ -2373,7 +2488,7 @@ function Canvas({
         <Group name={EXPORT_HIDE} listening={false}>
           <GridLayer
             map={map}
-            zoom={zoom}
+            cornerOverride={gridPreview}
             viewport={{
               studXMin: pxToStud(-panX / zoom),
               studYMin: pxToStud(-panY / zoom),
@@ -2382,7 +2497,7 @@ function Canvas({
             }}
           />
         </Group>
-        <BackgroundImageLayer doc={doc} map={map} />
+        <BackgroundImageLayer doc={doc} />
         <Group listening={!isViewer}>
           {isViewer
             ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
@@ -2413,6 +2528,7 @@ function Canvas({
           />
           <RulerLayers
             map={map}
+            partsByKey={partsByKey}
             selectedRulerIds={selectedRulerIds}
             handleRulerId={selection.length === 0 && annoCount(annoSelection) === 1 ? selectedRulerId : null}
             onRulerSelect={(id, additive) => selectAnno('rulers', id, additive)}
@@ -2442,8 +2558,9 @@ function Canvas({
             }}
           />
           {isViewer
-            ? <AnchoredLabels map={map} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
+            ? <AnchoredLabels map={map} partsByKey={partsByKey} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
             : <AnchoredLabels
+                partsByKey={partsByKey}
                 map={map}
                 labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []}
                 modules={readSidecarFromDoc(doc)?.modules ?? []}
@@ -2461,7 +2578,7 @@ function Canvas({
       </KonvaLayer>
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
-          snap ring, ruler/venue drafts, remote cursors, export watermark. */}
+          snap ring, ruler/venue drafts, remote cursors. */}
       <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
@@ -2495,51 +2612,30 @@ function Canvas({
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
         {venueDraft && <VenueDraftPreview draft={venueDraft} />}
         <RemoteCursors awareness={awareness} map={map} />
-        {showExportWatermark && map && (() => {
-          const parts = [map.author, map.lug, map.event].filter(Boolean);
-          if (parts.length === 0) return null;
-          const stamp = parts.join(' / ');
-          const fontSize = Math.max(8, height / 60);
-          return (
-            <Text
-              text={stamp}
-              fontSize={fontSize}
-              fontFamily="sans-serif"
-              fill="rgba(0,0,0,0.55)"
-              x={10}
-              y={height - fontSize - 10}
-              width={width - 20}
-              align="right"
-            />
-          );
-        })()}
       </KonvaLayer>
     </Stage>
   );
 
   function commitAddText(r: TextDialogResult) {
-    // Place at the current cursor (or stage centre if cursor isn't
-    // over the canvas yet). `addTextCell` infers a stud-size box from
-    // the requested font size so the renderer's probe-and-fit lands
-    // somewhere reasonable.
-    const target = addTextAt ?? pointerStuds() ?? viewCentreStuds({ width, height });
+    // Like desktop's Insert Text (MapView::addTextAtScenePos): at the view
+    // centre, or where "Add Text Here" was picked, on the first text
+    // layer, in a 10-stud-high box.
+    const target = addTextAt ?? viewCentreStuds({ width, height });
     setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
-    // Heuristic: 1 stud ≈ 8 px, so a 24-px font wants ~3 studs tall;
-    // width is 0.6 × height per character.
-    const heightStuds = Math.max(2, r.fontSize / 8);
-    const widthStuds = Math.max(2, r.text.length * heightStuds * 0.6);
+    const box = newTextBox(r.text);
     const styleParts: string[] = [];
     if (r.isBold) styleParts.push('Bold');
     if (r.isItalic) styleParts.push('Italic');
     addTextCell(doc, layerId, {
       centreX: target.x,
       centreY: target.y,
-      widthStuds,
-      heightStuds,
+      widthStuds: box.width,
+      heightStuds: box.height,
       text: r.text,
       font: { family: r.fontFamily, size: r.fontSize, style: styleParts.join(',') || 'Regular' },
-      fontColor: { kind: 'argb', argb: r.colorArgb },
+      // Desktop's new text is the known colour Black.
+      fontColor: r.colorArgb.toUpperCase() === 'FF000000' ? { kind: 'known', name: 'Black' } : { kind: 'argb', argb: r.colorArgb },
       orientation: r.rotation,
     });
     setShowAddText(false);
@@ -2625,8 +2721,8 @@ function Canvas({
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
           onDelete={() => deleteSelection()}
-          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees)}
-          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees)}
+          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees, partOf)}
+          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees, partOf)}
           onBringToFront={() => {
             if (selection.length > 0) reorderBricks(doc, selection, 'front');
           }}
@@ -2692,76 +2788,34 @@ function Canvas({
         />
       )}
       <ScaleBarHud zoom={zoom} />
+      {budgetBox && <BudgetReachedDialog onClose={() => setBudgetBox(false)} />}
     </>
   );
 }
 
 /**
- * Scale-bar HUD — fixed overlay in the bottom-right corner of the canvas.
- * Port of MapViewPaint.cpp:40-63 ("scale bar"). Shows a rounded-rect
- * bar whose width represents a round number of studs at the current zoom.
- * One stud = 8mm; displays in mm below 100 studs, m above.
+ * Scale-bar HUD pinned to the lower-left corner of the canvas, like
+ * desktop (MapViewPaint.cpp:195-243): a white pill with a bar of a
+ * track-friendly stud count, labelled "N studs" above and mm / m below.
  */
 function ScaleBarHud({ zoom }: { zoom: number }) {
-  // Target bar width: ~80 px at current zoom. Find the nearest "round"
-  // stud count (1, 2, 5, 10, 20, 50, 100, …).
-  const TARGET_PX = 80;
-  const studsPerPx = 1 / (zoom * 8); // pxPerStud = 8 at zoom=1
-  const targetStuds = TARGET_PX * studsPerPx;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(targetStuds)));
-  const nice = [1, 2, 5, 10].map((f) => f * magnitude);
-  const barStuds = nice.reduce((best, v) =>
-    Math.abs(v - targetStuds) < Math.abs(best - targetStuds) ? v : best
-  );
-  const barPx = Math.round(barStuds * zoom * 8);
-  const label =
-    barStuds >= 125 ? `${(barStuds * 0.008).toFixed(0)} m`
-    : barStuds >= 12.5 ? `${(barStuds * 8).toFixed(0)} cm`
-    : `${(barStuds * 8).toFixed(0)} mm`;
-
+  const bar = scaleBar(zoom * 8); // 8 px per stud at zoom 1
+  if (!bar) return null;
   return (
     <div
-      className="pointer-events-none absolute bottom-3 right-3 flex flex-col items-end gap-1"
-      style={{ userSelect: 'none' }}
+      data-testid="scale-bar"
+      className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-black/50 bg-white/80 px-3 py-0.5 text-[11px] leading-tight text-neutral-900"
+      style={{ userSelect: 'none', width: bar.px + 60 }}
     >
-      <span className="text-[10px] text-neutral-300 drop-shadow-sm">{label}</span>
-      <div
-        className="rounded-sm bg-neutral-200/80"
-        style={{ width: barPx, height: 4 }}
-      />
+      <div>{bar.primary}</div>
+      <div className="relative my-0.5 h-2" style={{ width: bar.px }}>
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-neutral-900" />
+        <div className="absolute left-0 top-0 h-2 w-0.5 bg-neutral-900" />
+        <div className="absolute right-0 top-0 h-2 w-0.5 bg-neutral-900" />
+      </div>
+      <div>{bar.secondary}</div>
     </div>
   );
-}
-
-/**
- * Export the part list of a map as a CSV file (download). Port of
- * MainWindowFileIO.cpp:253-293. Aggregates brick counts by part number.
- */
-function exportPartListCsv(map: import('@cld/model').BbmMap): void {
-  const counts = new Map<string, { description: string; count: number }>();
-  for (const layer of map.layers) {
-    if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      const key = b.partNumber;
-      const existing = counts.get(key);
-      if (existing) {
-        existing.count++;
-      } else {
-        counts.set(key, { description: b.partNumber, count: 1 });
-      }
-    }
-  }
-  const rows = ['Part Number,Count'];
-  for (const [key, { count }] of [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    rows.push(`${JSON.stringify(key)},${count}`);
-  }
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'parts.csv';
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /**
@@ -2893,9 +2947,13 @@ function CanvasContextMenu({
     entries.push(sep('s5'));
   }
 
-  entries.push(item('Paste', onPaste));
-  entries.push(item('Add Text Here…', onAddTextHere));
-  entries.push(sep('s6'));
+  // Empty-area menu only, Paste only with something to paste
+  // (MapViewContextMenu.cpp:183-203).
+  if (!hasSel) {
+    if (hasClipboardBricks()) entries.push(item('Paste', onPaste));
+    entries.push(item('Add Text Here…', onAddTextHere));
+    entries.push(sep('s6'));
+  }
   entries.push(item('Undo', undo.undo, !undo.canUndo));
   entries.push(item('Redo', undo.redo, !undo.canRedo));
 
@@ -3052,16 +3110,10 @@ function ResizableDockSlot({
 
 /**
  * Renders the sidecar background image as a Konva layer below all content.
- * Port of MapViewPaint.cpp:43-70. When no rect is set the image stretches
- * to the brick bounding box; when a rect is stored it is placed there.
+ * Port of MapViewPaint.cpp:41-67: placed at its stored rect, or at native
+ * size at the origin when there is none (see backgroundImageRectPx).
  */
-function BackgroundImageLayer({
-  doc,
-  map,
-}: {
-  doc: import('yjs').Doc;
-  map: import('@cld/model').BbmMap | null;
-}) {
+function BackgroundImageLayer({ doc }: { doc: import('yjs').Doc }) {
   const bg = readSidecarFromDoc(doc)?.backgroundImage ?? null;
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -3076,31 +3128,11 @@ function BackgroundImageLayer({
 
   if (!bg || !img) return null;
 
-  const PX = 8;
-  let x: number, y: number, w: number, h: number;
-  if (bg.rect) {
-    x = bg.rect.x * PX; y = bg.rect.y * PX;
-    w = bg.rect.w * PX; h = bg.rect.h * PX;
-  } else if (map) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        minX = Math.min(minX, b.displayArea.x);
-        minY = Math.min(minY, b.displayArea.y);
-        maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-        maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-      }
-    }
-    if (!Number.isFinite(minX)) return null;
-    x = minX * PX; y = minY * PX; w = (maxX - minX) * PX; h = (maxY - minY) * PX;
-  } else {
-    return null;
-  }
+  const r = backgroundImageRectPx(bg, { width: img.naturalWidth, height: img.naturalHeight });
 
   return (
     <Group listening={false}>
-      <KonvaImage image={img} x={x} y={y} width={w} height={h} opacity={bg.opacity} listening={false} />
+      <KonvaImage image={img} x={r.x} y={r.y} width={r.width} height={r.height} opacity={bg.opacity} listening={false} />
     </Group>
   );
 }
@@ -3124,7 +3156,7 @@ function RulerDraftPreview({
   const by = draft.curY * PX;
   if (draft.kind === 'linear') {
     const lenStuds = Math.hypot(draft.curX - draft.startX, draft.curY - draft.startY);
-    const labelText = `${lenStuds.toFixed(1)} studs`;
+    const labelText = rulerPreviewLabel(lenStuds, false);
     return (
       <Group>
         <Line
@@ -3153,7 +3185,7 @@ function RulerDraftPreview({
   // Circular
   const rStuds = Math.hypot(draft.curX - draft.startX, draft.curY - draft.startY);
   const rPx = rStuds * PX;
-  const labelText = `r = ${rStuds.toFixed(1)} studs`;
+  const labelText = rulerPreviewLabel(rStuds, true);
   return (
     <Group>
       <Circle
@@ -3275,25 +3307,12 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   // panel is collapsed or scrolled out of view (issue #61).
   const activeLayer = activeLayerId ? budgetMap?.layers.find((l) => l.id === activeLayerId) : null;
   // The status bar re-renders on every HUD mouse update; keep the
-  // O(edges x bricks) walkway scan and the budget tally off that path.
-  const walkwayViolations = useMemo(
-    () => (venue ? countWalkwayViolations(venue, budgetMap) : 0),
+  // venue validation and the budget tally off that path.
+  const venueReadout = useMemo(
+    () => venueStatus(venue, validateVenue(venue, budgetMap)),
     [venue, budgetMap],
   );
-  const budgetOver = useMemo(() => {
-    let over = 0;
-    if (budgetMap && budgetLimits.size > 0) {
-      const usage = new Map<string, number>();
-      for (const layer of budgetMap.layers) {
-        if (layer.type !== 'brick') continue;
-        for (const b of layer.bricks) usage.set(b.partNumber, (usage.get(b.partNumber) ?? 0) + 1);
-      }
-      for (const [part, limit] of budgetLimits) {
-        if (limit >= 0 && (usage.get(part) ?? 0) > limit) over++;
-      }
-    }
-    return over;
-  }, [budgetMap, budgetLimits]);
+  const budgetOver = useMemo(() => overBudgetCount(budgetMap, budgetLimits), [budgetMap, budgetLimits]);
   // 1 stud = 8mm for standard LEGO; display in m when ≥100 studs
   function studDisplay(studs: number): string {
     if (studs >= 100) return `${(studs * 0.008).toFixed(1)} m`;
@@ -3331,17 +3350,15 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
         )}
       </div>
       <div className="flex items-center gap-3">
-        {venue !== null && (
+        {venueReadout && (
+          // Desktop MainWindow.cpp:917-936: "Venue: OK" / "Venue: N issue(s)"
+          // with the problems listed in the tooltip.
           <span
-            title={venue.enabled ? `Venue: ${venue.name || 'unnamed'} (${venue.edges.length} edges)` : 'Venue disabled'}
-            className={venue.enabled ? 'text-green-400' : 'text-neutral-500'}
+            data-testid="venue-status"
+            title={venueReadout.tooltip}
+            className={venueReadout.ok ? 'text-green-400' : 'font-semibold text-orange-400'}
           >
-            Venue: {venue.enabled ? (venue.name || 'unnamed') : 'disabled'}
-          </span>
-        )}
-        {walkwayViolations > 0 && venue && (
-          <span className="text-orange-400" title={`${walkwayViolations} brick(s) inside the ${venue.minWalkwayStuds} stud walkway buffer`}>
-            ⚠ {walkwayViolations} in walkway
+            {venueReadout.text}
           </span>
         )}
         {budgetLimits.size > 0 && (
@@ -3359,40 +3376,6 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
       </div>
     </footer>
   );
-}
-
-/**
- * Simplified AABB clearance check: for each non-Wall edge segment compute
- * the walkway buffer band AABB and count bricks that overlap it.
- */
-function countWalkwayViolations(
-  venue: import('@cld/bbm').Venue,
-  map: import('@cld/model').BbmMap | null,
-): number {
-  if (!venue.enabled || venue.minWalkwayStuds <= 0 || !map) return 0;
-  const buf = venue.minWalkwayStuds;
-  let violations = 0;
-  for (const edge of venue.edges) {
-    if (edge.kind === 0 /* Wall */ || !edge.poly || edge.poly.length < 2) continue;
-    for (let i = 1; i < edge.poly.length; i++) {
-      const a = edge.poly[i - 1]!;
-      const b = edge.poly[i]!;
-      const segMinX = Math.min(a.x, b.x) - buf;
-      const segMaxX = Math.max(a.x, b.x) + buf;
-      const segMinY = Math.min(a.y, b.y) - buf;
-      const segMaxY = Math.max(a.y, b.y) + buf;
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        for (const brick of layer.bricks) {
-          const { x, y, width, height } = brick.displayArea;
-          if (x < segMaxX && x + width > segMinX && y < segMaxY && y + height > segMinY) {
-            violations++;
-          }
-        }
-      }
-    }
-  }
-  return violations;
 }
 
 /**
@@ -3416,6 +3399,7 @@ function MapMenu({
   onZoomOut,
   onFit,
   onDownloadBbm,
+  onDownloadAs,
   onPreferences,
   onVenueProps,
   onVenueDimensions,
@@ -3443,6 +3427,7 @@ function MapMenu({
   onZoomOut: () => void;
   onFit: () => void;
   onDownloadBbm: () => void;
+  onDownloadAs: () => void;
   onPreferences: () => void;
   onVenueProps: () => void;
   onVenueDimensions: () => void;
@@ -3469,9 +3454,16 @@ function MapMenu({
   const setShowRulerAttachPoints = useEditorStore((s) => s.setShowRulerAttachPoints);
   const setAlwaysShowConnections = useEditorStore((s) => s.setAlwaysShowConnections);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
-  const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
+  const showStatusBar = useEditorStore((s) => s.showStatusBar);
+  const setShowStatusBar = useEditorStore((s) => s.setShowStatusBar);
+
+  const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
+  const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
+  const showOnlyBudgetedParts = useEditorStore((s) => s.showOnlyBudgetedParts);
+  const setShowOnlyBudgetedParts = useEditorStore((s) => s.setShowOnlyBudgetedParts);
+  const showBudgetNumbers = useEditorStore((s) => s.showBudgetNumbers);
+  const setShowBudgetNumbers = useEditorStore((s) => s.setShowBudgetNumbers);
 
   const items: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
     { label: 'General info...', action: onGeneralInfo },
@@ -3496,8 +3488,9 @@ function MapMenu({
     { label: 'Insert Anchored Label...  Ctrl+L', action: onInsertLabel },
     { label: '—', action: () => {} },
     { label: 'Download .bbm', action: onDownloadBbm },
+    { label: 'Download As...', action: onDownloadAs },
     { label: 'Export as Image...', action: onExportImage },
-    { label: 'Export Part List (CSV)...', action: onExportCsv },
+    { label: 'Export Part List...', action: onExportCsv },
     { label: '—', action: () => {} },
     { label: 'Zoom In  Ctrl+=', action: onZoomIn },
     { label: 'Zoom Out  Ctrl+-', action: onZoomOut },
@@ -3509,9 +3502,12 @@ function MapMenu({
     { label: 'Show Ruler Attach Points', action: () => setShowRulerAttachPoints(!showRulerAttachPoints), checked: showRulerAttachPoints },
     { label: 'Always Show Connections', action: () => setAlwaysShowConnections(!alwaysShowConnections), checked: alwaysShowConnections },
     { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
-    { label: 'Show Module Frames', action: () => setShowModuleFrames(!showModuleFrames), checked: showModuleFrames },
+    { label: 'Show Status Bar', action: () => setShowStatusBar(!showStatusBar), checked: showStatusBar },
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
+    { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
+    { label: 'Budget → Show Only Budgeted Parts', action: () => setShowOnlyBudgetedParts(!showOnlyBudgetedParts), checked: showOnlyBudgetedParts },
+    { label: 'Budget → Show Budget Numbers', action: () => setShowBudgetNumbers(!showBudgetNumbers), checked: showBudgetNumbers },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
 
@@ -3529,8 +3525,9 @@ function MapMenu({
       {open && (
         <ul
           // Fixed, not absolute: the header row scrolls horizontally, which
-          // would clip an absolutely positioned dropdown.
-          className="fixed z-30 max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          // would clip an absolutely positioned dropdown. Above the modeless
+          // Find / Budget panels (z-40), below modal dialogs (z-50).
+          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
           style={anchor}
           onClick={() => setOpen(false)}
         >
@@ -3592,7 +3589,7 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="fixed z-30 min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
+          <ul className="fixed z-[45] min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (
@@ -3618,29 +3615,17 @@ function PanelsMenu({
 
 /**
  * Paint colour swatch — port of desktop's MainWindow toolbar colour
- * button (MainWindow.cpp:578-845, "Paint colour" entry). Shows a
- * coloured square; clicking it pops up a native colour input. Stored
- * value is AARRGGBB hex; the input emits #RRGGBB so we keep the
- * existing alpha when changing.
+ * button (MainWindow.cpp:578-845, "Paint colour" entry): a colour swatch
+ * and an alpha slider. Stored value is AARRGGBB hex.
  */
 function PaintColorPicker() {
   const value = useEditorStore((s) => s.paintColor);
   const set = useEditorStore((s) => s.setPaintColor);
-  // Strip alpha for the <input type=color> (which only handles RGB).
-  const aa = value.slice(0, 2);
-  const rgb = '#' + value.slice(2);
+  // Colour and alpha, like desktop's paint colour dialog (R6).
   return (
     <label className="flex items-center gap-1 text-xs text-neutral-400" title="Paint colour">
       <span>Colour</span>
-      <input
-        type="color"
-        value={rgb}
-        onChange={(e) => {
-          const v = e.target.value.replace(/^#/, '').toUpperCase();
-          set(`${aa}${v}`);
-        }}
-        className="h-6 w-8 cursor-pointer rounded-sm border border-neutral-700 bg-transparent"
-      />
+      <ColorAlphaInput compact label="Paint colour" value={value} onChange={(v) => set(v.toUpperCase())} />
     </label>
   );
 }
@@ -3847,19 +3832,25 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
 
 /** Serialise the local doc to .bbm in the browser and download it. */
 async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
-  let xml: string;
+  let file: { filename: string; type: string; data: Uint8Array };
   try {
     // Loaded on demand: the .bbm codec is its own chunk.
-    const { writeBbm } = await import('@cld/bbm');
-    xml = writeBbm(docToBbm(doc));
+    const { writeBbm, writeSidecar } = await import('@cld/bbm');
+    const xml = writeBbm(docToBbm(doc));
+    // The sidecar (labels, modules, venue, background image) travels with
+    // the .bbm, hashed like the server export so desktop sees no drift.
+    const sidecar = readSidecarFromDoc(doc);
+    const hash = sidecar ? await sha256Hex(xml) : undefined;
+    const json = sidecar ? writeSidecar(sidecar, hash ? { bbmHashSha256: hash } : {}) : null;
+    file = localBbmDownload(title, xml, json);
   } catch (e) {
     window.alert(`Could not build the .bbm: ${(e as Error).message}`);
     return;
   }
-  const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+  const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout'}.bbm`;
+  a.download = file.filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -3878,4 +3869,6 @@ interface CanvasActions {
   zoom: (factor: number) => void;
   fit: () => void;
   insertText: () => void;
+  /** World-stud position under the centre of the canvas stage. */
+  viewCentre: () => { x: number; y: number };
 }

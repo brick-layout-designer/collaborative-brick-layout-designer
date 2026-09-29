@@ -27,13 +27,15 @@ export function PreferencesDialog({ onClose }: Props) {
   const setUndoStackDepth = useEditorStore((s) => s.setUndoStackDepth);
   const reopenLastFile = useEditorStore((s) => s.reopenLastFile);
   const setReopenLastFile = useEditorStore((s) => s.setReopenLastFile);
+  const budgetDefaultInfinite = useEditorStore((s) => s.budgetDefaultInfinite);
+  const setBudgetDefaultInfinite = useEditorStore((s) => s.setBudgetDefaultInfinite);
+  const warnBudgetLimitation = useEditorStore((s) => s.warnBudgetLimitation);
+  const setWarnBudgetLimitation = useEditorStore((s) => s.setWarnBudgetLimitation);
   const selectionTint = useEditorStore((s) => s.selectionTint);
   const setSelectionTint = useEditorStore((s) => s.setSelectionTint);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const moduleFrameThickness = useEditorStore((s) => s.moduleFrameThickness);
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
-  const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
   const setModuleFrameThickness = useEditorStore((s) => s.setModuleFrameThickness);
 
   const showElectricCircuits = useEditorStore((s) => s.showElectricCircuits);
@@ -115,6 +117,29 @@ export function PreferencesDialog({ onClose }: Props) {
               <p className="mt-1 text-[10px] text-neutral-600">
                 Mirrors <code>general/wheelZoomFactor</code>. Default 1.00×. Higher = faster zoom.
               </p>
+              {/* PreferencesDialog.cpp:69 budget/defaultInfinite, general/warnBudgetLimitation */}
+              <div className={rowCls}>
+                <span className={labelCls}>Parts without a budget</span>
+                <select
+                  aria-label="Parts without a budget"
+                  value={budgetDefaultInfinite ? 'unlimited' : 'forbidden'}
+                  onChange={(e) => setBudgetDefaultInfinite(e.target.value === 'unlimited')}
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-sm"
+                >
+                  <option value="unlimited">Unlimited</option>
+                  <option value="forbidden">Forbidden (budget 0)</option>
+                </select>
+              </div>
+              <div className={rowCls}>
+                <span className={labelCls}>Warn when the budget refuses a part</span>
+                <input
+                  type="checkbox"
+                  aria-label="Warn when the budget refuses a part"
+                  checked={warnBudgetLimitation}
+                  onChange={(e) => setWarnBudgetLimitation(e.target.checked)}
+                  className="accent-blue-500"
+                />
+              </div>
               <div className={rowCls}>
                 <span className={labelCls}>Reopen last layout on startup</span>
                 <input
@@ -189,8 +214,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 { label: 'Show brick elevation labels', value: showBrickElevation, set: setShowBrickElevation },
                 { label: 'Show ruler attach points', value: showRulerAttachPoints, set: setShowRulerAttachPoints },
                 { label: 'Always show connection points', value: alwaysShowConnections, set: setAlwaysShowConnections },
-                { label: 'Show module names', value: showModuleNames, set: setShowModuleNames },
-                { label: 'Show module frames', value: showModuleFrames, set: setShowModuleFrames },
+                { label: 'Show module names and frames', value: showModuleNames, set: setShowModuleNames },
                 { label: 'Show electric circuits', value: showElectricCircuits, set: setShowElectricCircuits },
                 { label: 'Export watermark', value: showExportWatermark, set: setShowExportWatermark },
               ].map(({ label, value, set }) => (
@@ -217,10 +241,12 @@ export function PreferencesDialog({ onClose }: Props) {
                 <span className="text-xs text-neutral-400">Module frame thickness (px)</span>
                 <input
                   type="number"
-                  min={1}
+                  aria-label="Module frame thickness (px)"
+                  min={0.5}
                   max={20}
+                  step={0.5}
                   value={moduleFrameThickness}
-                  onChange={(e) => setModuleFrameThickness(parseInt(e.target.value, 10) || 2)}
+                  onChange={(e) => setModuleFrameThickness(parseFloat(e.target.value) || 5)}
                   className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </div>

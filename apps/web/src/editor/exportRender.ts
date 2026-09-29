@@ -5,8 +5,9 @@
 // drawBackground / drawForeground rather than as scene items.
 
 import type Konva from 'konva';
-import type { BbmMap, ColorSpec } from '@cld/model';
+import type { BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
+import { colorSpecToCss } from './layerOptions';
 
 /** Konva node name for view-only chrome hidden while exporting. */
 export const EXPORT_HIDE = 'export-hide';
@@ -65,9 +66,10 @@ export function contentBoundsStuds(map: BbmMap, sidecar?: Sidecar | null): StudR
     }
   }
   for (const l of sidecar?.anchoredLabels ?? []) {
-    // Only World labels have a position independent of other content;
-    // anchored ones sit next to bricks already inside the box.
-    if (l.kind === 0) add(l.offset.x, l.offset.y);
+    // World, Group and Module labels sit at their offset as a world
+    // position (SceneBuilderSidecar.cpp:222-223); Brick labels ride on
+    // bricks already inside the box.
+    if (l.kind !== 1) add(l.offset.x, l.offset.y);
   }
   const venue = sidecar?.venue;
   if (venue) {
@@ -87,6 +89,28 @@ export function clampPixelRatio(widthPx: number, heightPx: number, requested: nu
   const bySide = MAX_CANVAS_SIDE / Math.max(widthPx, heightPx);
   const byArea = Math.sqrt(MAX_CANVAS_AREA / (widthPx * heightPx));
   return Math.max(0.01, Math.min(requested, bySide, byArea));
+}
+
+/** Stud region of the full-map export: content bounds plus the desktop margin. Null for an empty map. */
+export function exportRegionStuds(map: BbmMap, sidecar?: Sidecar | null): StudRect | null {
+  const b = contentBoundsStuds(map, sidecar);
+  if (!b) return null;
+  return {
+    x: b.x - EXPORT_MARGIN_STUDS,
+    y: b.y - EXPORT_MARGIN_STUDS,
+    width: b.width + 2 * EXPORT_MARGIN_STUDS,
+    height: b.height + 2 * EXPORT_MARGIN_STUDS,
+  };
+}
+
+/** Desktop's export watermark: always "author / LUG / event" (MainWindowMenus.cpp:184-186). */
+export function watermarkText(map: Pick<BbmMap, 'author' | 'lug' | 'event'>): string {
+  return `${map.author} / ${map.lug} / ${map.event}`;
+}
+
+/** Watermark font size in px: QFont point size max(8, height / 60) at 96 dpi. */
+export function watermarkFontPx(imageHeight: number): number {
+  return (Math.max(8, Math.floor(imageHeight / 60)) * 96) / 72;
 }
 
 /** Scene-pixel size (1 stud = 8 px) of the full-map export, margin included. Null for an empty map. */
@@ -120,16 +144,13 @@ export function clampExportSize(width: number, height: number): { width: number;
   return { width: w, height: h };
 }
 
-export function colorSpecToCss(c: ColorSpec): string {
-  if (c.kind === 'known') {
-    const known: Record<string, string> = {
-      black: '#000000', white: '#ffffff', red: '#ff0000', green: '#008000', blue: '#0000ff',
-      yellow: '#ffff00', orange: '#ffa500', gray: '#808080', darkgray: '#a9a9a9', lightgray: '#d3d3d3',
-      cornsilk: '#fff8dc',
-    };
-    return known[c.name.toLowerCase()] ?? '#ffffff';
-  }
-  return `#${c.argb.length === 8 ? c.argb.slice(2) : c.argb}`;
+/**
+ * CSS colour the export paints under the map: the layout's background,
+ * alpha included. A known name the table can't resolve paints black, like
+ * desktop QColor(name) (XmlPrimitives.cpp:72-77).
+ */
+export function exportBackground(map: Pick<BbmMap, 'backgroundColor'>): string {
+  return colorSpecToCss(map.backgroundColor, '#000000');
 }
 
 export interface ExportOptions {
@@ -149,6 +170,12 @@ export interface ExportOptions {
   transparent: boolean;
   /** Bottom-right "author / LUG / event" stamp, like desktop's watermark option. */
   watermark?: string;
+  /**
+   * Render exactly this map region (studs) instead of the whole map — one
+   * print tile. It may extend past the content; that part shows the
+   * background colour.
+   */
+  regionStuds?: StudRect;
 }
 
 /**
@@ -164,13 +191,13 @@ export function renderMapToCanvas(
   sidecar: Sidecar | null,
   opts: ExportOptions & { hudLayer?: Konva.Layer | null },
 ): { canvas: HTMLCanvasElement; pixelRatio: number } | null {
-  const bounds = contentBoundsStuds(map, sidecar);
-  if (!bounds) return null;
+  const region = opts.regionStuds ?? exportRegionStuds(map, sidecar);
+  if (!region) return null;
   const PX = 8;
-  const x0 = (bounds.x - EXPORT_MARGIN_STUDS) * PX;
-  const y0 = (bounds.y - EXPORT_MARGIN_STUDS) * PX;
-  const w = Math.ceil((bounds.width + 2 * EXPORT_MARGIN_STUDS) * PX);
-  const h = Math.ceil((bounds.height + 2 * EXPORT_MARGIN_STUDS) * PX);
+  const x0 = region.x * PX;
+  const y0 = region.y * PX;
+  const w = Math.ceil(region.width * PX);
+  const h = Math.ceil(region.height * PX);
   const size = opts.size ? clampExportSize(opts.size.width, opts.size.height) : null;
   // With an explicit size, render at the larger of the two axis scales
   // and resample into the requested box.
@@ -207,15 +234,14 @@ export function renderMapToCanvas(
   const ctx = out.getContext('2d');
   if (!ctx) return { canvas: content, pixelRatio };
   if (!opts.transparent) {
-    ctx.fillStyle = colorSpecToCss(map.backgroundColor);
+    ctx.fillStyle = exportBackground(map);
     ctx.fillRect(0, 0, out.width, out.height);
   }
   ctx.imageSmoothingEnabled = smooth;
   ctx.drawImage(content, 0, 0, out.width, out.height);
   if (opts.watermark) {
-    const size = Math.max(8, out.height / 60);
-    ctx.font = `${size}px sans-serif`;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.font = `${watermarkFontPx(out.height)}px sans-serif`;
+    ctx.fillStyle = 'rgba(0,0,0,0.549)'; // QColor(0, 0, 0, 140)
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillText(opts.watermark, out.width - 10, out.height - 10);

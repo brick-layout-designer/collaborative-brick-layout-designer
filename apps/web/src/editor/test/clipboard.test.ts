@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from '../clipboard';
+import { pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from '../clipboard';
 
 const SAMPLE: ClipboardEntry[] = [
   {
@@ -129,5 +129,38 @@ describe('clipboard — browser clipboard API', () => {
     vi.stubGlobal('navigator', {});
     const result = await readBricksFromClipboard();
     expect(result).toEqual(SAMPLE);
+  });
+});
+
+describe('hasClipboardBricks', () => {
+  it('is true once this session has copied bricks', async () => {
+    vi.resetModules();
+    const clip = await import('../clipboard');
+    expect(clip.hasClipboardBricks()).toBe(false);
+    await clip.writeBricksToClipboard([]);
+    expect(clip.hasClipboardBricks()).toBe(false);
+    await clip.writeBricksToClipboard([
+      { sourceLayerName: 'Bricks', brick: { partNumber: '3001.1' } } as never,
+    ]);
+    expect(clip.hasClipboardBricks()).toBe(true);
+  });
+});
+
+describe('paste placement (MapViewClipboard.cpp:62-73)', () => {
+  it('lands the group centre under the cursor', () => {
+    const areas = [
+      { x: 0, y: 0, width: 4, height: 2 },
+      { x: 10, y: 10, width: 2, height: 2 },
+    ];
+    // Centres (2, 1) and (11, 11) average to (6.5, 6).
+    expect(pasteOffset(areas, { x: 100, y: 50 })).toEqual({ dx: 93.5, dy: 44 });
+    expect(pasteOffset([], { x: 1, y: 1 })).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('uses the cursor, or the centre of the panned and zoomed view without one', () => {
+    const view = { width: 800, height: 600, panX: 100, panY: -200, zoom: 2 };
+    expect(pasteTarget({ x: 3, y: 4 }, view)).toEqual({ x: 3, y: 4 });
+    // Screen centre (400, 300) → world ((400-100)/2, (300+200)/2) px = (150, 250) px → studs / 8.
+    expect(pasteTarget(null, view)).toEqual({ x: 18.75, y: 31.25 });
   });
 });

@@ -117,8 +117,19 @@ export interface EditorState {
   selectionTint: string;
   /** Show module name labels on canvas (`view/moduleNames`). */
   showModuleNames: boolean;
-  /** Show module frame outlines on canvas (`view/moduleFrameThickness`). */
-  showModuleFrames: boolean;
+  /** View → Status Bar: on by default, for this session only, like desktop (MainWindowMenus.cpp:524-527). */
+  showStatusBar: boolean;
+  setShowStatusBar: (v: boolean) => void;
+  /** Budget → Use Budget Limitation: refuse to place parts over budget (`budget/useBudgetLimitation`, default off). */
+  useBudgetLimitation: boolean;
+  /** Parts without a limit are unlimited (true) or forbidden (false) (`budget/defaultInfinite`, default true). */
+  budgetDefaultInfinite: boolean;
+  /** Show the "Budget reached" box on a refusal (`general/warnBudgetLimitation`, default true). */
+  warnBudgetLimitation: boolean;
+  /** Budget → Show Only Budgeted Parts in the parts panel (`budget/showOnlyBudgetedParts`). */
+  showOnlyBudgetedParts: boolean;
+  /** Budget → Show Budget Numbers (used/limit) under part tiles (`budget/showBudgetNumbers`). */
+  showBudgetNumbers: boolean;
   /** Module frame thickness in px (`view/moduleFrameThickness`). */
   moduleFrameThickness: number;
   /** Show electric circuit overlay (`view/electricCircuits`). No-op until circuit data exists. */
@@ -180,7 +191,11 @@ export interface EditorState {
   setWheelZoomFactor: (v: number) => void;
   setSelectionTint: (rrggbb: string) => void;
   setShowModuleNames: (v: boolean) => void;
-  setShowModuleFrames: (v: boolean) => void;
+  setUseBudgetLimitation: (v: boolean) => void;
+  setBudgetDefaultInfinite: (v: boolean) => void;
+  setWarnBudgetLimitation: (v: boolean) => void;
+  setShowOnlyBudgetedParts: (v: boolean) => void;
+  setShowBudgetNumbers: (v: boolean) => void;
   setModuleFrameThickness: (v: number) => void;
   setShowElectricCircuits: (v: boolean) => void;
   setShowExportWatermark: (v: boolean) => void;
@@ -213,9 +228,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   statusMessageTimerId: null,
   dropTargetHint: null,
   snapStepStuds: (() => {
+    // Off by default, like desktop snapStepStuds (PreferencesDialog.cpp:137).
     const v = localStorage.getItem('cld:snapStepStuds');
-    const n = v !== null ? parseFloat(v) : 1;
-    return Number.isFinite(n) && n >= 0 ? n : 1;
+    const n = v !== null ? parseFloat(v) : 0;
+    return Number.isFinite(n) && n >= 0 ? n : 0;
   })(),
   rotationStepDegrees: (() => {
     const v = localStorage.getItem('cld:rotationStepDegrees');
@@ -226,12 +242,15 @@ export const useEditorStore = create<EditorState>((set) => ({
   hudMapWidthStuds: null,
   hudMapHeightStuds: null,
   paintColor: (() => {
+    // Opaque #008000, like desktop paintColor (PreferencesDialog.cpp:152).
     const v = localStorage.getItem('cld:paintColor');
-    return v ?? '80008000';
+    return v ?? 'ff008000';
   })(),
   hudMouseStudX: null,
   hudMouseStudY: null,
-  showConnectionPoints: localStorage.getItem('cld:showConnectionPoints') !== 'false',
+  // Off by default, like desktop view/connectionPoints: selected bricks
+  // still show their free connections (SceneBuilder.cpp:250-310).
+  showConnectionPoints: localStorage.getItem('cld:showConnectionPoints') === 'true',
   showGrid: localStorage.getItem('cld:showGrid') !== 'false',
   showBrickHulls: localStorage.getItem('cld:showBrickHulls') === 'true',
   showBrickElevation: localStorage.getItem('cld:showBrickElevation') === 'true',
@@ -243,12 +262,21 @@ export const useEditorStore = create<EditorState>((set) => ({
     return Number.isFinite(n) && n > 0 ? n : 1;
   })(),
   selectionTint: localStorage.getItem('cld:selectionTint') ?? 'FFD700',
-  showModuleNames: localStorage.getItem('cld:showModuleNames') === 'true',
-  showModuleFrames: localStorage.getItem('cld:showModuleFrames') === 'true',
+  // One toggle for module names and frames, on by default (desktop
+  // view/moduleNames, SceneBuilderSidecar.cpp:233-236).
+  showModuleNames: localStorage.getItem('cld:showModuleNames') !== 'false',
+  showStatusBar: true,
+  setShowStatusBar: (v) => set({ showStatusBar: v }),
+  useBudgetLimitation: localStorage.getItem('cld:useBudgetLimitation') === 'true',
+  budgetDefaultInfinite: localStorage.getItem('cld:budgetDefaultInfinite') !== 'false',
+  warnBudgetLimitation: localStorage.getItem('cld:warnBudgetLimitation') !== 'false',
+  showOnlyBudgetedParts: localStorage.getItem('cld:showOnlyBudgetedParts') === 'true',
+  showBudgetNumbers: localStorage.getItem('cld:showBudgetNumbers') === 'true',
   moduleFrameThickness: (() => {
+    // 5 px by default, 0.5-20 (PreferencesDialog.cpp:200-207).
     const v = localStorage.getItem('cld:moduleFrameThickness');
-    const n = v !== null ? parseFloat(v) : 2;
-    return Number.isFinite(n) && n > 0 ? n : 2;
+    const n = v !== null ? parseFloat(v) : 5;
+    return Number.isFinite(n) && n > 0 ? Math.max(0.5, Math.min(20, n)) : 5;
   })(),
   undoStackDepth: (() => {
     const v = localStorage.getItem('cld:undoStackDepth');
@@ -316,12 +344,28 @@ export const useEditorStore = create<EditorState>((set) => ({
     localStorage.setItem('cld:showModuleNames', String(v));
     set({ showModuleNames: v });
   },
-  setShowModuleFrames: (v) => {
-    localStorage.setItem('cld:showModuleFrames', String(v));
-    set({ showModuleFrames: v });
+  setUseBudgetLimitation: (v) => {
+    localStorage.setItem('cld:useBudgetLimitation', String(v));
+    set({ useBudgetLimitation: v });
+  },
+  setBudgetDefaultInfinite: (v) => {
+    localStorage.setItem('cld:budgetDefaultInfinite', String(v));
+    set({ budgetDefaultInfinite: v });
+  },
+  setWarnBudgetLimitation: (v) => {
+    localStorage.setItem('cld:warnBudgetLimitation', String(v));
+    set({ warnBudgetLimitation: v });
+  },
+  setShowOnlyBudgetedParts: (v) => {
+    localStorage.setItem('cld:showOnlyBudgetedParts', String(v));
+    set({ showOnlyBudgetedParts: v });
+  },
+  setShowBudgetNumbers: (v) => {
+    localStorage.setItem('cld:showBudgetNumbers', String(v));
+    set({ showBudgetNumbers: v });
   },
   setModuleFrameThickness: (v) => {
-    const clamped = Math.max(1, Math.min(20, v));
+    const clamped = Math.max(0.5, Math.min(20, Math.round(v * 2) / 2));
     localStorage.setItem('cld:moduleFrameThickness', String(clamped));
     set({ moduleFrameThickness: clamped });
   },
@@ -386,11 +430,11 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
   setActiveLayer: (activeLayerId) => set({ activeLayerId }),
   setPlacePart: (placePartKey) => set({ placePartKey }),
-  setZoom: (zoom) => set({ zoom: clamp(zoom, 0.1, 8) }),
+  setZoom: (zoom) => set({ zoom: clamp(zoom, MIN_ZOOM, MAX_ZOOM) }),
   setPan: (panX, panY) => set({ panX, panY }),
   zoomAround: (newZoom, anchorPxX, anchorPxY) =>
     set((s) => {
-      const next = clamp(newZoom, 0.1, 8);
+      const next = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
       if (next === s.zoom) return s;
       // Pin the world coord under the cursor: anchor (in stage pixels) maps
       // to world (anchor − pan) / zoom; keep that ratio constant by
@@ -404,6 +448,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       };
     }),
 }));
+
+/** View zoom range — desktop MapView.cpp:77-78 (`kMinZoom`/`kMaxZoom`). */
+export const MIN_ZOOM = 0.02;
+export const MAX_ZOOM = 40;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));

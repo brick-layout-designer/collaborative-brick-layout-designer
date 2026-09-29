@@ -264,7 +264,7 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
           }}
         >
           <KonvaLayer listening={false}>
-            <GridLayer map={map} viewport={viewport} zoom={zoom} showGrid={true} />
+            <GridLayer map={map} viewport={viewport} showGrid={true} />
             <AreaLayers map={map} />
             <BrickLayer map={map} doc={doc} isViewer />
             <TextLayers map={map} />

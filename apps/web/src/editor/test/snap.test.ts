@@ -290,6 +290,43 @@ describe('snapToAnchorBrick', () => {
     // The only connection is already linked, so snap should fail.
     expect(snapToAnchorBrick(anchor, anchorMeta, newPart, 8, 8)).toBeNull();
   });
+
+  it('takes the first free connection in order, whatever the active one (MapView.cpp:1226-1258)', () => {
+    const anchorMeta = makePart({
+      connections: [
+        { type: 'male', x: -4, y: 0, angle: 180, electricPlug: 0 },
+        { type: 'male', x: 4, y: 0, angle: 0, electricPlug: 0 },
+      ],
+    });
+    const newPart = makePart({
+      connections: [{ type: 'male', x: -4, y: 0, angle: 180, electricPlug: 0 }],
+    });
+    // Both free and connection 1 active: desktop still anchors on 0.
+    const both = makeBrick({ x: 0, y: 0, w: 8, h: 8, activeConnectionPointIndex: 1, connexions: [{ id: 'a0', linkedTo: '' }, { id: 'a1', linkedTo: '' }] });
+    expect(snapToAnchorBrick(both, anchorMeta, newPart, 8, 8)!.centreX).toBeCloseTo(-4);
+    // Connection 0 taken: the free one, 1.
+    const oneTaken = makeBrick({ x: 0, y: 0, w: 8, h: 8, connexions: [{ id: 'a0', linkedTo: 'x' }, { id: 'a1', linkedTo: '' }] });
+    expect(snapToAnchorBrick(oneTaken, anchorMeta, newPart, 8, 8)!.centreX).toBeCloseTo(12);
+  });
+
+  it('measures the anchor connection from its sprite centre (pivot)', () => {
+    // 32 x 16 px sprite, hull = left half: the pivot is 1 stud right of
+    // the 2 x 2 box centre.
+    const anchorMeta = makePart({
+      pxPerStud: 8,
+      spriteSize: { w: 32, h: 16 },
+      hullPts: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+      connections: [{ type: 'male', x: 2, y: 0, angle: 0, electricPlug: 0 }],
+    });
+    const newPart = makePart({
+      connections: [{ type: 'male', x: -1, y: 0, angle: 180, electricPlug: 0 }],
+    });
+    // Box (0,0)-(2,2): centre (1,1), pivot (2,1), connection at (4,1).
+    const anchor = makeBrick({ x: 0, y: 0, w: 2, h: 2, connexions: [{ id: 'a0', linkedTo: '' }] });
+    const r = snapToAnchorBrick(anchor, anchorMeta, newPart, 2, 2)!;
+    expect(r.centreX).toBeCloseTo(5);
+    expect(r.centreY).toBeCloseTo(1);
+  });
 });
 
 // ---- liveDragSnap ---------------------------------------------------------

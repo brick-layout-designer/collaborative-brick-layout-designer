@@ -1,11 +1,12 @@
-// Map > Background Colour dialog — port of MainWindowMapMenu.cpp:51-63.
-// Web simplification: a single colour picker (no alpha — the .bbm
-// background is opaque per format spec).
+// Map > Background Colour dialog — port of MainWindowMapMenu.cpp:48-60:
+// a colour picker with an alpha channel (QColorDialog::ShowAlphaChannel),
+// written to the .bbm as desktop does (lowercase `aarrggbb`).
 
 import { useState } from 'react';
 import type * as Y from 'yjs';
 import type { ColorSpec } from '@cld/model';
 import { setBackgroundColor } from './mutations';
+import { argbSpec, hexAlpha } from './background';
 
 interface Props {
   current: ColorSpec;
@@ -14,13 +15,12 @@ interface Props {
 }
 
 export function BackgroundColorDialog({ current, doc, onClose }: Props) {
-  const initialHex = colorToHex(current);
-  const [rgb, setRgb] = useState(initialHex);
+  const initial = hexAlpha(current);
+  const [rgb, setRgb] = useState(initial.hex);
+  const [alpha, setAlpha] = useState(initial.alpha);
 
   function commit() {
-    // Strip leading # and uppercase to match the on-disk convention.
-    const argb = `FF${rgb.replace(/^#/, '').toUpperCase()}`;
-    setBackgroundColor(doc, { kind: 'argb', argb });
+    setBackgroundColor(doc, argbSpec(rgb, alpha));
     onClose();
   }
 
@@ -45,6 +45,19 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
           />
           <span className="font-mono text-xs uppercase">{rgb}</span>
         </div>
+        <label className="mt-3 flex items-center gap-3 text-xs text-neutral-400">
+          Alpha
+          <input
+            type="range"
+            min={0}
+            max={255}
+            value={alpha}
+            aria-label="Alpha"
+            onChange={(e) => setAlpha(parseInt(e.target.value, 10))}
+            className="flex-1"
+          />
+          <span className="w-8 text-right tabular-nums">{alpha}</span>
+        </label>
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
@@ -62,21 +75,4 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
       </div>
     </div>
   );
-}
-
-const KNOWN_HEX: Record<string, string> = {
-  cornflowerblue: '#6495ed',
-  white: '#ffffff',
-  black: '#000000',
-  lightgray: '#d3d3d3',
-  gray: '#808080',
-  red: '#ff0000',
-  green: '#008000',
-  blue: '#0000ff',
-};
-
-function colorToHex(c: ColorSpec): string {
-  if (c.kind === 'known') return KNOWN_HEX[(c.name ?? '').toLowerCase()] ?? '#6495ed';
-  // ARGB → strip alpha for the picker.
-  return c.argb.length === 8 ? `#${c.argb.slice(2)}` : `#${c.argb}`;
 }

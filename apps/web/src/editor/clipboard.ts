@@ -13,7 +13,7 @@
 // Wire format: a JSON object tagged with a fixed `kind` discriminator
 // so we can refuse foreign clipboard payloads.
 
-import type { Brick } from '@cld/model';
+import type { Brick, RectangleF } from '@cld/model';
 
 const CLIPBOARD_KIND = 'cbld-bricks/v1';
 
@@ -65,4 +65,49 @@ export async function readBricksFromClipboard(): Promise<ClipboardEntry[] | null
   return memoryFallback?.entries ?? null;
 }
 
+/**
+ * Whether this session has bricks to paste, for the context menu's Paste
+ * entry (desktop lists it only when the clipboard has content). The system
+ * clipboard can't be checked without a permission prompt, so this knows
+ * only this tab's copies; Ctrl+V still reads the system clipboard.
+ */
+export function hasClipboardBricks(): boolean {
+  return (memoryFallback?.entries.length ?? 0) > 0;
+}
+
 export type { ClipboardEntry };
+
+type Point = { x: number; y: number };
+
+/**
+ * Where a paste lands, in studs: under the cursor, or the centre of the
+ * visible view when the cursor isn't over it (MapViewClipboard.cpp:64-69).
+ * `view` is the stage size in px with its pan and zoom.
+ */
+export function pasteTarget(
+  pointer: Point | null,
+  view: { width: number; height: number; panX: number; panY: number; zoom: number },
+  pxPerStud = 8,
+): Point {
+  if (pointer) return pointer;
+  return {
+    x: (view.width / 2 - view.panX) / view.zoom / pxPerStud,
+    y: (view.height / 2 - view.panY) / view.zoom / pxPerStud,
+  };
+}
+
+/**
+ * The move that puts the average of the boxes' centres on `target` —
+ * computed over the whole clipboard, before the budget leaves any out
+ * (MapViewClipboard.cpp:70-73).
+ */
+export function pasteOffset(areas: readonly RectangleF[], target: Point): { dx: number; dy: number } {
+  if (areas.length === 0) return { dx: 0, dy: 0 };
+  let cx = 0;
+  let cy = 0;
+  for (const a of areas) {
+    cx += a.x + a.width / 2;
+    cy += a.y + a.height / 2;
+  }
+  return { dx: target.x - cx / areas.length, dy: target.y - cy / areas.length };
+}

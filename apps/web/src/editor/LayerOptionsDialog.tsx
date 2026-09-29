@@ -16,6 +16,7 @@ import {
   type GridOptions,
   type LayerOptionsForm,
 } from './layerOptions';
+import { ColorAlphaInput } from './ColorAlphaInput';
 
 interface Props {
   layer: Layer;
@@ -88,7 +89,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
   const color = (label: string, value: string, onChange: (v: string) => void) => (
     <label className={rowCls}>
       <span className={labelCls}>{label}</span>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className={colorCls} />
+      <ColorAlphaInput label={label} value={value} onChange={onChange} />
     </label>
   );
 
@@ -124,7 +125,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
           {number('Transparency (%)', form.transparency, 0, 100, (v) => set('transparency', v))}
           {check('Visible', form.visible, (v) => set('visible', v))}
           {check('Display selection hulls', form.hullVisible, (v) => set('hullVisible', v))}
-          {color('Hull colour', form.hullHex, (v) => set('hullHex', v))}
+          {color('Hull colour', form.hullArgb, (v) => set('hullArgb', v))}
           {number('Hull thickness (px)', form.hullThickness, 1, 20, (v) => set('hullThickness', v))}
 
           {(form.grid || form.displayBrickElevation !== undefined || form.areaCellSize !== undefined) && (
@@ -139,9 +140,9 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
               {check('Display grid', form.grid.displayGrid, (v) => setGrid('displayGrid', v))}
               {check('Display sub-grid', form.grid.displaySubGrid, (v) => setGrid('displaySubGrid', v))}
               {check('Display cell index labels', form.grid.displayCellIndex, (v) => setGrid('displayCellIndex', v))}
-              {color('Grid colour', form.grid.gridHex, (v) => setGrid('gridHex', v))}
-              {color('Sub-grid colour', form.grid.subGridHex, (v) => setGrid('subGridHex', v))}
-              {color('Cell index colour', form.grid.cellIndexHex, (v) => setGrid('cellIndexHex', v))}
+              {color('Grid colour', form.grid.gridArgb, (v) => setGrid('gridArgb', v))}
+              {color('Sub-grid colour', form.grid.subGridArgb, (v) => setGrid('subGridArgb', v))}
+              {color('Cell index colour', form.grid.cellIndexArgb, (v) => setGrid('cellIndexArgb', v))}
             </>
           )}
 

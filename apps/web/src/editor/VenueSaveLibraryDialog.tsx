@@ -1,5 +1,6 @@
-// Small dialog for saving a venue to the library — lets the user pick
-// personal ownership vs. an org they belong to.
+// Small dialog for saving a venue to the library — its name (desktop asks
+// "Name for this venue:", VenueLibraryPanel.cpp:171-175) and personal
+// ownership vs. an org the user belongs to.
 
 import { useState, type FormEvent } from 'react';
 import type { OrgSummary } from '../api';
@@ -7,16 +8,19 @@ import type { OrgSummary } from '../api';
 interface Props {
   venueName: string;
   orgs: OrgSummary[];
-  onSave: (orgSlug?: string) => void;
+  onSave: (orgSlug: string | undefined, name: string) => void;
   onClose: () => void;
 }
 
 export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Props) {
   const [target, setTarget] = useState<'personal' | string>('personal');
+  const [name, setName] = useState(venueName || 'Venue');
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    onSave(target === 'personal' ? undefined : target);
+    const n = name.trim();
+    if (!n) return;
+    onSave(target === 'personal' ? undefined : target, n);
   }
 
   const inputCls = 'w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm';
@@ -29,10 +33,10 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
       >
         <h3 className="font-semibold">Save Venue to Library</h3>
 
-        <div>
-          <p className="mb-1 text-xs text-neutral-400">Venue</p>
-          <p className="font-mono text-xs text-neutral-200">{venueName || 'Unnamed Venue'}</p>
-        </div>
+        <label className="block">
+          <span className="mb-1 block text-xs text-neutral-400">Name for this venue</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} autoFocus />
+        </label>
 
         <div>
           <label className="mb-1 block text-xs text-neutral-400">Save as</label>

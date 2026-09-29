@@ -1,10 +1,7 @@
 // Port of desktop CLD's `src/edit/Connectivity.cpp`.
 //
-// O(N) connectivity recompute via spatial bucketing:
-//   - bucket size = 2 studs
-//   - candidate set = own bucket + 8 neighbours (3x3 block)
-//   - match if same non-empty `type` AND Euclidean distance ≤ 1 stud
-//   - tie-break by nearest squared distance
+// O(N) connectivity recompute via one-stud spatial buckets, with
+// BlueBrick's linking rules (see rebuildConnectivity).
 //
 // Operates on @cld/model `BbmMap`. Mutates `Brick.connexions[i].linkedTo`
 // in place, mirroring the desktop. Per-brick connection lists are grown
@@ -12,23 +9,22 @@
 // imported `.bbm` files routinely have stale or missing entries that the
 // desktop also patches up on every recompute.
 
+import { imageOffset } from './footprint.js';
 import type { BbmMap, Brick, Layer, LayerBrick } from '@cld/model';
-import type { Catalog, ConnectionPoint, PartMetadata } from './types.js';
+import type { Catalog, PartMetadata } from './types.js';
 
-const BUCKET_SIZE = 2.0;
-const TOL_SQ = 1.0;
+// BlueBrick's arePositionsEqual: within half a stud on each axis.
+const TOL_STUDS = 0.5;
 
 interface WorldConnection {
-  /** Index into `bricks` (the flattened list of every brick in the map). */
-  brickIndex: number;
-  /** Index into `bricks[brickIndex].connexions`. */
+  brick: Brick;
+  meta: PartMetadata;
+  /** Index into `brick.connexions`. */
   connIndex: number;
   /** World-space coordinates in studs. */
   x: number;
   y: number;
   type: string;
-  /** Already linked at start (preserved when no better match exists). */
-  preLinked: boolean;
 }
 
 export interface RebuildConnectivityResult {
@@ -36,93 +32,138 @@ export interface RebuildConnectivityResult {
   linkedCount: number;
 }
 
+/**
+ * Recompute every link from positions, per brick layer, the way desktop
+ * Connectivity.cpp (BlueBrick's updateFullBrickConnectivity) does:
+ *
+ *   - bricks are walked in order, and each free connection links to the
+ *     FIRST free connection of the same type (lowest index) at an equal
+ *     position: within half a stud on each axis, measured from the
+ *     brick's pivot (sprite centre);
+ *   - links are never made across layers or within one brick;
+ *   - a NEW link that lands on a brick's active connection hands the
+ *     active one over (`onLinked`); a link that broke frees its
+ *     connection, which becomes active if the active one is taken.
+ *
+ * Mutates `connexions[].linkedTo` and `activeConnectionPointIndex` in
+ * place. Bricks whose part is unknown are left untouched.
+ */
 export function rebuildConnectivity(
   map: BbmMap,
   catalog: Catalog,
 ): RebuildConnectivityResult {
-  // Phase 1: flatten every brick across every brick layer, sized to its
-  // catalog connection list. Bricks whose part is unknown to the catalog
-  // get their existing connection list left intact (we don't have ground
-  // truth on connection-point shapes).
-  const bricks = collectBricks(map);
-  const worldPoints: WorldConnection[] = [];
   const lookup = makeCatalogLookup(catalog);
-  for (let i = 0; i < bricks.length; i++) {
-    const b = bricks[i]!;
-    const meta = lookup(b.partNumber);
-    if (meta) padConnexions(b, meta);
-    for (let j = 0; j < b.connexions.length; j++) {
-      const cp = catalogConnection(meta, j);
-      if (!cp || cp.type === '') continue;
-      const [wx, wy] = transformLocal(cp.x, cp.y, b);
-      worldPoints.push({
-        brickIndex: i,
-        connIndex: j,
-        x: wx,
-        y: wy,
-        type: cp.type,
-        preLinked: b.connexions[j]!.linkedTo !== '',
-      });
-      // Reset linkage; we'll re-establish it in phase 2.
-      b.connexions[j]!.linkedTo = '';
-    }
-  }
-
-  // Phase 2: bucket by integer cells of size BUCKET_SIZE. Each point's
-  // candidate set is itself + the 8 neighbours.
-  const buckets = bucketize(worldPoints);
   let linkedCount = 0;
+  for (const layer of map.layers) {
+    if (!isBrickLayer(layer)) continue;
 
-  for (let pi = 0; pi < worldPoints.length; pi++) {
-    const a = worldPoints[pi]!;
-    if (bricks[a.brickIndex]!.connexions[a.connIndex]!.linkedTo !== '') continue;
-
-    let bestIdx = -1;
-    let bestDistSq = TOL_SQ + 1; // strictly greater than tolerance — any candidate beats this
-    const bx = Math.floor(a.x / BUCKET_SIZE);
-    const by = Math.floor(a.y / BUCKET_SIZE);
-
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const indices = buckets.get(bucketKey(bx + dx, by + dy));
-        if (!indices) continue;
-        for (const qi of indices) {
-          if (qi <= pi) continue; // pair each unordered match once
-          const b = worldPoints[qi]!;
-          if (b.type !== a.type) continue;
-          const ax = a.x - b.x;
-          const ay = a.y - b.y;
-          const distSq = ax * ax + ay * ay;
-          if (distSq > TOL_SQ) continue;
-          if (bricks[b.brickIndex]!.connexions[b.connIndex]!.linkedTo !== '') continue;
-          if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestIdx = qi;
-          }
-        }
+    // connection id -> previous partner connection id
+    const previous = new Map<string, string>();
+    const all: WorldConnection[] = [];
+    let fresh = 0;
+    for (const brick of layer.bricks) {
+      const meta = lookup(brick.partNumber);
+      if (!meta) continue;
+      padConnexions(brick, meta);
+      for (let i = 0; i < meta.connections.length; i++) {
+        const cp = brick.connexions[i]!;
+        // <LinkedTo> names the partner's connection, so every connection needs an id.
+        if (!cp.id) cp.id = `${brick.id}_c${fresh++}`;
+        if (cp.linkedTo) previous.set(cp.id, cp.linkedTo);
+        cp.linkedTo = '';
+        const c = meta.connections[i]!;
+        if (c.type === '') continue;
+        const [x, y] = transformLocal(c.x, c.y, brick, meta);
+        all.push({ brick, meta, connIndex: i, x, y, type: c.type });
       }
     }
 
-    if (bestIdx !== -1) {
-      const a2 = worldPoints[bestIdx]!;
-      const aBrick = bricks[a.brickIndex]!;
-      const bBrick = bricks[a2.brickIndex]!;
-      aBrick.connexions[a.connIndex]!.linkedTo = bBrick.connexions[a2.connIndex]!.id;
-      bBrick.connexions[a2.connIndex]!.linkedTo = aBrick.connexions[a.connIndex]!.id;
+    // One-stud buckets; the 3 x 3 block around a point covers the tolerance.
+    const buckets = new Map<string, number[]>();
+    for (let i = 0; i < all.length; i++) {
+      const key = bucketKey(cell(all[i]!.x), cell(all[i]!.y));
+      const arr = buckets.get(key);
+      if (arr) arr.push(i);
+      else buckets.set(key, [i]);
+    }
+
+    for (let i = 0; i < all.length; i++) {
+      const a = all[i]!;
+      if (a.brick.connexions[a.connIndex]!.linkedTo !== '') continue;
+      const ax = cell(a.x);
+      const ay = cell(a.y);
+      let bestJ = -1;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (const j of buckets.get(bucketKey(ax + dx, ay + dy)) ?? []) {
+            if (j === i || (bestJ >= 0 && j >= bestJ)) continue;
+            const b = all[j]!;
+            if (a.brick === b.brick || a.type !== b.type) continue;
+            if (b.brick.connexions[b.connIndex]!.linkedTo !== '') continue;
+            if (Math.abs(a.x - b.x) >= TOL_STUDS || Math.abs(a.y - b.y) >= TOL_STUDS) continue;
+            bestJ = j;
+          }
+        }
+      }
+      if (bestJ < 0) continue;
+      const b = all[bestJ]!;
+      const ca = a.brick.connexions[a.connIndex]!;
+      const cb = b.brick.connexions[b.connIndex]!;
+      // BlueBrick sets the two links one after the other and hands the
+      // active connection over BEFORE storing each link (so the connection
+      // being linked still counts as free). Only new links hand over.
+      const isNew = previous.get(ca.id) !== cb.id;
+      if (isNew) onLinked(a.brick, a.connIndex, a.meta);
+      ca.linkedTo = cb.id;
+      if (isNew) onLinked(b.brick, b.connIndex, b.meta);
+      cb.linkedTo = ca.id;
       linkedCount += 2;
-      void a.preLinked; // reserved for a future "sticky links" mode
+    }
+
+    // A link that broke frees its connection; if the brick's active
+    // connection is taken, the freed one becomes active.
+    for (const wc of all) {
+      const cp = wc.brick.connexions[wc.connIndex]!;
+      if (!previous.has(cp.id) || cp.linkedTo !== '') continue;
+      const active = wc.brick.activeConnectionPointIndex;
+      if (active >= 0 && active < wc.brick.connexions.length && wc.brick.connexions[active]!.linkedTo !== '') {
+        wc.brick.activeConnectionPointIndex = wc.connIndex;
+      }
     }
   }
-
   return { linkedCount };
 }
 
-function collectBricks(map: BbmMap): Brick[] {
-  const out: Brick[] = [];
-  for (const layer of map.layers) {
-    if (isBrickLayer(layer)) out.push(...layer.bricks);
+/**
+ * BlueBrick's ConnectionPoint.ConnectionLink setter, when a link is made:
+ * if it lands on the brick's active connection, the active one moves to
+ * that connection's <nextConnexionPreference> (default 0), or failing that
+ * to the next free connection (wrapping; unchanged if none is free).
+ */
+function onLinked(brick: Brick, connIndex: number, meta: PartMetadata): void {
+  if (brick.activeConnectionPointIndex !== connIndex) return;
+  const n = brick.connexions.length;
+  const preferred = meta.connections[connIndex]?.nextConnexionPreference ?? 0;
+  const active = Math.min(Math.max(preferred, 0), n - 1);
+  brick.activeConnectionPointIndex = active;
+  // For a brick in a group BlueBrick moves the group's active connection
+  // instead of looking for the brick's next free one.
+  if (brick.myGroup) return;
+  if (brick.connexions[active]!.linkedTo === '') return;
+  for (let step = 1; step < n; step++) {
+    const candidate = (active + step) % n;
+    if (brick.connexions[candidate]!.linkedTo === '') {
+      brick.activeConnectionPointIndex = candidate;
+      return;
+    }
   }
-  return out;
+}
+
+/** Bucket cell, clamped so a corrupt position can't overflow. */
+function cell(v: number): number {
+  if (!(v > -1e9)) return -1e9;
+  if (!(v < 1e9)) return 1e9;
+  return Math.floor(v);
 }
 
 function isBrickLayer(layer: Layer): layer is LayerBrick {
@@ -147,20 +188,34 @@ function catalogLookup(catalog: Catalog, partNumber: string): PartMetadata | und
  * is an O(catalog) scan; without the memo every brick whose part isn't
  * keyed directly paid that scan again (hits AND misses are cached).
  */
-function makeCatalogLookup(catalog: Catalog): (partNumber: string) => PartMetadata | undefined {
+export function makeCatalogLookup(catalog: Catalog): (partNumber: string) => PartMetadata | undefined {
   const memo = new Map<string, PartMetadata | undefined>();
+  let renamed: Map<string, PartMetadata> | undefined;
   return (partNumber) => {
     if (memo.has(partNumber)) return memo.get(partNumber);
-    const meta = catalogLookup(catalog, partNumber);
+    let meta = catalogLookup(catalog, partNumber);
+    if (!meta) {
+      // An old part number resolves to the part that replaced it.
+      renamed ??= oldNameIndex(catalog);
+      meta = renamed.get(partNumber.toLowerCase());
+    }
     memo.set(partNumber, meta);
     return meta;
   };
 }
 
-function catalogConnection(meta: PartMetadata | undefined, index: number): ConnectionPoint | undefined {
-  if (!meta) return undefined;
-  return meta.connections[index];
+/** Lower-cased old part number → the part that lists it in `<OldNameList>`. */
+function oldNameIndex(catalog: Catalog): Map<string, PartMetadata> {
+  const out = new Map<string, PartMetadata>();
+  for (const meta of catalog.values()) {
+    for (const old of meta.oldNames ?? []) {
+      const k = old.toLowerCase();
+      if (!out.has(k)) out.set(k, meta);
+    }
+  }
+  return out;
 }
+
 
 /**
  * Grow or shrink `brick.connexions` to match the catalog's count for that
@@ -181,13 +236,14 @@ function padConnexions(brick: Brick, meta: PartMetadata): void {
 }
 
 /**
- * Convert a local connection-point coordinate to world space.
- *   world = displayArea.center + rotate(localCp, brick.orientation)
- * Orientation is in degrees; positive = clockwise (BlueBrick convention).
+ * World position of a local connection point: rotated around the brick's
+ * pivot, its sprite centre — displayArea centre + imageOffset, non-zero
+ * for parts with a <hull> (BrickPlacement connectionWorld).
  */
-function transformLocal(localX: number, localY: number, brick: Brick): [number, number] {
-  const cx = brick.displayArea.x + brick.displayArea.width / 2;
-  const cy = brick.displayArea.y + brick.displayArea.height / 2;
+function transformLocal(localX: number, localY: number, brick: Brick, meta: PartMetadata | undefined): [number, number] {
+  const off = meta ? imageOffset(meta, brick.orientation) : { x: 0, y: 0 };
+  const cx = brick.displayArea.x + brick.displayArea.width / 2 + off.x;
+  const cy = brick.displayArea.y + brick.displayArea.height / 2 + off.y;
   const theta = (brick.orientation * Math.PI) / 180;
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
@@ -198,17 +254,6 @@ function transformLocal(localX: number, localY: number, brick: Brick): [number, 
   return [cx + rx, cy + ry];
 }
 
-function bucketize(points: WorldConnection[]): Map<string, number[]> {
-  const buckets = new Map<string, number[]>();
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i]!;
-    const key = bucketKey(Math.floor(p.x / BUCKET_SIZE), Math.floor(p.y / BUCKET_SIZE));
-    const arr = buckets.get(key);
-    if (arr) arr.push(i);
-    else buckets.set(key, [i]);
-  }
-  return buckets;
-}
 
 function bucketKey(bx: number, by: number): string {
   return `${bx},${by}`;

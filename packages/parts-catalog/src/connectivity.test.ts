@@ -116,21 +116,7 @@ describe('rebuildConnectivity', () => {
     expect(b.connexions[1]?.linkedTo).toBe('');
   });
 
-  it('does not link points whose distance exceeds 1 stud', () => {
-    const meta = makeMeta('TRACK', [
-      { x: -5, y: 0, type: 'rail' },
-      { x: 5, y: 0, type: 'rail' },
-    ]);
-    const catalog: Catalog = new Map([[meta.key, meta]]);
 
-    // 12 studs apart → inner points 2 studs apart → outside tolerance.
-    const a = makeBrick('a', 'TRACK', 0, 0);
-    const b = makeBrick('b', 'TRACK', 12, 0);
-    const map = makeMap([makeBrickLayer([a, b])]);
-
-    const result = rebuildConnectivity(map, catalog);
-    expect(result.linkedCount).toBe(0);
-  });
 
   it('does not link points with mismatched types', () => {
     const railMeta = makeMeta('RAIL', [{ x: 0, y: 0, type: 'rail' }]);
@@ -184,25 +170,118 @@ describe('rebuildConnectivity', () => {
     expect(result.linkedCount).toBe(2);
   });
 
-  it('picks the nearest neighbour when 3 points converge', () => {
-    // Three bricks at a junction. Two are very close (0.1 stud apart) and
-    // one is at the tolerance edge (just under 1 stud away). The nearest
-    // pair must claim each other.
+  it('links to the first free point in brick order, not the nearest (BlueBrick)', () => {
+    // a at 0; c (0.4 away) comes before b (0.1 away) in the layer, so a
+    // links to c, as BlueBrick's in-order walk does.
     const meta = makeMeta('TRACK', [{ x: 0, y: 0, type: 'rail' }]);
     const catalog: Catalog = new Map([[meta.key, meta]]);
-
     const a = makeBrick('a', 'TRACK', 0, 0);
+    const c = makeBrick('c', 'TRACK', 0.4, 0);
     const b = makeBrick('b', 'TRACK', 0.1, 0);
-    const c = makeBrick('c', 'TRACK', 0.9, 0);
-    const map = makeMap([makeBrickLayer([a, b, c])]);
+    const map = makeMap([makeBrickLayer([a, c, b])]);
 
     rebuildConnectivity(map, catalog);
 
-    // a and b are ~0.1 apart; both should be linked to each other. c stays
-    // unlinked because its candidates already paired off.
-    expect(a.connexions[0]?.linkedTo).toBe(b.connexions[0]?.id);
-    expect(b.connexions[0]?.linkedTo).toBe(a.connexions[0]?.id);
-    expect(c.connexions[0]?.linkedTo).toBe('');
+    expect(a.connexions[0]?.linkedTo).toBe(c.connexions[0]?.id);
+    expect(c.connexions[0]?.linkedTo).toBe(a.connexions[0]?.id);
+    expect(b.connexions[0]?.linkedTo).toBe('');
+  });
+
+  it('equal positions are within half a stud on each axis', () => {
+    const meta = makeMeta('TRACK', [{ x: 0, y: 0, type: 'rail' }]);
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    const link = (dx: number, dy: number) => {
+      const a = makeBrick('a', 'TRACK', 0, 0);
+      const b = makeBrick('b', 'TRACK', dx, dy);
+      return rebuildConnectivity(makeMap([makeBrickLayer([a, b])]), catalog).linkedCount > 0;
+    };
+    // 0.45 on both axes is 0.64 apart in a straight line: still equal.
+    expect(link(0.45, 0.45)).toBe(true);
+    expect(link(0.5, 0)).toBe(false);
+    expect(link(0, -0.5)).toBe(false);
+    expect(link(0.9, 0)).toBe(false);
+  });
+
+  describe('active connection hand-over (BlueBrick ConnectionLink setter)', () => {
+    // A 3-connection part; connection 1 prefers 2 next, the others default to 0.
+    const meta = makeMeta('SW', [
+      { x: -5, y: 0, type: 'rail' },
+      { x: 5, y: 0, type: 'rail' },
+      { x: 5, y: 3, type: 'rail' },
+    ]);
+    meta.connections[1]!.nextConnexionPreference = 2;
+    const straight = makeMeta('TRACK', [
+      { x: -5, y: 0, type: 'rail' },
+      { x: 5, y: 0, type: 'rail' },
+    ]);
+    const catalog: Catalog = new Map([[meta.key, meta], [straight.key, straight]]);
+
+    it('a new link on the active connection moves it to <nextConnexionPreference>', () => {
+      const sw = { ...makeBrick('sw', 'SW', 0, 0), activeConnectionPointIndex: 1 };
+      const t = makeBrick('t', 'TRACK', 10, 0);
+      rebuildConnectivity(makeMap([makeBrickLayer([sw, t])]), catalog);
+      expect(sw.connexions[1]!.linkedTo).toBe(t.connexions[0]!.id);
+      expect(sw.activeConnectionPointIndex).toBe(2);
+    });
+
+    it('when the preferred connection is taken, the next free one wraps round', () => {
+      // `t2`, first in the layer, links to connection 2 before connection
+      // 1 links to `t1`; 1 prefers 2, which is taken, so 0 becomes active.
+      const t2 = makeBrick('t2', 'TRACK', 10, 3);
+      const sw = { ...makeBrick('sw', 'SW', 0, 0), activeConnectionPointIndex: 1 };
+      const t1 = makeBrick('t1', 'TRACK', 10, 0);
+      rebuildConnectivity(makeMap([makeBrickLayer([t2, sw, t1])]), catalog);
+      expect(sw.connexions[2]!.linkedTo).toBe(t2.connexions[0]!.id);
+      expect(sw.connexions[1]!.linkedTo).toBe(t1.connexions[0]!.id);
+      expect(sw.activeConnectionPointIndex).toBe(0);
+    });
+
+    it('the connection being linked still counts as free, so it can stay active', () => {
+      // Connection 0 prefers 0 (the default): BlueBrick hands over before
+      // storing the link, finds 0 free and keeps it.
+      const sw = { ...makeBrick('sw', 'SW', 0, 0), activeConnectionPointIndex: 0 };
+      const t = makeBrick('t', 'TRACK', -10, 0);
+      rebuildConnectivity(makeMap([makeBrickLayer([sw, t])]), catalog);
+      expect(sw.connexions[0]!.linkedTo).toBe(t.connexions[1]!.id);
+      expect(sw.activeConnectionPointIndex).toBe(0);
+    });
+
+    it('a brick in a group keeps the preferred connection even when it is taken', () => {
+      // Same as the wrap-round case, but grouped: BlueBrick moves the
+      // group's active connection instead, leaving the brick on 2.
+      const t2 = makeBrick('t2', 'TRACK', 10, 3);
+      const sw = { ...makeBrick('sw', 'SW', 0, 0), activeConnectionPointIndex: 1, myGroup: 'g' };
+      const t1 = makeBrick('t1', 'TRACK', 10, 0);
+      rebuildConnectivity(makeMap([makeBrickLayer([t2, sw, t1])]), catalog);
+      expect(sw.connexions[2]!.linkedTo).toBe(t2.connexions[0]!.id);
+      expect(sw.activeConnectionPointIndex).toBe(2);
+    });
+
+    it('a link that already existed does not hand over again', () => {
+      const sw = { ...makeBrick('sw', 'SW', 0, 0), activeConnectionPointIndex: 1 };
+      const t = makeBrick('t', 'TRACK', 10, 0);
+      const map = makeMap([makeBrickLayer([sw, t])]);
+      rebuildConnectivity(map, catalog);
+      sw.activeConnectionPointIndex = 1;
+      rebuildConnectivity(map, catalog);
+      expect(sw.activeConnectionPointIndex).toBe(1);
+    });
+
+    it('a broken link frees its connection, which becomes active if the active one is taken', () => {
+      const sw = { ...makeBrick('sw', 'SW', 0, 0), activeConnectionPointIndex: 1 };
+      const left = makeBrick('l', 'TRACK', -10, 0);
+      const right = makeBrick('r', 'TRACK', 10, 0);
+      const layer = makeBrickLayer([sw, left, right]);
+      const map = makeMap([layer]);
+      rebuildConnectivity(map, catalog);
+      // Make connection 1 (linked to `right`) active again, then take `left` away.
+      sw.activeConnectionPointIndex = 1;
+      layer.bricks.splice(1, 1);
+      left.displayArea = { ...left.displayArea, x: -100 };
+      rebuildConnectivity(map, catalog);
+      expect(sw.connexions[0]!.linkedTo).toBe('');
+      expect(sw.activeConnectionPointIndex).toBe(0);
+    });
   });
 
   it('grows brick.connexions to match the catalog count', () => {
@@ -236,5 +315,61 @@ describe('rebuildConnectivity', () => {
     rebuildConnectivity(map, catalog);
 
     expect(a.connexions).toHaveLength(1);
+  });
+
+  it('never links bricks on different layers (vanilla links within a layer)', () => {
+    const meta = makeMeta('TRACK', [
+      { x: -5, y: 0, type: 'rail' },
+      { x: 5, y: 0, type: 'rail' },
+    ]);
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    const a = makeBrick('a', 'TRACK', 0, 0);
+    const b = makeBrick('b', 'TRACK', 10, 0);
+    const other = { ...makeBrickLayer([b]), id: 'L2' };
+    const map = makeMap([makeBrickLayer([a]), other]);
+
+    expect(rebuildConnectivity(map, catalog).linkedCount).toBe(0);
+    expect(a.connexions.every((c) => c.linkedTo === '')).toBe(true);
+    expect(b.connexions.every((c) => c.linkedTo === '')).toBe(true);
+  });
+
+  it('resolves a brick saved under an old part number (<OldNameList>)', () => {
+    const meta = {
+      ...makeMeta('TRACK', [
+        { x: -5, y: 0, type: 'rail' },
+        { x: 5, y: 0, type: 'rail' },
+      ]),
+      oldNames: ['OLDTRACK'],
+    };
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    const a = makeBrick('a', 'TRACK', 0, 0);
+    const b = makeBrick('b', 'OldTrack', 10, 0);
+    const map = makeMap([makeBrickLayer([a, b])]);
+
+    expect(rebuildConnectivity(map, catalog).linkedCount).toBe(2);
+    expect(b.connexions).toHaveLength(2);
+  });
+
+  it('measures connection points from the sprite centre of a part with a <hull>', () => {
+    // 32 x 16 px sprite whose hull is its left half: the 2 x 2 displayArea
+    // centre sits 1 stud left of the sprite centre (the pivot).
+    const meta: PartMetadata = {
+      ...makeMeta('HULL', [
+        { x: -2, y: 0, type: 'rail' },
+        { x: 2, y: 0, type: 'rail' },
+      ]),
+      spriteSize: { w: 32, h: 16 },
+      hullPts: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+    };
+    const catalog: Catalog = new Map([[meta.key, meta]]);
+    // a: pivot 0, box centre -1. b turned 180°: pivot 4, hull now to the
+    // right, box centre 5. Their right-hand connections meet at x = 2 from
+    // the pivots; from the box centres they would sit at 1 and 3.
+    const a = { ...makeBrick('a', 'HULL', 0, 0), displayArea: { x: -2, y: -1, width: 2, height: 2 } };
+    const b = { ...makeBrick('b', 'HULL', 0, 0, 180), displayArea: { x: 4, y: -1, width: 2, height: 2 } };
+    const map = makeMap([makeBrickLayer([a, b])]);
+
+    expect(rebuildConnectivity(map, catalog).linkedCount).toBe(2);
+    expect(a.connexions[1]!.linkedTo).toBe(b.connexions[1]!.id);
   });
 });

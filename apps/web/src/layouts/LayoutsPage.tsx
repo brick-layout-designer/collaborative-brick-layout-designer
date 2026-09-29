@@ -1,7 +1,9 @@
-import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
+import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
+import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -80,12 +82,12 @@ export function LayoutsPage() {
       {showCreate && (
         <CreateLayoutDialog
           onClose={() => setShowCreate(false)}
-          onCreated={(id) => {
+          onCreated={(id, openWarnings) => {
             qc.invalidateQueries({ queryKey: ['layouts'] });
             setShowCreate(false);
             // Open the new layout straight away, like the desktop editor's
             // File > New and the global .bbm drop handler in main.tsx do.
-            navigate(`/editor/${id}`);
+            navigate(`/editor/${id}`, openWarnings?.length ? { state: { openWarnings } } : undefined);
           }}
         />
       )}
@@ -142,6 +144,13 @@ function LayoutRow({
   onDelete: () => void;
   onShare: () => void;
 }) {
+  // New layouts can start as a copy of this one (desktop's File > New template).
+  const [isTemplate, setIsTemplate] = useState(() => getNewLayoutTemplate()?.id === layout.id);
+  useEffect(() => {
+    const sync = () => setIsTemplate(getNewLayoutTemplate()?.id === layout.id);
+    window.addEventListener('cld:template-changed', sync);
+    return () => window.removeEventListener('cld:template-changed', sync);
+  }, [layout.id]);
   return (
     <li className="flex items-center justify-between px-4 py-3">
       <div>
@@ -178,6 +187,17 @@ function LayoutRow({
         >
           Export .zip
         </a>
+        <label className="flex items-center gap-1 text-xs text-neutral-400" title="New layouts start as a copy of this one">
+          <input
+            type="checkbox"
+            checked={isTemplate}
+            onChange={(e) => {
+              setNewLayoutTemplate(e.target.checked ? { id: layout.id, title: layout.title } : null);
+              window.dispatchEvent(new Event('cld:template-changed'));
+            }}
+          />
+          Template for new layouts
+        </label>
         <button
           onClick={onDelete}
           className="rounded-sm border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"
@@ -194,15 +214,21 @@ function CreateLayoutDialog({
   onCreated,
 }: {
   onClose: () => void;
-  onCreated: (id: string) => void;
+  onCreated: (id: string, openWarnings?: string[]) => void;
 }) {
   const [title, setTitle] = useState('');
   const [bbm, setBbm] = useState<string | null>(null);
+  // What converting a picked LDraw / TrackDesigner / 4DBrix file skipped.
+  const [openWarnings, setOpenWarnings] = useState<string[]>([]);
+  const qc = useQueryClient();
   const [sidecar, setSidecar] = useState<string | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
   const [ownerSlug, setOwnerSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Start from the template layout, when one is set (desktop onNew).
+  const [template] = useState(getNewLayoutTemplate);
+  const [fromTemplate, setFromTemplate] = useState(template !== null);
 
   // Fetch the user's orgs so the dialog can offer them as owner options.
   // Cheap; cached by react-query so this almost never hits the network.
@@ -210,17 +236,32 @@ function CreateLayoutDialog({
 
   const create = useMutation({
     mutationFn: api.layouts.create,
-    onSuccess: (res) => onCreated(res.id),
+    onSuccess: (res) => onCreated(res.id, openWarnings),
     onError: (e: Error) => setError(e.message),
   });
 
   async function pickBbm(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
+    setError(null);
+    let text: string;
+    let warnings: string[] = [];
+    if (mapFormatOf(file.name)) {
+      // Other map formats are converted with the parts' remaps.
+      try {
+        const catalog = await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
+        ({ bbm: text, warnings } = await mapFileToBbm(file.name, new Uint8Array(await file.arrayBuffer()), catalog.parts));
+      } catch (err) {
+        setError(`Could not open ${file.name}: ${(err as Error).message}`);
+        return;
+      }
+    } else {
+      text = await file.text();
+    }
     setBbm(text);
+    setOpenWarnings(warnings);
     setBbmFilename(file.name);
-    if (!title) setTitle(file.name.replace(/\.bbm$/i, ''));
+    if (!title) setTitle(file.name.replace(/\.(bbm|ldr|mpd|tdl|ncp)$/i, ''));
   }
 
   async function pickSidecar(e: ChangeEvent<HTMLInputElement>) {
@@ -229,7 +270,7 @@ function CreateLayoutDialog({
     setSidecar(await file.text());
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const body: { title?: string; bbm?: string; sidecar?: string; orgSlug?: string } = {};
@@ -237,6 +278,17 @@ function CreateLayoutDialog({
     if (t) body.title = t;
     if (bbm) body.bbm = bbm;
     if (sidecar) body.sidecar = sidecar;
+    // A picked .bbm wins over the template.
+    if (!bbm && fromTemplate && template) {
+      try {
+        const c = await templateContent(template.id);
+        body.bbm = c.bbm;
+        if (c.sidecar !== undefined) body.sidecar = c.sidecar;
+      } catch (err) {
+        setError((err as Error).message);
+        return;
+      }
+    }
     if (ownerSlug) body.orgSlug = ownerSlug;
     create.mutate(body);
   }
@@ -244,10 +296,17 @@ function CreateLayoutDialog({
   return (
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
       <form
-        onSubmit={submit}
+        onSubmit={(e) => void submit(e)}
         className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
       >
         <h3 className="text-lg font-semibold">New layout</h3>
+
+        {template && !bbm && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={fromTemplate} onChange={(e) => setFromTemplate(e.target.checked)} />
+            Start from template “{template.title}”
+          </label>
+        )}
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">Title</span>
@@ -279,10 +338,13 @@ function CreateLayoutDialog({
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">
-            Optional: import from .bbm
+            Optional: import from .bbm, LDraw, TrackDesigner or 4DBrix
           </span>
-          <input type="file" accept=".bbm" onChange={pickBbm} className="text-sm" />
+          <input type="file" accept={LAYOUT_ACCEPT} onChange={pickBbm} className="text-sm" />
           {bbmFilename && <p className="mt-1 text-xs text-neutral-500">{bbmFilename}</p>}
+          {openWarnings.map((w) => (
+            <p key={w} className="mt-1 text-xs text-amber-400">{w}</p>
+          ))}
         </label>
 
         <label className="block text-sm">

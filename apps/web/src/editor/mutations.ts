@@ -13,6 +13,8 @@ import type { ColorSpec, FontSpec, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SidecarModule } from '@cld/bbm';
 import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import { imageOffset } from '@cld/parts-catalog/browser';
+import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
 
 export interface BrickInsertSpec {
   partNumber: string;
@@ -105,21 +107,27 @@ function pruneModuleMembers(doc: Y.Doc, deleted: Set<string>): void {
   if (changed) writeSidecarCache(doc, { ...cache, modules: next });
 }
 
+/**
+ * Move a brick so its pivot (sprite centre, `pivotOf`) is at
+ * (`pivotX`, `pivotY`). Without `part` the pivot is the displayArea centre.
+ */
 export function moveBrick(
   doc: Y.Doc,
   layerId: string,
   brickId: string,
-  newCentreX: number,
-  newCentreY: number,
+  pivotX: number,
+  pivotY: number,
+  part?: PartGeom,
 ): void {
   doc.transact(() => {
     const yBrick = findBrick(doc, layerId, brickId);
     if (!yBrick) return;
     const area = yBrick.get('displayArea') as RectangleF;
+    const off = part ? imageOffset(part, (yBrick.get('orientation') as number) ?? 0) : { x: 0, y: 0 };
     yBrick.set('displayArea', {
       ...area,
-      x: newCentreX - area.width / 2,
-      y: newCentreY - area.height / 2,
+      x: pivotX - off.x - area.width / 2,
+      y: pivotY - off.y - area.height / 2,
     });
   }, LOCAL_ORIGIN);
 }
@@ -132,20 +140,19 @@ export function moveBrickAndOrient(
   doc: Y.Doc,
   layerId: string,
   brickId: string,
-  newCentreX: number,
-  newCentreY: number,
+  pivotX: number,
+  pivotY: number,
   newOrientation: number,
+  part?: PartGeom,
 ): void {
   doc.transact(() => {
     const yBrick = findBrick(doc, layerId, brickId);
     if (!yBrick) return;
     const area = yBrick.get('displayArea') as RectangleF;
-    yBrick.set('displayArea', {
-      ...area,
-      x: newCentreX - area.width / 2,
-      y: newCentreY - area.height / 2,
-    });
-    yBrick.set('orientation', mod360(newOrientation));
+    const orientation = mod360(newOrientation);
+    // The box follows the turned footprint (BrickPlacement placeByImageCentre).
+    yBrick.set('displayArea', areaForPivot(part, orientation, { x: pivotX, y: pivotY }, area));
+    yBrick.set('orientation', orientation);
   }, LOCAL_ORIGIN);
 }
 
@@ -342,47 +349,21 @@ export function deleteBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string
 }
 
 /**
- * New centres + orientation delta for rotating a set of bricks about
- * their collective centroid — port of `MapView::rotateSelected`
- * (MapView.cpp:1043-1110). The pivot is the mean of the displayArea
- * centres; a single brick therefore rotates in place.
- */
-export function rotateAboutCentroid(
-  centres: ReadonlyArray<{ x: number; y: number }>,
-  degrees: number,
-): Array<{ x: number; y: number }> {
-  if (centres.length === 0) return [];
-  let px = 0;
-  let py = 0;
-  for (const c of centres) {
-    px += c.x;
-    py += c.y;
-  }
-  px /= centres.length;
-  py /= centres.length;
-  const rad = (degrees * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  return centres.map((c) => {
-    const rx = c.x - px;
-    const ry = c.y - py;
-    return { x: px + rx * cos - ry * sin, y: py + rx * sin + ry * cos };
-  });
-}
-
-/**
- * Rotate a (possibly multi-layer) selection by `degrees` about its
- * centroid: every brick's orientation changes by `degrees` and its centre
- * orbits the pivot. displayArea keeps its size (desktop's
- * RotateBricksCommand only touches orientation). One transaction.
+ * Rotate a (possibly multi-layer) selection by `degrees` around its pivot
+ * — the mean of the bricks' sprite centres, so one brick turns in place —
+ * with each displayArea following the turned footprint
+ * (MapView::rotateSelected). `partOf` resolves a brick's catalog part;
+ * without it the pivot is the displayArea centre and sizes are kept.
+ * One transaction.
  */
 export function rotateBricksAboutCentroid(
   doc: Y.Doc,
   byLayer: Map<string, string[]>,
   degrees: number,
+  partOf: (partNumber: string) => PartGeom | undefined = () => undefined,
 ): void {
   if (byLayer.size === 0 || degrees === 0) return;
-  const found: Array<{ yBrick: Y.Map<unknown>; area: RectangleF }> = [];
+  const found: Array<{ yBrick: Y.Map<unknown>; area: RectangleF; orientation: number; part: PartGeom | undefined }> = [];
   for (const [layerId, ids] of byLayer) {
     const layerData = doc.getMap('layerData').get(layerId);
     if (!(layerData instanceof Y.Map)) continue;
@@ -392,25 +373,31 @@ export function rotateBricksAboutCentroid(
     for (let i = 0; i < bricks.length; i++) {
       const b = bricks.get(i);
       if (b instanceof Y.Map && idSet.has(b.get('id') as string)) {
-        found.push({ yBrick: b, area: b.get('displayArea') as RectangleF });
+        found.push({
+          yBrick: b,
+          area: b.get('displayArea') as RectangleF,
+          orientation: (b.get('orientation') as number) ?? 0,
+          part: partOf(b.get('partNumber') as string),
+        });
       }
     }
   }
   if (found.length === 0) return;
-  const next = rotateAboutCentroid(
-    found.map(({ area }) => ({ x: area.x + area.width / 2, y: area.y + area.height / 2 })),
+  const next = rotateAroundPivots(
+    found.map(({ area, orientation, part }) => ({ brick: { displayArea: area, orientation }, part })),
     degrees,
   );
   doc.transact(() => {
     found.forEach(({ yBrick, area }, i) => {
-      const c = next[i]!;
-      const x = c.x - area.width / 2;
-      const y = c.y - area.height / 2;
-      if (Math.abs(x - area.x) > 1e-9 || Math.abs(y - area.y) > 1e-9) {
-        yBrick.set('displayArea', { ...area, x, y });
+      const n = next[i]!;
+      const a = n.displayArea;
+      if (
+        Math.abs(a.x - area.x) > 1e-9 || Math.abs(a.y - area.y) > 1e-9 ||
+        Math.abs(a.width - area.width) > 1e-9 || Math.abs(a.height - area.height) > 1e-9
+      ) {
+        yBrick.set('displayArea', a);
       }
-      const current = (yBrick.get('orientation') as number) ?? 0;
-      yBrick.set('orientation', mod360(current + degrees));
+      yBrick.set('orientation', mod360(n.orientation));
     });
   }, LOCAL_ORIGIN);
 }
@@ -749,15 +736,28 @@ export function deleteLayer(doc: Y.Doc, layerId: string): void {
 }
 
 /**
- * Ensure there's a ruler layer in the doc and return its id. Mirrors
- * the desktop's auto-create-on-first-use behaviour for ruler tools
- * (MapView.cpp:454-468).
+ * Move a grid layer's cell-index origin by whole cells, as one undo step
+ * (desktop MoveGridOriginCommand, LayerCommands.cpp:195-210).
+ */
+export function moveGridOrigin(doc: Y.Doc, layerId: string, dx: number, dy: number): void {
+  if (dx === 0 && dy === 0) return;
+  doc.transact(() => {
+    const layer = doc.getMap('layerData').get(layerId);
+    if (!(layer instanceof Y.Map) || layer.get('type') !== 'grid') return;
+    const cur = layer.get('cellIndexCorner') as { x?: number; y?: number } | undefined;
+    layer.set('cellIndexCorner', { x: (cur?.x ?? 0) + dx, y: (cur?.y ?? 0) + dy });
+  }, LOCAL_ORIGIN);
+}
+
+/**
+ * The first ruler layer, or a new one named "Rulers" at the top — where
+ * desktop's ruler tools put a new ruler (MapView.cpp:818-829).
  */
 export function ensureRulerLayer(doc: Y.Doc): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
   const ids = layerOrder.toArray();
-  for (let i = ids.length - 1; i >= 0; i--) {
+  for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
     const l = layerData.get(id);
     if (l instanceof Y.Map && l.get('type') === 'ruler') return id;
@@ -767,7 +767,7 @@ export function ensureRulerLayer(doc: Y.Doc): string {
     const yLayer = new Y.Map<unknown>();
     yLayer.set('id', id);
     yLayer.set('type', 'ruler');
-    yLayer.set('name', 'Ruler');
+    yLayer.set('name', 'Rulers');
     yLayer.set('visible', true);
     yLayer.set('transparency', 100);
     yLayer.set('hullProperties', {
@@ -783,17 +783,43 @@ export function ensureRulerLayer(doc: Y.Doc): string {
   return id;
 }
 
+/**
+ * The label shown while drawing a ruler (MapView.cpp:941-946): length in
+ * studs to one decimal and in mm (m with two decimals from 1 m), with
+ * "r=" for a circle's radius.
+ */
+export function rulerPreviewLabel(lengthStuds: number, circular: boolean): string {
+  const mm = lengthStuds * 8;
+  const unit = mm >= 1000 ? `${(mm / 1000).toFixed(2)} m` : `${mm.toFixed(0)} mm`;
+  return `${circular ? 'r=' : ''}${lengthStuds.toFixed(1)} studs (${unit})`;
+}
+
+/**
+ * The status-bar readout while drawing a ruler (MapView.cpp:661-680),
+ * kept alongside the floating label.
+ */
+export function rulerStatusMessage(lengthStuds: number, circular: boolean): string {
+  const mm = lengthStuds * 8;
+  const unit = mm >= 1000 ? `${(mm / 1000).toFixed(2)} m` : `${mm.toFixed(0)} mm`;
+  return `Ruler ${circular ? 'radius' : 'length'}: ${lengthStuds.toFixed(1)} studs  (${unit})`;
+}
+
+/**
+ * A new ruler, as desktop's RulerItemBase defaults (core/RulerItem.h:22-31,
+ * FontSpec.h:11-12): black (the known colour) line, guideline and
+ * measure text, 1-thick solid lines, Microsoft Sans Serif 8.25.
+ */
 const RULER_DEFAULTS = {
-  color: { kind: 'argb' as const, argb: 'FF000000' },
-  lineThickness: 2,
+  color: { kind: 'known' as const, name: 'Black' },
+  lineThickness: 1,
   displayDistance: true,
   displayUnit: true,
-  guidelineColor: { kind: 'argb' as const, argb: 'FF888888' },
+  guidelineColor: { kind: 'known' as const, name: 'Black' },
   guidelineThickness: 1,
-  guidelineDashPattern: [4, 4] as number[],
+  guidelineDashPattern: [] as number[],
   unit: 0, // STUD
-  measureFont: { family: 'Arial', size: 14, style: 'Regular' },
-  measureFontColor: { kind: 'argb' as const, argb: 'FF000000' },
+  measureFont: { family: 'Microsoft Sans Serif', size: 8.25, style: 'Regular' },
+  measureFontColor: { kind: 'known' as const, name: 'Black' },
 };
 
 /**
@@ -1126,12 +1152,15 @@ export interface AddTextSpec {
   textAlignment?: string;
 }
 
-/** Top-most existing text layer, or create a fresh one. */
+/**
+ * The first text layer, or a new one named "Labels" at the top — where
+ * desktop's Insert Text puts a cell (MapView::addTextAtScenePos).
+ */
 export function ensureTextLayer(doc: Y.Doc): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
   const ids = layerOrder.toArray();
-  for (let i = ids.length - 1; i >= 0; i--) {
+  for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
     const l = layerData.get(id);
     if (l instanceof Y.Map && l.get('type') === 'text') return id;
@@ -1141,7 +1170,7 @@ export function ensureTextLayer(doc: Y.Doc): string {
     const yLayer = new Y.Map<unknown>();
     yLayer.set('id', id);
     yLayer.set('type', 'text');
-    yLayer.set('name', 'Text');
+    yLayer.set('name', 'Labels');
     yLayer.set('visible', true);
     yLayer.set('transparency', 100);
     yLayer.set('hullProperties', {
@@ -1155,6 +1184,15 @@ export function ensureTextLayer(doc: Y.Doc): string {
     layerOrder.push([id]);
   }, LOCAL_ORIGIN);
   return id;
+}
+
+/**
+ * Box for new text, in studs: 10 studs high, 0.6 of that per character
+ * wide and at least twice the height (MapView::addTextAtScenePos).
+ */
+export function newTextBox(text: string): { width: number; height: number } {
+  const height = 10;
+  return { width: Math.max(height * 0.6 * text.length, height * 2), height };
 }
 
 /**
@@ -1756,6 +1794,25 @@ export function createSidecarModule(doc: Y.Doc, name: string, memberIds: string[
     transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
   });
   return id;
+}
+
+/**
+ * Place a set's bricks and wrap them in a sidecar module named after the
+ * set, as one undo step — desktop places a set this way so it moves as a
+ * unit (MapView.cpp:1344-1390). Returns the new brick ids.
+ */
+export function insertSet(
+  doc: Y.Doc,
+  layerId: string,
+  bricks: Parameters<typeof insertBricks>[2],
+  setName: string,
+): string[] {
+  let ids: string[] = [];
+  doc.transact(() => {
+    ids = insertBricks(doc, layerId, bricks, { dx: 0, dy: 0 });
+    createSidecarModule(doc, setName, ids);
+  }, LOCAL_ORIGIN);
+  return ids;
 }
 
 /** One source brick layer of a module file — desktop `LayerBatch`. */

@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { ensureSetThumbnail, getSetThumbnailSync } from './render/setThumbnail';
+import { indexParts } from './partIndex';
+import type { BbmMap } from '@cld/model';
+import { countUsage, effectiveLimit } from './budgetUsage';
+import { useEditorStore } from './editorStore';
 
 interface PartContextMenu {
   part: PartWire;
@@ -19,7 +23,24 @@ const ICON_CFG: Record<IconSize, { minWidth: number; imgCls: string }> = {
   L: { minWidth: 116, imgCls: 'h-16 w-16' },
 };
 
-export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => void }) {
+export function PartsPanel({
+  onPlacePart,
+  budgetLimits,
+  map,
+}: {
+  onPlacePart: (part: PartWire) => void;
+  /** The layout's budget; without limits there is no budget to show or filter by. */
+  budgetLimits?: ReadonlyMap<string, number>;
+  map?: BbmMap | null;
+}) {
+  // Budget → Show Only Budgeted Parts / Show Budget Numbers
+  // (PartsBrowser.cpp refreshBudget / applyFilter).
+  const showOnlyBudgeted = useEditorStore((s) => s.showOnlyBudgetedParts);
+  const showNumbers = useEditorStore((s) => s.showBudgetNumbers);
+  const defaultInfinite = useEditorStore((s) => s.budgetDefaultInfinite);
+  const hasBudget = (budgetLimits?.size ?? 0) > 0;
+  const [selectedTile, setSelectedTile] = useState<string | null>(null);
+  const usage = useMemo(() => (hasBudget && showNumbers ? countUsage(map) : null), [hasBudget, showNumbers, map]);
   const [ctxMenu, setCtxMenu] = useState<PartContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [iconSize, setIconSize] = useState<IconSize>(
@@ -49,15 +70,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
   // Index by lowercase key + bare partNumber so the set-thumbnail
   // compositor can resolve each subpart's metadata.
   const partsByKey = useMemo(() => {
-    const m = new Map<string, PartWire>();
-    if (data) {
-      for (const p of data.parts) {
-        m.set(p.key.toLowerCase(), p);
-        const bare = p.partNumber.toLowerCase();
-        if (!m.has(bare)) m.set(bare, p);
-      }
-    }
-    return m;
+    return indexParts(data?.parts);
   }, [data]);
 
   // Categories come straight from the wire's `category` field — derived
@@ -83,6 +96,8 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
       const hay = `${p.key} ${p.description}`.toLowerCase();
       const score = fuzzyScore(needle, hay);
       if (score <= 0) continue;
+      // A part is budgeted when its limit is above 0 (BudgetSession::isBudgeted).
+      if (hasBudget && showOnlyBudgeted && effectiveLimit(budgetLimits!, p.key, defaultInfinite) <= 0) continue;
       scored.push({ score, part: p });
     }
     if (needle.length === 0) {
@@ -98,7 +113,7 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
       });
     }
     return scored.map((s) => s.part);
-  }, [data, filter, category]);
+  }, [data, filter, category, hasBudget, showOnlyBudgeted, budgetLimits, defaultInfinite]);
 
   const cfg = ICON_CFG[iconSize];
 
@@ -167,10 +182,24 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
             const captionShort = desc.length > 28 ? desc.slice(0, 27) + '…' : desc;
             const caption = captionShort || p.key;
             const tooltip = desc ? `${desc}\n(${p.key})` : p.key;
+            const used = usage?.get(p.key.toLowerCase())?.count ?? 0;
+            const limit = usage ? effectiveLimit(budgetLimits!, p.key, defaultInfinite) : -1;
+            const over = usage !== null && limit >= 0 && used > limit;
             return (
               <li key={p.key}>
                 <button
-                  onClick={() => onPlacePart(p)}
+                  // Like desktop's parts browser (QListWidget::itemActivated,
+                  // PartsBrowser.cpp:145): a click picks the tile, a
+                  // double-click or Enter adds the part to the map.
+                  aria-pressed={selectedTile === p.key}
+                  onClick={() => setSelectedTile(p.key)}
+                  onDoubleClick={() => onPlacePart(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onPlacePart(p);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setCtxMenu({ part: p, x: e.clientX, y: e.clientY });
@@ -184,12 +213,17 @@ export function PartsPanel({ onPlacePart }: { onPlacePart: (part: PartWire) => v
                     }
                   }}
                   title={tooltip}
-                  className="flex w-full flex-col items-center rounded-sm p-1 text-[10px] bg-neutral-900 hover:bg-neutral-800"
+                  className={`flex w-full flex-col items-center rounded-sm p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-neutral-900 hover:bg-neutral-800'} ${selectedTile === p.key ? 'ring-2 ring-blue-500' : ''}`}
                 >
                   <PartThumbnail part={p} partsByKey={partsByKey} imgCls={cfg.imgCls} />
                   <span className="mt-1 line-clamp-2 text-center leading-tight">
                     {caption}
                   </span>
+                  {usage && (
+                    <span data-testid="budget-numbers" className={over ? 'font-semibold text-red-300' : 'text-neutral-400'}>
+                      {used}/{limit >= 0 ? limit : '?'}
+                    </span>
+                  )}
                 </button>
               </li>
             );

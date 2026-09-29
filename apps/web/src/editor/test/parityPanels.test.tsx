@@ -1,6 +1,7 @@
 // The module-drag ghost (MapView.cpp:1796-1900) and the panel changes
 // behind it: the Module Library publishing the dragged module, and the
-// Venue Library's Rename action.
+// Venue Library (VenueLibraryPanel.cpp): details, Rename with its
+// duplicate-name check, and Save Current Venue.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createElement as h, Fragment, type ReactNode } from 'react';
@@ -28,6 +29,10 @@ const apiMock = vi.hoisted(() => ({
   modulesList: vi.fn(),
   venuesList: vi.fn(),
   venuesRename: vi.fn(),
+  venuesGet: vi.fn(),
+  venuesCreate: vi.fn(),
+  venuesUpdate: vi.fn(),
+  orgsList: vi.fn(),
 }));
 vi.mock('../../api', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../../api')>();
@@ -36,7 +41,15 @@ vi.mock('../../api', async (importOriginal) => {
     api: {
       ...orig.api,
       modules: { ...orig.api.modules, list: apiMock.modulesList },
-      venues: { ...orig.api.venues, list: apiMock.venuesList, rename: apiMock.venuesRename },
+      venues: {
+        ...orig.api.venues,
+        list: apiMock.venuesList,
+        rename: apiMock.venuesRename,
+        get: apiMock.venuesGet,
+        create: apiMock.venuesCreate,
+        update: apiMock.venuesUpdate,
+      },
+      orgs: { ...orig.api.orgs, list: apiMock.orgsList },
     },
   };
 });
@@ -44,6 +57,7 @@ vi.mock('../../api', async (importOriginal) => {
 import { ModuleGhost } from '../render/ModuleGhost';
 import { ModuleLibraryPanel } from '../ModuleLibraryPanel';
 import { VenueLibraryPanel } from '../VenueLibraryPanel';
+import { setVenue } from '../mutations';
 import { MODULE_MIME, activeModuleDrag } from '../mime';
 
 afterEach(() => {
@@ -115,18 +129,54 @@ describe('ModuleLibraryPanel drag', () => {
   });
 });
 
-describe('VenueLibraryPanel rename', () => {
-  it('renames through the API after a prompt, and ignores cancel / unchanged names', async () => {
-    apiMock.venuesList.mockResolvedValue({ venues: [{ id: 'v1', name: 'Hall', ownerOrgId: null }] });
+const HALL = {
+  name: 'Hall',
+  enabled: true,
+  minWalkwayStuds: 125,
+  bounds: { x: 0, y: 0, w: 100, h: 100 },
+  edges: [
+    { kind: 0, doorWidthStuds: 0, label: '', poly: [] },
+    { kind: 0, doorWidthStuds: 0, label: '', poly: [] },
+    { kind: 1, doorWidthStuds: 20, label: '', poly: [] },
+  ],
+  obstacles: [{ label: 'Pillar', poly: [] }],
+} as const;
+
+function setupVenues(venues: { id: string; name: string; ownerOrgId: string | null }[]) {
+  apiMock.venuesList.mockResolvedValue({ venues });
+  apiMock.venuesGet.mockResolvedValue({ id: 'v1', name: 'Hall', data: HALL });
+  apiMock.orgsList.mockResolvedValue({ orgs: [] });
+}
+
+describe('VenueLibraryPanel', () => {
+  it('shows the selected venue\'s details (VenueLibraryPanel.cpp detailText)', async () => {
+    setupVenues([{ id: 'v1', name: 'Hall', ownerOrgId: null }]);
+    render(withQuery(h(VenueLibraryPanel, { doc: createDefaultLayoutDoc(), isViewer: false })));
+    expect((screen.getByRole('button', { name: 'Rename…' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(await screen.findByRole('option', { name: 'Hall' }));
+    await waitFor(() => expect(screen.getByTestId('venue-detail').textContent).toBe('Hall\n2 wall seg · 1 door · 1 obstacle · walkway ≥ 100 mm'));
+    expect(apiMock.venuesGet).toHaveBeenCalledWith('v1');
+  });
+
+  it('renames through the API after a prompt, and refuses another venue\'s name', async () => {
+    setupVenues([
+      { id: 'v1', name: 'Hall', ownerOrgId: null },
+      { id: 'v2', name: 'Annex', ownerOrgId: null },
+    ]);
     apiMock.venuesRename.mockResolvedValue({ ok: true, id: 'v1', name: 'Main Hall' });
     render(withQuery(h(VenueLibraryPanel, { doc: createDefaultLayoutDoc(), isViewer: false })));
-    const btn = await screen.findByRole('button', { name: 'Rename Hall' });
+    fireEvent.click(await screen.findByRole('option', { name: 'Hall' }));
+    const btn = screen.getByRole('button', { name: 'Rename…' });
 
     const prompt = vi.spyOn(window, 'prompt');
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
     prompt.mockReturnValueOnce(null);
     fireEvent.click(btn);
     prompt.mockReturnValueOnce('Hall');
     fireEvent.click(btn);
+    prompt.mockReturnValueOnce(' annex ');
+    fireEvent.click(btn);
+    expect(alert).toHaveBeenCalledWith('"annex" already exists.');
     expect(apiMock.venuesRename).not.toHaveBeenCalled();
 
     prompt.mockReturnValueOnce('  Main Hall  ');
@@ -137,9 +187,44 @@ describe('VenueLibraryPanel rename', () => {
     await waitFor(() => expect(apiMock.venuesList.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it('has no Rename button for viewers', async () => {
-    apiMock.venuesList.mockResolvedValue({ venues: [{ id: 'v1', name: 'Hall', ownerOrgId: null }] });
+  it('Save Current Venue: says when there is none, saves a new name, asks before overwriting', async () => {
+    setupVenues([{ id: 'v1', name: 'Hall', ownerOrgId: null }]);
+    apiMock.venuesCreate.mockResolvedValue({ id: 'v9', name: 'Big Hall' });
+    apiMock.venuesUpdate.mockResolvedValue({ ok: true, id: 'v1', name: 'Hall' });
+    const doc = createDefaultLayoutDoc();
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    render(withQuery(h(VenueLibraryPanel, { doc, isViewer: false })));
+    await screen.findByRole('option', { name: 'Hall' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Current Venue' }));
+    expect(alert).toHaveBeenCalledWith('There is no venue on the current project.');
+
+    setVenue(doc, { ...HALL, edges: [...HALL.edges], obstacles: [...HALL.obstacles] } as never);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Current Venue' }));
+    const name = screen.getByLabelText('Name for this venue');
+    expect((name as HTMLInputElement).value).toBe('Hall');
+    fireEvent.change(name, { target: { value: 'Big Hall' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(apiMock.venuesCreate).toHaveBeenCalledWith({ name: 'Big Hall', data: expect.objectContaining({ name: 'Hall' }) }));
+
+    // Same name as a saved venue (any case): overwrite only after a yes.
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Current Venue' }));
+      fireEvent.change(screen.getByLabelText('Name for this venue'), { target: { value: 'HALL' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(i + 1));
+    }
+    expect(confirm).toHaveBeenCalledWith('Hall already exists. Overwrite?');
+    await waitFor(() => expect(apiMock.venuesUpdate).toHaveBeenCalledTimes(1));
+    expect(apiMock.venuesUpdate).toHaveBeenCalledWith('v1', expect.objectContaining({ name: 'Hall' }));
+    expect(apiMock.venuesCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no library actions for viewers', async () => {
+    setupVenues([{ id: 'v1', name: 'Hall', ownerOrgId: null }]);
     render(withQuery(h(VenueLibraryPanel, { doc: createDefaultLayoutDoc(), isViewer: true })));
-    expect(screen.queryByRole('button', { name: 'Rename Hall' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rename…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save Current Venue' })).toBeNull();
   });
 });

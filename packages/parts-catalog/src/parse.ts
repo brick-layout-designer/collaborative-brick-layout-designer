@@ -5,7 +5,15 @@
 // `<connexion>` retained from upstream.
 
 import { XMLParser } from 'fast-xml-parser';
-import type { ConnectionPoint, PartKind, PartMetadata, SubPart } from './types.js';
+import type {
+  ConnectionPoint,
+  FourDBrixRemap,
+  LDrawRemap,
+  PartKind,
+  PartMetadata,
+  SubPart,
+  TrackDesignerRemap,
+} from './types.js';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -59,6 +67,10 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
   const connections = kind === 'leaf' ? readConnexionList(root.ConnexionList) : [];
   const subparts = kind === 'group' ? readSubPartList(root.SubPartList) : [];
   const hullPts = readHull(root.hull);
+  const oldNames = readOldNames(root.OldNameList);
+  const ldraw = readLDraw(root.LDraw);
+  const trackDesigner = readTrackDesigner(root.TrackDesigner);
+  const fourDBrix = readFourDBrix(root.FourDBrix);
 
   // Match desktop's PartsLibrary::scanFile (PartsLibrary.cpp:173-175):
   // when colorCode is empty, key is bare partNumber, no trailing dot.
@@ -81,7 +93,89 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     subparts,
     canUngroup,
     hullPts,
+    oldNames,
+    ...(ldraw ? { ldraw } : {}),
+    ...(trackDesigner ? { trackDesigner } : {}),
+    ...(fourDBrix ? { fourDBrix } : {}),
   };
+}
+
+const num = (v: unknown): number => {
+  const n = Number.parseFloat(String(v ?? ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const int = (v: unknown): number => {
+  const n = Number.parseInt(String(v ?? '').trim(), 10);
+  return Number.isFinite(n) ? n : 0;
+};
+const text = (v: unknown): string =>
+  v === undefined || v === null ? '' : typeof v === 'object' ? String((v as RawNode)['#text'] ?? '') : String(v);
+const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined ? [] : [v]);
+
+/** `<LDraw>` (PartsLibrary.cpp readLDrawRemap). */
+function readLDraw(node: unknown): LDrawRemap | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const n = node as RawNode;
+  const t = (n.Translation ?? {}) as RawNode;
+  let sleeper = text(n.SleeperID).trim().toUpperCase();
+  // Vanilla: a sleeper without a colour is black.
+  if (sleeper && !sleeper.includes('.')) sleeper += '.0';
+  return {
+    angle: num(text(n.Angle)),
+    translation: { x: num(text(t.x)), y: num(text(t.y)) },
+    preferredHeight: num(text(n.PreferredHeight)),
+    sleeper,
+    alias: text(n.Alias).trim().toUpperCase(),
+  };
+}
+
+/** `<TrackDesigner>` (PartsLibrary.cpp readTrackDesigner); undefined without an id. */
+function readTrackDesigner(node: unknown): TrackDesignerRemap | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const n = node as RawNode;
+  const td: TrackDesignerRemap = { defaultId: 0, registryIds: {}, flags: 0, hasSeveralPorts: false, ports: [] };
+  const ids = [...list(n.ID), ...list((n.IDList as RawNode | undefined)?.ID)];
+  for (const raw of ids) {
+    const registry = typeof raw === 'object' && raw ? String((raw as RawNode)['@registry'] ?? '') : '';
+    const id = int(text(raw));
+    if (registry === '' || registry === 'default') td.defaultId = id;
+    else {
+      td.registryIds[registry] = id;
+      if (td.defaultId === 0) td.defaultId = id;
+    }
+  }
+  td.flags = int(text(n.Flag));
+  td.hasSeveralPorts = text(n.HasSeveralGeometries).trim() === 'true';
+  for (const raw of list((n.TDBitmapList as RawNode | undefined)?.TDBitmap)) {
+    const b = (raw ?? {}) as RawNode;
+    td.ports.push({
+      bbConnectionIndex: int(text(b.BBConnexionPointIndex)),
+      type: b.Type === undefined ? 20 : int(text(b.Type)),
+      angleDifference: Math.fround(num(text(b.AngleBetweenTDandBB))),
+    });
+  }
+  return td.defaultId !== 0 || Object.keys(td.registryIds).length > 0 ? td : undefined;
+}
+
+/** `<FourDBrix>` (PartsLibrary.cpp readFourDBrix). */
+function readFourDBrix(node: unknown): FourDBrixRemap | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const n = node as RawNode;
+  const t = text(n.PartType).trim().toUpperCase();
+  return {
+    type: t === 'TABLE' ? 'table' : t === 'BASEPLATE' ? 'baseplate' : t === 'STRUCTURE' ? 'structure' : 'segment',
+    partName: text(n.PartName).trim(),
+    orientationDifference: Math.fround(num(text(n.OrientationDifference))),
+    originConnection: int(text(n.ConnectionIndexUsedAsOrigin)),
+  };
+}
+
+/** `<OldNameList><OldName>4186P01</OldName>…</OldNameList>` (PartsLibrary.cpp readOldNames). */
+function readOldNames(node: unknown): string[] {
+  if (!node || typeof node !== 'object') return [];
+  const raw = (node as RawNode).OldName;
+  const list = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  return list.map((v) => String(v).trim()).filter((v) => v !== '');
 }
 
 function readDescriptions(node: unknown): Record<string, string> {
@@ -119,7 +213,7 @@ function readConnexion(n: RawNode): ConnectionPoint {
     x,
     y,
     angle: Number.parseFloat(stringField(n, 'angle', '0')),
-    electricPlug: Number.parseInt(stringField(n, 'electricPlug', '-1'), 10),
+    electricPlug: Number.parseInt(stringField(n, 'electricPlug', '0'), 10) || 0,
   };
   const nextPref = optionalNumber(n, 'nextConnexionPreference');
   if (nextPref !== undefined) out.nextConnexionPreference = nextPref;

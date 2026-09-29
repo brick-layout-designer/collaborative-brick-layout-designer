@@ -22,6 +22,13 @@ import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
+import { indexParts } from '../partIndex';
+import { drawOrder, pivotOf } from '../brickGeometry';
+import { startFlexSession } from '../flexSession';
+
+/** Konva's double-click window; the second press of a double-click starts a flex move. */
+const DOUBLE_CLICK_MS = 400;
+const lastPress = { id: '', time: 0, selection: [] as readonly string[] };
 
 interface Props {
   map: BbmMap;
@@ -53,13 +60,9 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
   // parts and some custom uploads). Built once per catalog (it used to be
   // rebuilt on every render, which also broke every glyph's memo).
   const { partsByKey, byBarePartNumber } = useMemo(() => {
-    const byKey = new Map<string, PartWire>();
+    const byKey = indexParts(catalog.data?.parts);
     const bare = new Map<string, PartWire>();
     for (const p of catalog.data?.parts ?? []) {
-      byKey.set(p.key.toLowerCase(), p);
-      if (!byKey.has(p.partNumber.toLowerCase())) {
-        byKey.set(p.partNumber.toLowerCase(), p);
-      }
       // First catalog entry per bare part number — what the old
       // per-brick linear `lookupByPartNumberOnly` scan returned.
       if (!bare.has(p.partNumber.toLowerCase())) bare.set(p.partNumber.toLowerCase(), p);
@@ -79,6 +82,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
       showBrickHulls: s.showBrickHulls,
       showBrickElevation: s.showBrickElevation,
       selectionTint: s.selectionTint,
+      snapActive: s.liveSnap !== null,
     })),
   );
   const selectedIds = useMemo(() => new Set(selection), [selection]);
@@ -104,7 +108,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
         const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
           <Group key={layer.id} opacity={opacity}>
-            {layer.bricks.map((brick) => {
+            {drawOrder(layer.bricks).map((brick) => {
               const lower = brick.partNumber.toLowerCase();
               return (
                 <BrickGlyph
@@ -123,6 +127,9 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
                   selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
+                  // Only a selected glyph shows the halo, so only it re-renders
+                  // when a snap starts or ends.
+                  snapActive={!isViewer && view.snapActive && selectedIds.has(brick.id)}
                   getMap={getMap}
                   partsByKey={partsByKey}
                   {...(onEditBrick ? { onEditBrick } : {})}
@@ -151,6 +158,7 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness,
   showElevation,
   selectionTint,
+  snapActive,
   getMap,
   partsByKey,
   onEditBrick,
@@ -169,6 +177,8 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness: number;
   showElevation: boolean;
   selectionTint: string;
+  /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
+  snapActive: boolean;
   getMap: () => BbmMap;
   partsByKey: Map<string, PartWire>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
@@ -192,10 +202,13 @@ const BrickGlyph = memo(function BrickGlyph({
     };
   }, [spriteUrl]);
 
-  const x = studToPx(brick.displayArea.x);
-  const y = studToPx(brick.displayArea.y);
   const w = studToPx(brick.displayArea.width);
   const h = studToPx(brick.displayArea.height);
+  // The Group sits on the brick's pivot (its sprite centre), which is
+  // `imageOffset` from the displayArea centre for parts with a <hull>
+  // (BrickPlacement.h). Everything below is drawn around it.
+  const pivot = pivotOf(brick, meta);
+  const pivotOff = { x: pivot.x - (brick.displayArea.x + brick.displayArea.width / 2), y: pivot.y - (brick.displayArea.y + brick.displayArea.height / 2) };
 
   const sprite = spriteUrl ? getSpriteSync(spriteUrl) : null;
 
@@ -274,11 +287,54 @@ const BrickGlyph = memo(function BrickGlyph({
     const ptr = stage?.getPointerPosition();
     if (!stage || !ptr) return;
     const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+
+    // The second press of a double-click on a hinged chain starts a flex
+    // move (desktop MapView::mouseDoubleClickEvent → startFlexMove).
+    const now = performance.now();
+    const second = lastPress.id === brick.id && now - lastPress.time < DOUBLE_CLICK_MS;
+    // The selection as it was before the double-click's first press: that
+    // click may have narrowed it to this brick (desktop pressSelection_).
+    const pressSelection = lastPress.selection;
+    if (!second) {
+      lastPress.selection = useEditorStore.getState().selection;
+      // A fresh press: an earlier flex move's release may never have
+      // produced its double-click event.
+      flexMovedRef.current = false;
+    }
+    lastPress.id = second ? '' : brick.id;
+    lastPress.time = now;
+    if (second) {
+      const group = groupRef.current;
+      const started = startFlexSession({
+        stage,
+        doc,
+        map: getMap(),
+        layerId,
+        grabbedId: brick.id,
+        pressSelection: pressSelection.includes(brick.id) ? pressSelection : [],
+        mouseStuds: { x: p.x / studToPx(), y: p.y / studToPx() },
+        partsByKey,
+        onEnd: (moved) => {
+          group?.draggable(true);
+          // Moved: the release is not a double-click that opens properties.
+          if (moved) flexMovedRef.current = true;
+        },
+      });
+      if (started) {
+        // The chain bends instead of the brick being dragged.
+        group?.draggable(false);
+        e.cancelBubble = true;
+        return;
+      }
+    }
     const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx());
     if (idx < 0) return;
     grabConnRef.current = idx;
     setActiveConnectionPoint(doc, layerId, brick.id, idx);
   }
+
+  /** Set when a flex move bent the chain, so the double-click doesn't open properties. */
+  const flexMovedRef = useRef(false);
 
   /** Selected rulers / labels moving along with this brick's drag. */
   const annoNodesRef = useRef<NodeSnap[]>([]);
@@ -335,10 +391,7 @@ const BrickGlyph = memo(function BrickGlyph({
       return;
     }
     const sel = new Set(selection);
-    const leaderStart = {
-      x: brick.displayArea.x + brick.displayArea.width / 2,
-      y: brick.displayArea.y + brick.displayArea.height / 2,
-    };
+    const leaderStart = pivotOf(brick, meta);
     // Resolve the sibling Konva nodes once here; looking each one up with
     // `stage.findOne` on every dragmove frame walked the whole scene graph
     // per sibling per frame.
@@ -350,10 +403,7 @@ const BrickGlyph = memo(function BrickGlyph({
         if (b.id === brick.id || !sel.has(b.id)) continue;
         siblings.push({
           id: b.id,
-          startCentre: {
-            x: b.displayArea.x + b.displayArea.width / 2,
-            y: b.displayArea.y + b.displayArea.height / 2,
-          },
+          startCentre: pivotOf(b, partsByKey.get(b.partNumber.toLowerCase())),
           node: stage?.findOne(`.brick-${b.id}`) ?? null,
           part: partsByKey.get(b.partNumber.toLowerCase()),
           links: b.connexions,
@@ -419,6 +469,8 @@ const BrickGlyph = memo(function BrickGlyph({
         centreY: centreStudY,
         width: brick.displayArea.width,
         height: brick.displayArea.height,
+        pivotOffsetX: pivotOff.x,
+        pivotOffsetY: pivotOff.y,
         mouseStudX,
         mouseStudY,
         orientation: brick.orientation,
@@ -459,8 +511,8 @@ const BrickGlyph = memo(function BrickGlyph({
     }
 
     if (annoNodesRef.current.length > 0) {
-      const startX = isMulti ? dragStart.leaderStartCentre.x : brick.displayArea.x + brick.displayArea.width / 2;
-      const startY = isMulti ? dragStart.leaderStartCentre.y : brick.displayArea.y + brick.displayArea.height / 2;
+      const startX = isMulti ? dragStart.leaderStartCentre.x : pivot.x;
+      const startY = isMulti ? dragStart.leaderStartCentre.y : pivot.y;
       shiftNodes(annoNodesRef.current, (result.centreX - startX) * studToPx(), (result.centreY - startY) * studToPx());
     }
 
@@ -541,17 +593,14 @@ const BrickGlyph = memo(function BrickGlyph({
       // doesn't briefly render at the off-stage drop coords before the
       // Yjs delete propagates.
       const node = e.target;
-      node.position({
-        x: (brick.displayArea.x + brick.displayArea.width / 2) * studToPx(),
-        y: (brick.displayArea.y + brick.displayArea.height / 2) * studToPx(),
-      });
+      node.position({ x: pivot.x * studToPx(), y: pivot.y * studToPx() });
       return;
     }
 
     const newCentreStudX = e.target.x() / studToPx();
     const newCentreStudY = e.target.y() / studToPx();
-    const oldCentreStudX = brick.displayArea.x + brick.displayArea.width / 2;
-    const oldCentreStudY = brick.displayArea.y + brick.displayArea.height / 2;
+    const oldCentreStudX = pivot.x;
+    const oldCentreStudY = pivot.y;
     const dx = newCentreStudX - oldCentreStudX;
     const dy = newCentreStudY - oldCentreStudY;
     const sidecar = annoCount(anno) > 0 ? readSidecarFromDoc(doc) : null;
@@ -568,9 +617,9 @@ const BrickGlyph = memo(function BrickGlyph({
       // selected with it, as one undo step.
       doc.transact(() => {
         if (snappedOrientation !== null) {
-          moveBrickAndOrient(doc, layerId, brick.id, newCentreStudX, newCentreStudY, snappedOrientation);
+          moveBrickAndOrient(doc, layerId, brick.id, newCentreStudX, newCentreStudY, snappedOrientation, meta);
         } else {
-          moveBrick(doc, layerId, brick.id, newCentreStudX, newCentreStudY);
+          moveBrick(doc, layerId, brick.id, newCentreStudX, newCentreStudY, meta);
         }
         if (annoCount(anno) > 0) {
           translateMixedSelection(doc, map, labels, modules, { bricks: [], anno, dx, dy, movedBricks: [brick.id] });
@@ -587,8 +636,8 @@ const BrickGlyph = memo(function BrickGlyph({
       // Stable name so multi-brick drag can find sibling Groups via
       // `stage.findOne('.brick-<id>')` and translate them in step.
       name={`brick-${brick.id}`}
-      x={x + w / 2}
-      y={y + h / 2}
+      x={studToPx(pivot.x)}
+      y={studToPx(pivot.y)}
       rotation={brick.orientation}
       draggable={!isViewer && (tool === 'select')}
       onMouseDown={handleMouseDown}
@@ -596,6 +645,11 @@ const BrickGlyph = memo(function BrickGlyph({
       onTap={handleClick}
       onDblClick={(e) => {
         e.cancelBubble = true;
+        // A double-click that bent a flex chain doesn't open properties.
+        if (flexMovedRef.current) {
+          flexMovedRef.current = false;
+          return;
+        }
         if (!isViewer && onEditBrick) onEditBrick(brick, layerId, meta);
       }}
       onDragStart={handleDragStart}
@@ -627,24 +681,30 @@ const BrickGlyph = memo(function BrickGlyph({
         />
       ) : (
         <Rect
+          name={meta ? 'brick-loading' : 'brick-unresolved'}
           x={-w / 2}
           y={-h / 2}
           width={w}
           height={h}
-          fill="#404040"
-          stroke="#888"
+          // A part the library doesn't know: desktop's placeholder, a dashed
+          // red outline over a translucent pink fill (SceneBuilder.cpp:230-242).
+          // A known part whose sprite is still loading: a neutral box.
+          {...(meta
+            ? { fill: '#404040', stroke: '#888' }
+            : { fill: 'rgba(255,200,200,0.314)', stroke: 'rgb(200,80,80)', dash: [4, 2], strokeScaleEnabled: false })}
           strokeWidth={1}
           perfectDrawEnabled={false}
         />
       )}
       {/*
-        Connection-point dots — port of SceneBuilder.cpp:238-289.
-        Always shown for free (unlinked) CPs; brightness varies by
-        selection state. Linked CPs render nothing — connectivity rebuild
+        Connection-point dots — port of SceneBuilder.cpp:238-310.
+        Free (unlinked) CPs of a selected brick, or of every brick when
+        Always Show Connections or the Connection Points view toggle is on
+        (both off by default); brightness varies by selection state. Linked CPs render nothing — connectivity rebuild
         (Connectivity.cpp) links coincident CPs, preventing stacked dots
         at shared edges. The active CP gets bigger + gold when selected.
       */}
-      {showConnectionPoints && meta && meta.connections.map((cp, ci) => {
+      {(showConnectionPoints || isSelected || alwaysShowConnections) && meta && meta.connections.map((cp, ci) => {
         // Skip non-numeric "type" values (custom non-snap joints) — same
         // gate desktop applies at SceneBuilder.cpp:262-267.
         if (!cp.type || !/^\d+$/.test(cp.type)) return null;
@@ -698,10 +758,10 @@ const BrickGlyph = memo(function BrickGlyph({
             y={-spriteHpx / 2 - 1}
             width={spriteWpx + 2}
             height={spriteHpx + 2}
-            stroke={`#${selectionTint}`}
+            stroke={selectionHalo(selectionTint, snapActive).stroke}
             strokeWidth={2.5}
             strokeScaleEnabled={false}
-            fill={`#${selectionTint}4D`}
+            fill={selectionHalo(selectionTint, snapActive).fill}
             listening={false}
             perfectDrawEnabled={false}
           />
@@ -804,4 +864,14 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * Selection halo colours: the selection tint, or desktop's green while a
+ * connection snap is live (SelectionOverlay.cpp:26-29).
+ */
+export function selectionHalo(tint: string, snapActive: boolean): { stroke: string; fill: string } {
+  return snapActive
+    ? { stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' }
+    : { stroke: `#${tint}`, fill: `#${tint}4D` };
 }

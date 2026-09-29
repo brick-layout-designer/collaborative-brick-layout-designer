@@ -1,12 +1,19 @@
-// Venue Library panel — lists saved venues from the server, allows loading
-// into the current layout, renaming (VenueLibraryPanel.cpp:244-255) and
-// deleting entries.
+// Venue Library panel — port of VenueLibraryPanel.cpp: lists saved venues
+// from the server; the selected one shows its details and can be loaded
+// into the layout, renamed (refused onto another saved venue's name,
+// VenueLibraryPanel.cpp:244-255) or deleted; "Save Current Venue" saves
+// the layout's venue, asking before overwriting one with the same name.
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type * as Y from 'yjs';
+import type { Venue } from '@cld/bbm';
 import { api } from '../api';
 import { setVenue } from './mutations';
+import { readSidecarFromDoc } from '@cld/ydoc';
+import { useEditorStore } from './editorStore';
+import { saveVenueToLibrary, venueDetail, venueNamed } from './venueLibrary';
+import { VenueSaveLibraryDialog } from './VenueSaveLibraryDialog';
 
 interface Props {
   doc: Y.Doc;
@@ -16,41 +23,74 @@ interface Props {
 export function VenueLibraryPanel({ doc, isViewer }: Props) {
   const qc = useQueryClient();
   const [filter, setFilter] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<Venue | null>(null);
 
   const list = useQuery({
     queryKey: ['venue-library'],
     queryFn: api.venues.list,
     enabled: !isViewer,
   });
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list, enabled: !isViewer });
+  const selected = useQuery({
+    queryKey: ['venue-library', selectedId],
+    queryFn: () => api.venues.get(selectedId!),
+    enabled: !isViewer && selectedId !== null,
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['venue-library'] });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.venues.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['venue-library'] }),
+    onSuccess: (_r, id) => {
+      if (id === selectedId) setSelectedId(null);
+      void refresh();
+    },
   });
 
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.venues.rename(id, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['venue-library'] }),
+    onSuccess: () => refresh(),
     onError: (e) => alert(`Could not rename the venue: ${(e as Error).message}`),
   });
+
+  const venues = list.data?.venues ?? [];
+  const filtered = filter ? venues.filter((v) => v.name.toLowerCase().includes(filter.toLowerCase())) : venues;
+  const current = venues.find((v) => v.id === selectedId) ?? null;
 
   async function load(id: string) {
     try {
       const { data } = await api.venues.get(id);
-      setVenue(doc, data as import('@cld/bbm').Venue);
+      setVenue(doc, data as Venue);
     } catch {
       alert('Failed to load venue from library.');
     }
   }
 
-  const venues = list.data?.venues ?? [];
-  const filtered = filter
-    ? venues.filter((v) => v.name.toLowerCase().includes(filter.toLowerCase()))
-    : venues;
+  function onRename(v: { id: string; name: string; ownerOrgId: string | null }) {
+    const next = prompt('New name:', v.name)?.trim();
+    if (!next || next === v.name) return;
+    if (venueNamed(venues, next, v.ownerOrgId, v.id)) {
+      alert(`"${next}" already exists.`);
+      return;
+    }
+    rename.mutate({ id: v.id, name: next });
+  }
+
+  function onSaveCurrent() {
+    const venue = readSidecarFromDoc(doc)?.venue;
+    if (!venue) {
+      alert('There is no venue on the current project.');
+      return;
+    }
+    setSaving(venue);
+  }
+
+  const btn = 'rounded-sm border border-neutral-700 px-2 py-0.5 hover:bg-neutral-700 disabled:opacity-40';
 
   return (
-    <div className="flex flex-col h-full text-xs">
-      <div className="p-2 border-b border-neutral-800">
+    <div className="flex h-full flex-col text-xs">
+      <div className="border-b border-neutral-800 p-2">
         <input
           placeholder="Filter venues…"
           value={filter}
@@ -63,59 +103,74 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
       {!isViewer && list.isLoading && <p className="p-2 text-neutral-500">Loading…</p>}
       {!isViewer && list.isError && <p className="p-2 text-red-400">Failed to load venue library.</p>}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" role="listbox" aria-label="Saved venues">
         {filtered.length === 0 && !list.isLoading && (
-          <p className="p-2 text-neutral-500">
-            {filter ? 'No matches.' : 'No saved venues. Use Map → Venue → Save to Library… to add one.'}
-          </p>
+          <p className="p-2 text-neutral-500">{filter ? 'No matches.' : '(no saved venues)'}</p>
         )}
         {filtered.map((v) => (
           <div
             key={v.id}
-            className="flex items-center justify-between gap-1 border-b border-neutral-800 px-2 py-1.5 hover:bg-neutral-800/40"
+            role="option"
+            aria-selected={v.id === selectedId}
+            onClick={() => setSelectedId(v.id)}
+            onDoubleClick={() => void load(v.id)}
+            className={`cursor-pointer truncate border-b border-neutral-800 px-2 py-1.5 ${v.id === selectedId ? 'bg-blue-900/40' : 'hover:bg-neutral-800/40'}`}
+            title={v.name}
           >
-            <span className="flex-1 truncate" title={v.name}>
-              {v.name}
-              {v.ownerOrgId && (
-                <span className="ml-1 text-neutral-500">(org)</span>
-              )}
-            </span>
-            {!isViewer && (
-              <button
-                onClick={() => load(v.id)}
-                title="Load into layout"
-                className="rounded-sm border border-neutral-700 px-1.5 py-0.5 hover:bg-neutral-700"
-              >
-                ↓
-              </button>
-            )}
-            {!isViewer && (
-              <button
-                onClick={() => {
-                  const next = prompt('New name:', v.name)?.trim();
-                  if (!next || next === v.name) return;
-                  rename.mutate({ id: v.id, name: next });
-                }}
-                title="Rename…"
-                aria-label={`Rename ${v.name}`}
-                className="rounded-sm border border-neutral-700 px-1.5 py-0.5 hover:bg-neutral-700"
-              >
-                ✎
-              </button>
-            )}
-            <button
-              onClick={() => {
-                if (!confirm(`Delete "${v.name}" from the library?`)) return;
-                remove.mutate(v.id);
-              }}
-              title="Delete from library"
-              className="rounded-sm border border-red-900 px-1.5 py-0.5 text-red-400 hover:bg-red-950"
-            >
-              ✕
-            </button>
+            {v.name}
+            {v.ownerOrgId && <span className="ml-1 text-neutral-500">(org)</span>}
           </div>
         ))}
       </div>
+
+      {!isViewer && (
+        <div className="space-y-2 border-t border-neutral-800 p-2">
+          <p data-testid="venue-detail" className="min-h-8 whitespace-pre-line text-neutral-400">
+            {current ? (selected.data ? venueDetail(selected.data.data as Venue) : selected.isError ? '(could not read venue)' : '') : ''}
+          </p>
+          <div className="flex flex-wrap gap-1">
+            <button className={btn} disabled={!current} onClick={() => current && void load(current.id)}>
+              Load into Project
+            </button>
+            <button className={btn} onClick={onSaveCurrent}>
+              Save Current Venue
+            </button>
+            <button className={btn} disabled={!current} onClick={() => current && onRename(current)}>
+              Rename…
+            </button>
+            <button
+              className={`${btn} border-red-900 text-red-400 hover:bg-red-950`}
+              disabled={!current}
+              onClick={() => {
+                if (!current || !confirm(`Delete "${current.name}" from the library?`)) return;
+                remove.mutate(current.id);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+
+      {saving && (
+        <VenueSaveLibraryDialog
+          venueName={saving.name || ''}
+          orgs={orgs.data?.orgs ?? []}
+          onSave={(orgSlug, name) => {
+            const venue = saving;
+            setSaving(null);
+            const orgId = orgSlug ? (orgs.data?.orgs.find((o) => o.slug === orgSlug)?.id ?? null) : null;
+            void saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, venues, api.venues, (m) => confirm(m))
+              .then((r) => {
+                if (r === 'cancelled') return;
+                useEditorStore.getState().showStatusMessage('Venue saved to library.');
+                return refresh();
+              })
+              .catch((e) => alert(`Failed to save venue to library: ${(e as Error).message}`));
+          }}
+          onClose={() => setSaving(null)}
+        />
+      )}
     </div>
   );
 }

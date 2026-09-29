@@ -35,7 +35,6 @@ function resetStore() {
     wheelZoomFactor: 1,
     selectionTint: 'FFD700',
     showModuleNames: false,
-    showModuleFrames: false,
     moduleFrameThickness: 2,
     showElectricCircuits: false,
     showExportWatermark: false,
@@ -99,12 +98,17 @@ describe('editorStore — selection', () => {
 describe('editorStore — zoom and pan', () => {
   beforeEach(resetStore);
 
-  it('setZoom clamps to [0.1, 8]', () => {
+  it('setZoom clamps to the desktop range [0.02, 40] (MapView.cpp:77-78)', () => {
     useEditorStore.getState().setZoom(0);
-    expect(useEditorStore.getState().zoom).toBe(0.1);
+    expect(useEditorStore.getState().zoom).toBe(0.02);
 
     useEditorStore.getState().setZoom(100);
-    expect(useEditorStore.getState().zoom).toBe(8);
+    expect(useEditorStore.getState().zoom).toBe(40);
+
+    useEditorStore.getState().setZoom(0.05);
+    expect(useEditorStore.getState().zoom).toBe(0.05);
+    useEditorStore.getState().setZoom(20);
+    expect(useEditorStore.getState().zoom).toBe(20);
 
     useEditorStore.getState().setZoom(2);
     expect(useEditorStore.getState().zoom).toBe(2);
@@ -189,9 +193,12 @@ describe('editorStore — appearance toggles', () => {
     expect(useEditorStore.getState().wheelZoomFactor).toBe(10);
   });
 
-  it('setModuleFrameThickness clamps to [1, 20]', () => {
+  it('setModuleFrameThickness clamps to [0.5, 20] in half-pixel steps (PreferencesDialog.cpp:200-207)', () => {
     useEditorStore.getState().setModuleFrameThickness(0);
-    expect(useEditorStore.getState().moduleFrameThickness).toBe(1);
+    expect(useEditorStore.getState().moduleFrameThickness).toBe(0.5);
+
+    useEditorStore.getState().setModuleFrameThickness(2.7);
+    expect(useEditorStore.getState().moduleFrameThickness).toBe(2.5);
 
     useEditorStore.getState().setModuleFrameThickness(100);
     expect(useEditorStore.getState().moduleFrameThickness).toBe(20);
