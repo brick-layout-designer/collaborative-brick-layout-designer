@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
+import type { Venue } from '@cld/bbm';
+import { VenueList } from '../venues/VenueList';
+import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -11,7 +14,10 @@ export function LayoutsPage() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const list = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
-  const [showCreate, setShowCreate] = useState(false);
+  // "Start layout" on a venue list links here with ?newLayoutVenue=<id>[&owner=<org slug>].
+  const [params, setParams] = useSearchParams();
+  const startVenue = params.get('newLayoutVenue');
+  const [showCreate, setShowCreate] = useState(startVenue !== null);
   const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
 
   const remove = useMutation({
@@ -81,7 +87,12 @@ export function LayoutsPage() {
 
       {showCreate && (
         <CreateLayoutDialog
-          onClose={() => setShowCreate(false)}
+          initialVenueId={startVenue ?? ''}
+          initialOwnerSlug={params.get('owner') ?? ''}
+          onClose={() => {
+            setShowCreate(false);
+            if (startVenue !== null) setParams({}, { replace: true });
+          }}
           onCreated={(id, openWarnings) => {
             qc.invalidateQueries({ queryKey: ['layouts'] });
             setShowCreate(false);
@@ -91,6 +102,11 @@ export function LayoutsPage() {
           }}
         />
       )}
+
+      <div className="space-y-2 pt-4">
+        <h2 className="text-lg font-semibold">My venues</h2>
+        <VenueList canManage />
+      </div>
 
       {shareLayout && me.data?.user && (
         <ShareDialogLoader
@@ -210,9 +226,13 @@ function LayoutRow({
 }
 
 function CreateLayoutDialog({
+  initialVenueId = '',
+  initialOwnerSlug = '',
   onClose,
   onCreated,
 }: {
+  initialVenueId?: string;
+  initialOwnerSlug?: string;
   onClose: () => void;
   onCreated: (id: string, openWarnings?: string[]) => void;
 }) {
@@ -224,7 +244,10 @@ function CreateLayoutDialog({
   const [sidecar, setSidecar] = useState<string | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
-  const [ownerSlug, setOwnerSlug] = useState('');
+  const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
+  // Start from a saved venue: its outline goes into the new layout's sidecar.
+  const [venueId, setVenueId] = useState(initialVenueId);
+  const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
   const [error, setError] = useState<string | null>(null);
   // Start from the template layout, when one is set (desktop onNew).
   const [template] = useState(getNewLayoutTemplate);
@@ -289,6 +312,15 @@ function CreateLayoutDialog({
         return;
       }
     }
+    if (venueId) {
+      try {
+        const v = await api.venues.get(venueId);
+        body.sidecar = sidecarWithVenue(body.sidecar, v.data as Venue);
+      } catch (err) {
+        setError(`Could not load the venue: ${(err as Error).message}`);
+        return;
+      }
+    }
     if (ownerSlug) body.orgSlug = ownerSlug;
     create.mutate(body);
   }
@@ -330,6 +362,28 @@ function CreateLayoutDialog({
               {orgs.data.orgs.map((o) => (
                 <option key={o.slug} value={o.slug}>
                   Org: {o.name} ({o.myRole})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {venues.data && venues.data.venues.length > 0 && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-neutral-400">Start from venue</span>
+            <select
+              value={venueId}
+              onChange={(e) => setVenueId(e.target.value)}
+              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            >
+              <option value="">No venue</option>
+              {orderVenuesForOwner(
+                venues.data.venues,
+                orgs.data?.orgs.find((o) => o.slug === ownerSlug)?.id ?? null,
+              ).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                  {v.ownerOrgId ? ` (${orgs.data?.orgs.find((o) => o.id === v.ownerOrgId)?.name ?? 'org'})` : ''}
                 </option>
               ))}
             </select>
