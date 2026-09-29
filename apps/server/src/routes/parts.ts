@@ -112,7 +112,7 @@ export function invalidatePartsCache(): void {
 }
 
 export async function partsRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/api/parts/catalog', async (req, reply) => {
+  app.get('/api/parts/catalog', { config: { apiToken: 'parts:read' } }, async (req, reply) => {
     const bundled = await loadBundled(app);
 
     // Custom parts visible to this user. attachUser populates req.user
