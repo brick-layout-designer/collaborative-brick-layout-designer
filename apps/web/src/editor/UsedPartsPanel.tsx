@@ -1,7 +1,8 @@
 // Used Parts panel — port of PartUsagePanel.cpp.
-// Aggregates brick counts from all visible layers, shows a sortable table
-// of part # / count / description. Double-click selects all bricks of
-// that part in the active layer (desktop: selects across all layers).
+// Aggregates brick counts from all layers, shows a sortable table of
+// part # / count / budget / description, and a summary line. The filter
+// matches part # or description; "over" shows only over-budget parts.
+// Double-click selects all bricks of that part.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as Y from 'yjs';
@@ -12,15 +13,12 @@ import { useEditorStore } from './editorStore';
 import { useDocMap } from './useDocMap';
 import { limitFor } from './budgetUsage';
 import { indexParts } from './partIndex';
+import { filterUsedParts, usedPartsSummary, type UsedPartRow } from './usedParts';
 
 type SortKey = 'partNumber' | 'count' | 'description' | 'budget';
 type SortDir = 'asc' | 'desc';
 
-interface Row {
-  partNumber: string;
-  count: number;
-  description: string;
-}
+type Row = UsedPartRow;
 
 export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; budgetLimits?: Map<string, number> }) {
   const map = useDocMap(doc);
@@ -56,15 +54,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
 
   const setSelection = useEditorStore((s) => s.setSelection);
 
-  const filtered = useMemo(() => {
-    const q = filter.toLowerCase();
-    return rows.filter(
-      (r) =>
-        !q ||
-        r.partNumber.toLowerCase().includes(q) ||
-        r.description.toLowerCase().includes(q),
-    );
-  }, [rows, filter]);
+  const filtered = useMemo(() => filterUsedParts(rows, filter, budgetLimits), [rows, filter, budgetLimits]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -81,6 +71,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
   }, [filtered, sortKey, sortDir, budgetLimits]);
 
   const total = useMemo(() => rows.reduce((s, r) => s + r.count, 0), [rows]);
+  const summary = useMemo(() => usedPartsSummary(rows, budgetLimits), [rows, budgetLimits]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -116,7 +107,8 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
       <div className="border-b border-neutral-800 px-2 py-1">
         <input
           type="search"
-          placeholder="Filter…"
+          placeholder={hasBudget ? "Filter by part #, description, or 'over'" : 'Filter by part # or description'}
+          aria-label="Filter used parts"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-xs outline-hidden placeholder:text-neutral-600"
@@ -169,6 +161,9 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
             )}
           </tbody>
         </table>
+      </div>
+      <div data-testid="used-parts-summary" className="border-t border-neutral-800 px-2 py-1 text-[11px] text-neutral-500">
+        {rows.length === 0 ? 'No bricks in map' : summary}
       </div>
       {ctxMenu && (
         <div
