@@ -191,6 +191,21 @@ export function moveVertex(v: Venue, sel: Selection, vertex: number, to: Pt): Ve
 }
 
 /**
+ * Move a corner of the outline: every edge vertex at `at` goes to `to`, so
+ * walls that meet there stay joined.
+ */
+export function moveCorner(v: Venue, at: Pt, to: Pt): Venue {
+  let changed = false;
+  const edges = v.edges.map((e) => {
+    if (!e.poly.some((p) => dist(p, at) < 0.001)) return e;
+    changed = true;
+    const poly = e.poly.map((p) => (dist(p, at) < 0.001 ? to : p));
+    return e.kind === 1 ? { ...e, poly, doorWidthStuds: polylineLength(poly) } : { ...e, poly };
+  });
+  return changed ? { ...v, edges } : v;
+}
+
+/**
  * Resize a rectangular obstacle to `w` × `h` studs, keeping its north-west
  * corner (the inspector's Width and Depth).
  */
