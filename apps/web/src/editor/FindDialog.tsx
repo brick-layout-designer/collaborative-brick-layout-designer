@@ -24,7 +24,8 @@ export function FindDialog({ map, doc, onClose }: Props) {
   const showStatusMessage = useEditorStore((s) => s.showStatusMessage);
   const [needle, setNeedle] = useState('');
   const [replacement, setReplacement] = useState('');
-  const [scope, setScope] = useState<FindScope>('part');
+  // Desktop opens on "Text content", listed first (FindDialog.cpp:36-38).
+  const [scope, setScope] = useState<FindScope>('text');
   const [matchCase, setMatchCase] = useState(false);
   // Index of the current match — the one "Replace" acts on.
   const [current, setCurrent] = useState(0);
@@ -91,8 +92,8 @@ export function FindDialog({ map, doc, onClose }: Props) {
             onChange={(e) => { setScope(e.target.value as FindScope); setCurrent(0); }}
             className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1"
           >
-            <option value="part">Part number</option>
             <option value="text">Text content</option>
+            <option value="part">Part number</option>
           </select>
           <label className="flex items-center gap-1">
             <input

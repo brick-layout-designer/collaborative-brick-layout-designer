@@ -748,15 +748,14 @@ export function deleteLayer(doc: Y.Doc, layerId: string): void {
 }
 
 /**
- * Ensure there's a ruler layer in the doc and return its id. Mirrors
- * the desktop's auto-create-on-first-use behaviour for ruler tools
- * (MapView.cpp:454-468).
+ * The first ruler layer, or a new one named "Rulers" at the top — where
+ * desktop's ruler tools put a new ruler (MapView.cpp:818-829).
  */
 export function ensureRulerLayer(doc: Y.Doc): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
   const ids = layerOrder.toArray();
-  for (let i = ids.length - 1; i >= 0; i--) {
+  for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
     const l = layerData.get(id);
     if (l instanceof Y.Map && l.get('type') === 'ruler') return id;
@@ -766,7 +765,7 @@ export function ensureRulerLayer(doc: Y.Doc): string {
     const yLayer = new Y.Map<unknown>();
     yLayer.set('id', id);
     yLayer.set('type', 'ruler');
-    yLayer.set('name', 'Ruler');
+    yLayer.set('name', 'Rulers');
     yLayer.set('visible', true);
     yLayer.set('transparency', 100);
     yLayer.set('hullProperties', {
@@ -782,17 +781,33 @@ export function ensureRulerLayer(doc: Y.Doc): string {
   return id;
 }
 
+/**
+ * The label shown while drawing a ruler (MapView.cpp:941-946): length in
+ * studs to one decimal and in mm (m with two decimals from 1 m), with
+ * "r=" for a circle's radius.
+ */
+export function rulerPreviewLabel(lengthStuds: number, circular: boolean): string {
+  const mm = lengthStuds * 8;
+  const unit = mm >= 1000 ? `${(mm / 1000).toFixed(2)} m` : `${mm.toFixed(0)} mm`;
+  return `${circular ? 'r=' : ''}${lengthStuds.toFixed(1)} studs (${unit})`;
+}
+
+/**
+ * A new ruler, as desktop's RulerItemBase defaults (core/RulerItem.h:22-31,
+ * FontSpec.h:11-12): black (the known colour) line, guideline and
+ * measure text, 1-thick solid lines, Microsoft Sans Serif 8.25.
+ */
 const RULER_DEFAULTS = {
-  color: { kind: 'argb' as const, argb: 'FF000000' },
-  lineThickness: 2,
+  color: { kind: 'known' as const, name: 'Black' },
+  lineThickness: 1,
   displayDistance: true,
   displayUnit: true,
-  guidelineColor: { kind: 'argb' as const, argb: 'FF888888' },
+  guidelineColor: { kind: 'known' as const, name: 'Black' },
   guidelineThickness: 1,
-  guidelineDashPattern: [4, 4] as number[],
+  guidelineDashPattern: [] as number[],
   unit: 0, // STUD
-  measureFont: { family: 'Arial', size: 14, style: 'Regular' },
-  measureFontColor: { kind: 'argb' as const, argb: 'FF000000' },
+  measureFont: { family: 'Microsoft Sans Serif', size: 8.25, style: 'Regular' },
+  measureFontColor: { kind: 'known' as const, name: 'Black' },
 };
 
 /**
@@ -1125,12 +1140,15 @@ export interface AddTextSpec {
   textAlignment?: string;
 }
 
-/** Top-most existing text layer, or create a fresh one. */
+/**
+ * The first text layer, or a new one named "Labels" at the top — where
+ * desktop's Insert Text puts a cell (MapView::addTextAtScenePos).
+ */
 export function ensureTextLayer(doc: Y.Doc): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');
   const ids = layerOrder.toArray();
-  for (let i = ids.length - 1; i >= 0; i--) {
+  for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
     const l = layerData.get(id);
     if (l instanceof Y.Map && l.get('type') === 'text') return id;
@@ -1140,7 +1158,7 @@ export function ensureTextLayer(doc: Y.Doc): string {
     const yLayer = new Y.Map<unknown>();
     yLayer.set('id', id);
     yLayer.set('type', 'text');
-    yLayer.set('name', 'Text');
+    yLayer.set('name', 'Labels');
     yLayer.set('visible', true);
     yLayer.set('transparency', 100);
     yLayer.set('hullProperties', {
@@ -1154,6 +1172,15 @@ export function ensureTextLayer(doc: Y.Doc): string {
     layerOrder.push([id]);
   }, LOCAL_ORIGIN);
   return id;
+}
+
+/**
+ * Box for new text, in studs: 10 studs high, 0.6 of that per character
+ * wide and at least twice the height (MapView::addTextAtScenePos).
+ */
+export function newTextBox(text: string): { width: number; height: number } {
+  const height = 10;
+  return { width: Math.max(height * 0.6 * text.length, height * 2), height };
 }
 
 /**

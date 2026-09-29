@@ -31,7 +31,7 @@ Web source root: this repository.
 - [x] **Cut / Copy / Paste** (`Ctrl+X` / `Ctrl+C` / `Ctrl+V`) — uses the OS clipboard so paste works across tabs
 - [x] **Duplicate** (`Ctrl+D`)
 - [x] **Delete** (`Del` / `Backspace`) — deletes the whole mixed selection (bricks on any layer, rulers, anchored labels, text cells) in one undo step (`MapView.cpp:2108-2179`, `mixedSelection.ts` `deleteMixedSelection`).
-- [x] **Find & Replace** (`Ctrl+F`) — modeless panel like desktop (`setModal(false)`): the canvas stays usable, and every match is selected live as you type (200 ms debounce). Scope (Text content / Part number), match case, click a result to select just it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
+- [x] **Find & Replace** (`Ctrl+F`) — opens on the "Text content" scope, listed first (`FindDialog.cpp:36-38`); modeless panel like desktop (`setModal(false)`): the canvas stays usable, and every match is selected live as you type (200 ms debounce). Scope (Text content / Part number), match case, click a result to select just it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
 - [x] **Select All** (`Ctrl+A`) — every brick on every visible brick layer (`MapView.cpp:1417`); **Deselect All** (`Ctrl+Shift+A`)
 - [x] **Mixed selection** — bricks, rulers, anchored labels and text cells select together, like the desktop Qt scene selection. The rubber band picks all four kinds, and Shift/Ctrl+drag extends the selection. Shift/Ctrl+click toggles any item and a plain click selects just one. Dragging a selected brick, ruler or label moves the rest with it, live, and commits one undo step (`MapViewDrag.cpp:124-153, 412-450`). Arrow nudge moves bricks, rulers and labels (`MapView.cpp:985-1041`). Text cells are selectable but stay put, as desktop text items are not movable (`SceneBuilder.cpp:441`). Labels anchored to a moving brick are not offset twice (`mixedSelection.ts`, `editorStore.annoSelection`).
 - [x] **Select Path** (`Ctrl+P`) — BFS over connection links (`MapView.cpp:1481-1543`)
@@ -40,16 +40,21 @@ Web source root: this repository.
 - [x] **Bring to Front / Send to Back** (`Ctrl+Shift+]` / `Ctrl+Shift+[`)
 - [x] **Rotation Step** — dropdown `90 / 45 / 22.5 / 11.25 / 5 / 1°` in editor toolbar (`editorStore.rotationStepDegrees`)
 - [x] **Rotate CW / CCW** (`Shift+R` / `R`) — uses the configured rotation step. Rotates the selection about its centroid, across layers (`MapView.cpp:1043-1110`).
-- [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / colour / rotation. The menu entry places the text at the view centre (`MapView::addTextAtViewCenter`); `Ctrl+T` places it at the cursor.
+- [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / colour / rotation. Both place the text at the view centre (`MapView::addTextAtViewCenter`) on the first text layer (a new one is named "Labels"), Arial 12 pt, known colour Black, in a 10-stud-high box 0.6 × 10 per character wide, at least 20 (`MapView::addTextAtScenePos`). "Add Text Here" places it at the clicked point.
 - [x] **Insert → Anchored Label...** (`Ctrl+L`) — `AddAnchoredLabelDialog`: text, font, size, bold/italic, colour, World/Brick anchor, offset, rotation, minZoom; mutations via sidecar cache patch (`addAnchoredLabel` / `editAnchoredLabel` / `deleteAnchoredLabel` in `mutations.ts`). A new World label is placed at the viewport centre; a Brick label defaults to offset (2, −2) (`MainWindowMenus.cpp:447-457`). Editing keeps a known colour (e.g. desktop "Black") unless a new colour is picked.
 - [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint colour), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
+- [x] **Desktop defaults** — snap off, paint colour opaque #008000, Connection Points off (a selected brick still shows its free connections, `SceneBuilder.cpp:250-310`), one Module Names toggle for names and frames, on by default, frame thickness 5 px in 0.5 steps from 0.5 to 20 (`PreferencesDialog.cpp:137,152,200-207`, `SceneBuilderSidecar.cpp:233-236`).
+- [x] **Colours with alpha** — paint colour, text, ruler (line, measure, guideline), hull and grid colours all edit alpha as desktop's QColorDialog::ShowAlphaChannel (`ColorAlphaInput.tsx`); an untouched named colour is kept as named.
+- [x] **Unresolved parts** — a brick whose part the library doesn't have draws as desktop's placeholder: a dashed red outline over a translucent pink fill at its stored size (`SceneBuilder.cpp:230-242`).
+- [x] **Stacking** — within a layer bricks are drawn by altitude, lowest first, in file order among equals (`setZValue(altitude)`, `SceneBuilder.cpp:221`).
+- [x] **Grid cell indices** — like `MapView::drawCellIndices`: column labels along the origin cell's row and row labels down its column, centred in their cells, counting from 1 / A after the origin (blank at and before it), in the cell-index font sized in map units so it scales with zoom (`gridIndex.ts`). The first visible grid layer draws (`MapViewPaint.cpp:71-73`).
 
 ---
 
 ## View menu (`MainWindowMenus.cpp:491-554`)
 
 - [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — range 0.02–40 like desktop (`MapView.cpp:77-78`); the wheel step is 1.0015^(−delta·factor), capped at ±480 (`wheelZoomStep`); wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
-- [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`)
+- [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`) — fits every item (bricks, text, rulers, areas, labels, venue) plus 50 scene px, aspect kept, like `MainWindow::onFitToView` (`viewFit.ts`); the same fit runs on first open.
 - [x] **Status Bar** — mouse studs / selection count / zoom % / current tool
 - [n/a] **Show Map Scroll Bars** toggle — web uses middle-click pan; scrollbars don't apply
 - [x] Render toggles (persisted): Connection Points, Grid, Brick Hulls, Brick Elevation, Ruler Attach Points, Always Show Connections, Electric Circuits, Export Watermark, Module Label Percent — all persisted to localStorage. Electric Circuits drives the `ElectricCircuitLayer.tsx` overlay (see Rendering features).
@@ -74,7 +79,7 @@ Web source root: this repository.
 - [x] **Background Colour...** — colour picker with alpha → `setBackgroundColor` mutation; written to the `.bbm` as desktop's lowercase `aarrggbb`, and the canvas renders the translucency
 - [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs (without one the image is drawn at native size, top-left at the origin); stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
 - [x] **General Info...** — Author / LUG / Event / Date / Comment dialog
-- [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar.
+- [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar. The status bar says how to draw on entering the tool; an obstacle needs a venue outline first ("Draw the venue outline first.", `MainWindowMapMenu.cpp:160-212`).
 - [x] **Venue → Draw by Dimensions...** — `VenueDimensionsDialog`: unit (ft/in), start X/Y, segment table (length/angle/kind/label), compass-preset angle dropdown, Rectangle preset helper; builds polygon and calls `setVenue`
 - [x] **Venue → Add Obstacle...** — `venueObstacle` tool: same click-polygon flow; Enter appends a `VenueObstacle` to existing venue (or creates bare venue if none); accessible from Map menu and Toolbar
 - [x] **Venue → Edit Properties...** — `VenuePropertiesDialog`: name, render toggle, min walkway (ft), per-edge kind/door-width/label table; Clear Venue button; wired into Map menu → "Venue → Edit Properties..."
@@ -128,7 +133,7 @@ Web source root: this repository.
 - [x] Left-click empty space → marquee (hit-tests the rotated brick and label shapes, not their bounding boxes)
 - [x] Left-click brick → select (replace; Shift / Ctrl modifiers); group-aware (clicking a grouped brick selects the whole group)
 - [x] Double-click brick → Edit Brick dialog (per-brick properties)
-- [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target.
+- [x] Left-drag brick → move with live connection-snap (rotation-aligned: `newCentre = target − rotate(conn, newOrientation)`, `ConnectionSnap.cpp:103-110`). The grid fallback rounds the display-area top-left like desktop. A green snap ring marks the active connection target. While a connection snap is live the selection outline and fill turn green, like `SelectionOverlay.cpp:26-29`.
 - [x] **Pivot and footprint** (`BrickPlacement.h`, `PartsLibrary::footprint`) — a brick's displayArea is the box around its rotated hull, computed in BlueBrick's float arithmetic (`footprint.ts`, sprite sizes from the image headers); its sprite centre, the pivot, sits `imageOffset` off the box centre for parts with an XML `<hull>`. Drawing, placing, rotating (the box follows the turned footprint), snapping, grabbing, connectivity, the electric overlay, ruler attachments, Brick labels and the marquee all work from the pivot (`brickGeometry.ts`). Boxes saved by earlier builds with the wrong size are resized on load, keeping the sprite where it was (desktop `fixStaleAreas`). On eleven vanilla maps every brick's box size and every linked connection pair match exactly.
 - [x] **Linking** (`Connectivity.cpp`) — per layer, each free connection links to the first free matching point within half a stud on each axis (not the nearest); a new link on a brick's active connection hands it over to `<nextConnexionPreference>` or the next free one, and a broken link frees its connection (BlueBrick's ConnectionLink setter). The active connection is written back with the links.
 - [x] **Place next to the selected brick** — the first free compatible connection of the selected brick, in order, measured from its sprite centre (`MapView.cpp:1226-1258`); placement rebuilds connectivity at once, so chained clicks build a run.
@@ -160,7 +165,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Group** (≥ 2) / **Ungroup**
 - [x] **Select Connected**
 - [x] **Cut / Copy / Duplicate / Delete**
-- [x] Empty area: **Paste**, **Add Text Here...** (opens the text dialog at the click point)
+- [x] Empty area only (nothing selected): **Paste** (when this session has copied bricks — the system clipboard can't be read without a permission prompt; Ctrl+V still reads it), **Add Text Here...** (opens the text dialog at the click point) (`MapViewContextMenu.cpp:183-203`)
 - [x] Ruler-attach flow: when a single ruler is selected and user right-clicks a brick, offers **Attach Endpoint 1/2** / **Attach Centre**
 - [x] Tail: **Undo / Redo**
 
@@ -188,6 +193,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Category dropdown (parent-folder buckets)
 - [x] Fuzzy filter line edit (subsequence match, run-length scoring)
 - [x] Icon grid: S/M/L icon size toggle (`PartsPanel.tsx`; S=32px, M=48px, L=64px; persisted `cld:partsIconSize`); grid auto-reflows on resize matching desktop's `QListView::Adjust`
+- [x] A click picks a tile; double-click or Enter adds the part to the map (`QListWidget::itemActivated`, `PartsBrowser.cpp:145`)
 - [x] **Drag thumbnail to canvas** — HTML5 drag with live ghost + connection-snap on drop
 - [x] **Item activation (click)** places at view centre with selection-anchor snap + chain placement
 - [x] Right-click: **Add to map** [x], **Copy part number** [x], **Delete imported part...** [n/a] (LDraw/Studio/LDD import not planned for web; no `imports/` subfolder)
@@ -346,6 +352,8 @@ Selection-aware; entries vary based on what's under the cursor:
 **Anchored labels** (`LabelCommands.cpp`): AddAnchoredLabelCommand [x] (`addAnchoredLabel`), DeleteAnchoredLabelCommand [x] (`deleteAnchoredLabel`), EditAnchoredLabelTextCommand [x] (`editAnchoredLabel`), MoveAnchoredLabelCommand [x] (`moveAnchoredLabel`) — sidecar-cache mutations (last-write-wins at sidecar level)
 
 **Rulers** (`RulerCommands.cpp`): AddRulerItemCommand [x] (linear + circular via `addLinearRuler`/`addCircularRuler`), DeleteRulerItemCommand [x] (`deleteRulerItem`), MoveRulerItemCommand [x] (`moveRulerItem`), MoveRulerEndpointCommand [x] (`moveRulerEndpoint`), AttachRulerCommand [x] (`attachRulerEndpoint`), EditRulerItemCommand [x] (`editRulerItem`)
+
+New rulers take desktop's defaults (known Black line, guideline and text, 1-thick solid lines, Microsoft Sans Serif 8.25) on the first ruler layer, or a new "Rulers" layer; the drawing preview reads "N studs (mm / m)", with "r=" for circles (`RulerItem.h:22-31`, `MapView.cpp:818-829, 941-946`).
 
 **Areas** (`AreaCommands.cpp`): PaintAreaCellsCommand [x]
 

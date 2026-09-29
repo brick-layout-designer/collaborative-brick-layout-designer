@@ -34,10 +34,8 @@ export function PreferencesDialog({ onClose }: Props) {
   const selectionTint = useEditorStore((s) => s.selectionTint);
   const setSelectionTint = useEditorStore((s) => s.setSelectionTint);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const moduleFrameThickness = useEditorStore((s) => s.moduleFrameThickness);
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
-  const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
   const setModuleFrameThickness = useEditorStore((s) => s.setModuleFrameThickness);
 
   const showElectricCircuits = useEditorStore((s) => s.showElectricCircuits);
@@ -216,8 +214,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 { label: 'Show brick elevation labels', value: showBrickElevation, set: setShowBrickElevation },
                 { label: 'Show ruler attach points', value: showRulerAttachPoints, set: setShowRulerAttachPoints },
                 { label: 'Always show connection points', value: alwaysShowConnections, set: setAlwaysShowConnections },
-                { label: 'Show module names', value: showModuleNames, set: setShowModuleNames },
-                { label: 'Show module frames', value: showModuleFrames, set: setShowModuleFrames },
+                { label: 'Show module names and frames', value: showModuleNames, set: setShowModuleNames },
                 { label: 'Show electric circuits', value: showElectricCircuits, set: setShowElectricCircuits },
                 { label: 'Export watermark', value: showExportWatermark, set: setShowExportWatermark },
               ].map(({ label, value, set }) => (
@@ -244,10 +241,12 @@ export function PreferencesDialog({ onClose }: Props) {
                 <span className="text-xs text-neutral-400">Module frame thickness (px)</span>
                 <input
                   type="number"
-                  min={1}
+                  aria-label="Module frame thickness (px)"
+                  min={0.5}
                   max={20}
+                  step={0.5}
                   value={moduleFrameThickness}
-                  onChange={(e) => setModuleFrameThickness(parseInt(e.target.value, 10) || 2)}
+                  onChange={(e) => setModuleFrameThickness(parseFloat(e.target.value) || 5)}
                   className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
                 />
               </div>

@@ -65,4 +65,14 @@ export async function readBricksFromClipboard(): Promise<ClipboardEntry[] | null
   return memoryFallback?.entries ?? null;
 }
 
+/**
+ * Whether this session has bricks to paste, for the context menu's Paste
+ * entry (desktop lists it only when the clipboard has content). The system
+ * clipboard can't be checked without a permission prompt, so this knows
+ * only this tab's copies; Ctrl+V still reads the system clipboard.
+ */
+export function hasClipboardBricks(): boolean {
+  return (memoryFallback?.entries.length ?? 0) > 0;
+}
+
 export type { ClipboardEntry };

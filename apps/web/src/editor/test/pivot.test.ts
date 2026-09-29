@@ -206,3 +206,21 @@ describe('stale boxes are repaired in the doc', () => {
     expect(fixStaleAreasInDoc(doc, parts)).toBe(0);
   });
 });
+
+describe('drawing order (G5)', () => {
+  it('stacks by altitude, keeping array order among equal altitudes', async () => {
+    const { drawOrder } = await import('../brickGeometry');
+    const b = (id: string, altitude: number) => ({ id, altitude });
+    expect(drawOrder([b('a', 2), b('b', 0), b('c', 2), b('d', -1), b('e', 0)]).map((x) => x.id)).toEqual(['d', 'b', 'e', 'a', 'c']);
+    const inOrder = [b('a', 0), b('b', 0), b('c', 1)];
+    expect(drawOrder(inOrder)).toBe(inOrder);
+  });
+});
+
+describe('selection halo (I10)', () => {
+  it('uses the tint, or desktop\'s green while a connection snap is live', async () => {
+    const { selectionHalo } = await import('../render/BrickLayer');
+    expect(selectionHalo('FFD700', false)).toEqual({ stroke: '#FFD700', fill: '#FFD7004D' });
+    expect(selectionHalo('FFD700', true)).toEqual({ stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' });
+  });
+});

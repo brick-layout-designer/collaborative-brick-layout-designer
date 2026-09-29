@@ -131,3 +131,17 @@ describe('clipboard — browser clipboard API', () => {
     expect(result).toEqual(SAMPLE);
   });
 });
+
+describe('hasClipboardBricks', () => {
+  it('is true once this session has copied bricks', async () => {
+    vi.resetModules();
+    const clip = await import('../clipboard');
+    expect(clip.hasClipboardBricks()).toBe(false);
+    await clip.writeBricksToClipboard([]);
+    expect(clip.hasClipboardBricks()).toBe(false);
+    await clip.writeBricksToClipboard([
+      { sourceLayerName: 'Bricks', brick: { partNumber: '3001.1' } } as never,
+    ]);
+    expect(clip.hasClipboardBricks()).toBe(true);
+  });
+});

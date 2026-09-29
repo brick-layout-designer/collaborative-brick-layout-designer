@@ -64,6 +64,8 @@ import {
   ensureBrickLayer,
   ensureRulerLayer,
   ensureTextLayer,
+  newTextBox,
+  rulerPreviewLabel,
   allVisibleBrickIds,
   bricksByLayer,
   deleteBricksAcrossLayers,
@@ -84,7 +86,7 @@ import {
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
-import { readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { hasClipboardBricks, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
 import { pxToStud, studToPx } from './render/coords';
 import { ensureSprite, getSpriteSync } from './render/spriteCache';
 import { PlaceGhost } from './render/PlaceGhost';
@@ -101,11 +103,13 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
+import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 import { actualPartNumber, indexParts } from './partIndex';
+import { ColorAlphaInput } from './ColorAlphaInput';
+import { fitView } from './viewFit';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -1264,37 +1268,16 @@ function Canvas({
    * to land — important for fresh blank-create layouts where the doc
    * arrives empty and bricks come in via `.bbm` import a few ms later).
    */
+  // Fit to View: every item (bricks, text, rulers, areas, labels, venue)
+  // plus 50 scene px, like desktop's onFitToView (MainWindow.cpp:1372-1376).
   function fitToContent(): boolean {
     if (!map) return false;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        minX = Math.min(minX, b.displayArea.x);
-        minY = Math.min(minY, b.displayArea.y);
-        maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-        maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-      }
-    }
-    if (!Number.isFinite(minX)) return false;
-    const wPx = (maxX - minX) * 8;
-    const hPx = (maxY - minY) * 8;
-    if (wPx <= 0 || hPx <= 0) return false;
-    const PAD = 1.1;
-    const fitZoom = Math.min(width / (wPx * PAD), height / (hPx * PAD));
-    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
-    const cxPx = ((minX + maxX) / 2) * 8;
-    const cyPx = ((minY + maxY) / 2) * 8;
-    useEditorStore.setState({
-      zoom: z,
-      panX: width / 2 - cxPx * z,
-      panY: height / 2 - cyPx * z,
-    });
+    const fit = fitView(contentBoundsStuds(map, readSidecarFromDoc(doc)), width, height, { min: MIN_ZOOM, max: MAX_ZOOM });
+    if (!fit) return false;
+    useEditorStore.setState(fit);
     return true;
   }
+
 
   // Auto-fit on first open. Mirrors desktop's `MapView::setMap` final
   // call to `fitInView` (MapView.cpp:300-308). Fires once per browser
@@ -1314,6 +1297,24 @@ function Canvas({
   // select tool. Enter or right-click, like desktop
   // MapView::finishVenueDraw (MapView.cpp:891-925): fewer than 3 points
   // drops them, says so and stays in the tool; drawing enables the venue.
+  // Entering a venue drawing tool: an obstacle needs a venue outline
+  // first, and the status bar says how to draw (MainWindowMapMenu.cpp:160-212).
+  useEffect(() => {
+    if (tool !== 'venueOutline' && tool !== 'venueObstacle') return;
+    const st = useEditorStore.getState();
+    if (tool === 'venueObstacle' && !readSidecarFromDoc(doc)?.venue) {
+      st.setTool('select');
+      window.alert('Draw the venue outline first.');
+      return;
+    }
+    st.showStatusMessage(
+      tool === 'venueOutline'
+        ? 'Click points to outline the venue. Right-click / Enter to finish, Escape to cancel.'
+        : 'Click points to outline an obstacle. Right-click / Enter to finish, Escape to cancel.',
+      8000,
+    );
+  }, [tool, doc]);
+
   function finishVenueDraft() {
     if (isViewer) return;
     const kind = venueDraft?.kind ?? (tool === 'venueObstacle' ? 'obstacle' : 'outline');
@@ -2403,7 +2404,6 @@ function Canvas({
         <Group name={EXPORT_HIDE} listening={false}>
           <GridLayer
             map={map}
-            zoom={zoom}
             viewport={{
               studXMin: pxToStud(-panX / zoom),
               studYMin: pxToStud(-panY / zoom),
@@ -2532,28 +2532,25 @@ function Canvas({
   );
 
   function commitAddText(r: TextDialogResult) {
-    // Place at the current cursor (or stage centre if cursor isn't
-    // over the canvas yet). `addTextCell` infers a stud-size box from
-    // the requested font size so the renderer's probe-and-fit lands
-    // somewhere reasonable.
-    const target = addTextAt ?? pointerStuds() ?? viewCentreStuds({ width, height });
+    // Like desktop's Insert Text (MapView::addTextAtScenePos): at the view
+    // centre, or where "Add Text Here" was picked, on the first text
+    // layer, in a 10-stud-high box.
+    const target = addTextAt ?? viewCentreStuds({ width, height });
     setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
-    // Heuristic: 1 stud ≈ 8 px, so a 24-px font wants ~3 studs tall;
-    // width is 0.6 × height per character.
-    const heightStuds = Math.max(2, r.fontSize / 8);
-    const widthStuds = Math.max(2, r.text.length * heightStuds * 0.6);
+    const box = newTextBox(r.text);
     const styleParts: string[] = [];
     if (r.isBold) styleParts.push('Bold');
     if (r.isItalic) styleParts.push('Italic');
     addTextCell(doc, layerId, {
       centreX: target.x,
       centreY: target.y,
-      widthStuds,
-      heightStuds,
+      widthStuds: box.width,
+      heightStuds: box.height,
       text: r.text,
       font: { family: r.fontFamily, size: r.fontSize, style: styleParts.join(',') || 'Regular' },
-      fontColor: { kind: 'argb', argb: r.colorArgb },
+      // Desktop's new text is the known colour Black.
+      fontColor: r.colorArgb.toUpperCase() === 'FF000000' ? { kind: 'known', name: 'Black' } : { kind: 'argb', argb: r.colorArgb },
       orientation: r.rotation,
     });
     setShowAddText(false);
@@ -2896,9 +2893,13 @@ function CanvasContextMenu({
     entries.push(sep('s5'));
   }
 
-  entries.push(item('Paste', onPaste));
-  entries.push(item('Add Text Here…', onAddTextHere));
-  entries.push(sep('s6'));
+  // Empty-area menu only, Paste only with something to paste
+  // (MapViewContextMenu.cpp:183-203).
+  if (!hasSel) {
+    if (hasClipboardBricks()) entries.push(item('Paste', onPaste));
+    entries.push(item('Add Text Here…', onAddTextHere));
+    entries.push(sep('s6'));
+  }
   entries.push(item('Undo', undo.undo, !undo.canUndo));
   entries.push(item('Redo', undo.redo, !undo.canRedo));
 
@@ -3101,7 +3102,7 @@ function RulerDraftPreview({
   const by = draft.curY * PX;
   if (draft.kind === 'linear') {
     const lenStuds = Math.hypot(draft.curX - draft.startX, draft.curY - draft.startY);
-    const labelText = `${lenStuds.toFixed(1)} studs`;
+    const labelText = rulerPreviewLabel(lenStuds, false);
     return (
       <Group>
         <Line
@@ -3130,7 +3131,7 @@ function RulerDraftPreview({
   // Circular
   const rStuds = Math.hypot(draft.curX - draft.startX, draft.curY - draft.startY);
   const rPx = rStuds * PX;
-  const labelText = `r = ${rStuds.toFixed(1)} studs`;
+  const labelText = rulerPreviewLabel(rStuds, true);
   return (
     <Group>
       <Circle
@@ -3397,9 +3398,7 @@ function MapMenu({
   const setShowRulerAttachPoints = useEditorStore((s) => s.setShowRulerAttachPoints);
   const setAlwaysShowConnections = useEditorStore((s) => s.setAlwaysShowConnections);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const showModuleFrames = useEditorStore((s) => s.showModuleFrames);
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
-  const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
 
   const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
   const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
@@ -3444,7 +3443,6 @@ function MapMenu({
     { label: 'Show Ruler Attach Points', action: () => setShowRulerAttachPoints(!showRulerAttachPoints), checked: showRulerAttachPoints },
     { label: 'Always Show Connections', action: () => setAlwaysShowConnections(!alwaysShowConnections), checked: alwaysShowConnections },
     { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
-    { label: 'Show Module Frames', action: () => setShowModuleFrames(!showModuleFrames), checked: showModuleFrames },
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
     { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
@@ -3557,29 +3555,17 @@ function PanelsMenu({
 
 /**
  * Paint colour swatch — port of desktop's MainWindow toolbar colour
- * button (MainWindow.cpp:578-845, "Paint colour" entry). Shows a
- * coloured square; clicking it pops up a native colour input. Stored
- * value is AARRGGBB hex; the input emits #RRGGBB so we keep the
- * existing alpha when changing.
+ * button (MainWindow.cpp:578-845, "Paint colour" entry): a colour swatch
+ * and an alpha slider. Stored value is AARRGGBB hex.
  */
 function PaintColorPicker() {
   const value = useEditorStore((s) => s.paintColor);
   const set = useEditorStore((s) => s.setPaintColor);
-  // Strip alpha for the <input type=color> (which only handles RGB).
-  const aa = value.slice(0, 2);
-  const rgb = '#' + value.slice(2);
+  // Colour and alpha, like desktop's paint colour dialog (R6).
   return (
     <label className="flex items-center gap-1 text-xs text-neutral-400" title="Paint colour">
       <span>Colour</span>
-      <input
-        type="color"
-        value={rgb}
-        onChange={(e) => {
-          const v = e.target.value.replace(/^#/, '').toUpperCase();
-          set(`${aa}${v}`);
-        }}
-        className="h-6 w-8 cursor-pointer rounded-sm border border-neutral-700 bg-transparent"
-      />
+      <ColorAlphaInput compact label="Paint colour" value={value} onChange={(v) => set(v.toUpperCase())} />
     </label>
   );
 }

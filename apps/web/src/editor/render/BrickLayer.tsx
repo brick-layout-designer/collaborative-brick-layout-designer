@@ -23,7 +23,7 @@ import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
-import { pivotOf } from '../brickGeometry';
+import { drawOrder, pivotOf } from '../brickGeometry';
 
 interface Props {
   map: BbmMap;
@@ -77,6 +77,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
       showBrickHulls: s.showBrickHulls,
       showBrickElevation: s.showBrickElevation,
       selectionTint: s.selectionTint,
+      snapActive: s.liveSnap !== null,
     })),
   );
   const selectedIds = useMemo(() => new Set(selection), [selection]);
@@ -102,7 +103,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
         const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
           <Group key={layer.id} opacity={opacity}>
-            {layer.bricks.map((brick) => {
+            {drawOrder(layer.bricks).map((brick) => {
               const lower = brick.partNumber.toLowerCase();
               return (
                 <BrickGlyph
@@ -121,6 +122,9 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
                   selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
+                  // Only a selected glyph shows the halo, so only it re-renders
+                  // when a snap starts or ends.
+                  snapActive={!isViewer && view.snapActive && selectedIds.has(brick.id)}
                   getMap={getMap}
                   partsByKey={partsByKey}
                   {...(onEditBrick ? { onEditBrick } : {})}
@@ -149,6 +153,7 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness,
   showElevation,
   selectionTint,
+  snapActive,
   getMap,
   partsByKey,
   onEditBrick,
@@ -167,6 +172,8 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness: number;
   showElevation: boolean;
   selectionTint: string;
+  /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
+  snapActive: boolean;
   getMap: () => BbmMap;
   partsByKey: Map<string, PartWire>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
@@ -621,24 +628,30 @@ const BrickGlyph = memo(function BrickGlyph({
         />
       ) : (
         <Rect
+          name={meta ? 'brick-loading' : 'brick-unresolved'}
           x={-w / 2}
           y={-h / 2}
           width={w}
           height={h}
-          fill="#404040"
-          stroke="#888"
+          // A part the library doesn't know: desktop's placeholder, a dashed
+          // red outline over a translucent pink fill (SceneBuilder.cpp:230-242).
+          // A known part whose sprite is still loading: a neutral box.
+          {...(meta
+            ? { fill: '#404040', stroke: '#888' }
+            : { fill: 'rgba(255,200,200,0.314)', stroke: 'rgb(200,80,80)', dash: [4, 2], strokeScaleEnabled: false })}
           strokeWidth={1}
           perfectDrawEnabled={false}
         />
       )}
       {/*
-        Connection-point dots — port of SceneBuilder.cpp:238-289.
-        Always shown for free (unlinked) CPs; brightness varies by
-        selection state. Linked CPs render nothing — connectivity rebuild
+        Connection-point dots — port of SceneBuilder.cpp:238-310.
+        Free (unlinked) CPs of a selected brick, or of every brick when
+        Always Show Connections or the Connection Points view toggle is on
+        (both off by default); brightness varies by selection state. Linked CPs render nothing — connectivity rebuild
         (Connectivity.cpp) links coincident CPs, preventing stacked dots
         at shared edges. The active CP gets bigger + gold when selected.
       */}
-      {showConnectionPoints && meta && meta.connections.map((cp, ci) => {
+      {(showConnectionPoints || isSelected || alwaysShowConnections) && meta && meta.connections.map((cp, ci) => {
         // Skip non-numeric "type" values (custom non-snap joints) — same
         // gate desktop applies at SceneBuilder.cpp:262-267.
         if (!cp.type || !/^\d+$/.test(cp.type)) return null;
@@ -692,10 +705,10 @@ const BrickGlyph = memo(function BrickGlyph({
             y={-spriteHpx / 2 - 1}
             width={spriteWpx + 2}
             height={spriteHpx + 2}
-            stroke={`#${selectionTint}`}
+            stroke={selectionHalo(selectionTint, snapActive).stroke}
             strokeWidth={2.5}
             strokeScaleEnabled={false}
-            fill={`#${selectionTint}4D`}
+            fill={selectionHalo(selectionTint, snapActive).fill}
             listening={false}
             perfectDrawEnabled={false}
           />
@@ -798,4 +811,14 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * Selection halo colours: the selection tint, or desktop's green while a
+ * connection snap is live (SelectionOverlay.cpp:26-29).
+ */
+export function selectionHalo(tint: string, snapActive: boolean): { stroke: string; fill: string } {
+  return snapActive
+    ? { stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' }
+    : { stroke: `#${tint}`, fill: `#${tint}4D` };
 }

@@ -12,7 +12,7 @@ import {
   layerOptionsPatch,
   withRgb,
 } from '../layerOptions';
-import { axisLabel, cellIndexLabels, parseCellIndexCorner } from '../render/gridIndex';
+import { cellIndexLabel, cellIndexLabels, drawnGridLayer, parseCellIndexCorner } from '../render/gridIndex';
 import { createUndoManager } from '../useUndoManager';
 
 function layerById<T>(doc: Y.Doc, id: string): T {
@@ -88,7 +88,7 @@ describe('layerOptionsPatch', () => {
     const patch = layerOptionsPatch(layer, {
       ...f,
       transparency: 50,
-      grid: { ...f.grid!, gridSizeInStud: 96, gridThickness: 3, subDivisionNumber: 1, displaySubGrid: false, displayCellIndex: true, gridHex: '#ff0000' },
+      grid: { ...f.grid!, gridSizeInStud: 96, gridThickness: 3, subDivisionNumber: 1, displaySubGrid: false, displayCellIndex: true, gridArgb: '80ff0000' },
     });
     applyLayerOptions(doc, id, patch);
     const g = layerById<LayerGrid>(doc, id);
@@ -115,15 +115,26 @@ describe('layerOptionsPatch', () => {
 });
 
 describe('grid cell index labels', () => {
-  it('labels columns with letters and rows with numbers', () => {
-    expect(axisLabel(0, '0')).toBe('A');
-    expect(axisLabel(25, '0')).toBe('Z');
-    expect(axisLabel(26, '0')).toBe('AA');
-    expect(axisLabel(27, '0')).toBe('AB');
-    expect(axisLabel(0, '1')).toBe('1');
-    expect(axisLabel(9, 1)).toBe('10');
-    expect(axisLabel(-1, '0')).toBe('-A');
-    expect(axisLabel(-2, '1')).toBe('-2');
+  it('labels like desktop cellIndexLabel: from 1 / A after the origin, blank at and before it', () => {
+    expect(cellIndexLabel(1, true)).toBe('A');
+    expect(cellIndexLabel(26, true)).toBe('Z');
+    expect(cellIndexLabel(27, true)).toBe('AA');
+    expect(cellIndexLabel(28, true)).toBe('AB');
+    expect(cellIndexLabel(52, true)).toBe('AZ');
+    expect(cellIndexLabel(53, true)).toBe('BA');
+    expect(cellIndexLabel(10, false)).toBe('10');
+    expect(cellIndexLabel(0, true)).toBe('');
+    expect(cellIndexLabel(-3, false)).toBe('');
+  });
+
+  it('the first visible grid layer draws (MapViewPaint.cpp:71-73)', () => {
+    const layers = [
+      { id: 'hidden', type: 'grid', visible: false },
+      { id: 'bricks', type: 'brick', visible: true },
+      { id: 'shown', type: 'grid', visible: true },
+    ];
+    expect(drawnGridLayer(layers)?.id).toBe('shown');
+    expect(drawnGridLayer([layers[0]!])).toBeUndefined();
   });
 
   it('parses the stored corner point, defaulting to the origin', () => {
@@ -132,15 +143,26 @@ describe('grid cell index labels', () => {
     expect(parseCellIndexCorner({ x: 1, y: 4 })).toEqual({ x: 1, y: 4 });
   });
 
-  it('emits one label per visible cell, relative to the corner', () => {
-    const labels = cellIndexLabels({ xMin: -1, yMin: 0, xMax: 63, yMax: 31 }, 32, { x: 0, y: 0 }, '0', '1');
-    expect(labels.map((l) => l.text)).toEqual(['-A1', 'A1', 'B1']);
-    expect(labels[1]).toEqual({ x: 0, y: 0, text: 'A1' });
-    const shifted = cellIndexLabels({ xMin: 0, yMin: 32, xMax: 31, yMax: 63 }, 32, { x: -1, y: 0 }, '1', '0');
-    expect(shifted.map((l) => l.text)).toEqual(['2B']);
+  it('labels the origin row with columns and the origin column with rows only (MapViewPaint.cpp:115-140)', () => {
+    // Origin cell (0, 0), 32-stud cells, a view of 3 x 3 cells; like
+    // desktop the range runs to ceil(edge / cell), one partly-hidden cell on.
+    const labels = cellIndexLabels({ xMin: 0, yMin: 0, xMax: 95, yMax: 95 }, 32, { x: 0, y: 0 }, '0', '1');
+    expect(labels).toEqual([
+      { x: 32, y: 0, text: 'A' },
+      { x: 64, y: 0, text: 'B' },
+      { x: 96, y: 0, text: 'C' },
+      { x: 0, y: 32, text: '1' },
+      { x: 0, y: 64, text: '2' },
+      { x: 0, y: 96, text: '3' },
+    ]);
   });
 
-  it('gives up when too many cells are visible', () => {
-    expect(cellIndexLabels({ xMin: 0, yMin: 0, xMax: 10000, yMax: 10000 }, 1, { x: 0, y: 0 }, '0', '1')).toEqual([]);
+  it('cells before the origin stay blank; nothing when the origin row and column are out of view', () => {
+    const shifted = cellIndexLabels({ xMin: -64, yMin: 0, xMax: 31, yMax: 31 }, 32, { x: -1, y: 0 }, '1', '0');
+    // Origin cell (-1, 0) stays blank: columns count from x = 0 ("1", "2")
+    // and rows (letters) from the row below it, down the origin column.
+    expect(shifted.map((l) => [l.x, l.y, l.text])).toEqual([[0, 0, '1'], [32, 0, '2'], [-32, 32, 'A']]);
+    expect(cellIndexLabels({ xMin: 100, yMin: 100, xMax: 200, yMax: 200 }, 32, { x: 0, y: 0 }, '0', '1')).toEqual([]);
   });
 });
+

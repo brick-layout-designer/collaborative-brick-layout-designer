@@ -91,6 +91,7 @@ test.describe('anchored labels — default placement', () => {
     // Select exactly one brick through Find (clicking a match selects it).
     await page.keyboard.press('Control+f');
     const find = page.getByRole('dialog');
+    await find.getByRole('combobox').selectOption('part');
     await find.getByPlaceholder('Search…').fill('3857.0');
     await find.locator('ul button').first().click();
     await find.getByRole('button', { name: 'Close' }).click();
@@ -117,6 +118,7 @@ test.describe('find & replace — part numbers', () => {
 
     await page.keyboard.press('Control+f');
     const dialog = page.getByRole('dialog');
+    await dialog.getByRole('combobox').selectOption('part');
     await dialog.getByPlaceholder('Search…').fill('3857.0');
     await expect(dialog).toContainText('72 matches');
     await dialog.getByPlaceholder('New part-number text…').fill('3857.5');
@@ -312,9 +314,14 @@ test.describe('anchored labels — colour round-trip', () => {
     const { id } = (await res.json()) as { id: string };
     await openEditor(page, id);
 
-    // Empty map → pan 0 / zoom 1, so the label's top-left is at (320, 240) px.
+    // The view fits to the label on open; its top-left is at (40, 30)
+    // studs = (320, 240) scene px, mapped through the stage transform.
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
-    await page.mouse.dblclick(box.x + 320 + 20, box.y + 240 + 10);
+    const t = await page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { x: () => number; y: () => number; scaleX: () => number }[] } }).Konva.stages[0]!;
+      return { x: st.x(), y: st.y(), z: st.scaleX() };
+    });
+    await page.mouse.dblclick(box.x + t.x + (320 + 6) * t.z, box.y + t.y + (240 + 6) * t.z);
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Edit Anchored Label');
     await expect(dialog.locator('input[type="color"]')).toHaveValue('#ff0000');
@@ -352,6 +359,34 @@ test.describe('insert text', () => {
     const c = (await cell())!;
     expect(c.x).toBeCloseTo(centre.x, 1);
     expect(c.y).toBeCloseTo(centre.y, 1);
+  });
+
+  test('Ctrl+T puts Arial 12 black text at the view centre on a Labels layer, whatever the mouse', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const { iw, ih } = await page.evaluate(() => ({ iw: window.innerWidth, ih: window.innerHeight }));
+    const centre = { x: (iw - 260) / 2 / 8, y: (ih - 48) / 2 / 8 };
+    // Mouse over the canvas, well away from its centre.
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    await page.mouse.move(box.x + 40, box.y + 40);
+
+    await page.keyboard.press('Control+t');
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('input[type="text"], textarea').first().fill('Yard');
+    await dialog.getByRole('button', { name: 'OK' }).click();
+
+    const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
+    await expect.poll(async () => /<TextCell>/.test(await bbm())).toBe(true);
+    const xml = await bbm();
+    const cellXml = xml.slice(xml.indexOf('<TextCell>'), xml.indexOf('</TextCell>'));
+    const num = (tag: string) => Number(new RegExp(`<${tag}>([^<]+)</${tag}>`).exec(cellXml)![1]);
+    expect(num('X') + num('Width') / 2).toBeCloseTo(centre.x, 1);
+    expect(num('Y') + num('Height') / 2).toBeCloseTo(centre.y, 1);
+    expect(num('Height')).toBe(10);
+    expect(num('Width')).toBe(24); // max(10 * 0.6 * 4 characters, 20)
+    expect(cellXml).toMatch(/<FontColor>\s*<IsKnownColor>true<\/IsKnownColor>\s*<Name>Black<\/Name>/);
+    expect(cellXml).toMatch(/<Size>12<\/Size>/);
+    expect(xml).toMatch(/<Layer type="text" id="[^"]+">\s*<Name>Labels<\/Name>/);
   });
 });
 
@@ -472,6 +507,7 @@ test.describe('find — modeless', () => {
 
     await page.keyboard.press('Control+f');
     const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByRole('combobox').selectOption('part');
     await find.getByPlaceholder('Search…').fill('3857.0');
     // No click on a result: typing alone selects all 72 matches.
     await expect(page.locator('footer')).toContainText('selected: 72');
@@ -646,6 +682,7 @@ test.describe('use budget limitation', () => {
     // Select one 3857.0 through Find, then duplicate it.
     await page.keyboard.press('Control+f');
     const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByRole('combobox').selectOption('part');
     await find.getByPlaceholder('Search…').fill('3857.0');
     await find.locator('ul button').first().click();
     await find.getByRole('button', { name: 'Close' }).click();
@@ -717,7 +754,7 @@ test.describe('pivot geometry', () => {
     expect(part.spriteSize).toBeTruthy();
 
     await page.getByPlaceholder(/Fuzzy filter/).fill('2861.8');
-    await page.locator('aside li button[draggable="true"]', { hasText: /./ }).filter({ has: page.locator('img') }).first().click();
+    await page.locator('aside li button[draggable="true"]', { hasText: /./ }).filter({ has: page.locator('img') }).first().dblclick();
 
     const brick = async () => {
       const xml = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
@@ -744,7 +781,7 @@ test.describe('pivot geometry', () => {
 });
 
 test.describe('chained placement', () => {
-  test('clicking a track tile three times builds a straight run, each piece on the last one\'s free end', async ({ page }) => {
+  test('double-clicking a track tile three times builds a straight run, each piece on the last one\'s free end', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
     await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
@@ -760,8 +797,13 @@ test.describe('chained placement', () => {
         links: [...m[0].matchAll(/<LinkedTo>([^<]+)<\/LinkedTo>/g)].length,
       }));
     };
+    // A single click only picks the tile (desktop places on activation).
+    await tile.click();
+    await expect(tile).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(500);
+    expect(await bricks()).toHaveLength(0);
     for (let n = 1; n <= 3; n++) {
-      await tile.click();
+      await tile.dblclick();
       await expect.poll(async () => (await bricks()).length).toBe(n);
     }
     // Wait for the links to reach the server.
@@ -784,14 +826,298 @@ test.describe('placing a set', () => {
     await page.getByPlaceholder(/Fuzzy filter/).fill('rail_yard_left_turn');
     const tile = page.locator('aside li button[draggable="true"]').filter({ hasText: /Rail yard/ }).first();
     await expect(tile).toBeVisible({ timeout: 10000 });
-    await tile.click();
+    // Enter on the focused tile adds it, like a double-click (PartsBrowser.cpp:145).
+    await tile.focus();
+    await page.keyboard.press('Enter');
     await expect(page.locator('footer')).toContainText('Placed set: Rail yard on the right (12 parts)');
 
     const sidecar = async () =>
       (await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as { modules?: { name: string; members: string[] }[] };
     await expect.poll(async () => (await sidecar()).modules?.map((m) => [m.name, m.members.length])).toEqual([['Rail yard on the right', 12]]);
+    // Module names (and frames) are on by default, like desktop view/moduleNames.
+    const moduleLabels = () =>
+      page.evaluate(() => {
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => { text: () => string }[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('Text')).map((t) => t.text()).filter((t) => t === 'Rail yard on the right').length;
+      });
+    await expect.poll(moduleLabels).toBeGreaterThan(0);
     // Set files carry positions only; the pieces are linked on placement.
     const links = async () => ((await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<LinkedTo>[^<]+<\/LinkedTo>/g) ?? []).length;
     await expect.poll(links).toBeGreaterThanOrEqual(22);
+  });
+});
+
+test.describe('connection points', () => {
+  test('free connection dots show only on the selected brick by default', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const dots = () =>
+      page.evaluate(() => {
+        type Node = { getClassName: () => string; isVisible: () => boolean; getParent: () => { name: () => string } | null };
+        const K = (window as unknown as { Konva: { stages: { find: (s: (n: Node) => boolean) => Node[] }[] } }).Konva;
+        return K.stages
+          .flatMap((st) => st.find((n: Node) => n.getClassName() === 'Circle'))
+          .filter((c) => c.isVisible() && (c.getParent()?.name() ?? '').startsWith('brick-')).length;
+      });
+
+    // A placed piece is selected: its two free ends show.
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    await page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first().dblclick();
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    await expect.poll(dots).toBe(2);
+
+    // Deselected: none, since Connection Points is off by default.
+    await page.locator('.konvajs-content').first().click({ position: { x: 20, y: 20 } });
+    await expect(page.locator('footer')).not.toContainText('selected: 1');
+    await expect.poll(dots).toBe(0);
+  });
+});
+
+test.describe('unresolved parts', () => {
+  test('parts the library lacks draw as desktop\'s dashed pink placeholder', async ({ page }) => {
+    // Fordyce with one more brick renamed to a part no library has.
+    const bbm = FORDYCE_BBM.replace('<PartNumber>3857.0</PartNumber>', '<PartNumber>NO_SUCH_PART.1</PartNumber>');
+    const id = await createLayout(page, bbm);
+    await openEditor(page, id);
+    // Bricks whose part the catalog can't resolve by key, part number or old name.
+    const catalog = (await (await page.request.get('/api/parts/catalog')).json()) as {
+      parts: { key: string; partNumber: string; oldNames?: string[] }[];
+    };
+    const known = new Set(catalog.parts.flatMap((p) => [p.key, p.partNumber, ...(p.oldNames ?? [])].map((k) => k.toLowerCase())));
+    const unknown = [...bbm.matchAll(/<PartNumber>([^<]+)<\/PartNumber>/g)].filter((m) => !known.has(m[1]!.toLowerCase())).length;
+    expect(unknown).toBeGreaterThan(0);
+
+    const placeholders = () =>
+      page.evaluate(() => {
+        type Node = { stroke: () => string; dash: () => number[]; fill: () => string };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('.brick-unresolved')).map((r) => `${r.stroke()}|${r.dash().join(',')}|${r.fill()}`);
+      });
+    await expect.poll(async () => (await placeholders()).length).toBe(unknown);
+    expect(new Set(await placeholders())).toEqual(new Set(['rgb(200,80,80)|4,2|rgba(255,200,200,0.314)']));
+  });
+});
+
+test.describe('brick stacking', () => {
+  test('a brick with a higher altitude is drawn above the rest of its layer', async ({ page }) => {
+    // The first brick in the file, lifted to altitude 5.
+    const bbm = FORDYCE_BBM.replace(/(<Brick id="5">[\s\S]*?<Altitude>)0(<\/Altitude>)/, '$15$2');
+    const id = await createLayout(page, bbm);
+    await openEditor(page, id);
+    const position = () =>
+      page.evaluate(() => {
+        type Node = { name: () => string; getParent: () => { getChildren: () => Node[] } };
+        const K = (window as unknown as { Konva: { stages: { findOne: (s: string) => Node | undefined }[] } }).Konva;
+        const g = K.stages.map((st) => st.findOne('.brick-5')).find(Boolean);
+        if (!g) return null;
+        const siblings = g.getParent().getChildren();
+        return { index: siblings.indexOf(g), last: siblings.length - 1 };
+      });
+    await expect.poll(async () => (await position())?.index).not.toBeUndefined();
+    const p = (await position())!;
+    expect(p.index).toBe(p.last);
+  });
+});
+
+test.describe('grid cell indices', () => {
+  test('columns and rows are labelled along the origin cell only, one axis per label', async ({ page }) => {
+    // Fordyce's grid layer shows cell indices (letters across, numbers down).
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const labels = () =>
+      page.evaluate(() => {
+        type Node = { text: () => string; find: (s: string) => Node[] };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('.cell-index')).flatMap((g) => g.find('Text')).map((t) => t.text());
+      });
+    await expect.poll(async () => (await labels()).length).toBeGreaterThan(0);
+    const texts = await labels();
+    // Never the old "A1" per-cell labels: letters or numbers, never both.
+    expect(texts.every((t) => /^[A-Z]+$/.test(t) || /^\d+$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^[A-Z]+$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^\d+$/.test(t))).toBe(true);
+    await shot(page, 'grid-cell-index.png');
+  });
+});
+
+test.describe('venue obstacles', () => {
+  test('an obstacle needs a venue outline first; with one, the tool says how to draw', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const footer = page.locator('footer');
+    const drawObstacle = async () => {
+      await page.getByRole('button', { name: 'Map', exact: true }).click();
+      await page.getByRole('button', { name: 'Venue → Draw Obstacle...' }).click();
+    };
+
+    let message = '';
+    page.once('dialog', (d) => {
+      message = d.message();
+      void d.accept();
+    });
+    await drawObstacle();
+    await expect.poll(() => message).toBe('Draw the venue outline first.');
+    await expect(footer).toContainText('Tool: select');
+
+    // Draw an outline, then the obstacle tool is allowed.
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Venue → Draw Outline...' }).click();
+    await expect(footer).toContainText('Click points to outline the venue.');
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    for (const [dx, dy] of [[-60, -60], [60, -60], [0, 60]] as const) {
+      await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy);
+    }
+    await page.keyboard.press('Enter');
+    await expect(footer).toContainText('Venue: OK');
+
+    await drawObstacle();
+    await expect(footer).toContainText('Click points to outline an obstacle.');
+    await expect(footer).toContainText('Tool: venueObstacle');
+  });
+});
+
+test.describe('drawing a ruler', () => {
+  test('the preview reads studs and mm, and the ruler lands with desktop defaults on a Rulers layer', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByRole('button', { name: 'Ruler ─' }).click();
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const x0 = box.x + 200;
+    const y0 = box.y + 200;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    // 160 px at zoom 1 = 20 studs.
+    await page.mouse.move(x0 + 160, y0, { steps: 8 });
+    const previewText = () =>
+      page.evaluate(() => {
+        type Node = { text: () => string };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
+        return K.stages.flatMap((st) => st.find('Text')).map((t) => t.text()).filter((t) => t.includes('studs ('));
+      });
+    await expect.poll(previewText).toContain('20.0 studs (160 mm)');
+    await page.mouse.up();
+
+    const xml = async () => (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    await expect.poll(async () => /<LinearRuler/.test(await xml())).toBe(true);
+    const x = await xml();
+    expect(x).toMatch(/<Layer type="ruler" id="[^"]+">\s*<Name>Rulers<\/Name>/);
+    const ruler = x.slice(x.indexOf('<LinearRuler'), x.indexOf('</LinearRuler>'));
+    expect(ruler).toMatch(/<LineThickness>1<\/LineThickness>/);
+    expect(ruler).toMatch(/<Color>\s*<IsKnownColor>true<\/IsKnownColor>\s*<Name>Black<\/Name>/);
+  });
+});
+
+test.describe('fit to view', () => {
+  test('fits text as well as bricks, centred, with desktop\'s 50 px margin', async ({ page }) => {
+    // A map whose only content is a text cell far from the origin.
+    const withText = FORDYCE_BBM
+      .replace(/<Layer type="brick"[\s\S]*?<\/Layer>/g, '')
+      .replace(/<Layer type="ruler"[\s\S]*?<\/Layer>/g, '')
+      .replace(/(<Layer type="text" id="\d+">[\s\S]*?<TextCells>)[\s\S]*?(<\/TextCells>)/, (_m, a: string, b: string) =>
+        `${a}<TextCell><DisplayArea><X>2000</X><Y>1000</Y><Width>40</Width><Height>10</Height></DisplayArea>` +
+        '<Text>Far away</Text><Orientation>0</Orientation><FontColor><IsKnownColor>true</IsKnownColor><Name>Black</Name></FontColor>' +
+        `<Font><FontFamily>Arial</FontFamily><Size>12</Size><Style>Regular</Style></Font><TextAlignment>Center</TextAlignment></TextCell>${b}`);
+    const id = await createLayout(page, withText);
+    await openEditor(page, id);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: /^Fit to View/ }).click();
+    const view = await page.evaluate(() => {
+      type Stage = { x: () => number; y: () => number; scaleX: () => number; width: () => number; height: () => number };
+      const K = (window as unknown as { Konva: { stages: Stage[] } }).Konva;
+      const st = K.stages[0]!;
+      return { x: st.x(), y: st.y(), z: st.scaleX(), w: st.width(), h: st.height() };
+    });
+    // The text's centre, (2020, 1005) studs, is on the view centre.
+    expect((2020 * 8 * view.z + view.x) - view.w / 2).toBeCloseTo(0, 0);
+    expect((1005 * 8 * view.z + view.y) - view.h / 2).toBeCloseTo(0, 0);
+    // The 320 x 80 px box plus 100 px fits the width.
+    expect(view.z).toBeCloseTo((view.w - 4) / 420, 2);
+  });
+});
+
+test.describe('selection while snapping', () => {
+  test('the dragged brick\'s outline turns green while a connection snap is live', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    const tile = page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first();
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const bricks = async () => ((await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<Brick id=/g) ?? []).length;
+    // One straight, dragged 40 studs left, then a second at the view
+    // centre: their facing ends are 24 studs apart, too far to snap.
+    await tile.dblclick();
+    await expect.poll(bricks).toBe(1);
+    // Placing the first brick auto-fits the view; zoom out so the drags stay
+    // on the canvas (a drop outside it deletes), and work in studs.
+    const zoom = () =>
+      page.evaluate(() => (window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX());
+    await page.waitForTimeout(300);
+    for (let i = 0; i < 8; i++) await page.keyboard.press('Control+-');
+    await page.waitForTimeout(300);
+    const studPx = 8 * (await zoom());
+    expect(40 * studPx).toBeLessThan(box.width / 2 - 20);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx - 40 * studPx, cy, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.press('Escape');
+    await tile.dblclick();
+    await expect.poll(bricks).toBe(2);
+
+    const haloStrokes = () =>
+      page.evaluate(() => {
+        type Node = { getClassName: () => string; stroke: () => string; strokeWidth: () => number };
+        const K = (window as unknown as { Konva: { stages: { find: (s: (n: Node) => boolean) => Node[] }[] } }).Konva;
+        return K.stages
+          .flatMap((st) => st.find((n: Node) => n.getClassName() === 'Rect' && n.strokeWidth() === 2.5))
+          .map((r) => r.stroke());
+      });
+    // The new piece is selected; drag it left until its free end is half a
+    // stud from the other's.
+    await expect.poll(haloStrokes).toEqual(['#FFD700']);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx - 23.5 * studPx, cy, { steps: 16 });
+    await expect.poll(haloStrokes).toEqual(['rgb(80,255,120)']);
+    await page.mouse.up();
+    await expect.poll(haloStrokes).toEqual(['#FFD700']);
+  });
+});
+
+test.describe('context menu paste', () => {
+  test('Paste and Add Text Here are for empty space; Paste only once something is copied', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    await page.getByPlaceholder(/Fuzzy filter/).fill('2865.8');
+    await page.locator('aside li button[draggable="true"]').filter({ has: page.locator('img') }).first().dblclick();
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const menu = page.locator('[data-ctx-menu]');
+    const entries = async () => (await menu.locator('button').allInnerTexts()).map((t) => t.trim());
+
+    // On the selected brick: its actions, no Paste or Add Text Here.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+    await expect(menu).toBeVisible();
+    expect(await entries()).not.toContain('Paste');
+    expect(await entries()).not.toContain('Add Text Here…');
+    await page.keyboard.press('Escape');
+
+    // Empty space, nothing copied yet: Add Text Here but no Paste.
+    await page.keyboard.press('Escape'); // deselect
+    await page.mouse.click(box.x + 20, box.y + 20, { button: 'right' });
+    await expect(menu).toBeVisible();
+    expect(await entries()).toContain('Add Text Here…');
+    expect(await entries()).not.toContain('Paste');
+    await page.keyboard.press('Escape');
+
+    // Copy the brick, then empty space offers Paste.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Escape');
+    await page.mouse.click(box.x + 20, box.y + 20, { button: 'right' });
+    await expect.poll(entries).toContain('Paste');
   });
 });

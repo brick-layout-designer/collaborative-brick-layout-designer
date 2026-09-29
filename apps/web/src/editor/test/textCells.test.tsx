@@ -47,3 +47,29 @@ describe('text cells round-trip through the projection', () => {
     expect(cells(doc)[0]!.text).toBe('new');
   });
 });
+
+describe('new text defaults (MapView::addTextAtScenePos)', () => {
+  it('a 10-stud-high box, 0.6 of that per character, at least 20 wide', async () => {
+    const { newTextBox } = await import('../mutations');
+    expect(newTextBox('Hi')).toEqual({ width: 20, height: 10 });
+    expect(newTextBox('Station yard')).toEqual({ width: 72, height: 10 });
+  });
+
+  it('goes on the first text layer, or a new one named Labels', async () => {
+    const { addLayer } = await import('../mutations');
+    const doc = new Y.Doc();
+    ensureBrickLayer(doc);
+    const created = ensureTextLayer(doc);
+    expect(docToBbm(doc).layers.find((x) => x.id === created)?.name).toBe('Labels');
+    addLayer(doc, 'text');
+    expect(ensureTextLayer(doc)).toBe(created);
+  });
+
+  it('the text dialog starts at Arial 12 pt', async () => {
+    const { render, screen, cleanup } = await import('@testing-library/react');
+    const { TextDialog } = await import('../TextDialog');
+    render(<TextDialog onClose={() => {}} onCommit={() => {}} />);
+    expect(screen.getAllByRole('spinbutton').map((i) => (i as HTMLInputElement).value)).toContain('12');
+    cleanup();
+  });
+});
