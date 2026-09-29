@@ -28,7 +28,7 @@
     "@node-rs/argon2": "2.2.1",
     "arctic": "3.5.0",
     "better-sqlite3": "13.0.3",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "0.45.3",
     "fastify": "5.12.5",
     "lib0": "0.2.117",
     "nodemailer": "10.0.11",
