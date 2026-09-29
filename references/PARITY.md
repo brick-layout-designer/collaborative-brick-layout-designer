@@ -30,7 +30,7 @@ Web source root: this repository.
 
 - [x] **Undo / Redo** (`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`)
 - [x] **Cut / Copy / Paste** (`Ctrl+X` / `Ctrl+C` / `Ctrl+V`) — uses the OS clipboard so paste works across tabs
-- [x] **Duplicate** (`Ctrl+D`)
+- [x] **Duplicate** (`Ctrl+D`) — copy + paste like desktop (`MapViewClipboard.cpp:144-147`): the copies land centred under the cursor, or the view centre (pan and zoom included) when the cursor is off the map.
 - [x] **Delete** (`Del` / `Backspace`) — deletes the whole mixed selection (bricks on any layer, rulers, anchored labels, text cells) in one undo step (`MapView.cpp:2108-2179`, `mixedSelection.ts` `deleteMixedSelection`).
 - [x] **Find & Replace** (`Ctrl+F`) — opens on the "Text content" scope, listed first (`FindDialog.cpp:36-38`); modeless panel like desktop (`setModal(false)`): the canvas stays usable, and every match is selected live as you type (200 ms debounce). Scope (Text content / Part number), match case, click a result to select just it and make it current. **Replace** (current match) and **Replace All** in both scopes, each one undo step; part scope rewrites text inside part numbers (e.g. `3001.1` → `3001.5`), keeping position and orientation (`FindDialog.cpp:53-54, 150-189`, `findReplace.ts`).
 - [x] **Select All** (`Ctrl+A`) — every brick on every visible brick layer (`MapView.cpp:1417`); **Deselect All** (`Ctrl+Shift+A`)
@@ -57,7 +57,7 @@ Web source root: this repository.
 
 - [x] **Zoom In / Out** (`Ctrl+=` / `Ctrl+-`, Map menu → Zoom In / Zoom Out) — range 0.02–40 like desktop (`MapView.cpp:77-78`); the wheel step is 1.0015^(−delta·factor), capped at ±480 (`wheelZoomStep`); wheel + keyboard + menu, anchored under cursor (or stage centre for keyboard and menu) (`MainWindowMenus.cpp:493-498`)
 - [x] **Fit to View** (`F`, Map menu → Fit to View) (`MainWindowMenus.cpp:501-503`) — fits every item (bricks, text, rulers, areas, labels, venue) plus 50 scene px, aspect kept, like `MainWindow::onFitToView` (`viewFit.ts`); the same fit runs on first open.
-- [x] **Status Bar** — mouse studs / selection count / zoom % / current tool
+- [x] **Status Bar** — mouse studs / selection count / zoom % / current tool. Map menu → Show Status Bar hides it for the session, like desktop's View → Status Bar (`MainWindowMenus.cpp:524-527`). Drawing a ruler shows "Ruler length / radius: N studs  (mm)" there as well as by the cursor (`MapView.cpp:661-680`).
 - [n/a] **Show Map Scroll Bars** toggle — web uses middle-click pan; scrollbars don't apply
 - [x] Render toggles (persisted): Connection Points, Grid, Brick Hulls, Brick Elevation, Ruler Attach Points, Always Show Connections, Electric Circuits, Export Watermark, Module Label Percent — all persisted to localStorage. Electric Circuits drives the `ElectricCircuitLayer.tsx` overlay (see Rendering features).
 - [x] Dock toggles — Panels menu shows hidden panels and lets the user un-hide them; per-user persisted via localStorage. Modules [x], Module Library [x], Used Parts [x], Venue Library [x] panels all shipped.
@@ -86,7 +86,7 @@ Web source root: this repository.
 - [x] **Venue → Add Obstacle...** — `venueObstacle` tool: same click-polygon flow; Enter appends a `VenueObstacle` to existing venue (or creates bare venue if none); accessible from Map menu and Toolbar
 - [x] **Venue → Edit Properties...** — `VenuePropertiesDialog`: name, render toggle, min walkway (ft), per-edge kind/door-width/label table; Clear Venue button; wired into Map menu → "Venue → Edit Properties..."
 - [x] **Venue → Clear** (with confirmation) — Map menu → "Venue → Clear" calls `setVenue(doc, null)` after `window.confirm`
-- [x] **Venue → Save to Library...** — `VenueSaveLibraryDialog`: personal or org dropdown (orgs fetched via `api.orgs.list`), `POST /api/venues` with optional `orgSlug`; status bar confirms; shown in Venue Library panel
+- [x] **Venue → Save to Library...** — `VenueSaveLibraryDialog`: personal or org dropdown (orgs fetched via `api.orgs.list`), `POST /api/venues` with optional `orgSlug`; status bar confirms; shown in Venue Library panel. The Venue Library panel selects a venue and shows its walls / doors / obstacles / walkway (`detailText`), loads, renames (refused onto another of the owner's venues, also by the server with 409) and deletes it, and has **Save Current Venue**: a name prompt that asks before overwriting a venue of that name (`venueLibrary.ts`, `VenueLibraryPanel.cpp`)
 - [x] **Venue → Export as File...** — downloads `<name>.bld-venue` with `"schema": "bld-venue/1"`, like desktop `VenueIO.cpp` (`venueFile.ts`)
 - [x] **Venue → Load from Library...** — `VenueLibraryPanel` dock panel: lists server venues, ↓ button loads into layout via `setVenue`; filter input; ✎ **Rename** per row (`PATCH /api/venues/:id`, owner or org admin, like delete; `VenueLibraryPanel.cpp:91-94, 244-255`); delete per row
 - [x] **Venue → Load from File...** — accepts `.bld-venue`, legacy web `.cld-venue` and `.json`. Validates the schema and fields before `setVenue` (`venueFile.ts`).
@@ -228,11 +228,11 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] Delete button per row
 - [n/a] Local `.bbm` folder picker — superseded by server-side module library
 
-### Used Parts Panel (`PartUsagePanel.cpp`) — **PARTIAL**
+### Used Parts Panel (`PartUsagePanel.cpp`)
 
-- [x] Filter line edit (matches part # + description)
+- [x] Filter line edit (matches part # + description; "over" shows only parts past their budget)
 - [x] 4-column sortable table: Part / Count / Budget / Description — Budget column hidden when no limits set; shows `count/limit` (green) or `+over` (red) per row; row tinted red when over limit
-- [x] Summary line: distinct parts / total bricks in panel header
+- [x] Summary line: "N distinct part(s), M brick(s) total — K kind(s) over budget" under the table (`usedParts.ts`)
 - [x] Double-click → Select All of This Part
 - [x] Right-click on row → Select All of This Part (context menu)
 
