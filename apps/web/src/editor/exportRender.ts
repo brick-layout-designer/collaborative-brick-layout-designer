@@ -75,6 +75,12 @@ export function contentBoundsStuds(map: BbmMap, sidecar?: Sidecar | null): StudR
   if (venue) {
     for (const e of venue.edges) for (const p of e.poly) add(p.x, p.y);
     for (const o of venue.obstacles) for (const p of o.poly) add(p.x, p.y);
+    for (const p of venue.power ?? []) add(p.x, p.y);
+    for (const n of venue.notes ?? []) add(n.x, n.y);
+    for (const d of venue.dimensions ?? []) {
+      add(d.from.x, d.from.y);
+      add(d.to.x, d.to.y);
+    }
   }
   if (!Number.isFinite(minX)) return null;
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
