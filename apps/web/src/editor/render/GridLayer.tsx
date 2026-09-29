@@ -27,9 +27,12 @@ export function GridLayer({
   map,
   viewport,
   showGrid: showGridProp,
+  cornerOverride,
 }: {
   map: BbmMap;
   viewport: ViewportRect;
+  /** Live cell-index origin while it is being dragged (not yet in the doc). */
+  cornerOverride?: { layerId: string; corner: { x: number; y: number } } | null;
   /** Override the editor-store value. Pass `true` from the public viewer to avoid a store subscription. */
   showGrid?: boolean;
 }) {
@@ -66,7 +69,10 @@ export function GridLayer({
       {gridVisible && grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
       {gridVisible && grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
       {gridVisible && grid.displayCellIndex && (
-        <CellIndexLabels grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />
+        <CellIndexLabels
+          grid={cornerOverride && cornerOverride.layerId === grid.id ? { ...grid, cellIndexCorner: cornerOverride.corner } : grid}
+          bounds={{ xMin, yMin, xMax, yMax }}
+        />
       )}
     </Group>
   );

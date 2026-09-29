@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { docToBbm } from '@cld/ydoc';
+import { createDefaultLayoutDoc, docToBbm } from '@cld/ydoc';
 import type { LayerArea, LayerBrick, LayerGrid } from '@cld/model';
 import { addLayer, AREA_CELL_SIZE_DEFAULT, ensureAreaLayer, ensureBrickLayer } from '../mutations';
 import {
@@ -12,7 +12,7 @@ import {
   layerOptionsPatch,
   withRgb,
 } from '../layerOptions';
-import { cellIndexLabel, cellIndexLabels, drawnGridLayer, parseCellIndexCorner } from '../render/gridIndex';
+import { cellIndexLabel, cellIndexLabels, drawnGridLayer, gridCellAt, parseCellIndexCorner } from '../render/gridIndex';
 import { createUndoManager } from '../useUndoManager';
 
 function layerById<T>(doc: Y.Doc, id: string): T {
@@ -166,3 +166,26 @@ describe('grid cell index labels', () => {
   });
 });
 
+
+describe('grid origin drag (MapView.cpp:1648-1667, MoveGridOriginCommand)', () => {
+  it('gridCellAt truncates, one less below zero, like BlueBrick', () => {
+    expect(gridCellAt(40, 70, 32)).toEqual({ x: 1, y: 2 });
+    expect(gridCellAt(-0.5, -40, 32)).toEqual({ x: -1, y: -2 });
+    // BlueBrick's quirk: exactly -1 cell truncates to -1, then one less.
+    expect(gridCellAt(-32, 0, 32)).toEqual({ x: -2, y: 0 });
+  });
+
+  it('moveGridOrigin shifts the corner by whole cells as one undo step', async () => {
+    const { moveGridOrigin } = await import('../mutations');
+    const doc = createDefaultLayoutDoc();
+    const grid = docToBbm(doc).layers.find((l) => l.type === 'grid')!;
+    const um = createUndoManager(doc);
+    moveGridOrigin(doc, grid.id, 2, -1);
+    expect(layerById<LayerGrid>(doc, grid.id).cellIndexCorner).toEqual({ x: 2, y: -1 });
+    expect(um.undoStack.length).toBe(1);
+    um.undo();
+    expect(layerById<LayerGrid>(doc, grid.id).cellIndexCorner).toEqual({ x: 0, y: 0 });
+    moveGridOrigin(doc, grid.id, 0, 0);
+    expect(um.undoStack.length).toBe(0);
+  });
+});
