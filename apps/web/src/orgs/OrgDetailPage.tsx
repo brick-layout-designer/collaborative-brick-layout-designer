@@ -2,6 +2,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type OrgMemberSummary, type OrgPartLibrary } from '../api';
 import { AppHeader } from '../AppHeader';
+import { VenueList } from '../venues/VenueList';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -106,6 +107,13 @@ function OrgDetail({ slug }: { slug: string }) {
                 ))}
               </ul>
             ))}
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Venues
+          </h2>
+          <VenueList org={{ id: org.id, slug: org.slug }} canManage={isAdmin} />
         </section>
 
         <section>

@@ -90,6 +90,8 @@ Web source root: this repository.
 - [x] **Venue → Export as File...** — downloads `<name>.bld-venue` with `"schema": "bld-venue/1"`, like desktop `VenueIO.cpp` (`venueFile.ts`)
 - [x] **Venue → Load from Library...** — `VenueLibraryPanel` dock panel: lists server venues, ↓ button loads into layout via `setVenue`; filter input; ✎ **Rename** per row (`PATCH /api/venues/:id`, owner or org admin, like delete; `VenueLibraryPanel.cpp:91-94, 244-255`); delete per row
 - [x] **Venue → Load from File...** — accepts `.bld-venue`, legacy web `.cld-venue` and `.json`. Validates the schema and fields before `setVenue` (`venueFile.ts`).
+- [x] **Venue lists outside the editor** (web first; desktop to follow) — an org's page and the layouts page ("My venues") list saved venues with **Start layout**, Download (`.bld-venue`), Upload, and for your own venues or an org you admin, Rename and Delete (`venues/VenueList.tsx`).
+- [x] **New layout → Start from venue** (web first; desktop to follow) — the New layout dialog offers every venue you can see, the chosen owner's first; the venue goes into the new layout's sidecar (`venues/venueStart.ts`). Desktop API tokens reach the library with `venues:read` / `venues:write`.
 
 ---
 
