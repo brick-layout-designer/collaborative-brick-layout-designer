@@ -199,6 +199,42 @@ describe('venues — duplicate name', () => {
     expect(r2.statusCode).toBe(201);
     expect((r1.json() as { id: string }).id).not.toBe((r2.json() as { id: string }).id);
   });
+
+  it('refuses a rename onto another of the same owner\'s venues, ignoring case (VenueLibraryPanel.cpp:249-252)', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    await createVenue(app, cookie, 'Main Hall');
+    const id = await createVenue(app, cookie, 'Annex');
+    const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { name: ' main hall ' } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: 'name_taken' });
+    // Its own name in another case is fine.
+    const self = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { name: 'ANNEX' } });
+    expect(self.statusCode).toBe(200);
+  });
+
+  it('checks names per owner: other users and orgs don\'t clash', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const bobCookie = await registerAndLogin(app, 'bob@example.com');
+    await createVenue(app, bobCookie, 'Main Hall');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
+    await app.inject({ method: 'POST', url: '/api/venues', headers: { cookie: aliceCookie }, payload: { name: 'Org Hall', data: SAMPLE_VENUE, orgSlug: 'acme' } });
+    const id = await createVenue(app, aliceCookie, 'Annex');
+    for (const name of ['Main Hall', 'Org Hall']) {
+      const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie: aliceCookie }, payload: { name } });
+      expect(res.statusCode, name).toBe(200);
+    }
+  });
+
+  it('refuses a clash between two venues of one org', async () => {
+    const cookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie }, payload: { name: 'Acme', slug: 'acme' } });
+    const make = async (name: string) =>
+      ((await app.inject({ method: 'POST', url: '/api/venues', headers: { cookie }, payload: { name, data: SAMPLE_VENUE, orgSlug: 'acme' } })).json() as { id: string }).id;
+    await make('Org Hall');
+    const id = await make('Org Annex');
+    const res = await app.inject({ method: 'PATCH', url: `/api/venues/${id}`, headers: { cookie }, payload: { name: 'org hall' } });
+    expect(res.statusCode).toBe(409);
+  });
 });
 
 describe('venues — org admin can update org venue', () => {
