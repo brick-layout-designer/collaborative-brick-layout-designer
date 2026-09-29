@@ -807,6 +807,16 @@ export function rulerPreviewLabel(lengthStuds: number, circular: boolean): strin
 }
 
 /**
+ * The status-bar readout while drawing a ruler (MapView.cpp:661-680),
+ * kept alongside the floating label.
+ */
+export function rulerStatusMessage(lengthStuds: number, circular: boolean): string {
+  const mm = lengthStuds * 8;
+  const unit = mm >= 1000 ? `${(mm / 1000).toFixed(2)} m` : `${mm.toFixed(0)} mm`;
+  return `Ruler ${circular ? 'radius' : 'length'}: ${lengthStuds.toFixed(1)} studs  (${unit})`;
+}
+
+/**
  * A new ruler, as desktop's RulerItemBase defaults (core/RulerItem.h:22-31,
  * FontSpec.h:11-12): black (the known colour) line, guideline and
  * measure text, 1-thick solid lines, Microsoft Sans Serif 8.25.

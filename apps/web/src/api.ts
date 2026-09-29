@@ -28,6 +28,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Incorrect email or password.',
   invalid_input: 'Please fill in all required fields.',
   email_taken: 'An account with that email already exists.',
+  name_taken: 'Another saved venue already has that name.',
   invalid_email: 'Enter a valid email address.',
   forbidden: "You don't have permission to do that.",
   not_found: 'That item could not be found.',
@@ -435,6 +436,9 @@ export const api = {
       post<{ id: string; name: string }>('/api/venues', body),
     rename: (id: string, name: string) =>
       patch<{ ok: true; id: string; name: string }>(`/api/venues/${id}`, { name }),
+    /** Replace a saved venue's contents (Save Current Venue over an existing name). */
+    update: (id: string, data: unknown) =>
+      patch<{ ok: true; id: string; name: string }>(`/api/venues/${id}`, { data }),
     remove: (id: string) => del(`/api/venues/${id}`),
   },
 

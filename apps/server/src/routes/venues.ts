@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 
@@ -130,6 +130,20 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       if (name !== undefined) {
         const t = typeof name === 'string' ? name.trim() : '';
         if (!t) return reply.code(400).send({ error: 'invalid name' });
+        // Desktop refuses a rename onto an existing venue's file name
+        // (VenueLibraryPanel.cpp:249-252); here, another venue of the same
+        // owner with that name, ignoring case.
+        const siblings = await db
+          .select({ id: schema.venueLibrary.id, name: schema.venueLibrary.name })
+          .from(schema.venueLibrary)
+          .where(
+            row.ownerOrgId
+              ? eq(schema.venueLibrary.ownerOrgId, row.ownerOrgId)
+              : and(eq(schema.venueLibrary.ownerUserId, row.ownerUserId ?? ''), isNull(schema.venueLibrary.ownerOrgId)),
+          );
+        if (siblings.some((v) => v.id !== row.id && v.name.toLowerCase() === t.toLowerCase())) {
+          return reply.code(409).send({ error: 'name_taken' });
+        }
         updates.name = t;
       }
       if (data !== undefined) {

@@ -117,6 +117,9 @@ export interface EditorState {
   selectionTint: string;
   /** Show module name labels on canvas (`view/moduleNames`). */
   showModuleNames: boolean;
+  /** View → Status Bar: on by default, for this session only, like desktop (MainWindowMenus.cpp:524-527). */
+  showStatusBar: boolean;
+  setShowStatusBar: (v: boolean) => void;
   /** Budget → Use Budget Limitation: refuse to place parts over budget (`budget/useBudgetLimitation`, default off). */
   useBudgetLimitation: boolean;
   /** Parts without a limit are unlimited (true) or forbidden (false) (`budget/defaultInfinite`, default true). */
@@ -262,6 +265,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   // One toggle for module names and frames, on by default (desktop
   // view/moduleNames, SceneBuilderSidecar.cpp:233-236).
   showModuleNames: localStorage.getItem('cld:showModuleNames') !== 'false',
+  showStatusBar: true,
+  setShowStatusBar: (v) => set({ showStatusBar: v }),
   useBudgetLimitation: localStorage.getItem('cld:useBudgetLimitation') === 'true',
   budgetDefaultInfinite: localStorage.getItem('cld:budgetDefaultInfinite') !== 'false',
   warnBudgetLimitation: localStorage.getItem('cld:warnBudgetLimitation') !== 'false',

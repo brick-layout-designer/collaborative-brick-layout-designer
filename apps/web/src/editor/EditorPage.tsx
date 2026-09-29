@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -67,6 +67,7 @@ import {
   moveGridOrigin,
   newTextBox,
   rulerPreviewLabel,
+  rulerStatusMessage,
   allVisibleBrickIds,
   bricksByLayer,
   deleteBricksAcrossLayers,
@@ -87,7 +88,7 @@ import {
 } from './mutations';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
-import { hasClipboardBricks, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
 import { pxToStud, studToPx } from './render/coords';
 import { ensureSprite, getSpriteSync } from './render/spriteCache';
 import { PlaceGhost } from './render/PlaceGhost';
@@ -114,6 +115,7 @@ import { ColorAlphaInput } from './ColorAlphaInput';
 import { fitView } from './viewFit';
 import { PartListDialog } from './PartListDialog';
 import { DownloadAsDialog } from './DownloadAsDialog';
+import { saveVenueToLibrary } from './venueLibrary';
 import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -199,6 +201,8 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showBudget, setShowBudget] = useState(false);
   const [showPartList, setShowPartList] = useState(false);
   const [showDownloadAs, setShowDownloadAs] = useState(false);
+  const qc = useQueryClient();
+  const showStatusBar = useEditorStore((s) => s.showStatusBar);
   const [showVenueSaveLibrary, setShowVenueSaveLibrary] = useState(false);
 
   // Imperative handle so the PartsPanel can trigger click-to-place
@@ -624,13 +628,13 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       {/* Status bar — port of MainWindow.cpp:861-1014 status widgets.
           Spans every column. Shows mouse coords / selection count / zoom. */}
-      <StatusBar
+      {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
         status={status}
         venue={doc ? (readSidecarFromDoc(doc)?.venue ?? null) : null}
         budgetLimits={budgetLimits}
         budgetMap={docMap}
-      />
+      />}
 
       {showInsertModule && (
         <InsertModuleDialog doc={doc} onClose={() => setShowInsertModule(false)} />
@@ -704,14 +708,16 @@ function Editor({ layoutId }: { layoutId: string }) {
           <VenueSaveLibraryDialog
             venueName={venue.name || ''}
             orgs={myOrgs.data?.orgs ?? []}
-            onSave={(orgSlug) => {
-              const createArgs = orgSlug
-                ? { name: venue.name || 'Unnamed Venue', data: venue, orgSlug }
-                : { name: venue.name || 'Unnamed Venue', data: venue };
-              void api.venues.create(createArgs).then(() => {
-                useEditorStore.getState().showStatusMessage('Venue saved to library.');
-              }).catch(() => alert('Failed to save venue to library.'));
+            onSave={(orgSlug, name) => {
               setShowVenueSaveLibrary(false);
+              const orgId = orgSlug ? (myOrgs.data?.orgs.find((o) => o.slug === orgSlug)?.id ?? null) : null;
+              void (async () => {
+                const saved = (await qc.fetchQuery({ queryKey: ['venue-library'], queryFn: api.venues.list })).venues;
+                const r = await saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, saved, api.venues, (m) => confirm(m));
+                if (r === 'cancelled') return;
+                useEditorStore.getState().showStatusMessage('Venue saved to library.');
+                await qc.invalidateQueries({ queryKey: ['venue-library'] });
+              })().catch((e) => alert(`Failed to save venue to library: ${(e as Error).message}`));
             }}
             onClose={() => setShowVenueSaveLibrary(false)}
           />
@@ -897,6 +903,15 @@ function Canvas({
     curX: number;
     curY: number;
   } | null>(null);
+
+  // While a ruler is drawn, the status bar also shows its length or
+  // radius (MapView.cpp:661-680), as a backup to the floating label.
+  useEffect(() => {
+    if (!rulerDraft) return;
+    const len = Math.hypot(rulerDraft.curX - rulerDraft.startX, rulerDraft.curY - rulerDraft.startY);
+    if (len === 0) return;
+    useEditorStore.getState().showStatusMessage(rulerStatusMessage(len, rulerDraft.kind === 'circular'), 1200);
+  }, [rulerDraft]);
 
   // Venue-draw draft — accumulated polygon vertices in stud space.
   // `curX/curY` tracks the live preview cursor vertex.
@@ -1418,7 +1433,7 @@ function Canvas({
 
       // Ctrl/Cmd + C — copy selection to clipboard.
       // Ctrl/Cmd + X — cut. Ctrl/Cmd + V — paste at the current cursor.
-      // Ctrl/Cmd + D — duplicate (= copy + paste in place + tiny offset).
+      // Ctrl/Cmd + D — duplicate (= copy + paste at the cursor).
       // All ports of MapViewClipboard.cpp.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
@@ -2001,29 +2016,20 @@ function Canvas({
     return kept;
   }
 
+  /** Where a paste or duplicate lands: under the cursor, else the view centre. */
+  function currentPasteTarget(): { x: number; y: number } {
+    const { panX: livePanX, panY: livePanY, zoom: liveZoom } = useEditorStore.getState();
+    return pasteTarget(pointerStuds(), { width, height, panX: livePanX, panY: livePanY, zoom: liveZoom });
+  }
+
   async function pasteAtCursor(): Promise<void> {
     const clipped = await readBricksFromClipboard();
     if (!clipped || clipped.length === 0) return;
     if (!map) return;
+    // The group's centre lands under the cursor (MapViewClipboard.cpp:62-73).
+    const { dx, dy } = pasteOffset(clipped.map((e) => e.brick.displayArea), currentPasteTarget());
     const entries = keepWithinBudget(clipped, (e) => e.brick.partNumber);
     if (entries.length === 0) return;
-
-    // Translate the group to land its centre under the cursor (or stage
-    // centre if the cursor is off-stage). Mirrors MapViewClipboard.cpp:62-72.
-    const target = pointerStuds() ?? {
-      x: width / 2 / 8,
-      y: height / 2 / 8,
-    };
-    let cx = 0;
-    let cy = 0;
-    for (const e of entries) {
-      cx += e.brick.displayArea.x + e.brick.displayArea.width / 2;
-      cy += e.brick.displayArea.y + e.brick.displayArea.height / 2;
-    }
-    cx /= entries.length;
-    cy /= entries.length;
-    const dx = target.x - cx;
-    const dy = target.y - cy;
 
     // Group entries by source-layer name; find or create a brick layer
     // with that name in the current map.
@@ -2056,11 +2062,9 @@ function Canvas({
 
   async function duplicateSelection(): Promise<void> {
     await copySelection();
-    // Paste in-place + 1-stud offset (matches the previous Ctrl+D
-    // behaviour while still going through the clipboard so cross-tab
-    // duplicate works).
-    // Each copy lands on its source brick's own layer (desktop pastes by
-    // source layer — MapViewClipboard.cpp:74-110), in one undo step.
+    // Desktop Duplicate is copy + paste (MapViewClipboard.cpp:144-147):
+    // the copies land centred under the cursor. Each lands on its source
+    // brick's own layer (desktop pastes by source layer), in one undo step.
     if (!map) return;
     const sel = new Set(selection);
     const perLayer = new Map<string, Parameters<typeof insertBricks>[2]>();
@@ -2076,13 +2080,14 @@ function Canvas({
         }));
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
+    const offset = pasteOffset([...perLayer.values()].flat().map((b) => b.displayArea), currentPasteTarget());
     // Bricks beyond their budget are left out, in layer order.
     const flat = [...perLayer].flatMap(([layerId, bricks]) => bricks.map((brick) => ({ layerId, brick })));
     perLayer.clear();
     for (const { layerId, brick } of keepWithinBudget(flat, (f) => f.brick.partNumber)) {
       perLayer.set(layerId, [...(perLayer.get(layerId) ?? []), brick]);
     }
-    const ids = insertBricksAcrossLayers(doc, perLayer, { dx: 1, dy: 1 });
+    const ids = insertBricksAcrossLayers(doc, perLayer, offset);
     if (ids.length > 0) setSelection(ids);
   }
 
@@ -3450,6 +3455,8 @@ function MapMenu({
   const setAlwaysShowConnections = useEditorStore((s) => s.setAlwaysShowConnections);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
+  const showStatusBar = useEditorStore((s) => s.showStatusBar);
+  const setShowStatusBar = useEditorStore((s) => s.setShowStatusBar);
 
   const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
   const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
@@ -3495,6 +3502,7 @@ function MapMenu({
     { label: 'Show Ruler Attach Points', action: () => setShowRulerAttachPoints(!showRulerAttachPoints), checked: showRulerAttachPoints },
     { label: 'Always Show Connections', action: () => setAlwaysShowConnections(!alwaysShowConnections), checked: alwaysShowConnections },
     { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
+    { label: 'Show Status Bar', action: () => setShowStatusBar(!showStatusBar), checked: showStatusBar },
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
     { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
