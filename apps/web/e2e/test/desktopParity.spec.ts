@@ -187,7 +187,8 @@ test.describe('toolbar and menus', () => {
     await page.getByRole('button', { name: 'Map', exact: true }).click();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download .bbm' }).click();
-    expect((await download).suggestedFilename()).toBe('Parity_Test.bbm');
+    // No sidecar yet: the bare .bbm, named like the server export.
+    expect((await download).suggestedFilename()).toBe('Parity Test.bbm');
   });
 
   test('Export Image offers size, JPEG quality and antialias', async ({ page }) => {
@@ -452,5 +453,144 @@ test.describe('header dropdowns at a narrow viewport', () => {
     await page.getByRole('button', { name: 'Panels' }).click();
     const panelsMenu = page.locator('ul', { has: page.getByLabel('Module Library') });
     await inside(panelsMenu);
+  });
+});
+
+test.describe('find — modeless', () => {
+  test('selects every match live and leaves the editor usable while open', async ({ page }) => {
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+
+    await page.keyboard.press('Control+f');
+    const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByPlaceholder('Search…').fill('3857.0');
+    // No click on a result: typing alone selects all 72 matches.
+    await expect(page.locator('footer')).toContainText('selected: 72');
+    await shot(page, 'find-modeless.png');
+
+    // The toolbar still works with the panel open (no modal backdrop).
+    await page.getByRole('button', { name: 'Rotate CW' }).click();
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+    await expect(find).toBeVisible();
+
+    await find.getByPlaceholder('Search…').fill('');
+    await expect(page.locator('footer')).not.toContainText('selected: 72');
+    await find.press('Escape');
+    await expect(find).toHaveCount(0);
+  });
+});
+
+test.describe('venue drawing', () => {
+  test('fewer than 3 points is refused; a finished outline enables the venue and shows its status', async ({ page }) => {
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const footer = page.locator('footer');
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const at = (dx: number, dy: number) => page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy);
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Venue → Draw Outline...' }).click();
+    await at(-40, -40);
+    await at(40, -40);
+    await page.keyboard.press('Enter');
+    await expect(footer).toContainText('Venue polygon needs at least 3 points');
+    expect(((await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as { venue?: unknown }).venue ?? null).toBeNull();
+
+    // Still in the tool: a small triangle in the middle of the layout
+    // finishes the outline, and most of the layout lies outside it.
+    await at(-40, -40);
+    await at(40, -40);
+    await at(0, 40);
+    await page.keyboard.press('Enter');
+    await expect(footer).toContainText(/Venue: \d+ issue\(s\)/);
+    await shot(page, 'venue-status.png');
+
+    const venue = async () =>
+      ((await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as {
+        venue?: { enabled: boolean; edges: unknown[]; minWalkwayStuds: number };
+      }).venue;
+    await expect.poll(async () => (await venue())?.edges.length).toBe(3);
+    const v = (await venue())!;
+    expect(v.enabled).toBe(true);
+    expect(v.minWalkwayStuds).toBe(112.5);
+  });
+});
+
+/** Entries of a stored (uncompressed) zip, read through its central directory. */
+function readStoredZip(buf: Buffer): Map<string, string> {
+  let eocd = buf.length - 22;
+  while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+  const out = new Map<string, string>();
+  let p = buf.readUInt32LE(eocd + 16);
+  for (let i = buf.readUInt16LE(eocd + 10); i > 0; i--) {
+    expect(buf.readUInt16LE(p + 10)).toBe(0); // stored
+    const size = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const name = buf.toString('utf-8', p + 46, p + 46 + nameLen);
+    const local = buf.readUInt32LE(p + 42);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    out.set(name, buf.toString('utf-8', start, start + size));
+    p += 46 + nameLen + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
+  }
+  return out;
+}
+
+const LABEL_SIDECAR = JSON.stringify({
+  schemaVersion: 1,
+  bbmHashSha256: '',
+  anchoredLabels: [{
+    id: '777', text: 'Sidecar Label', font: { family: 'Arial', size: 24, style: 'Regular' },
+    color: { known: true, argb: 4278190080, name: 'Black' },
+    kind: 0, targetId: '', offset: { x: 10, y: 10 }, rot: 0, minZoom: 0,
+  }],
+});
+
+test.describe('.bbm with its .bbm.bld sidecar', () => {
+  test('Download .bbm delivers a zip with both files when the layout has a sidecar', async ({ page }) => {
+    await signIn(page, EMAIL, 'Parity Tester');
+    const res = await page.request.post('/api/layouts', { data: { title: 'Parity Test', bbm: FORDYCE_BBM, sidecar: LABEL_SIDECAR } });
+    const { id } = (await res.json()) as { id: string };
+    await openEditor(page, id);
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    const dl = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download .bbm' }).click();
+    const download = await dl;
+    expect(download.suggestedFilename()).toBe('Parity Test.zip');
+
+    const entries = readStoredZip(readFileSync(await download.path()));
+    expect([...entries.keys()]).toEqual(['Parity Test.bbm', 'Parity Test.bbm.bld']);
+    expect(entries.get('Parity Test.bbm')).toContain('<Map');
+    const sidecar = JSON.parse(entries.get('Parity Test.bbm.bld')!) as {
+      bbmHashSha256: string;
+      anchoredLabels: { text: string }[];
+    };
+    expect(sidecar.anchoredLabels.map((l) => l.text)).toEqual(['Sidecar Label']);
+    // Hashed against the .bbm in the same zip, so desktop sees no drift.
+    const { createHash } = await import('node:crypto');
+    expect(sidecar.bbmHashSha256).toBe(createHash('sha256').update(entries.get('Parity Test.bbm')!).digest('hex'));
+  });
+
+  test('dropping a .bbm together with its .bbm.bld opens a layout with both', async ({ page }) => {
+    await signIn(page, EMAIL, 'Parity Tester');
+    await page.goto('/');
+    await expect(page.locator('body')).toBeVisible();
+
+    await page.evaluate(
+      ({ bbm, sidecar }) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([bbm], 'dropped.bbm', { type: 'application/xml' }));
+        dt.items.add(new File([sidecar], 'dropped.bbm.bld', { type: 'application/json' }));
+        window.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+        window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      },
+      { bbm: FORDYCE_BBM, sidecar: LABEL_SIDECAR },
+    );
+
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    const id = page.url().split('/editor/')[1]!;
+    await expect.poll(async () => (await exportedLabels(page, id)).map((l) => l.text)).toEqual(['Sidecar Label']);
+    const bbm = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    expect(countPart(bbm, '3857.0')).toBe(72);
   });
 });

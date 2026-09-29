@@ -8,7 +8,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useDocMap, projectDoc } from './useDocMap';
-import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, type AnnoSelection } from './editorStore';
+import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -43,6 +43,9 @@ import { ModuleOverlay } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
+import { localBbmDownload, sha256Hex } from '../bbmFiles';
+import { backgroundImageRectPx } from './background';
+import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
   addCircularRuler,
@@ -92,8 +95,8 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { EXPORT_HIDE, exportSceneSize, renderMapToCanvas } from './exportRender';
-import { dropdownAnchor, dropTargetHint, viewCentreStuds } from './viewHelpers';
+import { EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
+import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -667,7 +670,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               ? (useEditorStore.getState().selection[0] ?? null)
               : null
           }
-          viewCentre={viewCentreStuds(viewport)}
+          viewCentre={canvasActionsRef.current?.viewCentre() ?? viewCentreStuds(viewport)}
           onClose={() => setShowAddLabel(false)}
         />
       )}
@@ -766,7 +769,6 @@ function Canvas({
   const snapStepStuds = useEditorStore((s) => s.snapStepStuds);
   const rotationStepDegrees = useEditorStore((s) => s.rotationStepDegrees);
   const setSelection = useEditorStore((s) => s.setSelection);
-  const showExportWatermark = useEditorStore((s) => s.showExportWatermark);
   const showElectricCircuits = useEditorStore((s) => s.showElectricCircuits);
   const venueLabelPx = useEditorStore((s) => s.venueLabelPx);
 
@@ -1045,6 +1047,15 @@ function Canvas({
     return m;
   }, [catalog.data]);
 
+  /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
+  function brickSpriteStuds(b: { partNumber: string }): { w: number; h: number } | null {
+    const meta = partsByKey.get(b.partNumber.toLowerCase());
+    const sprite = meta ? getSpriteSync(spriteUrlFor(meta)) : null;
+    if (!meta || !sprite) return null;
+    const pxPerStud = meta.pxPerStud && meta.pxPerStud > 0 ? meta.pxPerStud : 8;
+    return { w: sprite.naturalWidth / pxPerStud, h: sprite.naturalHeight / pxPerStud };
+  }
+
   // Drag-from-Parts-panel → drop on canvas. The Stage's container <div>
   // receives native HTML5 drag events. We accept the custom MIME type
   // emitted by PartsPanel, render a live ghost via `dropPart` while
@@ -1266,7 +1277,7 @@ function Canvas({
     if (wPx <= 0 || hPx <= 0) return false;
     const PAD = 1.1;
     const fitZoom = Math.min(width / (wPx * PAD), height / (hPx * PAD));
-    const z = Math.max(0.1, Math.min(8, fitZoom));
+    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
     const cxPx = ((minX + maxX) / 2) * 8;
     const cyPx = ((minY + maxY) / 2) * 8;
     useEditorStore.setState({
@@ -1291,47 +1302,20 @@ function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, width, height]);
 
-  // Finish the venue outline / obstacle being drawn (≥3 points) and
-  // return to the select tool. Enter or right-click, like desktop
-  // MapView::finishVenueDraw (MapView.cpp:484-489).
+  // Finish the venue outline / obstacle being drawn and return to the
+  // select tool. Enter or right-click, like desktop
+  // MapView::finishVenueDraw (MapView.cpp:891-925): fewer than 3 points
+  // drops them, says so and stays in the tool; drawing enables the venue.
   function finishVenueDraft() {
-    if (!venueDraft || isViewer) return;
-    const pts = venueDraft.pts;
-    const kind = venueDraft.kind;
-    if (pts.length >= 3 && doc) {
-      void (async () => {
-
-        const existing = readSidecarFromDoc(doc);
-        if (kind === 'outline') {
-          const edges: import('@cld/bbm').VenueEdge[] = pts.map((pt, i) => ({
-            kind: 0,
-            doorWidthStuds: 0,
-            label: '',
-            poly: [pt, pts[(i + 1) % pts.length]!],
-          }));
-          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-          const minX = Math.min(...xs), minY = Math.min(...ys);
-          const maxX = Math.max(...xs), maxY = Math.max(...ys);
-          const venue: import('@cld/bbm').Venue = {
-            name: existing?.venue?.name ?? '',
-            enabled: existing?.venue?.enabled ?? true,
-            minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
-            bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-            edges,
-            obstacles: existing?.venue?.obstacles ?? [],
-          };
-          setVenue(doc, venue);
-        } else {
-          const obstacle: import('@cld/bbm').VenueObstacle = { label: '', poly: pts };
-          const base = existing?.venue ?? {
-            name: '', enabled: true, minWalkwayStuds: 0,
-            bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [],
-          };
-          setVenue(doc, { ...base, obstacles: [...base.obstacles, obstacle] });
-        }
-      })();
-    }
+    if (isViewer) return;
+    const kind = venueDraft?.kind ?? (tool === 'venueObstacle' ? 'obstacle' : 'outline');
+    const next = venueAfterDraw(readSidecarFromDoc(doc)?.venue, kind, venueDraft?.pts ?? []);
     setVenueDraft(null);
+    if (!next) {
+      useEditorStore.getState().showStatusMessage(VENUE_MIN_POINTS_MESSAGE, 2500);
+      return;
+    }
+    setVenue(doc, next);
     useEditorStore.getState().setTool('select');
   }
 
@@ -1366,7 +1350,7 @@ function Canvas({
       }
 
       // Enter — commit venue-draw polygon (≥3 pts) or obstacle.
-      if (e.key === 'Enter' && venueDraft && !isViewer) {
+      if (e.key === 'Enter' && (venueDraft || tool === 'venueOutline' || tool === 'venueObstacle') && !isViewer) {
         e.preventDefault();
         finishVenueDraft();
         return;
@@ -1826,7 +1810,8 @@ function Canvas({
     //
     // Hidden layers are skipped so the user can't accidentally select
     // bricks they can't see; the brick z-order across layers doesn't
-    // affect the result because the marquee is purely AABB-based.
+    // affect the result. Each brick is tested by its rotated shape, like
+    // Qt's IntersectsItemShape rubber band (render/marqueeMath.ts).
     //
     // Rulers, anchored labels and text cells in the band join the
     // selection too (mixed selection, like desktop's scene selection).
@@ -1834,7 +1819,7 @@ function Canvas({
       const ids: string[] = [];
       for (const layer of map.layers) {
         if (layer.type !== 'brick' || !layer.visible) continue;
-        ids.push(...bricksInMarquee(finalMarquee, layer.bricks));
+        ids.push(...bricksInMarquee(finalMarquee, layer.bricks, brickSpriteStuds));
       }
       const sc = readSidecarFromDoc(doc);
       let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom);
@@ -2188,21 +2173,30 @@ function Canvas({
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
   // Renders the whole map (content bounds + margin), not the viewport.
   exportImageRef.current = {
-    render: ({ pixelRatio, transparent, size, antialias }) => {
+    render: ({ pixelRatio, transparent, size, antialias, watermark, regionStuds }) => {
       const stage = stageRef.current;
       if (!stage || !map) return null;
-      const stamp = [map.author, map.lug, map.event].filter(Boolean).join(' / ');
       return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
         pixelRatio,
         transparent,
         ...(size ? { size } : {}),
         ...(antialias !== undefined ? { antialias } : {}),
+        ...(regionStuds ? { regionStuds } : {}),
         hudLayer: hudLayerRef.current,
-        ...(showExportWatermark && stamp ? { watermark: stamp } : {}),
+        // Per-export option, desktop's "Embed general-info watermark".
+        ...(watermark ? { watermark: watermarkText(map) } : {}),
       });
     },
+    region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc)) : null),
     sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
   };
+
+  // The Stage's own size (not a window estimate): World labels and
+  // Insert Text land under its centre (mapToScene(viewport centre)).
+  function stageCentreStuds(): { x: number; y: number } {
+    const st = stageRef.current;
+    return viewCentreStuds({ width: st?.width() ?? width, height: st?.height() ?? height });
+  }
 
   canvasActionsRef.current = {
     cut: () => void cutSelection(),
@@ -2229,9 +2223,10 @@ function Canvas({
     // Insert ▸ Text... at the view centre (MapView::addTextAtViewCenter).
     insertText: () => {
       if (isViewer) return;
-      setAddTextAt(viewCentreStuds({ width, height }));
+      setAddTextAt(stageCentreStuds());
       setShowAddText(true);
     },
+    viewCentre: () => stageCentreStuds(),
   };
 
   if (!map) return <EmptyDoc />;
@@ -2253,8 +2248,8 @@ function Canvas({
       onWheel={(e) => {
         e.evt.preventDefault();
         // Wheel = zoom only, anchored under the cursor. Mirrors desktop
-        // MapView::wheelEvent (MapView.cpp:351-385) + AnchorUnderMouse
-        // (MapView.cpp:89): step is 1.0015^deltaY clamped to ±480.
+        // MapView::wheelEvent (MapView.cpp:354-390) + AnchorUnderMouse
+        // (MapView.cpp:89): see wheelZoomStep.
         //
         // High-res trackpads emit wheel events at >60 Hz; processing
         // each one synchronously with a Yjs+catalog re-projection makes
@@ -2276,10 +2271,8 @@ function Canvas({
           const a = zoomAccumRef.current;
           a.raf = null;
           if (a.deltaY === 0) return;
-          const clamped = Math.max(-480, Math.min(480, a.deltaY));
+          const step = wheelZoomStep(a.deltaY, useEditorStore.getState().wheelZoomFactor);
           a.deltaY = 0;
-          const wzf = useEditorStore.getState().wheelZoomFactor;
-          const step = Math.pow(1.0015 * wzf, -clamped);
           // Read the live zoom from the store at apply-time, not from
           // the closure — by now multiple frames may have elapsed.
           const live = useEditorStore.getState().zoom;
@@ -2382,7 +2375,7 @@ function Canvas({
             }}
           />
         </Group>
-        <BackgroundImageLayer doc={doc} map={map} />
+        <BackgroundImageLayer doc={doc} />
         <Group listening={!isViewer}>
           {isViewer
             ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
@@ -2461,7 +2454,7 @@ function Canvas({
       </KonvaLayer>
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
-          snap ring, ruler/venue drafts, remote cursors, export watermark. */}
+          snap ring, ruler/venue drafts, remote cursors. */}
       <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
@@ -2495,24 +2488,6 @@ function Canvas({
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
         {venueDraft && <VenueDraftPreview draft={venueDraft} />}
         <RemoteCursors awareness={awareness} map={map} />
-        {showExportWatermark && map && (() => {
-          const parts = [map.author, map.lug, map.event].filter(Boolean);
-          if (parts.length === 0) return null;
-          const stamp = parts.join(' / ');
-          const fontSize = Math.max(8, height / 60);
-          return (
-            <Text
-              text={stamp}
-              fontSize={fontSize}
-              fontFamily="sans-serif"
-              fill="rgba(0,0,0,0.55)"
-              x={10}
-              y={height - fontSize - 10}
-              width={width - 20}
-              align="right"
-            />
-          );
-        })()}
       </KonvaLayer>
     </Stage>
   );
@@ -3052,16 +3027,10 @@ function ResizableDockSlot({
 
 /**
  * Renders the sidecar background image as a Konva layer below all content.
- * Port of MapViewPaint.cpp:43-70. When no rect is set the image stretches
- * to the brick bounding box; when a rect is stored it is placed there.
+ * Port of MapViewPaint.cpp:41-67: placed at its stored rect, or at native
+ * size at the origin when there is none (see backgroundImageRectPx).
  */
-function BackgroundImageLayer({
-  doc,
-  map,
-}: {
-  doc: import('yjs').Doc;
-  map: import('@cld/model').BbmMap | null;
-}) {
+function BackgroundImageLayer({ doc }: { doc: import('yjs').Doc }) {
   const bg = readSidecarFromDoc(doc)?.backgroundImage ?? null;
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -3076,31 +3045,11 @@ function BackgroundImageLayer({
 
   if (!bg || !img) return null;
 
-  const PX = 8;
-  let x: number, y: number, w: number, h: number;
-  if (bg.rect) {
-    x = bg.rect.x * PX; y = bg.rect.y * PX;
-    w = bg.rect.w * PX; h = bg.rect.h * PX;
-  } else if (map) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const layer of map.layers) {
-      if (layer.type !== 'brick') continue;
-      for (const b of layer.bricks) {
-        minX = Math.min(minX, b.displayArea.x);
-        minY = Math.min(minY, b.displayArea.y);
-        maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-        maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-      }
-    }
-    if (!Number.isFinite(minX)) return null;
-    x = minX * PX; y = minY * PX; w = (maxX - minX) * PX; h = (maxY - minY) * PX;
-  } else {
-    return null;
-  }
+  const r = backgroundImageRectPx(bg, { width: img.naturalWidth, height: img.naturalHeight });
 
   return (
     <Group listening={false}>
-      <KonvaImage image={img} x={x} y={y} width={w} height={h} opacity={bg.opacity} listening={false} />
+      <KonvaImage image={img} x={r.x} y={r.y} width={r.width} height={r.height} opacity={bg.opacity} listening={false} />
     </Group>
   );
 }
@@ -3275,9 +3224,9 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   // panel is collapsed or scrolled out of view (issue #61).
   const activeLayer = activeLayerId ? budgetMap?.layers.find((l) => l.id === activeLayerId) : null;
   // The status bar re-renders on every HUD mouse update; keep the
-  // O(edges x bricks) walkway scan and the budget tally off that path.
-  const walkwayViolations = useMemo(
-    () => (venue ? countWalkwayViolations(venue, budgetMap) : 0),
+  // venue validation and the budget tally off that path.
+  const venueReadout = useMemo(
+    () => venueStatus(venue, validateVenue(venue, budgetMap)),
     [venue, budgetMap],
   );
   const budgetOver = useMemo(() => {
@@ -3331,17 +3280,15 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
         )}
       </div>
       <div className="flex items-center gap-3">
-        {venue !== null && (
+        {venueReadout && (
+          // Desktop MainWindow.cpp:917-936: "Venue: OK" / "Venue: N issue(s)"
+          // with the problems listed in the tooltip.
           <span
-            title={venue.enabled ? `Venue: ${venue.name || 'unnamed'} (${venue.edges.length} edges)` : 'Venue disabled'}
-            className={venue.enabled ? 'text-green-400' : 'text-neutral-500'}
+            data-testid="venue-status"
+            title={venueReadout.tooltip}
+            className={venueReadout.ok ? 'text-green-400' : 'font-semibold text-orange-400'}
           >
-            Venue: {venue.enabled ? (venue.name || 'unnamed') : 'disabled'}
-          </span>
-        )}
-        {walkwayViolations > 0 && venue && (
-          <span className="text-orange-400" title={`${walkwayViolations} brick(s) inside the ${venue.minWalkwayStuds} stud walkway buffer`}>
-            ⚠ {walkwayViolations} in walkway
+            {venueReadout.text}
           </span>
         )}
         {budgetLimits.size > 0 && (
@@ -3359,40 +3306,6 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
       </div>
     </footer>
   );
-}
-
-/**
- * Simplified AABB clearance check: for each non-Wall edge segment compute
- * the walkway buffer band AABB and count bricks that overlap it.
- */
-function countWalkwayViolations(
-  venue: import('@cld/bbm').Venue,
-  map: import('@cld/model').BbmMap | null,
-): number {
-  if (!venue.enabled || venue.minWalkwayStuds <= 0 || !map) return 0;
-  const buf = venue.minWalkwayStuds;
-  let violations = 0;
-  for (const edge of venue.edges) {
-    if (edge.kind === 0 /* Wall */ || !edge.poly || edge.poly.length < 2) continue;
-    for (let i = 1; i < edge.poly.length; i++) {
-      const a = edge.poly[i - 1]!;
-      const b = edge.poly[i]!;
-      const segMinX = Math.min(a.x, b.x) - buf;
-      const segMaxX = Math.max(a.x, b.x) + buf;
-      const segMinY = Math.min(a.y, b.y) - buf;
-      const segMaxY = Math.max(a.y, b.y) + buf;
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        for (const brick of layer.bricks) {
-          const { x, y, width, height } = brick.displayArea;
-          if (x < segMaxX && x + width > segMinX && y < segMaxY && y + height > segMinY) {
-            violations++;
-          }
-        }
-      }
-    }
-  }
-  return violations;
 }
 
 /**
@@ -3847,19 +3760,25 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
 
 /** Serialise the local doc to .bbm in the browser and download it. */
 async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
-  let xml: string;
+  let file: { filename: string; type: string; data: Uint8Array };
   try {
     // Loaded on demand: the .bbm codec is its own chunk.
-    const { writeBbm } = await import('@cld/bbm');
-    xml = writeBbm(docToBbm(doc));
+    const { writeBbm, writeSidecar } = await import('@cld/bbm');
+    const xml = writeBbm(docToBbm(doc));
+    // The sidecar (labels, modules, venue, background image) travels with
+    // the .bbm, hashed like the server export so desktop sees no drift.
+    const sidecar = readSidecarFromDoc(doc);
+    const hash = sidecar ? await sha256Hex(xml) : undefined;
+    const json = sidecar ? writeSidecar(sidecar, hash ? { bbmHashSha256: hash } : {}) : null;
+    file = localBbmDownload(title, xml, json);
   } catch (e) {
     window.alert(`Could not build the .bbm: ${(e as Error).message}`);
     return;
   }
-  const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+  const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout'}.bbm`;
+  a.download = file.filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -3878,4 +3797,6 @@ interface CanvasActions {
   zoom: (factor: number) => void;
   fit: () => void;
   insertText: () => void;
+  /** World-stud position under the centre of the canvas stage. */
+  viewCentre: () => { x: number; y: number };
 }

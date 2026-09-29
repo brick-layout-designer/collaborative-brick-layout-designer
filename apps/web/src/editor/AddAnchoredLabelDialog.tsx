@@ -2,8 +2,10 @@
 // (LabelCommands.cpp) + the "Insert → Anchored Label..." menu entry
 // (MainWindowMenus.cpp:440-472).
 //
-// Supports World (kind=0) and Brick (kind=1) anchors; Group/Module anchors
-// (kind=2/3) are deferred (no module registry in the web client yet).
+// New labels are World (kind=0) or Brick (kind=1) anchored, like desktop's
+// Insert menu; editing a Group/Module label (kind=2/3) keeps its kind.
+// The default font is desktop's FontSpec default (8.25 pt Microsoft Sans
+// Serif, core/FontSpec.h) and sizes are points.
 //
 // When a single brick is selected, the dialog defaults to Brick-anchor mode
 // with that brick's id pre-filled and a (2, -2) stud offset. Otherwise it
@@ -15,6 +17,7 @@ import type * as Y from 'yjs';
 import type { AnchoredLabel } from '@cld/bbm';
 import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel, makeId } from './mutations';
 import { labelColorHex, labelColorToSave } from './labelColor';
+import { DEFAULT_LABEL_FONT, labelFontStyle } from './mixedSelection';
 
 interface Props {
   doc: Y.Doc;
@@ -34,8 +37,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
   const isEdit = !!initialLabel;
   const initStyle = (initialLabel?.font.style ?? '').toLowerCase();
   const [text, setText] = useState(initialLabel?.text ?? '');
-  const [fontFamily, setFontFamily] = useState(initialLabel?.font.family ?? 'Arial');
-  const [fontSize, setFontSize] = useState(initialLabel?.font.size ?? 24);
+  const [fontFamily, setFontFamily] = useState<string>(initialLabel?.font.family ?? DEFAULT_LABEL_FONT.family);
+  const [fontSize, setFontSize] = useState<number>(initialLabel?.font.size ?? DEFAULT_LABEL_FONT.size);
   const [isBold, setIsBold] = useState(initStyle.includes('bold'));
   const [isItalic, setIsItalic] = useState(initStyle.includes('italic'));
   // Known colours (desktop "Black" etc.) keep their spec unless the user
@@ -44,8 +47,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
     initialLabel ? `FF${labelColorHex(initialLabel.color)}` : 'FF000000'
   );
   const [colorTouched, setColorTouched] = useState(false);
-  const [kind, setKind] = useState<0 | 1>(
-    initialLabel ? (initialLabel.kind === 1 ? 1 : 0) : defaultTargetId ? 1 : 0
+  const [kind, setKind] = useState<AnchoredLabel['kind']>(
+    initialLabel ? initialLabel.kind : defaultTargetId ? 1 : 0
   );
   const worldOffset = { x: round2(viewCentre?.x ?? 0), y: round2(viewCentre?.y ?? 0) };
   const initOffset = initialLabel?.offset ?? (kind === 1 ? BRICK_OFFSET : worldOffset);
@@ -59,14 +62,14 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
 
   function commit() {
     if (!text.trim()) return;
-    const style = [isBold && 'Bold', isItalic && 'Italic'].filter(Boolean).join('');
+    const style = labelFontStyle(isBold, isItalic);
     const label: AnchoredLabel = {
       id: makeId(),
       text: text.trim(),
       font: { family: fontFamily, size: fontSize, style },
       color: labelColorToSave(initialLabel?.color, colorTouched, colorArgb),
       kind,
-      targetId: kind === 1 ? targetId.trim() : '',
+      targetId: kind === 0 ? '' : targetId.trim(),
       offset: { x: offsetX, y: offsetY },
       rot: rotation,
       minZoom,
@@ -117,7 +120,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
 
           <div className={rowCls}>
             <span className={labelCls}>Size (pt)</span>
-            <input type="number" min={1} max={200} value={fontSize} onChange={(e) => setFontSize(Math.max(1, parseInt(e.target.value, 10) || 24))} className={inputCls} />
+            <input type="number" min={1} max={200} step={0.25} value={fontSize} onChange={(e) => setFontSize(Math.max(1, parseFloat(e.target.value) || DEFAULT_LABEL_FONT.size))} className={inputCls} />
           </div>
 
           <div className={rowCls}>
@@ -152,7 +155,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
             <select
               value={kind}
               onChange={(e) => {
-                const k = Number(e.target.value) as 0 | 1;
+                const k = Number(e.target.value) as AnchoredLabel['kind'];
                 setKind(k);
                 // A new label follows the anchor's default placement.
                 if (!isEdit) {
@@ -165,6 +168,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
             >
               <option value={0}>World (fixed position)</option>
               <option value={1}>Brick (follows a brick)</option>
+              {initialLabel?.kind === 2 && <option value={2}>Group (world position)</option>}
+              {initialLabel?.kind === 3 && <option value={3}>Module (world position)</option>}
             </select>
           </div>
 

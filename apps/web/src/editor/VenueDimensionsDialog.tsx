@@ -7,6 +7,7 @@ import type * as Y from 'yjs';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { setVenue } from './mutations';
 import type { VenueEdge } from '@cld/bbm';
+import { venueAfterDraw } from './venueValidator';
 
 const STUDS_PER_FOOT = 38.09814081;
 const STUDS_PER_INCH = STUDS_PER_FOOT / 12;
@@ -111,26 +112,13 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
     const first = pts[0]!;
     if (Math.hypot(last.x - first.x, last.y - first.y) < 0.5) pts.pop();
 
-    const edges: VenueEdge[] = pts.map((pt, i) => ({
-      kind: (metas[i]?.kind ?? 0) as 0 | 1 | 2,
-      doorWidthStuds: 0,
-      label: metas[i]?.label ?? '',
-      poly: [pt, pts[(i + 1) % pts.length]!],
-    }));
-
-    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-    const minX = Math.min(...xs), minY = Math.min(...ys);
-    const maxX = Math.max(...xs), maxY = Math.max(...ys);
-    const existing = readSidecarFromDoc(doc);
-
-    setVenue(doc, {
-      name: existing?.venue?.name ?? '',
-      enabled: existing?.venue?.enabled ?? true,
-      minWalkwayStuds: existing?.venue?.minWalkwayStuds ?? 0,
-      bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-      edges,
-      obstacles: existing?.venue?.obstacles ?? [],
-    });
+    const next = venueAfterDraw(
+      readSidecarFromDoc(doc)?.venue,
+      'outline',
+      pts,
+      metas,
+    );
+    if (next) setVenue(doc, next);
     onClose();
   }
 

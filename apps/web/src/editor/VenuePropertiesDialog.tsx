@@ -6,6 +6,7 @@ import { useState, type FormEvent } from 'react';
 import type * as Y from 'yjs';
 import type { Venue, VenueEdge } from '@cld/bbm';
 import { setVenue } from './mutations';
+import { newVenue } from './venueValidator';
 
 const STUDS_PER_FOOT = 38.09814081;
 
@@ -18,14 +19,7 @@ interface Props {
 }
 
 export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
-  const initial = venue ?? {
-    name: '',
-    enabled: true,
-    minWalkwayStuds: 0,
-    bounds: { x: 0, y: 0, w: 0, h: 0 },
-    edges: [],
-    obstacles: [],
-  };
+  const initial = venue ?? newVenue();
 
   const [name, setName] = useState(initial.name);
   const [enabled, setEnabled] = useState(initial.enabled);

@@ -14,6 +14,7 @@ import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { api } from './api';
+import { layoutsFromFiles, type DroppedLayout } from './bbmFiles';
 import './styles.css';
 
 // Heavy routes are code-split so the landing / auth pages don't download
@@ -31,7 +32,12 @@ const queryClient = new QueryClient({
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
 
-/** Window-level .bbm file drop — opens any .bbm dropped onto any page. */
+/**
+ * Window-level layout drop — opens any .bbm dropped onto any page, with the
+ * `.bbm.bld` sidecar dropped alongside it (or both inside a .zip, as the
+ * editor's Download .bbm writes them), like desktop's open
+ * (MainWindowFileIO.cpp:84-94).
+ */
 function GlobalBbmDrop() {
   const navigate = useNavigate();
   useEffect(() => {
@@ -42,13 +48,18 @@ function GlobalBbmDrop() {
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     }
     async function onDrop(e: DragEvent) {
-      const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.name.endsWith('.bbm'));
-      if (files.length === 0) return;
+      const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.(bbm|bbm\.bld|bbm\.cld|zip)$/i.test(f.name));
+      if (!files.some((f) => /\.(bbm|zip)$/i.test(f.name))) return;
       e.preventDefault();
-      for (const file of files) {
+      let layouts: DroppedLayout[] = [];
+      try {
+        layouts = await layoutsFromFiles(files);
+      } catch {
+        return; // unreadable zip — nothing to open
+      }
+      for (const l of layouts) {
         try {
-          const text = await file.text();
-          const created = await api.layouts.create({ bbm: text });
+          const created = await api.layouts.create(l.sidecar !== undefined ? { bbm: l.bbm, sidecar: l.sidecar } : { bbm: l.bbm });
           navigate(`/editor/${created.id}`);
         } catch {
           // silently ignore — editor page shows its own error

@@ -3,7 +3,7 @@
 // Budget dialog writing to the doc, and the Export Image options.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type * as Y from 'yjs';
 import type { AnchoredLabel } from '@cld/bbm';
 import { createDefaultLayoutDoc, docToBbm, readSidecarFromDoc } from '@cld/ydoc';
@@ -11,7 +11,10 @@ import { AddAnchoredLabelDialog } from '../AddAnchoredLabelDialog';
 import { FindDialog } from '../FindDialog';
 import { BudgetDialog } from '../BudgetDialog';
 import { ExportImageDialog, type ExportHandle } from '../ExportImageDialog';
-import { addAnchoredLabel, placeBrick, readBudgetLimits, setBudgetLimits } from '../mutations';
+import { addAnchoredLabel, addTextCell, ensureTextLayer, placeBrick, readBudgetLimits, setBudgetLimits } from '../mutations';
+import { useEditorStore } from '../editorStore';
+import { hitsSelection } from '../findReplace';
+import { textKey } from '../mixedSelection';
 import { createUndoManager } from '../useUndoManager';
 
 afterEach(cleanup);
@@ -92,6 +95,31 @@ describe('AddAnchoredLabelDialog', () => {
   });
 });
 
+describe('AddAnchoredLabelDialog — desktop font and kinds', () => {
+  it('defaults to 8.25 pt Microsoft Sans Serif, Regular, and accepts fractional points', () => {
+    const doc = createDefaultLayoutDoc();
+    render(<AddAnchoredLabelDialog doc={doc} defaultTargetId={null} viewCentre={{ x: 0, y: 0 }} onClose={() => {}} />);
+    expect((screen.getAllByRole('textbox')[1] as HTMLInputElement).value).toBe('Microsoft Sans Serif');
+    expect(numberInputs()[0]!.value).toBe('8.25');
+    fireEvent.change(numberInputs()[0]!, { target: { value: '10.5' } });
+    fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: 'Pt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Label' }));
+    expect(labels(doc)[0]!.font).toEqual({ family: 'Microsoft Sans Serif', size: 10.5, style: 'Regular' });
+  });
+
+  it('editing a Group label keeps its kind and target', () => {
+    const doc = createDefaultLayoutDoc();
+    const group: AnchoredLabel = { ...KNOWN_RED, id: '88', kind: 2, targetId: 'grp' };
+    addAnchoredLabel(doc, group);
+    render(<AddAnchoredLabelDialog doc={doc} defaultTargetId={null} initialLabel={group} onClose={() => {}} />);
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('2');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Bold' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Italic' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(labels(doc)[0]).toMatchObject({ kind: 2, targetId: 'grp', font: { style: 'Bold, Italic' } });
+  });
+});
+
 describe('FindDialog', () => {
   function seeded(): Y.Doc {
     const doc = createDefaultLayoutDoc();
@@ -129,6 +157,83 @@ describe('FindDialog', () => {
     expect(parts(doc)).toEqual(['3001.7', '3001.7', '3001.7']);
     um.undo();
     expect(parts(doc)).toEqual(['3001.1', '3001.1', '3001.1']);
+  });
+});
+
+describe('FindDialog — modeless, live selection', () => {
+  function withText(): Y.Doc {
+    const doc = createDefaultLayoutDoc();
+    const lid = brickLayerId(doc);
+    placeBrick(doc, lid, { partNumber: '3001.1', x: 0, y: 0, width: 4, height: 2 });
+    placeBrick(doc, lid, { partNumber: '3001.1', x: 10, y: 0, width: 4, height: 2 });
+    placeBrick(doc, lid, { partNumber: '3710.1', x: 20, y: 0, width: 4, height: 2 });
+    const t = ensureTextLayer(doc);
+    for (const text of ['Station', 'Depot', 'Station 2']) {
+      addTextCell(doc, t, {
+        centreX: 0, centreY: 0, widthStuds: 4, heightStuds: 2, text,
+        font: { family: 'Arial', size: 10, style: 'Regular' }, fontColor: { kind: 'known', name: 'Black' },
+      });
+    }
+    return doc;
+  }
+  const bricksOf = (doc: Y.Doc, part: string) =>
+    docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks.filter((b) => b.partNumber === part).map((b) => b.id) : []));
+
+  afterEach(() => {
+    vi.useRealTimers();
+    useEditorStore.setState({ selection: [], annoSelection: { rulers: [], labels: [], texts: [] } });
+  });
+
+  it('is not modal: no backdrop covers the canvas', () => {
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    const dlg = screen.getByRole('dialog');
+    expect(dlg.getAttribute('aria-modal')).toBe('false');
+    expect(dlg.className).not.toMatch(/inset-0/);
+  });
+
+  it('selects every match as you type, and clears the selection for an empty query', () => {
+    vi.useFakeTimers();
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001' } });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().selection).toEqual(bricksOf(doc, '3001.1'));
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '' } });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().selection).toEqual([]);
+  });
+
+  it('a result clicked before the live selection fires keeps just that match selected (regression)', () => {
+    vi.useFakeTimers();
+    const doc = withText();
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: '3001' } });
+    act(() => { vi.advanceTimersByTime(50); });
+    fireEvent.click(screen.getAllByRole('listitem')[0]!.querySelector('button')!);
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().selection).toEqual([bricksOf(doc, '3001.1')[0]]);
+  });
+
+  it('selects matching text cells live, and a clicked text result selects just it (regression)', () => {
+    vi.useFakeTimers();
+    const doc = withText();
+    const textLayer = docToBbm(doc).layers.find((l) => l.type === 'text')!.id;
+    render(<FindDialog map={docToBbm(doc)} doc={doc} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'text' } });
+    fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: 'station' } });
+    act(() => { vi.advanceTimersByTime(250); });
+    expect(useEditorStore.getState().annoSelection.texts).toEqual([textKey(textLayer, 0), textKey(textLayer, 2)]);
+    fireEvent.click(screen.getAllByRole('listitem')[1]!.querySelector('button')!);
+    expect(useEditorStore.getState().annoSelection.texts).toEqual([textKey(textLayer, 2)]);
+    expect(useEditorStore.getState().selection).toEqual([]);
+  });
+
+  it('hitsSelection splits bricks and text cells', () => {
+    expect(hitsSelection([
+      { layerId: 'L', brickId: 'b1', value: '', preview: '' },
+      { layerId: 'T', textIndex: 3, value: '', preview: '' },
+    ])).toEqual({ bricks: ['b1'], anno: { rulers: [], labels: [], texts: [textKey('T', 3)] } });
   });
 });
 
@@ -188,6 +293,7 @@ describe('ExportImageDialog', () => {
       size: { width: 640, height: 480 },
       transparent: false,
       antialias: false,
+      watermark: false,
     });
     expect(canvas.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.7);
   });
@@ -197,8 +303,59 @@ describe('ExportImageDialog', () => {
     render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
     fireEvent.click(screen.getByLabelText('Transparent background'));
     fireEvent.click(screen.getByRole('button', { name: 'Export PNG' }));
-    expect(renderFn).toHaveBeenCalledWith({ pixelRatio: 1, size: { width: 800, height: 200 }, transparent: true, antialias: true });
+    expect(renderFn).toHaveBeenCalledWith({ pixelRatio: 1, size: { width: 800, height: 200 }, transparent: true, antialias: true, watermark: false });
     expect(canvas.toDataURL).toHaveBeenCalledWith('image/png');
+  });
+
+  it('the watermark is a per-export checkbox, remembered for next time', () => {
+    useEditorStore.setState({ showExportWatermark: false });
+    const { ref, render: renderFn } = handle();
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    const chk = screen.getByLabelText('Embed general-info watermark') as HTMLInputElement;
+    expect(chk.checked).toBe(false);
+    fireEvent.click(chk);
+    fireEvent.click(screen.getByRole('button', { name: 'Export PNG' }));
+    expect(renderFn).toHaveBeenCalledWith(expect.objectContaining({ watermark: true }));
+    expect(useEditorStore.getState().showExportWatermark).toBe(true);
+    useEditorStore.setState({ showExportWatermark: false });
+  });
+
+  it('prints at actual size: one render per A4 tile at dpi/25.4 px per scene px', () => {
+    const { ref, render: renderFn } = handle();
+    // 60 × 40 studs = 480 × 320 mm: 3 × 2 A4-portrait tiles of 190 × 277 mm.
+    ref.current.region = () => ({ x: -10, y: -5, width: 60, height: 40 });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Print (1:1)' }));
+    fireEvent.change(screen.getByDisplayValue('A3 (297 × 420 mm)'), { target: { value: 'a4' } });
+    expect(screen.getByTestId('print-pages').textContent).toBe('3 × 2 = 6 page(s) at actual size (1 stud = 8 mm)');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Print Preview' }));
+    expect(renderFn).toHaveBeenCalledTimes(6);
+    expect(renderFn).toHaveBeenNthCalledWith(1, {
+      pixelRatio: 150 / 25.4,
+      transparent: false,
+      regionStuds: { x: -10, y: -5, width: 190 / 8, height: 277 / 8 },
+    });
+    open.mockRestore();
+  });
+
+  it('exports a single fitted A3 PDF page', () => {
+    const { ref, render: renderFn, canvas } = handle();
+    ref.current.region = () => ({ x: 0, y: 0, width: 100, height: 50 });
+    canvas.width = 10;
+    canvas.height = 5;
+    canvas.toDataURL = vi.fn(() => 'data:image/jpeg;base64,/9j/2Q==');
+    const created: Blob[] = [];
+    const createUrl = vi.fn((b: Blob) => { created.push(b); return 'blob:x'; });
+    Object.assign(URL, { createObjectURL: createUrl, revokeObjectURL: vi.fn() });
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'PDF (A3)' }));
+    expect(screen.getByText(/One A3 page \(landscape/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Export PDF' }));
+    // Landscape A3 paint area 396 × 273 mm; a 2:1 map fills the width.
+    const call = (renderFn.mock.calls as unknown as [{ size: { width: number; height: number } }][])[0]![0];
+    expect(call.size).toEqual({ width: Math.round((396 / 25.4) * 200), height: Math.round((198 / 25.4) * 200) });
+    expect(created[0]!.type).toBe('application/pdf');
   });
 
   it('refuses a size beyond the canvas limit', () => {

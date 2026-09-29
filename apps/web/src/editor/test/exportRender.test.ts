@@ -51,6 +51,17 @@ describe('contentBoundsStuds', () => {
     expect(b.y + b.height).toBe(202);
   });
 
+  it('counts Group/Module labels at their world offset, not Brick labels', () => {
+    const doc = new Y.Doc();
+    const l = ensureBrickLayer(doc);
+    placeBrick(doc, l, { partNumber: 'p', x: 0, y: 0, width: 1, height: 1 });
+    const base = { font: { family: 'Arial', size: 10, style: '' }, color: { known: true, argb: 0, name: 'Black' }, rot: 0, minZoom: 0, text: 'x' };
+    addAnchoredLabel(doc, { ...base, id: 'g', kind: 2, targetId: 'grp', offset: { x: 40, y: 0 } });
+    addAnchoredLabel(doc, { ...base, id: 'm', kind: 3, targetId: 'mod', offset: { x: 0, y: 30 } });
+    addAnchoredLabel(doc, { ...base, id: 'b', kind: 1, targetId: 'x', offset: { x: 900, y: 900 } });
+    expect(contentBoundsStuds(docToBbm(doc), readSidecarFromDoc(doc))).toEqual({ x: 0, y: 0, width: 40, height: 30 });
+  });
+
   it('ignores hidden layers', () => {
     const doc = new Y.Doc();
     const l = ensureBrickLayer(doc);
@@ -138,5 +149,26 @@ describe('renderMapToCanvas output size and antialias', () => {
     expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ pixelRatio: 2, imageSmoothingEnabled: false }));
     expect(ctx.imageSmoothingEnabled).toBe(false);
     expect(ctx.fillRect).not.toHaveBeenCalled();
+  });
+
+  it('renders just a print tile region, even past the content', () => {
+    const { map, stage, toCanvas } = setup();
+    let pos = { x: 0, y: 0 };
+    const origPosition = stage.position.bind(stage);
+    (stage as unknown as { position: (p: { x: number; y: number }) => void }).position = (p) => {
+      if (toCanvas.mock.calls.length === 0) pos = p;
+      origPosition(p);
+    };
+    renderMapToCanvas(stage, map, null, { pixelRatio: 3, transparent: false, regionStuds: { x: 100, y: -4, width: 20, height: 10 } });
+    expect(pos).toEqual({ x: -800, y: 32 });
+    expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ x: 0, y: 0, width: 160, height: 80, pixelRatio: 3 }));
+  });
+
+  it('stamps the watermark bottom-right in QColor(0,0,0,140)', () => {
+    const { map, stage, ctx } = setup();
+    renderMapToCanvas(stage, map, null, { pixelRatio: 1, transparent: false, size: { width: 600, height: 600 }, watermark: 'a / b / c' });
+    expect(ctx.fillText).toHaveBeenCalledWith('a / b / c', 590, 590);
+    expect(ctx.fillStyle).toBe('rgba(0,0,0,0.549)');
+    expect(ctx.font).toBe(`${(10 * 96) / 72}px sans-serif`);
   });
 });

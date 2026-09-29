@@ -386,11 +386,11 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
   setActiveLayer: (activeLayerId) => set({ activeLayerId }),
   setPlacePart: (placePartKey) => set({ placePartKey }),
-  setZoom: (zoom) => set({ zoom: clamp(zoom, 0.1, 8) }),
+  setZoom: (zoom) => set({ zoom: clamp(zoom, MIN_ZOOM, MAX_ZOOM) }),
   setPan: (panX, panY) => set({ panX, panY }),
   zoomAround: (newZoom, anchorPxX, anchorPxY) =>
     set((s) => {
-      const next = clamp(newZoom, 0.1, 8);
+      const next = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
       if (next === s.zoom) return s;
       // Pin the world coord under the cursor: anchor (in stage pixels) maps
       // to world (anchor − pan) / zoom; keep that ratio constant by
@@ -404,6 +404,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       };
     }),
 }));
+
+/** View zoom range — desktop MapView.cpp:77-78 (`kMinZoom`/`kMaxZoom`). */
+export const MIN_ZOOM = 0.02;
+export const MAX_ZOOM = 40;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
