@@ -14,7 +14,7 @@ import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { eq, inArray } from 'drizzle-orm';
 import { imageSize, parsePartXml, scanCatalog } from '@cld/parts-catalog';
-import type { PartMetadata } from '@cld/parts-catalog';
+import type { FourDBrixRemap, LDrawRemap, PartMetadata, TrackDesignerRemap } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 import { requireUser } from '../auth/cookie.js';
@@ -88,6 +88,20 @@ interface PartWire {
   oldNames?: string[];
   /** Sprite size in pixels, for the BlueBrick footprint; omitted when unreadable. */
   spriteSize?: { w: number; h: number };
+  /** Map-format remaps (<LDraw>, <TrackDesigner>, <FourDBrix>), for opening and saving those maps; omitted when absent. */
+  ldraw?: LDrawRemap;
+  trackDesigner?: TrackDesignerRemap;
+  fourDBrix?: FourDBrixRemap;
+}
+
+type MapRemaps = Pick<PartWire, 'ldraw' | 'trackDesigner' | 'fourDBrix'>;
+
+function remapsOf(p: MapRemaps): MapRemaps {
+  return {
+    ...(p.ldraw ? { ldraw: p.ldraw } : {}),
+    ...(p.trackDesigner ? { trackDesigner: p.trackDesigner } : {}),
+    ...(p.fourDBrix ? { fourDBrix: p.fourDBrix } : {}),
+  };
 }
 
 let bundledCache: { etag: string; wire: PartWire[] } | null = null;
@@ -202,6 +216,7 @@ interface ParsedCustomXml {
   kind: 'leaf' | 'group';
   hullPts: { x: number; y: number }[];
   spriteSize?: { w: number; h: number };
+  remaps?: MapRemaps;
 }
 
 /**
@@ -326,6 +341,7 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
     hullPts: p.hullPts,
     ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
     ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
+    ...remapsOf(p),
     source: 'bundled',
     customPartId: null,
   };
@@ -356,6 +372,7 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
   let pxPerStud = 8;
   let kind: 'leaf' | 'group' = 'leaf';
   let hullPts: { x: number; y: number }[] = [];
+  let remaps: MapRemaps = {};
   try {
     const xml = Buffer.from(xmlBlob).toString('utf8');
     const parsed = parsePartXml(xml, {
@@ -374,14 +391,15 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
     pxPerStud = parsed.pxPerStud;
     kind = parsed.kind;
     hullPts = parsed.hullPts;
+    remaps = remapsOf(parsed);
   } catch {
     /* malformed — fall back to defaults; the part still renders as a sprite */
   }
-  return { connections, pxPerStud, kind, hullPts };
+  return { connections, pxPerStud, kind, hullPts, remaps };
 }
 
 function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefined): PartWire {
-  const { connections, pxPerStud, kind, hullPts, spriteSize } = parsed ?? {
+  const { connections, pxPerStud, kind, hullPts, spriteSize, remaps } = parsed ?? {
     connections: [],
     pxPerStud: 8,
     kind: 'leaf' as const,
@@ -410,6 +428,7 @@ function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefine
     subparts: [],
     hullPts,
     ...(spriteSize ? { spriteSize } : {}),
+    ...remaps,
     source: 'custom',
     customPartId: p.id,
   };

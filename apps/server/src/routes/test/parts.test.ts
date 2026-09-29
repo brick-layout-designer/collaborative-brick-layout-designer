@@ -171,6 +171,22 @@ describe('parts catalog — authenticated with custom parts', () => {
     expect(parts.find((p) => p.partNumber === 'HULL1')?.hullPts).toEqual([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 7 }]);
   });
 
+  it('custom parts carry their map-format remaps', async () => {
+    const cookie = await registerAndLogin(app, 'remap@example.com');
+    const xml = Buffer.from('<part><LDraw><Angle>90</Angle><SleeperID>3034.15</SleeperID></LDraw></part>').toString('base64');
+    await app.inject({
+      method: 'POST',
+      url: '/api/custom-parts',
+      headers: { cookie },
+      payload: { partNumber: 'REMAP1', displayName: 'Remap', xmlBase64: xml, spriteBase64: FAKE_GIF, spriteMime: 'image/gif' },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie } });
+    const custom = (res.json() as { parts: { partNumber: string; ldraw?: unknown }[] }).parts.find((p) => p.partNumber === 'REMAP1');
+    expect(custom?.ldraw).toEqual({ angle: 90, translation: { x: 0, y: 0 }, preferredHeight: 0, sleeper: '3034.15', alias: '' });
+    expect(custom).not.toHaveProperty('trackDesigner');
+    expect(custom).not.toHaveProperty('fourDBrix');
+  });
+
   it('authenticated ETag differs from anonymous ETag (user-scoped cache)', async () => {
     const anonRes = await app.inject({ method: 'GET', url: '/api/parts/catalog' });
     const anonEtag = anonRes.headers['etag'] as string;
