@@ -9,3 +9,4 @@ export type { FourDBrixRemap, FourDBrixType, LDrawRemap, TrackDesignerPort, Trac
 export { MapLibrary, newBrickLayer, newGridLayer, newMap, type MapReadResult } from './mapformats/library.js';
 export { readFourDBrixMap, writeFourDBrixMap, type FourDBrixWriteOptions } from './mapformats/fourDBrix.js';
 export { partForTrackDesignerId, readTrackDesignerMap, writeTrackDesignerMap } from './mapformats/trackDesigner.js';
+export { readLDrawMap, writeLDrawMap, type LDrawReadOptions } from './mapformats/ldraw.js';
