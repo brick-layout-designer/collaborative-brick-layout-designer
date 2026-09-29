@@ -75,7 +75,7 @@ export function formatInt(n: number): string {
   return Math.trunc(n).toString();
 }
 
-const DECIMAL_FLOAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const DECIMAL_FLOAT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const DECIMAL_INT = /^[+-]?\d+$/;
 
 /**

@@ -125,3 +125,11 @@ describe('parseXmlFloat / parseXmlInt read like desktop QString::toFloat / toInt
     }
   });
 });
+
+describe('parseXmlFloat on hostile input', () => {
+  it('rejects a huge digit run in linear time (no regex backtracking blow-up)', () => {
+    const t = performance.now();
+    expect(parseXmlFloat(`${'9'.repeat(50_000)}x`)).toBe(0);
+    expect(performance.now() - t).toBeLessThan(200);
+  });
+});

@@ -49,7 +49,7 @@ const restAfterToken = (line: string, token: string | undefined) =>
 // (like the .bbm reader) for numbers out of range, so the map can be saved.
 const toDouble = (s: string | undefined): number => {
   const t = (s ?? '').trim();
-  const v = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) ? Number(t) : 0;
+  const v = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t) ? Number(t) : 0;
   return Number.isFinite(v) ? v : 0;
 };
 const toInt = (s: string | undefined): number => {
