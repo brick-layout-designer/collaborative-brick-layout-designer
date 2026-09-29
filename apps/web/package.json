@@ -26,7 +26,7 @@
     "react-konva": "19.3.0",
     "react-router-dom": "7.18.4",
     "y-protocols": "1.0.7",
-    "y-websocket": "2.0.4",
+    "y-websocket": "3.1.0",
     "yjs": "13.6.33",
     "zustand": "5.0.15"
   },
