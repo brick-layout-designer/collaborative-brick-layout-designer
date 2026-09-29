@@ -165,11 +165,21 @@ describe('scopeSummary (P1b scopes)', () => {
     expect(scopeSummary({ scopes: ['layouts:read', 'layouts:write'] })).toBe('Read & edit');
     expect(scopeSummary({ scopes: ['layouts:write', 'layouts:create', 'parts:read'] })).toBe('Read & edit, publish layouts, download parts');
     expect(scopeSummary({ scopes: ['layouts:read', 'parts:read', 'parts:write'] })).toBe('Read only, upload parts');
+    expect(scopeSummary({ scopes: ['layouts:read', 'venues:read'] })).toBe('Read only, download venues');
+    expect(scopeSummary({ scopes: ['layouts:read', 'venues:read', 'venues:write'] })).toBe('Read only, save venues');
   });
 
   it('labels every scope on the approval page', async () => {
     const { SCOPE_LABELS } = await import('../DevicePage');
-    expect(Object.keys(SCOPE_LABELS).sort()).toEqual(['layouts:create', 'layouts:read', 'layouts:write', 'parts:read', 'parts:write']);
+    expect(Object.keys(SCOPE_LABELS).sort()).toEqual([
+      'layouts:create',
+      'layouts:read',
+      'layouts:write',
+      'parts:read',
+      'parts:write',
+      'venues:read',
+      'venues:write',
+    ]);
   });
 });
 

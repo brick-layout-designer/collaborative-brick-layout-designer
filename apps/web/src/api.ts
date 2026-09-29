@@ -222,7 +222,14 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
 }
 
 /** Scopes an API token (desktop sign-in) can carry. */
-export type ApiScope = 'layouts:read' | 'layouts:write' | 'layouts:create' | 'parts:read' | 'parts:write';
+export type ApiScope =
+  | 'layouts:read'
+  | 'layouts:write'
+  | 'layouts:create'
+  | 'parts:read'
+  | 'parts:write'
+  | 'venues:read'
+  | 'venues:write';
 
 /** A pending desktop sign-in, as shown on the /device approval page. */
 export interface DeviceRequest {

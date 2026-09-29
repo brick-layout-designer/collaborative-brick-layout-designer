@@ -18,8 +18,17 @@ export const TOKEN_PREFIX = 'bld_pat_';
  * - layouts:read / layouts:write: list, export and live-sync layouts (write edits them).
  * - layouts:create: publish a new layout (personal or to an org).
  * - parts:read / parts:write: download the parts catalog and custom parts (write uploads them).
+ * - venues:read / venues:write: list and download saved venues (write saves, renames and deletes them).
  */
-export const API_SCOPES = ['layouts:read', 'layouts:write', 'layouts:create', 'parts:read', 'parts:write'] as const;
+export const API_SCOPES = [
+  'layouts:read',
+  'layouts:write',
+  'layouts:create',
+  'parts:read',
+  'parts:write',
+  'venues:read',
+  'venues:write',
+] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 /** Lifetime of a token, slid forward every time it is used. */
@@ -47,11 +56,12 @@ export function scopesOf(row: Pick<ApiToken, 'scopes'>): ApiScope[] {
   return parseScopes(row.scopes) ?? [];
 }
 
-/** A write scope implies its read scope (`layouts:write` → `layouts:read`, `parts:write` → `parts:read`). */
+/** A write scope implies its read scope (`layouts:write` → `layouts:read`, and the same for parts and venues). */
 export function hasScope(scopes: readonly ApiScope[], needed: ApiScope): boolean {
   if (scopes.includes(needed)) return true;
   if (needed === 'layouts:read') return scopes.includes('layouts:write');
   if (needed === 'parts:read') return scopes.includes('parts:write');
+  if (needed === 'venues:read') return scopes.includes('venues:write');
   return false;
 }
 
