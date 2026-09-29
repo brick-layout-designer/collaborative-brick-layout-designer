@@ -188,7 +188,7 @@ function catalogLookup(catalog: Catalog, partNumber: string): PartMetadata | und
  * is an O(catalog) scan; without the memo every brick whose part isn't
  * keyed directly paid that scan again (hits AND misses are cached).
  */
-function makeCatalogLookup(catalog: Catalog): (partNumber: string) => PartMetadata | undefined {
+export function makeCatalogLookup(catalog: Catalog): (partNumber: string) => PartMetadata | undefined {
   const memo = new Map<string, PartMetadata | undefined>();
   let renamed: Map<string, PartMetadata> | undefined;
   return (partNumber) => {

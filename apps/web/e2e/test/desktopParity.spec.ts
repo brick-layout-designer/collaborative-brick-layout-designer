@@ -1235,3 +1235,63 @@ test.describe('grid origin drag', () => {
     await expect(page.locator('[data-ctx-menu]')).toHaveCount(0);
   });
 });
+
+test.describe('flex track', () => {
+  test('double-click-drag bends a selected flex chain like vanilla BlueBrick (flex-a)', async ({ page }) => {
+    test.slow();
+    const fixtures = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/oracle');
+    const flexIn = readFileSync(join(fixtures, 'flex-in.bbm'), 'utf-8');
+    const flexA = readFileSync(join(fixtures, 'flex-a.bbm'), 'utf-8');
+    const id = await createLayout(page, flexIn);
+    await openEditor(page, id);
+    await page.keyboard.press('Control+a');
+    await expect(page.locator('footer')).toContainText(/selected: \d+/);
+
+    const toScreen = async (sx: number, sy: number) => {
+      const t = await page.evaluate(() => {
+        const st = (window as unknown as { Konva: { stages: { x: () => number; y: () => number; scaleX: () => number }[] } }).Konva.stages[0]!;
+        return { x: st.x(), y: st.y(), z: st.scaleX() };
+      });
+      const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+      return { x: box.x + t.x + sx * 8 * t.z, y: box.y + t.y + sy * 8 * t.z };
+    };
+    // Grab the free flex end at (68, 40) studs and drag it to (62, 30): a
+    // double-click whose second press drags.
+    const from = await toScreen(68, 40);
+    const to = await toScreen(62, 30);
+    await page.mouse.click(from.x, from.y);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    // In one go: the solve depends on the path (vanilla's flex-b), and
+    // flex-a is a single move.
+    await page.mouse.move(to.x, to.y, { steps: 1 });
+    await page.mouse.up();
+    await expect(page.locator('footer')).toContainText('Flex move');
+
+    const poses = (xml: string) =>
+      new Map(
+        [...xml.matchAll(/<Brick id="([^"]+)">[\s\S]*?<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>\s*<Width>([^<]+)<\/Width>\s*<Height>([^<]+)<\/Height>[\s\S]*?<Orientation>([^<]+)<\/Orientation>/g)].map(
+          (m) => [m[1]!, { cx: +m[2]! + +m[4]! / 2, cy: +m[3]! + +m[5]! / 2, o: +m[6]! }],
+        ),
+      );
+    const vanilla = poses(flexA);
+    await expect.poll(async () => {
+      const ours = poses(await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text());
+      let worst = 0;
+      for (const [bid, v] of vanilla) {
+        const o = ours.get(bid);
+        if (!o) return Infinity;
+        worst = Math.max(worst, Math.abs(o.cx - v.cx), Math.abs(o.cy - v.cy), Math.abs(((o.o - v.o) % 360 + 540) % 360 - 180) / 10);
+      }
+      return worst;
+    }).toBeLessThan(0.05);
+    // One undo step puts it all back.
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(async () => (await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<Orientation>0<\/Orientation>/g)?.length ?? 0)
+      .toBeGreaterThan(5);
+
+    // A double-click without moving opens the brick's properties as usual.
+    await page.mouse.dblclick(from.x, from.y);
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+});

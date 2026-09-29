@@ -24,6 +24,11 @@ import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } 
 import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
 import { drawOrder, pivotOf } from '../brickGeometry';
+import { startFlexSession } from '../flexSession';
+
+/** Konva's double-click window; the second press of a double-click starts a flex move. */
+const DOUBLE_CLICK_MS = 400;
+const lastPress = { id: '', time: 0, selection: [] as readonly string[] };
 
 interface Props {
   map: BbmMap;
@@ -282,11 +287,54 @@ const BrickGlyph = memo(function BrickGlyph({
     const ptr = stage?.getPointerPosition();
     if (!stage || !ptr) return;
     const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+
+    // The second press of a double-click on a hinged chain starts a flex
+    // move (desktop MapView::mouseDoubleClickEvent → startFlexMove).
+    const now = performance.now();
+    const second = lastPress.id === brick.id && now - lastPress.time < DOUBLE_CLICK_MS;
+    // The selection as it was before the double-click's first press: that
+    // click may have narrowed it to this brick (desktop pressSelection_).
+    const pressSelection = lastPress.selection;
+    if (!second) {
+      lastPress.selection = useEditorStore.getState().selection;
+      // A fresh press: an earlier flex move's release may never have
+      // produced its double-click event.
+      flexMovedRef.current = false;
+    }
+    lastPress.id = second ? '' : brick.id;
+    lastPress.time = now;
+    if (second) {
+      const group = groupRef.current;
+      const started = startFlexSession({
+        stage,
+        doc,
+        map: getMap(),
+        layerId,
+        grabbedId: brick.id,
+        pressSelection: pressSelection.includes(brick.id) ? pressSelection : [],
+        mouseStuds: { x: p.x / studToPx(), y: p.y / studToPx() },
+        partsByKey,
+        onEnd: (moved) => {
+          group?.draggable(true);
+          // Moved: the release is not a double-click that opens properties.
+          if (moved) flexMovedRef.current = true;
+        },
+      });
+      if (started) {
+        // The chain bends instead of the brick being dragged.
+        group?.draggable(false);
+        e.cancelBubble = true;
+        return;
+      }
+    }
     const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx());
     if (idx < 0) return;
     grabConnRef.current = idx;
     setActiveConnectionPoint(doc, layerId, brick.id, idx);
   }
+
+  /** Set when a flex move bent the chain, so the double-click doesn't open properties. */
+  const flexMovedRef = useRef(false);
 
   /** Selected rulers / labels moving along with this brick's drag. */
   const annoNodesRef = useRef<NodeSnap[]>([]);
@@ -597,6 +645,11 @@ const BrickGlyph = memo(function BrickGlyph({
       onTap={handleClick}
       onDblClick={(e) => {
         e.cancelBubble = true;
+        // A double-click that bent a flex chain doesn't open properties.
+        if (flexMovedRef.current) {
+          flexMovedRef.current = false;
+          return;
+        }
         if (!isViewer && onEditBrick) onEditBrick(brick, layerId, meta);
       }}
       onDragStart={handleDragStart}
