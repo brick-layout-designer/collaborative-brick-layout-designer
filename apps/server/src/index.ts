@@ -32,6 +32,7 @@ import { venueRoutes } from './routes/venues.js';
 import { orgRoutes } from './routes/orgs.js';
 import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
+import { partsManifestRoutes } from './routes/partsManifest.js';
 import { transferRoutes } from './routes/transfers.js';
 import { wsRoutes } from './routes/ws.js';
 import { registerSecurityHeaders } from './utils/securityHeaders.js';
@@ -106,6 +107,7 @@ async function main() {
   await app.register(moduleRoutes);
   await app.register(moduleTransferRoutes);
   await app.register(venueRoutes);
+  await app.register(partsManifestRoutes);
   await app.register(auditRoutes);
   await app.register(adminRoutes);
   await app.register(wsRoutes);
