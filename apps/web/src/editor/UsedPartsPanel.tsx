@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';
 import { useDocMap } from './useDocMap';
+import { limitFor } from './budgetUsage';
 
 type SortKey = 'partNumber' | 'count' | 'description' | 'budget';
 type SortDir = 'asc' | 'desc';
@@ -74,8 +75,8 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
       if (sortKey === 'count') cmp = a.count - b.count;
       else if (sortKey === 'partNumber') cmp = a.partNumber.localeCompare(b.partNumber);
       else if (sortKey === 'budget') {
-        const limA = budgetLimits.get(a.partNumber.toLowerCase()) ?? Infinity;
-        const limB = budgetLimits.get(b.partNumber.toLowerCase()) ?? Infinity;
+        const limA = limitFor(budgetLimits, a.partNumber) ?? Infinity;
+        const limB = limitFor(budgetLimits, b.partNumber) ?? Infinity;
         cmp = (a.count - limA) - (b.count - limB);
       } else cmp = a.description.localeCompare(b.description);
       return sortDir === 'asc' ? cmp : -cmp;
@@ -138,7 +139,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
           </thead>
           <tbody>
             {sorted.map((row) => {
-              const limit = budgetLimits.get(row.partNumber.toLowerCase());
+              const limit = limitFor(budgetLimits, row.partNumber);
               const over = limit !== undefined ? row.count - limit : 0;
               return (
                 <tr

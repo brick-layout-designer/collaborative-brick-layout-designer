@@ -105,7 +105,7 @@ export interface LayerGrid extends LayerCommon {
 
 export interface Connexion {
   id: string;
-  /** GUID of the linked brick, or empty string when unlinked. */
+  /** Id of the partner brick's linked connexion, or empty string when unlinked. */
   linkedTo: string;
 }
 

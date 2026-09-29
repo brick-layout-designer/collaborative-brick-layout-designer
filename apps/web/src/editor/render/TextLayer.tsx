@@ -16,6 +16,8 @@ import type Konva from 'konva';
 import type { BbmMap, ColorSpec, LayerText, TextCell } from '@cld/model';
 import { studToPx, COLOR_DEFAULT } from './coords';
 import { textKey } from '../mixedSelection';
+import { fontStack } from './fontStack';
+import { colorSpecToCss } from '../layerOptions';
 
 const PROBE_PX = 100;
 
@@ -127,7 +129,7 @@ function FittedTextCell({
       x={cx}
       y={cy}
       text={cell.text}
-      fontFamily={cell.font.family || 'Arial'}
+      fontFamily={fontStack(cell.font.family)}
       fontStyle={fontStyle}
       fontSize={layout.fontSize}
       fill={cssColor(cell.fontColor)}
@@ -153,21 +155,5 @@ function FittedTextCell({
 }
 
 function cssColor(c: ColorSpec): string {
-  if (c.kind === 'known') {
-    const known: Record<string, string> = {
-      black: '#000000',
-      white: '#ffffff',
-      red: '#ff0000',
-      green: '#008000',
-      blue: '#0000ff',
-      yellow: '#ffff00',
-      orange: '#ffa500',
-      gray: '#808080',
-      darkgray: '#a9a9a9',
-      lightgray: '#d3d3d3',
-    };
-    return known[c.name.toLowerCase()] ?? COLOR_DEFAULT;
-  }
-  if (c.argb.length === 8) return `#${c.argb.slice(2)}`;
-  return `#${c.argb}`;
+  return colorSpecToCss(c, COLOR_DEFAULT);
 }

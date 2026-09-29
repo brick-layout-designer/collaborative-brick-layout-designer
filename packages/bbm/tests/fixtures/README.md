@@ -8,6 +8,7 @@ Real-world `.bbm` files used as goldens for load/round-trip tests.
 |---|---|---|
 | `tight-corner.bbm` | Provided by @aronwk from local BlueBrick 1.9.2 projects directory | 231 KB |
 | `fordyce-2026.bbm` | Provided by @aronwk; 2026 Fordyce event layout | 557 KB |
+| `oracle/*` | Copied from the desktop repo's `fixtures/bluebrick-oracle`: maps and budgets saved by vanilla BlueBrick 1.9.2 (under Wine), and its conversions of the `.ldr`, `.mpd`, `.tdl` and `.ncp` sources beside them | 1.1 MB |
 
 These files are loaded read-only by the round-trip tests. Contributors adding
 more fixtures should note author/origin here and make sure the file is

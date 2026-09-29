@@ -23,7 +23,8 @@
  * Edge cases the C# format DOESN'T do:
  *   - "1." → C# emits "1", we must match
  *   - scientific notation: we follow the desktop writer (Qt 'g'): below
- *     1e-4 or at/above 10^precision, e.g. "1.5e-05", "1.234568e+07"
+ *     1e-4 or at/above 10^precision, with .NET's upper-case exponent,
+ *     e.g. "1.5E-05", "1.234568E+07"
  *   - "-0" → C# emits "0", JS toFixed/toPrecision may emit "-0"; coerce to 0
  */
 export function formatNumber(n: number, precision: 'g7' | 'g15' = 'g15'): string {
@@ -41,7 +42,8 @@ export function formatNumber(n: number, precision: 'g7' | 'g15' = 'g15'): string
   // Desktop formats with QString::number(v, 'g', digits)
   // (XmlPrimitives.cpp formatInvariantDouble), i.e. printf-%g rules:
   // scientific when the decimal exponent is < -4 or >= digits, trailing
-  // zeros stripped, exponent signed and at least two digits ("1e-05").
+  // zeros stripped, exponent signed and at least two digits, with the
+  // upper-case E .NET writes ("1E-05", XmlPrimitives.cpp:18-22).
   // JS toPrecision switches at different pivots (< -6) and omits the
   // exponent padding, so build it from toExponential instead.
   const [mantissa, expStr] = n.toExponential(digits - 1).split('e') as [string, string];
@@ -49,7 +51,7 @@ export function formatNumber(n: number, precision: 'g7' | 'g15' = 'g15'): string
   if (exp < -4 || exp >= digits) {
     const m = stripZeros(mantissa);
     const sign = exp < 0 ? '-' : '+';
-    return `${m}e${sign}${String(Math.abs(exp)).padStart(2, '0')}`;
+    return `${m}E${sign}${String(Math.abs(exp)).padStart(2, '0')}`;
   }
   // Integral values within range print without a decimal point.
   if (Number.isInteger(n)) return n.toString();
@@ -71,6 +73,31 @@ function stripZeros(s: string): string {
 export function formatInt(n: number): string {
   if (!Number.isFinite(n)) throw new Error(`not a finite int: ${n}`);
   return Math.trunc(n).toString();
+}
+
+const DECIMAL_FLOAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const DECIMAL_INT = /^[+-]?\d+$/;
+
+/**
+ * Read a float field like desktop `readFloatElement` (QString::toFloat,
+ * XmlPrimitives.cpp:47-57): plain decimal or scientific notation only;
+ * anything else — empty, `abc`, `NaN`, `-INF`, `12abc`, or a value that
+ * overflows to infinity like `1e999` — reads as 0, so a damaged file
+ * still loads and can be saved again.
+ */
+export function parseXmlFloat(raw: string | undefined): number {
+  const s = (raw ?? '').trim();
+  if (!DECIMAL_FLOAT.test(s)) return 0;
+  const v = Number(s);
+  return Number.isFinite(v) ? v : 0;
+}
+
+/** Read an int field like desktop `readIntElement` (QString::toInt): anything but a plain integer reads as 0. */
+export function parseXmlInt(raw: string | undefined): number {
+  const s = (raw ?? '').trim();
+  if (!DECIMAL_INT.test(s)) return 0;
+  const v = Number(s);
+  return Number.isSafeInteger(v) && v >= -2147483648 && v <= 2147483647 ? v : 0;
 }
 
 /** `true` / `false` lowercase, matching `Boolean.ToString().ToLower()`. */

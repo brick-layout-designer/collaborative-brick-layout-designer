@@ -16,36 +16,23 @@
 import * as Y from 'yjs';
 import type { ColorSpec, Layer } from '@cld/model';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import { NAMED_COLORS } from './namedColors';
 
 // ---------------------------------------------------------------------------
 // Colour helpers
 // ---------------------------------------------------------------------------
 
-/** System.Drawing KnownColor names that real `.bbm` files use. */
-export const KNOWN_COLORS: Record<string, string> = {
-  black: '#000000',
-  white: '#ffffff',
-  cornflowerblue: '#6495ed',
-  lightgray: '#d3d3d3',
-  gray: '#808080',
-  darkgray: '#a9a9a9',
-  red: '#ff0000',
-  green: '#008000',
-  blue: '#0000ff',
-  yellow: '#ffff00',
-  orange: '#ffa500',
-};
-
 /** `#rrggbb` for a colour input; unknown names give `fallback`. */
 export function colorSpecToHex(c: ColorSpec, fallback = '#000000'): string {
-  if (c.kind === 'known') return KNOWN_COLORS[c.name.toLowerCase()] ?? fallback;
+  if (c.kind === 'known') return NAMED_COLORS[c.name.toLowerCase()] ?? (c.name.toLowerCase() === 'transparent' ? '#000000' : fallback);
   const hex = c.argb.length === 8 ? c.argb.slice(2) : c.argb.padStart(6, '0').slice(-6);
   return `#${hex.toLowerCase()}`;
 }
 
-/** Alpha byte (0-255) of a colour; known colours are opaque. */
+/** Alpha byte (0-255) of a colour; known colours are opaque except Transparent. */
 export function colorSpecAlpha(c: ColorSpec): number {
-  if (c.kind === 'known' || c.argb.length !== 8) return 255;
+  if (c.kind === 'known') return c.name.toLowerCase() === 'transparent' ? 0 : 255;
+  if (c.argb.length !== 8) return 255;
   const a = parseInt(c.argb.slice(0, 2), 16);
   return Number.isFinite(a) ? a : 255;
 }

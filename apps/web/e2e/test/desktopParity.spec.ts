@@ -144,6 +144,8 @@ test.describe('find & replace — part numbers', () => {
 
 test.describe('toolbar and menus', () => {
   test('rotate / z-order buttons act on the selection', async ({ page }) => {
+    // Four edits of all ~1000 Fordyce bricks, each synced; up to ~33 s on a dev machine.
+    test.slow();
     const id = await createLayout(page, FORDYCE_BBM);
     await openEditor(page, id);
 
@@ -375,6 +377,8 @@ test.describe('venue library', () => {
 
 test.describe('budget limits', () => {
   test('a limit persists across reload and other sessions, and .bbb save / open still work', async ({ page, browser }) => {
+    // Loads the 500-brick Fordyce map more than once; ~25-35 s on a dev machine.
+    test.slow();
     const id = await createLayout(page, FORDYCE_BBM);
     await openEditor(page, id);
     const openBudget = async (p: Page) => {
@@ -592,5 +596,26 @@ test.describe('.bbm with its .bbm.bld sidecar', () => {
     await expect.poll(async () => (await exportedLabels(page, id)).map((l) => l.text)).toEqual(['Sidecar Label']);
     const bbm = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
     expect(countPart(bbm, '3857.0')).toBe(72);
+  });
+});
+
+test.describe('scale bar', () => {
+  test('bottom-left, in studs over mm / m, and it follows the zoom', async ({ page }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const bar = page.getByTestId('scale-bar');
+    // Empty map → zoom 1 (8 px per stud): the 120 px target picks 16 studs.
+    await expect(bar).toHaveText(/16 studs\s*128 mm/);
+    // Lower-left of the visible canvas: next to its left edge, just above the status bar.
+    const canvas = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const footer = (await page.locator('footer').boundingBox())!;
+    const b = (await bar.boundingBox())!;
+    expect(b.x - canvas.x).toBeLessThan(20);
+    expect(footer.y - (b.y + b.height)).toBeGreaterThanOrEqual(0);
+    expect(footer.y - (b.y + b.height)).toBeLessThan(20);
+
+    for (let i = 0; i < 6; i++) await page.keyboard.press('Control+-');
+    await expect(bar).not.toHaveText(/16 studs/);
+    await expect(bar).toHaveText(/\d+ studs\s*(\d+ mm|\d+\.\d\d m)/);
   });
 });

@@ -88,7 +88,7 @@ Web source root: this repository.
 
 ## Budget menu (`MainWindowMenus.cpp:563-570`)
 
-- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New/Open `.bbb`/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New/Open `.bbb`/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
 
 ---
 
@@ -292,13 +292,13 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Connection-point dots** (free vs linked colour, gold for active CP); always rendered (dimmed when unselected, full-bright on selection)
 - [x] **Hull / outline polygon** — `<hull>` pixel-space polygon parsed from XML into `PartMetadata.hullPts` + `PartWire.hullPts`; rendered as a closed `<Line>` polygon in `BrickLayer.tsx` when ≥3 points available; falls back to sprite bounding rect for parts without a `<hull>` element (184 parts ship explicit hulls)
 - [x] **Elevation badge** labels (per `view/brickElevation` + per-layer `displayBrickElevation`; non-zero altitude only)
-- [x] **Electric circuit** overlay — `ElectricCircuitLayer.tsx`: port of `SceneBuilderElectric.cpp`; BFS polarity propagation across connected bricks; OrangeRed / Cyan parallel rail lines offset 2px perpendicular to circuit centreline; orange diamond shortcut markers; gated by `showElectricCircuits` toggle; rendered above bricks (z=500)
+- [x] **Electric circuit** overlay — `ElectricCircuitLayer.tsx` / `electricCircuits.ts`: port of `SceneBuilderElectric.cpp`. A circuit joins a part's opposite plugs (+N / −N, 0 = none, `PartsLibrary.cpp` buildElectricCircuits); BFS polarity propagation follows `LinkedTo` (a connection id) into the partner brick; OrangeRed / Cyan parallel rail lines offset 2px perpendicular to circuit centreline; orange diamond shortcut markers; gated by `showElectricCircuits` toggle; rendered above bricks (z=500)
 - [x] Grid + sub-grid line drawing, with colour alpha (the desktop default grid is half-transparent black)
 - [x] **Grid cell-index labels** ("A1", "B1", ...) when the Grid layer's `DisplayCellIndex` is on (`render/gridIndex.ts`, `GridLayer.tsx`). Letters or numbers per axis from `CellIndexColumnType` / `CellIndexRowType`, counted from `CellIndexCorner`, drawn at a constant screen size. The desktop port keeps the fields and the checkbox but draws nothing; this follows vanilla BlueBrick.
 - [x] **Sidecar background-image** painted under everything — `BackgroundImageLayer` in `EditorPage.tsx` renders sidecar `backgroundImage` as a `KonvaImage` below all canvas layers
 - [x] **Selection halo** — gold / green-when-snap-active polygon outline
 - [x] **Linear-ruler endpoint handles** drawn when one ruler selected; draggable to reshape
-- [x] **Foreground scale-bar HUD** — bottom-right overlay, auto-picks round stud count, labels in mm/cm/m
+- [x] **Foreground scale-bar HUD** — bottom-left white pill like `MapViewPaint.cpp:195-243`: track-friendly stud step (16, 32, 48, 96…) nearest 120 px, labelled "N studs" over mm / m (`scaleBar.ts`)
 - [x] **Module name label** (gated by `view/moduleNames` → `cld:showModuleNames`; `ModuleOverlay.tsx`). Font is Module Label Percent (default 35) of the module's long side, clamped 16–400 px, rotated along the long axis (`SceneBuilderSidecar.cpp`).
 - [x] **Module frame outline** (gated by `view/moduleFrameThickness` → `cld:showModuleFrames`; dashed blue rect over member-brick AABB; thickness from `cld:moduleFrameThickness`)
 - [x] **Anchored labels** — World [x], Brick [x] (follows the brick's rotation), Group [x], Module [x] anchors all render; sizes are points at 96 dpi with desktop's 8.25 pt Microsoft Sans Serif default; Group/Module show dashed leader-line from AABB centre to label; add/edit/delete mutations [x]; minZoom gate [x]
@@ -351,7 +351,7 @@ Selection-aware; entries vary based on what's under the cursor:
 
 ## File-format features
 
-- [x] `.bbm` reader/writer (Grid / Brick / Text / Area / Ruler layers all round-trip)
+- [x] `.bbm` reader/writer (Grid / Brick / Text / Area / Ruler layers all round-trip). Maps saved by vanilla BlueBrick 1.9.2, including its LDraw / TrackDesigner / 4DBrix conversions, write back byte-for-byte (float exponents as `E-07`). A damaged number (`abc`, `NaN`, `1e999`) reads as 0 like desktop `XmlPrimitives.cpp`, so the map still saves. Rebuilt connectivity links within each layer only and matches vanilla's links on every oracle map.
 - [x] Sidecar (anchored labels, modules, venue, sha256) — round-trip OK; anchored labels [x], modules [x], venue [x] all render. Exported as `<name>.bbm.bld`, the only name desktop loads (`SidecarIO.cpp:201-202`), with `bbmHashSha256` of the `.bbm` exported beside it; the export reads the editor's live sidecar. Import accepts `.bbm.bld` and legacy web `.bbm.cld`, and seeds the editor's sidecar.
 - [x] `.bld-venue` standalone files (`"schema": "bld-venue/1"`, `VenueIO.cpp:28`) written; `.bld-venue` and legacy `.cld-venue` read with validation (`venueFile.ts`)
 - [x] `.set.xml` write — `SaveAsSetDialog.tsx`; Map menu → "Save Selection as Set…"

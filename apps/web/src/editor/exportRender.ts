@@ -5,8 +5,9 @@
 // drawBackground / drawForeground rather than as scene items.
 
 import type Konva from 'konva';
-import type { BbmMap, ColorSpec } from '@cld/model';
+import type { BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
+import { colorSpecToCss } from './layerOptions';
 
 /** Konva node name for view-only chrome hidden while exporting. */
 export const EXPORT_HIDE = 'export-hide';
@@ -143,16 +144,13 @@ export function clampExportSize(width: number, height: number): { width: number;
   return { width: w, height: h };
 }
 
-export function colorSpecToCss(c: ColorSpec): string {
-  if (c.kind === 'known') {
-    const known: Record<string, string> = {
-      black: '#000000', white: '#ffffff', red: '#ff0000', green: '#008000', blue: '#0000ff',
-      yellow: '#ffff00', orange: '#ffa500', gray: '#808080', darkgray: '#a9a9a9', lightgray: '#d3d3d3',
-      cornsilk: '#fff8dc',
-    };
-    return known[c.name.toLowerCase()] ?? '#ffffff';
-  }
-  return `#${c.argb.length === 8 ? c.argb.slice(2) : c.argb}`;
+/**
+ * CSS colour the export paints under the map: the layout's background,
+ * alpha included. A known name the table can't resolve paints black, like
+ * desktop QColor(name) (XmlPrimitives.cpp:72-77).
+ */
+export function exportBackground(map: Pick<BbmMap, 'backgroundColor'>): string {
+  return colorSpecToCss(map.backgroundColor, '#000000');
 }
 
 export interface ExportOptions {
@@ -236,7 +234,7 @@ export function renderMapToCanvas(
   const ctx = out.getContext('2d');
   if (!ctx) return { canvas: content, pixelRatio };
   if (!opts.transparent) {
-    ctx.fillStyle = colorSpecToCss(map.backgroundColor);
+    ctx.fillStyle = exportBackground(map);
     ctx.fillRect(0, 0, out.width, out.height);
   }
   ctx.imageSmoothingEnabled = smooth;
