@@ -8,3 +8,4 @@ export { connectionHingeAngle, FlexMove, type FlexState } from './flexMove.js';
 export type { FourDBrixRemap, FourDBrixType, LDrawRemap, TrackDesignerPort, TrackDesignerRemap } from './types.js';
 export { MapLibrary, newBrickLayer, newGridLayer, newMap, type MapReadResult } from './mapformats/library.js';
 export { readFourDBrixMap, writeFourDBrixMap, type FourDBrixWriteOptions } from './mapformats/fourDBrix.js';
+export { partForTrackDesignerId, readTrackDesignerMap, writeTrackDesignerMap } from './mapformats/trackDesigner.js';
