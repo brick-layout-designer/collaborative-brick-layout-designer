@@ -84,3 +84,18 @@ export function cellIndexLabels(
 export function drawnGridLayer<L extends { type: string; visible: boolean }>(layers: readonly L[]): L | undefined {
   return layers.find((l) => l.type === 'grid' && l.visible);
 }
+
+/**
+ * The grid cell under a point in studs — BlueBrick's
+ * LayerGrid.computeGridCoordFromStudCoord as desktop MapView::gridCellAt:
+ * truncate towards zero, then one less below zero.
+ */
+export function gridCellAt(x: number, y: number, cellSize: number): CellCorner {
+  const size = Math.max(1, cellSize);
+  let cx = Math.trunc(x / size);
+  let cy = Math.trunc(y / size);
+  if (x < 0) cx -= 1;
+  if (y < 0) cy -= 1;
+  return { x: cx, y: cy };
+}
+

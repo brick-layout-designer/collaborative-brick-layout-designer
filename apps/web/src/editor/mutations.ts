@@ -748,6 +748,20 @@ export function deleteLayer(doc: Y.Doc, layerId: string): void {
 }
 
 /**
+ * Move a grid layer's cell-index origin by whole cells, as one undo step
+ * (desktop MoveGridOriginCommand, LayerCommands.cpp:195-210).
+ */
+export function moveGridOrigin(doc: Y.Doc, layerId: string, dx: number, dy: number): void {
+  if (dx === 0 && dy === 0) return;
+  doc.transact(() => {
+    const layer = doc.getMap('layerData').get(layerId);
+    if (!(layer instanceof Y.Map) || layer.get('type') !== 'grid') return;
+    const cur = layer.get('cellIndexCorner') as { x?: number; y?: number } | undefined;
+    layer.set('cellIndexCorner', { x: (cur?.x ?? 0) + dx, y: (cur?.y ?? 0) + dy });
+  }, LOCAL_ORIGIN);
+}
+
+/**
  * The first ruler layer, or a new one named "Rulers" at the top — where
  * desktop's ruler tools put a new ruler (MapView.cpp:818-829).
  */

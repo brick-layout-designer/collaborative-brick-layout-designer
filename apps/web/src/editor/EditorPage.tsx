@@ -64,6 +64,7 @@ import {
   ensureBrickLayer,
   ensureRulerLayer,
   ensureTextLayer,
+  moveGridOrigin,
   newTextBox,
   rulerPreviewLabel,
   allVisibleBrickIds,
@@ -111,6 +112,7 @@ import { actualPartNumber, indexParts } from './partIndex';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { fitView } from './viewFit';
 import { PartListDialog } from './PartListDialog';
+import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -1652,8 +1654,29 @@ function Canvas({
     };
   }, []);
 
+  // Grid origin drag (MapView.cpp:415-438, 590-600, 737-746): with the
+  // active layer a visible grid showing cell indices, dragging empty space
+  // moves the index origin by whole cells; right-click cancels.
+  const gridDragRef = useRef<{ layerId: string; cellSize: number; before: { x: number; y: number }; start: { x: number; y: number }; last: { x: number; y: number } } | null>(null);
+  const skipContextMenuRef = useRef(false);
+  const [gridPreview, setGridPreview] = useState<{ layerId: string; corner: { x: number; y: number } } | null>(null);
+  function endGridDrag(commit: boolean) {
+    const g = gridDragRef.current;
+    gridDragRef.current = null;
+    setGridPreview(null);
+    const stage = stageRef.current;
+    if (stage) stage.container().style.cursor = '';
+    if (g && commit) moveGridOrigin(doc, g.layerId, g.last.x - g.start.x, g.last.y - g.start.y);
+  }
+
   function handleStageMouseDown(e: KonvaEventObject<MouseEvent>) {
     const evt = e.evt as MouseEvent;
+
+    if (gridDragRef.current && evt.button === 2) {
+      endGridDrag(false);
+      skipContextMenuRef.current = true; // the right-click only cancels
+      return;
+    }
 
     // Middle-button pan — port of MapView.cpp:446-451 (desktop). Works on
     // any tool, on any target (brick or empty stage), so the user can
@@ -1674,6 +1697,18 @@ function Canvas({
     const studs = pointerStuds();
     if (!studs) return;
 
+    if (tool === 'select' && !isViewer && evt.button === 0) {
+      const grid = map?.layers.find((l) => l.id === activeLayerId);
+      if (grid && grid.type === 'grid' && grid.visible && grid.displayCellIndex) {
+        const cell = gridCellAt(studs.x, studs.y, grid.gridSizeInStud);
+        const before = parseCellIndexCorner(grid.cellIndexCorner);
+        gridDragRef.current = { layerId: grid.id, cellSize: grid.gridSizeInStud, before, start: cell, last: cell };
+        setGridPreview({ layerId: grid.id, corner: before });
+        const stage = stageRef.current;
+        if (stage) stage.container().style.cursor = 'move';
+        return;
+      }
+    }
     if (tool === 'select') {
       // Empty-space click in select mode → start marquee. Shift/Ctrl
       // extends the current selection instead of replacing it (Qt
@@ -1732,6 +1767,15 @@ function Canvas({
     const studs = pointerStuds();
     if (!studs) return;
     scheduleHudMouse(studs);
+    const g = gridDragRef.current;
+    if (g) {
+      const cell = gridCellAt(studs.x, studs.y, g.cellSize);
+      if (cell.x !== g.last.x || cell.y !== g.last.y) {
+        g.last = cell;
+        setGridPreview({ layerId: g.layerId, corner: { x: g.before.x + cell.x - g.start.x, y: g.before.y + cell.y - g.start.y } });
+      }
+      return;
+    }
     // Continue the paint/erase stroke while the button is held.
     if ((tool === 'paint' || tool === 'erase') && paintStrokeRef.current && evt.buttons & 1) {
       doPaintStroke(studs.x, studs.y);
@@ -1777,6 +1821,10 @@ function Canvas({
 
   function handleStageMouseUp(e: KonvaEventObject<MouseEvent>) {
     const evt = e.evt as MouseEvent;
+    if (gridDragRef.current && evt.button === 0) {
+      endGridDrag(true);
+      return;
+    }
     if (evt.button === 1 && middlePanRef.current) {
       middlePanRef.current = null;
       flushPointerMove();
@@ -2331,6 +2379,10 @@ function Canvas({
       onMouseLeave={handleStageMouseLeave}
       onContextMenu={(e) => {
         e.evt.preventDefault();
+        if (skipContextMenuRef.current) {
+          skipContextMenuRef.current = false;
+          return;
+        }
         if (isViewer) return;
         if (tool === 'venueOutline' || tool === 'venueObstacle') {
           finishVenueDraft();
@@ -2412,6 +2464,7 @@ function Canvas({
         <Group name={EXPORT_HIDE} listening={false}>
           <GridLayer
             map={map}
+            cornerOverride={gridPreview}
             viewport={{
               studXMin: pxToStud(-panX / zoom),
               studYMin: pxToStud(-panY / zoom),

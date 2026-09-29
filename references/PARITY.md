@@ -48,6 +48,7 @@ Web source root: this repository.
 - [x] **Unresolved parts** — a brick whose part the library doesn't have draws as desktop's placeholder: a dashed red outline over a translucent pink fill at its stored size (`SceneBuilder.cpp:230-242`).
 - [x] **Stacking** — within a layer bricks are drawn by altitude, lowest first, in file order among equals (`setZValue(altitude)`, `SceneBuilder.cpp:221`).
 - [x] **Grid cell indices** — like `MapView::drawCellIndices`: column labels along the origin cell's row and row labels down its column, centred in their cells, counting from 1 / A after the origin (blank at and before it), in the cell-index font sized in map units so it scales with zoom (`gridIndex.ts`). The first visible grid layer draws (`MapViewPaint.cpp:71-73`).
+- [x] **Grid origin drag** — with the active layer a visible grid showing cell indices, dragging empty space moves the index origin by whole cells, live, committed as one undo step on release; right-click cancels (`MapView.cpp:415-438, 590-600, 737-746`, `MoveGridOriginCommand`).
 
 ---
 

@@ -1189,3 +1189,49 @@ test.describe('new layout template', () => {
     await page.evaluate(() => localStorage.removeItem('cld:newLayoutTemplate'));
   });
 });
+
+test.describe('grid origin drag', () => {
+  test('with the grid layer active, dragging empty space moves the cell-index origin by whole cells', async ({ page }) => {
+    test.slow();
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const corner = async () => {
+      const xml = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+      const m = /<CellIndexCorner>\s*<X>(-?\d+)<\/X>\s*<Y>(-?\d+)<\/Y>/.exec(xml)!;
+      return { x: Number(m[1]), y: Number(m[2]) };
+    };
+    const before = await corner();
+
+    // Make the grid layer ("Layer 1") the active layer.
+    await page.locator('aside').getByText('Layer 1', { exact: true }).click();
+    await expect(page.locator('footer')).toContainText('Layer: Layer 1');
+
+    const z = await page.evaluate(() => (window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX());
+    const cellStuds = Number(/<GridSizeInStud>(\d+)<\/GridSizeInStud>/.exec(FORDYCE_BBM)![1]);
+    const cellPx = cellStuds * 8 * z;
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    // Empty space just inside the top-left of the view.
+    const x0 = box.x + 12;
+    const y0 = box.y + 12;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 3 * cellPx, y0 + 2 * cellPx, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(corner).toEqual({ x: before.x + 3, y: before.y + 2 });
+    await expect(page.locator('footer')).not.toContainText('selected:');
+
+    // One undo step.
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(corner).toEqual(before);
+
+    // Right-click cancels, without opening the context menu.
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 2 * cellPx, y0, { steps: 8 });
+    await page.mouse.click(x0 + 2 * cellPx, y0, { button: 'right' });
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    expect(await corner()).toEqual(before);
+    await expect(page.locator('[data-ctx-menu]')).toHaveCount(0);
+  });
+});
