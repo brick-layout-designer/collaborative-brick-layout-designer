@@ -116,4 +116,20 @@ describe('dropped files', () => {
       { name: 'Z.bbm', bbm: '<Z/>', sidecar: '{"z":1}' },
     ]);
   });
+
+  it('converts other map formats when given a converter, and skips them without one', async () => {
+    const seen: string[] = [];
+    const convert = async (name: string, bytes: Uint8Array) => {
+      seen.push(`${name}:${dec.decode(bytes)}`);
+      return { bbm: `<from-${name}/>`, warnings: /\.ncp$/i.test(name) ? ['No part is mapped to these 4DBrix parts: X'] : [] };
+    };
+    const files = [file('a.ldr', '0 a'), file('b.NCP', '<data/>'), file('c.bbm', '<C/>')];
+    expect(await layoutsFromFiles(files, convert)).toEqual([
+      { name: 'c.bbm', bbm: '<C/>' },
+      { name: 'a.ldr', bbm: '<from-a.ldr/>' },
+      { name: 'b.NCP', bbm: '<from-b.NCP/>', warnings: ['No part is mapped to these 4DBrix parts: X'] },
+    ]);
+    expect(seen).toEqual(['a.ldr:0 a', 'b.NCP:<data/>']);
+    expect(await layoutsFromFiles(files)).toEqual([{ name: 'c.bbm', bbm: '<C/>' }]);
+  });
 });

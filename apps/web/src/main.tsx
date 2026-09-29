@@ -15,6 +15,7 @@ import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { api } from './api';
 import { layoutsFromFiles, type DroppedLayout } from './bbmFiles';
+import { catalogMapConverter, MAP_FORMAT_FILE, type OpenedMapState } from './mapFormats';
 import './styles.css';
 
 // Heavy routes are code-split so the landing / auth pages don't download
@@ -36,7 +37,9 @@ if (!root) throw new Error('#root not found');
  * Window-level layout drop — opens any .bbm dropped onto any page, with the
  * `.bbm.bld` sidecar dropped alongside it (or both inside a .zip, as the
  * editor's Download .bbm writes them), like desktop's open
- * (MainWindowFileIO.cpp:84-94).
+ * (MainWindowFileIO.cpp:84-94). LDraw, TrackDesigner and 4DBrix maps are
+ * converted first; what the conversion skipped shows in the editor's
+ * status bar, as on desktop.
  */
 function GlobalBbmDrop() {
   const navigate = useNavigate();
@@ -48,19 +51,27 @@ function GlobalBbmDrop() {
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     }
     async function onDrop(e: DragEvent) {
-      const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.(bbm|bbm\.bld|bbm\.cld|zip)$/i.test(f.name));
-      if (!files.some((f) => /\.(bbm|zip)$/i.test(f.name))) return;
+      const files = Array.from(e.dataTransfer?.files ?? []).filter(
+        (f) => /\.(bbm|bbm\.bld|bbm\.cld|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name),
+      );
+      if (!files.some((f) => /\.(bbm|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name))) return;
       e.preventDefault();
       let layouts: DroppedLayout[] = [];
       try {
-        layouts = await layoutsFromFiles(files);
-      } catch {
-        return; // unreadable zip — nothing to open
+        const convert = catalogMapConverter(
+          async () => (await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 })).parts,
+        );
+        layouts = await layoutsFromFiles(files, convert);
+      } catch (err) {
+        // An unreadable zip has nothing to open; say why a map file didn't.
+        if (files.some((f) => MAP_FORMAT_FILE.test(f.name))) window.alert(`Open failed: ${(err as Error).message}`);
+        return;
       }
       for (const l of layouts) {
         try {
           const created = await api.layouts.create(l.sidecar !== undefined ? { bbm: l.bbm, sidecar: l.sidecar } : { bbm: l.bbm });
-          navigate(`/editor/${created.id}`);
+          const state: OpenedMapState | undefined = l.warnings ? { openWarnings: l.warnings } : undefined;
+          navigate(`/editor/${created.id}`, state ? { state } : undefined);
         } catch {
           // silently ignore — editor page shows its own error
         }

@@ -1,3 +1,5 @@
+import type { FourDBrixRemap, LDrawRemap, TrackDesignerRemap } from '@cld/parts-catalog/browser';
+
 export type ProviderId = 'google' | 'github' | 'oidc';
 
 export interface Me {
@@ -178,6 +180,10 @@ export interface PartWire {
   oldNames?: string[];
   /** Sprite size in pixels, for the BlueBrick footprint; absent when unreadable. */
   spriteSize?: { w: number; h: number };
+  /** Map-format remaps, for opening and saving LDraw / TrackDesigner / 4DBrix maps; absent when none. */
+  ldraw?: LDrawRemap;
+  trackDesigner?: TrackDesignerRemap;
+  fourDBrix?: FourDBrixRemap;
 }
 
 /** Resolve the sprite URL for any part, regardless of source. */

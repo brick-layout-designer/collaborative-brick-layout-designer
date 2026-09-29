@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, Text } from 'react-konva';
 import type Konva from 'konva';
@@ -97,6 +97,7 @@ import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
 import { isEditableTarget } from './keyboardGuard';
 import { catalogFromParts, recomputeConnectivity, useConnectivity } from './useConnectivity';
+import type { OpenedMapState } from '../mapFormats';
 import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './useAwareness';
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
@@ -112,6 +113,7 @@ import { actualPartNumber, indexParts } from './partIndex';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { fitView } from './viewFit';
 import { PartListDialog } from './PartListDialog';
+import { DownloadAsDialog } from './DownloadAsDialog';
 import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -147,6 +149,12 @@ export function EditorPage() {
 
 function Editor({ layoutId }: { layoutId: string }) {
   const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = useLayoutDoc(layoutId);
+  // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
+  // shows it in the status bar after the open).
+  const openWarnings = (useLocation().state as OpenedMapState | null)?.openWarnings;
+  useEffect(() => {
+    if (doc && openWarnings?.length) useEditorStore.getState().showStatusMessage(`Opened with warnings: ${openWarnings.join('; ')}`, 10000);
+  }, [doc, openWarnings]);
   const meta = useQuery({
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
@@ -190,6 +198,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
   const [showPartList, setShowPartList] = useState(false);
+  const [showDownloadAs, setShowDownloadAs] = useState(false);
   const [showVenueSaveLibrary, setShowVenueSaveLibrary] = useState(false);
 
   // Imperative handle so the PartsPanel can trigger click-to-place
@@ -459,6 +468,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
               onFit={() => canvasActionsRef.current?.fit()}
               onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
+              onDownloadAs={() => setShowDownloadAs(true)}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
               onVenueDimensions={() => setShowVenueDimensions(true)}
@@ -718,6 +728,15 @@ function Editor({ layoutId }: { layoutId: string }) {
         <VenueDimensionsDialog
           doc={doc}
           onClose={() => setShowVenueDimensions(false)}
+        />
+      )}
+      {showDownloadAs && docMap && (
+        <DownloadAsDialog
+          map={docMap}
+          parts={catalog.data?.parts ?? []}
+          title={meta.data?.layout.title ?? 'layout'}
+          onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
+          onClose={() => setShowDownloadAs(false)}
         />
       )}
       {showPartList && docMap && (
@@ -3375,6 +3394,7 @@ function MapMenu({
   onZoomOut,
   onFit,
   onDownloadBbm,
+  onDownloadAs,
   onPreferences,
   onVenueProps,
   onVenueDimensions,
@@ -3402,6 +3422,7 @@ function MapMenu({
   onZoomOut: () => void;
   onFit: () => void;
   onDownloadBbm: () => void;
+  onDownloadAs: () => void;
   onPreferences: () => void;
   onVenueProps: () => void;
   onVenueDimensions: () => void;
@@ -3460,6 +3481,7 @@ function MapMenu({
     { label: 'Insert Anchored Label...  Ctrl+L', action: onInsertLabel },
     { label: '—', action: () => {} },
     { label: 'Download .bbm', action: onDownloadBbm },
+    { label: 'Download As...', action: onDownloadAs },
     { label: 'Export as Image...', action: onExportImage },
     { label: 'Export Part List...', action: onExportCsv },
     { label: '—', action: () => {} },

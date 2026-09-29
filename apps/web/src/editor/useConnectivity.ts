@@ -23,10 +23,13 @@
 
 import { useEffect, useMemo } from 'react';
 import * as Y from 'yjs';
-import { rebuildConnectivity, type Catalog, type PartMetadata } from '@cld/parts-catalog/browser';
+import { rebuildConnectivity, type Catalog } from '@cld/parts-catalog/browser';
 import { docToBbm } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import type { PartWire } from '../api';
+import { catalogFromParts } from './catalogFromParts';
+
+export { catalogFromParts };
 import type { RectangleF } from '@cld/model';
 import { staleAreaFix } from './brickGeometry';
 import { indexParts } from './partIndex';
@@ -180,40 +183,3 @@ export function fixStaleAreasInDoc(doc: Y.Doc, partIndex: ReadonlyMap<string, Pa
   return fixes.length;
 }
 
-/**
- * The catalog shape `rebuildConnectivity` reads, from the wire parts:
- * connections, pivot geometry (sprite size, hull) and old names. Other
- * fields are left empty since the algorithm doesn't touch them.
- */
-export function catalogFromParts(parts: readonly PartWire[] | undefined): Catalog {
-  const m: Catalog = new Map();
-  for (const p of parts ?? []) {
-    const meta: PartMetadata = {
-      key: p.key,
-      partNumber: p.partNumber,
-      colorCode: p.colorCode,
-      kind: p.kind,
-      descriptions: {},
-      author: '',
-      sortingKey: p.sortingKey,
-      spritePath: p.spritePath,
-      pxPerStud: p.pxPerStud,
-      connections: p.connections.map((c) => ({
-        type: c.type,
-        x: c.x,
-        y: c.y,
-        angle: c.angle,
-        electricPlug: c.electricPlug,
-        // Where the active connection moves after a link (onLinked).
-        ...(c.nextConnexionPreference !== undefined ? { nextConnexionPreference: c.nextConnexionPreference } : {}),
-      })),
-      subparts: [],
-      canUngroup: true,
-      hullPts: p.hullPts ?? [],
-      ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
-      ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
-    };
-    m.set(p.key, meta);
-  }
-  return m;
-}
