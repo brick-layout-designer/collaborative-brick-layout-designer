@@ -25,6 +25,8 @@ const EditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ defau
 const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 const LibraryPage = lazy(() => import('./library/LibraryPage').then((m) => ({ default: m.LibraryPage })));
 const OrgAdminPage = lazy(() => import('./orgs/OrgAdminPage').then((m) => ({ default: m.OrgAdminPage })));
+const NewVenuePage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.NewVenuePage })));
+const VenueDesignPage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.VenueDesignPage })));
 const PublicLayoutPage = lazy(() => import('./layouts/PublicLayoutPage').then((m) => ({ default: m.PublicLayoutPage })));
 
 const queryClient = new QueryClient({
@@ -109,6 +111,8 @@ createRoot(root).render(
           <Route path="/orgs/:slug/admin" element={<OrgAdminPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/editor/:id" element={<EditorPage />} />
+          <Route path="/venues/new" element={<NewVenuePage />} />
+          <Route path="/venues/:id/design" element={<VenueDesignPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/p/:token" element={<PublicLayoutPage />} />

@@ -68,16 +68,6 @@ const OBSTACLE_TOOLS: Partial<Record<Tool, VenueObstacleKind>> = {
   counter: 'counter',
 };
 
-export interface FloorPlan {
-  /** A data: URL of the image (downscaled when loaded). */
-  image: string;
-  /** World position of the image's top-left corner, and studs per image pixel. */
-  x: number;
-  y: number;
-  studsPerPx: number;
-  opacity: number;
-}
-
 export type Layer = 'plan' | 'obstacles' | 'power' | 'dimensions' | 'notes' | 'estimates';
 
 export interface DesignerState {

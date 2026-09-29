@@ -1,0 +1,364 @@
+// The Venue Designer: a full-screen editor for one venue. Tools on the
+// left, the drawing in the middle, the inspector on the right, layer
+// toggles above and the cursor, room size and hint below. It edits a copy;
+// `onSave` gets the result (a library venue, or the layout's venue).
+
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import type { Venue } from '@cld/bbm';
+import { DesignerCanvas, type View } from './DesignerCanvas';
+import { Inspector } from './Inspector';
+import { initialState, reducer, TOOLS, venueOf, type Layer } from './designerState';
+import { estimateCount, roomSize, type Pt } from './model';
+import { calibrate, loadPlan, planOf, withPlan, type FloorPlan } from './plan';
+import { formatLength, parseLength, STUDS_PER_INCH, type LengthUnit } from './units';
+
+const FT = 12 * STUDS_PER_INCH;
+const LAYERS: { layer: Layer; name: string }[] = [
+  { layer: 'plan', name: 'Floor plan' },
+  { layer: 'obstacles', name: 'Obstacles' },
+  { layer: 'power', name: 'Power' },
+  { layer: 'dimensions', name: 'Measurements' },
+  { layer: 'notes', name: 'Notes' },
+  { layer: 'estimates', name: 'Estimates' },
+];
+// Keys a length or a size is typed with while drawing.
+const TYPING = /^[0-9.'"′″ /xX×a-zA-Z]$/;
+
+export function VenueDesigner({
+  initial,
+  subtitle,
+  saveLabel = 'Save venue',
+  onSave,
+  onClose,
+}: {
+  initial: Venue;
+  subtitle?: string;
+  saveLabel?: string;
+  onSave: (v: Venue) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const [state, dispatch] = useReducer(reducer, initial, initialState);
+  const [view, setView] = useState<View | null>(null);
+  const [cursor, setCursor] = useState<Pt | null>(null);
+  const [planMoving, setPlanMoving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<Venue>(initial);
+  const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const venue = venueOf(state);
+  const plan = planOf(venue);
+  const dirty = venue !== saved;
+  const drawing = state.draft.length > 0 || state.cut !== null;
+
+  // Keyboard: tool keys, lengths typed while drawing, Enter / Esc, Delete,
+  // undo / redo, duplicate. Ignored while typing in a text box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        dispatch({ type: e.shiftKey ? 'redo' : 'undo' });
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        dispatch({ type: 'redo' });
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        dispatch({ type: 'duplicate' });
+        return;
+      }
+      if (mod) return;
+      if (e.key === 'Escape') return dispatch({ type: 'escape' });
+      if (e.key === 'Enter') return dispatch({ type: 'enter' });
+      if (drawing) {
+        if (e.key === 'Backspace') {
+          e.preventDefault();
+          return dispatch({ type: 'type', text: state.typed.slice(0, -1) });
+        }
+        if (TYPING.test(e.key) && (state.typed !== '' || /[0-9.]/.test(e.key))) {
+          e.preventDefault();
+          return dispatch({ type: 'type', text: state.typed + e.key });
+        }
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state.selection) {
+        e.preventDefault();
+        return dispatch({ type: 'delete' });
+      }
+      const tool = TOOLS.find((x) => x.key === e.key.toLowerCase());
+      if (tool) dispatch({ type: 'tool', tool: tool.tool });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawing, state.typed, state.selection]);
+
+  // Leaving with unsaved changes asks first.
+  useEffect(() => {
+    const before = (e: BeforeUnloadEvent) => {
+      if (dirty) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', before);
+    return () => window.removeEventListener('beforeunload', before);
+  }, [dirty]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(venue);
+      setSaved(venue);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const close = () => {
+    if (dirty && !window.confirm('Close the Venue Designer without saving your changes?')) return;
+    onClose();
+  };
+
+  const setPlan = useCallback((p: FloorPlan | null) => dispatch({ type: 'edit', venue: withPlan(venue, p) }), [venue]);
+  const pickPlan = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      // First placed at the view's top-left, 150 ft wide; calibrate it next.
+      const at = view ? { x: (40 - view.x) / view.scale, y: (40 - view.y) / view.scale } : { x: 0, y: 0 };
+      setPlan(await loadPlan(file, at, 150 * FT));
+      dispatch({ type: 'tool', tool: 'calibrate' });
+    } catch (err) {
+      setError(`Could not load the floor plan: ${(err as Error).message}`);
+    }
+  };
+
+  const size = roomSize(venue);
+  const estimates = estimateCount(venue);
+  const hint =
+    state.message ||
+    (state.tool === 'calibrate'
+      ? state.calibration.length < 2
+        ? 'Click two points on the floor plan whose real distance you know'
+        : 'Enter the real distance between the two points in the inspector'
+      : planMoving
+        ? 'Drag to move the floor plan'
+        : (TOOLS.find((t) => t.tool === state.tool)?.hint ?? ''));
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950 text-neutral-100">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-4">
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-semibold">
+            {venue.name || 'Venue'}
+            {dirty && <span className="ml-2 text-xs font-normal text-amber-300">unsaved</span>}
+          </div>
+          {subtitle && <div className="truncate text-xs text-neutral-400">{subtitle}</div>}
+        </div>
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
+          Units
+          <select
+            value={state.unit}
+            onChange={(e) => dispatch({ type: 'unit', unit: e.target.value as LengthUnit })}
+            className="h-8 rounded-md border border-neutral-600 bg-neutral-800 px-2 text-sm"
+          >
+            <option value="ftin">Feet &amp; inches</option>
+            <option value="m">Metres</option>
+            <option value="studs">Studs</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-sm text-neutral-300" title="Snap to corners, walls, 45° and whole inches (hold Shift for any angle)">
+          <input type="checkbox" checked={state.snap} onChange={(e) => dispatch({ type: 'snap', on: e.target.checked })} />
+          Snap
+        </label>
+        <button type="button" onClick={() => dispatch({ type: 'undo' })} disabled={!state.history.past.length} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-neutral-800 disabled:opacity-40">
+          Undo
+        </button>
+        <button type="button" onClick={() => dispatch({ type: 'redo' })} disabled={!state.history.future.length} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-neutral-800 disabled:opacity-40">
+          Redo
+        </button>
+        <button type="button" onClick={() => fileInput.current?.click()} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-neutral-800">
+          {plan ? 'Replace floor plan…' : 'Floor plan…'}
+        </button>
+        <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Floor plan image" onChange={(e) => void pickPlan(e.target.files?.[0]).then(() => (e.target.value = ''))} />
+        <button type="button" onClick={() => void save()} disabled={saving || !dirty} className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium hover:bg-blue-500 disabled:opacity-50">
+          {saving ? 'Saving…' : saveLabel}
+        </button>
+        <button type="button" onClick={close} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-neutral-800">
+          Close
+        </button>
+      </header>
+      {error && <div className="border-b border-red-900 bg-red-950/60 px-4 py-2 text-sm text-red-200">{error}</div>}
+      <div className="flex min-h-0 flex-1">
+        <nav aria-label="Tools" className="flex w-20 shrink-0 flex-col gap-1 overflow-y-auto border-r border-neutral-800 bg-neutral-900 p-2">
+          {TOOLS.map((t) => (
+            <button
+              key={t.tool}
+              type="button"
+              title={t.hint}
+              aria-pressed={state.tool === t.tool}
+              onClick={() => {
+                setPlanMoving(false);
+                dispatch({ type: 'tool', tool: t.tool });
+              }}
+              className={`flex h-12 flex-col items-center justify-center rounded-lg text-xs ${state.tool === t.tool ? 'bg-blue-500/20 font-semibold text-blue-200' : 'text-neutral-300 hover:bg-neutral-800'}`}
+            >
+              {t.label}
+              <span className="font-mono text-[10px] text-neutral-500">{t.key.toUpperCase()}</span>
+            </button>
+          ))}
+        </nav>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-10 shrink-0 items-center gap-4 border-b border-neutral-800 bg-neutral-900/60 px-4 text-sm text-neutral-300">
+            <span className="font-semibold">Show</span>
+            {LAYERS.map((l) => (
+              <label key={l.layer} className="flex items-center gap-1.5">
+                <input type="checkbox" checked={state.show[l.layer]} onChange={(e) => dispatch({ type: 'show', layer: l.layer, on: e.target.checked })} />
+                {l.name}
+              </label>
+            ))}
+            <span className="flex-1" />
+            {estimates > 0 && <span className="text-amber-300">{estimates} estimate{estimates === 1 ? '' : 's'} left to measure</span>}
+          </div>
+          <div className="relative min-h-0 flex-1">
+            <DesignerCanvas
+              state={state}
+              dispatch={dispatch}
+              view={view}
+              setView={setView}
+              planMoving={planMoving}
+              onPlanMoved={setPlan}
+              onCursor={setCursor}
+            />
+            <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-900/90 p-1 text-sm">
+              <button type="button" aria-label="Zoom out" onClick={() => view && setView({ ...view, scale: view.scale / 1.25 })} className="h-8 w-8 rounded hover:bg-neutral-800">
+                −
+              </button>
+              <button type="button" aria-label="Zoom in" onClick={() => view && setView({ ...view, scale: view.scale * 1.25 })} className="h-8 w-8 rounded hover:bg-neutral-800">
+                +
+              </button>
+              <button type="button" onClick={() => setView(null)} className="h-8 rounded px-2 hover:bg-neutral-800">
+                Fit
+              </button>
+            </div>
+          </div>
+          <footer className="flex h-8 shrink-0 items-center gap-6 border-t border-neutral-800 bg-neutral-900 px-4 text-xs text-neutral-400">
+            <span className="font-mono">{cursor ? `${formatLength(cursor.x, state.unit)}, ${formatLength(cursor.y, state.unit)}` : '—'}</span>
+            {size && (
+              <span>
+                Room {formatLength(size.w, state.unit)} × {formatLength(size.h, state.unit)} · {Math.round(size.area / (FT * FT)).toLocaleString()} sq ft
+              </span>
+            )}
+            <span className={`truncate ${state.message ? 'text-amber-300' : ''}`}>
+              {state.typed ? `Typing ${state.typed} — Enter to apply` : hint}
+            </span>
+          </footer>
+        </main>
+        <Inspector
+          state={state}
+          dispatch={dispatch}
+          extra={
+            plan && (
+              <PlanPanel
+                plan={plan}
+                calibration={state.calibration}
+                unit={state.unit}
+                moving={planMoving}
+                onMove={(on) => {
+                  setPlanMoving(on);
+                  if (on) dispatch({ type: 'tool', tool: 'select' });
+                }}
+                onCalibrate={() => {
+                  setPlanMoving(false);
+                  dispatch({ type: 'tool', tool: 'calibrate' });
+                }}
+                onApply={(real) => {
+                  const [a, b] = state.calibration;
+                  if (a && b) setPlan(calibrate(plan, a, b, real));
+                  dispatch({ type: 'tool', tool: 'select' });
+                }}
+                onChange={setPlan}
+              />
+            )
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function PlanPanel({
+  plan,
+  calibration,
+  unit,
+  moving,
+  onMove,
+  onCalibrate,
+  onApply,
+  onChange,
+}: {
+  plan: FloorPlan;
+  calibration: Pt[];
+  unit: LengthUnit;
+  moving: boolean;
+  onMove: (on: boolean) => void;
+  onCalibrate: () => void;
+  onApply: (realStuds: number) => void;
+  onChange: (p: FloorPlan | null) => void;
+}) {
+  const [real, setReal] = useState('');
+  const [bad, setBad] = useState(false);
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-neutral-800 p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Floor plan</div>
+      <label className="flex flex-col gap-1 text-xs text-neutral-400">
+        Opacity {Math.round(plan.opacity * 100)}%
+        <input type="range" min={0.1} max={1} step={0.05} value={plan.opacity} onChange={(e) => onChange({ ...plan, opacity: Number(e.target.value) })} />
+      </label>
+      {calibration.length === 2 ? (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const v = parseLength(real, unit);
+            if (v === null || v <= 0) return setBad(true);
+            setBad(false);
+            onApply(v);
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            Real distance between the two points
+            <input
+              autoFocus
+              value={real}
+              onChange={(e) => setReal(e.target.value)}
+              placeholder={`e.g. 40' 4"`}
+              aria-invalid={bad}
+              className={`h-9 rounded-md border bg-neutral-800 px-2.5 font-mono text-sm ${bad ? 'border-red-500' : 'border-neutral-600'}`}
+            />
+          </label>
+          <button type="submit" className="h-9 rounded-md bg-blue-600 text-sm font-medium hover:bg-blue-500">
+            Scale the floor plan
+          </button>
+        </form>
+      ) : (
+        <p className="text-xs text-neutral-500">
+          1 image pixel = {formatLength(plan.studsPerPx, unit)}. Calibrate by clicking two points you know the distance between.
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button type="button" onClick={onCalibrate} className="h-9 flex-1 rounded-md border border-neutral-600 text-sm hover:bg-neutral-800">
+          Calibrate
+        </button>
+        <button type="button" aria-pressed={moving} onClick={() => onMove(!moving)} className={`h-9 flex-1 rounded-md border text-sm ${moving ? 'border-blue-500 bg-blue-500/20' : 'border-neutral-600 hover:bg-neutral-800'}`}>
+          Move
+        </button>
+        <button type="button" onClick={() => onChange(null)} className="h-9 flex-1 rounded-md border border-neutral-600 text-sm hover:bg-neutral-800">
+          Remove
+        </button>
+      </div>
+    </section>
+  );
+}

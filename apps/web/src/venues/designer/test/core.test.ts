@@ -208,3 +208,21 @@ describe('undo', () => {
     expect(commit(h, h.present)).toBe(h);
   });
 });
+
+describe('floor plan', () => {
+  it('calibrates from two clicked points and a real distance, keeping the first point', async () => {
+    const { calibrate, planOf, withPlan } = await import('../plan');
+    const plan = { image: 'data:image/jpeg;base64,xx', x: 10, y: 20, studsPerPx: 0.5, opacity: 0.4 };
+    // Points 100 studs apart on the plan are really 150 studs apart.
+    const c = calibrate(plan, { x: 60, y: 20 }, { x: 160, y: 20 }, 150);
+    expect(c.studsPerPx).toBeCloseTo(0.75);
+    expect(c.x).toBeCloseTo(60 - 50 * 1.5);
+    expect(c.y).toBeCloseTo(20);
+    expect(calibrate(plan, { x: 1, y: 1 }, { x: 1, y: 1 }, 10)).toBe(plan);
+    // Kept in the venue; anything that isn't an image data URL is ignored.
+    const v = withPlan(emptyVenue(), c);
+    expect(planOf(v)).toEqual(c);
+    expect(planOf({ ...v, floorPlan: { image: 'https://x/y.png' } })).toBeNull();
+    expect('floorPlan' in withPlan(v, null)).toBe(false);
+  });
+});
