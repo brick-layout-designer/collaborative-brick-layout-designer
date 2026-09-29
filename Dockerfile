@@ -49,9 +49,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV LEFTHOOK=0
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      tini ca-certificates \
+# Pick up Debian's security fixes (e.g. tzdata) on top of the base image.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends tini ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+# The runtime only runs `node`: drop the npm / corepack the base image ships,
+# whose bundled dependencies (undici, ip-address, ...) the image scan flags.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 # Copy the deploy output: pruned prod node_modules with compiled native addons,
 # server dist, migrations, and web dist.
