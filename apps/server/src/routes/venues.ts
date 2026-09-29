@@ -8,9 +8,14 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 
+// The desktop app reaches these with an API token too: venues:read to list
+// and download, venues:write to save, rename and delete.
+const TOKEN_READ = { apiToken: 'venues:read' } as const;
+const TOKEN_WRITE = { apiToken: 'venues:write' } as const;
+
 export async function venueRoutes(app: FastifyInstance): Promise<void> {
   // ---- list venues visible to the user -----------------------------------
-  app.get('/api/venues', async (req) => {
+  app.get('/api/venues', { config: TOKEN_READ }, async (req) => {
     const user = requireUser(req);
 
     const personal = await db
@@ -43,7 +48,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- get one venue (data included) -------------------------------------
-  app.get<{ Params: { id: string } }>('/api/venues/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/venues/:id', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const row = await db
       .select()
@@ -73,6 +78,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
   // ---- save a new venue ---------------------------------------------------
   app.post<{ Body: { name: string; data: unknown; orgSlug?: string } }>(
     '/api/venues',
+    { config: TOKEN_WRITE },
     async (req, reply) => {
       const user = requireUser(req);
       const { name, data, orgSlug } = req.body;
@@ -115,6 +121,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
   // the file). Same rights as delete: the personal owner or an org admin.
   app.patch<{ Params: { id: string }; Body: { name?: string; data?: unknown } }>(
     '/api/venues/:id',
+    { config: TOKEN_WRITE },
     async (req, reply) => {
       const user = requireUser(req);
       const row = await db
@@ -158,7 +165,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- delete a venue -----------------------------------------------------
-  app.delete<{ Params: { id: string } }>('/api/venues/:id', async (req, reply) => {
+  app.delete<{ Params: { id: string } }>('/api/venues/:id', { config: TOKEN_WRITE }, async (req, reply) => {
     const user = requireUser(req);
     const row = await db
       .select()
