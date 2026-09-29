@@ -414,8 +414,9 @@ test.describe('budget limits', () => {
     const download = await dl;
     const file = await download.path();
     const xml = readFileSync(file, 'utf-8');
-    expect(xml).toContain(`<PartNumber>${part}</PartNumber>`);
-    expect(xml).toContain('<Limit>5</Limit>');
+    // Vanilla BlueBrick's layout (Budget.cpp): <PartList><Part id="…">N</Part>, CRLF.
+    expect(xml).toContain(`    <Part id="${part}">5</Part>\r\n`);
+    expect(xml.startsWith('<?xml version="1.0" encoding="utf-8"?>\r\n<Budget>\r\n')).toBe(true);
 
     // …and importing it restores the limit after New cleared it.
     await page.getByRole('button', { name: 'New', exact: true }).last().click();
@@ -617,5 +618,84 @@ test.describe('scale bar', () => {
     for (let i = 0; i < 6; i++) await page.keyboard.press('Control+-');
     await expect(bar).not.toHaveText(/16 studs/);
     await expect(bar).toHaveText(/\d+ studs\s*(\d+ mm|\d+\.\d\d m)/);
+  });
+});
+
+test.describe('use budget limitation', () => {
+  test('duplicate over budget is refused with the Budget reached box, then status only', async ({ page }) => {
+    test.slow();
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
+
+    // Budget 3857.0 at exactly its 72 uses, and turn the limitation on.
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click();
+    const row = page.locator('tbody tr', { hasText: '3857.0' });
+    await row.locator('input[placeholder="—"]').fill('72');
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Use Budget Limitation' }).click();
+    // Close the Budget panel so it doesn't cover the Find panel.
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click();
+
+    // Select one 3857.0 through Find, then duplicate it.
+    await page.keyboard.press('Control+f');
+    const find = page.getByRole('dialog', { name: 'Find & Replace' });
+    await find.getByPlaceholder('Search…').fill('3857.0');
+    await find.locator('ul button').first().click();
+    await find.getByRole('button', { name: 'Close' }).click();
+    await expect(page.locator('footer')).toContainText('selected: 1');
+
+    await page.keyboard.press('Control+d');
+    const box = page.getByRole('dialog', { name: 'Budget reached' });
+    await expect(box).toBeVisible();
+    await expect(page.locator('footer')).toContainText('Budget reached: part not added');
+    await shot(page, 'budget-reached.png');
+    await box.getByLabel("Don't show this message again").check();
+    await box.getByRole('button', { name: 'OK' }).click();
+    await expect(box).toHaveCount(0);
+
+    // Again: refused silently apart from the status bar.
+    await page.keyboard.press('Control+d');
+    await expect(page.locator('footer')).toContainText('Budget reached: part not added');
+    await expect(box).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(countPart(await bbm(), '3857.0')).toBe(72);
+  });
+});
+
+test.describe('budget in the parts panel', () => {
+  test('Show Budget Numbers and Show Only Budgeted Parts', async ({ page }) => {
+    test.slow();
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const tiles = page.locator('aside li button[draggable="true"]');
+    await expect(tiles.first()).toBeVisible({ timeout: 10000 });
+    const allTiles = await tiles.count();
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click();
+    await page.locator('tbody tr', { hasText: '3857.0' }).locator('input[placeholder="—"]').fill('10');
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget...' }).click(); // close the panel
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Show Only Budgeted Parts' }).click();
+    // Only parts with a limit above 0 remain: 3857.0.
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles.first()).toHaveAttribute('title', /3857\.0/);
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Show Budget Numbers' }).click();
+    await expect(tiles.first().getByTestId('budget-numbers')).toHaveText('72/10');
+    await expect(tiles.first()).toHaveClass(/bg-red-900/);
+    await shot(page, 'parts-budget.png');
+
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('button', { name: 'Budget → Show Only Budgeted Parts' }).click();
+    await expect(tiles).toHaveCount(allTiles);
+    // Unbudgeted parts read "used/?".
+    await expect(page.getByTestId('budget-numbers').filter({ hasText: /\/\?$/ }).first()).toBeVisible();
   });
 });

@@ -92,6 +92,12 @@ export interface PartMetadata {
    * for parts without an explicit hull).
    */
   hullPts: { x: number; y: number }[];
+  /**
+   * Earlier part numbers (`<OldNameList><OldName>`); maps and budgets
+   * that use one resolve to this part (desktop PartsLibrary canonicalKey).
+   * Optional so hand-built test metadata can leave it out.
+   */
+  oldNames?: string[];
 }
 
 /** A loaded library — a flat map keyed by lowercased `<partNumber>.<colorCode>`. */

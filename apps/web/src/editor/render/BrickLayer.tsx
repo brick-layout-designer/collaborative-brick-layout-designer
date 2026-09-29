@@ -22,6 +22,7 @@ import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
+import { indexParts } from '../partIndex';
 
 interface Props {
   map: BbmMap;
@@ -53,13 +54,9 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
   // parts and some custom uploads). Built once per catalog (it used to be
   // rebuilt on every render, which also broke every glyph's memo).
   const { partsByKey, byBarePartNumber } = useMemo(() => {
-    const byKey = new Map<string, PartWire>();
+    const byKey = indexParts(catalog.data?.parts);
     const bare = new Map<string, PartWire>();
     for (const p of catalog.data?.parts ?? []) {
-      byKey.set(p.key.toLowerCase(), p);
-      if (!byKey.has(p.partNumber.toLowerCase())) {
-        byKey.set(p.partNumber.toLowerCase(), p);
-      }
       // First catalog entry per bare part number — what the old
       // per-brick linear `lookupByPartNumberOnly` scan returned.
       if (!bare.has(p.partNumber.toLowerCase())) bare.set(p.partNumber.toLowerCase(), p);

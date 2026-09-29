@@ -88,7 +88,9 @@ Web source root: this repository.
 
 ## Budget menu (`MainWindowMenus.cpp:563-570`)
 
-- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New/Open `.bbb`/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Open Budget Editor...** — modeless `BudgetDialog`: New (also desktop's Close Budget, since the budget lives in the layout)/Open `.bbb`/Import and Merge (limits add up, `Budget::mergeWith`)/Save/Refresh, table (Part #, Used, Limit), red rows over budget, over-budget count in footer; part ids match case-insensitively in the dialog, Used Parts and the status bar (`budgetUsage.ts`, `Budget.cpp`); wired into Map menu → "Budget...". The limits are stored in the doc's `meta` (`setBudgetLimits`), so they survive reload, sync to collaborators and are undoable; `.bbb` Open/Save import and export them.
+- [x] **Use Budget Limitation** (Map menu → Budget → Use Budget Limitation, per user, default off) — placing a part, and each brick of a paste or duplicate, is refused once over budget; a set counts its leaf parts (`canAddToBudget`, `MapView::budgetAllows`, `MapViewClipboard.cpp:84-95`). A refusal says "Budget reached: part not added" in the status bar and shows the Budget reached box with "Don't show this message again". Preferences → General: parts without a budget are Unlimited or Forbidden (`budget/defaultInfinite`), and the warning toggle.
+- [x] **Show Only Budgeted Parts** / **Show Budget Numbers** (Map menu → Budget, per user, default off) — the parts panel hides parts whose limit isn't above 0, and shows `used/limit` (`?` when unlimited) under each tile, red when over (`PartsBrowser.cpp` refreshBudget / applyFilter).
 
 ---
 
@@ -357,7 +359,8 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] `.set.xml` write — `SaveAsSetDialog.tsx`; Map menu → "Save Selection as Set…"
 - [x] Vendored parts library
 - [n/a] User library paths + `imports/` subfolder — superseded by server-side part library manager
-- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`. Reads `<Budget><BudgetEntry><PartNumber><Limit>`, ignoring negative or missing limits. Writes XML-escaped entries sorted by part number and drops unlimited (−1) entries, as desktop `Budget.cpp:36-58` does.
+- [x] BlueBrick `.bbb` budget read/write — `budgetFile.ts`, byte for byte like vanilla (`Budget.cpp`): `<PartList><Part id="…">N</Part></PartList>`, CRLF, lowercase `utf-8`, file order kept, `<PartList />` when empty, no trailing newline. Ids are case-insensitive (first of a duplicate wins); a non-integer value or a Part without an id rejects the file. Files from earlier web builds (`<BudgetEntry>`) still open.
+- [x] Old part numbers (`<OldNameList>`) resolve to the part that replaced them in the editor, connectivity and Used Parts (`partIndex.ts`, desktop `PartsLibrary::canonicalKey`); a `.bbb` read maps them to `PARTNUMBER.COLOR` like BlueBrick's getActualPartNumber. Maps keep the name they were saved with.
 
 ---
 

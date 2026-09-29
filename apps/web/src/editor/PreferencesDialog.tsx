@@ -27,6 +27,10 @@ export function PreferencesDialog({ onClose }: Props) {
   const setUndoStackDepth = useEditorStore((s) => s.setUndoStackDepth);
   const reopenLastFile = useEditorStore((s) => s.reopenLastFile);
   const setReopenLastFile = useEditorStore((s) => s.setReopenLastFile);
+  const budgetDefaultInfinite = useEditorStore((s) => s.budgetDefaultInfinite);
+  const setBudgetDefaultInfinite = useEditorStore((s) => s.setBudgetDefaultInfinite);
+  const warnBudgetLimitation = useEditorStore((s) => s.warnBudgetLimitation);
+  const setWarnBudgetLimitation = useEditorStore((s) => s.setWarnBudgetLimitation);
   const selectionTint = useEditorStore((s) => s.selectionTint);
   const setSelectionTint = useEditorStore((s) => s.setSelectionTint);
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
@@ -115,6 +119,29 @@ export function PreferencesDialog({ onClose }: Props) {
               <p className="mt-1 text-[10px] text-neutral-600">
                 Mirrors <code>general/wheelZoomFactor</code>. Default 1.00×. Higher = faster zoom.
               </p>
+              {/* PreferencesDialog.cpp:69 budget/defaultInfinite, general/warnBudgetLimitation */}
+              <div className={rowCls}>
+                <span className={labelCls}>Parts without a budget</span>
+                <select
+                  aria-label="Parts without a budget"
+                  value={budgetDefaultInfinite ? 'unlimited' : 'forbidden'}
+                  onChange={(e) => setBudgetDefaultInfinite(e.target.value === 'unlimited')}
+                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-sm"
+                >
+                  <option value="unlimited">Unlimited</option>
+                  <option value="forbidden">Forbidden (budget 0)</option>
+                </select>
+              </div>
+              <div className={rowCls}>
+                <span className={labelCls}>Warn when the budget refuses a part</span>
+                <input
+                  type="checkbox"
+                  aria-label="Warn when the budget refuses a part"
+                  checked={warnBudgetLimitation}
+                  onChange={(e) => setWarnBudgetLimitation(e.target.checked)}
+                  className="accent-blue-500"
+                />
+              </div>
               <div className={rowCls}>
                 <span className={labelCls}>Reopen last layout on startup</span>
                 <input

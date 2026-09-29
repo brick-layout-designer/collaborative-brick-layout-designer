@@ -3,33 +3,67 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Venue } from '@cld/bbm';
-import { parseBbb, writeBbb } from '../budgetFile';
+import { mergeBudgets, parseBbb, writeBbb } from '../budgetFile';
+// Saved by vanilla BlueBrick 1.9.2 (desktop fixtures/bluebrick-oracle).
+import BUDGET from '../../../../../packages/bbm/tests/fixtures/oracle/budget.bbb?raw';
+import BUDGET_EMPTY from '../../../../../packages/bbm/tests/fixtures/oracle/budget-empty.bbb?raw';
 import { parseVenueFile, writeVenueFile } from '../venueFile';
 import { formatDistance } from '../render/RulerLayer';
 import { moduleLabelFontPx } from '../render/ModuleOverlay';
 
-describe('.bbb budget files', () => {
-  it('escapes XML, drops unlimited entries and sorts by code unit', () => {
-    const xml = writeBbb([
-      { part: 'b&<x>', limit: 3 },
-      { part: 'a', limit: -1 },
-      { part: 'B', limit: 0 },
+describe('.bbb budget files (vanilla BlueBrick format, Budget.cpp)', () => {
+  it('reads vanilla files in file order, ids as written', () => {
+    expect(parseBbb(BUDGET)).toEqual([
+      { part: '2865.8', limit: 12 },
+      { part: '3811.1', limit: 0 },
+      { part: 'TS_OLDNAME_TEST', limit: 3 },
     ]);
-    expect(xml).toBe(
-      '<?xml version="1.0" encoding="UTF-8"?>\n<Budget>\n  <Version>1</Version>\n' +
-        '  <BudgetEntry>\n    <PartNumber>B</PartNumber>\n    <Limit>0</Limit>\n  </BudgetEntry>\n' +
-        '  <BudgetEntry>\n    <PartNumber>b&amp;&lt;x&gt;</PartNumber>\n    <Limit>3</Limit>\n  </BudgetEntry>\n' +
-        '</Budget>\n',
-    );
-    expect(parseBbb(xml)).toEqual([{ part: 'B', limit: 0 }, { part: 'b&<x>', limit: 3 }]);
+    expect(parseBbb(BUDGET_EMPTY)).toEqual([]);
   });
 
-  it('ignores negative and missing limits when reading, like desktop', () => {
+  it('writes vanilla files back byte for byte (CRLF, utf-8, <PartList />, no trailing newline)', () => {
+    expect(writeBbb(parseBbb(BUDGET))).toBe(BUDGET);
+    expect(writeBbb([])).toBe(BUDGET_EMPTY);
+  });
+
+  it('escapes ids, keeps order and drops unlimited entries on write', () => {
+    expect(writeBbb([{ part: 'b&<"x">', limit: 3 }, { part: 'a', limit: -1 }, { part: 'B', limit: 0 }])).toBe(
+      '<?xml version="1.0" encoding="utf-8"?>\r\n<Budget>\r\n  <Version>1</Version>\r\n  <PartList>\r\n' +
+        '    <Part id="b&amp;&lt;&quot;x&quot;&gt;">3</Part>\r\n    <Part id="B">0</Part>\r\n  </PartList>\r\n</Budget>',
+    );
+  });
+
+  it('keeps the first of ids that differ only in case, like BlueBrick', () => {
+    expect(parseBbb('<Budget><PartList><Part id="ts_x">2</Part><Part id="TS_X">5</Part></PartList></Budget>')).toEqual([
+      { part: 'ts_x', limit: 2 },
+    ]);
+  });
+
+  it('rejects a file with a non-integer value or a Part without an id', () => {
+    expect(() => parseBbb('<Budget><PartList><Part id="a">x</Part></PartList></Budget>')).toThrow();
+    expect(() => parseBbb('<Budget><PartList><Part>3</Part></PartList></Budget>')).toThrow();
+    expect(() => parseBbb('<NotABudget/>')).toThrow();
+  });
+
+  it('Import and Merge adds limits, keeps the current spelling and moves merged parts to the end', () => {
+    const merged = mergeBudgets(
+      [{ part: '2865.8', limit: 12 }, { part: 'TS_X', limit: 1 }, { part: '3001.1', limit: 4 }],
+      [{ part: 'ts_x', limit: 2 }, { part: '9999.1', limit: 5 }],
+    );
+    expect(merged).toEqual([
+      { part: '2865.8', limit: 12 },
+      { part: '3001.1', limit: 4 },
+      { part: 'TS_X', limit: 3 },
+      { part: '9999.1', limit: 5 },
+    ]);
+  });
+
+  it('still opens files saved by earlier web builds', () => {
     const xml =
       '<Budget><BudgetEntry><PartNumber>p1</PartNumber><Limit>-1</Limit></BudgetEntry>' +
       '<BudgetEntry><PartNumber>p2</PartNumber></BudgetEntry>' +
       '<BudgetEntry><PartNumber>p3</PartNumber><Limit>7</Limit></BudgetEntry></Budget>';
-    expect(parseBbb(xml)).toEqual([{ part: 'p3', limit: 7 }]);
+    expect(parseBbb(xml)).toEqual([{ part: 'p1', limit: -1 }, { part: 'p3', limit: 7 }]);
   });
 });
 

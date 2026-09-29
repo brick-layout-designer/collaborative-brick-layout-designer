@@ -46,7 +46,8 @@ import { useViewportSize } from './useViewportSize';
 import { localBbmDownload, sha256Hex } from '../bbmFiles';
 import { backgroundImageRectPx } from './background';
 import { scaleBar } from './scaleBar';
-import { overBudgetCount } from './budgetUsage';
+import { canAddToBudget, countUsage, overBudgetCount, withinBudget } from './budgetUsage';
+import { BudgetReachedDialog, BUDGET_REFUSED_STATUS } from './BudgetReachedDialog';
 import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
@@ -101,6 +102,7 @@ import { EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, wat
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
+import { actualPartNumber, indexParts } from './partIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -248,6 +250,7 @@ function Editor({ layoutId }: { layoutId: string }) {
     staleTime: 5 * 60 * 1000,
   });
   useConnectivity(doc, catalog.data?.parts);
+  const partIndex = useMemo(() => indexParts(catalog.data?.parts), [catalog.data]);
 
   // Subscribe to ALL doc changes; the projection is shared (cached per
   // doc) with the canvas and panels, so this costs no extra docToBbm.
@@ -325,7 +328,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // Returns just the inner content for a panel (shared by docked + floating).
   function panelBody(panelId: string): React.ReactNode {
     if (!doc) return null;
-    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} />;
+    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
@@ -714,6 +717,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           map={docMap}
           limits={budgetLimits}
           onLimitsChange={(next) => setBudgetLimits(doc, next)}
+          resolvePart={(id) => actualPartNumber(partIndex, id)}
           onClose={() => setShowBudget(false)}
         />
       )}
@@ -1040,13 +1044,7 @@ function Canvas({
     // arriving without a colour code (group parts / some custom uploads).
     // Inconsistent indexing was breaking the snap helpers — see
     // editor/snap.ts `lookupPart`.
-    const m = new Map<string, PartWire>();
-    for (const p of catalog.data?.parts ?? []) {
-      m.set(p.key.toLowerCase(), p);
-      const bare = p.partNumber.toLowerCase();
-      if (!m.has(bare)) m.set(bare, p);
-    }
-    return m;
+    return indexParts(catalog.data?.parts);
   }, [catalog.data]);
 
   /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
@@ -1889,10 +1887,42 @@ function Canvas({
     setSelection([]);
   }
 
+  // Use Budget Limitation (Budget menu): refuse parts over budget, like
+  // MapView::budgetAllows. The layout has a budget when it has a limit.
+  const [budgetBox, setBudgetBox] = useState(false);
+  function reportBudgetRefusal() {
+    const st = useEditorStore.getState();
+    st.showStatusMessage(BUDGET_REFUSED_STATUS, 3000);
+    if (st.warnBudgetLimitation) setBudgetBox(true);
+  }
+  function budgetLimitsInForce(): Map<string, number> | null {
+    if (!useEditorStore.getState().useBudgetLimitation) return null;
+    const limits = readBudgetLimits(doc);
+    return limits.size > 0 ? limits : null;
+  }
+  function budgetAllows(part: string, quantity = 1): boolean {
+    const limits = budgetLimitsInForce();
+    if (!limits) return true;
+    const { budgetDefaultInfinite } = useEditorStore.getState();
+    if (canAddToBudget(limits, countUsage(map), part, quantity, budgetDefaultInfinite, partsByKey)) return true;
+    reportBudgetRefusal();
+    return false;
+  }
+  /** Paste / duplicate: leave out bricks beyond their budget (MapViewClipboard.cpp:84-95). */
+  function keepWithinBudget<T>(bricks: T[], partOf: (brick: T) => string): T[] {
+    const limits = budgetLimitsInForce();
+    if (!limits) return bricks;
+    const { kept, refused } = withinBudget(limits, map, bricks, partOf, useEditorStore.getState().budgetDefaultInfinite);
+    if (refused > 0) reportBudgetRefusal();
+    return kept;
+  }
+
   async function pasteAtCursor(): Promise<void> {
-    const entries = await readBricksFromClipboard();
-    if (!entries || entries.length === 0) return;
+    const clipped = await readBricksFromClipboard();
+    if (!clipped || clipped.length === 0) return;
     if (!map) return;
+    const entries = keepWithinBudget(clipped, (e) => e.brick.partNumber);
+    if (entries.length === 0) return;
 
     // Translate the group to land its centre under the cursor (or stage
     // centre if the cursor is off-stage). Mirrors MapViewClipboard.cpp:62-72.
@@ -1962,6 +1992,12 @@ function Canvas({
         }));
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
+    // Bricks beyond their budget are left out, in layer order.
+    const flat = [...perLayer].flatMap(([layerId, bricks]) => bricks.map((brick) => ({ layerId, brick })));
+    perLayer.clear();
+    for (const { layerId, brick } of keepWithinBudget(flat, (f) => f.brick.partNumber)) {
+      perLayer.set(layerId, [...(perLayer.get(layerId) ?? []), brick]);
+    }
     const ids = insertBricksAcrossLayers(doc, perLayer, { dx: 1, dy: 1 });
     if (ids.length > 0) setSelection(ids);
   }
@@ -1989,6 +2025,7 @@ function Canvas({
    * into one brick per subpart — port of MapView.cpp:1279-1360.
    */
   async function placePartAt(meta: PartWire, studX: number, studY: number) {
+    if (!budgetAllows(meta.key)) return;
     // Group / set placement — expand into individual bricks at the
     // subpart-relative offsets the .set.xml declares. Single Yjs
     // transaction so undo unwinds the whole expansion.
@@ -2669,6 +2706,7 @@ function Canvas({
         />
       )}
       <ScaleBarHud zoom={zoom} />
+      {budgetBox && <BudgetReachedDialog onClose={() => setBudgetBox(false)} />}
     </>
   );
 }
@@ -3363,6 +3401,13 @@ function MapMenu({
   const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
   const setShowModuleFrames = useEditorStore((s) => s.setShowModuleFrames);
 
+  const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
+  const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
+  const showOnlyBudgetedParts = useEditorStore((s) => s.showOnlyBudgetedParts);
+  const setShowOnlyBudgetedParts = useEditorStore((s) => s.setShowOnlyBudgetedParts);
+  const showBudgetNumbers = useEditorStore((s) => s.showBudgetNumbers);
+  const setShowBudgetNumbers = useEditorStore((s) => s.setShowBudgetNumbers);
+
   const items: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
     { label: 'General info...', action: onGeneralInfo },
     { label: 'Background colour...', action: onBackgroundColor },
@@ -3402,6 +3447,9 @@ function MapMenu({
     { label: 'Show Module Frames', action: () => setShowModuleFrames(!showModuleFrames), checked: showModuleFrames },
     { label: '—', action: () => {} },
     { label: 'Budget...', action: onBudget },
+    { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
+    { label: 'Budget → Show Only Budgeted Parts', action: () => setShowOnlyBudgetedParts(!showOnlyBudgetedParts), checked: showOnlyBudgetedParts },
+    { label: 'Budget → Show Budget Numbers', action: () => setShowBudgetNumbers(!showBudgetNumbers), checked: showBudgetNumbers },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
 
@@ -3419,8 +3467,9 @@ function MapMenu({
       {open && (
         <ul
           // Fixed, not absolute: the header row scrolls horizontally, which
-          // would clip an absolutely positioned dropdown.
-          className="fixed z-30 max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          // would clip an absolutely positioned dropdown. Above the modeless
+          // Find / Budget panels (z-40), below modal dialogs (z-50).
+          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
           style={anchor}
           onClick={() => setOpen(false)}
         >
@@ -3482,7 +3531,7 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="fixed z-30 min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
+          <ul className="fixed z-[45] min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (

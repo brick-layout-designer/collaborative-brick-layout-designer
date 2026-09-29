@@ -59,6 +59,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
   const connections = kind === 'leaf' ? readConnexionList(root.ConnexionList) : [];
   const subparts = kind === 'group' ? readSubPartList(root.SubPartList) : [];
   const hullPts = readHull(root.hull);
+  const oldNames = readOldNames(root.OldNameList);
 
   // Match desktop's PartsLibrary::scanFile (PartsLibrary.cpp:173-175):
   // when colorCode is empty, key is bare partNumber, no trailing dot.
@@ -81,7 +82,16 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     subparts,
     canUngroup,
     hullPts,
+    oldNames,
   };
+}
+
+/** `<OldNameList><OldName>4186P01</OldName>…</OldNameList>` (PartsLibrary.cpp readOldNames). */
+function readOldNames(node: unknown): string[] {
+  if (!node || typeof node !== 'object') return [];
+  const raw = (node as RawNode).OldName;
+  const list = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  return list.map((v) => String(v).trim()).filter((v) => v !== '');
 }
 
 function readDescriptions(node: unknown): Record<string, string> {
