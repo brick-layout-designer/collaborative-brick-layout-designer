@@ -108,6 +108,15 @@ describe('device authorization flow', () => {
     expect(res.json().error).toBe('invalid_scope');
   });
 
+  it('grants the P1b scopes: publishing layouts and parts', async () => {
+    const code = await requestCode(app, { scope: 'layouts:create parts:write' });
+    const lookup = await decide(app, user.cookie, code.user_code, 'lookup');
+    expect(lookup.json().scopes).toEqual(['layouts:create', 'parts:write']);
+    expect((await decide(app, user.cookie, code.user_code, 'approve')).statusCode).toBe(200);
+    await rewindLastPoll();
+    expect((await poll(app, code.device_code)).json().scope).toBe('layouts:create parts:write');
+  });
+
   it('happy path: pending → approve → token, usable as Bearer', async () => {
     const code = await requestCode(app, { scope: 'layouts:read layouts:write' });
     const pending = await poll(app, code.device_code);

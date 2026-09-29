@@ -7,6 +7,9 @@ import { api, type ApiScope, type DeviceRequest } from '../api';
 export const SCOPE_LABELS: Record<ApiScope, string> = {
   'layouts:read': 'See your layouts and download them',
   'layouts:write': 'Edit your layouts (live sync)',
+  'layouts:create': 'Publish new layouts to your account or your organisations',
+  'parts:read': 'Download the parts library and custom parts',
+  'parts:write': 'Upload custom parts',
 };
 
 /**

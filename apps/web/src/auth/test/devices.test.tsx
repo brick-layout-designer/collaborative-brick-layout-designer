@@ -157,3 +157,19 @@ describe('safeNext', () => {
     expect(safeNext('/\\evil.example')).toBe('/');
   });
 });
+
+describe('scopeSummary (P1b scopes)', () => {
+  it('says what a device can do, in short', async () => {
+    const { scopeSummary } = await import('../DevicesSection');
+    expect(scopeSummary({ scopes: ['layouts:read'] })).toBe('Read only');
+    expect(scopeSummary({ scopes: ['layouts:read', 'layouts:write'] })).toBe('Read & edit');
+    expect(scopeSummary({ scopes: ['layouts:write', 'layouts:create', 'parts:read'] })).toBe('Read & edit, publish layouts, download parts');
+    expect(scopeSummary({ scopes: ['layouts:read', 'parts:read', 'parts:write'] })).toBe('Read only, upload parts');
+  });
+
+  it('labels every scope on the approval page', async () => {
+    const { SCOPE_LABELS } = await import('../DevicePage');
+    expect(Object.keys(SCOPE_LABELS).sort()).toEqual(['layouts:create', 'layouts:read', 'layouts:write', 'parts:read', 'parts:write']);
+  });
+});
+

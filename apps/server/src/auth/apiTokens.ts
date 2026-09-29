@@ -14,7 +14,12 @@ import { notifyCredentialRevoked } from './revocation.js';
 
 export const TOKEN_PREFIX = 'bld_pat_';
 
-export const API_SCOPES = ['layouts:read', 'layouts:write'] as const;
+/**
+ * - layouts:read / layouts:write: list, export and live-sync layouts (write edits them).
+ * - layouts:create: publish a new layout (personal or to an org).
+ * - parts:read / parts:write: download the parts catalog and custom parts (write uploads them).
+ */
+export const API_SCOPES = ['layouts:read', 'layouts:write', 'layouts:create', 'parts:read', 'parts:write'] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 /** Lifetime of a token, slid forward every time it is used. */
@@ -42,10 +47,12 @@ export function scopesOf(row: Pick<ApiToken, 'scopes'>): ApiScope[] {
   return parseScopes(row.scopes) ?? [];
 }
 
-/** `layouts:write` implies `layouts:read`. */
+/** A write scope implies its read scope (`layouts:write` → `layouts:read`, `parts:write` → `parts:read`). */
 export function hasScope(scopes: readonly ApiScope[], needed: ApiScope): boolean {
   if (scopes.includes(needed)) return true;
-  return needed === 'layouts:read' && scopes.includes('layouts:write');
+  if (needed === 'layouts:read') return scopes.includes('layouts:write');
+  if (needed === 'parts:read') return scopes.includes('parts:write');
+  return false;
 }
 
 /** Mint a token. The plaintext is returned once and never stored. */
