@@ -10,6 +10,7 @@ import type { LayerRuler } from '@cld/model';
 import { rebuildConnectivity } from '../connectivity.js';
 import { scanCatalog } from '../scan.js';
 import { readLDrawMap, writeLDrawMap } from './ldraw.js';
+import { readFourDBrixMap } from './fourDBrix.js';
 import { MapLibrary, makeId, newBrickLayer, newGridLayer, newMap } from './library.js';
 import { bricksOf, oracleMap, oracleText, PARTS, ROOT, unmatched } from './oracleUtil.js';
 
@@ -199,4 +200,12 @@ describe.skipIf(!existsSync(PARTS))('LDraw maps match vanilla BlueBrick', () => 
     expect(lib.imageCentre(l.bricks[0]!).x).toBeCloseTo(0);
     expect(() => writeBbm(r.map)).not.toThrow();
   });
+
+  it('reads a hostile number in linear time (no regex backtracking blow-up)', () => {
+    const t = performance.now();
+    readLDrawMap(`1 8 ${'9'.repeat(50_000)}x 0 0 1 0 0 0 1 0 0 0 1 2865.dat`, lib, { mpd: false });
+    readFourDBrixMap(`<data><node><coordinates x="${'9'.repeat(50_000)}x" y="0" z="0"/></node></data>`, lib);
+    expect(performance.now() - t).toBeLessThan(500);
+  });
 });
+
