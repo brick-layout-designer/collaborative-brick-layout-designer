@@ -391,7 +391,7 @@ test.describe('insert text', () => {
 });
 
 test.describe('venue library', () => {
-  test('Rename via the ✎ button lists the new name', async ({ page }) => {
+  test('Rename on the selected venue lists the new name', async ({ page }) => {
     const id = await createLayout(page);
     const name = `Hall ${Date.now()}`;
     const created = await page.request.post('/api/venues', {
@@ -404,8 +404,10 @@ test.describe('venue library', () => {
     await page.mouse.click(400, 400); // close the menu
 
     const renamed = `${name} (main)`;
+    await page.getByRole('option', { name }).click();
+    await expect(page.getByTestId('venue-detail')).toContainText('0 wall seg · 0 door · 0 obstacle');
     page.once('dialog', (d) => void d.accept(renamed));
-    await page.getByRole('button', { name: `Rename ${name}` }).click();
+    await page.getByRole('button', { name: 'Rename…' }).click();
     await expect(page.getByText(renamed, { exact: true })).toBeVisible();
     await expect(page.getByText(name, { exact: true })).toHaveCount(0);
     await shot(page, 'venue-rename.png');
