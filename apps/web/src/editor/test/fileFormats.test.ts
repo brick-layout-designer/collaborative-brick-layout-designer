@@ -7,6 +7,7 @@ import { mergeBudgets, parseBbb, writeBbb } from '../budgetFile';
 // Saved by vanilla BlueBrick 1.9.2 (desktop fixtures/bluebrick-oracle).
 import BUDGET from '../../../../../packages/bbm/tests/fixtures/oracle/budget.bbb?raw';
 import BUDGET_EMPTY from '../../../../../packages/bbm/tests/fixtures/oracle/budget-empty.bbb?raw';
+import GRAND_LOBBY from '../../../../../packages/bbm/tests/fixtures/grand-lobby.bld-venue?raw';
 import { parseVenueFile, writeVenueFile } from '../venueFile';
 import { formatDistance } from '../render/RulerLayer';
 import { moduleLabelFontPx } from '../render/ModuleOverlay';
@@ -86,6 +87,41 @@ describe('venue files', () => {
     expect(v.enabled).toBe(true);
     expect(v.edges[0]).toEqual({ kind: 0, doorWidthStuds: 0, label: '', poly: [{ x: 1, y: 0 }] });
     expect(v.obstacles).toEqual([]);
+  });
+
+  it('round-trips the shared Grand Lobby fixture exactly (the desktop checks the same file)', () => {
+    const v = parseVenueFile(GRAND_LOBBY);
+    expect(v.power?.filter((p) => p.kind === 'floor')).toHaveLength(3);
+    expect(v.obstacles.find((o) => o.kind === 'stairs')?.upDegrees).toBe(270);
+    expect(v.edges.filter((e) => e.estimated)).toHaveLength(3);
+    expect(v.dimensions?.some((d) => d.estimated)).toBe(true);
+    expect(v.notes?.map((n) => n.text)).toContain('Concessions entrance is on the floor above');
+    expect(JSON.parse(writeVenueFile(v))).toEqual(JSON.parse(GRAND_LOBBY));
+  });
+
+  it('keeps fields it does not know, at every level, and drops unset optional ones', () => {
+    const newer = {
+      schema: 'bld-venue/1',
+      ...venue,
+      floorColor: '#ccc',
+      edges: [{ ...venue.edges[0], material: 'glass', estimated: false }],
+      obstacles: [{ ...venue.obstacles[0], kind: 'fountain', heightStuds: 40 }],
+      power: [{ x: 1, y: 2, kind: 'floor', label: '', amps: 0, phase: 3 }],
+      notes: [{ x: 3, y: 4, text: 'n', estimated: true, author: 'me' }],
+      dimensions: [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, style: 'arrow' }],
+    };
+    const out = JSON.parse(writeVenueFile(parseVenueFile(JSON.stringify(newer))));
+    expect(out.floorColor).toBe('#ccc');
+    expect(out.edges[0]).toEqual({ ...venue.edges[0], material: 'glass' });
+    // An unknown kind reads as "other" but its extra fields stay.
+    expect(out.obstacles[0]).toEqual({ ...venue.obstacles[0], heightStuds: 40 });
+    expect(out.power).toEqual([{ x: 1, y: 2, kind: 'floor', phase: 3 }]);
+    expect(out.notes).toEqual([{ x: 3, y: 4, text: 'n', estimated: true, author: 'me' }]);
+    expect(out.dimensions).toEqual([{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, style: 'arrow' }]);
+    // A venue with none of the new parts writes none of them.
+    expect(Object.keys(JSON.parse(writeVenueFile(venue)))).toEqual([
+      'schema', 'name', 'enabled', 'minWalkwayStuds', 'bounds', 'edges', 'obstacles',
+    ]);
   });
 
   it('rejects non-JSON, foreign schemas and empty objects', () => {

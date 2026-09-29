@@ -46,16 +46,57 @@ export interface SidecarModule {
   importedAt?: string;
 }
 
+// Venue model (references/VENUE-MODEL.md). Everything is in studs, x to
+// the east and y to the south. The optional fields came later and are
+// written only when set; unknown fields are kept when a venue is read and
+// written again, so an older build doesn't lose what a newer one added.
+
 export interface VenueEdge {
   kind: EdgeKind;
   doorWidthStuds: number;
   label: string;
   poly: { x: number; y: number }[];
+  /** Not measured yet (traced from a map, guessed). */
+  estimated?: boolean;
+  [extra: string]: unknown;
 }
+
+export type VenueObstacleKind = 'column' | 'stairs' | 'elevator' | 'counter' | 'railing';
 
 export interface VenueObstacle {
   label: string;
   poly: { x: number; y: number }[];
+  /** What it is; absent for anything else. */
+  kind?: VenueObstacleKind;
+  /** Stairs: the way up, degrees clockwise from east (270 = north). */
+  upDegrees?: number;
+  [extra: string]: unknown;
+}
+
+export interface VenuePower {
+  x: number;
+  y: number;
+  kind: 'wall' | 'floor';
+  label?: string;
+  amps?: number;
+  volts?: number;
+  [extra: string]: unknown;
+}
+
+export interface VenueNote {
+  x: number;
+  y: number;
+  text: string;
+  estimated?: boolean;
+  [extra: string]: unknown;
+}
+
+export interface VenueDimension {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  label?: string;
+  estimated?: boolean;
+  [extra: string]: unknown;
 }
 
 export interface Venue {
@@ -65,6 +106,12 @@ export interface Venue {
   bounds: { x: number; y: number; w: number; h: number };
   edges: VenueEdge[];
   obstacles: VenueObstacle[];
+  /** Power outlets on the walls and in the floor. */
+  power?: VenuePower[];
+  notes?: VenueNote[];
+  /** Measurements, drawn as dimension lines. */
+  dimensions?: VenueDimension[];
+  [extra: string]: unknown;
 }
 
 export interface BackgroundImage {

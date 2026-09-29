@@ -19,6 +19,10 @@ export {
   type Venue,
   type VenueEdge,
   type VenueObstacle,
+  type VenueObstacleKind,
+  type VenuePower,
+  type VenueNote,
+  type VenueDimension,
   type WriteSidecarOptions,
 } from './sidecar.js';
 // `hashBbmBytes` lives at `@cld/bbm/hash` because it imports `node:crypto`.
