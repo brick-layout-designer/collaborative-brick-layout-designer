@@ -1121,3 +1121,71 @@ test.describe('context menu paste', () => {
     await expect.poll(entries).toContain('Paste');
   });
 });
+
+test.describe('part list export', () => {
+  test('CSV and HTML in vanilla BlueBrick\'s layout, with part pictures in the HTML', async ({ page }) => {
+    test.slow();
+    const id = await createLayout(page, FORDYCE_BBM);
+    await openEditor(page, id);
+    const openDialog = async () => {
+      await page.getByRole('button', { name: 'Map', exact: true }).click();
+      await page.getByRole('button', { name: 'Export Part List...' }).click();
+      return page.getByRole('dialog', { name: 'Export Part List' });
+    };
+
+    let dialog = await openDialog();
+    await dialog.getByLabel('CSV').check();
+    let dl = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: 'Export' }).click();
+    let file = await dl;
+    expect(file.suggestedFilename()).toBe('Parity Test.csv');
+    const csv = readFileSync(await file.path(), 'utf-8').split('\n');
+    expect(csv[0]).toBe('Part,In Use,Color,Description,Budgeted,Missing,Part Usage %');
+    expect(csv.find((l) => l.startsWith('3857,'))).toMatch(/^3857,72,/);
+    expect(csv.find((l) => l.startsWith('Total,'))).toMatch(/^Total,\d+,,,N\/A,N\/A,N\/A$/);
+    await shot(page, 'part-list.png');
+
+    dialog = await openDialog();
+    await expect(dialog.getByLabel('HTML (with pictures)')).toBeChecked();
+    dl = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: 'Export' }).click();
+    file = await dl;
+    expect(file.suggestedFilename()).toBe('Parity Test.html');
+    const html = readFileSync(await file.path(), 'utf-8');
+    expect(html).toContain('<h2 class="title">Part List for file &quot;Parity Test.bbm&quot;</h2>');
+    expect(html).toMatch(/<img src="data:image\/png;base64,[A-Za-z0-9+/=]+"><br\/>3857/);
+  });
+});
+
+test.describe('new layout template', () => {
+  test('a layout marked as the template is where new layouts start', async ({ page }) => {
+    const templateId = await createLayout(page, FORDYCE_BBM);
+    const rename = await page.request.patch(`/api/layouts/${templateId}`, { data: { title: `Club base ${Date.now()}` } });
+    expect(rename.ok()).toBe(true);
+    await page.goto('/');
+    const row = page.locator('li', { has: page.getByRole('link', { name: 'Open' }) }).filter({ hasText: 'Club base' }).first();
+    await row.getByLabel('Template for new layouts').check();
+
+    await page.getByRole('button', { name: 'New layout' }).click();
+    const startFrom = page.getByLabel(/Start from template “Club base/);
+    await expect(startFrom).toBeChecked();
+    await page.getByPlaceholder('Untitled Layout').fill('From template');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    const newId = page.url().split('/editor/')[1]!;
+    const bbm = await (await page.request.get(`/api/layouts/${newId}/export.bbm`)).text();
+    expect(countPart(bbm, '3857.0')).toBe(72);
+
+    // Unticked, a new layout starts empty.
+    await page.goto('/');
+    await page.getByRole('button', { name: 'New layout' }).click();
+    await page.getByLabel(/Start from template/).uncheck();
+    await page.getByRole('button', { name: 'Create' }).click();
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    const emptyId = page.url().split('/editor/')[1]!;
+    expect(countPart(await (await page.request.get(`/api/layouts/${emptyId}/export.bbm`)).text(), '3857.0')).toBe(0);
+
+    // Clean up the preference for the other tests.
+    await page.evaluate(() => localStorage.removeItem('cld:newLayoutTemplate'));
+  });
+});
