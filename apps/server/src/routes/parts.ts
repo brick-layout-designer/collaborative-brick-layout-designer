@@ -106,13 +106,21 @@ function remapsOf(p: MapRemaps): MapRemaps {
 
 let bundledCache: { etag: string; wire: PartWire[] } | null = null;
 
+const invalidationListeners = new Set<() => void>();
+
+/** Run `listener` whenever the parts cache is dropped (the manifest's hashes follow it). */
+export function onPartsCacheInvalidated(listener: () => void): void {
+  invalidationListeners.add(listener);
+}
+
 /** Drop the in-process catalog cache so the next request triggers a rescan. */
 export function invalidatePartsCache(): void {
   bundledCache = null;
+  for (const l of invalidationListeners) l();
 }
 
 export async function partsRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/api/parts/catalog', async (req, reply) => {
+  app.get('/api/parts/catalog', { config: { apiToken: 'parts:read' } }, async (req, reply) => {
     const bundled = await loadBundled(app);
 
     // Custom parts visible to this user. attachUser populates req.user
@@ -206,7 +214,7 @@ const customCatalogColumns = {
   category: schema.customParts.category,
   updatedAt: schema.customParts.updatedAt,
 };
-type CustomCatalogRow = {
+export type CustomCatalogRow = {
   [K in keyof typeof customCatalogColumns]: (typeof schema.customParts.$inferSelect)[K];
 };
 
@@ -262,7 +270,8 @@ async function parsedCustomXml(rows: CustomCatalogRow[]): Promise<Map<string, Pa
   return out;
 }
 
-async function loadCustom(userId: string | null): Promise<PartWire[]> {
+/** Custom parts `userId` can see (all global ones when null), each once. */
+export async function visibleCustomParts(userId: string | null): Promise<CustomCatalogRow[]> {
   // Four sources of custom parts a user can see:
   //   0. isGlobal === true (visible to everyone, including anonymous)
   //   1. ownerUserId === user.id
@@ -308,7 +317,11 @@ async function loadCustom(userId: string | null): Promise<PartWire[]> {
       rows.push(part);
     }
   }
+  return rows;
+}
 
+async function loadCustom(userId: string | null): Promise<PartWire[]> {
+  const rows = await visibleCustomParts(userId);
   const parsed = await parsedCustomXml(rows);
   return rows.map((r) => customRowToWire(r, parsed.get(r.id)));
 }

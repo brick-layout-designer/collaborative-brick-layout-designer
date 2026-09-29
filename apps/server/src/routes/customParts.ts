@@ -48,7 +48,9 @@ const MAX_PART_BLOB_BYTES = 4 * 1024 * 1024;
 
 export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- list parts the user can see ---------------------------------------
-  app.get('/api/custom-parts', async (req) => {
+  // Desktop sync (P1b): API tokens with parts:read may list and download
+  // custom parts, and with parts:write upload them.
+  app.get('/api/custom-parts', { config: { apiToken: 'parts:read' } }, async (req) => {
     const user = requireUser(req);
     // Metadata columns only — never the xml/sprite blobs.
     const personal = await db
@@ -109,6 +111,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- get sprite (raw bytes) --------------------------------------------
   app.get<{ Params: { id: string } }>(
     '/api/custom-parts/:id/sprite',
+    { config: { apiToken: 'parts:read' } },
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
@@ -131,6 +134,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- get XML (text) ----------------------------------------------------
   app.get<{ Params: { id: string } }>(
     '/api/custom-parts/:id/xml',
+    { config: { apiToken: 'parts:read' } },
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
@@ -152,7 +156,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- create -------------------------------------------------------------
-  app.post<{ Body: CreatePartBody }>('/api/custom-parts', async (req, reply) => {
+  app.post<{ Body: CreatePartBody }>('/api/custom-parts', { config: { apiToken: 'parts:write' } }, async (req, reply) => {
     const user = requireUser(req);
     const body = req.body ?? ({} as CreatePartBody);
 

@@ -5,8 +5,13 @@ function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function scopeSummary(t: ApiTokenSummary): string {
-  return t.scopes.includes('layouts:write') ? 'Read & edit' : 'Read only';
+export function scopeSummary(t: Pick<ApiTokenSummary, 'scopes'>): string {
+  const has = (s: ApiTokenSummary['scopes'][number]) => t.scopes.includes(s);
+  const parts = [has('layouts:write') ? 'Read & edit' : 'Read only'];
+  if (has('layouts:create')) parts.push('publish layouts');
+  if (has('parts:write')) parts.push('upload parts');
+  else if (has('parts:read')) parts.push('download parts');
+  return parts.join(', ');
 }
 
 /**

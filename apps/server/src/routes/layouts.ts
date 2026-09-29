@@ -15,6 +15,7 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
 import { docHub } from '../ws/docHub.js';
+import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -130,7 +131,9 @@ export async function layoutRoutes(app: FastifyInstance) {
   });
 
   // ---- create --------------------------------------------------------------
-  app.post<{ Body: CreateLayoutBody }>('/api/layouts', async (req, reply) => {
+  // Desktop "Publish to Server" (sync P1b): a layouts:create token may
+  // create a layout, personal or in an org where the user can.
+  app.post<{ Body: CreateLayoutBody }>('/api/layouts', { config: { apiToken: 'layouts:create' } }, async (req, reply) => {
     const user = requireUser(req);
     const body = req.body ?? {};
 
@@ -258,6 +261,46 @@ export async function layoutRoutes(app: FastifyInstance) {
     await docHub.close(req.params.id);
     return { ok: true };
   });
+
+  // ---- compare (desktop reconnect preview) -------------------------------
+  // Sync phase P1b: the desktop sends the copy it went offline with and its
+  // offline edits; the reply lists every item either side changed since,
+  // against the layout as it is now, and which of them conflict.
+  app.post<{
+    Params: { id: string };
+    Body: { base?: { bbm?: unknown; sidecar?: unknown }; mine?: { bbm?: unknown; sidecar?: unknown } };
+  }>(
+    '/api/layouts/:id/compare',
+    { config: { ...TOKEN_READ, rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
+      const parse = (side: { bbm?: unknown; sidecar?: unknown } | undefined): LayoutSnapshot | null => {
+        if (!side || typeof side.bbm !== 'string') return null;
+        if (side.sidecar !== undefined && typeof side.sidecar !== 'string') return null;
+        try {
+          return { map: readBbm(side.bbm).map, sidecar: side.sidecar ? readSidecar(side.sidecar) : null };
+        } catch {
+          return null;
+        }
+      };
+      const base = parse(req.body?.base);
+      const mine = parse(req.body?.mine);
+      if (!base || !mine) return reply.code(400).send({ error: 'invalid_input' });
+
+      const layout = await db.select().from(schema.layouts).where(eq(schema.layouts.id, req.params.id)).get();
+      if (!layout) return reply.code(404).send({ error: 'not_found' });
+      const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
+      const map = exportBbmFromDoc(doc);
+      if (!map) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
+      const sidecar =
+        exportSidecarFromDoc(doc) ??
+        (layout.sidecarSnapshot ? exportSidecarFromDoc(decodeDoc(layout.sidecarSnapshot as Uint8Array)) : null);
+      const changes = compareLayouts(base, mine, { map, sidecar });
+      return { changes, conflicts: changes.filter((c) => c.status === 'conflict').length };
+    },
+  );
 
   // ---- export (.bbm) -------------------------------------------------------
   app.get<{ Params: { id: string } }>('/api/layouts/:id/export.bbm', { config: TOKEN_READ }, async (req, reply) => {
