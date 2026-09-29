@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createDefaultLayoutDoc, docToBbm } from '@cld/ydoc';
-import { addCircularRuler, addLayer, addLinearRuler, ensureRulerLayer, rulerPreviewLabel } from '../mutations';
+import { addCircularRuler, addLayer, addLinearRuler, ensureRulerLayer, rulerPreviewLabel, rulerStatusMessage } from '../mutations';
 
 describe('new rulers', () => {
   it('black (known) line, guideline and text, 1-thick solid lines, Microsoft Sans Serif 8.25', () => {
@@ -38,5 +38,10 @@ describe('new rulers', () => {
     expect(rulerPreviewLabel(20, false)).toBe('20.0 studs (160 mm)');
     expect(rulerPreviewLabel(125, false)).toBe('125.0 studs (1.00 m)');
     expect(rulerPreviewLabel(6.25, true)).toBe('r=6.3 studs (50 mm)');
+  });
+
+  it('the status bar reads the length or radius too (MapView.cpp:676-680)', () => {
+    expect(rulerStatusMessage(20, false)).toBe('Ruler length: 20.0 studs  (160 mm)');
+    expect(rulerStatusMessage(125, true)).toBe('Ruler radius: 125.0 studs  (1.00 m)');
   });
 });
