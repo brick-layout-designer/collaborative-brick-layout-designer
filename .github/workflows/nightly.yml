@@ -40,6 +40,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.repo.outputs.name }}:nightly
             ghcr.io/${{ steps.repo.outputs.name }}:sha-${{ github.sha }}
+          build-args: |
+            APP_VERSION=nightly-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
