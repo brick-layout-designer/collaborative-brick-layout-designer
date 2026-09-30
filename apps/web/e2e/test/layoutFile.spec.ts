@@ -192,4 +192,53 @@ test.describe('layout file', () => {
     const after = (await (await page.request.get('/api/custom-parts')).json()) as { parts: { partNumber: string }[] };
     expect(after.parts.filter((p) => p.partNumber === 'CLDTEST.1')).toHaveLength(1);
   });
+
+  test("a dropped .bld-layout whose part differs from the server's asks, and Keep both switches it to CLDTEST-2.1", async ({ page }) => {
+    await signIn(page, `part-differs-e2e-${Date.now()}@example.com`, 'Differs Tester');
+    // The server's own CLDTEST.1, defined differently from the file's.
+    const up = await page.request.post('/api/custom-parts', {
+      data: {
+        partNumber: 'CLDTEST.1',
+        displayName: 'Server test part',
+        xmlBase64: Buffer.from('<part><Author>Server</Author><Description><en>Server test part</en></Description></part>').toString('base64'),
+        spriteBase64: PNG.toString('base64'),
+        spriteMime: 'image/png',
+      },
+    });
+    expect(up.status()).toBe(201);
+
+    await page.goto('/');
+    await expect(page.locator('body')).toBeVisible();
+    await page.evaluate((bytes) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array(bytes)], 'with-parts.bld-layout'));
+      window.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }, [...WITH_PARTS]);
+
+    const dialog = page.getByRole('dialog', { name: 'Parts That Differ' });
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+    await expect(dialog).toContainText('CLDTEST.1');
+    await expect(dialog).toContainText('Server test part');
+    await expect(dialog).toContainText('Test part');
+    await expect(dialog).toContainText('by Brick Layout Designer tests');
+    const choice = dialog.getByLabel('Use for CLDTEST.1');
+    await expect(choice).toHaveValue('server');
+    await choice.selectOption('both');
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    await expect(page.locator('footer')).toContainText("the layout's CLDTEST.1 as CLDTEST-2.1 added");
+    const id = page.url().split('/editor/')[1]!;
+    const bbm = await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    expect(bbm).toContain('<PartNumber>CLDTEST-2.1</PartNumber>');
+    expect(bbm).not.toContain('<PartNumber>CLDTEST.1</PartNumber>');
+
+    const mine = (await (await page.request.get('/api/custom-parts')).json()) as { parts: { id: string; partNumber: string }[] };
+    expect(mine.parts.map((p) => p.partNumber).sort()).toEqual(['CLDTEST-2.1', 'CLDTEST.1']);
+    const added = mine.parts.find((p) => p.partNumber === 'CLDTEST-2.1')!;
+    expect(await (await page.request.get(`/api/custom-parts/${added.id}/xml`)).text()).toContain('Brick Layout Designer tests');
+    const kept = mine.parts.find((p) => p.partNumber === 'CLDTEST.1')!;
+    expect(await (await page.request.get(`/api/custom-parts/${kept.id}/xml`)).text()).toContain('<Author>Server</Author>');
+  });
 });

@@ -461,6 +461,17 @@ export const api = {
         '/api/custom-parts',
         body,
       ),
+    /** A new XML and sprite (and name) for a part; the owner stays. */
+    replace: (
+      id: string,
+      body: {
+        partNumber: string;
+        displayName: string;
+        xmlBase64: string;
+        spriteBase64: string;
+        spriteMime: 'image/gif' | 'image/png';
+      },
+    ) => put<{ id: string; partNumber: string; displayName: string }>(`/api/custom-parts/${id}`, body),
     remove: (id: string) => del(`/api/custom-parts/${id}`),
     spriteUrl: (id: string) => `/api/custom-parts/${id}/sprite`,
     xmlUrl: (id: string) => `/api/custom-parts/${id}/xml`,

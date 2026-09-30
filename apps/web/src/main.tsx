@@ -1,4 +1,4 @@
-import { lazy, StrictMode, Suspense, useEffect } from 'react';
+import { lazy, StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
@@ -16,7 +16,8 @@ import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { api } from './api';
 import { layoutsFromFiles, type DroppedLayout } from './bbmFiles';
-import { uploadLayoutParts } from './layoutParts';
+import { takeLayoutParts, type PartChoice, type PartDifference } from './layoutParts';
+import { PartDifferencesDialog } from './layouts/PartDifferencesDialog';
 import { catalogMapConverter, MAP_FORMAT_FILE, type OpenedMapState } from './mapFormats';
 import './styles.css';
 
@@ -47,7 +48,11 @@ if (!root) throw new Error('#root not found');
  */
 function GlobalBbmDrop() {
   const navigate = useNavigate();
+  // Parts the dropped layout defines differently from the server, waiting on the user.
+  const [asking, setAsking] = useState<{ differing: PartDifference[]; answer: (c: PartChoice[] | null) => void } | null>(null);
   useEffect(() => {
+    const ask = (differing: PartDifference[]) =>
+      new Promise<PartChoice[] | null>((answer) => setAsking({ differing, answer }));
     function onDragOver(e: DragEvent) {
       const hasFile = Array.from(e.dataTransfer?.items ?? []).some((i) => i.kind === 'file');
       if (!hasFile) return;
@@ -75,13 +80,14 @@ function GlobalBbmDrop() {
         (await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 })).parts;
       for (const l of layouts) {
         try {
-          // The parts a .bld-layout carries that this server lacks become the user's custom parts.
-          const partNotes = await uploadLayoutParts(l.parts, loadCatalog);
+          // The parts a .bld-layout carries that this server lacks become the user's custom parts;
+          // the ones it defines differently are asked about first.
+          const parts = await takeLayoutParts(l.parts, l.bbm, loadCatalog, ask);
           // The browser keeps the catalog for 60 s: fetch past that so the editor sees the new parts.
-          if (partNotes.length) await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
-          const warnings = [...(l.warnings ?? []), ...partNotes];
+          if (parts.changed) await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
+          const warnings = [...(l.warnings ?? []), ...parts.notes];
           const created = await api.layouts.create({
-            bbm: l.bbm,
+            bbm: parts.bbm,
             ...(l.sidecar !== undefined ? { sidecar: l.sidecar } : {}),
             ...(l.background ? { backgroundImage: l.background } : {}),
           });
@@ -99,7 +105,16 @@ function GlobalBbmDrop() {
       window.removeEventListener('drop', onDrop);
     };
   }, [navigate]);
-  return null;
+  if (!asking) return null;
+  return (
+    <PartDifferencesDialog
+      differences={asking.differing}
+      onDone={(choices) => {
+        setAsking(null);
+        asking.answer(choices);
+      }}
+    />
+  );
 }
 
 createRoot(root).render(

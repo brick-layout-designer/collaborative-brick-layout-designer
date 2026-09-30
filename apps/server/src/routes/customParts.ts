@@ -160,29 +160,9 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     const user = requireUser(req);
     const body = req.body ?? ({} as CreatePartBody);
 
-    const partNumber = body.partNumber?.trim();
-    const displayName = body.displayName?.trim();
-    if (!partNumber || !displayName) {
-      return reply.code(400).send({ error: 'invalid_input' });
-    }
-    if (body.spriteMime !== 'image/gif' && body.spriteMime !== 'image/png') {
-      return reply.code(400).send({ error: 'invalid_sprite_mime' });
-    }
-
-    let xmlBlob: Buffer;
-    let spriteBlob: Buffer;
-    try {
-      xmlBlob = Buffer.from(body.xmlBase64, 'base64');
-      spriteBlob = Buffer.from(body.spriteBase64, 'base64');
-    } catch {
-      return reply.code(400).send({ error: 'invalid_base64' });
-    }
-    if (xmlBlob.length === 0 || spriteBlob.length === 0) {
-      return reply.code(400).send({ error: 'empty_payload' });
-    }
-    if (xmlBlob.length + spriteBlob.length > MAX_PART_BLOB_BYTES) {
-      return reply.code(413).send({ error: 'payload_too_large' });
-    }
+    const parsed = parsePartBody(body);
+    if ('error' in parsed) return reply.code(parsed.status).send({ error: parsed.error });
+    const { partNumber, displayName, xmlBlob, spriteBlob } = parsed;
 
     let ownerUserId: string | null = user.id;
     let ownerOrgId: string | null = null;
@@ -259,6 +239,67 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     });
     return reply.code(201).send({ id, partNumber, displayName });
   });
+
+  // ---- replace ------------------------------------------------------------
+  // A new XML and sprite for a part, as opening a layout whose copy of the
+  // part differs does ("Use the file's"). Same body as create; the owner
+  // stays as it is.
+  app.put<{ Params: { id: string }; Body: CreatePartBody }>(
+    '/api/custom-parts/:id',
+    { config: { apiToken: 'parts:write' } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
+      if (role === null) return reply.code(404).send({ error: 'not_found' });
+      if (!hasAtLeast(role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
+      const parsed = parsePartBody(req.body ?? ({} as CreatePartBody));
+      if ('error' in parsed) return reply.code(parsed.status).send({ error: parsed.error });
+      const { partNumber, displayName, xmlBlob, spriteBlob } = parsed;
+
+      const current = await db
+        .select({ partNumber: schema.customParts.partNumber, ownerUserId: schema.customParts.ownerUserId, ownerOrgId: schema.customParts.ownerOrgId })
+        .from(schema.customParts)
+        .where(eq(schema.customParts.id, req.params.id))
+        .get();
+      if (!current) return reply.code(404).send({ error: 'not_found' });
+      if (partNumber !== current.partNumber) {
+        const dup = await db
+          .select({ id: schema.customParts.id })
+          .from(schema.customParts)
+          .where(
+            and(
+              current.ownerOrgId
+                ? eq(schema.customParts.ownerOrgId, current.ownerOrgId)
+                : eq(schema.customParts.ownerUserId, current.ownerUserId ?? ''),
+              eq(schema.customParts.partNumber, partNumber),
+            ),
+          )
+          .get();
+        if (dup) return reply.code(409).send({ error: 'part_number_taken' });
+      }
+
+      await db
+        .update(schema.customParts)
+        .set({
+          partNumber,
+          displayName,
+          ...(req.body.category?.trim() ? { category: req.body.category.trim() } : {}),
+          xmlBlob,
+          spriteBlob,
+          spriteMime: req.body.spriteMime,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.customParts.id, req.params.id));
+      await writeAuditEvent({
+        resourceKind: 'custom_part',
+        resourceId: req.params.id,
+        userId: user.id,
+        eventType: 'edit',
+        payload: { partNumber, displayName },
+      });
+      return { id: req.params.id, partNumber, displayName };
+    },
+  );
 
   // ---- delete -------------------------------------------------------------
   app.delete<{ Params: { id: string } }>(
@@ -468,6 +509,31 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     },
   );
+}
+
+type ParsedPartBody =
+  | { partNumber: string; displayName: string; xmlBlob: Buffer; spriteBlob: Buffer }
+  | { status: 400 | 413; error: string };
+
+/** A create / replace body's fields, checked, with the blobs decoded. */
+function parsePartBody(body: CreatePartBody): ParsedPartBody {
+  const partNumber = body.partNumber?.trim();
+  const displayName = body.displayName?.trim();
+  if (!partNumber || !displayName) return { status: 400, error: 'invalid_input' };
+  if (body.spriteMime !== 'image/gif' && body.spriteMime !== 'image/png') {
+    return { status: 400, error: 'invalid_sprite_mime' };
+  }
+  let xmlBlob: Buffer;
+  let spriteBlob: Buffer;
+  try {
+    xmlBlob = Buffer.from(body.xmlBase64, 'base64');
+    spriteBlob = Buffer.from(body.spriteBase64, 'base64');
+  } catch {
+    return { status: 400, error: 'invalid_base64' };
+  }
+  if (xmlBlob.length === 0 || spriteBlob.length === 0) return { status: 400, error: 'empty_payload' };
+  if (xmlBlob.length + spriteBlob.length > MAX_PART_BLOB_BYTES) return { status: 413, error: 'payload_too_large' };
+  return { partNumber, displayName, xmlBlob, spriteBlob };
 }
 
 const partListColumns = {
