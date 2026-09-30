@@ -77,6 +77,11 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
                   <Link to={startUrl(v.id)} className="rounded-sm bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">
                     Start layout
                   </Link>
+                  {canManage && (
+                    <Link to={`/venues/${encodeURIComponent(v.id)}/design${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className={btn}>
+                      Design
+                    </Link>
+                  )}
                   <button type="button" className={btn} onClick={() => void download(v.id, v.name)}>
                     Download
                   </button>
@@ -108,9 +113,16 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
             ))}
           </ul>
         ))}
-      <button type="button" className={btn} disabled={upload.isPending} onClick={() => fileInput.current?.click()}>
-        Upload venue…
-      </button>
+      <div className="flex gap-2">
+        {(canManage || org) && (
+          <Link to={`/venues/new${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className="rounded-sm bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">
+            New venue
+          </Link>
+        )}
+        <button type="button" className={btn} disabled={upload.isPending} onClick={() => fileInput.current?.click()}>
+          Upload venue…
+        </button>
+      </div>
       <input
         ref={fileInput}
         type="file"

@@ -8,6 +8,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useDocMap, projectDoc } from './useDocMap';
+import { emptyVenue } from '../venues/designer/model';
 import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection } from './editorStore';
 import {
   annoCount,
@@ -136,6 +137,7 @@ const AddAnchoredLabelDialog = lazy(() => import('./AddAnchoredLabelDialog').the
 const SaveAsSetDialog = lazy(() => import('./SaveAsSetDialog').then((m) => ({ default: m.SaveAsSetDialog })));
 const ModulesPanel = lazy(() => import('./ModulesPanel').then((m) => ({ default: m.ModulesPanel })));
 const ModuleLibraryPanel = lazy(() => import('./ModuleLibraryPanel').then((m) => ({ default: m.ModuleLibraryPanel })));
+const VenueDesigner = lazy(() => import('../venues/designer/VenueDesigner').then((m) => ({ default: m.VenueDesigner })));
 const VenuePropertiesDialog = lazy(() => import('./VenuePropertiesDialog').then((m) => ({ default: m.VenuePropertiesDialog })));
 const VenueDimensionsDialog = lazy(() => import('./VenueDimensionsDialog').then((m) => ({ default: m.VenueDimensionsDialog })));
 const BudgetDialog = lazy(() => import('./BudgetDialog').then((m) => ({ default: m.BudgetDialog })));
@@ -197,6 +199,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showAddLabel, setShowAddLabel] = useState(false);
   const [showSaveAsSet, setShowSaveAsSet] = useState(false);
   const [showVenueProps, setShowVenueProps] = useState(false);
+  const [showVenueDesigner, setShowVenueDesigner] = useState(false);
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
   const [showPartList, setShowPartList] = useState(false);
@@ -475,6 +478,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onDownloadAs={() => setShowDownloadAs(true)}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
+              onVenueDesigner={() => setShowVenueDesigner(true)}
               onVenueDimensions={() => setShowVenueDimensions(true)}
               onVenueClear={() => {
                 if (!doc) return;
@@ -723,6 +727,18 @@ function Editor({ layoutId }: { layoutId: string }) {
           />
         );
       })()}
+      {showVenueDesigner && doc && !isViewer && (
+        <VenueDesigner
+          initial={readSidecarFromDoc(doc)?.venue ?? emptyVenue(meta.data?.layout.title ? `${meta.data.layout.title} venue` : 'Venue')}
+          subtitle={`Venue of ${meta.data?.layout.title ?? 'this layout'}`}
+          saveLabel="Save to layout"
+          onSave={(v) => {
+            setVenue(doc, v);
+            useEditorStore.getState().showStatusMessage('Venue saved to the layout.');
+          }}
+          onClose={() => setShowVenueDesigner(false)}
+        />
+      )}
       {showVenueProps && doc && (
         <VenuePropertiesDialog
           doc={doc}
@@ -3402,6 +3418,7 @@ function MapMenu({
   onDownloadAs,
   onPreferences,
   onVenueProps,
+  onVenueDesigner,
   onVenueDimensions,
   onVenueClear,
   onVenueDrawOutline,
@@ -3430,6 +3447,7 @@ function MapMenu({
   onDownloadAs: () => void;
   onPreferences: () => void;
   onVenueProps: () => void;
+  onVenueDesigner: () => void;
   onVenueDimensions: () => void;
   onVenueClear: () => void;
   onVenueDrawOutline: () => void;
@@ -3471,6 +3489,7 @@ function MapMenu({
     { label: 'Background image...', action: onBackgroundImage },
     { label: 'Find...  Ctrl+F', action: onFind },
     { label: '—', action: () => {} },
+    { label: 'Venue → Open Venue Designer...', action: onVenueDesigner },
     { label: 'Venue → Draw Outline...', action: onVenueDrawOutline },
     { label: 'Venue → Draw Obstacle...', action: onVenueDrawObstacle },
     { label: 'Venue → Draw by Dimensions...', action: onVenueDimensions },
