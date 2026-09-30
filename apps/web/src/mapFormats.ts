@@ -22,7 +22,7 @@ export const MAP_FORMATS: readonly { format: MapFormat; label: string }[] = [
 export const MAP_FORMAT_FILE = /\.(ldr|mpd|tdl|ncp)$/i;
 
 /** `accept` for file pickers that open layouts. */
-export const LAYOUT_ACCEPT = '.bbm,.ldr,.mpd,.tdl,.ncp';
+export const LAYOUT_ACCEPT = '.bld-layout,.bbm,.ldr,.mpd,.tdl,.ncp';
 
 /** The desktop's Save As warning for formats that can't hold a whole layout. */
 export const LOSSY_FORMAT_WARNING =

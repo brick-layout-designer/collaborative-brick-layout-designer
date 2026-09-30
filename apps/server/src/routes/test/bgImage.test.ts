@@ -77,3 +77,67 @@ describe('background image upload', () => {
     expect(res.body).toBe('original');
   });
 });
+
+// A .bld-layout carries its background image: creating a layout from one
+// keeps the image here and points the sidecar at it.
+describe('background image from a layout file', () => {
+  let app: FastifyInstance;
+  let c: string;
+  const created: string[] = [];
+
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+    c = (await loginAs(app, 'file@x.com')).cookie;
+  });
+  afterEach(async () => {
+    for (const id of created.splice(0))
+      await app.inject({ method: 'DELETE', url: `/api/layouts/${id}/background-image`, headers: { cookie: c } });
+    await app.close();
+  });
+
+  const sidecar = JSON.stringify({
+    schemaVersion: 1,
+    bbmHashSha256: '',
+    anchoredLabels: [],
+    modules: [],
+    backgroundImage: { file: 'background.png', opacity: 0.3, rect: [-10, -20, 300, 200] },
+  });
+
+  async function create(payload: Record<string, unknown>) {
+    const res = await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: c }, payload });
+    if (res.statusCode === 201) created.push(res.json().id);
+    return res;
+  }
+
+  it('keeps the image and points the sidecar at it', async () => {
+    const res = await create({ sidecar, backgroundImage: { type: 'image/png', data: Buffer.from('png-bytes').toString('base64') } });
+    expect(res.statusCode).toBe(201);
+    const id = res.json().id as string;
+    const image = await app.inject({ method: 'GET', url: `/api/layouts/${id}/background-image`, headers: { cookie: c } });
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toBe('image/png');
+    expect(image.body).toBe('png-bytes');
+    const exported = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.bld`, headers: { cookie: c } });
+    expect(exported.statusCode).toBe(200);
+    const bg = exported.json().backgroundImage;
+    expect(bg).toMatchObject({ url: `/api/layouts/${id}/background-image`, opacity: 0.3, rect: [-10, -20, 300, 200] });
+    expect(bg.file).toBeUndefined();
+  });
+
+  it('refuses images it would not take as an upload', async () => {
+    const bmp = await create({ sidecar, backgroundImage: { type: 'image/bmp', data: Buffer.from('bm').toString('base64') } });
+    expect(bmp.statusCode).toBe(415);
+    const empty = await create({ sidecar, backgroundImage: { type: 'image/png', data: '' } });
+    expect(empty.statusCode).toBe(400);
+    const big = await create({ backgroundImage: { type: 'image/png', data: Buffer.alloc(10 * 1024 * 1024 + 1, 1).toString('base64') } });
+    expect(big.statusCode).toBe(413);
+  });
+
+  it('without an image, a sidecar naming one keeps no background', async () => {
+    const res = await create({ sidecar });
+    expect(res.statusCode).toBe(201);
+    const exported = await app.inject({ method: 'GET', url: `/api/layouts/${res.json().id}/export.bbm.bld`, headers: { cookie: c } });
+    expect(exported.json().backgroundImage).toBeUndefined();
+  });
+});

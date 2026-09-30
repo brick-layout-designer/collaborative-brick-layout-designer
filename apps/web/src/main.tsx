@@ -55,9 +55,9 @@ function GlobalBbmDrop() {
     }
     async function onDrop(e: DragEvent) {
       const files = Array.from(e.dataTransfer?.files ?? []).filter(
-        (f) => /\.(bbm|bbm\.bld|bbm\.cld|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name),
+        (f) => /\.(bld-layout|bbm|bbm\.bld|bbm\.cld|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name),
       );
-      if (!files.some((f) => /\.(bbm|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name))) return;
+      if (!files.some((f) => /\.(bld-layout|bbm|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name))) return;
       e.preventDefault();
       let layouts: DroppedLayout[] = [];
       try {
@@ -66,13 +66,17 @@ function GlobalBbmDrop() {
         );
         layouts = await layoutsFromFiles(files, convert);
       } catch (err) {
-        // An unreadable zip has nothing to open; say why a map file didn't.
-        if (files.some((f) => MAP_FORMAT_FILE.test(f.name))) window.alert(`Open failed: ${(err as Error).message}`);
+        // An unreadable zip has nothing to open; say why a map or layout file didn't.
+        if (files.some((f) => MAP_FORMAT_FILE.test(f.name) || /\.bld-layout$/i.test(f.name))) window.alert(`Open failed: ${(err as Error).message}`);
         return;
       }
       for (const l of layouts) {
         try {
-          const created = await api.layouts.create(l.sidecar !== undefined ? { bbm: l.bbm, sidecar: l.sidecar } : { bbm: l.bbm });
+          const created = await api.layouts.create({
+            bbm: l.bbm,
+            ...(l.sidecar !== undefined ? { sidecar: l.sidecar } : {}),
+            ...(l.background ? { backgroundImage: l.background } : {}),
+          });
           const state: OpenedMapState | undefined = l.warnings ? { openWarnings: l.warnings } : undefined;
           navigate(`/editor/${created.id}`, state ? { state } : undefined);
         } catch {

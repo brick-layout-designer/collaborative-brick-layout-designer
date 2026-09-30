@@ -1,10 +1,11 @@
-// Download As (F1 save side, F2): the layout in another map format, with
-// the desktop's lossy-format warning and its "Don't show this again".
+// Download As (F1 save side, F2): the layout as a .bld-layout, a .bbm that
+// says what BlueBrick leaves out, or another map format with the desktop's
+// lossy-format warning and its "Don't show this again".
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { BbmMap } from '@cld/model';
-import { DownloadAsDialog, warnsOnNonBbmSave } from '../DownloadAsDialog';
+import { blueBrickLeavesOut, DownloadAsDialog, warnsOnNonBbmSave } from '../DownloadAsDialog';
 
 const map: BbmMap = {
   version: 9,
@@ -42,28 +43,72 @@ afterEach(() => {
 });
 
 const open = (props: Partial<Parameters<typeof DownloadAsDialog>[0]> = {}) => {
+  const onDownloadLayout = vi.fn();
   const onDownloadBbm = vi.fn();
   const onClose = vi.fn();
-  render(<DownloadAsDialog map={map} parts={[]} title="My layout" onDownloadBbm={onDownloadBbm} onClose={onClose} {...props} />);
-  return { onDownloadBbm, onClose };
+  render(
+    <DownloadAsDialog
+      map={map}
+      parts={[]}
+      title="My layout"
+      onDownloadLayout={onDownloadLayout}
+      onDownloadBbm={onDownloadBbm}
+      blueBrickLeavesOut={[]}
+      onClose={onClose}
+      {...props}
+    />,
+  );
+  return { onDownloadLayout, onDownloadBbm, onClose };
 };
 
 describe('Download As', () => {
-  it('downloads the .bbm the usual way, without a warning', () => {
-    const { onDownloadBbm, onClose } = open();
+  it('downloads the layout file by default, without a warning', () => {
+    const { onDownloadLayout, onDownloadBbm, onClose } = open();
+    expect((screen.getByLabelText('Brick Layout Designer layout (.bld-layout)') as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByText(/can't store everything/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    expect(onDownloadBbm).toHaveBeenCalledOnce();
+    expect(onDownloadLayout).toHaveBeenCalledOnce();
+    expect(onDownloadBbm).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('says what a .bbm leaves out, and downloads it', () => {
+    const { onDownloadLayout, onDownloadBbm } = open({ blueBrickLeavesOut: ['modules', 'the venue'] });
+    fireEvent.click(screen.getByLabelText('BlueBrick map (.bbm)'));
+    expect(screen.getByText(/BlueBrick can't hold modules, the venue, so the .bbm leaves them out/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    expect(onDownloadBbm).toHaveBeenCalledOnce();
+    expect(onDownloadLayout).not.toHaveBeenCalled();
+    cleanup();
+
+    open();
+    fireEvent.click(screen.getByLabelText('BlueBrick map (.bbm)'));
+    expect(screen.queryByText(/BlueBrick can't hold/)).toBeNull();
+  });
+
+  it('lists what BlueBrick has no place for', () => {
+    expect(blueBrickLeavesOut(null)).toEqual([]);
+    expect(blueBrickLeavesOut({ schemaVersion: 1, bbmHashSha256: '', anchoredLabels: [], modules: [] })).toEqual([]);
+    expect(
+      blueBrickLeavesOut({
+        schemaVersion: 1,
+        bbmHashSha256: '',
+        anchoredLabels: [{} as never],
+        modules: [{} as never],
+        venue: {} as never,
+        backgroundImage: { url: '/x', opacity: 0.5 },
+      }),
+    ).toEqual(['anchored labels', 'modules', 'the venue', 'the background image']);
+  });
+
   it('warns before a lossy format and writes the file', async () => {
-    const { onDownloadBbm, onClose } = open();
+    const { onDownloadLayout, onDownloadBbm, onClose } = open();
     fireEvent.click(screen.getByLabelText('LDraw multi-part (.mpd)'));
     expect(screen.getByText(/can't store everything in the map/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Download anyway' }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onDownloadBbm).not.toHaveBeenCalled();
+    expect(onDownloadLayout).not.toHaveBeenCalled();
     expect(downloads.map((d) => d.name)).toEqual(['My layout.mpd']);
     expect(await downloads[0]!.blob.text()).toContain('0 FILE My layout.ldr\r\n0 My layout\r\n0 Name: My layout.mpd\r\n0 Author: Ann');
     // Not ticked: the warning stays.

@@ -1,6 +1,6 @@
 // E2E: desktop-parity editor features — anchored-label placement, part-
 // number Find & Replace, the rotate / z-order toolbar buttons, the View
-// entries of the Map menu, "Download .bbm", the Export Image options and
+// entries of the Map menu, "Download Layout", the Export Image options and
 // the drop-target hint.
 //
 // Set SHOT_DIR to also save screenshots of the new controls.
@@ -165,7 +165,7 @@ test.describe('toolbar and menus', () => {
     await page.getByRole('button', { name: 'Bring to Front' }).click();
   });
 
-  test('Map menu zoom entries, Insert Text and Download .bbm', async ({ page }) => {
+  test('Map menu zoom entries, Insert Text and Download Layout', async ({ page }) => {
     const id = await createLayout(page, FORDYCE_BBM);
     await openEditor(page, id);
     const footer = page.locator('footer');
@@ -190,9 +190,9 @@ test.describe('toolbar and menus', () => {
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
     const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download .bbm' }).click();
-    // No sidecar yet: the bare .bbm, named like the server export.
-    expect((await download).suggestedFilename()).toBe('Parity Test.bbm');
+    await page.getByRole('button', { name: 'Download Layout (.bld-layout)' }).click();
+    // The whole layout in one file (layoutFile.spec.ts looks inside).
+    expect((await download).suggestedFilename()).toBe('Parity Test.bld-layout');
   });
 
   test('Export Image offers size, JPEG quality and antialias', async ({ page }) => {
@@ -564,24 +564,6 @@ test.describe('venue drawing', () => {
 });
 
 /** Entries of a stored (uncompressed) zip, read through its central directory. */
-function readStoredZip(buf: Buffer): Map<string, string> {
-  let eocd = buf.length - 22;
-  while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
-  const out = new Map<string, string>();
-  let p = buf.readUInt32LE(eocd + 16);
-  for (let i = buf.readUInt16LE(eocd + 10); i > 0; i--) {
-    expect(buf.readUInt16LE(p + 10)).toBe(0); // stored
-    const size = buf.readUInt32LE(p + 20);
-    const nameLen = buf.readUInt16LE(p + 28);
-    const name = buf.toString('utf-8', p + 46, p + 46 + nameLen);
-    const local = buf.readUInt32LE(p + 42);
-    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
-    out.set(name, buf.toString('utf-8', start, start + size));
-    p += 46 + nameLen + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
-  }
-  return out;
-}
-
 const LABEL_SIDECAR = JSON.stringify({
   schemaVersion: 1,
   bbmHashSha256: '',
@@ -593,31 +575,6 @@ const LABEL_SIDECAR = JSON.stringify({
 });
 
 test.describe('.bbm with its .bbm.bld sidecar', () => {
-  test('Download .bbm delivers a zip with both files when the layout has a sidecar', async ({ page }) => {
-    await signIn(page, EMAIL, 'Parity Tester');
-    const res = await page.request.post('/api/layouts', { data: { title: 'Parity Test', bbm: FORDYCE_BBM, sidecar: LABEL_SIDECAR } });
-    const { id } = (await res.json()) as { id: string };
-    await openEditor(page, id);
-
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    const dl = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download .bbm' }).click();
-    const download = await dl;
-    expect(download.suggestedFilename()).toBe('Parity Test.zip');
-
-    const entries = readStoredZip(readFileSync(await download.path()));
-    expect([...entries.keys()]).toEqual(['Parity Test.bbm', 'Parity Test.bbm.bld']);
-    expect(entries.get('Parity Test.bbm')).toContain('<Map');
-    const sidecar = JSON.parse(entries.get('Parity Test.bbm.bld')!) as {
-      bbmHashSha256: string;
-      anchoredLabels: { text: string }[];
-    };
-    expect(sidecar.anchoredLabels.map((l) => l.text)).toEqual(['Sidecar Label']);
-    // Hashed against the .bbm in the same zip, so desktop sees no drift.
-    const { createHash } = await import('node:crypto');
-    expect(sidecar.bbmHashSha256).toBe(createHash('sha256').update(entries.get('Parity Test.bbm')!).digest('hex'));
-  });
-
   test('dropping a .bbm together with its .bbm.bld opens a layout with both', async ({ page }) => {
     await signIn(page, EMAIL, 'Parity Tester');
     await page.goto('/');

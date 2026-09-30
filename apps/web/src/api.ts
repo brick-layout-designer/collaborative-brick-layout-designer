@@ -286,8 +286,20 @@ export const api = {
     get: (id: string) => get<{ layout: LayoutSummary; role: 'owner' | 'editor' | 'viewer' }>(
       `/api/layouts/${id}`,
     ),
-    create: (body: { title?: string; bbm?: string; sidecar?: string }) =>
-      post<{ id: string; title: string }>('/api/layouts', body),
+    /** `backgroundImage` is a .bld-layout's image: the server keeps it and points the sidecar at it. */
+    create: (body: {
+      title?: string;
+      bbm?: string;
+      sidecar?: string;
+      orgSlug?: string;
+      backgroundImage?: { type: string; data: Uint8Array };
+    }) => {
+      const { backgroundImage, ...rest } = body;
+      return post<{ id: string; title: string }>(
+        '/api/layouts',
+        backgroundImage ? { ...rest, backgroundImage: { type: backgroundImage.type, data: toBase64(backgroundImage.data) } } : rest,
+      );
+    },
     rename: (id: string, title: string) =>
       patch<{ ok: true }>(`/api/layouts/${id}`, { title }),
     remove: (id: string) => del(`/api/layouts/${id}`),
@@ -869,4 +881,13 @@ export interface OrgPartLibrary {
   enabled: boolean;
   /** Whether the org has an explicit override row (never true for locked libraries). */
   explicitOverride: boolean;
+}
+
+/** Base64 of bytes, in chunks so large images don't overflow the argument list. */
+export function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
 }

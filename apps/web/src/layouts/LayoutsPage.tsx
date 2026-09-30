@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary } from '../api';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
+import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
 import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
@@ -242,6 +243,8 @@ function CreateLayoutDialog({
   const [openWarnings, setOpenWarnings] = useState<string[]>([]);
   const qc = useQueryClient();
   const [sidecar, setSidecar] = useState<string | null>(null);
+  // A picked .bld-layout's background image.
+  const [background, setBackground] = useState<LayoutImage | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
   const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
@@ -269,7 +272,20 @@ function CreateLayoutDialog({
     setError(null);
     let text: string;
     let warnings: string[] = [];
-    if (mapFormatOf(file.name)) {
+    setBackground(null);
+    if (LAYOUT_FILE.test(file.name)) {
+      // The whole layout: labels, modules, venue and background come with it.
+      try {
+        const l = await readLayoutFile(new Uint8Array(await file.arrayBuffer()));
+        text = l.bbm;
+        warnings = l.warnings;
+        setSidecar(l.sidecar ?? null);
+        setBackground(l.background ?? null);
+      } catch (err) {
+        setError(`Could not open ${file.name}: ${(err as Error).message}`);
+        return;
+      }
+    } else if (mapFormatOf(file.name)) {
       // Other map formats are converted with the parts' remaps.
       try {
         const catalog = await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
@@ -284,7 +300,7 @@ function CreateLayoutDialog({
     setBbm(text);
     setOpenWarnings(warnings);
     setBbmFilename(file.name);
-    if (!title) setTitle(file.name.replace(/\.(bbm|ldr|mpd|tdl|ncp)$/i, ''));
+    if (!title) setTitle(file.name.replace(/\.(bld-layout|bbm|ldr|mpd|tdl|ncp)$/i, ''));
   }
 
   async function pickSidecar(e: ChangeEvent<HTMLInputElement>) {
@@ -296,11 +312,12 @@ function CreateLayoutDialog({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const body: { title?: string; bbm?: string; sidecar?: string; orgSlug?: string } = {};
+    const body: { title?: string; bbm?: string; sidecar?: string; orgSlug?: string; backgroundImage?: LayoutImage } = {};
     const t = title.trim();
     if (t) body.title = t;
     if (bbm) body.bbm = bbm;
     if (sidecar) body.sidecar = sidecar;
+    if (bbm && background) body.backgroundImage = background;
     // A picked .bbm wins over the template.
     if (!bbm && fromTemplate && template) {
       try {
@@ -392,7 +409,7 @@ function CreateLayoutDialog({
 
         <label className="block text-sm">
           <span className="mb-1 block text-neutral-400">
-            Optional: import from .bbm, LDraw, TrackDesigner or 4DBrix
+            Optional: open a layout file (.bld-layout), .bbm, LDraw, TrackDesigner or 4DBrix
           </span>
           <input type="file" accept={LAYOUT_ACCEPT} onChange={pickBbm} className="text-sm" />
           {bbmFilename && <p className="mt-1 text-xs text-neutral-500">{bbmFilename}</p>}

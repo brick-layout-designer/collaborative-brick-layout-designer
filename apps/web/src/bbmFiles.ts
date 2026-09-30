@@ -1,12 +1,10 @@
-// Local .bbm + .bbm.bld files: the editor's "Download .bbm" (and the
-// offline Save fallback) and the window-level file drop.
+// Local layout files: the zip reader and writer under .bld-layout
+// (layoutFile.ts) and the window-level file drop.
 //
-// Desktop keeps a layout's labels, modules, venue and background image in
-// a `<file>.bbm.bld` sidecar next to the `.bbm` and loads it with the
-// .bbm (MainWindowFileIO.cpp:84-94). A browser download is one file, so
-// the pair goes out as a `.zip` named like the server's export.zip
-// (`<title>.zip` holding `<title>.bbm` + `<title>.bbm.bld`). Dropping a
-// `.bbm` together with its `.bbm.bld` — or such a `.zip` — loads both.
+// Desktop's .bbm files from before .bld-layout keep a layout's labels,
+// modules, venue and background image in a `<file>.bbm.bld` sidecar next to
+// the `.bbm`, and the server's export.zip holds the pair. Dropping a `.bbm`
+// together with its `.bbm.bld`, such a `.zip`, or a `.bld-layout` loads it.
 
 /** Same rule as the server's export filenames (routes/layouts.ts sanitizeFilename). */
 export function sanitizeFilename(s: string): string {
@@ -38,9 +36,24 @@ export function crc32(bytes: Uint8Array): number {
 export interface ZipEntry {
   name: string;
   data: Uint8Array;
+  /** Written deflated (method 8): these bytes are `data` compressed. */
+  deflated?: Uint8Array;
 }
 
-/** Build an uncompressed ("stored") zip. */
+/** Raw deflate (no zlib header), as a zip entry holds it. */
+export async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** `entry` deflated, unless that doesn't make it smaller. */
+export async function deflatedEntry(entry: ZipEntry): Promise<ZipEntry> {
+  if (entry.data.length === 0) return entry;
+  const deflated = await deflateRaw(entry.data);
+  return deflated.length < entry.data.length ? { ...entry, deflated } : entry;
+}
+
+/** Build a zip: entries are stored, or deflated when they carry `deflated`. */
 export function buildZip(entries: readonly ZipEntry[]): Uint8Array {
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [];
@@ -49,13 +62,16 @@ export function buildZip(entries: readonly ZipEntry[]): Uint8Array {
   for (const e of entries) {
     const name = enc.encode(e.name);
     const crc = crc32(e.data);
+    const body = e.deflated ?? e.data;
+    const method = e.deflated ? 8 : 0;
     const local = new Uint8Array(30 + name.length);
     const lv = new DataView(local.buffer);
     lv.setUint32(0, 0x04034b50, true);
     lv.setUint16(4, 20, true);
     lv.setUint16(6, 0x0800, true); // UTF-8 names
+    lv.setUint16(8, method, true);
     lv.setUint32(14, crc, true);
-    lv.setUint32(18, e.data.length, true);
+    lv.setUint32(18, body.length, true);
     lv.setUint32(22, e.data.length, true);
     lv.setUint16(26, name.length, true);
     local.set(name, 30);
@@ -65,15 +81,16 @@ export function buildZip(entries: readonly ZipEntry[]): Uint8Array {
     cv.setUint16(4, 20, true);
     cv.setUint16(6, 20, true);
     cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, method, true);
     cv.setUint32(16, crc, true);
-    cv.setUint32(20, e.data.length, true);
+    cv.setUint32(20, body.length, true);
     cv.setUint32(24, e.data.length, true);
     cv.setUint16(28, name.length, true);
     cv.setUint32(42, offset, true);
     cen.set(name, 46);
-    parts.push(local, e.data);
+    parts.push(local, body);
     central.push(cen);
-    offset += local.length + e.data.length;
+    offset += local.length + body.length;
   }
   const cenSize = central.reduce((n, c) => n + c.length, 0);
   const end = new Uint8Array(22);
@@ -134,40 +151,6 @@ export async function readZip(bytes: Uint8Array): Promise<ZipEntry[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Export
-// ---------------------------------------------------------------------------
-
-/** Lowercase-hex SHA-256 (desktop's `bbmHashSha256`), or undefined without WebCrypto. */
-export async function sha256Hex(text: string): Promise<string | undefined> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return undefined;
-  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * The file a local download delivers: the `.bbm` alone when there is no
- * sidecar, else a `.zip` with the `.bbm` and its `.bbm.bld`.
- */
-export function localBbmDownload(
-  title: string,
-  bbmXml: string,
-  sidecarJson: string | null,
-): { filename: string; type: string; data: Uint8Array } {
-  const safe = sanitizeFilename(title);
-  const enc = new TextEncoder();
-  if (sidecarJson === null) return { filename: `${safe}.bbm`, type: 'application/xml', data: enc.encode(bbmXml) };
-  return {
-    filename: `${safe}.zip`,
-    type: 'application/zip',
-    data: buildZip([
-      { name: `${safe}.bbm`, data: enc.encode(bbmXml) },
-      { name: `${safe}.bbm.bld`, data: enc.encode(sidecarJson) },
-    ]),
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Drop
 // ---------------------------------------------------------------------------
 
@@ -176,8 +159,10 @@ export interface DroppedLayout {
   name: string;
   bbm: string;
   sidecar?: string;
-  /** What the conversion from another map format skipped. */
+  /** What the conversion from another map format (or a newer layout file) skipped. */
   warnings?: string[];
+  /** A .bld-layout's background image, for the server to keep. */
+  background?: { type: string; data: Uint8Array };
 }
 
 /** Turns an LDraw / TrackDesigner / 4DBrix file into .bbm text (mapFormats.ts). */
@@ -217,16 +202,27 @@ export async function pairLayoutFiles(files: readonly NamedText[]): Promise<Drop
 }
 
 /**
- * Layouts in dropped files: loose `.bbm` / `.bbm.bld` files plus the
- * contents of any `.zip`, and — given a converter — LDraw, TrackDesigner
- * and 4DBrix maps.
+ * Layouts in dropped files: `.bld-layout` files, loose `.bbm` / `.bbm.bld`
+ * files plus the contents of any `.zip`, and — given a converter — LDraw,
+ * TrackDesigner and 4DBrix maps.
  */
 export async function layoutsFromFiles(files: readonly File[], convertMap?: MapConverter): Promise<DroppedLayout[]> {
   const loose: NamedText[] = [];
   const out: DroppedLayout[] = [];
   const dec = new TextDecoder();
   for (const f of files) {
-    if (MAP_FILE.test(f.name)) {
+    if (/\.bld-layout$/i.test(f.name)) {
+      // Loaded on demand; layoutFile.ts imports this module.
+      const { readLayoutFile } = await import('./layoutFile');
+      const l = await readLayoutFile(new Uint8Array(await f.arrayBuffer()));
+      out.push({
+        name: f.name,
+        bbm: l.bbm,
+        ...(l.sidecar !== undefined ? { sidecar: l.sidecar } : {}),
+        ...(l.background ? { background: l.background } : {}),
+        ...(l.warnings.length ? { warnings: l.warnings } : {}),
+      });
+    } else if (MAP_FILE.test(f.name)) {
       if (!convertMap) continue;
       const { bbm, warnings } = await convertMap(f.name, new Uint8Array(await f.arrayBuffer()));
       out.push({ name: f.name, bbm, ...(warnings.length ? { warnings } : {}) });
