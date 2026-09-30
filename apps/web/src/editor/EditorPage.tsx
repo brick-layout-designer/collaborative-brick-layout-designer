@@ -44,7 +44,8 @@ import { ModuleOverlay } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
-import { localBbmDownload, sha256Hex } from '../bbmFiles';
+import { sanitizeFilename } from '../bbmFiles';
+import { layoutFileDownload, type LayoutImage } from '../layoutFile';
 import { backgroundImageRectPx } from './background';
 import { scaleBar } from './scaleBar';
 import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
@@ -115,7 +116,7 @@ import { actualPartNumber, indexParts } from './partIndex';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { fitView } from './viewFit';
 import { PartListDialog } from './PartListDialog';
-import { DownloadAsDialog } from './DownloadAsDialog';
+import { blueBrickLeavesOut, DownloadAsDialog } from './DownloadAsDialog';
 import { saveVenueToLibrary } from './venueLibrary';
 import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -173,8 +174,8 @@ function Editor({ layoutId }: { layoutId: string }) {
       useEditorStore.getState().showStatusMessage('All changes saved to the server', 3000);
       return;
     }
-    if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a .bbm copy of the current local version now?')) {
-      void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout');
+    if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a copy of the current local version (.bld-layout) now?')) {
+      void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout');
     }
   }, [doc, checkSaved, meta.data?.layout.title]);
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -474,7 +475,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onZoomIn={() => canvasActionsRef.current?.zoom(ZOOM_STEP)}
               onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
               onFit={() => canvasActionsRef.current?.fit()}
-              onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
+              onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout')}
               onDownloadAs={() => setShowDownloadAs(true)}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
@@ -757,7 +758,9 @@ function Editor({ layoutId }: { layoutId: string }) {
           map={docMap}
           parts={catalog.data?.parts ?? []}
           title={meta.data?.layout.title ?? 'layout'}
+          onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout')}
           onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
+          blueBrickLeavesOut={blueBrickLeavesOut(readSidecarFromDoc(doc))}
           onClose={() => setShowDownloadAs(false)}
         />
       )}
@@ -3414,7 +3417,7 @@ function MapMenu({
   onZoomIn,
   onZoomOut,
   onFit,
-  onDownloadBbm,
+  onDownloadLayout,
   onDownloadAs,
   onPreferences,
   onVenueProps,
@@ -3443,7 +3446,7 @@ function MapMenu({
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
-  onDownloadBbm: () => void;
+  onDownloadLayout: () => void;
   onDownloadAs: () => void;
   onPreferences: () => void;
   onVenueProps: () => void;
@@ -3506,7 +3509,7 @@ function MapMenu({
     { label: 'Insert Text...  Ctrl+T', action: onInsertText },
     { label: 'Insert Anchored Label...  Ctrl+L', action: onInsertLabel },
     { label: '—', action: () => {} },
-    { label: 'Download .bbm', action: onDownloadBbm },
+    { label: 'Download Layout (.bld-layout)', action: onDownloadLayout },
     { label: 'Download As...', action: onDownloadAs },
     { label: 'Export as Image...', action: onExportImage },
     { label: 'Export Part List...', action: onExportCsv },
@@ -3849,29 +3852,52 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
   return adj;
 }
 
-/** Serialise the local doc to .bbm in the browser and download it. */
-async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
-  let file: { filename: string; type: string; data: Uint8Array };
-  try {
-    // Loaded on demand: the .bbm codec is its own chunk.
-    const { writeBbm, writeSidecar } = await import('@cld/bbm');
-    const xml = writeBbm(docToBbm(doc));
-    // The sidecar (labels, modules, venue, background image) travels with
-    // the .bbm, hashed like the server export so desktop sees no drift.
-    const sidecar = readSidecarFromDoc(doc);
-    const hash = sidecar ? await sha256Hex(xml) : undefined;
-    const json = sidecar ? writeSidecar(sidecar, hash ? { bbmHashSha256: hash } : {}) : null;
-    file = localBbmDownload(title, xml, json);
-  } catch (e) {
-    window.alert(`Could not build the .bbm: ${(e as Error).message}`);
-    return;
-  }
+function saveFile(file: { filename: string; type: string; data: Uint8Array }): void {
   const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
   const a = document.createElement('a');
   a.href = url;
   a.download = file.filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Serialise the local doc as a .bld-layout (desktop's own save format)
+ * and download it: the whole layout in one file, background image
+ * included.
+ */
+async function downloadLocalLayout(doc: Y.Doc, title: string): Promise<void> {
+  try {
+    const { writeBbm, writeSidecar } = await import('@cld/bbm');
+    const xml = writeBbm(docToBbm(doc));
+    const sidecar = readSidecarFromDoc(doc);
+    let background: LayoutImage | undefined;
+    const bgUrl = sidecar?.backgroundImage?.url;
+    if (bgUrl) {
+      const res = await fetch(bgUrl, { credentials: 'include' });
+      if (!res.ok) throw new Error(`the background image could not be fetched (${res.status})`);
+      background = { type: res.headers.get('Content-Type') ?? '', data: new Uint8Array(await res.arrayBuffer()) };
+    }
+    saveFile(
+      await layoutFileDownload(title, {
+        bbm: xml,
+        sidecar: sidecar ? writeSidecar(sidecar) : null,
+        ...(background ? { background } : {}),
+      }),
+    );
+  } catch (e) {
+    window.alert(`Could not build the layout file: ${(e as Error).message}`);
+  }
+}
+
+/** The .bbm alone, for BlueBrick: labels, modules, venue and background stay behind. */
+async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
+  try {
+    const { writeBbm } = await import('@cld/bbm');
+    saveFile({ filename: `${sanitizeFilename(title)}.bbm`, type: 'application/xml', data: new TextEncoder().encode(writeBbm(docToBbm(doc))) });
+  } catch (e) {
+    window.alert(`Could not build the .bbm: ${(e as Error).message}`);
+  }
 }
 
 /** Keyboard / View-menu zoom step (desktop MainWindowMenus.cpp:493-498). */

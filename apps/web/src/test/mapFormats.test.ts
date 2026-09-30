@@ -101,6 +101,6 @@ describe('map formats in the browser', () => {
   it('knows its file names', () => {
     expect(mapFormatOf('a.MPD')).toBe('mpd');
     expect(mapFormatOf('a.bbm')).toBeNull();
-    expect(LAYOUT_ACCEPT.split(',')).toEqual(['.bbm', '.ldr', '.mpd', '.tdl', '.ncp']);
+    expect(LAYOUT_ACCEPT.split(',')).toEqual(['.bld-layout', '.bbm', '.ldr', '.mpd', '.tdl', '.ncp']);
   });
 });

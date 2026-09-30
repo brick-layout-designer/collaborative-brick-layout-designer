@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createWriteStream, createReadStream, existsSync } from 'node:fs';
-import { mkdir, rename, unlink } from 'node:fs/promises';
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
@@ -30,6 +30,11 @@ interface CreateLayoutBody {
    * without being invited; if they ARE invited, they can still create).
    */
   orgSlug?: string;
+  /**
+   * The background image a `.bld-layout` carries (base64). Kept like an
+   * uploaded one, and the sidecar's `backgroundImage` is pointed at it.
+   */
+  backgroundImage?: { type: string; data: string };
 }
 
 interface PatchLayoutBody {
@@ -45,6 +50,15 @@ const TOKEN_READ = { apiToken: 'layouts:read' } as const;
 
 /** Background-image file extensions, in the order GET probes them. */
 const BG_EXTS = ['png', 'jpg', 'gif', 'webp'] as const;
+
+/** Background-image types the upload takes, and their extensions. */
+const BG_TYPE_EXT: Record<string, (typeof BG_EXTS)[number]> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+};
+const BG_MAX_BYTES = 10 * 1024 * 1024;
 
 export async function layoutRoutes(app: FastifyInstance) {
   // Accept raw octet-stream bodies (binary Y.Doc snapshots). Without this,
@@ -140,11 +154,40 @@ export async function layoutRoutes(app: FastifyInstance) {
     let title = body.title?.trim() || 'Untitled Layout';
     let docSnapshot: Uint8Array;
     let sidecarSnapshot: Uint8Array | null = null;
+    const id = randomUUID();
+
+    // A .bld-layout's background image: checked here, written once the layout exists.
+    let background: { ext: (typeof BG_EXTS)[number]; bytes: Buffer } | null = null;
+    let sidecarText = body.sidecar;
+    if (body.backgroundImage) {
+      const ext = BG_TYPE_EXT[body.backgroundImage.type];
+      if (!ext) return reply.code(415).send({ error: 'unsupported_image_type' });
+      const bytes = Buffer.from(body.backgroundImage.data ?? '', 'base64');
+      if (bytes.length === 0) return reply.code(400).send({ error: 'invalid_image' });
+      if (bytes.length > BG_MAX_BYTES) return reply.code(413).send({ error: 'file_too_large' });
+      background = { ext, bytes };
+      if (sidecarText) {
+        // The image lives here now; the file named it by entry.
+        try {
+          const raw = JSON.parse(sidecarText) as Record<string, unknown>;
+          const bg = raw.backgroundImage;
+          if (bg && typeof bg === 'object' && !Array.isArray(bg)) {
+            const o = bg as Record<string, unknown>;
+            delete o.file;
+            delete o.path;
+            o.url = `/api/layouts/${id}/background-image`;
+            sidecarText = JSON.stringify(raw);
+          }
+        } catch {
+          /* reported by readSidecar below */
+        }
+      }
+    }
 
     let sidecar: Sidecar | null = null;
-    if (body.sidecar) {
+    if (sidecarText) {
       try {
-        sidecar = readSidecar(body.sidecar);
+        sidecar = readSidecar(sidecarText);
         sidecarSnapshot = encodeDoc(seedFromSidecar(sidecar));
       } catch (e) {
         return reply.code(400).send({ error: 'sidecar_parse_failed', detail: (e as Error).message });
@@ -195,7 +238,6 @@ export async function layoutRoutes(app: FastifyInstance) {
       ownerOrgId = org.id;
     }
 
-    const id = randomUUID();
     const now = new Date();
     // Demo TTL only applies to user-owned layouts; org layouts persist
     // until an admin deletes them.
@@ -217,6 +259,11 @@ export async function layoutRoutes(app: FastifyInstance) {
       docVersion: 0,
       sidecarSnapshot: sidecarSnapshot ? Buffer.from(sidecarSnapshot) : null,
     });
+    if (background) {
+      const bgDir = join(dirname(env.dbPath), 'bgimages');
+      await mkdir(bgDir, { recursive: true });
+      await writeFile(join(bgDir, `${id}.${background.ext}`), background.bytes);
+    }
 
     return reply.code(201).send({ id, title });
   });

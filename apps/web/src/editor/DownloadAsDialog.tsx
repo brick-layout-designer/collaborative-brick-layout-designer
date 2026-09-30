@@ -1,11 +1,13 @@
-// Download As — the web side of desktop MainWindow::onSaveAs
-// (MainWindowFileIO.cpp): the layout as .bbm, LDraw (.ldr / .mpd),
-// TrackDesigner (.tdl) or 4DBrix (.ncp). Formats other than .bbm can't
-// hold the whole layout, so choosing one shows the desktop's warning,
-// with "Don't show this again".
+// Download As — the web side of desktop MainWindow::onSaveAs and Export as
+// BlueBrick Map (MainWindowFileIO.cpp): the layout as a .bld-layout (the
+// whole layout in one file), .bbm, LDraw (.ldr / .mpd), TrackDesigner (.tdl)
+// or 4DBrix (.ncp). A .bbm leaves out what BlueBrick can't hold, and says
+// what; the other formats show the desktop's warning, with "Don't show
+// this again".
 
 import { useState } from 'react';
 import type { BbmMap } from '@cld/model';
+import type { Sidecar } from '@cld/bbm';
 import type { PartWire } from '../api';
 import { LOSSY_FORMAT_WARNING, MAP_FORMATS, mapDownload, type MapFormat } from '../mapFormats';
 
@@ -36,26 +38,41 @@ function download(file: { filename: string; type: string; data: Uint8Array }) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** What a .bbm can't hold of this layout (desktop onExportBbm's list). */
+export function blueBrickLeavesOut(sidecar: Sidecar | null | undefined): string[] {
+  const lost: string[] = [];
+  if (sidecar?.anchoredLabels?.length) lost.push('anchored labels');
+  if (sidecar?.modules?.length) lost.push('modules');
+  if (sidecar?.venue) lost.push('the venue');
+  if (sidecar?.backgroundImage) lost.push('the background image');
+  return lost;
+}
+
 interface Props {
   map: BbmMap;
   parts: readonly PartWire[];
   title: string;
-  /** The .bbm download (with its sidecar), as File → Download .bbm does. */
+  /** The .bld-layout download, as File → Download Layout does. */
+  onDownloadLayout: () => void;
+  /** The .bbm alone, for BlueBrick. */
   onDownloadBbm: () => void;
+  /** blueBrickLeavesOut for this layout. */
+  blueBrickLeavesOut: string[];
   onClose: () => void;
 }
 
-export function DownloadAsDialog({ map, parts, title, onDownloadBbm, onClose }: Props) {
-  const [format, setFormat] = useState<MapFormat | 'bbm'>('bbm');
+export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownloadBbm, blueBrickLeavesOut: lost, onClose }: Props) {
+  const [format, setFormat] = useState<MapFormat | 'bbm' | 'layout'>('layout');
   const [warn] = useState(warnsOnNonBbmSave);
   const [dontShow, setDontShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const lossy = format !== 'bbm';
+  const lossy = format !== 'bbm' && format !== 'layout';
+  const bbmLeavesOut = format === 'bbm' && lost.length > 0;
 
   async function onDownload() {
-    if (format === 'bbm') {
-      onDownloadBbm();
+    if (format === 'layout' || format === 'bbm') {
+      (format === 'layout' ? onDownloadLayout : onDownloadBbm)();
       onClose();
       return;
     }
@@ -78,7 +95,11 @@ export function DownloadAsDialog({ map, parts, title, onDownloadBbm, onClose }: 
         <h2 className="text-base font-semibold">Download As</h2>
         <fieldset className="mt-4 space-y-1 text-sm">
           <legend className="sr-only">Format</legend>
-          {[{ format: 'bbm' as const, label: 'BlueBrick map (.bbm)' }, ...MAP_FORMATS].map((f) => (
+          {[
+            { format: 'layout' as const, label: 'Brick Layout Designer layout (.bld-layout)' },
+            { format: 'bbm' as const, label: 'BlueBrick map (.bbm)' },
+            ...MAP_FORMATS,
+          ].map((f) => (
             <label key={f.format} className="flex items-center gap-2">
               <input type="radio" name="download-format" checked={format === f.format} onChange={() => setFormat(f.format)} />
               {f.label}
@@ -93,6 +114,11 @@ export function DownloadAsDialog({ map, parts, title, onDownloadBbm, onClose }: 
               Don&apos;t show this again
             </label>
           </div>
+        )}
+        {bbmLeavesOut && (
+          <p className="mt-4 rounded-sm border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+            BlueBrick can&apos;t hold {lost.join(', ')}, so the .bbm leaves them out. Your layout keeps them.
+          </p>
         )}
         {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">

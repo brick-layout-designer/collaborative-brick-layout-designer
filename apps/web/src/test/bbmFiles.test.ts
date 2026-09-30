@@ -6,11 +6,9 @@ import {
   buildZip,
   crc32,
   layoutsFromFiles,
-  localBbmDownload,
   pairLayoutFiles,
   readZip,
   sanitizeFilename,
-  sha256Hex,
 } from '../bbmFiles';
 
 const enc = new TextEncoder();
@@ -65,29 +63,11 @@ describe('zip', () => {
   });
 });
 
-describe('localBbmDownload', () => {
-  it('is the bare .bbm when there is no sidecar', () => {
-    const f = localBbmDownload('My: Layout', '<Map/>', null);
-    expect(f).toMatchObject({ filename: 'My_ Layout.bbm', type: 'application/xml' });
-    expect(dec.decode(f.data)).toBe('<Map/>');
-  });
-
-  it('zips the .bbm with its .bbm.bld under the server export names', async () => {
-    const f = localBbmDownload('Club Show', '<Map/>', '{"anchoredLabels":[]}');
-    expect(f).toMatchObject({ filename: 'Club Show.zip', type: 'application/zip' });
-    const entries = await readZip(f.data);
-    expect(entries.map((e) => e.name)).toEqual(['Club Show.bbm', 'Club Show.bbm.bld']);
-    expect(dec.decode(entries[1]!.data)).toBe('{"anchoredLabels":[]}');
-  });
-
+describe('sanitizeFilename', () => {
   it('sanitizes titles like the server', () => {
     expect(sanitizeFilename('a/b\\c?')).toBe('a_b_c_');
     expect(sanitizeFilename('   ')).toBe('layout');
     expect(sanitizeFilename('x'.repeat(100))).toHaveLength(80);
-  });
-
-  it('hashes the .bbm like desktop (lowercase hex SHA-256)', async () => {
-    expect(await sha256Hex('<Map/>')).toBe('e47cd14a0d4f339d78c3e9d648f7fa98878c60be6e3a0e9a93ebf74f1e8c6b2f');
   });
 });
 
@@ -109,7 +89,10 @@ describe('dropped files', () => {
   });
 
   it('opens loose files and the pair inside a downloaded .zip', async () => {
-    const zip = localBbmDownload('Z', '<Z/>', '{"z":1}').data;
+    const zip = buildZip([
+      { name: 'Z.bbm', data: enc.encode('<Z/>') },
+      { name: 'Z.bbm.bld', data: enc.encode('{"z":1}') },
+    ]);
     const out = await layoutsFromFiles([file('L.bbm', '<L/>'), file('L.bbm.bld', '{"l":1}'), file('Z.zip', zip)]);
     expect(out).toEqual([
       { name: 'L.bbm', bbm: '<L/>', sidecar: '{"l":1}' },
