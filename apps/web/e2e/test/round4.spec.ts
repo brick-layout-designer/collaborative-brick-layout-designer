@@ -98,7 +98,7 @@ test.describe('status bar', () => {
   test('drawing a ruler shows its length there', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
-    await page.getByRole('button', { name: 'Ruler ─' }).click();
+    await page.getByRole('button', { name: 'Measure', exact: true }).click();
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
     const a = await toStuds(page, box.x + 100, box.y + 100);
     const b = await toStuds(page, box.x + 300, box.y + 100);

@@ -124,8 +124,8 @@ export function PartListDialog({ map, parts, limits, layoutTitle, onClose }: Pro
           Include hidden layers
         </label>
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft">Cancel</button>
-          <button onClick={() => void exportList()} disabled={busy} className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50">
+          <button onClick={onClose} className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft">Cancel</button>
+          <button onClick={() => void exportList()} disabled={busy} className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50">
             Export
           </button>
         </div>

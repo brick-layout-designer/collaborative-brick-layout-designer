@@ -52,7 +52,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="rounded-sm p-1 text-muted hover:bg-soft"
+            className="rounded-lg p-1 text-muted hover:bg-soft"
           >
             ✕
           </button>
@@ -60,12 +60,12 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
 
         {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && list.data.modules.length === 0 && (
-          <p className="rounded-sm border border-dashed border-line p-4 text-muted">
+          <p className="rounded-lg border border-dashed border-line p-4 text-muted">
             No saved modules yet. Create one from the Library page.
           </p>
         )}
         {list.data && list.data.modules.length > 0 && (
-          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-sm border border-line">
+          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {list.data.modules.map((m) => (
               <li
                 key={m.id}
@@ -80,7 +80,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
                 <button
                   onClick={() => insert.mutate(m.id)}
                   disabled={insert.isPending}
-                  className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover disabled:opacity-50"
+                  className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover disabled:opacity-50"
                 >
                   Insert
                 </button>
@@ -90,7 +90,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         )}
 
         {error && (
-          <p className="rounded-sm border border-red-900 bg-red-950/30 p-2 text-xs text-red-300">
+          <p className="rounded-lg border border-red-900 bg-red-950/30 p-2 text-xs text-red-300">
             {error}
           </p>
         )}

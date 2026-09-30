@@ -86,7 +86,7 @@ export function FloatingPanel({ panelId, title, pos, onMove, onPosChange, childr
         minWidth: MIN_W,
         minHeight: MIN_H,
       }}
-      className="rounded-sm border border-border bg-panel shadow-2xl"
+      className="rounded-lg border border-border bg-panel shadow-2xl"
     >
       {/* Title bar */}
       <header
@@ -99,7 +99,7 @@ export function FloatingPanel({ panelId, title, pos, onMove, onPosChange, childr
           <button
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => onMove(panelId, 'hidden')}
-            className="rounded-sm px-1 py-0.5 text-[10px] leading-none hover:bg-soft"
+            className="rounded-lg px-1 py-0.5 text-[10px] leading-none hover:bg-soft"
             title="Close"
           >
             ✕
@@ -140,14 +140,14 @@ function FloatMenu({
       <button
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => setOpen((v) => !v)}
-        className="rounded-sm px-1.5 py-0.5 text-[10px] hover:bg-soft"
+        className="rounded-lg px-1.5 py-0.5 text-[10px] hover:bg-soft"
         title="Dock or hide"
       >
         ⋯
       </button>
       {open && (
         <ul
-          className="absolute right-0 top-full z-20 mt-1 w-36 rounded-sm border border-border bg-panel text-xs shadow-sm"
+          className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-border bg-panel text-xs shadow-sm"
           onClick={() => setOpen(false)}
         >
           {targets.map((t) => (

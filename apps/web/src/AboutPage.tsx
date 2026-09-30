@@ -25,7 +25,7 @@ export function AboutPage() {
       ) : (
         <header className="flex items-center justify-between border-b border-line pb-4">
           <Link to="/" className="flex items-center gap-2 text-2xl font-semibold hover:underline">
-            <img src="/logo.png" alt="" className="h-8 w-8 rounded-sm" />
+            <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg" />
             Collaborative Brick Layout Designer
           </Link>
           <nav className="flex items-center gap-4 text-sm">

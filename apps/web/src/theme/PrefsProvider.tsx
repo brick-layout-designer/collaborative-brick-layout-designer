@@ -31,6 +31,14 @@ interface PrefsContextValue {
 
 const PrefsContext = createContext<PrefsContextValue | null>(null);
 
+const FALLBACK: PrefsContextValue = {
+  prefs: DEFAULT_PREFERENCES,
+  mode: 'light',
+  setPrefs: () => {},
+  syncedToAccount: false,
+  updatedAt: null,
+};
+
 function sameAsDefaults(p: Preferences): boolean {
   return JSON.stringify(p) === JSON.stringify(DEFAULT_PREFERENCES);
 }
@@ -114,7 +122,6 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
 }
 
 export function usePreferences(): PrefsContextValue {
-  const ctx = useContext(PrefsContext);
-  if (!ctx) throw new Error('usePreferences outside PrefsProvider');
-  return ctx;
+  // Outside the provider (isolated component tests) the defaults apply.
+  return useContext(PrefsContext) ?? FALLBACK;
 }

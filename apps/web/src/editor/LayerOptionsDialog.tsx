@@ -46,8 +46,8 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
 
   const rowCls = 'flex items-center justify-between gap-4 py-1.5';
   const labelCls = 'text-xs text-muted w-40 shrink-0';
-  const inputCls = 'flex-1 rounded-sm border border-border bg-soft px-2 py-1 text-xs';
-  const colorCls = 'h-7 w-12 cursor-pointer rounded-sm border border-border bg-soft p-0.5';
+  const inputCls = 'flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs';
+  const colorCls = 'h-7 w-12 cursor-pointer rounded-lg border border-border bg-soft p-0.5';
   const sectionCls = 'mt-3 border-t border-line pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted';
   const num = (v: string, fallback: number) => {
     const n = parseFloat(v);
@@ -161,12 +161,12 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
         </div>
 
         <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
-          <button onClick={onClose} className="rounded-sm px-3 py-1.5 text-xs text-muted hover:bg-soft">
+          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft">
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover"
           >
             OK
           </button>

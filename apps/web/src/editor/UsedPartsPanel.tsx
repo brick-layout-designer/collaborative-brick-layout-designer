@@ -111,7 +111,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
           aria-label="Filter used parts"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded-sm border border-border bg-soft px-2 py-0.5 text-xs outline-hidden placeholder:text-neutral-600"
+          className="w-full rounded-lg border border-border bg-soft px-2 py-0.5 text-xs outline-hidden placeholder:text-neutral-600"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
@@ -169,7 +169,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[160px] rounded-sm border border-border bg-panel py-1 shadow-lg"
+          className="min-w-[160px] rounded-lg border border-border bg-panel py-1 shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
         >
           <button

@@ -113,7 +113,7 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="My module"
-              className="w-full rounded-sm border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent"
             />
           </div>
           {error && <p className="text-xs text-danger">{error}</p>}
@@ -121,14 +121,14 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-sm px-3 py-1.5 text-xs text-muted hover:bg-soft"
+              className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={save.isPending}
-              className="rounded-sm bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+              className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
             >
               {save.isPending ? 'Saving…' : 'Save'}
             </button>

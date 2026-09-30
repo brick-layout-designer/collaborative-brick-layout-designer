@@ -66,7 +66,7 @@ export function DevicePage() {
         <p className="text-sm text-muted">Sign in to approve the desktop app's request.</p>
         <Link
           to={`/login?next=${encodeURIComponent(next)}`}
-          className="inline-block rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover"
+          className="inline-block rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover"
         >
           Sign in
         </Link>
@@ -114,14 +114,14 @@ export function DevicePage() {
           <button
             onClick={() => decide.mutate(true)}
             disabled={decide.isPending}
-            className="rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
           >
             Approve
           </button>
           <button
             onClick={() => decide.mutate(false)}
             disabled={decide.isPending}
-            className="rounded-sm border border-border px-4 py-2 text-sm hover:bg-soft disabled:opacity-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft disabled:opacity-50"
           >
             Deny
           </button>
@@ -150,12 +150,12 @@ export function DevicePage() {
           autoComplete="off"
           spellCheck={false}
           maxLength={12}
-          className="w-full rounded-sm border border-border bg-soft px-3 py-2 text-center font-mono text-lg uppercase tracking-widest"
+          className="w-full rounded-lg border border-border bg-soft px-3 py-2 text-center font-mono text-lg uppercase tracking-widest"
         />
         <button
           type="submit"
           disabled={lookup.isPending || !code.trim()}
-          className="w-full rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
+          className="w-full rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
         >
           Continue
         </button>

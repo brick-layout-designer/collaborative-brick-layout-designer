@@ -49,19 +49,19 @@ export function GeneralInfoDialog({ map, doc, onClose }: Props) {
           <input
             value={author}
             onChange={(e) => setAuthor(e.target.value)}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">LUG:</label>
           <input
             value={lug}
             onChange={(e) => setLug(e.target.value)}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">Event:</label>
           <input
             value={event}
             onChange={(e) => setEventValue(e.target.value)}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">Date:</label>
           <div className="flex items-center gap-1">
@@ -76,19 +76,19 @@ export function GeneralInfoDialog({ map, doc, onClose }: Props) {
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={4}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
           >
             OK
           </button>
@@ -122,7 +122,7 @@ function NumberInput({
         const n = parseInt(e.target.value, 10);
         if (Number.isFinite(n)) setValue(n);
       }}
-      className="w-16 rounded-sm border border-border bg-soft px-2 py-1"
+      className="w-16 rounded-lg border border-border bg-soft px-2 py-1"
     />
   );
 }

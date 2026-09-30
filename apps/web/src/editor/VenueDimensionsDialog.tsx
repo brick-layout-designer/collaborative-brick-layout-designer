@@ -55,7 +55,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
   const [rectW, setRectW] = useState('30.00');
   const [rectD, setRectD] = useState('20.00');
 
-  const inputCls = 'rounded-sm border border-border bg-soft px-2 py-1 text-xs';
+  const inputCls = 'rounded-lg border border-border bg-soft px-2 py-1 text-xs';
   const labelCls = 'text-xs text-muted';
 
   function patchSeg(i: number, patch: Partial<Segment>) {
@@ -168,7 +168,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
           </label>
         </div>
 
-        <div className="overflow-auto rounded-sm border border-line">
+        <div className="overflow-auto rounded-lg border border-line">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-line text-left text-muted">
@@ -190,14 +190,14 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                       step="0.01"
                       value={seg.length}
                       onChange={(e) => patchSeg(i, { length: e.target.value })}
-                      className="w-24 rounded-sm border border-border bg-soft px-1 py-0.5"
+                      className="w-24 rounded-lg border border-border bg-soft px-1 py-0.5"
                     />
                   </td>
                   <td className="px-2 py-1">
                     <select
                       value={seg.angle}
                       onChange={(e) => patchSeg(i, { angle: e.target.value })}
-                      className="rounded-sm border border-border bg-soft px-1 py-0.5"
+                      className="rounded-lg border border-border bg-soft px-1 py-0.5"
                     >
                       {ANGLE_PRESETS.map((p) => (
                         <option key={p.label} value={p.label}>{p.label}</option>
@@ -208,7 +208,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                     <select
                       value={seg.kind}
                       onChange={(e) => patchSeg(i, { kind: Number(e.target.value) as 0 | 1 | 2 })}
-                      className="rounded-sm border border-border bg-soft px-1 py-0.5"
+                      className="rounded-lg border border-border bg-soft px-1 py-0.5"
                     >
                       {EDGE_KINDS.map((k, v) => (
                         <option key={v} value={v}>{k}</option>
@@ -219,7 +219,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                     <input
                       value={seg.label}
                       onChange={(e) => patchSeg(i, { label: e.target.value })}
-                      className="w-full rounded-sm border border-border bg-soft px-1 py-0.5"
+                      className="w-full rounded-lg border border-border bg-soft px-1 py-0.5"
                     />
                   </td>
                 </tr>
@@ -230,53 +230,53 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
 
         <div className="flex gap-2">
           <button type="button" onClick={addSegment}
-            className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft">
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft">
             Add segment
           </button>
           <button type="button" onClick={removeLast}
-            className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft">
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft">
             Remove last
           </button>
           <button type="button" onClick={() => setShowRectPreset(true)}
-            className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft"
             title="Quickly fill four segments for a W × D rectangle">
             Rectangle preset…
           </button>
         </div>
 
         {showRectPreset && (
-          <div className="rounded-sm border border-border bg-soft/60 p-3 space-y-2">
+          <div className="rounded-lg border border-border bg-soft/60 p-3 space-y-2">
             <p className="text-xs font-semibold">Rectangle preset</p>
             <div className="flex flex-wrap gap-3">
               <label className="flex items-center gap-1.5 text-xs">
                 Width (E-W, ft):
                 <input type="number" min="0" step="0.01" value={rectW}
                   onChange={(e) => setRectW(e.target.value)}
-                  className="w-20 rounded-sm border border-border bg-panel px-1 py-0.5" />
+                  className="w-20 rounded-lg border border-border bg-panel px-1 py-0.5" />
               </label>
               <label className="flex items-center gap-1.5 text-xs">
                 Depth (N-S, ft):
                 <input type="number" min="0" step="0.01" value={rectD}
                   onChange={(e) => setRectD(e.target.value)}
-                  className="w-20 rounded-sm border border-border bg-panel px-1 py-0.5" />
+                  className="w-20 rounded-lg border border-border bg-panel px-1 py-0.5" />
               </label>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={applyRectPreset}
-                className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover">Apply</button>
+                className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover">Apply</button>
               <button type="button" onClick={() => setShowRectPreset(false)}
-                className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft">Cancel</button>
+                className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft">Cancel</button>
             </div>
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose}
-            className="rounded-sm border border-border px-4 py-1.5 text-sm hover:bg-soft">
+            className="rounded-lg border border-border px-4 py-1.5 text-sm hover:bg-soft">
             Cancel
           </button>
           <button type="submit"
-            className="rounded-sm bg-accent text-accent-ink px-4 py-1.5 text-sm hover:bg-accent-hover">
+            className="rounded-lg bg-accent text-accent-ink px-4 py-1.5 text-sm hover:bg-accent-hover">
             OK
           </button>
         </div>

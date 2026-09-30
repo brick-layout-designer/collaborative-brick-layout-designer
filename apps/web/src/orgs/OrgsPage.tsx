@@ -22,7 +22,7 @@ export function OrgsPage() {
           {!me.data.user.isDemoAccount && (
             <button
               onClick={() => setShowCreate(true)}
-              className="rounded-sm bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
+              className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
             >
               New org
             </button>
@@ -31,11 +31,11 @@ export function OrgsPage() {
 
         {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && (list.data.orgs.length === 0 ? (
-          <p className="rounded-sm border border-dashed border-border p-8 text-center text-muted">
+          <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
             You're not a member of any organizations yet.
           </p>
         ) : (
-          <ul className="divide-y divide-line rounded-sm border border-line">
+          <ul className="divide-y divide-line rounded-lg border border-line">
             {list.data.orgs.map((o) => (
               <li key={o.id} className="flex items-center justify-between px-4 py-3">
                 <div>
@@ -48,7 +48,7 @@ export function OrgsPage() {
                 </div>
                 <Link
                   to={`/orgs/${o.slug}`}
-                  className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+                  className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
                 >
                   Open
                 </Link>
@@ -115,7 +115,7 @@ function CreateOrgDialog({ onClose }: { onClose: () => void }) {
             onChange={(e) => setName(e.target.value)}
             required
             placeholder="Acme Bricks"
-            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
           />
           {/* Slug is auto-derived from the name and kept read-only —
               users found the manual two-field form annoying, and the
@@ -130,14 +130,14 @@ function CreateOrgDialog({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
+            className="rounded-lg border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending || name.trim().length === 0}
-            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>

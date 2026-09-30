@@ -90,7 +90,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
           <select
             value={scope}
             onChange={(e) => { setScope(e.target.value as FindScope); setCurrent(0); }}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           >
             <option value="text">Text content</option>
             <option value="part">Part number</option>
@@ -113,7 +113,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
             value={needle}
             onChange={(e) => { setNeedle(e.target.value); setCurrent(0); }}
             placeholder="Search…"
-            className="flex-1 rounded-sm border border-border bg-soft px-2 py-1 text-sm"
+            className="flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-sm"
           />
         </div>
 
@@ -124,27 +124,27 @@ export function FindDialog({ map, doc, onClose }: Props) {
             value={replacement}
             onChange={(e) => setReplacement(e.target.value)}
             placeholder={scope === 'part' ? 'New part-number text…' : 'Replacement…'}
-            className="flex-1 rounded-sm border border-border bg-soft px-2 py-1 text-sm"
+            className="flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-sm"
           />
           <button
             onClick={replaceCurrent}
             disabled={cur < 0}
             title="Replace the current (highlighted) match"
-            className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft disabled:opacity-40"
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft disabled:opacity-40"
           >
             Replace
           </button>
           <button
             onClick={replaceAll}
             disabled={!needle.trim() || hits.length === 0}
-            className="rounded-sm bg-accent px-3 py-1 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-40"
+            className="rounded-lg bg-accent px-3 py-1 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-40"
           >
             Replace all
           </button>
         </div>
 
         {/* Results */}
-        <div className="mt-3 max-h-64 min-h-24 overflow-y-auto rounded-sm border border-line">
+        <div className="mt-3 max-h-64 min-h-24 overflow-y-auto rounded-lg border border-line">
           {needle.trim() === '' ? (
             <p className="p-2 text-xs text-muted">Type a query above.</p>
           ) : hits.length === 0 ? (
@@ -177,7 +177,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
           <span>{hits.length} match{hits.length === 1 ? '' : 'es'}</span>
           <button
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Close
           </button>

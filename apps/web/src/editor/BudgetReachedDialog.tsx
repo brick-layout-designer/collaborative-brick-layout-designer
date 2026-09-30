@@ -27,7 +27,7 @@ export function BudgetReachedDialog({ onClose }: { onClose: () => void }) {
           Don't show this message again
         </label>
         <div className="mt-4 flex justify-end">
-          <button autoFocus onClick={close} className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover">
+          <button autoFocus onClick={close} className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover">
             OK
           </button>
         </div>

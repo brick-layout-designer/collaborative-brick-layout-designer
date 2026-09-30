@@ -209,7 +209,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
         <h2 className="mb-4 text-sm font-semibold text-ink">Export / Print</h2>
 
         {/* Mode toggle */}
-        <div className="mb-4 flex rounded-sm border border-border text-xs">
+        <div className="mb-4 flex rounded-lg border border-border text-xs">
           {(['image', 'print', 'pdf'] as const).map((m) => (
             <button
               key={m}
@@ -233,7 +233,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   max={MAX_CANVAS_SIDE}
                   value={width}
                   onChange={(e) => setWidth(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                  className="w-24 rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                  className="w-24 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </label>
               <label className="flex items-center gap-2 text-xs text-muted">
@@ -257,7 +257,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   value={height}
                   disabled={keepAspect}
                   onChange={(e) => setCustomHeight(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                  className="w-24 rounded-sm border border-border bg-soft px-2 py-1 text-xs disabled:opacity-50"
+                  className="w-24 rounded-lg border border-border bg-soft px-2 py-1 text-xs disabled:opacity-50"
                 />
               </label>
               {scene && (
@@ -268,7 +268,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                       <button
                         key={k}
                         onClick={() => setScale(k)}
-                        className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft"
+                        className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft"
                         title={`${Math.round(scene.width * k)} × ${Math.round(scene.height * k)} px`}
                       >
                         {k}×
@@ -285,7 +285,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 <select
                   value={format}
                   onChange={(e) => setFormat(e.target.value as 'png' | 'jpeg')}
-                  className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   <option value="png">PNG</option>
                   <option value="jpeg">JPEG</option>
@@ -345,7 +345,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 <select
                   value={paperKey}
                   onChange={(e) => setPaperKey(e.target.value)}
-                  className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   {Object.entries(PAPER_SIZES).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
@@ -357,7 +357,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 <select
                   value={dpi}
                   onChange={(e) => setDpi(Number(e.target.value))}
-                  className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   <option value={96}>96 (screen)</option>
                   <option value={150}>150 (draft print)</option>
@@ -374,7 +374,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   max={50}
                   step={1}
                   onChange={(e) => setMarginMm(Math.max(0, Number(e.target.value)))}
-                  className="w-20 rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </label>
               <label className="flex items-center justify-between gap-2">
@@ -386,7 +386,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   max={50}
                   step={1}
                   onChange={(e) => setOverlapMm(Math.max(0, Number(e.target.value)))}
-                  className="w-20 rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </label>
               <p className="text-xs text-neutral-300" data-testid="print-pages">
@@ -404,14 +404,14 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm px-3 py-1.5 text-xs text-muted hover:bg-soft"
+            className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={mode === 'image' ? doExportImage : mode === 'print' ? doTiledPrint : doExportPdf}
             disabled={exporting || (mode === 'image' && !sizeValid)}
-            className="rounded-sm bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {exporting ? 'Working…' : mode === 'image' ? `Export ${format === 'jpeg' ? 'JPEG' : 'PNG'}` : mode === 'print' ? 'Open Print Preview' : 'Export PDF'}
           </button>

@@ -23,7 +23,7 @@ export function LoginPage() {
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
-        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-sm" />
+        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
         <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
 
         <div className="space-y-2">
@@ -33,7 +33,7 @@ export function LoginPage() {
               <a
                 key={p.id}
                 href={`/api/auth/${p.id}`}
-                className="block rounded-sm border border-border px-4 py-2 text-center hover:bg-soft"
+                className="block rounded-lg border border-border px-4 py-2 text-center hover:bg-soft"
               >
                 Continue with {p.label}
               </a>
@@ -116,7 +116,7 @@ function PasswordForm({ next }: { next: string }) {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        className="w-full rounded-sm border border-border bg-soft px-3 py-2"
+        className="w-full rounded-lg border border-border bg-soft px-3 py-2"
       />
       <input
         type="password"
@@ -126,7 +126,7 @@ function PasswordForm({ next }: { next: string }) {
         onChange={(e) => setPassword(e.target.value)}
         required
         minLength={8}
-        className="w-full rounded-sm border border-border bg-soft px-3 py-2"
+        className="w-full rounded-lg border border-border bg-soft px-3 py-2"
       />
       {error && (
         <div className="text-sm text-danger">
@@ -146,7 +146,7 @@ function PasswordForm({ next }: { next: string }) {
       <button
         type="submit"
         disabled={mutation.isPending}
-        className="w-full rounded-sm bg-accent text-accent-ink py-2 hover:bg-accent-hover disabled:opacity-50"
+        className="w-full rounded-lg bg-accent text-accent-ink py-2 hover:bg-accent-hover disabled:opacity-50"
       >
         {mode === 'login' ? 'Sign in' : 'Create account'}
       </button>

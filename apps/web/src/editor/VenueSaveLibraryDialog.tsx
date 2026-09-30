@@ -23,7 +23,7 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
     onSave(target === 'personal' ? undefined : target, n);
   }
 
-  const inputCls = 'w-full rounded-sm border border-border bg-soft px-2 py-1.5 text-sm';
+  const inputCls = 'w-full rounded-lg border border-border bg-soft px-2 py-1.5 text-sm';
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
@@ -58,13 +58,13 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-border px-4 py-1.5 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-4 py-1.5 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-sm bg-accent text-accent-ink px-4 py-1.5 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-1.5 text-sm hover:bg-accent-hover"
           >
             Save
           </button>

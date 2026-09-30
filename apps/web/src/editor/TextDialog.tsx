@@ -63,13 +63,13 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
             onChange={(e) => setText(e.target.value)}
             rows={3}
             autoFocus
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">Font:</label>
           <input
             value={fontFamily}
             onChange={(e) => setFontFamily(e.target.value)}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">Size:</label>
           <input
@@ -81,7 +81,7 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
             }}
             min={1}
             step={1}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">Style:</label>
           <div className="flex items-center gap-3 text-xs">
@@ -113,21 +113,21 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
               if (Number.isFinite(n)) setRotation(n);
             }}
             step={1}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
         </div>
         <div className="mt-5 flex justify-end gap-2">
           {onDelete && (
             <button
               onClick={onDelete}
-              className="mr-auto rounded-sm border border-red-900 px-3 py-1 text-sm text-red-300 hover:bg-red-950/40"
+              className="mr-auto rounded-lg border border-red-900 px-3 py-1 text-sm text-red-300 hover:bg-red-950/40"
             >
               Delete
             </button>
           )}
           <button
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
@@ -144,7 +144,7 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
                 rotation,
               })
             }
-            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-30"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-30"
           >
             OK
           </button>

@@ -38,7 +38,7 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   const createButton = isViewer ? null : (
     <button
       onClick={() => createModuleFromSelection(doc)}
-      className="rounded-sm border border-border px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-soft"
+      className="rounded-lg border border-border px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-soft"
       title="Register the selected bricks as a module"
     >
       + From selection
@@ -228,7 +228,7 @@ function ModuleRow({
             else if (e.key === 'Escape') { setDraft(module.name); setRenaming(false); }
           }}
           onBlur={commitRename}
-          className="w-full rounded-sm border border-border bg-soft px-1 py-0.5 text-xs"
+          className="w-full rounded-lg border border-border bg-soft px-1 py-0.5 text-xs"
         />
       ) : (
         <>
@@ -251,7 +251,7 @@ function ModuleRow({
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[170px] rounded-sm border border-border bg-panel py-1 text-xs shadow-lg"
+          className="min-w-[170px] rounded-lg border border-border bg-panel py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -272,7 +272,7 @@ function ModuleRow({
             <button className="block w-full px-3 py-1 text-left hover:bg-neutral-700">
               Rotate ▸
             </button>
-            <div className="absolute left-full top-0 hidden min-w-[100px] rounded-sm border border-border bg-panel py-1 shadow-lg group-hover:block">
+            <div className="absolute left-full top-0 hidden min-w-[100px] rounded-lg border border-border bg-panel py-1 shadow-lg group-hover:block">
               {([-90, -45, 45, 90, 180] as const).map((deg) => (
                 <button
                   key={deg}
@@ -391,7 +391,7 @@ function ModuleMoveDialog({
             value={dx}
             onChange={(e) => setDx(e.target.value)}
             autoFocus
-            className="w-full rounded-sm border border-border bg-soft px-3 py-1.5 text-sm"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm"
           />
         </label>
         <label className="block">
@@ -401,20 +401,20 @@ function ModuleMoveDialog({
             step="0.5"
             value={dy}
             onChange={(e) => setDy(e.target.value)}
-            className="w-full rounded-sm border border-border bg-soft px-3 py-1.5 text-sm"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm"
           />
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-sm bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
           >
             Move
           </button>

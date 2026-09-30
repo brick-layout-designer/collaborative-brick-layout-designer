@@ -86,7 +86,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
     setSaving(venue);
   }
 
-  const btn = 'rounded-sm border border-border px-2 py-0.5 hover:bg-neutral-700 disabled:opacity-40';
+  const btn = 'rounded-lg border border-border px-2 py-0.5 hover:bg-neutral-700 disabled:opacity-40';
 
   return (
     <div className="flex h-full flex-col text-xs">
@@ -95,7 +95,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
           placeholder="Filter venues…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+          className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
       </div>
 

@@ -126,15 +126,15 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
       <div className="flex gap-2 border-b border-line px-3 py-2">
         {/* The budget lives in the layout, so desktop's New and Close both mean: no limits. */}
         <button onClick={handleNew} title="Remove every limit (desktop New / Close Budget)"
-          className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft">New</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">New</button>
         <button onClick={handleOpen}
-          className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft">Open…</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">Open…</button>
         <button onClick={handleMerge} title="Add the limits of another budget file to the current budget"
-          className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft">Import and Merge…</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">Import and Merge…</button>
         <button onClick={handleSave}
-          className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft">Save…</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">Save…</button>
         <button onClick={() => setRefreshKey((k) => k + 1)}
-          className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft" title="Re-count parts from current map">Refresh</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft" title="Re-count parts from current map">Refresh</button>
       </div>
 
       {/* Table */}
@@ -169,7 +169,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
                       placeholder="—"
                       value={limit >= 0 ? limit : ''}
                       onChange={(e) => setLimit(limitKey ?? part, e.target.value)}
-                      className="w-20 rounded-sm border border-border bg-soft px-1 py-0.5 text-xs"
+                      className="w-20 rounded-lg border border-border bg-soft px-1 py-0.5 text-xs"
                     />
                   </td>
                 </tr>

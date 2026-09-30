@@ -85,7 +85,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
 
   const rowCls = 'flex items-center justify-between gap-4 py-1';
   const labelCls = 'text-xs text-muted w-36 shrink-0';
-  const inputCls = 'flex-1 rounded-sm border border-border bg-soft px-2 py-1 text-xs';
+  const inputCls = 'flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs';
 
   return (
     <div
@@ -146,7 +146,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
                 setColorArgb(`FF${e.target.value.slice(1).toUpperCase()}`);
                 setColorTouched(true);
               }}
-              className="h-7 w-12 cursor-pointer rounded-sm border border-border bg-soft p-0.5"
+              className="h-7 w-12 cursor-pointer rounded-lg border border-border bg-soft p-0.5"
             />
           </div>
 
@@ -206,18 +206,18 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
                 deleteAnchoredLabel(doc, initialLabel.id);
                 onClose();
               }}
-              className="mr-auto rounded-sm border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40"
+              className="mr-auto rounded-lg border border-red-900 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40"
             >
               Delete
             </button>
           )}
-          <button onClick={onClose} className="rounded-sm px-3 py-1.5 text-xs text-muted hover:bg-soft">
+          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft">
             Cancel
           </button>
           <button
             onClick={commit}
             disabled={!text.trim()}
-            className="rounded-sm bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {isEdit ? 'Save' : 'Add Label'}
           </button>

@@ -112,7 +112,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           Edit {item.kind === 'linear' ? 'linear' : 'circular'} ruler
         </h2>
 
-        <fieldset className="mt-4 space-y-2 rounded-sm border border-line p-3 text-sm">
+        <fieldset className="mt-4 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Line</legend>
           <Row label="Colour">
             <ColorAlphaInput label="Line colour" value={color} onChange={setColor} />
@@ -122,7 +122,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           </Row>
         </fieldset>
 
-        <fieldset className="mt-3 space-y-2 rounded-sm border border-line p-3 text-sm">
+        <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Distance</legend>
           <Row label="Show distance">
             <input
@@ -142,7 +142,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             <select
               value={unit}
               onChange={(e) => setUnit(parseInt(e.target.value, 10))}
-              className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+              className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
             >
               {UNITS.map((u) => (
                 <option key={u.value} value={u.value}>
@@ -153,13 +153,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           </Row>
         </fieldset>
 
-        <fieldset className="mt-3 space-y-2 rounded-sm border border-line p-3 text-sm">
+        <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Label</legend>
           <Row label="Font">
             <input
               value={fontFamily}
               onChange={(e) => setFontFamily(e.target.value)}
-              className="rounded-sm border border-border bg-soft px-2 py-1"
+              className="rounded-lg border border-border bg-soft px-2 py-1"
             />
           </Row>
           <Row label="Size">
@@ -182,7 +182,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           </Row>
         </fieldset>
 
-        <fieldset className="mt-3 space-y-2 rounded-sm border border-line p-3 text-sm">
+        <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Guidelines</legend>
           <Row label="Colour">
             <ColorAlphaInput label="Guideline colour" value={guidelineColor} onChange={setGuidelineColor} />
@@ -199,13 +199,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             <input
               value={dashCsv}
               onChange={(e) => setDashCsv(e.target.value)}
-              className="w-32 rounded-sm border border-border bg-soft px-2 py-1"
+              className="w-32 rounded-lg border border-border bg-soft px-2 py-1"
             />
           </Row>
         </fieldset>
 
         {linear && (
-          <fieldset className="mt-3 space-y-2 rounded-sm border border-line p-3 text-sm">
+          <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
             <legend className="px-1 text-xs uppercase tracking-wider text-muted">Linear</legend>
             <Row label="Allow offset">
               <input
@@ -224,7 +224,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               <button
                 disabled={!linear.attachedBrick1Id}
                 onClick={() => detachEndpoint(0)}
-                className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+                className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
               >
                 Detach
               </button>
@@ -236,7 +236,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               <button
                 disabled={!linear.attachedBrick2Id}
                 onClick={() => detachEndpoint(1)}
-                className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+                className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
               >
                 Detach
               </button>
@@ -245,7 +245,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
         )}
 
         {circular && (
-          <fieldset className="mt-3 space-y-2 rounded-sm border border-line p-3 text-sm">
+          <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
             <legend className="px-1 text-xs uppercase tracking-wider text-muted">Circular</legend>
             <Row label="Radius (studs)">
               <NumberField value={radius} setValue={setRadius} step={0.5} min={0} />
@@ -257,7 +257,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               <button
                 disabled={!circular.attachedBrickId}
                 onClick={() => detachEndpoint(0)}
-                className="rounded-sm border border-border px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+                className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
               >
                 Detach
               </button>
@@ -268,13 +268,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
           >
             OK
           </button>
@@ -314,7 +314,7 @@ function NumberField({
         const n = parseFloat(e.target.value);
         if (Number.isFinite(n)) setValue(n);
       }}
-      className="w-24 rounded-sm border border-border bg-soft px-2 py-1"
+      className="w-24 rounded-lg border border-border bg-soft px-2 py-1"
     />
   );
 }

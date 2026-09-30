@@ -134,7 +134,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
                     type="number"
                     value={rect[k]}
                     onChange={(e) => setRect((r) => ({ ...r, [k]: parseFloat(e.target.value) || 0 }))}
-                    className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
+                    className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                   />
                 </label>
               ))}
@@ -149,7 +149,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
             <button
               onClick={remove}
               disabled={busy}
-              className="rounded-sm border border-red-900 px-3 py-1 text-xs text-danger hover:bg-red-950 disabled:opacity-50"
+              className="rounded-lg border border-red-900 px-3 py-1 text-xs text-danger hover:bg-red-950 disabled:opacity-50"
             >
               Remove image
             </button>
@@ -157,14 +157,14 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
-              className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft"
+              className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft"
             >
               Cancel
             </button>
             <button
               onClick={commit}
               disabled={busy || (!file && !existing)}
-              className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover disabled:opacity-50"
+              className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'OK'}
             </button>

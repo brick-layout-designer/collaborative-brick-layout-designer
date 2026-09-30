@@ -53,12 +53,12 @@ export function ProfilePage() {
                   value={draftName}
                   onChange={(e) => setDraftName(e.target.value)}
                   maxLength={60}
-                  className="rounded-sm border border-border bg-soft px-2 py-1 text-xl font-semibold"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xl font-semibold"
                 />
                 <button
                   type="submit"
                   disabled={saveName.isPending || draftName.trim() === ''}
-                  className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50"
+                  className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50"
                 >
                   Save
                 </button>
@@ -93,7 +93,7 @@ export function ProfilePage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Linked sign-in methods
           </h2>
-          <ul className="rounded-sm border border-line">
+          <ul className="rounded-lg border border-line">
             {providers.data?.providers.map((p) => {
               const linked = user.linkedProviders.includes(p.id);
               return (

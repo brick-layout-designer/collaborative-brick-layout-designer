@@ -46,7 +46,7 @@ export function AdminPage() {
       <div className="mt-6">
         <h1 className="text-base font-semibold">
           Platform admin
-          <span className="ml-2 rounded-sm bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
+          <span className="ml-2 rounded-lg bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
             Restricted
           </span>
         </h1>
@@ -223,7 +223,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                               revokeSessions.mutate(u.id);
                             }
                           }}
-                          className="rounded-sm border border-border px-2 py-0.5 hover:bg-soft"
+                          className="rounded-lg border border-border px-2 py-0.5 hover:bg-soft"
                         >
                           Sign out
                         </button>
@@ -238,7 +238,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                               removeUser.mutate(u.id);
                             }
                           }}
-                          className="rounded-sm border border-red-900 px-2 py-0.5 text-red-300 hover:bg-red-900/40 disabled:opacity-30"
+                          className="rounded-lg border border-red-900 px-2 py-0.5 text-red-300 hover:bg-red-900/40 disabled:opacity-30"
                         >
                           Delete
                         </button>
@@ -410,7 +410,7 @@ function OrgsTab() {
                           removeOrg.mutate(o.id);
                         }
                       }}
-                      className="rounded-sm border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
+                      className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
                     >
                       Delete
                     </button>
@@ -560,7 +560,7 @@ function LayoutsTab() {
                           removeLayout.mutate(l.id);
                         }
                       }}
-                      className="rounded-sm border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
+                      className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
                     >
                       Delete
                     </button>
@@ -600,7 +600,7 @@ function Toolbar({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={placeholder}
-        className="w-72 rounded-sm border border-border bg-panel px-3 py-1.5 text-sm"
+        className="w-72 rounded-lg border border-border bg-panel px-3 py-1.5 text-sm"
       />
       <span className="text-xs text-muted">
         {start}–{end} of {total.toLocaleString()}
@@ -609,14 +609,14 @@ function Toolbar({
         <button
           onClick={() => setOffset(Math.max(0, offset - limit))}
           disabled={offset === 0}
-          className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30"
+          className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30"
         >
           Prev
         </button>
         <button
           onClick={() => setOffset(offset + limit)}
           disabled={end >= total}
-          className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30"
+          className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30"
         >
           Next
         </button>
@@ -731,14 +731,14 @@ function GlobalPartsTab() {
     <div className="space-y-8">
       <section>
         <h2 className="mb-3 text-sm font-semibold text-neutral-300">Upload global part</h2>
-        <form onSubmit={handleUpload} className="space-y-3 rounded-sm border border-line p-4">
+        <form onSubmit={handleUpload} className="space-y-3 rounded-lg border border-line p-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-xs text-muted">
               Part number
               <input
                 value={form.partNumber}
                 onChange={(e) => setForm((f) => ({ ...f, partNumber: e.target.value }))}
-                className="rounded-sm border border-border bg-panel px-2 py-1 text-ink"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 required
               />
             </label>
@@ -747,7 +747,7 @@ function GlobalPartsTab() {
               <input
                 value={form.displayName}
                 onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-                className="rounded-sm border border-border bg-panel px-2 py-1 text-ink"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 required
               />
             </label>
@@ -763,7 +763,7 @@ function GlobalPartsTab() {
               <select
                 value={form.orgSlug}
                 onChange={(e) => setForm((f) => ({ ...f, orgSlug: e.target.value }))}
-                className="rounded-sm border border-border bg-panel px-2 py-1 text-ink"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
               >
                 <option value="">Global (all users)</option>
                 {(orgs.data?.orgs ?? []).map((o: OrgSummary) => (
@@ -786,7 +786,7 @@ function GlobalPartsTab() {
           <button
             type="submit"
             disabled={uploading}
-            className="rounded-sm bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
+            className="rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
           >
             {uploading ? 'Uploading…' : 'Upload global part'}
           </button>
@@ -1071,7 +1071,7 @@ function PartLibrariesTab() {
     <div className="space-y-8">
 
       {/* ── Base library ── */}
-      <section className="rounded-sm border border-line p-4 space-y-4">
+      <section className="rounded-lg border border-line p-4 space-y-4">
 
         {/* Register on-disk library */}
         <div className="flex items-start justify-between gap-4">
@@ -1083,14 +1083,14 @@ function PartLibrariesTab() {
             </p>
           </div>
           {baseInstalled ? (
-            <span className="shrink-0 rounded-sm bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
+            <span className="shrink-0 rounded-lg bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
               Installed
             </span>
           ) : (
             <button
               onClick={installBase}
               disabled={baseStatus === 'installing'}
-              className="shrink-0 rounded-sm bg-neutral-700 px-3 py-1.5 text-xs font-medium text-ink hover:bg-neutral-600 disabled:opacity-50"
+              className="shrink-0 rounded-lg bg-neutral-700 px-3 py-1.5 text-xs font-medium text-ink hover:bg-neutral-600 disabled:opacity-50"
             >
               {baseStatus === 'installing' ? 'Registering…' : 'Register on-disk library'}
             </button>
@@ -1112,14 +1112,14 @@ function PartLibrariesTab() {
                 </p>
               </div>
               {baseDownloaded ? (
-                <span className="shrink-0 rounded-sm bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
+                <span className="shrink-0 rounded-lg bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
                   Downloaded
                 </span>
               ) : (
                 <button
                   onClick={downloadDefaultLibrary}
                   disabled={dlBaseStatus === 'downloading'}
-                  className="shrink-0 rounded-sm bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
+                  className="shrink-0 rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
                 >
                   {dlBaseStatus === 'downloading' ? 'Downloading…' : 'Download default library'}
                 </button>
@@ -1140,7 +1140,7 @@ function PartLibrariesTab() {
           the desktop app). The server downloads and extracts the zip — no browser upload needed.
         </p>
 
-        <div className="space-y-2 rounded-sm border border-line p-4">
+        <div className="space-y-2 rounded-lg border border-line p-4">
           {/* Source selection */}
           <div className="space-y-1">
             {KNOWN_SOURCES.map((src) => (
@@ -1168,7 +1168,7 @@ function PartLibrariesTab() {
                 onChange={(e) => setCustomUrl(e.target.value)}
                 disabled={!selectedSources.has('custom')}
                 placeholder="https://example.com/parts/"
-                className="ml-1 flex-1 rounded-sm border border-border bg-panel px-2 py-0.5 text-xs disabled:opacity-40"
+                className="ml-1 flex-1 rounded-lg border border-border bg-panel px-2 py-0.5 text-xs disabled:opacity-40"
               />
             </label>
           </div>
@@ -1177,7 +1177,7 @@ function PartLibrariesTab() {
             <button
               onClick={handleSearch}
               disabled={searchStatus === 'searching'}
-              className="rounded-sm bg-neutral-700 px-3 py-1.5 text-xs font-medium text-ink hover:bg-neutral-600 disabled:opacity-50"
+              className="rounded-lg bg-neutral-700 px-3 py-1.5 text-xs font-medium text-ink hover:bg-neutral-600 disabled:opacity-50"
             >
               {searchStatus === 'searching' ? 'Searching…' : 'Search'}
             </button>
@@ -1193,7 +1193,7 @@ function PartLibrariesTab() {
 
           {candidates.length > 0 && (
             <div className="mt-3 space-y-2">
-              <div className="max-h-64 overflow-y-auto rounded-sm border border-border">
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
                 {candidates.map((pkg, idx) => (
                   <label
                     key={pkg.sourceUrl}
@@ -1229,7 +1229,7 @@ function PartLibrariesTab() {
                 <button
                   onClick={handleDownloadSelected}
                   disabled={!anyChecked || anyDownloading}
-                  className="rounded-sm bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
+                  className="rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
                 >
                   {anyDownloading ? 'Installing…' : 'Download & Install selected'}
                 </button>
@@ -1250,20 +1250,20 @@ function PartLibrariesTab() {
             <button
               key={mode}
               onClick={() => setManualMode(mode)}
-              className={`rounded-sm px-3 py-1 text-xs ${manualMode === mode ? 'bg-accent-hover text-accent-ink' : 'border border-border text-muted hover:bg-soft'}`}
+              className={`rounded-lg px-3 py-1 text-xs ${manualMode === mode ? 'bg-accent-hover text-accent-ink' : 'border border-border text-muted hover:bg-soft'}`}
             >
               {mode === 'url' ? 'From URL' : 'Upload zip'}
             </button>
           ))}
         </div>
-        <form onSubmit={handleManualInstall} className="space-y-3 rounded-sm border border-line p-4">
+        <form onSubmit={handleManualInstall} className="space-y-3 rounded-lg border border-line p-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-xs text-muted">
               Library name
               <input
                 value={manualForm.name}
                 onChange={(e) => setManualForm((f) => ({ ...f, name: e.target.value }))}
-                className="rounded-sm border border-border bg-panel px-2 py-1 text-ink"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 placeholder="My Parts Pack"
                 required
               />
@@ -1273,7 +1273,7 @@ function PartLibrariesTab() {
               <input
                 value={manualForm.slug}
                 onChange={(e) => setManualForm((f) => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))}
-                className="rounded-sm border border-border bg-panel px-2 py-1 text-ink"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 placeholder="my-parts-pack"
                 required
               />
@@ -1284,7 +1284,7 @@ function PartLibrariesTab() {
                 <input
                   value={manualForm.sourceUrl}
                   onChange={(e) => setManualForm((f) => ({ ...f, sourceUrl: e.target.value }))}
-                  className="rounded-sm border border-border bg-panel px-2 py-1 text-ink"
+                  className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                   placeholder="https://example.com/MyParts.zip"
                 />
               </label>
@@ -1308,7 +1308,7 @@ function PartLibrariesTab() {
           <button
             type="submit"
             disabled={manualInstalling}
-            className="rounded-sm bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
+            className="rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
           >
             {manualInstalling ? 'Installing…' : 'Install'}
           </button>
@@ -1325,7 +1325,7 @@ function PartLibrariesTab() {
             onClick={() => reloadParts.mutate()}
             disabled={reloadParts.isPending}
             title="Rescan all part library directories without restarting the server"
-            className="rounded-sm border border-border px-2 py-1 text-xs text-neutral-300 hover:bg-soft disabled:opacity-50"
+            className="rounded-lg border border-border px-2 py-1 text-xs text-neutral-300 hover:bg-soft disabled:opacity-50"
           >
             {reloadParts.isPending ? 'Reloading…' : 'Reload parts'}
           </button>
@@ -1348,7 +1348,7 @@ function PartLibrariesTab() {
                     <Td>
                       {lib.name}
                       {lib.locked && (
-                        <span className="ml-2 rounded-sm bg-soft px-1.5 py-0.5 text-[10px] text-muted" title="Always enabled for everyone — cannot be disabled by org admins">
+                        <span className="ml-2 rounded-lg bg-soft px-1.5 py-0.5 text-[10px] text-muted" title="Always enabled for everyone — cannot be disabled by org admins">
                           locked
                         </span>
                       )}
@@ -1468,7 +1468,7 @@ function AuditTab() {
             <button
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - AUDIT_PAGE))}
-              className="rounded-sm border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
+              className="rounded-lg border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
             >
               ← Prev
             </button>
@@ -1478,7 +1478,7 @@ function AuditTab() {
             <button
               disabled={offset + AUDIT_PAGE >= log.data.total}
               onClick={() => setOffset(offset + AUDIT_PAGE)}
-              className="rounded-sm border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
+              className="rounded-lg border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
             >
               Next →
             </button>
@@ -1572,7 +1572,7 @@ function SettingsTab() {
           </span>
         </label>
         {requireVerification && !settings.data.smtp.active && (
-          <p className="rounded-sm border border-amber-900 bg-amber-950/30 p-2 text-xs text-amber-300">
+          <p className="rounded-lg border border-amber-900 bg-amber-950/30 p-2 text-xs text-amber-300">
             No SMTP server is configured below (or in the environment) — verification links
             will only be written to the server log, not emailed.
           </p>
@@ -1606,7 +1606,7 @@ function SettingsTab() {
               value={smtpHost}
               onChange={(e) => setSmtpHost(e.target.value)}
               placeholder="smtp.example.com"
-              className="block w-full rounded-sm border border-border bg-panel px-2 py-1.5 text-sm text-ink"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink"
             />
           </label>
           <label className="space-y-1 text-xs text-muted">
@@ -1617,7 +1617,7 @@ function SettingsTab() {
               onChange={(e) => setSmtpPort(e.target.value)}
               placeholder="587"
               disabled={!usingDbSmtp}
-              className="block w-full rounded-sm border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
           <label className="space-y-1 text-xs text-muted">
@@ -1628,7 +1628,7 @@ function SettingsTab() {
               onChange={(e) => setSmtpFrom(e.target.value)}
               placeholder="noreply@example.com"
               disabled={!usingDbSmtp}
-              className="block w-full rounded-sm border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
           <label className="space-y-1 text-xs text-muted">
@@ -1638,7 +1638,7 @@ function SettingsTab() {
               value={smtpUser}
               onChange={(e) => setSmtpUser(e.target.value)}
               disabled={!usingDbSmtp}
-              className="block w-full rounded-sm border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
           <label className="space-y-1 text-xs text-muted">
@@ -1649,7 +1649,7 @@ function SettingsTab() {
               onChange={(e) => { setSmtpPass(e.target.value); setSmtpPassTouched(true); }}
               disabled={!usingDbSmtp}
               placeholder={settings.data.smtp.passSet ? '•••••••• (set — leave blank to keep)' : '(not set)'}
-              className="block w-full rounded-sm border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
         </div>
@@ -1662,7 +1662,7 @@ function SettingsTab() {
         <button
           onClick={() => { setSaveStatus('saving'); setSaveErr(''); save.mutate(); }}
           disabled={save.isPending}
-          className="rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
+          className="rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
         >
           {save.isPending ? 'Saving…' : 'Save settings'}
         </button>
@@ -1680,7 +1680,7 @@ function Loading() {
 function Forbidden() {
   return (
     <div className="grid min-h-screen place-items-center text-muted">
-      <div className="rounded-sm border border-red-900 bg-red-950/30 p-6 text-center">
+      <div className="rounded-lg border border-red-900 bg-red-950/30 p-6 text-center">
         <p className="font-semibold text-red-300">Forbidden</p>
         <p className="mt-1 text-sm">This page is restricted to platform admins.</p>
         <Link to="/" className="mt-3 inline-block text-sm text-accent-text hover:underline">

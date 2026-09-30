@@ -42,11 +42,11 @@ export function DevicesSection() {
       ) : tokens.isError ? (
         <p className="text-sm text-danger">{(tokens.error as Error).message}</p>
       ) : tokens.data!.tokens.length === 0 ? (
-        <p className="rounded-sm border border-line px-4 py-3 text-sm text-muted">
+        <p className="rounded-lg border border-line px-4 py-3 text-sm text-muted">
           No devices signed in.
         </p>
       ) : (
-        <ul className="rounded-sm border border-line">
+        <ul className="rounded-lg border border-line">
           {tokens.data!.tokens.map((t) => (
             <li
               key={t.id}

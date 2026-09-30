@@ -107,7 +107,7 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
           ))}
         </fieldset>
         {lossy && warn && (
-          <div className="mt-4 rounded-sm border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+          <div className="mt-4 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
             <p>{LOSSY_FORMAT_WARNING}</p>
             <label className="mt-2 flex items-center gap-2">
               <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
@@ -116,16 +116,16 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
           </div>
         )}
         {bbmLeavesOut && (
-          <p className="mt-4 rounded-sm border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+          <p className="mt-4 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
             BlueBrick can&apos;t hold {lost.join(', ')}, so the .bbm leaves them out. Your layout keeps them.
           </p>
         )}
         {error && <p className="mt-3 text-xs text-danger">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft">
+          <button onClick={onClose} className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft">
             Cancel
           </button>
-          <button onClick={() => void onDownload()} disabled={busy} className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50">
+          <button onClick={() => void onDownload()} disabled={busy} className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50">
             {lossy && warn ? 'Download anyway' : 'Download'}
           </button>
         </div>

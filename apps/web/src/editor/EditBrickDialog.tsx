@@ -62,7 +62,7 @@ export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             placeholder={brick.partNumber}
-            className="rounded-sm border border-border bg-soft px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">X (studs):</label>
           <NumberField value={x} setValue={setX} step={0.5} />
@@ -83,13 +83,13 @@ export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
           >
             OK
           </button>
@@ -120,7 +120,7 @@ function NumberField({
         const n = parseFloat(e.target.value);
         if (Number.isFinite(n)) setValue(n);
       }}
-      className="rounded-sm border border-border bg-soft px-2 py-1 disabled:opacity-50"
+      className="rounded-lg border border-border bg-soft px-2 py-1 disabled:opacity-50"
     />
   );
 }

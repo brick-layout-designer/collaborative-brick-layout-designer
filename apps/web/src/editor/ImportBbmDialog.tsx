@@ -93,14 +93,14 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm px-3 py-1.5 text-xs text-muted hover:bg-soft"
+            className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={() => fileRef.current?.click()}
             disabled={importing}
-            className="rounded-sm bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {importing ? 'Importing…' : 'Choose .bbm file…'}
           </button>

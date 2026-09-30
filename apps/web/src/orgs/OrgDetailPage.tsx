@@ -29,7 +29,7 @@ function OrgDetail({ slug }: { slug: string }) {
   if (detail.isError) {
     return (
       <div className="grid h-screen place-items-center">
-        <div className="rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
+        <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
           <p className="font-semibold text-danger">Organization not found.</p>
           <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
         </div>
@@ -55,7 +55,7 @@ function OrgDetail({ slug }: { slug: string }) {
           {isAdmin && (
             <Link
               to={`/orgs/${slug}/admin`}
-              className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-soft"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
             >
               Org settings →
             </Link>
@@ -83,12 +83,12 @@ function OrgDetail({ slug }: { slug: string }) {
           {layouts.isLoading && <p className="text-sm text-muted">Loading…</p>}
           {layouts.data &&
             (layouts.data.layouts.length === 0 ? (
-              <p className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">
+              <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
                 No layouts owned by this org yet. Open a personal layout and use{' '}
                 <em>Transfer</em> to move it here.
               </p>
             ) : (
-              <ul className="divide-y divide-line rounded-sm border border-line">
+              <ul className="divide-y divide-line rounded-lg border border-line">
                 {layouts.data.layouts.map((l) => (
                   <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
                     <div>
@@ -99,7 +99,7 @@ function OrgDetail({ slug }: { slug: string }) {
                     </div>
                     <Link
                       to={`/editor/${l.id}`}
-                      className="rounded-sm bg-accent text-accent-ink px-3 py-1 hover:bg-accent-hover"
+                      className="rounded-lg bg-accent text-accent-ink px-3 py-1 hover:bg-accent-hover"
                     >
                       Open
                     </Link>
@@ -135,7 +135,7 @@ function MembersList({
   members: OrgMemberSummary[];
 }) {
   return (
-    <ul className="divide-y divide-line rounded-sm border border-line">
+    <ul className="divide-y divide-line rounded-lg border border-line">
       {members.map((m) => {
         const isSelf = m.userId === myUserId;
         return (
@@ -146,7 +146,7 @@ function MembersList({
               </p>
               <p className="text-xs text-muted">{m.email}</p>
             </div>
-            <span className="rounded-sm bg-soft px-2 py-1 text-xs text-neutral-300">
+            <span className="rounded-lg bg-soft px-2 py-1 text-xs text-neutral-300">
               {m.role}
             </span>
           </li>
@@ -172,7 +172,7 @@ function OrgPartLibraries({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="overflow-auto rounded-sm border border-line">
+    <div className="overflow-auto rounded-lg border border-line">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">

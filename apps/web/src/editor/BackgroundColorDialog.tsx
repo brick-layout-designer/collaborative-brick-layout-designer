@@ -41,7 +41,7 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
             type="color"
             value={rgb}
             onChange={(e) => setRgb(e.target.value)}
-            className="h-10 w-20 cursor-pointer rounded-sm border border-border bg-transparent"
+            className="h-10 w-20 cursor-pointer rounded-lg border border-border bg-transparent"
           />
           <span className="font-mono text-xs uppercase">{rgb}</span>
         </div>
@@ -61,13 +61,13 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
           >
             OK
           </button>

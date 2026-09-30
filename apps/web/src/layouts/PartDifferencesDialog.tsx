@@ -18,7 +18,7 @@ function Side({ image, xml, label }: { image: string | null; xml: string; label:
   const info = partInfo(xml);
   return (
     <div className="space-y-1">
-      <div className="grid h-24 w-32 place-items-center rounded-sm border border-line bg-bg">
+      <div className="grid h-24 w-32 place-items-center rounded-lg border border-line bg-bg">
         {image ? (
           <img src={image} alt={label} className="max-h-full max-w-full object-contain [image-rendering:pixelated]" />
         ) : (
@@ -79,7 +79,7 @@ export function PartDifferencesDialog({ differences, onDone }: Props) {
                     value={choices[i]}
                     onChange={(e) => setChoices((c) => c.map((v, j) => (j === i ? (e.target.value as PartChoice) : v)))}
                     title="Use the file's: the server's part is replaced. Keep both: the file's is added under a new part number, and this layout uses it."
-                    className="rounded-sm border border-border bg-soft px-2 py-1"
+                    className="rounded-lg border border-border bg-soft px-2 py-1"
                   >
                     <option value="server">Keep the server&apos;s</option>
                     <option value="file" disabled={!d.sprite}>Use the file&apos;s</option>
@@ -95,14 +95,14 @@ export function PartDifferencesDialog({ differences, onDone }: Props) {
           <button
             type="button"
             onClick={() => onDone(null)}
-            className="rounded-sm border border-border px-4 py-2 text-sm hover:bg-soft"
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft"
           >
             Keep All the Server&apos;s
           </button>
           <button
             type="button"
             onClick={() => onDone(choices)}
-            className="rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover"
           >
             Apply
           </button>

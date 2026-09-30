@@ -45,17 +45,17 @@ export function LayoutsPage() {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Layouts</h2>
+        <h2 className="text-2xl font-bold">Layouts</h2>
         <button
           onClick={() => setShowCreate(true)}
-          className="rounded-sm bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
+          className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
         >
           New layout
         </button>
       </div>
 
       {Object.values(orgGroups).length > 0 && (
-        <div className="rounded-sm border border-border bg-soft/40 px-4 py-3 text-sm text-muted">
+        <div className="rounded-lg border border-border bg-soft/40 px-4 py-3 text-sm text-muted">
           Some layouts are owned by your orgs and are not shown here.{' '}
           {Object.values(orgGroups).map((org) => (
             <Link
@@ -70,11 +70,11 @@ export function LayoutsPage() {
       )}
 
       {layouts.length === 0 ? (
-        <p className="rounded-sm border border-dashed border-border p-8 text-center text-muted">
+        <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
           No layouts yet. Click <em>New layout</em> to create or import one.
         </p>
       ) : (
-        <ul className="divide-y divide-line rounded-sm border border-line">
+        <ul className="divide-y divide-line rounded-lg border border-line">
           {layouts.map((l) => (
             <LayoutRow
               key={l.id}
@@ -107,7 +107,7 @@ export function LayoutsPage() {
       )}
 
       <div className="space-y-2 pt-4">
-        <h2 className="text-lg font-semibold">My venues</h2>
+        <h2 className="text-2xl font-bold">My rooms</h2>
         <VenueList canManage />
       </div>
 
@@ -189,19 +189,19 @@ function LayoutRow({
       <div className="flex items-center gap-2 text-sm">
         <Link
           to={`/editor/${layout.id}`}
-          className="rounded-sm bg-accent px-3 py-1 text-accent-ink hover:bg-accent-hover"
+          className="rounded-lg bg-accent px-3 py-1 text-accent-ink hover:bg-accent-hover"
         >
           Open
         </Link>
         <button
           onClick={onShare}
-          className="rounded-sm border border-border px-3 py-1 hover:bg-soft"
+          className="rounded-lg border border-border px-3 py-1 hover:bg-soft"
         >
           Share
         </button>
         <a
           href={api.layouts.exportZipUrl(layout.id)}
-          className="rounded-sm border border-border px-3 py-1 hover:bg-soft"
+          className="rounded-lg border border-border px-3 py-1 hover:bg-soft"
           title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
         >
           Export .zip
@@ -219,7 +219,7 @@ function LayoutRow({
         </label>
         <button
           onClick={onDelete}
-          className="rounded-sm border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
+          className="rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
         >
           Delete
         </button>
@@ -399,7 +399,7 @@ function CreateLayoutDialog({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Layout"
-            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
           />
         </label>
 
@@ -409,7 +409,7 @@ function CreateLayoutDialog({
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-sm border border-border bg-soft px-3 py-2"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -427,7 +427,7 @@ function CreateLayoutDialog({
             <select
               value={venueId}
               onChange={(e) => setVenueId(e.target.value)}
-              className="w-full rounded-sm border border-border bg-soft px-3 py-2"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             >
               <option value="">No venue</option>
               {orderVenuesForOwner(
@@ -470,14 +470,14 @@ function CreateLayoutDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
+            className="rounded-lg border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>
