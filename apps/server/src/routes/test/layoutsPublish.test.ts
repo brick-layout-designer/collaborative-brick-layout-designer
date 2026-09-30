@@ -46,6 +46,14 @@ describe('publishing layouts with an API token', () => {
     const org = await publish(token, { title: 'Club show', orgSlug: 'club' });
     expect(org.statusCode).toBe(201);
 
+    // The owner picker: the token lists the user's orgs (with layouts:read).
+    const reader = await issueToken(app, user.cookie, 'layouts:read');
+    const orgs = await app.inject({ method: 'GET', url: '/api/orgs', headers: { authorization: `Bearer ${reader}` } });
+    expect(orgs.statusCode).toBe(200);
+    expect((orgs.json() as { orgs: { slug: string; myRole: string }[] }).orgs).toMatchObject([{ slug: 'club', myRole: 'admin' }]);
+    const partsOnly = await issueToken(app, user.cookie, 'parts:read');
+    expect((await app.inject({ method: 'GET', url: '/api/orgs', headers: { authorization: `Bearer ${partsOnly}` } })).statusCode).toBe(403);
+
     const list = await app.inject({ method: 'GET', url: '/api/layouts', headers: { cookie: user.cookie } });
     const layouts = (list.json() as { layouts: { title: string; ownerOrgId: string | null }[] }).layouts;
     expect(layouts.map((l) => [l.title, l.ownerOrgId !== null]).sort()).toEqual([['Club show', true], ['From desktop', false]]);
