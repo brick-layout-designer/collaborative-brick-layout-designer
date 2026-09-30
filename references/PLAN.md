@@ -621,6 +621,95 @@ of the policy live in `SECURITY.md`.
 - Local hooks are fast feedback for developers; CI is the authoritative
   gate. The same checks run in both so behaviour is predictable.
 
+### 4.9 Desktop live sync
+
+The desktop app (C++/Qt, `brick-layout-designer/brick-layout-designer`)
+opens a server layout and edits it live alongside web users.
+
+**Architecture:**
+- The desktop holds the same shared Yjs doc as the web editor, through
+  **yrs** (Rust Yjs) via its C API (`yffi`), pinned in the desktop build.
+  Code lives in the desktop's `src/sync/`.
+- It speaks the server's existing y-websocket protocol on
+  `/ws/layout/:id`; no sync-specific server protocol exists.
+- After each undoable edit the desktop diffs its `core::Map` against the
+  last synced state by brick id and writes only what changed. Remote
+  changes update the model and redraw; changes arriving mid-drag wait for
+  mouse release.
+- Undo uses the yrs UndoManager with a local origin, so it reverts only
+  the desktop's own edits, as on the web (§4.4).
+- Cursors and selections use the web's awareness format (§4.5); names and
+  colours come from `GET /api/tokens/current`.
+- `meta.schemaVersion` plus `GET /api/version` let an older desktop refuse
+  a newer server's doc.
+
+**Tokens (`apps/server/src/auth/apiTokens.ts`):**
+- Personal access tokens prefixed `bld_pat_`, stored as a sha256 only.
+  Scopes: `layouts:read`, `layouts:write`, `layouts:create`,
+  `parts:read`, `parts:write`, `venues:read`, `venues:write` (write
+  implies read). 90-day lifetime, sliding on use.
+- Issued by device sign-in (`routes/auth/device.ts`): the desktop shows a
+  code and opens the browser, where any account type approves it.
+- Honoured only on routes that opt in with an `apiToken` route config
+  (layouts, live sync, parts, custom parts, venues, version); never on
+  admin, account or password routes.
+- Listed and revoked on the Devices page; revoking disconnects that
+  desktop at once. The desktop keeps the token in the OS keychain
+  (QtKeychain) and requires wss:// except on localhost.
+
+**Offline edits:**
+- Edits made while out of step with the server are kept apart from the
+  shared doc, with the copy they started from, and never merged silently.
+- The last synced doc and the offline edits are cached on disk
+  (`<AppData>/live/<server host>/<layout id>/` holding `doc.bin` and
+  `offline.json`), so the layout opens offline and the edits survive a
+  crash.
+- On reconnect a three-way compare window (base, mine, server) lists
+  changes per brick, layer, label, module or venue: **Keep mine**, **Keep
+  server**, **Keep both** (added items), for one item or all, plus
+  **Replace server with mine** and **Save mine as a new layout**. The
+  server previews it with `POST /api/layouts/:id/compare`. Choices go in
+  as ordinary edits, so web users see and can undo them.
+
+**Publishing and parts:**
+- **Publish to Server** uploads the open `.bbm` + `.bbm.bld` as a new
+  layout, personal or to an org (`layouts:create`), then switches to the
+  live copy.
+- Server to desktop: `GET /api/parts/manifest` lists libraries and custom
+  parts with content hashes; the desktop downloads what is missing or
+  changed, caches it per server, and shows it under the server's name.
+- Desktop to server: on publish, and when you place a part the server
+  lacks, the desktop offers to upload your local custom parts. Nothing
+  uploads without confirmation.
+- A part number defined differently on each side is shown both ways
+  (Parts That Differ) and you choose which to use.
+
+**Standing decisions:**
+- Sidecar data (labels, modules, venue) is last-write-wins for live edits
+  and resolved per item on reconnect.
+- Vanilla BlueBrick 1.9.2 must keep opening the desktop's `.bbm` files;
+  sync-only data goes in `.bbm.bld`.
+- Every parser in the desktop, including sync messages and yrs docs, has a
+  fuzz harness in `fuzz/`. Archives go through `SafeZip`.
+
+**Main risk:** drift between the desktop's C++ doc mapping (`WebModel`,
+`SyncDoc`) and the web's Yjs doc format (§3.2). Guards:
+- desktop `tests/sync/` round-trip tests read docs the web server builds
+  for real `.bbm` fixtures (`fixtures/sync/*.ydoc`) and must write the
+  same bytes as the desktop's own save;
+- the end-to-end test `apps/web/e2e/test/desktopLiveSync.spec.ts` drives
+  the web editor and the desktop's headless `bld_sync_driver` against one
+  server (join, interleaved edits, undo, presence, offline resolve). It
+  needs both repos, so it runs by hand, not in CI.
+
+Any change to the doc shape needs a matching desktop change and both
+tests re-run.
+
+**See also:** `references/DESKTOP-SYNC-E2E.md` (running the e2e test),
+`references/LAYOUT-FILE.md` (the one-file layout format), and in the
+desktop repo `docs/bbm-bld-schema.md`, `docs/layout-file.md` and
+`fuzz/README.md`.
+
 ## 5. Repo layout
 
 Monorepo, pnpm workspaces. One repo so the `.bbm` parser port can live in
