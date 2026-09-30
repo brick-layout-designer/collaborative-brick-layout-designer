@@ -50,7 +50,7 @@ export function OrgInvitePage() {
     return (
       <Centered>
         <Box>
-          <p className="font-semibold text-red-400">This invite isn't valid.</p>
+          <p className="font-semibold text-danger">This invite isn't valid.</p>
           <p className="mt-1 text-xs">{(preview.error as Error).message}</p>
         </Box>
       </Centered>
@@ -68,13 +68,13 @@ export function OrgInvitePage() {
     <Centered>
       <Box>
         <h1 className="text-lg font-semibold">You're invited</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-muted">
           You've been invited to join <strong>{inv.orgName}</strong> as a {inv.role}.
         </p>
         {!isSignedIn && (
           <Link
             to={`/login?next=${encodeURIComponent(`/org-invite/${params.token}`)}`}
-            className="mt-3 block rounded-sm bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
+            className="mt-3 block rounded-sm bg-accent text-accent-ink px-4 py-2 text-center hover:bg-accent-hover"
           >
             Sign in as {inv.invitedEmail}
           </Link>
@@ -102,7 +102,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function Box({ children }: { children: React.ReactNode }) {
   return (
-    <div className="w-full max-w-md rounded-lg border border-neutral-800 bg-neutral-900 p-6">
+    <div className="w-full max-w-md rounded-lg border border-line bg-panel p-6">
       {children}
     </div>
   );

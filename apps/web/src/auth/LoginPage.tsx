@@ -22,7 +22,7 @@ export function LoginPage() {
 
   return (
     <div className="grid min-h-screen place-items-center px-4">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-neutral-800 bg-neutral-900 p-8 shadow-sm">
+      <div className="w-full max-w-sm space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
         <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-sm" />
         <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
 
@@ -33,13 +33,13 @@ export function LoginPage() {
               <a
                 key={p.id}
                 href={`/api/auth/${p.id}`}
-                className="block rounded-sm border border-neutral-700 px-4 py-2 text-center hover:bg-neutral-800"
+                className="block rounded-sm border border-border px-4 py-2 text-center hover:bg-soft"
               >
                 Continue with {p.label}
               </a>
             ))}
           {providers.data && providers.data.providers.every((p) => !p.enabled) && (
-            <p className="text-center text-sm text-neutral-500">
+            <p className="text-center text-sm text-muted">
               No OAuth providers configured.
             </p>
           )}
@@ -83,16 +83,16 @@ function PasswordForm({ next }: { next: string }) {
 
   if (awaitingVerification) {
     return (
-      <div className="space-y-3 border-t border-neutral-800 pt-4 text-center">
+      <div className="space-y-3 border-t border-line pt-4 text-center">
         <p className="text-sm text-neutral-300">
-          Check <span className="font-medium text-white">{awaitingVerification}</span> for a
+          Check <span className="font-medium text-ink">{awaitingVerification}</span> for a
           confirmation link to finish creating your account.
         </p>
         <button
           type="button"
           onClick={() => resend.mutate()}
           disabled={resend.isPending || resend.isSuccess}
-          className="text-sm text-blue-400 hover:underline disabled:opacity-50"
+          className="text-sm text-accent-text hover:underline disabled:opacity-50"
         >
           {resend.isSuccess ? 'Email sent — check your inbox' : "Didn't get it? Resend"}
         </button>
@@ -107,7 +107,7 @@ function PasswordForm({ next }: { next: string }) {
         setError(null);
         mutation.mutate();
       }}
-      className="space-y-3 border-t border-neutral-800 pt-4"
+      className="space-y-3 border-t border-line pt-4"
     >
       <input
         type="email"
@@ -116,7 +116,7 @@ function PasswordForm({ next }: { next: string }) {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+        className="w-full rounded-sm border border-border bg-soft px-3 py-2"
       />
       <input
         type="password"
@@ -126,17 +126,17 @@ function PasswordForm({ next }: { next: string }) {
         onChange={(e) => setPassword(e.target.value)}
         required
         minLength={8}
-        className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+        className="w-full rounded-sm border border-border bg-soft px-3 py-2"
       />
       {error && (
-        <div className="text-sm text-red-400">
+        <div className="text-sm text-danger">
           <p>{error}</p>
           {mode === 'login' && error.toLowerCase().includes('verify') && (
             <button
               type="button"
               onClick={() => resend.mutate()}
               disabled={resend.isPending || resend.isSuccess}
-              className="mt-1 text-blue-400 hover:underline disabled:opacity-50"
+              className="mt-1 text-accent-text hover:underline disabled:opacity-50"
             >
               {resend.isSuccess ? 'Email sent — check your inbox' : 'Resend confirmation email'}
             </button>
@@ -146,14 +146,14 @@ function PasswordForm({ next }: { next: string }) {
       <button
         type="submit"
         disabled={mutation.isPending}
-        className="w-full rounded-sm bg-blue-600 py-2 hover:bg-blue-500 disabled:opacity-50"
+        className="w-full rounded-sm bg-accent text-accent-ink py-2 hover:bg-accent-hover disabled:opacity-50"
       >
         {mode === 'login' ? 'Sign in' : 'Create account'}
       </button>
       <button
         type="button"
         onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        className="w-full text-sm text-neutral-400 hover:underline"
+        className="w-full text-sm text-muted hover:underline"
       >
         {mode === 'login' ? 'Need an account?' : 'Already have an account?'}
       </button>

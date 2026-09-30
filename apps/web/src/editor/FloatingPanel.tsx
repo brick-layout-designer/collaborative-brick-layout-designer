@@ -86,12 +86,12 @@ export function FloatingPanel({ panelId, title, pos, onMove, onPosChange, childr
         minWidth: MIN_W,
         minHeight: MIN_H,
       }}
-      className="rounded-sm border border-neutral-700 bg-neutral-925 shadow-2xl"
+      className="rounded-sm border border-border bg-panel shadow-2xl"
     >
       {/* Title bar */}
       <header
         onMouseDown={onTitleMouseDown}
-        className="flex cursor-move select-none items-center justify-between border-b border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-400"
+        className="flex cursor-move select-none items-center justify-between border-b border-line bg-panel px-2 py-1 text-xs text-muted"
       >
         <span className="flex-1 truncate font-semibold uppercase tracking-wider">{title}</span>
         <div className="relative flex gap-1">
@@ -99,7 +99,7 @@ export function FloatingPanel({ panelId, title, pos, onMove, onPosChange, childr
           <button
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => onMove(panelId, 'hidden')}
-            className="rounded-sm px-1 py-0.5 text-[10px] leading-none hover:bg-neutral-800"
+            className="rounded-sm px-1 py-0.5 text-[10px] leading-none hover:bg-soft"
             title="Close"
           >
             ✕
@@ -140,14 +140,14 @@ function FloatMenu({
       <button
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => setOpen((v) => !v)}
-        className="rounded-sm px-1.5 py-0.5 text-[10px] hover:bg-neutral-800"
+        className="rounded-sm px-1.5 py-0.5 text-[10px] hover:bg-soft"
         title="Dock or hide"
       >
         ⋯
       </button>
       {open && (
         <ul
-          className="absolute right-0 top-full z-20 mt-1 w-36 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          className="absolute right-0 top-full z-20 mt-1 w-36 rounded-sm border border-border bg-panel text-xs shadow-sm"
           onClick={() => setOpen(false)}
         >
           {targets.map((t) => (
@@ -155,7 +155,7 @@ function FloatMenu({
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onSelect(t.zone)}
-                className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
+                className="block w-full px-2 py-1 text-left hover:bg-soft"
               >
                 {t.label}
               </button>

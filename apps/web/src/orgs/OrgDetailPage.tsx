@@ -23,15 +23,15 @@ function OrgDetail({ slug }: { slug: string }) {
   });
 
   if (me.isLoading || detail.isLoading) {
-    return <div className="grid h-screen place-items-center text-neutral-500">Loading…</div>;
+    return <div className="grid h-screen place-items-center text-muted">Loading…</div>;
   }
   if (!me.data?.user) return <Navigate to="/login" replace />;
   if (detail.isError) {
     return (
       <div className="grid h-screen place-items-center">
         <div className="rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-red-400">Organization not found.</p>
-          <Link to="/orgs" className="mt-2 inline-block text-blue-400 hover:underline">← back</Link>
+          <p className="font-semibold text-danger">Organization not found.</p>
+          <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
         </div>
       </div>
     );
@@ -48,14 +48,14 @@ function OrgDetail({ slug }: { slug: string }) {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-semibold">{org.name}</h1>
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-muted">
               /{org.slug} · you are {org.myRole}
             </p>
           </div>
           {isAdmin && (
             <Link
               to={`/orgs/${slug}/admin`}
-              className="rounded-sm border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-soft"
             >
               Org settings →
             </Link>
@@ -63,11 +63,11 @@ function OrgDetail({ slug }: { slug: string }) {
         </div>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
             Members
           </h2>
           {members.isLoading ? (
-            <p className="text-sm text-neutral-500">Loading…</p>
+            <p className="text-sm text-muted">Loading…</p>
           ) : (
             <MembersList
               myUserId={myUserId}
@@ -77,29 +77,29 @@ function OrgDetail({ slug }: { slug: string }) {
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
             Org-owned layouts
           </h2>
-          {layouts.isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+          {layouts.isLoading && <p className="text-sm text-muted">Loading…</p>}
           {layouts.data &&
             (layouts.data.layouts.length === 0 ? (
-              <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+              <p className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">
                 No layouts owned by this org yet. Open a personal layout and use{' '}
                 <em>Transfer</em> to move it here.
               </p>
             ) : (
-              <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+              <ul className="divide-y divide-line rounded-sm border border-line">
                 {layouts.data.layouts.map((l) => (
                   <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
                     <div>
                       <p>{l.title}</p>
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-muted">
                         updated {new Date(l.updatedAt).toLocaleString()}
                       </p>
                     </div>
                     <Link
                       to={`/editor/${l.id}`}
-                      className="rounded-sm bg-blue-600 px-3 py-1 hover:bg-blue-500"
+                      className="rounded-sm bg-accent text-accent-ink px-3 py-1 hover:bg-accent-hover"
                     >
                       Open
                     </Link>
@@ -110,14 +110,14 @@ function OrgDetail({ slug }: { slug: string }) {
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
             Venues
           </h2>
           <VenueList org={{ id: org.id, slug: org.slug }} canManage={isAdmin} />
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
             Part libraries
           </h2>
           <OrgPartLibraries slug={slug} />
@@ -135,18 +135,18 @@ function MembersList({
   members: OrgMemberSummary[];
 }) {
   return (
-    <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+    <ul className="divide-y divide-line rounded-sm border border-line">
       {members.map((m) => {
         const isSelf = m.userId === myUserId;
         return (
           <li key={m.userId} className="flex items-center justify-between px-3 py-2 text-sm">
             <div>
               <p>
-                {m.displayName} {isSelf && <span className="text-xs text-neutral-500">(you)</span>}
+                {m.displayName} {isSelf && <span className="text-xs text-muted">(you)</span>}
               </p>
-              <p className="text-xs text-neutral-500">{m.email}</p>
+              <p className="text-xs text-muted">{m.email}</p>
             </div>
-            <span className="rounded-sm bg-neutral-800 px-2 py-1 text-xs text-neutral-300">
+            <span className="rounded-sm bg-soft px-2 py-1 text-xs text-neutral-300">
               {m.role}
             </span>
           </li>
@@ -162,20 +162,20 @@ function OrgPartLibraries({ slug }: { slug: string }) {
     queryFn: () => api.orgLibraries.list(slug),
   });
 
-  if (libs.isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (libs.isLoading) return <p className="text-sm text-muted">Loading…</p>;
   if (!libs.data || libs.data.libraries.length === 0) {
     return (
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-muted">
         No part libraries installed.
       </p>
     );
   }
 
   return (
-    <div className="overflow-auto rounded-sm border border-neutral-800">
+    <div className="overflow-auto rounded-sm border border-line">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-800 text-left text-xs text-neutral-500">
+          <tr className="border-b border-line text-left text-xs text-muted">
             <th className="px-3 py-2">Library</th>
             <th className="px-3 py-2">Parts</th>
             <th className="px-3 py-2">Enabled</th>
@@ -183,12 +183,12 @@ function OrgPartLibraries({ slug }: { slug: string }) {
         </thead>
         <tbody>
           {libs.data.libraries.map((lib: OrgPartLibrary) => (
-            <tr key={lib.id} className="border-b border-neutral-900 hover:bg-neutral-900/30">
+            <tr key={lib.id} className="border-b border-line hover:bg-panel/30">
               <td className="px-3 py-2">
                 <span className="font-medium">{lib.name}</span>
-                <span className="ml-2 font-mono text-xs text-neutral-500">{lib.slug}</span>
+                <span className="ml-2 font-mono text-xs text-muted">{lib.slug}</span>
               </td>
-              <td className="px-3 py-2 text-neutral-400">{lib.partCount.toLocaleString()}</td>
+              <td className="px-3 py-2 text-muted">{lib.partCount.toLocaleString()}</td>
               <td className="px-3 py-2">
                 <span className={lib.enabled ? 'text-emerald-400' : 'text-neutral-600'}>
                   {lib.enabled ? 'Yes' : 'No'}

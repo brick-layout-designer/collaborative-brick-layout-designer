@@ -35,7 +35,7 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
 
   return (
     <section
-      className={`flex h-full min-h-0 w-full flex-col bg-neutral-925 transition-colors ${dragOver ? 'outline-solid outline-2 outline-blue-500' : ''}`}
+      className={`flex h-full min-h-0 w-full flex-col bg-panel transition-colors ${dragOver ? 'outline-solid outline-2 outline-accent' : ''}`}
       onDragOver={onReorder ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(true); } : undefined}
       onDragLeave={onReorder ? () => setDragOver(false) : undefined}
       onDrop={onReorder ? (e) => {
@@ -45,12 +45,12 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
         if (fromId && fromId !== panelId) onReorder(fromId, panelId);
       } : undefined}
     >
-      <header className="relative flex items-center justify-between border-b border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-400">
+      <header className="relative flex items-center justify-between border-b border-line bg-panel px-2 py-1 text-xs text-muted">
         {/* Drag handle — grab to reorder within dock */}
         <span
           draggable
           onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(DRAG_MIME, panelId); }}
-          className="mr-1 cursor-grab select-none text-neutral-600 hover:text-neutral-400 active:cursor-grabbing"
+          className="mr-1 cursor-grab select-none text-neutral-600 hover:text-muted active:cursor-grabbing"
           title="Drag to reorder"
         >
           ⠿
@@ -58,21 +58,21 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
         <span className="flex-1 truncate font-semibold uppercase tracking-wider">{title}</span>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded-sm px-1.5 py-0.5 text-[10px] hover:bg-neutral-800"
+          className="rounded-sm px-1.5 py-0.5 text-[10px] hover:bg-soft"
           title="Move or hide panel"
         >
           ⋯
         </button>
         {open && (
           <ul
-            className="absolute right-1 top-full z-20 mt-1 w-40 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+            className="absolute right-1 top-full z-20 mt-1 w-40 rounded-sm border border-border bg-panel text-xs shadow-sm"
             onClick={() => setOpen(false)}
           >
             {moveTargets.map((m) => (
               <li key={m.zone}>
                 <button
                   onClick={() => onMove(panelId, m.zone)}
-                  className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
+                  className="block w-full px-2 py-1 text-left hover:bg-soft"
                 >
                   {m.label}
                 </button>

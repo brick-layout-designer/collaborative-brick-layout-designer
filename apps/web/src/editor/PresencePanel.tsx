@@ -6,7 +6,7 @@ export function PresencePanel({ awareness }: { awareness: Awareness | null }) {
   const peers = useRemotePeers(awareness);
   if (peers.length === 0) return null;
   return (
-    <div className="border-l border-neutral-800 px-3 py-1 text-xs">
+    <div className="border-l border-line px-3 py-1 text-xs">
       <div className="flex items-center gap-2">
         {peers.map(({ clientId, state, isIdle }) => (
           <div
@@ -21,7 +21,7 @@ export function PresencePanel({ awareness }: { awareness: Awareness | null }) {
                 opacity: isIdle ? 0.4 : 1,
               }}
             />
-            <span className={isIdle ? 'text-neutral-500' : 'text-neutral-200'}>
+            <span className={isIdle ? 'text-muted' : 'text-ink'}>
               {state.user.displayName}
             </span>
           </div>

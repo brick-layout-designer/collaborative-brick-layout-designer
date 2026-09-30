@@ -124,13 +124,13 @@ export function PartsPanel({
   }
 
   return (
-    <aside className="relative flex h-full min-h-0 w-full flex-col bg-neutral-925 text-sm">
-      <div className="space-y-2 border-b border-neutral-800 p-2">
+    <aside className="relative flex h-full min-h-0 w-full flex-col bg-panel text-sm">
+      <div className="space-y-2 border-b border-line p-2">
         <div className="flex gap-1">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="min-w-0 flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+            className="min-w-0 flex-1 rounded-sm border border-border bg-soft px-2 py-1 text-xs"
           >
             <option value={ALL_CATEGORIES}>All categories</option>
             {categories.map((c) => (
@@ -142,7 +142,7 @@ export function PartsPanel({
           <button
             onClick={cycleIconSize}
             title={`Icon size: ${iconSize} — click to cycle S/M/L`}
-            className="shrink-0 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-[10px] text-neutral-400 hover:bg-neutral-700"
+            className="shrink-0 rounded-sm border border-border bg-soft px-2 py-1 text-[10px] text-muted hover:bg-neutral-700"
           >
             {iconSize}
           </button>
@@ -151,13 +151,13 @@ export function PartsPanel({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder='Fuzzy filter — e.g. "plt2" matches "plate2x4"'
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+          className="w-full rounded-sm border border-border bg-soft px-2 py-1 text-xs"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {isLoading && <p className="p-3 text-xs text-neutral-500">Loading catalog…</p>}
+        {isLoading && <p className="p-3 text-xs text-muted">Loading catalog…</p>}
         {!isLoading && visible.length === 0 && (
-          <p className="p-3 text-xs text-neutral-500">No parts match this filter.</p>
+          <p className="p-3 text-xs text-muted">No parts match this filter.</p>
         )}
         {/*
           Auto-fill the column count based on panel width — mirrors
@@ -213,14 +213,14 @@ export function PartsPanel({
                     }
                   }}
                   title={tooltip}
-                  className={`flex w-full flex-col items-center rounded-sm p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-neutral-900 hover:bg-neutral-800'} ${selectedTile === p.key ? 'ring-2 ring-blue-500' : ''}`}
+                  className={`flex w-full flex-col items-center rounded-sm p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-panel hover:bg-soft'} ${selectedTile === p.key ? 'ring-2 ring-accent' : ''}`}
                 >
                   <PartThumbnail part={p} partsByKey={partsByKey} imgCls={cfg.imgCls} />
                   <span className="mt-1 line-clamp-2 text-center leading-tight">
                     {caption}
                   </span>
                   {usage && (
-                    <span data-testid="budget-numbers" className={over ? 'font-semibold text-red-300' : 'text-neutral-400'}>
+                    <span data-testid="budget-numbers" className={over ? 'font-semibold text-red-300' : 'text-muted'}>
                       {used}/{limit >= 0 ? limit : '?'}
                     </span>
                   )}
@@ -264,7 +264,7 @@ function PartContextMenuPopup({
     <div
       ref={ref}
       style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 9999 }}
-      className="min-w-[160px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
+      className="min-w-[160px] rounded-sm border border-border bg-panel py-1 shadow-lg"
       onContextMenu={(e) => e.preventDefault()}
     >
       <button className={itemCls} onClick={onAddToMap}>
@@ -273,8 +273,8 @@ function PartContextMenuPopup({
       <button className={itemCls} onClick={onCopyPartNumber}>
         Copy part number
       </button>
-      <hr className="my-1 border-neutral-700" />
-      <button className={itemCls + ' text-neutral-500'} onClick={onClose}>
+      <hr className="my-1 border-border" />
+      <button className={itemCls + ' text-muted'} onClick={onClose}>
         Cancel
       </button>
     </div>
@@ -342,7 +342,7 @@ function PartThumbnail({
       />
     );
   }
-  return <div className={`${imgCls} rounded-sm bg-neutral-800`} />;
+  return <div className={`${imgCls} rounded-sm bg-soft`} />;
 }
 
 function fuzzyScore(needle: string, hay: string): number {

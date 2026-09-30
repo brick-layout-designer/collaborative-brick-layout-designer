@@ -20,5 +20,5 @@ export function App() {
 }
 
 function Loading() {
-  return <div className="grid h-full place-items-center text-neutral-500">Loading…</div>;
+  return <div className="grid h-full place-items-center text-muted">Loading…</div>;
 }

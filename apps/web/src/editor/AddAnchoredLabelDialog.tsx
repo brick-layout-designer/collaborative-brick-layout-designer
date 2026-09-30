@@ -84,8 +84,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
   }
 
   const rowCls = 'flex items-center justify-between gap-4 py-1';
-  const labelCls = 'text-xs text-neutral-400 w-36 shrink-0';
-  const inputCls = 'flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
+  const labelCls = 'text-xs text-muted w-36 shrink-0';
+  const inputCls = 'flex-1 rounded-sm border border-border bg-soft px-2 py-1 text-xs';
 
   return (
     <div
@@ -95,10 +95,10 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
       onClick={onClose}
     >
       <div
-        className="w-md rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+        className="w-md rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold text-neutral-200">{isEdit ? 'Edit Anchored Label' : 'Add Anchored Label'}</h2>
+        <h2 className="mb-4 text-sm font-semibold text-ink">{isEdit ? 'Edit Anchored Label' : 'Add Anchored Label'}</h2>
 
         <div className="flex flex-col gap-0.5">
           <div className={rowCls}>
@@ -127,11 +127,11 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
             <span className={labelCls}>Style</span>
             <div className="flex flex-1 gap-3">
               <label className="flex items-center gap-1 text-xs text-neutral-300">
-                <input type="checkbox" checked={isBold} onChange={(e) => setIsBold(e.target.checked)} className="accent-blue-500" />
+                <input type="checkbox" checked={isBold} onChange={(e) => setIsBold(e.target.checked)} className="accent-accent" />
                 Bold
               </label>
               <label className="flex items-center gap-1 text-xs text-neutral-300">
-                <input type="checkbox" checked={isItalic} onChange={(e) => setIsItalic(e.target.checked)} className="accent-blue-500" />
+                <input type="checkbox" checked={isItalic} onChange={(e) => setIsItalic(e.target.checked)} className="accent-accent" />
                 Italic
               </label>
             </div>
@@ -146,7 +146,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
                 setColorArgb(`FF${e.target.value.slice(1).toUpperCase()}`);
                 setColorTouched(true);
               }}
-              className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
+              className="h-7 w-12 cursor-pointer rounded-sm border border-border bg-soft p-0.5"
             />
           </div>
 
@@ -211,13 +211,13 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
               Delete
             </button>
           )}
-          <button onClick={onClose} className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">
+          <button onClick={onClose} className="rounded-sm px-3 py-1.5 text-xs text-muted hover:bg-soft">
             Cancel
           </button>
           <button
             onClick={commit}
             disabled={!text.trim()}
-            className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {isEdit ? 'Save' : 'Add Label'}
           </button>

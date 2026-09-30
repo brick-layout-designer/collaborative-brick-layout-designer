@@ -28,7 +28,7 @@ export function ProfilePage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  if (me.isLoading) return <div className="p-8 text-neutral-500">Loading…</div>;
+  if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
   if (!me.data?.user) return <Navigate to="/login" replace />;
   const user = me.data.user;
 
@@ -53,19 +53,19 @@ export function ProfilePage() {
                   value={draftName}
                   onChange={(e) => setDraftName(e.target.value)}
                   maxLength={60}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xl font-semibold"
+                  className="rounded-sm border border-border bg-soft px-2 py-1 text-xl font-semibold"
                 />
                 <button
                   type="submit"
                   disabled={saveName.isPending || draftName.trim() === ''}
-                  className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:opacity-50"
+                  className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50"
                 >
                   Save
                 </button>
                 <button
                   type="button"
                   onClick={() => { setEditing(false); setError(null); }}
-                  className="text-sm text-neutral-400 hover:underline"
+                  className="text-sm text-muted hover:underline"
                 >
                   Cancel
                 </button>
@@ -75,14 +75,14 @@ export function ProfilePage() {
                 {user.displayName}
                 <button
                   onClick={() => { setDraftName(user.displayName); setEditing(true); }}
-                  className="text-xs font-normal text-blue-400 hover:underline"
+                  className="text-xs font-normal text-accent-text hover:underline"
                 >
                   Edit
                 </button>
               </h1>
             )}
-            {error && <p className="mt-1 text-sm text-red-400">{error}</p>}
-            <p className="text-sm text-neutral-400">{user.email}</p>
+            {error && <p className="mt-1 text-sm text-danger">{error}</p>}
+            <p className="text-sm text-muted">{user.email}</p>
             {user.isDemoAccount && (
               <p className="text-xs text-amber-400">Demo account</p>
             )}
@@ -90,26 +90,26 @@ export function ProfilePage() {
         </header>
 
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Linked sign-in methods
           </h2>
-          <ul className="rounded-sm border border-neutral-800">
+          <ul className="rounded-sm border border-line">
             {providers.data?.providers.map((p) => {
               const linked = user.linkedProviders.includes(p.id);
               return (
                 <li
                   key={p.id}
-                  className="flex items-center justify-between border-b border-neutral-800 px-4 py-2 last:border-b-0"
+                  className="flex items-center justify-between border-b border-line px-4 py-2 last:border-b-0"
                 >
-                  <span className={p.enabled ? '' : 'text-neutral-500'}>{p.label}</span>
+                  <span className={p.enabled ? '' : 'text-muted'}>{p.label}</span>
                   {linked ? (
                     <span className="text-sm text-emerald-400">linked</span>
                   ) : p.enabled ? (
-                    <a href={`/api/auth/${p.id}`} className="text-sm text-blue-400 hover:underline">
+                    <a href={`/api/auth/${p.id}`} className="text-sm text-accent-text hover:underline">
                       link
                     </a>
                   ) : (
-                    <span className="text-sm text-neutral-500">disabled</span>
+                    <span className="text-sm text-muted">disabled</span>
                   )}
                 </li>
               );

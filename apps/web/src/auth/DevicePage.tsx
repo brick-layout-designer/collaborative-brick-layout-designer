@@ -63,10 +63,10 @@ export function DevicePage() {
     return (
       <Centered>
         <h1 className="text-lg font-semibold">Connect a device</h1>
-        <p className="text-sm text-neutral-400">Sign in to approve the desktop app's request.</p>
+        <p className="text-sm text-muted">Sign in to approve the desktop app's request.</p>
         <Link
           to={`/login?next=${encodeURIComponent(next)}`}
-          className="inline-block rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500"
+          className="inline-block rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover"
         >
           Sign in
         </Link>
@@ -78,9 +78,9 @@ export function DevicePage() {
     return (
       <Centered>
         <h1 className="text-lg font-semibold">Device connected</h1>
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-muted">
           You can return to the app. Manage connected devices from your{' '}
-          <Link to="/profile" className="text-blue-400 hover:underline">profile</Link>.
+          <Link to="/profile" className="text-accent-text hover:underline">profile</Link>.
         </p>
       </Centered>
     );
@@ -89,7 +89,7 @@ export function DevicePage() {
     return (
       <Centered>
         <h1 className="text-lg font-semibold">Request denied</h1>
-        <p className="text-sm text-neutral-400">The device was not given access to your account.</p>
+        <p className="text-sm text-muted">The device was not given access to your account.</p>
       </Centered>
     );
   }
@@ -98,9 +98,9 @@ export function DevicePage() {
     return (
       <Centered>
         <h1 className="text-lg font-semibold">Allow {request.clientName}?</h1>
-        <p className="text-sm text-neutral-400">
-          Signed in as <span className="text-neutral-200">{me.data!.user!.email}</span>. Only approve
-          if the app is showing the code <span className="font-mono text-neutral-200">{code.toUpperCase()}</span>.
+        <p className="text-sm text-muted">
+          Signed in as <span className="text-ink">{me.data!.user!.email}</span>. Only approve
+          if the app is showing the code <span className="font-mono text-ink">{code.toUpperCase()}</span>.
         </p>
         <div className="text-left">
           <p className="text-sm text-neutral-300">It will be able to:</p>
@@ -114,14 +114,14 @@ export function DevicePage() {
           <button
             onClick={() => decide.mutate(true)}
             disabled={decide.isPending}
-            className="rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
           >
             Approve
           </button>
           <button
             onClick={() => decide.mutate(false)}
             disabled={decide.isPending}
-            className="rounded-sm border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-sm border border-border px-4 py-2 text-sm hover:bg-soft disabled:opacity-50"
           >
             Deny
           </button>
@@ -133,7 +133,7 @@ export function DevicePage() {
   return (
     <Centered>
       <h1 className="text-lg font-semibold">Connect a device</h1>
-      <p className="text-sm text-neutral-400">Enter the code shown in the desktop app.</p>
+      <p className="text-sm text-muted">Enter the code shown in the desktop app.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -150,17 +150,17 @@ export function DevicePage() {
           autoComplete="off"
           spellCheck={false}
           maxLength={12}
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2 text-center font-mono text-lg uppercase tracking-widest"
+          className="w-full rounded-sm border border-border bg-soft px-3 py-2 text-center font-mono text-lg uppercase tracking-widest"
         />
         <button
           type="submit"
           disabled={lookup.isPending || !code.trim()}
-          className="w-full rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50"
+          className="w-full rounded-sm bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
         >
           Continue
         </button>
       </form>
-      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </Centered>
   );
 }
@@ -168,7 +168,7 @@ export function DevicePage() {
 function Centered({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-screen place-items-center px-4">
-      <div className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-8 text-center">
+      <div className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-8 text-center">
         {children}
       </div>
     </div>

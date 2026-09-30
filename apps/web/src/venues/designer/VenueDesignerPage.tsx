@@ -41,13 +41,13 @@ export function VenueDesignPage() {
   const org = params.get('org');
   const venue = useQuery({ queryKey: ['venue', id], queryFn: () => api.venues.get(id) });
 
-  if (venue.isLoading) return <div className="grid h-full place-items-center text-neutral-500">Loading venue…</div>;
+  if (venue.isLoading) return <div className="grid h-full place-items-center text-muted">Loading venue…</div>;
   if (venue.isError || !venue.data) {
     return (
       <div className="grid h-full place-items-center">
         <div className="rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-red-400">Could not open this venue.</p>
-          <button type="button" onClick={() => back(navigate, org)} className="mt-2 text-blue-400 hover:underline">
+          <p className="font-semibold text-danger">Could not open this venue.</p>
+          <button type="button" onClick={() => back(navigate, org)} className="mt-2 text-accent-text hover:underline">
             ← back
           </button>
         </div>

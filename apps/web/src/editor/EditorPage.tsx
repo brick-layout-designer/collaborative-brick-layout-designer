@@ -386,15 +386,15 @@ function Editor({ layoutId }: { layoutId: string }) {
 
   return (
     <div
-      className="grid h-screen grid-rows-[auto_1fr_auto] bg-neutral-950"
+      className="grid h-screen grid-rows-[auto_1fr_auto] bg-bg"
       style={{ gridTemplateColumns: viewport.isMobile ? '1fr' : cols }}
     >
       <header
-        className="flex items-center justify-between border-b border-neutral-800 px-4 py-2"
+        className="flex items-center justify-between border-b border-line px-4 py-2"
         style={{ gridColumn: `span ${headerColSpan}` }}
       >
         <div className="flex items-center gap-3">
-          <Link to="/" className="text-sm text-neutral-400 hover:underline">
+          <Link to="/" className="text-sm text-muted hover:underline">
             ← Layouts
           </Link>
           {!isViewer && (
@@ -407,7 +407,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                   }
                   window.location.href = '/';
                 }}
-                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft"
               >
                 New
               </button>
@@ -419,7 +419,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                   }
                   window.location.href = '/';
                 }}
-                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft"
               >
                 Open
               </button>
@@ -436,7 +436,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             onClick={undo.undo}
             disabled={!undo.canUndo}
             title="Undo (Cmd-Z)"
-            className="shrink-0 rounded-sm border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded-sm border border-border px-2 py-1 text-xs disabled:opacity-30"
           >
             Undo
           </button>
@@ -444,7 +444,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             onClick={undo.redo}
             disabled={!undo.canRedo}
             title="Redo (Cmd-Shift-Z)"
-            className="shrink-0 rounded-sm border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded-sm border border-border px-2 py-1 text-xs disabled:opacity-30"
           >
             Redo
           </button>
@@ -541,7 +541,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           {!isViewer && (
             <button
               onClick={() => setShowInsertModule(true)}
-              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800 whitespace-nowrap"
+              className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft whitespace-nowrap"
               title="Insert a saved module"
             >
               Insert module
@@ -549,14 +549,14 @@ function Editor({ layoutId }: { layoutId: string }) {
           )}
           <button
             onClick={() => setShowShare(true)}
-            className="shrink-0 rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="shrink-0 rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Share
           </button>
           {!isViewer && (
             <button
               onClick={() => void saveNow()}
-              className="shrink-0 rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+              className="shrink-0 rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
             >
               Save
             </button>
@@ -2834,9 +2834,9 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
     >
       <div>{bar.primary}</div>
       <div className="relative my-0.5 h-2" style={{ width: bar.px }}>
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-neutral-900" />
-        <div className="absolute left-0 top-0 h-2 w-0.5 bg-neutral-900" />
-        <div className="absolute right-0 top-0 h-2 w-0.5 bg-neutral-900" />
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-panel" />
+        <div className="absolute left-0 top-0 h-2 w-0.5 bg-panel" />
+        <div className="absolute right-0 top-0 h-2 w-0.5 bg-panel" />
       </div>
       <div>{bar.secondary}</div>
     </div>
@@ -2914,7 +2914,7 @@ function CanvasContextMenu({
     );
   }
   function sep(key: string) {
-    return <div key={key} className="my-1 border-t border-neutral-700" />;
+    return <div key={key} className="my-1 border-t border-border" />;
   }
 
   const entries: React.ReactNode[] = [];
@@ -2986,7 +2986,7 @@ function CanvasContextMenu({
     <div
       data-ctx-menu="1"
       style={{ position: 'fixed', left, top, zIndex: 9999, minWidth: menuW }}
-      className="flex flex-col rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-xl text-neutral-200"
+      className="flex flex-col rounded-sm border border-border bg-panel py-1 shadow-xl text-ink"
     >
       {entries}
     </div>
@@ -3346,19 +3346,19 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
   const dirty = status.kind === 'reconnecting' || status.kind === 'error';
   return (
     <footer
-      className="flex items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-925 px-3 py-1 text-[11px] text-neutral-400"
+      className="flex items-center justify-between gap-3 border-t border-line bg-panel px-3 py-1 text-[11px] text-muted"
       style={{ gridColumn: `span ${gridSpan}` }}
     >
       <div className="flex items-center gap-3">
-        <span>Tool: <span className="text-neutral-200">{tool}{dirty ? ' *' : ''}</span></span>
+        <span>Tool: <span className="text-ink">{tool}{dirty ? ' *' : ''}</span></span>
         <span title="Active layer — new parts are placed here">
           Layer:{' '}
-          <span className={activeLayer ? 'text-neutral-200' : 'text-neutral-600'}>
+          <span className={activeLayer ? 'text-ink' : 'text-neutral-600'}>
             {activeLayer ? activeLayer.name || 'unnamed' : 'none'}
           </span>
         </span>
         {dropTargetHint || statusMessage ? (
-          <span className="text-blue-400 transition-opacity">{dropTargetHint ?? statusMessage}</span>
+          <span className="text-accent-text transition-opacity">{dropTargetHint ?? statusMessage}</span>
         ) : (
           <>
             <span>
@@ -3387,7 +3387,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
           </span>
         )}
         {budgetLimits.size > 0 && (
-          <span className={budgetOver > 0 ? 'text-red-400' : 'text-green-400'}
+          <span className={budgetOver > 0 ? 'text-danger' : 'text-green-400'}
             title="Budget status">
             Budget: {budgetOver > 0 ? `${budgetOver} over` : 'OK'}
           </span>
@@ -3546,7 +3546,7 @@ function MapMenu({
           setAnchor(dropdownAnchor(e.currentTarget));
           setOpen((v) => !v);
         }}
-        className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+        className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft"
       >
         Map
       </button>
@@ -3555,20 +3555,20 @@ function MapMenu({
           // Fixed, not absolute: the header row scrolls horizontally, which
           // would clip an absolutely positioned dropdown. Above the modeless
           // Find / Budget panels (z-40), below modal dialogs (z-50).
-          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-border bg-panel text-xs shadow-sm"
           style={anchor}
           onClick={() => setOpen(false)}
         >
           {items.map((it, i) =>
             it.label === '—' ? (
-              <li key={i} className="mx-2 my-0.5 border-t border-neutral-700" />
+              <li key={i} className="mx-2 my-0.5 border-t border-border" />
             ) : (
               <li key={it.label}>
                 <button
                   onClick={it.action}
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-neutral-800"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-soft"
                 >
-                  <span className="w-3 text-center text-neutral-400">
+                  <span className="w-3 text-center text-muted">
                     {it.checked === true ? '✓' : it.checked === false ? '' : ''}
                   </span>
                   {it.label}
@@ -3608,7 +3608,7 @@ function PanelsMenu({
           setAnchor(dropdownAnchor(e.currentTarget));
           setOpen((v) => !v);
         }}
-        className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+        className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft"
         title="Toggle panels"
       >
         Panels
@@ -3617,17 +3617,17 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="fixed z-[45] min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
+          <ul className="fixed z-[45] min-w-[168px] rounded-sm border border-border bg-panel text-xs shadow-sm" style={anchor}>
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (
                 <li key={id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-neutral-800">
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-soft">
                     <input
                       type="checkbox"
                       checked={visible}
                       onChange={(e) => onToggle(id, e.target.checked)}
-                      className="accent-blue-500"
+                      className="accent-accent"
                     />
                     {PANEL_TITLES[id] ?? id}
                   </label>
@@ -3651,7 +3651,7 @@ function PaintColorPicker() {
   const set = useEditorStore((s) => s.setPaintColor);
   // Colour and alpha, like desktop's paint colour dialog (R6).
   return (
-    <label className="flex items-center gap-1 text-xs text-neutral-400" title="Paint colour">
+    <label className="flex items-center gap-1 text-xs text-muted" title="Paint colour">
       <span>Colour</span>
       <ColorAlphaInput compact label="Paint colour" value={value} onChange={(v) => set(v.toUpperCase())} />
     </label>
@@ -3668,12 +3668,12 @@ function SnapPicker() {
   const value = useEditorStore((s) => s.snapStepStuds);
   const set = useEditorStore((s) => s.setSnapStep);
   return (
-    <label className="flex items-center gap-1 text-xs text-neutral-400" title="Grid snap step (studs)">
+    <label className="flex items-center gap-1 text-xs text-muted" title="Grid snap step (studs)">
       <span>Snap</span>
       <select
         value={value}
         onChange={(e) => set(parseFloat(e.target.value))}
-        className="rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
+        className="rounded-sm border border-border bg-panel px-1 py-0.5 text-xs"
       >
         {SNAP_STEPS.map((s) => (
           <option key={s} value={s}>
@@ -3693,12 +3693,12 @@ function RotationPicker() {
   const value = useEditorStore((s) => s.rotationStepDegrees);
   const set = useEditorStore((s) => s.setRotationStep);
   return (
-    <label className="flex items-center gap-1 text-xs text-neutral-400" title="Rotation step (degrees)">
+    <label className="flex items-center gap-1 text-xs text-muted" title="Rotation step (degrees)">
       <span>Rot</span>
       <select
         value={value}
         onChange={(e) => set(parseFloat(e.target.value))}
-        className="rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
+        className="rounded-sm border border-border bg-panel px-1 py-0.5 text-xs"
       >
         {ROTATION_STEPS.map((s) => (
           <option key={s} value={s}>
@@ -3713,7 +3713,7 @@ function RotationPicker() {
 function SaveStatusIndicator({ status }: { status: import('./useLayoutDoc').SaveStatus }) {
   switch (status.kind) {
     case 'connecting':
-      return <span className="text-xs text-neutral-500">connecting…</span>;
+      return <span className="text-xs text-muted">connecting…</span>;
     case 'synced':
       return <span className="text-xs text-emerald-500">synced</span>;
     case 'reconnecting':
@@ -3729,7 +3729,7 @@ function SaveStatusIndicator({ status }: { status: import('./useLayoutDoc').Save
         </span>
       );
     case 'error':
-      return <span className="text-xs text-red-400">{status.message}</span>;
+      return <span className="text-xs text-danger">{status.message}</span>;
   }
 }
 
@@ -3741,16 +3741,16 @@ function timeAgo(ts: number): string {
 }
 
 function LoadingScreen() {
-  return <div className="grid h-screen place-items-center text-neutral-500">Loading editor…</div>;
+  return <div className="grid h-screen place-items-center text-muted">Loading editor…</div>;
 }
 
 function ErrorScreen({ err }: { err: Error }) {
   return (
     <div className="grid h-screen place-items-center">
       <div className="max-w-sm rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
-        <p className="font-semibold text-red-400">Couldn't load this layout.</p>
+        <p className="font-semibold text-danger">Couldn't load this layout.</p>
         <p className="mt-2 text-neutral-300">{err.message}</p>
-        <Link to="/" className="mt-4 inline-block text-blue-400 hover:underline">
+        <Link to="/" className="mt-4 inline-block text-accent-text hover:underline">
           ← back to layouts
         </Link>
       </div>
@@ -3760,7 +3760,7 @@ function ErrorScreen({ err }: { err: Error }) {
 
 function EmptyDoc() {
   return (
-    <div className="absolute inset-0 grid place-items-center text-neutral-500">
+    <div className="absolute inset-0 grid place-items-center text-muted">
       <div className="text-center">
         <p>This layout has no map data yet.</p>
         <p className="text-sm">Import a <code>.bbm</code> from the layouts list to populate it.</p>
@@ -3779,7 +3779,7 @@ function HeaderEditButtons({
   const selection = useEditorStore((s) => s.selection);
   const annoTotal = useEditorStore((s) => annoCount(s.annoSelection));
   const hasSel = selection.length > 0;
-  const btnCls = 'rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default';
+  const btnCls = 'rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30 disabled:cursor-default';
   const act = () => canvasActionsRef.current;
   return (
     <>

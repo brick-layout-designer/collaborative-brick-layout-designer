@@ -19,11 +19,11 @@ export function AboutPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
 
   return (
-    <div className="h-full overflow-y-auto p-8 text-neutral-100">
+    <div className="h-full overflow-y-auto p-8 text-ink">
       {me.data?.user ? (
         <AppHeader user={me.data.user} />
       ) : (
-        <header className="flex items-center justify-between border-b border-neutral-800 pb-4">
+        <header className="flex items-center justify-between border-b border-line pb-4">
           <Link to="/" className="flex items-center gap-2 text-2xl font-semibold hover:underline">
             <img src="/logo.png" alt="" className="h-8 w-8 rounded-sm" />
             Collaborative Brick Layout Designer
@@ -41,11 +41,11 @@ export function AboutPage() {
           <h1 className="text-2xl font-semibold">About</h1>
           <p className="mt-3 text-neutral-300">
             A web port of{' '}
-            <a href={DESKTOP_URL} className="text-blue-400 hover:underline">
+            <a href={DESKTOP_URL} className="text-accent-text hover:underline">
               Collaborative Brick Layout Designer
             </a>{' '}
             — itself a Qt rebuild of the original{' '}
-            <a href={ORIGINAL_BLUEBRICK_URL} className="text-blue-400 hover:underline">
+            <a href={ORIGINAL_BLUEBRICK_URL} className="text-accent-text hover:underline">
               BlueBrick
             </a>{' '}
             LEGO layout editor by Alban Nanty. This version runs in the
@@ -69,7 +69,7 @@ export function AboutPage() {
           <p className="mt-2 text-sm text-neutral-300">
             Bug reports, feature requests, and "this is wrong, here's
             why" comments are very welcome. File them on the{' '}
-            <a href={ISSUES_URL} className="text-blue-400 hover:underline">
+            <a href={ISSUES_URL} className="text-accent-text hover:underline">
               GitHub issue tracker
             </a>
             . For security problems, please don't open a public issue —
@@ -82,27 +82,27 @@ export function AboutPage() {
           <h2 className="text-lg font-semibold">Links</h2>
           <ul className="mt-2 space-y-1 text-sm">
             <li>
-              <a href={REPO_URL} className="text-blue-400 hover:underline">
+              <a href={REPO_URL} className="text-accent-text hover:underline">
                 Source code (GitHub)
               </a>
             </li>
             <li>
-              <a href={ISSUES_URL} className="text-blue-400 hover:underline">
+              <a href={ISSUES_URL} className="text-accent-text hover:underline">
                 Report an issue
               </a>
             </li>
             <li>
-              <a href={DESKTOP_URL} className="text-blue-400 hover:underline">
+              <a href={DESKTOP_URL} className="text-accent-text hover:underline">
                 Desktop CLD (Qt)
               </a>
             </li>
             <li>
-              <a href={ORIGINAL_BLUEBRICK_URL} className="text-blue-400 hover:underline">
+              <a href={ORIGINAL_BLUEBRICK_URL} className="text-accent-text hover:underline">
                 Original BlueBrick
               </a>
             </li>
             <li>
-              <a href={BLUEBRICK_PARTS_URL} className="text-blue-400 hover:underline">
+              <a href={BLUEBRICK_PARTS_URL} className="text-accent-text hover:underline">
                 BlueBrickParts library
               </a>
             </li>

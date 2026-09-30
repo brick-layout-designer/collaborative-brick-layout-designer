@@ -10,7 +10,7 @@ export function OrgsPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const [showCreate, setShowCreate] = useState(false);
 
-  if (me.isLoading) return <div className="p-8 text-neutral-500">Loading…</div>;
+  if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
   if (!me.data?.user) return <Navigate to="/login" replace />;
 
   return (
@@ -22,33 +22,33 @@ export function OrgsPage() {
           {!me.data.user.isDemoAccount && (
             <button
               onClick={() => setShowCreate(true)}
-              className="rounded-sm bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
+              className="rounded-sm bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
             >
               New org
             </button>
           )}
         </div>
 
-        {list.isLoading && <p className="text-neutral-500">Loading…</p>}
+        {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && (list.data.orgs.length === 0 ? (
-          <p className="rounded-sm border border-dashed border-neutral-700 p-8 text-center text-neutral-500">
+          <p className="rounded-sm border border-dashed border-border p-8 text-center text-muted">
             You're not a member of any organizations yet.
           </p>
         ) : (
-          <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+          <ul className="divide-y divide-line rounded-sm border border-line">
             {list.data.orgs.map((o) => (
               <li key={o.id} className="flex items-center justify-between px-4 py-3">
                 <div>
                   <Link to={`/orgs/${o.slug}`} className="font-medium hover:underline">
                     {o.name}
                   </Link>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-muted">
                     /{o.slug} · you are {o.myRole}
                   </p>
                 </div>
                 <Link
                   to={`/orgs/${o.slug}`}
-                  className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+                  className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
                 >
                   Open
                 </Link>
@@ -105,39 +105,39 @@ function CreateOrgDialog({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
+        className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6"
       >
         <h3 className="text-lg font-semibold">New organization</h3>
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Name</span>
+          <span className="mb-1 block text-muted">Name</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
             placeholder="Acme Bricks"
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
           {/* Slug is auto-derived from the name and kept read-only —
               users found the manual two-field form annoying, and the
               slug is mostly an implementation detail (it shows up in
               URLs but nobody cares whether it's `acme` vs `acme-bricks`). */}
-          <p className="mt-1 text-xs text-neutral-500">
+          <p className="mt-1 text-xs text-muted">
             URL: <span className="text-neutral-300">/orgs/{slug}</span>
           </p>
         </label>
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending || name.trim().length === 0}
-            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>

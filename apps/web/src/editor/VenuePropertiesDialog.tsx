@@ -49,14 +49,14 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
     setEdges((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
   }
 
-  const inputCls = 'w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm';
-  const labelCls = 'block text-xs text-neutral-400 mb-0.5';
+  const inputCls = 'w-full rounded-sm border border-border bg-soft px-2 py-1.5 text-sm';
+  const labelCls = 'block text-xs text-muted mb-0.5';
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
       <form
         onSubmit={submit}
-        className="w-full max-w-2xl space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-sm"
+        className="w-full max-w-2xl space-y-4 rounded-lg border border-line bg-panel p-6 text-sm"
       >
         <h3 className="text-lg font-semibold">Venue Properties</h3>
 
@@ -83,20 +83,20 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
             type="checkbox"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
-            className="accent-blue-500"
+            className="accent-accent"
           />
           Render this venue
         </label>
 
         {edges.length > 0 && (
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
               Edges
             </p>
-            <div className="overflow-auto rounded-sm border border-neutral-800">
+            <div className="overflow-auto rounded-sm border border-line">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-neutral-800 text-left text-neutral-500">
+                  <tr className="border-b border-line text-left text-muted">
                     <th className="w-6 px-2 py-1">#</th>
                     <th className="px-2 py-1">Kind</th>
                     <th className="px-2 py-1">Door width (ft)</th>
@@ -105,13 +105,13 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
                 </thead>
                 <tbody>
                   {edges.map((edge, i) => (
-                    <tr key={i} className="border-b border-neutral-900">
-                      <td className="px-2 py-1 text-neutral-500">{i + 1}</td>
+                    <tr key={i} className="border-b border-line">
+                      <td className="px-2 py-1 text-muted">{i + 1}</td>
                       <td className="px-2 py-1">
                         <select
                           value={edge.kind}
                           onChange={(e) => patchEdge(i, { kind: Number(e.target.value) as 0|1|2 })}
-                          className="rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5"
+                          className="rounded-sm border border-border bg-soft px-1 py-0.5"
                         >
                           {EDGE_KINDS.map((k, v) => (
                             <option key={v} value={v}>{k}</option>
@@ -128,14 +128,14 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
                           onChange={(e) =>
                             patchEdge(i, { doorWidthStuds: (parseFloat(e.target.value) || 0) * STUDS_PER_FOOT })
                           }
-                          className="w-24 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 disabled:opacity-40"
+                          className="w-24 rounded-sm border border-border bg-soft px-1 py-0.5 disabled:opacity-40"
                         />
                       </td>
                       <td className="px-2 py-1">
                         <input
                           value={edge.label}
                           onChange={(e) => patchEdge(i, { label: e.target.value })}
-                          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5"
+                          className="w-full rounded-sm border border-border bg-soft px-1 py-0.5"
                         />
                       </td>
                     </tr>
@@ -147,7 +147,7 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
         )}
 
         {initial.obstacles.length > 0 && (
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-muted">
             <strong>{initial.obstacles.length}</strong> obstacle polygon(s) drawn.
           </p>
         )}
@@ -156,7 +156,7 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
           <button
             type="button"
             onClick={clearVenue}
-            className="rounded-sm border border-red-900 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950"
+            className="rounded-sm border border-red-900 px-3 py-1.5 text-sm text-danger hover:bg-red-950"
           >
             Clear Venue
           </button>
@@ -164,13 +164,13 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-sm border border-neutral-700 px-4 py-1.5 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-border px-4 py-1.5 text-sm hover:bg-soft"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-sm bg-blue-600 px-4 py-1.5 text-sm hover:bg-blue-500"
+              className="rounded-sm bg-accent text-accent-ink px-4 py-1.5 text-sm hover:bg-accent-hover"
             >
               OK
             </button>

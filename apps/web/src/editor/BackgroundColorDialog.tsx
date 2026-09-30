@@ -33,7 +33,7 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-[24rem] rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
+        className="w-[24rem] rounded-lg border border-line bg-panel p-5 shadow-xl"
       >
         <h2 className="text-base font-semibold">Background colour</h2>
         <div className="mt-4 flex items-center gap-3 text-sm">
@@ -41,11 +41,11 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
             type="color"
             value={rgb}
             onChange={(e) => setRgb(e.target.value)}
-            className="h-10 w-20 cursor-pointer rounded-sm border border-neutral-700 bg-transparent"
+            className="h-10 w-20 cursor-pointer rounded-sm border border-border bg-transparent"
           />
           <span className="font-mono text-xs uppercase">{rgb}</span>
         </div>
-        <label className="mt-3 flex items-center gap-3 text-xs text-neutral-400">
+        <label className="mt-3 flex items-center gap-3 text-xs text-muted">
           Alpha
           <input
             type="range"
@@ -61,13 +61,13 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
           >
             OK
           </button>

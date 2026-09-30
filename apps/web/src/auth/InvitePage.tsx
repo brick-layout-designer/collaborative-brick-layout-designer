@@ -76,9 +76,9 @@ export function InvitePage() {
 
   return (
     <Centered>
-      <div className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6">
+      <div className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6">
         <h1 className="text-lg font-semibold">You're invited</h1>
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-muted">
           You've been invited to <strong>{inv.layoutTitle}</strong> as a {inv.role}.
         </p>
 
@@ -89,7 +89,7 @@ export function InvitePage() {
             </p>
             <Link
               to={`/login?next=${encodeURIComponent(`/invite/${params.token}`)}`}
-              className="block rounded-sm bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
+              className="block rounded-sm bg-accent text-accent-ink px-4 py-2 text-center hover:bg-accent-hover"
             >
               Sign in
             </Link>

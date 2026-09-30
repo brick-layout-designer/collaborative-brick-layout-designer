@@ -29,7 +29,7 @@ export function AppHeader({ user }: Props) {
   });
 
   return (
-    <header className="flex items-center justify-between border-b border-neutral-800 pb-4">
+    <header className="flex items-center justify-between border-b border-line pb-4">
       <Link to="/" className="flex items-center gap-2 text-2xl font-semibold hover:underline">
         <img src="/logo.png" alt="" className="h-8 w-8 rounded-sm" />
         Collaborative Brick Layout Designer
@@ -62,7 +62,7 @@ export function AppHeader({ user }: Props) {
         <button
           onClick={() => logout.mutate()}
           disabled={logout.isPending}
-          className="rounded-sm border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+          className="rounded-sm border border-border px-3 py-1 text-xs text-neutral-300 hover:bg-soft disabled:opacity-50"
           title="Sign out"
         >
           Sign out

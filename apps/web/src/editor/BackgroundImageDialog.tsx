@@ -77,14 +77,14 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-104 rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
+        className="w-104 rounded-lg border border-line bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-semibold">Background Image</h2>
 
         <div className="mt-4 space-y-3 text-sm">
           <div>
-            <label className="block text-xs text-neutral-400 mb-1">Image file (PNG / JPG / GIF / WebP, max 10 MB)</label>
+            <label className="block text-xs text-muted mb-1">Image file (PNG / JPG / GIF / WebP, max 10 MB)</label>
             <input
               ref={inputRef}
               type="file"
@@ -93,14 +93,14 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
               className="w-full text-xs text-neutral-300"
             />
             {existing?.url && !file && (
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-muted">
                 Current image will be kept unless you choose a new file.
               </p>
             )}
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="text-xs text-neutral-400 w-16">Opacity</label>
+            <label className="text-xs text-muted w-16">Opacity</label>
             <input
               type="range"
               min={0}
@@ -108,9 +108,9 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
               step={0.05}
               value={opacity}
               onChange={(e) => setOpacity(parseFloat(e.target.value))}
-              className="flex-1 accent-blue-500"
+              className="flex-1 accent-accent"
             />
-            <span className="text-xs tabular-nums text-neutral-400 w-8 text-right">
+            <span className="text-xs tabular-nums text-muted w-8 text-right">
               {Math.round(opacity * 100)}%
             </span>
           </div>
@@ -120,7 +120,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
               type="checkbox"
               checked={useRect}
               onChange={(e) => setUseRect(e.target.checked)}
-              className="accent-blue-500"
+              className="accent-accent"
             />
             Custom placement (studs)
           </label>
@@ -129,12 +129,12 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
             <div className="grid grid-cols-2 gap-2 pl-5">
               {(['x', 'y', 'w', 'h'] as const).map((k) => (
                 <label key={k} className="flex flex-col gap-0.5">
-                  <span className="text-xs text-neutral-500">{k}</span>
+                  <span className="text-xs text-muted">{k}</span>
                   <input
                     type="number"
                     value={rect[k]}
                     onChange={(e) => setRect((r) => ({ ...r, [k]: parseFloat(e.target.value) || 0 }))}
-                    className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                    className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
                   />
                 </label>
               ))}
@@ -142,14 +142,14 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
           )}
         </div>
 
-        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-5 flex items-center justify-between">
           {existing && (
             <button
               onClick={remove}
               disabled={busy}
-              className="rounded-sm border border-red-900 px-3 py-1 text-xs text-red-400 hover:bg-red-950 disabled:opacity-50"
+              className="rounded-sm border border-red-900 px-3 py-1 text-xs text-danger hover:bg-red-950 disabled:opacity-50"
             >
               Remove image
             </button>
@@ -157,14 +157,14 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
-              className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800"
+              className="rounded-sm border border-border px-3 py-1 text-xs hover:bg-soft"
             >
               Cancel
             </button>
             <button
               onClick={commit}
               disabled={busy || (!file && !existing)}
-              className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'OK'}
             </button>

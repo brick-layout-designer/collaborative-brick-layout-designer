@@ -19,15 +19,15 @@ function OrgAdmin({ slug }: { slug: string }) {
   const detail = useQuery({ queryKey: ['org', slug], queryFn: () => api.orgs.get(slug) });
 
   if (me.isLoading || detail.isLoading) {
-    return <div className="grid h-screen place-items-center text-neutral-500">Loading…</div>;
+    return <div className="grid h-screen place-items-center text-muted">Loading…</div>;
   }
   if (!me.data?.user) return <Navigate to="/login" replace />;
   if (detail.isError) {
     return (
       <div className="grid h-screen place-items-center">
         <div className="rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-red-400">Organization not found.</p>
-          <Link to="/orgs" className="mt-2 inline-block text-blue-400 hover:underline">← back</Link>
+          <p className="font-semibold text-danger">Organization not found.</p>
+          <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
         </div>
       </div>
     );
@@ -51,23 +51,23 @@ function OrgAdmin({ slug }: { slug: string }) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">{org.name} — Settings</h1>
-            <p className="text-sm text-neutral-500">
-              <Link to={`/orgs/${slug}`} className="text-blue-400 hover:underline">
+            <p className="text-sm text-muted">
+              <Link to={`/orgs/${slug}`} className="text-accent-text hover:underline">
                 ← back to org
               </Link>
             </p>
           </div>
         </div>
 
-        <nav className="flex gap-1 border-b border-neutral-800 pb-0">
+        <nav className="flex gap-1 border-b border-line pb-0">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`rounded-t px-4 py-2 text-sm font-medium transition-colors ${
                 tab === t.id
-                  ? 'border-b-2 border-blue-500 text-blue-400'
-                  : 'text-neutral-400 hover:text-neutral-200'
+                  ? 'border-b-2 border-accent text-accent-text'
+                  : 'text-muted hover:text-ink'
               }`}
             >
               {t.label}
@@ -91,7 +91,7 @@ function MembersTab({ slug, myUserId }: { slug: string; myUserId: string }) {
     queryFn: () => api.orgs.members(slug),
   });
 
-  if (members.isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (members.isLoading) return <p className="text-sm text-muted">Loading…</p>;
 
   return (
     <div className="space-y-4">
@@ -134,16 +134,16 @@ function MembersList({
 
   return (
     <div className="space-y-3">
-      <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+      <ul className="divide-y divide-line rounded-sm border border-line">
         {members.map((m) => {
           const isSelf = m.userId === myUserId;
           return (
             <li key={m.userId} className="flex items-center justify-between px-3 py-2 text-sm">
               <div>
                 <p>
-                  {m.displayName} {isSelf && <span className="text-xs text-neutral-500">(you)</span>}
+                  {m.displayName} {isSelf && <span className="text-xs text-muted">(you)</span>}
                 </p>
-                <p className="text-xs text-neutral-500">{m.email}</p>
+                <p className="text-xs text-muted">{m.email}</p>
               </div>
               <div className="flex items-center gap-2">
                 <select
@@ -151,7 +151,7 @@ function MembersList({
                   onChange={(e) =>
                     change.mutate({ userId: m.userId, role: e.target.value as 'admin' | 'member' })
                   }
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-sm border border-border bg-soft px-2 py-1 text-xs"
                 >
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
@@ -161,7 +161,7 @@ function MembersList({
                     if (confirm(isSelf ? 'Leave this organization?' : `Remove ${m.displayName}?`))
                       remove.mutate(m.userId);
                   }}
-                  className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+                  className="rounded-sm border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
                 >
                   {isSelf ? 'Leave' : 'Remove'}
                 </button>
@@ -172,21 +172,21 @@ function MembersList({
       </ul>
       {invites.length > 0 && (
         <div>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
             Pending invites
           </h3>
-          <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+          <ul className="divide-y divide-line rounded-sm border border-line">
             {invites.map((i) => (
               <li key={i.id} className="flex items-center justify-between px-3 py-2 text-sm">
                 <div>
                   <p>{i.invitedEmail}</p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-muted">
                     {i.role} · expires {new Date(i.expiresAt).toLocaleDateString()}
                   </p>
                 </div>
                 <button
                   onClick={() => revoke.mutate(i.id)}
-                  className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                  className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft"
                 >
                   Revoke
                 </button>
@@ -249,13 +249,13 @@ function InviteForm({ slug }: { slug: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="rounded-sm border border-neutral-800 p-3 text-sm">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <form onSubmit={submit} className="rounded-sm border border-line p-3 text-sm">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
         Invite member
       </h3>
       <div className="flex items-end gap-2">
         <label className="relative flex-1">
-          <span className="mb-1 block text-xs text-neutral-400">Email</span>
+          <span className="mb-1 block text-xs text-muted">Email</span>
           <input
             type="text"
             required
@@ -263,17 +263,17 @@ function InviteForm({ slug }: { slug: string }) {
             onChange={(e) => { setEmail(e.target.value); setPickedUserId(null); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="w-full rounded-sm border border-border bg-soft px-2 py-1.5"
             placeholder="Search by name or paste an email…"
             autoComplete="off"
           />
           {showSuggestions && pickedUserId === null && debouncedQuery.length >= 2 && (
-            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 shadow-lg">
+            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-sm border border-border bg-panel shadow-lg">
               {suggestions.isLoading && (
-                <li className="px-2 py-1.5 text-xs text-neutral-500">Searching…</li>
+                <li className="px-2 py-1.5 text-xs text-muted">Searching…</li>
               )}
               {suggestions.data && suggestions.data.users.length === 0 && (
-                <li className="px-2 py-1.5 text-xs text-neutral-500">
+                <li className="px-2 py-1.5 text-xs text-muted">
                   No matching account — you can still invite by email.
                 </li>
               )}
@@ -290,11 +290,11 @@ function InviteForm({ slug }: { slug: string }) {
                       setPickedUserId(u.id);
                       setShowSuggestions(false);
                     }}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-neutral-800 disabled:opacity-40"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-soft disabled:opacity-40"
                   >
                     {u.avatarUrl && <img src={u.avatarUrl} alt="" className="h-5 w-5 rounded-full" />}
                     <span className="flex-1 truncate">{u.displayName}</span>
-                    {u.alreadyMember && <span className="text-[10px] text-neutral-500">already a member</span>}
+                    {u.alreadyMember && <span className="text-[10px] text-muted">already a member</span>}
                   </button>
                 </li>
               ))}
@@ -302,11 +302,11 @@ function InviteForm({ slug }: { slug: string }) {
           )}
         </label>
         <label>
-          <span className="mb-1 block text-xs text-neutral-400">Role</span>
+          <span className="mb-1 block text-xs text-muted">Role</span>
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-            className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5"
+            className="rounded-sm border border-border bg-soft px-2 py-1.5"
           >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
@@ -315,24 +315,24 @@ function InviteForm({ slug }: { slug: string }) {
         <button
           type="submit"
           disabled={invite.isPending}
-          className="rounded-sm bg-blue-600 px-3 py-1.5 hover:bg-blue-500 disabled:opacity-50"
+          className="rounded-sm bg-accent text-accent-ink px-3 py-1.5 hover:bg-accent-hover disabled:opacity-50"
         >
           Invite
         </button>
       </div>
-      <p className="mt-1 text-[11px] text-neutral-500">
+      <p className="mt-1 text-[11px] text-muted">
         Search by name to find an existing account, or type an email directly. Either way the
         invite still requires them to accept.
       </p>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       {shareUrl && (
         <div className="mt-3 rounded-sm border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
           <p className="text-emerald-400">Invite created.</p>
-          <code className="mt-1 block break-all rounded-sm bg-neutral-950 p-1 text-[11px]">{shareUrl}</code>
+          <code className="mt-1 block break-all rounded-sm bg-bg p-1 text-[11px]">{shareUrl}</code>
           <button
             type="button"
             onClick={() => navigator.clipboard.writeText(shareUrl)}
-            className="mt-1 text-xs text-blue-400 hover:underline"
+            className="mt-1 text-xs text-accent-text hover:underline"
           >
             Copy link
           </button>
@@ -358,20 +358,20 @@ function LibrariesTab({ slug }: { slug: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['org-part-libraries', slug] }),
   });
 
-  if (libs.isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (libs.isLoading) return <p className="text-sm text-muted">Loading…</p>;
   if (!libs.data || libs.data.libraries.length === 0) {
     return (
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-muted">
         No part libraries installed. Ask a platform admin to install libraries.
       </p>
     );
   }
 
   return (
-    <div className="overflow-auto rounded-sm border border-neutral-800">
+    <div className="overflow-auto rounded-sm border border-line">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-800 text-left text-xs text-neutral-500">
+          <tr className="border-b border-line text-left text-xs text-muted">
             <th className="px-3 py-2">Library</th>
             <th className="px-3 py-2">Parts</th>
             <th className="px-3 py-2">Enabled</th>
@@ -380,24 +380,24 @@ function LibrariesTab({ slug }: { slug: string }) {
         </thead>
         <tbody>
           {libs.data.libraries.map((lib: OrgPartLibrary) => (
-            <tr key={lib.id} className="border-b border-neutral-900 hover:bg-neutral-900/30">
+            <tr key={lib.id} className="border-b border-line hover:bg-panel/30">
               <td className="px-3 py-2">
                 <span className="font-medium">{lib.name}</span>
-                <span className="ml-2 font-mono text-xs text-neutral-500">{lib.slug}</span>
+                <span className="ml-2 font-mono text-xs text-muted">{lib.slug}</span>
                 {lib.locked && (
-                  <span className="ml-2 rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400" title="This library is always enabled and cannot be disabled">
+                  <span className="ml-2 rounded-sm bg-soft px-1.5 py-0.5 text-[10px] text-muted" title="This library is always enabled and cannot be disabled">
                     locked
                   </span>
                 )}
               </td>
-              <td className="px-3 py-2 text-neutral-400">{lib.partCount.toLocaleString()}</td>
+              <td className="px-3 py-2 text-muted">{lib.partCount.toLocaleString()}</td>
               <td className="px-3 py-2">
                 <input
                   type="checkbox"
                   checked={lib.enabled}
                   disabled={lib.locked}
                   onChange={(e) => !lib.locked && toggle.mutate({ libraryId: lib.id, enabled: e.target.checked })}
-                  className="accent-blue-500 disabled:opacity-40"
+                  className="accent-accent disabled:opacity-40"
                   title={lib.locked ? 'This library is always enabled' : undefined}
                 />
               </td>
@@ -407,7 +407,7 @@ function LibrariesTab({ slug }: { slug: string }) {
                 ) : lib.explicitOverride ? (
                   <button
                     onClick={() => reset.mutate(lib.id)}
-                    className="text-xs text-neutral-400 hover:underline"
+                    className="text-xs text-muted hover:underline"
                     title={`Revert to default (${lib.defaultEnabled ? 'enabled' : 'disabled'})`}
                   >
                     Reset to default
@@ -440,23 +440,23 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
     },
   });
 
-  if (all.isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (all.isLoading) return <p className="text-sm text-muted">Loading…</p>;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-muted">
           Parts owned by this organisation are visible to all members in the parts panel.
         </p>
         <button
           onClick={() => setShowUpload(true)}
-          className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+          className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
         >
           Upload part
         </button>
       </div>
       {parts.length === 0 ? (
-        <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+        <p className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">
           No custom parts yet.
         </p>
       ) : (
@@ -464,7 +464,7 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
           {parts.map((p) => (
             <li
               key={p.id}
-              className="flex flex-col items-center rounded-sm border border-neutral-800 p-2 text-xs"
+              className="flex flex-col items-center rounded-sm border border-line p-2 text-xs"
             >
               <img
                 src={api.customParts.spriteUrl(p.id)}
@@ -473,12 +473,12 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
                 loading="lazy"
               />
               <p className="mt-1 line-clamp-1 font-mono">{p.partNumber}</p>
-              <p className="line-clamp-1 text-neutral-500">{p.displayName}</p>
+              <p className="line-clamp-1 text-muted">{p.displayName}</p>
               <button
                 onClick={() => {
                   if (confirm(`Delete "${p.partNumber}"?`)) remove.mutate(p.id);
                 }}
-                className="mt-1 text-[10px] text-red-400 hover:underline"
+                className="mt-1 text-[10px] text-danger hover:underline"
               >
                 delete
               </button>
@@ -561,27 +561,27 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-sm"
+        className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
         <h3 className="text-lg font-semibold">Upload org custom part</h3>
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Part number</span>
+          <span className="mb-1 block text-muted">Part number</span>
           <input
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             required
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Display name</span>
+          <span className="mb-1 block text-muted">Display name</span>
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
         </label>
 
@@ -592,29 +592,29 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
         />
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Part XML</span>
+          <span className="mb-1 block text-muted">Part XML</span>
           <input type="file" accept=".xml,application/xml,text/xml" onChange={pickXml} required />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Sprite (gif or png)</span>
+          <span className="mb-1 block text-muted">Sprite (gif or png)</span>
           <input type="file" accept="image/gif,image/png" onChange={pickSprite} required />
         </label>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Upload
           </button>
@@ -635,32 +635,32 @@ function OrgModulesTab({ slug, orgId }: { slug: string; orgId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
   });
 
-  if (all.isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (all.isLoading) return <p className="text-sm text-muted">Loading…</p>;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-muted">
           Modules owned by this organisation are shared with all members.
         </p>
         <button
           onClick={() => setShowCreate(true)}
-          className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+          className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
         >
           New module
         </button>
       </div>
       {modules.length === 0 ? (
-        <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+        <p className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">
           No modules yet.
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+        <ul className="divide-y divide-line rounded-sm border border-line">
           {modules.map((m) => (
             <li key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
               <div>
                 <p>{m.title}</p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-muted">
                   v{m.docVersion} · updated {new Date(m.updatedAt).toLocaleString()}
                 </p>
               </div>
@@ -668,7 +668,7 @@ function OrgModulesTab({ slug, orgId }: { slug: string; orgId: string }) {
                 onClick={() => {
                   if (confirm(`Delete "${m.title}"?`)) remove.mutate(m.id);
                 }}
-                className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+                className="rounded-sm border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
               >
                 Delete
               </button>
@@ -713,31 +713,31 @@ function OrgNewModuleDialog({ slug, onClose }: { slug: string; onClose: () => vo
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-sm"
+        className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
         <h3 className="text-lg font-semibold">New org module</h3>
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Title</span>
+          <span className="mb-1 block text-muted">Title</span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Module"
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
         </label>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>
@@ -752,16 +752,16 @@ function AuditTab({ slug }: { slug: string }) {
     queryKey: ['org-audit', slug],
     queryFn: () => api.audit.forOrg(slug),
   });
-  if (log.isLoading) return <p className="text-sm text-neutral-500">Loading…</p>;
-  if (log.error) return <p className="text-sm text-red-400">Failed to load audit log.</p>;
+  if (log.isLoading) return <p className="text-sm text-muted">Loading…</p>;
+  if (log.error) return <p className="text-sm text-danger">Failed to load audit log.</p>;
   if (!log.data || log.data.events.length === 0) {
-    return <p className="text-sm text-neutral-500">No audit events yet.</p>;
+    return <p className="text-sm text-muted">No audit events yet.</p>;
   }
   return (
-    <div className="overflow-auto rounded-sm border border-neutral-800">
+    <div className="overflow-auto rounded-sm border border-line">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-neutral-800 text-left text-neutral-500">
+          <tr className="border-b border-line text-left text-muted">
             <th className="px-3 py-2">Time</th>
             <th className="px-3 py-2">Event</th>
             <th className="px-3 py-2">User</th>
@@ -771,14 +771,14 @@ function AuditTab({ slug }: { slug: string }) {
         </thead>
         <tbody>
           {log.data.events.map((e: AuditEventSummary) => (
-            <tr key={e.id} className="border-b border-neutral-900 hover:bg-neutral-900/40">
-              <td className="px-3 py-1.5 text-neutral-400">{new Date(e.createdAt).toLocaleString()}</td>
+            <tr key={e.id} className="border-b border-line hover:bg-panel/40">
+              <td className="px-3 py-1.5 text-muted">{new Date(e.createdAt).toLocaleString()}</td>
               <td className="px-3 py-1.5">{e.eventType}</td>
-              <td className="px-3 py-1.5 text-neutral-400">{e.userName ?? e.userId ?? '—'}</td>
-              <td className="px-3 py-1.5 font-mono text-neutral-400">{e.layoutId ?? '—'}</td>
+              <td className="px-3 py-1.5 text-muted">{e.userName ?? e.userId ?? '—'}</td>
+              <td className="px-3 py-1.5 font-mono text-muted">{e.layoutId ?? '—'}</td>
               <td className="px-3 py-1.5">
                 <details>
-                  <summary className="cursor-pointer text-neutral-500">view</summary>
+                  <summary className="cursor-pointer text-muted">view</summary>
                   <pre className="mt-1 max-w-xs overflow-auto whitespace-pre-wrap text-neutral-300">
                     {JSON.stringify(e.payload, null, 2)}
                   </pre>

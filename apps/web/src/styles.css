@@ -1,10 +1,231 @@
 @import 'tailwindcss';
 
-/* Keep Tailwind 3's system font stack; 4.3 switched the default to an
-   explicit -apple-system/Segoe UI/Roboto/Arial list. */
-@theme {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+/* Fonts ship with the app (no Google Fonts request: servers are
+   self-hosted and sometimes offline). Latin + Latin Extended only. */
+@import '@fontsource/figtree/latin-400.css';
+@import '@fontsource/figtree/latin-500.css';
+@import '@fontsource/figtree/latin-600.css';
+@import '@fontsource/figtree/latin-700.css';
+@import '@fontsource/figtree/latin-ext-400.css';
+@import '@fontsource/figtree/latin-ext-600.css';
+@import '@fontsource/figtree/latin-ext-700.css';
+@import '@fontsource/bricolage-grotesque/latin-500.css';
+@import '@fontsource/bricolage-grotesque/latin-700.css';
+@import '@fontsource/bricolage-grotesque/latin-ext-700.css';
+
+/* ---------------------------------------------------------------------
+   Design tokens (src/theme/tokens.ts holds the same values; theme.test.ts
+   keeps them in step). <html> carries data-theme="light|dark" (resolved
+   from the light/dark/system choice), data-accent and data-text.
+   The light values double as the default before any script runs; the
+   prefers-color-scheme block covers "system" with scripts off.
+   --------------------------------------------------------------------- */
+:root,
+:root[data-theme='light'] {
+  --bg: #F6F4EF;
+  --panel: #FFFFFF;
+  --line: #E4E0D8;
+  --border: #D6D1C7;
+  --ink: #1E2124;
+  --muted: #5B6168;
+  --soft: #F1EEE8;
+  --grid: #EDEAE3;
+  --grid-line: #E2DED5;
+  --room-line: #9A948A;
+  --ok: #1F6B3A;
+  --ok-soft: #E8F3EC;
+  --danger: #A8331F;
+  --tour-bg: #1E2124;
+  --tour-ink: #FFFFFF;
+  --tour-muted: #C9CDD2;
+
+  /* The old dark-only UI drew with Tailwind's neutral scale (950 = page,
+     900 = panel, 800 = control, 700 = border, 400/500 = secondary text,
+     100/200 = text). Those classes now resolve to this ramp, which flips
+     with the theme, so screens not yet moved to the token classes still
+     read correctly in both. */
+  --n-50: #121416;
+  --n-100: #1E2124;
+  --n-200: #2C3034;
+  --n-300: #41464C;
+  --n-400: #5B6168;
+  --n-500: #666C73;
+  --n-600: #8C8F93;
+  --n-700: #D6D1C7;
+  --n-800: #EAE6DF;
+  --n-900: #FFFFFF;
+  --n-925: #FBFAF7;
+  --n-950: #F6F4EF;
+
+  --accent-hover: color-mix(in srgb, var(--accent) 86%, black);
+  --pop-shadow: 0 12px 30px rgb(30 33 36 / 0.14);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #16181B;
+    --panel: #1F2226;
+    --line: #30343A;
+    --border: #3A3F45;
+    --ink: #ECEDEF;
+    --muted: #A3A9B0;
+    --soft: #2A2E33;
+    --grid: #1A1C1F;
+    --grid-line: #25282C;
+    --room-line: #6B7078;
+    --ok: #7FD39B;
+    --ok-soft: #1D3326;
+    --danger: #F2A08F;
+    --tour-bg: #F3F1EC;
+    --tour-ink: #1E2124;
+    --tour-muted: #4A5057;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #16181B;
+  --panel: #1F2226;
+  --line: #30343A;
+  --border: #3A3F45;
+  --ink: #ECEDEF;
+  --muted: #A3A9B0;
+  --soft: #2A2E33;
+  --grid: #1A1C1F;
+  --grid-line: #25282C;
+  --room-line: #6B7078;
+  --ok: #7FD39B;
+  --ok-soft: #1D3326;
+  --danger: #F2A08F;
+  --tour-bg: #F3F1EC;
+  --tour-ink: #1E2124;
+  --tour-muted: #4A5057;
+
+  --n-50: #F6F7F8;
+  --n-100: #ECEDEF;
+  --n-200: #DCDEE1;
+  --n-300: #C8CCD1;
+  --n-400: #A3A9B0;
+  --n-500: #959BA2;
+  --n-600: #6E747B;
+  --n-700: #3A3F45;
+  --n-800: #2A2E33;
+  --n-900: #1F2226;
+  --n-925: #1B1D21;
+  --n-950: #16181B;
+
+  --accent-hover: color-mix(in srgb, var(--accent) 84%, white);
+  --pop-shadow: 0 12px 30px rgb(0 0 0 / 0.45);
+  color-scheme: dark;
+}
+
+/* Accents. main and onMain are the same in both modes; soft and text change. */
+:root, :root[data-accent='brick'] { --accent: #C2412D; --accent-ink: #FFFFFF; --accent-soft: #FBE9E5; --accent-text: #A8331F; }
+:root[data-theme='dark'], :root[data-theme='dark'][data-accent='brick'] { --accent-soft: #3A221E; --accent-text: #F2A08F; }
+:root[data-accent='ocean'] { --accent: #2459C4; --accent-ink: #FFFFFF; --accent-soft: #E6EEFB; --accent-text: #1D4AA6; }
+:root[data-theme='dark'][data-accent='ocean'] { --accent-soft: #1C2940; --accent-text: #93B4F0; }
+:root[data-accent='forest'] { --accent: #2E7D4F; --accent-ink: #FFFFFF; --accent-soft: #E4F2E9; --accent-text: #256942; }
+:root[data-theme='dark'][data-accent='forest'] { --accent-soft: #1C3326; --accent-text: #8FD1A8; }
+:root[data-accent='plum'] { --accent: #8A4FBF; --accent-ink: #FFFFFF; --accent-soft: #F1E8F9; --accent-text: #7340A3; }
+:root[data-theme='dark'][data-accent='plum'] { --accent-soft: #2E2238; --accent-text: #C9A6EA; }
+:root[data-accent='sunny'] { --accent: #B8860B; --accent-ink: #1E2124; --accent-soft: #FBF1D9; --accent-text: #8A6508; }
+:root[data-theme='dark'][data-accent='sunny'] { --accent-soft: #3A2F14; --accent-text: #E9C86A; }
+
+/* Bigger text and buttons: everything sized in rem grows with this. */
+:root[data-text='large'] {
+  font-size: 112.5%;
+}
+
+/* Light theme: the status colours the dark UI used as light-on-dark
+   (red-400 text, red-950 fills) swap ends of the scale so they stay
+   readable on white. */
+:root[data-theme='light'] {
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(44.4% 0.177 26.899);
+  --color-red-400: oklch(50.5% 0.213 27.518);
+  --color-red-500: oklch(50.5% 0.213 27.518);
+  --color-red-800: oklch(88.5% 0.062 18.334);
+  --color-red-900: oklch(88.5% 0.062 18.334);
+  --color-red-950: oklch(97.1% 0.013 17.38);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(47.3% 0.137 46.201);
+  --color-amber-400: oklch(47.3% 0.137 46.201);
+  --color-amber-500: oklch(55.5% 0.163 48.998);
+  --color-amber-700: oklch(87.9% 0.169 91.605);
+  --color-amber-900: oklch(96.2% 0.059 95.617);
+  --color-amber-950: oklch(98.7% 0.022 95.277);
+  --color-emerald-400: oklch(43.2% 0.095 166.913);
+  --color-emerald-500: oklch(50.8% 0.118 165.612);
+  --color-emerald-900: oklch(95% 0.052 163.051);
+  --color-emerald-950: oklch(97.9% 0.021 166.113);
+  --color-green-400: oklch(44.8% 0.119 151.328);
+  --color-green-500: oklch(52.7% 0.154 150.069);
+  --color-orange-400: oklch(47% 0.157 37.304);
+}
+
+@theme inline {
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
     'Noto Color Emoji';
+  --font-display: 'Bricolage Grotesque', 'Figtree', ui-sans-serif, system-ui, sans-serif;
+
+  /* Semantic colours: bg-panel, text-ink, border-line, bg-accent, ... */
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-border: var(--border);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-soft: var(--soft);
+  --color-grid: var(--grid);
+  --color-grid-line: var(--grid-line);
+  --color-room-line: var(--room-line);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-danger: var(--danger);
+  --color-tour-bg: var(--tour-bg);
+  --color-tour-ink: var(--tour-ink);
+  --color-tour-muted: var(--tour-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+
+  /* Legacy neutral scale -> theme ramp (see :root above). */
+  --color-neutral-50: var(--n-50);
+  --color-neutral-100: var(--n-100);
+  --color-neutral-200: var(--n-200);
+  --color-neutral-300: var(--n-300);
+  --color-neutral-400: var(--n-400);
+  --color-neutral-500: var(--n-500);
+  --color-neutral-600: var(--n-600);
+  --color-neutral-700: var(--n-700);
+  --color-neutral-800: var(--n-800);
+  --color-neutral-900: var(--n-900);
+  --color-neutral-925: var(--n-925);
+  --color-neutral-950: var(--n-950);
+
+  /* Legacy blue (the old primary colour) -> the chosen accent. */
+  --color-blue-50: var(--accent-soft);
+  --color-blue-100: var(--accent-soft);
+  --color-blue-200: var(--accent-text);
+  --color-blue-300: var(--accent-text);
+  --color-blue-400: var(--accent-text);
+  --color-blue-500: var(--accent);
+  --color-blue-600: var(--accent);
+  --color-blue-700: var(--accent-hover);
+  --color-blue-800: var(--accent-soft);
+  --color-blue-900: var(--accent-soft);
+  --color-blue-950: var(--accent-soft);
+
+  --radius-control: 10px;
+  --radius-card: 12px;
+  --radius-bubble: 14px;
+  --radius-section: 18px;
+
+  --shadow-pop: var(--pop-shadow);
+
 
   /* v3 gave each text size an absolute line height, which children with a
      different size (text-[10px] rows in the layers panel) inherit as-is.
@@ -33,7 +254,7 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
+    border-color: var(--line, currentcolor);
   }
 }
 
@@ -41,7 +262,23 @@
 @layer base {
   input::placeholder,
   textarea::placeholder {
-    color: var(--color-gray-400);
+    color: var(--muted);
+    opacity: 0.8;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
   }
 
   button:not(:disabled),

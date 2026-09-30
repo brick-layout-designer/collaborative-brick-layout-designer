@@ -28,7 +28,7 @@ export function LibraryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (me.isLoading) return <div className="p-8 text-neutral-500">Loading…</div>;
+  if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
   if (!me.data?.user) return <Navigate to="/login" replace />;
 
   return (
@@ -37,19 +37,19 @@ export function LibraryPage() {
       <main className="mx-auto mt-8 max-w-4xl space-y-8">
         <div>
           <h1 className="text-xl font-semibold">Library</h1>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-muted">
             Layouts, custom parts, and saved modules accessible to you.
           </p>
         </div>
 
       <section>
         <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Layouts
           </h2>
           <Link
             to="/"
-            className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Manage layouts
           </Link>
@@ -59,13 +59,13 @@ export function LibraryPage() {
 
       <section>
         <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Custom parts
           </h2>
           {me.data?.user && !me.data.user.isDemoAccount && (
             <button
               onClick={() => setShowPart(true)}
-              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
             >
               Upload part
             </button>
@@ -76,13 +76,13 @@ export function LibraryPage() {
 
       <section>
         <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Saved modules
           </h2>
           {me.data?.user && (
             <button
               onClick={() => setShowModule(true)}
-              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+              className="rounded-sm border border-border px-3 py-1 text-sm hover:bg-soft"
             >
               New module
             </button>
@@ -99,20 +99,20 @@ export function LibraryPage() {
 }
 
 function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: boolean }) {
-  if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <p className="mt-2 text-sm text-muted">Loading…</p>;
   if (layouts.length === 0)
     return (
-      <p className="mt-2 rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
-        No layouts yet. <Link to="/" className="text-blue-400 hover:underline">Create one</Link> to get started.
+      <p className="mt-2 rounded-sm border border-dashed border-line p-4 text-sm text-muted">
+        No layouts yet. <Link to="/" className="text-accent-text hover:underline">Create one</Link> to get started.
       </p>
     );
   return (
-    <ul className="mt-2 divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+    <ul className="mt-2 divide-y divide-line rounded-sm border border-line">
       {layouts.map((l) => (
         <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
           <div>
             <p>{l.title}</p>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted">
               v{l.docVersion} · updated {new Date(l.updatedAt).toLocaleString()}
               {l.expiresAt && (
                 <span className="ml-2 text-amber-500">
@@ -123,7 +123,7 @@ function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: 
           </div>
           <Link
             to={`/editor/${l.id}`}
-            className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500"
+            className="rounded-sm bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover"
           >
             Open
           </Link>
@@ -145,10 +145,10 @@ function CustomPartsList({
     mutationFn: api.customParts.remove,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['custom-parts'] }),
   });
-  if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <p className="mt-2 text-sm text-muted">Loading…</p>;
   if (parts.length === 0)
     return (
-      <p className="mt-2 rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+      <p className="mt-2 rounded-sm border border-dashed border-line p-4 text-sm text-muted">
         No custom parts yet.
       </p>
     );
@@ -157,7 +157,7 @@ function CustomPartsList({
       {parts.map((p) => (
         <li
           key={p.id}
-          className="flex flex-col items-center rounded-sm border border-neutral-800 p-2 text-xs"
+          className="flex flex-col items-center rounded-sm border border-line p-2 text-xs"
         >
           <img
             src={api.customParts.spriteUrl(p.id)}
@@ -166,12 +166,12 @@ function CustomPartsList({
             loading="lazy"
           />
           <p className="mt-1 line-clamp-1 font-mono">{p.partNumber}</p>
-          <p className="line-clamp-1 text-neutral-500">{p.displayName}</p>
+          <p className="line-clamp-1 text-muted">{p.displayName}</p>
           <button
             onClick={() => {
               if (confirm(`Delete "${p.partNumber}"?`)) remove.mutate(p.id);
             }}
-            className="mt-1 text-[10px] text-red-400 hover:underline"
+            className="mt-1 text-[10px] text-danger hover:underline"
           >
             delete
           </button>
@@ -193,20 +193,20 @@ function ModulesList({
     mutationFn: api.modules.remove,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
   });
-  if (loading) return <p className="mt-2 text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <p className="mt-2 text-sm text-muted">Loading…</p>;
   if (modules.length === 0)
     return (
-      <p className="mt-2 rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+      <p className="mt-2 rounded-sm border border-dashed border-line p-4 text-sm text-muted">
         No saved modules yet.
       </p>
     );
   return (
-    <ul className="mt-2 divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+    <ul className="mt-2 divide-y divide-line rounded-sm border border-line">
       {modules.map((m) => (
         <li key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
           <div>
             <p>{m.title}</p>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted">
               v{m.docVersion} · updated {new Date(m.updatedAt).toLocaleString()}
             </p>
           </div>
@@ -214,7 +214,7 @@ function ModulesList({
             onClick={() => {
               if (confirm(`Delete "${m.title}"?`)) remove.mutate(m.id);
             }}
-            className="rounded-sm border border-red-900 px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+            className="rounded-sm border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
           >
             Delete
           </button>
@@ -288,27 +288,27 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-sm"
+        className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
         <h3 className="text-lg font-semibold">Upload custom part</h3>
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Part number</span>
+          <span className="mb-1 block text-muted">Part number</span>
           <input
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             required
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Display name</span>
+          <span className="mb-1 block text-muted">Display name</span>
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
         </label>
 
@@ -320,11 +320,11 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
 
         {orgs.data && orgs.data.orgs.length > 0 && (
           <label className="block">
-            <span className="mb-1 block text-neutral-400">Owner</span>
+            <span className="mb-1 block text-muted">Owner</span>
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-sm border border-border bg-soft px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -337,7 +337,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
         )}
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Part XML</span>
+          <span className="mb-1 block text-muted">Part XML</span>
           <input
             type="file"
             accept=".xml,application/xml,text/xml"
@@ -347,7 +347,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Sprite (gif or png)</span>
+          <span className="mb-1 block text-muted">Sprite (gif or png)</span>
           <input
             type="file"
             accept="image/gif,image/png"
@@ -356,20 +356,20 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
           />
         </label>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Upload
           </button>
@@ -408,25 +408,25 @@ function NewModuleDialog({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-sm"
+        className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
         <h3 className="text-lg font-semibold">New module</h3>
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Title</span>
+          <span className="mb-1 block text-muted">Title</span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Module"
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-2"
           />
         </label>
         {orgs.data && orgs.data.orgs.length > 0 && (
           <label className="block">
-            <span className="mb-1 block text-neutral-400">Owner</span>
+            <span className="mb-1 block text-muted">Owner</span>
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-sm border border-border bg-soft px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -437,19 +437,19 @@ function NewModuleDialog({ onClose }: { onClose: () => void }) {
             </select>
           </label>
         )}
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-sm border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-sm bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>
@@ -494,12 +494,12 @@ export function CategoryPicker({
 
   return (
     <div className="block space-y-1">
-      <span className="block text-neutral-400">Category</span>
+      <span className="block text-muted">Category</span>
       {!customMode ? (
         <select
           value={categories.includes(value) ? value : (categories[0] ?? '')}
           onChange={onSelect}
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+          className="w-full rounded-sm border border-border bg-soft px-3 py-2 text-sm"
         >
           {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -513,12 +513,12 @@ export function CategoryPicker({
             onChange={(e) => onChange(e.target.value)}
             placeholder="My Category"
             autoFocus
-            className="flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
+            className="flex-1 rounded-sm border border-border bg-soft px-3 py-2 text-sm"
           />
           <button
             type="button"
             onClick={() => { setCustomMode(false); onChange(categories[0] ?? 'Custom'); }}
-            className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+            className="rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft"
             title="Pick from list"
           >
             ↩

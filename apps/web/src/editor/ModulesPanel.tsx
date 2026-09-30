@@ -38,7 +38,7 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   const createButton = isViewer ? null : (
     <button
       onClick={() => createModuleFromSelection(doc)}
-      className="rounded-sm border border-neutral-700 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-neutral-800"
+      className="rounded-sm border border-border px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-soft"
       title="Register the selected bricks as a module"
     >
       + From selection
@@ -55,8 +55,8 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   }
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col bg-neutral-925 text-sm">
-      <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-2 py-1.5 text-xs uppercase tracking-wider text-neutral-400">
+    <aside className="flex h-full min-h-0 w-full flex-col bg-panel text-sm">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-2 py-1.5 text-xs uppercase tracking-wider text-muted">
         <span>Modules</span>
         <span className="flex items-center gap-2">
           {createButton}
@@ -213,7 +213,7 @@ function ModuleRow({
         setCtxMenu({ x: e.clientX, y: e.clientY });
       }}
       className={
-        'relative cursor-pointer border-b border-neutral-800/60 px-2 py-1.5 text-xs hover:bg-neutral-800/60 ' +
+        'relative cursor-pointer border-b border-line/60 px-2 py-1.5 text-xs hover:bg-soft/60 ' +
         (isMembersSelected ? 'bg-blue-900/30' : '')
       }
     >
@@ -228,11 +228,11 @@ function ModuleRow({
             else if (e.key === 'Escape') { setDraft(module.name); setRenaming(false); }
           }}
           onBlur={commitRename}
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
+          className="w-full rounded-sm border border-border bg-soft px-1 py-0.5 text-xs"
         />
       ) : (
         <>
-          <span className="font-medium text-neutral-200">{module.name || '(untitled)'}</span>
+          <span className="font-medium text-ink">{module.name || '(untitled)'}</span>
           <span className="ml-2 text-neutral-600">
             {module.members.length} brick{module.members.length !== 1 ? 's' : ''}
             {module.sourceFile ? ` — ${module.sourceFile.split(/[\\/]/).pop()}` : ''}
@@ -251,7 +251,7 @@ function ModuleRow({
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[170px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-lg"
+          className="min-w-[170px] rounded-sm border border-border bg-panel py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -261,7 +261,7 @@ function ModuleRow({
           >
             Select Members
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); setShowMove(true); }}
@@ -272,7 +272,7 @@ function ModuleRow({
             <button className="block w-full px-3 py-1 text-left hover:bg-neutral-700">
               Rotate ▸
             </button>
-            <div className="absolute left-full top-0 hidden min-w-[100px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg group-hover:block">
+            <div className="absolute left-full top-0 hidden min-w-[100px] rounded-sm border border-border bg-panel py-1 shadow-lg group-hover:block">
               {([-90, -45, 45, 90, 180] as const).map((deg) => (
                 <button
                   key={deg}
@@ -287,7 +287,7 @@ function ModuleRow({
               ))}
             </div>
           </div>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); setDraft(module.name); setRenaming(true); }}
@@ -328,9 +328,9 @@ function ModuleRow({
           >
             Flatten
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
-            className="block w-full px-3 py-1 text-left text-red-400 hover:bg-neutral-700"
+            className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
             onClick={() => {
               setCtxMenu(null);
               if (!confirm(`Delete module "${module.name}"? Its bricks will remain.`)) return;
@@ -339,9 +339,9 @@ function ModuleRow({
           >
             Delete
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
-            className="block w-full px-3 py-1 text-left text-neutral-500 hover:bg-neutral-700"
+            className="block w-full px-3 py-1 text-left text-muted hover:bg-neutral-700"
             onClick={() => setCtxMenu(null)}
           >
             Cancel
@@ -379,42 +379,42 @@ function ModuleMoveDialog({
     >
       <form
         onSubmit={submit}
-        className="w-72 space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-5 text-sm shadow-xl"
+        className="w-72 space-y-3 rounded-lg border border-line bg-panel p-5 text-sm shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="font-semibold">Move module — {moduleName}</h3>
         <label className="block">
-          <span className="mb-1 block text-xs text-neutral-400">ΔX (studs)</span>
+          <span className="mb-1 block text-xs text-muted">ΔX (studs)</span>
           <input
             type="number"
             step="0.5"
             value={dx}
             onChange={(e) => setDx(e.target.value)}
             autoFocus
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-1.5 text-sm"
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs text-neutral-400">ΔY (studs)</span>
+          <span className="mb-1 block text-xs text-muted">ΔY (studs)</span>
           <input
             type="number"
             step="0.5"
             value={dy}
             onChange={(e) => setDy(e.target.value)}
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
+            className="w-full rounded-sm border border-border bg-soft px-3 py-1.5 text-sm"
           />
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+            className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-sm bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
+            className="rounded-sm bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
           >
             Move
           </button>

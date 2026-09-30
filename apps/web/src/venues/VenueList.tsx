@@ -58,23 +58,23 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
     .filter((v) => v.ownerOrgId === (org?.id ?? null))
     .sort((a, b) => a.name.localeCompare(b.name));
   const startUrl = (id: string) => `/?newLayoutVenue=${encodeURIComponent(id)}${org ? `&owner=${encodeURIComponent(org.slug)}` : ''}`;
-  const btn = 'rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800';
+  const btn = 'rounded-sm border border-border px-2 py-1 text-xs hover:bg-soft';
 
   return (
     <div className="space-y-2">
-      {venues.isLoading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {venues.isLoading && <p className="text-sm text-muted">Loading…</p>}
       {venues.data &&
         (list.length === 0 ? (
-          <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-sm text-neutral-500">
+          <p className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">
             No saved venues yet. Upload a .bld-venue file, or save one from the editor's Venue Library.
           </p>
         ) : (
-          <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+          <ul className="divide-y divide-line rounded-sm border border-line">
             {list.map((v) => (
               <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <span>{v.name}</span>
                 <span className="flex flex-wrap gap-1">
-                  <Link to={startUrl(v.id)} className="rounded-sm bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">
+                  <Link to={startUrl(v.id)} className="rounded-sm bg-accent text-accent-ink px-2 py-1 text-xs hover:bg-accent-hover">
                     Start layout
                   </Link>
                   {canManage && (
@@ -99,7 +99,7 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
                       </button>
                       <button
                         type="button"
-                        className={`${btn} text-red-400`}
+                        className={`${btn} text-danger`}
                         onClick={() => {
                           if (confirm(`Delete "${v.name}"?`)) remove.mutate(v.id);
                         }}
@@ -115,7 +115,7 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
         ))}
       <div className="flex gap-2">
         {(canManage || org) && (
-          <Link to={`/venues/new${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className="rounded-sm bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">
+          <Link to={`/venues/new${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className="rounded-sm bg-accent text-accent-ink px-2 py-1 text-xs hover:bg-accent-hover">
             New venue
           </Link>
         )}

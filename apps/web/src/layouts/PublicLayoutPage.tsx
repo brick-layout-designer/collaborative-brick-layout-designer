@@ -64,12 +64,12 @@ function Viewer({ token }: { token: string }) {
       <div className="grid min-h-screen place-items-center p-8 text-center">
         <div>
           <h1 className="text-xl font-semibold">Layout not found</h1>
-          <p className="mt-2 text-sm text-neutral-500">
+          <p className="mt-2 text-sm text-muted">
             This share link is invalid or has been disabled by the owner.
           </p>
           <Link
             to="/"
-            className="mt-4 inline-block text-sm text-blue-400 hover:underline"
+            className="mt-4 inline-block text-sm text-accent-text hover:underline"
           >
             Go home
           </Link>
@@ -80,7 +80,7 @@ function Viewer({ token }: { token: string }) {
 
   if (!meta.data || !doc) {
     return (
-      <div className="grid min-h-screen place-items-center text-neutral-500">
+      <div className="grid min-h-screen place-items-center text-muted">
         Loading…
       </div>
     );
@@ -140,7 +140,7 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
 
   if (!map) {
     return (
-      <div className="grid min-h-screen place-items-center text-neutral-500">
+      <div className="grid min-h-screen place-items-center text-muted">
         Failed to render layout.
       </div>
     );
@@ -230,15 +230,15 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
   };
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-neutral-900">
+    <div className="relative h-screen w-screen overflow-hidden bg-panel">
       {/* Banner — minimal, dismissable-feeling but kept up so the user
           knows they're on a public link. */}
-      <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-sm border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-xs">
+      <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-sm border border-border bg-panel/90 px-3 py-1.5 text-xs">
         <span className="text-neutral-300">{title}</span>
-        <span className="rounded-sm bg-blue-900/40 px-1.5 py-0.5 text-blue-300">
+        <span className="rounded-sm bg-blue-900/40 px-1.5 py-0.5 text-accent-text">
           Public · view only
         </span>
-        <Link to="/" className="ml-2 text-neutral-400 hover:underline">
+        <Link to="/" className="ml-2 text-muted hover:underline">
           CLD
         </Link>
       </div>

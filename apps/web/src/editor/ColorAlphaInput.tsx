@@ -23,7 +23,7 @@ export function ColorAlphaInput({ value, onChange, label, compact = false }: Pro
         aria-label={label}
         value={`#${rgb}`}
         onChange={(e) => onChange(argb.slice(0, 2) + e.target.value.slice(1).toLowerCase())}
-        className={compact ? 'h-6 w-8 cursor-pointer rounded-sm border border-neutral-700 bg-transparent' : 'h-8 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-transparent'}
+        className={compact ? 'h-6 w-8 cursor-pointer rounded-sm border border-border bg-transparent' : 'h-8 w-12 cursor-pointer rounded-sm border border-border bg-transparent'}
       />
       <input
         type="range"
