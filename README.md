@@ -13,7 +13,8 @@ the `.bbm` + sidecar pair used by the desktop editor.
 
 ## ⚠️ Vibe-coded warning
 
-> **This codebase was vibe-coded with an AI assistant.**
+> **This codebase was vibe-coded with an AI assistant** (Anthropic's Claude),
+> directed and reviewed by a person. The web app says so too, on its About page.
 >
 > It works, the tests pass, and the architecture is reasonable — but every
 > line was generated through iterative prompting, not hand-written by a
