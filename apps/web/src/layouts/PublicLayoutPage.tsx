@@ -5,11 +5,11 @@
 // `isViewer` mode. No WebSocket, no live edits — re-fetching the page
 // pulls a fresh snapshot if the owner has saved since.
 //
-// Pan with middle-button drag (Konva.dragButtons = [0] is set globally,
-// so middle-click pan is left to our handler). Zoom with wheel. No
-// selection, no tools, no parts panel.
+// Pan by dragging (mouse) or with one finger; zoom with the wheel, a
+// pinch, or the -, + and Fit buttons. No selection, no tools, no parts
+// panel.
 
-import { useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer } from 'react-konva';
@@ -18,16 +18,22 @@ import type Konva from 'konva';
 import { decodeDoc, docToBbm } from '@cld/ydoc';
 import { api } from '../api';
 import '../konvaSetup';
+import type { LayerGrid } from '@cld/model';
 import { useViewportSize } from '../editor/useViewportSize';
+import { useElementSize } from '../editor/useElementSize';
+import { useTouchView } from '../editor/useTouchView';
+import type { View } from '../editor/touchGesture';
+import { fitView, isUntouchedFit, withGridLabels, type ViewInsets } from '../editor/viewFit';
+import { contentBoundsStuds } from '../editor/exportRender';
+import { drawnGridLayer } from '../editor/render/gridIndex';
+import { MIN_ZOOM, MAX_ZOOM, useEditorStore } from '../editor/editorStore';
+import { PHONE_MIN_TEXT_PX } from '../editor/textLegibility';
 import { GridLayer } from '../editor/render/GridLayer';
 import { BrickLayer } from '../editor/render/BrickLayer';
 import { AreaLayers } from '../editor/render/AreaLayer';
 import { TextLayers } from '../editor/render/TextLayer';
 import { RulerLayers } from '../editor/render/RulerLayer';
-import { studToPx, pxToStud } from '../editor/render/coords';
-
-const MIN_ZOOM = 0.1;
-const MAX_ZOOM = 8;
+import { pxToStud } from '../editor/render/coords';
 
 export function PublicLayoutPage() {
   const params = useParams<{ token: string }>();
@@ -90,17 +96,18 @@ function Viewer({ token }: { token: string }) {
 }
 
 function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
-  const { width, height } = useViewportSize();
+  // The real size of the canvas box (dvh-sized, so the browser bars on a
+  // phone are taken into account), not the window's.
+  const [boxRef, { width, height }, box] = useElementSize({ width: 0, height: 0 });
+  // (0 until measured: nothing is fitted to a guessed size.)
+  const { isMobile } = useViewportSize();
   // Dedicated local pan/zoom state — we don't share `useEditorStore` here
   // because that store has tools / selection / mutations the public viewer
   // shouldn't touch.
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [view, setView] = useState<View>({ zoom: 1, panX: 0, panY: 0 });
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const stageRef = useRef<Konva.Stage | null>(null);
-  // Tracks the last pinch distance so we can compute a zoom delta each touchmove.
-  const lastPinchRef = useRef<{ dist: number; midX: number; midY: number } | null>(null);
-  const [isPinching, setIsPinching] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Project the Y.Doc into a BbmMap once. Snapshot is static for this
   // page so a single projection is enough; if the owner edits while the
@@ -113,30 +120,33 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
     }
   }, [doc]);
 
-  // Fit the entire layout into the viewport on first render with a small
-  // padding margin so the layout isn't flush against the screen edges.
+  // The shared text renderers hide unreadable text from the editor
+  // store's zoom and threshold (textLegibility.ts); mirror ours into it.
+  // Nothing else of the store is used here.
   useEffect(() => {
-    if (!map) return;
-    const bb = bricksBBox(map);
-    if (!bb) return;
-    const PADDING = 40; // px inset on each side
-    const px = studToPx();
-    const bbWidthPx = (bb.maxX - bb.minX) * px;
-    const bbHeightPx = (bb.maxY - bb.minY) * px;
-    const availW = width - PADDING * 2;
-    const availH = height - PADDING * 2;
-    const fitZoom = Math.min(availW / bbWidthPx, availH / bbHeightPx, MAX_ZOOM);
-    const fittedZoom = Math.max(MIN_ZOOM, fitZoom);
-    const cxStud = (bb.minX + bb.maxX) / 2;
-    const cyStud = (bb.minY + bb.maxY) / 2;
-    setZoom(fittedZoom);
-    setPan({
-      x: width / 2 - cxStud * px * fittedZoom,
-      y: height / 2 - cyStud * px * fittedZoom,
-    });
-    // Only run once when the map first arrives.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map !== null]);
+    useEditorStore.setState({ zoom: view.zoom, minTextPx: isMobile ? PHONE_MIN_TEXT_PX : 0 });
+  }, [view.zoom, isMobile]);
+  useEffect(() => () => useEditorStore.setState({ minTextPx: 0 }), []);
+
+  // Pan with one finger, pinch with two; the page itself never zooms.
+  useTouchView(box, () => viewRef.current, setView, { oneFingerPan: true, range: ZOOM_RANGE });
+
+  // Fit the whole layout, grid labels included, into the box. Fit again
+  // when the box changes size (phone rotated, browser bars shown or
+  // hidden) as long as the user hasn't moved the view since.
+  const lastFitRef = useRef<View | null>(null);
+  const fit = useCallback(() => {
+    if (!map || width <= 0 || height <= 0) return;
+    const bounds = withGridLabels(contentBoundsStuds(map, null), drawnGridLayer(map.layers) as LayerGrid | undefined);
+    const next = fitView(bounds, width, height, ZOOM_RANGE, isMobile ? PHONE_INSETS : DESKTOP_INSETS);
+    if (!next) return;
+    lastFitRef.current = next;
+    setView(next);
+  }, [map, width, height, isMobile]);
+  useEffect(() => {
+    if (lastFitRef.current && !isUntouchedFit(viewRef.current, lastFitRef.current)) return;
+    fit();
+  }, [fit]);
 
   if (!map) {
     return (
@@ -152,115 +162,64 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
     if (!stage) return;
     const ptr = stage.getPointerPosition();
     if (!ptr) return;
-    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
-    // Zoom around the pointer so the world point under the cursor stays
-    // put — same trick the editor uses.
-    const worldX = (ptr.x - pan.x) / zoom;
-    const worldY = (ptr.y - pan.y) / zoom;
-    setPan({
-      x: ptr.x - worldX * newZoom,
-      y: ptr.y - worldY * newZoom,
-    });
-    setZoom(newZoom);
+    zoomAround(e.deltaY < 0 ? 1.1 : 1 / 1.1, ptr.x, ptr.y);
   }
 
-  // Native touch handlers with passive:false so preventDefault works.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    function onTouchStart(e: globalThis.TouchEvent) {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        const t0 = e.touches[0]!;
-        const t1 = e.touches[1]!;
-        lastPinchRef.current = {
-          dist: Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY),
-          midX: (t0.clientX + t1.clientX) / 2,
-          midY: (t0.clientY + t1.clientY) / 2,
-        };
-        setIsPinching(true);
-      }
-    }
-
-    function onTouchMove(e: globalThis.TouchEvent) {
-      if (e.touches.length !== 2 || !lastPinchRef.current) return;
-      e.preventDefault();
-      const t0 = e.touches[0]!;
-      const t1 = e.touches[1]!;
-      const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-      const midX = (t0.clientX + t1.clientX) / 2;
-      const midY = (t0.clientY + t1.clientY) / 2;
-      const factor = newDist / lastPinchRef.current.dist;
-      lastPinchRef.current = { dist: newDist, midX, midY };
-      setZoom((prevZoom) => {
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom * factor));
-        setPan((prevPan) => ({
-          x: midX - ((midX - prevPan.x) / prevZoom) * newZoom,
-          y: midY - ((midY - prevPan.y) / prevZoom) * newZoom,
-        }));
-        return newZoom;
-      });
-    }
-
-    function onTouchEnd(e: globalThis.TouchEvent) {
-      if (e.touches.length < 2) {
-        lastPinchRef.current = null;
-        setIsPinching(false);
-      }
-    }
-
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-    };
-  }, []);
+  function zoomAround(factor: number, x: number, y: number) {
+    setView((v) => {
+      const zoom = Math.max(ZOOM_RANGE.min, Math.min(ZOOM_RANGE.max, v.zoom * factor));
+      // Zoom around the point so the world point under it stays put —
+      // same trick the editor uses.
+      const worldX = (x - v.panX) / v.zoom;
+      const worldY = (y - v.panY) / v.zoom;
+      return { zoom, panX: x - worldX * zoom, panY: y - worldY * zoom };
+    });
+  }
 
   // Compute the visible-world rect for GridLayer.
   const viewport = {
-    studXMin: pxToStud(-pan.x / zoom),
-    studYMin: pxToStud(-pan.y / zoom),
-    studXMax: pxToStud((width - pan.x) / zoom),
-    studYMax: pxToStud((height - pan.y) / zoom),
+    studXMin: pxToStud(-view.panX / view.zoom),
+    studYMin: pxToStud(-view.panY / view.zoom),
+    studXMax: pxToStud((width - view.panX) / view.zoom),
+    studYMax: pxToStud((height - view.panY) / view.zoom),
   };
+  const btn = 'flex h-11 min-w-11 items-center justify-center rounded-control border border-border bg-panel/95 px-3 text-base font-bold text-ink shadow';
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-panel">
-      {/* Banner — minimal, dismissable-feeling but kept up so the user
-          knows they're on a public link. */}
-      <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-lg border border-border bg-panel/90 px-3 py-1.5 text-xs">
-        <span className="text-neutral-300">{title}</span>
-        <span className="rounded-lg bg-blue-900/40 px-1.5 py-0.5 text-accent-text">
+    <div className="relative h-screen supports-[height:100dvh]:h-dvh w-full overflow-hidden bg-panel">
+      {/* Banner — minimal, kept up so the user knows they're on a public link. */}
+      <div
+        className="absolute z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-panel/90 px-3 py-1.5 text-sm"
+        style={{ left: 'max(0.75rem, env(safe-area-inset-left))', top: 'max(0.75rem, env(safe-area-inset-top))' }}
+      >
+        <span className="min-w-0 truncate font-semibold text-ink">{title}</span>
+        <span className="whitespace-nowrap rounded-lg bg-accent-soft px-1.5 py-0.5 text-xs text-accent-text">
           Public · view only
         </span>
-        <Link to="/" className="ml-2 text-muted hover:underline">
-          CLD
-        </Link>
       </div>
 
       <div
-        ref={containerRef}
-        className="absolute inset-0 overflow-hidden"
+        ref={boxRef}
+        data-testid="canvas-area"
+        className="absolute inset-0 touch-none overflow-hidden"
         onWheel={handleWheel}
       >
         <Stage
           ref={stageRef}
           width={width}
           height={height}
-          x={pan.x}
-          y={pan.y}
-          scaleX={zoom}
-          scaleY={zoom}
-          draggable={!isPinching}
+          x={view.panX}
+          y={view.panY}
+          scaleX={view.zoom}
+          scaleY={view.zoom}
+          draggable
+          onDragStart={(e) => {
+            // Touch pans through useTouchView; a Konva drag is for the mouse.
+            if (e.evt && 'touches' in e.evt) e.target.stopDrag();
+          }}
           onDragEnd={(e) => {
-            // Stage drag becomes pan. Konva resets stage x/y on dragstart
-            // by default for `draggable`; we just commit them to state.
-            setPan({ x: e.target.x(), y: e.target.y() });
+            // Stage drag becomes pan.
+            if (e.target === e.target.getStage()) setView((v) => ({ ...v, panX: e.target.x(), panY: e.target.y() }));
           }}
         >
           <KonvaLayer listening={false}>
@@ -272,27 +231,19 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
           </KonvaLayer>
         </Stage>
       </div>
+
+      <div
+        className="absolute z-10 flex items-center gap-1.5"
+        style={{ right: 'max(0.75rem, env(safe-area-inset-right))', bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
+        <button type="button" aria-label="Zoom out" className={btn} onClick={() => zoomAround(1 / 1.25, width / 2, height / 2)}>−</button>
+        <button type="button" aria-label="Zoom in" className={btn} onClick={() => zoomAround(1.25, width / 2, height / 2)}>+</button>
+        <button type="button" title="Fit everything in view" className={btn} onClick={fit}>Fit</button>
+      </div>
     </div>
   );
 }
 
-function bricksBBox(
-  map: ReturnType<typeof docToBbm>,
-): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let any = false;
-  for (const layer of map.layers) {
-    if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      any = true;
-      minX = Math.min(minX, b.displayArea.x);
-      minY = Math.min(minY, b.displayArea.y);
-      maxX = Math.max(maxX, b.displayArea.x + b.displayArea.width);
-      maxY = Math.max(maxY, b.displayArea.y + b.displayArea.height);
-    }
-  }
-  return any ? { minX, minY, maxX, maxY } : null;
-}
+const ZOOM_RANGE = { min: MIN_ZOOM, max: MAX_ZOOM };
+const DESKTOP_INSETS: ViewInsets = { top: 56, right: 16, bottom: 16, left: 16 };
+const PHONE_INSETS: ViewInsets = { top: 64, right: 12, bottom: 68, left: 12 };

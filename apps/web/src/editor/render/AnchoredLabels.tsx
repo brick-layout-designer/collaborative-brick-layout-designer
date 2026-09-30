@@ -26,6 +26,8 @@ import { labelColorHex } from '../labelColor';
 import { buildLabelIndex, labelFontFamily, labelFontPx, labelPlacement } from '../mixedSelection';
 import type { AnnoDragHandlers } from './groupDragNodes';
 import type { PartWire } from '../../api';
+import { useEditorStore } from '../editorStore';
+import { textReadable } from '../textLegibility';
 
 interface Props {
   map: BbmMap;
@@ -60,6 +62,7 @@ export function AnchoredLabels({
   drag,
   partsByKey,
 }: Props) {
+  const minTextPx = useEditorStore((s) => s.minTextPx);
   if (!labels || labels.length === 0) return null;
 
   const index = buildLabelIndex(map, modules, partsByKey);
@@ -69,6 +72,8 @@ export function AnchoredLabels({
       {labels.map((label) => {
         if (label.minZoom > 0 && zoom < label.minZoom) return null;
         const fontSize = labelFontPx(label.font.size);
+        // Too small to read on screen (phone viewer only): leave it out.
+        if (!textReadable(fontSize, zoom, minTextPx)) return null;
         const style = (label.font.style ?? '').toLowerCase();
         const isBold = style.includes('bold');
         const isItalic = style.includes('italic');

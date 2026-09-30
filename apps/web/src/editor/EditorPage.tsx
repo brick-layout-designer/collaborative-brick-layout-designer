@@ -45,6 +45,9 @@ import { ModuleOverlay } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
+import { useElementSize } from './useElementSize';
+import { useTouchView } from './useTouchView';
+import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, type LayoutImage } from '../layoutFile';
 import { layoutPartFiles } from '../layoutParts';
@@ -116,11 +119,11 @@ import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } fro
 import '../konvaSetup';
 import { actualPartNumber, indexParts } from './partIndex';
 import { ColorAlphaInput } from './ColorAlphaInput';
-import { fitView } from './viewFit';
+import { fitView, isUntouchedFit, withGridLabels, type ViewInsets } from './viewFit';
 import { PartListDialog } from './PartListDialog';
 import { blueBrickLeavesOut, DownloadAsDialog } from './DownloadAsDialog';
 import { saveVenueToLibrary } from './venueLibrary';
-import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
+import { drawnGridLayer, gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 import { AppMark, HelpMenu, LayoutNameMenu, SavePill, SettingsButton, TaskTabs, type EditorTask } from './EditorChrome';
 import { SettingsDialog } from '../settings/SettingsPage';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -193,6 +196,10 @@ function Editor({ layoutId }: { layoutId: string }) {
   // viewer-mode UI gating instead of inventing a new "mobile" mode.
   const viewport = useViewportSize();
   const isViewer = role === 'viewer' || viewport.isMobile;
+  // The canvas area's real size, after the header, the status bar and the
+  // browser's own bars: the stage fills it and Fit uses it.
+  // 0 until measured, so the first fit waits for the real size.
+  const [canvasBoxRef, canvasSize, canvasBox] = useElementSize({ width: 0, height: 0 });
   const [showShare, setShowShare] = useState(false);
   const [showInsertModule, setShowInsertModule] = useState(false);
   const [showSaveModule, setShowSaveModule] = useState(false);
@@ -418,18 +425,59 @@ function Editor({ layoutId }: { layoutId: string }) {
 
   return (
     <div
-      className="grid h-screen grid-rows-[auto_auto_1fr_auto] bg-bg text-ink"
+      // dvh, not vh: on a phone 100vh is the height with the browser bars
+      // hidden, so the bottom of the page (scale card, status bar) would sit
+      // under the address bar.
+      className="grid h-screen supports-[height:100dvh]:h-dvh grid-rows-[auto_auto_1fr_auto] bg-bg text-ink"
       style={{ gridTemplateColumns: viewport.isMobile ? '0px 0px 1fr 0px' : `${showRail ? '76px' : '0px'} ${cols}` }}
     >
+      {viewport.isMobile ? (
+        <header
+          // Phone: the name gets a row of its own (with "View only"), and
+          // the save state and the buttons share the second row, so the
+          // title never runs into the pills.
+          data-testid="editor-header"
+          className="flex flex-col gap-1 border-b border-line bg-panel px-3 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] sm:flex-row sm:items-center sm:gap-3 sm:pt-1.5"
+          // (A phone on its side has the room for one row.)
+          style={{ gridColumn: '1 / -1' }}
+        >
+          <div className="flex min-w-0 items-center gap-2 sm:flex-1">
+            <AppMark />
+            <div className="min-w-0 flex-1">
+              <LayoutNameMenu
+                title={meta.data?.layout.title ?? 'Untitled'}
+                onNew={isViewer ? undefined : leaveLayout}
+                onOpen={isViewer ? undefined : leaveLayout}
+              >
+                <button role="menuitem" type="button" onClick={() => setShowSettings(true)} className="block w-full px-3.5 py-3 text-left hover:bg-soft">
+                  Settings
+                </button>
+              </LayoutNameMenu>
+            </div>
+            {isViewer && <ViewOnlyPill />}
+          </div>
+          <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
+            <SavePill status={status} />
+            <HelpButton helpKey="topbar.saveStatus" />
+            <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+              <PresencePanel awareness={awareness} />
+              <button
+                onClick={() => setShowShare(true)}
+                className="h-11 shrink-0 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover"
+              >
+                Share
+              </button>
+              <HelpMenu />
+              <SettingsButton onClick={() => setShowSettings(true)} />
+            </div>
+          </div>
+        </header>
+      ) : (
       <header
-        // On a phone the name row and the Share / Help / Settings row stack,
-        // so nothing in the top bar sits on top of anything else.
-        className={`min-h-14 items-center gap-3 border-b border-line bg-panel px-4 py-1.5 ${
-          viewport.isMobile ? 'flex flex-wrap justify-end gap-y-1' : 'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]'
-        }`}
+        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4 py-1.5"
         style={{ gridColumn: '1 / -1' }}
       >
-        <div className={`flex min-w-0 items-center gap-3 ${viewport.isMobile ? 'w-full' : ''}`}>
+        <div className="flex min-w-0 items-center gap-3">
           <AppMark />
           <LayoutNameMenu
             title={meta.data?.layout.title ?? 'Untitled'}
@@ -442,18 +490,14 @@ function Editor({ layoutId }: { layoutId: string }) {
           </LayoutNameMenu>
           <SavePill status={status} />
           <HelpButton helpKey="topbar.saveStatus" />
-          {isViewer && (
-            <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300">
-              View only
-            </span>
-          )}
+          {isViewer && <ViewOnlyPill />}
         </div>
-        {!isViewer && !viewport.isMobile ? (
+        {!isViewer ? (
           <div className="flex items-center gap-2">
             <TaskTabs task={task} onTask={onTask} />
             <HelpButton helpKey="topbar.tasks" />
           </div>
-        ) : viewport.isMobile ? null : (
+        ) : (
           <span />
         )}
         <div className="flex min-w-0 items-center justify-end gap-2.5">
@@ -468,6 +512,10 @@ function Editor({ layoutId }: { layoutId: string }) {
           <SettingsButton onClick={() => setShowSettings(true)} />
         </div>
       </header>
+      )}
+      {/* The edit toolbar. A viewer can't change anything, so there is
+          nothing here for them: no Undo / Redo either. */}
+      {!isViewer && (
       <div
         role="toolbar"
         aria-label="Edit"
@@ -603,6 +651,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             </button>
           )}
       </div>
+      )}
       {showRail && (
         <aside aria-label="Tool rail" className="overflow-y-auto border-r border-line bg-panel py-3" style={{ gridColumn: '1', gridRow: '3' }}>
           <Toolbar />
@@ -628,10 +677,14 @@ function Editor({ layoutId }: { layoutId: string }) {
         />
       )}
       <main
-        className="relative overflow-hidden"
+        ref={canvasBoxRef}
+        data-testid="canvas-area"
+        // touch-action: none keeps the browser's page zoom and scrolling
+        // off the canvas, so a pinch zooms the map, not the page.
+        className="relative touch-none overflow-hidden"
         style={{ gridColumn: '3', gridRow: '3' }}
       >
-        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
+        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
       </main>
       {showRight && (
         <DockColumn
@@ -684,6 +737,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           Spans every column. Shows mouse coords / selection count / zoom. */}
       {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
+        compact={viewport.isMobile}
         onZoomIn={() => canvasActionsRef.current?.zoom(ZOOM_STEP)}
         onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
         onFit={() => canvasActionsRef.current?.fit()}
@@ -844,6 +898,9 @@ function Canvas({
   doc,
   awareness,
   isViewer,
+  size,
+  touchEl,
+  phone,
   saveNow,
   status,
   placeAtCenterRef,
@@ -856,6 +913,12 @@ function Canvas({
   doc: import('yjs').Doc;
   awareness: import('y-protocols/awareness').Awareness | null;
   isViewer: boolean;
+  /** The canvas area's measured size. */
+  size: { width: number; height: number };
+  /** The canvas area element, for touch pan and pinch. */
+  touchEl: HTMLElement | null;
+  /** The phone viewer: one-finger pan, roomier fit, unreadable text hidden. */
+  phone: boolean;
   saveNow: () => Promise<void> | void;
   status: import('./useLayoutDoc').SaveStatus;
   placeAtCenterRef: React.MutableRefObject<((part: PartWire) => void) | null>;
@@ -867,7 +930,22 @@ function Canvas({
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const hudLayerRef = useRef<Konva.Layer | null>(null);
-  const { width, height } = useViewportSize();
+  const { width, height } = size;
+  // Two fingers pan and zoom anywhere; on the phone viewer one finger pans.
+  useTouchView(
+    touchEl,
+    () => {
+      const st = useEditorStore.getState();
+      return { zoom: st.zoom, panX: st.panX, panY: st.panY };
+    },
+    (v) => useEditorStore.setState(v),
+    { oneFingerPan: phone, range: { min: MIN_ZOOM, max: MAX_ZOOM } },
+  );
+  // On a phone, text too small to read is left out (textLegibility.ts).
+  useEffect(() => {
+    useEditorStore.getState().setMinTextPx(phone ? PHONE_MIN_TEXT_PX : 0);
+    return () => useEditorStore.getState().setMinTextPx(0);
+  }, [phone]);
   // Pan/zoom are plain React state, passed straight to <Stage> as
   // x/y/scaleX/scaleY props below. (An earlier version additionally
   // pushed these onto the Stage node imperatively via a raw
@@ -1386,28 +1464,42 @@ function Canvas({
    */
   // Fit to View: every item (bricks, text, rulers, areas, labels, venue)
   // plus 50 scene px, like desktop's onFitToView (MainWindow.cpp:1372-1376).
+  // The last automatic fit; while the view still equals it the user
+  // hasn't panned or zoomed, so a new canvas size (phone rotated, browser
+  // bars shown or hidden) fits again.
+  const lastAutoFitRef = useRef<{ zoom: number; panX: number; panY: number } | null>(null);
   function fitToContent(): boolean {
     if (!map) return false;
-    const fit = fitView(contentBoundsStuds(map, readSidecarFromDoc(doc)), width, height, { min: MIN_ZOOM, max: MAX_ZOOM });
+    // The phone fit takes in the grid's A, B, C… / 1, 2, 3… labels too;
+    // desktop keeps BlueBrick's fit.
+    const showGrid = phone && useEditorStore.getState().showGrid;
+    const grid = showGrid ? (drawnGridLayer(map.layers) as import('@cld/model').LayerGrid | undefined) : undefined;
+    const bounds = withGridLabels(contentBoundsStuds(map, readSidecarFromDoc(doc)), grid);
+    const fit = fitView(bounds, width, height, { min: MIN_ZOOM, max: MAX_ZOOM }, phone ? (width > height ? PHONE_LANDSCAPE_FIT_INSETS : PHONE_FIT_INSETS) : undefined);
     if (!fit) return false;
     useEditorStore.setState(fit);
+    lastAutoFitRef.current = fit;
     return true;
   }
 
 
   // Auto-fit on first open. Mirrors desktop's `MapView::setMap` final
-  // call to `fitInView` (MapView.cpp:300-308). Fires once per browser
-  // session per layout: as soon as the map has at least one brick AND
-  // the canvas has real width/height, we centre + zoom to fit, then
-  // never auto-fit again so the user's subsequent pan/zoom isn't
-  // clobbered by Yjs updates.
+  // call to `fitInView` (MapView.cpp:300-308): as soon as the map has
+  // content AND the canvas has its real size, centre + zoom to fit.
+  // After that, fit again only when the canvas changes size and the user
+  // hasn't moved the view since, so Yjs updates and the user's own pan /
+  // zoom are never clobbered.
   const autoFittedRef = useRef(false);
+  const hasMap = !!map;
   useEffect(() => {
-    if (autoFittedRef.current) return;
-    if (!map || width <= 0 || height <= 0) return;
+    if (!hasMap || width <= 0 || height <= 0) return;
+    if (autoFittedRef.current) {
+      const st = useEditorStore.getState();
+      if (!isUntouchedFit({ zoom: st.zoom, panX: st.panX, panY: st.panY }, lastAutoFitRef.current)) return;
+    }
     if (fitToContent()) autoFittedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, width, height]);
+  }, [hasMap, width, height, phone]);
 
   // Finish the venue outline / obstacle being drawn and return to the
   // select tool. Enter or right-click, like desktop
@@ -2545,7 +2637,9 @@ function Canvas({
         const rect = stage.container().getBoundingClientRect();
         setCtxMenu({ x: rect.left + ptr.x, y: rect.top + ptr.y, studX, studY, onBrick, textCellRef, rulerRef, brickIdUnderCursor });
       }}
-      onTouchStart={handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void}
+      // On the phone viewer a touch pans or pinches (useTouchView); it
+      // mustn't also start a marquee.
+      {...(phone ? {} : { onTouchStart: handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void })}
     >
       {/* Layer 1 — mostly-static background: grid, background image,
           venue outline, paint areas, electric circuits. Changing any of
@@ -2866,6 +2960,14 @@ function Canvas({
 }
 
 /**
+ * Screen space the phone fit keeps clear: a little air at the edges and
+ * room for the scale card in the bottom-left corner.
+ */
+const PHONE_FIT_INSETS: ViewInsets = { top: 12, right: 12, bottom: 64, left: 12 };
+/** Sideways the layout is height-bound and centred, clear of the card anyway. */
+const PHONE_LANDSCAPE_FIT_INSETS: ViewInsets = { top: 10, right: 12, bottom: 10, left: 12 };
+
+/**
  * Scale-bar HUD pinned to the lower-left corner of the canvas, like
  * desktop (MapViewPaint.cpp:195-243): a white pill with a bar of a
  * track-friendly stud count, labelled "N studs" above and mm / m below.
@@ -2873,17 +2975,26 @@ function Canvas({
 function ScaleBarHud({ zoom }: { zoom: number }) {
   const bar = scaleBar(zoom * 8); // 8 px per stud at zoom 1
   if (!bar) return null;
+  // Fixed colours, not theme tokens: the card sits on the map, whose
+  // background is the layout's own colour in either theme. It keeps clear
+  // of the phone's rounded corners and home bar (safe-area insets).
   return (
     <div
       data-testid="scale-bar"
-      className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-black/50 bg-white/80 px-3 py-0.5 text-[11px] leading-tight text-neutral-900"
-      style={{ userSelect: 'none', width: bar.px + 60 }}
+      className="pointer-events-none absolute rounded-md border border-black/50 bg-white/85 px-3 py-0.5 text-[11px] leading-tight"
+      style={{
+        userSelect: 'none',
+        width: bar.px + 24,
+        color: '#1e2124',
+        left: 'max(0.5rem, env(safe-area-inset-left))',
+        bottom: '0.5rem',
+      }}
     >
       <div>{bar.primary}</div>
       <div className="relative my-0.5 h-2" style={{ width: bar.px }}>
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-panel" />
-        <div className="absolute left-0 top-0 h-2 w-0.5 bg-panel" />
-        <div className="absolute right-0 top-0 h-2 w-0.5 bg-panel" />
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2" style={{ background: '#1e2124' }} />
+        <div className="absolute left-0 top-0 h-2 w-0.5" style={{ background: '#1e2124' }} />
+        <div className="absolute right-0 top-0 h-2 w-0.5" style={{ background: '#1e2124' }} />
       </div>
       <div>{bar.secondary}</div>
     </div>
@@ -3358,8 +3469,10 @@ function VenueDraftPreview({
  *   - Selection count
  *   - Zoom percentage
  */
-function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn, onZoomOut, onFit }: {
+function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn, onZoomOut, onFit, compact = false }: {
   gridSpan: number;
+  /** Phone: just the piece count and big zoom buttons (no mouse, tool or sheet readouts). */
+  compact?: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -3400,10 +3513,31 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
     [budgetMap],
   );
   const zoomBtn = 'flex h-[26px] min-w-[26px] items-center justify-center rounded-md bg-soft px-1.5 text-ink hover:bg-neutral-700';
+  if (compact) {
+    const bigBtn = 'flex h-11 min-w-11 items-center justify-center rounded-control bg-soft px-2 text-base font-bold text-ink';
+    return (
+      <footer
+        data-testid="status-bar"
+        className="flex items-center justify-between gap-2 border-t border-line bg-panel px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-sm text-muted"
+        style={{ gridColumn: `span ${gridSpan}`, gridRow: '4' }}
+      >
+        <span data-testid="piece-count" className="min-w-0 truncate whitespace-nowrap">
+          {pieces === 1 ? '1 piece' : `${pieces} pieces`}
+          {mapW !== null && mapH !== null && <> · {studDisplay(mapW)} × {studDisplay(mapH)}</>}
+        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={bigBtn}>−</button>
+          <span className="min-w-[3.25rem] text-center font-bold tabular-nums text-ink" aria-label="Zoom">{Math.round(zoom * 100)}%</span>
+          <button type="button" aria-label="Zoom in" onClick={onZoomIn} className={bigBtn}>+</button>
+          <button type="button" title="Fit everything in view" onClick={onFit} className={bigBtn}>Fit</button>
+        </div>
+      </footer>
+    );
+  }
   return (
     <footer
       className="flex min-h-8 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-0.5 text-xs text-muted"
-      style={{ gridColumn: `span ${gridSpan}` }}
+      style={{ gridColumn: `span ${gridSpan}`, gridRow: '4' }}
     >
       <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap">
         <span data-testid="piece-count">{pieces === 1 ? '1 piece' : `${pieces} pieces`}</span>
@@ -3964,4 +4098,16 @@ interface CanvasActions {
   insertText: () => void;
   /** World-stud position under the centre of the canvas stage. */
   viewCentre: () => { x: number; y: number };
+}
+
+/** Shown to anyone who can look but not change: viewers, and everyone on a phone. */
+function ViewOnlyPill() {
+  return (
+    <span
+      data-testid="view-only"
+      className="shrink-0 whitespace-nowrap rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300"
+    >
+      View only
+    </span>
+  );
 }

@@ -65,10 +65,14 @@ test.describe('anchored labels — default placement', () => {
     await openEditor(page, id);
     // Empty layout: no auto-fit, so the view is at pan 0 / zoom 1 and the
     // stage centre is (width/2, height/2) px = /8 studs.
-    const { iw, ih } = await page.evaluate(() => ({ iw: window.innerWidth, ih: window.innerHeight }));
+    // The stage is the visible canvas area (header, rail, docks and status bar taken off).
+    const { iw, ih } = await page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { width: () => number; height: () => number }[] } }).Konva.stages[0]!;
+      return { iw: st.width(), ih: st.height() };
+    });
     const expected = {
-      x: Math.round(((iw - 260) / 2 / 8) * 100) / 100,
-      y: Math.round(((ih - 48) / 2 / 8) * 100) / 100,
+      x: Math.round((iw / 2 / 8) * 100) / 100,
+      y: Math.round((ih / 2 / 8) * 100) / 100,
     };
 
     await page.keyboard.press('Control+l');
@@ -341,8 +345,12 @@ test.describe('insert text', () => {
   test('Map → Insert Text places the text at the view centre', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
-    const { iw, ih } = await page.evaluate(() => ({ iw: window.innerWidth, ih: window.innerHeight }));
-    const centre = { x: (iw - 260) / 2 / 8, y: (ih - 48) / 2 / 8 };
+    // The stage is the visible canvas area (header, rail, docks and status bar taken off).
+    const { iw, ih } = await page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { width: () => number; height: () => number }[] } }).Konva.stages[0]!;
+      return { iw: st.width(), ih: st.height() };
+    });
+    const centre = { x: iw / 2 / 8, y: ih / 2 / 8 };
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
     await page.getByRole('button', { name: /^Insert Text/ }).click();
@@ -364,8 +372,12 @@ test.describe('insert text', () => {
   test('Ctrl+T puts Arial 12 black text at the view centre on a Labels layer, whatever the mouse', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
-    const { iw, ih } = await page.evaluate(() => ({ iw: window.innerWidth, ih: window.innerHeight }));
-    const centre = { x: (iw - 260) / 2 / 8, y: (ih - 48) / 2 / 8 };
+    // The stage is the visible canvas area (header, rail, docks and status bar taken off).
+    const { iw, ih } = await page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { width: () => number; height: () => number }[] } }).Konva.stages[0]!;
+      return { iw: st.width(), ih: st.height() };
+    });
+    const centre = { x: iw / 2 / 8, y: ih / 2 / 8 };
     // Mouse over the canvas, well away from its centre.
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
     await page.mouse.move(box.x + 40, box.y + 40);

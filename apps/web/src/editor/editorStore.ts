@@ -141,6 +141,12 @@ export interface EditorState {
   /** Venue edge-distance label font size in px (`appearance/venueLabelPx`). Default 28. */
   venueLabelPx: number;
   /**
+   * Canvas text smaller than this on screen (CSS px) is not drawn. 0 draws
+   * everything (desktop); the phone viewer sets PHONE_MIN_TEXT_PX.
+   */
+  minTextPx: number;
+  setMinTextPx: (px: number) => void;
+  /**
    * Maximum undo stack depth. 0 = unlimited (default, matches desktop default of 100).
    * Mirrors `general/undoStackDepth`.
    */
@@ -294,6 +300,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     const n = v !== null ? parseFloat(v) : 35;
     return Number.isFinite(n) ? Math.max(5, Math.min(100, n)) : 35;
   })(),
+  minTextPx: 0,
+  setMinTextPx: (minTextPx) => set({ minTextPx }),
   venueLabelPx: (() => {
     const v = localStorage.getItem('cld:venueLabelPx');
     const n = v !== null ? parseInt(v, 10) : 28;
