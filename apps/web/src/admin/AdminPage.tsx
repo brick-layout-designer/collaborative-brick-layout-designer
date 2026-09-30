@@ -1547,7 +1547,7 @@ function SettingsTab() {
   });
 
   if (settings.isLoading) return <Loading />;
-  if (!settings.data) return <p className="text-sm text-muted">Couldn't load settings.</p>;
+  if (!settings.data) return <p className="text-sm text-muted">Couldn&apos;t load settings.</p>;
 
   const usingDbSmtp = smtpHost.trim() !== '';
 

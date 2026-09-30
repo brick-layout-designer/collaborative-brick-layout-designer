@@ -47,7 +47,6 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
   const rowCls = 'flex items-center justify-between gap-4 py-1.5';
   const labelCls = 'text-xs text-muted w-40 shrink-0';
   const inputCls = 'flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs';
-  const colorCls = 'h-7 w-12 cursor-pointer rounded-lg border border-border bg-soft p-0.5';
   const sectionCls = 'mt-3 border-t border-line pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted';
   const num = (v: string, fallback: number) => {
     const n = parseFloat(v);

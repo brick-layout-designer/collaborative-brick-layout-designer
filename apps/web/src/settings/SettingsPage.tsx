@@ -1,4 +1,4 @@
-// Settings: light or dark, colour, bigger text, expert mode and help
+// Settings: light or dark, colour, bigger text and help
 // icons. Signed in, they're stored on the account on this server (named
 // by window.location.host, since every club runs its own); signed out,
 // in this browser only. Used as a page (/settings) and as a dialog over
@@ -72,9 +72,6 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
         <h1 className="mb-4 font-display text-3xl font-bold">Settings</h1>
         <a href="#look" className="rounded-control border border-line bg-panel px-3 py-2.5 font-bold text-ink">
           Look and feel
-        </a>
-        <a href="#expert" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
-          Expert mode
         </a>
         <a href="#help" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Help and tours
@@ -165,25 +162,6 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
             Bigger text and buttons
           </label>
         </Section>
-
-        <section id="expert" className="flex scroll-mt-6 items-start gap-6 rounded-section border border-line bg-panel p-6">
-          <div className="flex grow flex-col gap-2">
-            <div className="flex items-center gap-2.5">
-              <h2 className="font-display text-xl font-bold">Expert mode</h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${prefs.expertMode ? 'bg-accent-soft text-accent-text' : 'bg-soft text-muted'}`}>
-                {prefs.expertMode ? 'On' : 'Off'}
-              </span>
-            </div>
-            <p className="text-[15px] text-muted">For people who know BlueBrick well. Turning it on adds:</p>
-            <ul className="list-disc pl-5 text-[15px] leading-relaxed text-ink">
-              <li>Exact positions, angles and heights for pieces</li>
-              <li>Flex track, modules, budgets and the grid settings</li>
-              <li>All menus, keyboard shortcuts and file export options</li>
-            </ul>
-            <p className="text-sm text-muted">You can switch it off again any time. Your layouts don't change.</p>
-          </div>
-          <Switch label="Expert mode" checked={prefs.expertMode} onChange={(v) => setPrefs({ expertMode: v })} />
-        </section>
 
         <Section id="help" title="Help and tours">
           <div className="flex items-center justify-between gap-6">
