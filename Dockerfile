@@ -46,6 +46,10 @@ RUN pnpm --filter @cld/server deploy --prod --legacy /app/server-deploy
 # ---- runtime ---------------------------------------------------------------
 FROM node:26-bookworm-slim AS runtime
 WORKDIR /app
+# Which build this is, for GET /api/version: the release version, or
+# nightly-<short sha> (set by the image workflows).
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
 ENV NODE_ENV=production
 ENV LEFTHOOK=0
 
