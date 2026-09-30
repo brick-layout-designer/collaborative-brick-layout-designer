@@ -83,3 +83,35 @@ test('undo and redo walk back through each drawing step', async ({ page }) => {
   await page.keyboard.press('Control+Shift+z');
   await expect(obstacles).toHaveText('1');
 });
+
+test("opens from a layout's Map menu and saves the venue into the layout", async ({ page }) => {
+  await signIn(page, EMAIL);
+  const res = await page.request.post('/api/layouts', { data: { title: 'Designer layout' } });
+  expect(res.ok()).toBe(true);
+  const id = ((await res.json()) as { id: string }).id;
+  await page.goto(`/editor/${id}`);
+  await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+  await page.waitForTimeout(1000); // live sync settles
+
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  await page.getByRole('button', { name: /Open Venue Designer/ }).click();
+  await expect(page.getByRole('navigation', { name: 'Tools' })).toBeVisible();
+  await page.keyboard.press('r');
+  await clickCanvas(page, 0.3, 0.3);
+  await page.mouse.move(700, 600);
+  await typeKeys(page, "30'x15'");
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Room 30′ 0″ × 15′ 0″')).toBeVisible();
+  await page.getByRole('button', { name: 'Save to layout' }).click();
+  await expect(page.getByText('unsaved')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  // The layout's sidecar now holds the venue, four walls.
+  await expect
+    .poll(async () => {
+      const r = await page.request.get(`/api/layouts/${id}/export.bbm.bld`);
+      if (!r.ok()) return 0;
+      return (((await r.json()) as { venue?: { edges: unknown[] } }).venue?.edges ?? []).length;
+    })
+    .toBe(4);
+});
