@@ -66,7 +66,7 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
       {venues.data &&
         (list.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-            No saved venues yet. Upload a .bld-venue file, or save one from the editor's Venue Library.
+            No saved rooms yet. Upload a .bld-venue file, or save one from the editor's Room library.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line">
@@ -116,11 +116,11 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
       <div className="flex gap-2">
         {(canManage || org) && (
           <Link to={`/venues/new${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className="rounded-lg bg-accent text-accent-ink px-2 py-1 text-xs hover:bg-accent-hover">
-            New venue
+            New room
           </Link>
         )}
         <button type="button" className={btn} disabled={upload.isPending} onClick={() => fileInput.current?.click()}>
-          Upload venue…
+          Upload room…
         </button>
       </div>
       <input
