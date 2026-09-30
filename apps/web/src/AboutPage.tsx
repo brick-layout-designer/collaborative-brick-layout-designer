@@ -11,7 +11,7 @@ import { AppHeader } from './AppHeader';
 
 const REPO_URL = 'https://github.com/brick-layout-designer/collaborative-brick-layout-designer';
 const ISSUES_URL = `${REPO_URL}/issues`;
-const DESKTOP_URL = 'https://github.com/brick-layout-designer/collaborative-brick-layout-designer';
+const DESKTOP_URL = 'https://github.com/brick-layout-designer/brick-layout-designer';
 const BLUEBRICK_PARTS_URL = 'https://github.com/Lswbanban/BlueBrickParts';
 const ORIGINAL_BLUEBRICK_URL = 'http://bluebrick.lswproject.com/';
 
@@ -52,6 +52,15 @@ export function AboutPage() {
             browser, supports real-time multi-user editing via Yjs, and
             keeps byte-exact <code>.bbm</code> round-trip with the
             desktop save format.
+          </p>
+        </section>
+
+        <section aria-labelledby="made-with-ai">
+          <h2 id="made-with-ai" className="text-lg font-semibold">Made with AI</h2>
+          <p className="mt-2 text-sm text-neutral-300">
+            Much of this app was written with the help of AI (Anthropic&apos;s Claude), directed and
+            reviewed by a person. It is tested, but it can still contain mistakes. If you find one,
+            please report it (below).
           </p>
         </section>
 
