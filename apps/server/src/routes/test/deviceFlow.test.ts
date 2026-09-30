@@ -151,6 +151,14 @@ describe('device authorization flow', () => {
       headers: { authorization: `Bearer ${body.access_token}` },
     });
     expect(list.statusCode).toBe(200);
+    // The desktop asks who its token belongs to (to name its cursor); the
+    // account routes stay closed to tokens.
+    const current = await app.inject({ method: 'GET', url: '/api/tokens/current', headers: { authorization: `Bearer ${body.access_token}` } });
+    expect(current.statusCode).toBe(200);
+    expect(current.json()).toMatchObject({ user: { id: user.id }, token: { scopes: ['layouts:read', 'layouts:write'] } });
+    expect(Object.keys(current.json().user)).toEqual(['id', 'displayName']);
+    const byCookie = await app.inject({ method: 'GET', url: '/api/tokens/current', headers: { cookie: user.cookie } });
+    expect(byCookie.statusCode).toBe(400);
 
     const audit = await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.eventType, 'api_token_issue')).all();
     expect(audit).toHaveLength(1);
