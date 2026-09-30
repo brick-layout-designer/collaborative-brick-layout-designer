@@ -441,7 +441,7 @@ mix of: server-side (per-user, sync across devices) and `localStorage`
 
 ## Web-only features (no desktop equivalent — keep as-is)
 
-- [x] Real-time multi-user collab via Yjs (live cursors, awareness)
+- [x] Real-time multi-user collab via Yjs (live cursors, awareness). The desktop now joins the same live layouts (File › Connect to Server…); see PLAN.md §4.9, Desktop live sync.
 - [x] Layout sharing (collaborator + invite + roles)
 - [x] Organisations + layout/module ownership transfer
 - [x] Audit log
