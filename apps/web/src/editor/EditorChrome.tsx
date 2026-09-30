@@ -3,9 +3,12 @@
 // wires them to the existing panels, dialogs and menus; nothing here
 // owns layout state.
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { SaveStatus } from './useLayoutDoc';
+import { usePreferences } from '../theme/PrefsProvider';
+import { GETTING_STARTED } from '../help/guide';
+import { ShortcutList } from '../help/HelpPage';
 
 export type EditorTask = 'build' | 'room' | 'notes' | 'parts';
 
@@ -65,9 +68,9 @@ export function LayoutNameMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 font-display text-[17px] font-bold text-ink hover:bg-soft"
+        className="flex min-w-0 max-w-full items-center gap-1.5 rounded-lg px-2 py-1.5 font-display text-[17px] font-bold text-ink hover:bg-soft"
       >
-        <h1 className="truncate text-[17px]">{title}</h1>
+        <h1 className="min-w-0 truncate text-[17px]">{title}</h1>
         <Chevron />
       </button>
       {open && (
@@ -169,42 +172,115 @@ export function TaskTabs({ task, onTask }: { task: EditorTask; onTask: (t: Edito
 export const ICON_BUTTON =
   'flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-control border border-border bg-panel text-ink hover:bg-soft';
 
-/** Help: a few first steps and the way to Settings and About. Tours come in a later phase. */
-export function HelpMenu({ onSettings }: { onSettings: () => void }) {
+/**
+ * Help: Getting started, Keyboard shortcuts and turning the "?" buttons
+ * off or on (redesign "Help" board). Tours join the list in phase (c).
+ */
+export function HelpMenu() {
   const [open, setOpen] = useState(false);
-  const ref = useDismiss(open, () => setOpen(false));
+  const [view, setView] = useState<'menu' | 'start' | 'keys'>('menu');
+  // On a phone the menu spans the screen just under the Help button.
+  const [phoneTop, setPhoneTop] = useState(0);
+  const { prefs, setPrefs } = usePreferences();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => {
+    setOpen(false);
+    setView('menu');
+  }, []);
+  const ref = useDismiss(open, close);
+  // Moving between the list and a page keeps keyboard focus inside the popover.
+  useEffect(() => {
+    if (open) panelRef.current?.querySelector<HTMLElement>('button, a')?.focus();
+  }, [open, view]);
+  const item = 'flex w-full items-center gap-2.5 border-b border-line px-3.5 py-3 text-left text-sm font-semibold last:border-b-0 hover:bg-soft';
+  const back = (
+    <button type="button" onClick={() => setView('menu')} className="mb-2 text-[13px] font-semibold text-muted hover:text-ink">
+      ← Help
+    </button>
+  );
   return (
     <div ref={ref} className="relative">
-      <button type="button" aria-label="Help" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={ICON_BUTTON}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label="Help"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          if (open) return close();
+          setPhoneTop((buttonRef.current?.getBoundingClientRect().bottom ?? 52) + 4);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => e.key === 'Escape' && close()}
+        className={ICON_BUTTON}
+      >
         <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.8px] border-current text-[11px] font-extrabold" aria-hidden>
           ?
         </span>
       </button>
       {open && (
-        <div role="dialog" aria-label="Help" className={`${MENU} right-0 w-80 p-4`}>
-          <div className="mb-2 font-display text-base font-bold">Getting started</div>
-          <ul className="mb-3 list-disc space-y-1.5 pl-5 text-[13px] leading-snug text-muted">
-            <li>Drag a part from the Parts panel onto the map, or click it to drop it in the middle.</li>
-            <li>Ends of track snap together when they meet. Press R to turn the selected piece.</li>
-            <li>Sheets keep things apart: track on one, buildings on another.</li>
-            <li>The Room tab holds the hall or room the layout has to fit in.</li>
-            <li>Ctrl+Z undoes, Ctrl+Shift+Z redoes. Everything saves by itself.</li>
-          </ul>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onSettings();
-              }}
-              className="h-9 rounded-control border border-border px-3 text-[13px] font-semibold hover:bg-soft"
-            >
-              Help settings
-            </button>
-            <Link to="/about" target="_blank" className="flex h-9 items-center rounded-control border border-border px-3 text-[13px] font-semibold hover:bg-soft">
-              About this app
-            </Link>
-          </div>
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label="Help"
+          style={{ '--phone-top': `${phoneTop}px` } as React.CSSProperties}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return;
+            e.stopPropagation();
+            close();
+            buttonRef.current?.focus();
+          }}
+          className={`absolute right-0 z-40 mt-1 w-80 overflow-hidden rounded-card border border-line bg-panel text-sm text-ink shadow-pop max-sm:fixed max-sm:inset-x-2 max-sm:top-(--phone-top) max-sm:w-auto ${view === 'menu' ? '' : 'p-4'}`}
+        >
+          {view === 'menu' && (
+            <>
+              <button type="button" className={item} onClick={() => setView('start')}>
+                Getting started
+              </button>
+              <button type="button" className={item} onClick={() => setView('keys')}>
+                Keyboard shortcuts
+              </button>
+              <button
+                type="button"
+                className={item}
+                data-testid="help-icons-toggle"
+                onClick={() => {
+                  setPrefs({ helpIcons: !prefs.helpIcons });
+                  close();
+                  buttonRef.current?.focus();
+                }}
+              >
+                {prefs.helpIcons ? 'Turn help buttons off' : 'Turn help buttons on'}
+              </button>
+              <Link to="/help" target="_blank" rel="noopener" className={`${item} font-normal text-muted`}>
+                All help topics
+              </Link>
+              <Link to="/about" target="_blank" rel="noopener" className={`${item} font-normal text-muted`}>
+                About this app
+              </Link>
+            </>
+          )}
+          {view === 'start' && (
+            <>
+              {back}
+              <div className="mb-2 font-display text-base font-bold">Getting started</div>
+              <ul className="list-disc space-y-1.5 pl-5 text-[13px] leading-snug text-muted">
+                {GETTING_STARTED.map((s) => (
+                  <li key={s}>{s}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {view === 'keys' && (
+            <>
+              {back}
+              <div className="mb-2 font-display text-base font-bold">Keyboard shortcuts</div>
+              <div className="max-h-[60vh] overflow-y-auto">
+                <ShortcutList />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

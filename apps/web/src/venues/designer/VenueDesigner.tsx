@@ -11,6 +11,7 @@ import { initialState, reducer, TOOLS, venueOf, type Layer } from './designerSta
 import { estimateCount, roomSize, type Pt } from './model';
 import { calibrate, loadPlan, planOf, withPlan, type FloorPlan } from './plan';
 import { formatLength, parseLength, STUDS_PER_INCH, type LengthUnit } from './units';
+import { HelpButton } from '../../help/HelpButton';
 
 const FT = 12 * STUDS_PER_INCH;
 const LAYERS: { layer: Layer; name: string }[] = [
@@ -169,10 +170,12 @@ export function VenueDesigner({
             <option value="studs">Studs</option>
           </select>
         </label>
+        <HelpButton helpKey="room.units" />
         <label className="flex items-center gap-2 text-sm text-neutral-300" title="Snap to corners, walls, 45° and whole inches (hold Shift for any angle)">
           <input type="checkbox" checked={state.snap} onChange={(e) => dispatch({ type: 'snap', on: e.target.checked })} />
           Snap
         </label>
+        <HelpButton helpKey="room.snap" />
         <button type="button" onClick={() => dispatch({ type: 'undo' })} disabled={!state.history.past.length} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-soft disabled:opacity-40">
           Undo
         </button>
@@ -182,6 +185,7 @@ export function VenueDesigner({
         <button type="button" onClick={() => fileInput.current?.click()} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-soft">
           {plan ? 'Replace floor plan…' : 'Floor plan…'}
         </button>
+        <HelpButton helpKey="room.floorPlan" />
         <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Floor plan image" onChange={(e) => void pickPlan(e.target.files?.[0]).then(() => (e.target.value = ''))} />
         <button type="button" onClick={() => void save()} disabled={saving || !dirty} className="h-9 rounded-md bg-accent text-accent-ink px-4 text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
           {saving ? 'Saving…' : saveLabel}
@@ -193,6 +197,9 @@ export function VenueDesigner({
       {error && <div className="border-b border-red-900 bg-red-950/60 px-4 py-2 text-sm text-red-200">{error}</div>}
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Tools" className="flex w-20 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-panel p-2">
+          <div className="flex justify-center py-1">
+            <HelpButton helpKey="room.tools" target='nav[aria-label="Tools"]' />
+          </div>
           {TOOLS.map((t) => (
             <button
               key={t.tool}
@@ -212,7 +219,10 @@ export function VenueDesigner({
         </nav>
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-10 shrink-0 items-center gap-4 border-b border-line bg-panel/60 px-4 text-sm text-neutral-300">
-            <span className="font-semibold">Show</span>
+            <span className="flex items-center gap-1.5 font-semibold">
+              Show
+              <HelpButton helpKey="room.show" target="main > div" />
+            </span>
             {LAYERS.map((l) => (
               <label key={l.layer} className="flex items-center gap-1.5">
                 <input type="checkbox" checked={state.show[l.layer]} onChange={(e) => dispatch({ type: 'show', layer: l.layer, on: e.target.checked })} />
@@ -312,7 +322,10 @@ function PlanPanel({
   const [bad, setBad] = useState(false);
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-line p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Floor plan</div>
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+        Floor plan
+        <HelpButton helpKey="room.calibrate" target="section" />
+      </div>
       <label className="flex flex-col gap-1 text-xs text-muted">
         Opacity {Math.round(plan.opacity * 100)}%
         <input type="range" min={0.1} max={1} step={0.05} value={plan.opacity} onChange={(e) => onChange({ ...plan, opacity: Number(e.target.value) })} />

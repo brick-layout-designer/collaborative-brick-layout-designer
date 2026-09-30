@@ -7,6 +7,8 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { DockZone, FloatPos } from './dockLayout';
+import { PANEL_HELP } from './PanelHost';
+import { HelpButton } from '../help/HelpButton';
 
 const MIN_W = 180;
 const MIN_H = 120;
@@ -74,6 +76,7 @@ export function FloatingPanel({ panelId, title, pos, onMove, onPosChange, childr
   const panel = (
     <div
       ref={frameRef}
+      data-panel={panelId}
       style={{
         position: 'fixed',
         left: pos.x,
@@ -93,7 +96,10 @@ export function FloatingPanel({ panelId, title, pos, onMove, onPosChange, childr
         onMouseDown={onTitleMouseDown}
         className="flex cursor-move select-none items-center justify-between border-b border-line bg-panel px-2 py-1 text-xs text-muted"
       >
-        <span className="flex-1 truncate font-semibold uppercase tracking-wider">{title}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="truncate font-semibold uppercase tracking-wider">{title}</span>
+          {PANEL_HELP[panelId] && <HelpButton helpKey={PANEL_HELP[panelId]} target={`[data-panel="${panelId}"]`} />}
+        </span>
         <div className="relative flex gap-1">
           <FloatMenu targets={moveTargets} onSelect={(z) => onMove(panelId, z)} />
           <button

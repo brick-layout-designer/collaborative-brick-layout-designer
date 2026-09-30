@@ -32,6 +32,7 @@ import { BrickLayer } from './render/BrickLayer';
 import { PartsPanel } from './PartsPanel';
 import { LayersPanel } from './LayersPanel';
 import { PanelHost } from './PanelHost';
+import { HelpButton } from '../help/HelpButton';
 import { FloatingPanel } from './FloatingPanel';
 import { Resizer } from './Resizer';
 import { useDockLayout, type DockZone } from './dockLayout';
@@ -421,10 +422,14 @@ function Editor({ layoutId }: { layoutId: string }) {
       style={{ gridTemplateColumns: viewport.isMobile ? '0px 0px 1fr 0px' : `${showRail ? '76px' : '0px'} ${cols}` }}
     >
       <header
-        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4 py-1.5"
+        // On a phone the name row and the Share / Help / Settings row stack,
+        // so nothing in the top bar sits on top of anything else.
+        className={`min-h-14 items-center gap-3 border-b border-line bg-panel px-4 py-1.5 ${
+          viewport.isMobile ? 'flex flex-wrap justify-end gap-y-1' : 'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]'
+        }`}
         style={{ gridColumn: '1 / -1' }}
       >
-        <div className="flex min-w-0 items-center gap-3">
+        <div className={`flex min-w-0 items-center gap-3 ${viewport.isMobile ? 'w-full' : ''}`}>
           <AppMark />
           <LayoutNameMenu
             title={meta.data?.layout.title ?? 'Untitled'}
@@ -436,13 +441,21 @@ function Editor({ layoutId }: { layoutId: string }) {
             </button>
           </LayoutNameMenu>
           <SavePill status={status} />
+          <HelpButton helpKey="topbar.saveStatus" />
           {isViewer && (
-            <span className="rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300">
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300">
               View only
             </span>
           )}
         </div>
-        {!isViewer && !viewport.isMobile ? <TaskTabs task={task} onTask={onTask} /> : <span />}
+        {!isViewer && !viewport.isMobile ? (
+          <div className="flex items-center gap-2">
+            <TaskTabs task={task} onTask={onTask} />
+            <HelpButton helpKey="topbar.tasks" />
+          </div>
+        ) : viewport.isMobile ? null : (
+          <span />
+        )}
         <div className="flex min-w-0 items-center justify-end gap-2.5">
           <PresencePanel awareness={awareness} />
           <button
@@ -451,7 +464,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           >
             Share
           </button>
-          <HelpMenu onSettings={() => setShowSettings(true)} />
+          <HelpMenu />
           <SettingsButton onClick={() => setShowSettings(true)} />
         </div>
       </header>
@@ -483,14 +496,20 @@ function Editor({ layoutId }: { layoutId: string }) {
               canvasActionsRef={canvasActionsRef}
             />
           )}
-          {!isViewer && <SnapPicker />}
-          {!isViewer && <RotationPicker />}
-          {!isViewer && <PaintColorPicker />}
           {!isViewer && (
-            <PanelsMenu
-              dock={dock.state}
-              onToggle={(id, visible) => dock.setZone(id, visible ? 'right' : 'hidden')}
-            />
+            <>
+              <SnapPicker />
+              <HelpButton helpKey="toolbar.snap" />
+              <RotationPicker />
+              <HelpButton helpKey="toolbar.rotateStep" />
+              <PaintColorPicker />
+              <HelpButton helpKey="toolbar.paintColour" />
+              <PanelsMenu
+                dock={dock.state}
+                onToggle={(id, visible) => dock.setZone(id, visible ? 'right' : 'hidden')}
+              />
+              <HelpButton helpKey="toolbar.panels" />
+            </>
           )}
           {!isViewer && (
             <MapMenu
@@ -587,6 +606,9 @@ function Editor({ layoutId }: { layoutId: string }) {
       {showRail && (
         <aside aria-label="Tool rail" className="overflow-y-auto border-r border-line bg-panel py-3" style={{ gridColumn: '1', gridRow: '3' }}>
           <Toolbar />
+          <div className="mt-2 flex justify-center">
+            <HelpButton helpKey="tools.rail" target='nav[aria-label="Build tools"]' />
+          </div>
         </aside>
       )}
       {showLeft && (
@@ -3390,11 +3412,14 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
             {studDisplay(mapW)} × {studDisplay(mapH)}
           </span>
         )}
-        <span title="Active sheet: new parts are placed here">
-          Sheet:{' '}
-          <span className={activeLayer ? 'text-ink' : 'text-neutral-600'}>
-            {activeLayer ? activeLayer.name || 'unnamed' : 'none'}
+        <span className="flex items-center gap-1.5">
+          <span title="Active sheet: new parts are placed here">
+            Sheet:{' '}
+            <span className={activeLayer ? 'text-ink' : 'text-neutral-600'}>
+              {activeLayer ? activeLayer.name || 'unnamed' : 'none'}
+            </span>
           </span>
+          <HelpButton helpKey="status.sheet" />
         </span>
         <span>Tool: <span className="text-ink">{tool}{dirty ? ' *' : ''}</span></span>
         {dropTargetHint || statusMessage ? (
@@ -3411,18 +3436,24 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
         {venueReadout && (
           // Desktop MainWindow.cpp:917-936: "Venue: OK" / "Venue: N issue(s)"
           // with the problems listed in the tooltip.
-          <span
-            data-testid="venue-status"
-            title={venueReadout.tooltip}
-            className={venueReadout.ok ? 'text-green-400' : 'font-semibold text-orange-400'}
-          >
-            {venueReadout.text}
+          <span className="flex items-center gap-1.5">
+            <span
+              data-testid="venue-status"
+              title={venueReadout.tooltip}
+              className={venueReadout.ok ? 'text-green-400' : 'font-semibold text-orange-400'}
+            >
+              {venueReadout.text}
+            </span>
+            <HelpButton helpKey="status.room" />
           </span>
         )}
         {budgetLimits.size > 0 && (
-          <span className={budgetOver > 0 ? 'text-danger' : 'text-green-400'}
-            title="Budget status">
-            Budget: {budgetOver > 0 ? `${budgetOver} over` : 'OK'}
+          <span className="flex items-center gap-1.5">
+            <span className={budgetOver > 0 ? 'text-danger' : 'text-green-400'}
+              title="Budget status">
+              Budget: {budgetOver > 0 ? `${budgetOver} over` : 'OK'}
+            </span>
+            <HelpButton helpKey="status.budget" />
           </span>
         )}
         <span>

@@ -14,6 +14,7 @@ import { OrgDetailPage } from './orgs/OrgDetailPage';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
+import { HelpPage } from './help/HelpPage';
 import { SettingsPage } from './settings/SettingsPage';
 import { PrefsProvider } from './theme/PrefsProvider';
 import { api } from './api';
@@ -129,6 +130,7 @@ createRoot(root).render(
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/link" element={<LinkPage />} />
           <Route path="/device" element={<DevicePage />} />

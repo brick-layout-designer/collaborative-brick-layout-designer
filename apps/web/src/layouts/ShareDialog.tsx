@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type InviteSummary } from '../api';
+import { HelpButton } from '../help/HelpButton';
 
 interface Props {
   layoutId: string;
@@ -140,9 +141,13 @@ function InviteForm({
             placeholder="alice@example.com"
           />
         </label>
-        <label>
-          <span className="mb-1 block text-xs text-muted">Role</span>
+        <div>
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-muted">
+            <label htmlFor="share-invite-role">Role</label>
+            <HelpButton helpKey="share.roles" target="#share-invite-role" />
+          </span>
           <select
+            id="share-invite-role"
             value={role}
             onChange={(e) => setRole(e.target.value as 'viewer' | 'editor')}
             className="rounded-lg border border-border bg-soft px-2 py-1.5"
@@ -150,7 +155,7 @@ function InviteForm({
             <option value="viewer">Viewer</option>
             <option value="editor">Editor</option>
           </select>
-        </label>
+        </div>
         <button
           type="submit"
           disabled={invite.isPending}
@@ -204,9 +209,12 @@ function CollaboratorList({
 }) {
   return (
     <div>
-      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-        Collaborators
-      </h4>
+      <div className="mb-1 flex items-center gap-1.5">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Collaborators
+        </h4>
+        <HelpButton helpKey="share.people" />
+      </div>
       <ul className="divide-y divide-line rounded-lg border border-line">
         {collaborators.length === 0 && (
           <li className="px-3 py-2 text-xs text-muted">No collaborators yet.</li>
@@ -312,9 +320,12 @@ function PendingInvites({
   });
   return (
     <div>
-      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-        Pending invites
-      </h4>
+      <div className="mb-1 flex items-center gap-1.5">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Pending invites
+        </h4>
+        <HelpButton helpKey="share.pending" />
+      </div>
       <ul className="divide-y divide-line rounded-lg border border-line">
         {invites.map((i) => (
           <li key={i.id} className="flex items-center justify-between px-3 py-2 text-sm">
@@ -370,9 +381,12 @@ function TransferSection({ layoutId }: { layoutId: string }) {
 
   return (
     <div className="rounded-lg border border-line p-3 text-sm">
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-        Transfer ownership
-      </h4>
+      <div className="mb-2 flex items-center gap-1.5">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Transfer ownership
+        </h4>
+        <HelpButton helpKey="share.transfer" />
+      </div>
       {mode === 'closed' && (
         <div className="flex gap-2">
           <button
@@ -518,7 +532,7 @@ export function AuditPanel({ layoutId }: { layoutId: string }) {
   return (
     <details className="rounded-lg border border-line p-3 text-sm">
       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">
-        History
+        History <HelpButton helpKey="share.history" target="details" className="ml-1" />
       </summary>
       <div className="mt-2 max-h-60 overflow-y-auto">
         {events.isLoading && <p className="text-xs text-muted">Loading…</p>}
@@ -588,9 +602,12 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
     <div className="rounded-lg border border-line p-3 text-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Public link
-          </h4>
+          <div className="flex items-center gap-1.5">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Public link
+            </h4>
+            <HelpButton helpKey="share.publicLink" />
+          </div>
           <p className="mt-1 text-xs text-muted">
             {token
               ? 'Anyone with this link can view (read-only) without signing in.'

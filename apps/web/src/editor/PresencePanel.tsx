@@ -1,11 +1,13 @@
 import type { Awareness } from 'y-protocols/awareness';
 import { useRemotePeers } from './useAwareness';
+import { HelpButton } from '../help/HelpButton';
 
 /** Shows everyone connected to the layout. Renders nothing if alone. */
 export function PresencePanel({ awareness }: { awareness: Awareness | null }) {
   const peers = useRemotePeers(awareness);
   if (peers.length === 0) return null;
   return (
+    <div className="flex items-center gap-2">
     <div className="flex items-center" aria-label="People here now" role="group">
       {peers.map(({ clientId, state, isIdle }, i) => (
         <span
@@ -18,6 +20,8 @@ export function PresencePanel({ awareness }: { awareness: Awareness | null }) {
           <span className="sr-only">{state.user.displayName}</span>
         </span>
       ))}
+    </div>
+    <HelpButton helpKey="people.here" />
     </div>
   );
 }

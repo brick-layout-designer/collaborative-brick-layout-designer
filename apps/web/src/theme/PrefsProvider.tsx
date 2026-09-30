@@ -19,7 +19,7 @@ import {
 } from './theme';
 import type { Mode } from './tokens';
 
-interface PrefsContextValue {
+export interface PrefsContextValue {
   prefs: Preferences;
   /** The mode on screen now ("system" resolved). */
   mode: Mode;
@@ -29,7 +29,7 @@ interface PrefsContextValue {
   updatedAt: string | null;
 }
 
-const PrefsContext = createContext<PrefsContextValue | null>(null);
+export const PrefsContext = createContext<PrefsContextValue | null>(null);
 
 const FALLBACK: PrefsContextValue = {
   prefs: DEFAULT_PREFERENCES,

@@ -21,6 +21,7 @@ import type {
 import { attachRulerEndpoint, editRulerItem } from './mutations';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { colorSpecToArgb } from './layerOptions';
+import { HelpButton } from '../help/HelpButton';
 
 interface Props {
   item: RulerItem;
@@ -108,9 +109,12 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
         className="max-h-[90vh] w-136 overflow-y-auto rounded-lg border border-line bg-panel p-5 shadow-xl"
       >
-        <h2 className="text-base font-semibold">
-          Edit {item.kind === 'linear' ? 'linear' : 'circular'} ruler
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold">
+            Edit {item.kind === 'linear' ? 'linear' : 'circular'} ruler
+          </h2>
+          <HelpButton helpKey="dialog.measure" />
+        </div>
 
         <fieldset className="mt-4 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Line</legend>

@@ -10,6 +10,7 @@ import { spriteUrlFor } from '../api';
 import { useEditorStore } from './editorStore';
 import { buildPartList, partListCsv, partListHtml, partListText } from './partList';
 import { ensureSprite } from './render/spriteCache';
+import { HelpButton } from '../help/HelpButton';
 
 type Format = 'html' | 'txt' | 'csv';
 
@@ -105,7 +106,10 @@ export function PartListDialog({ map, parts, limits, layoutTitle, onClose }: Pro
   return (
     <div role="dialog" aria-modal="true" aria-label="Export Part List" className="fixed inset-0 z-50 grid place-items-center bg-black/60" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-md rounded-lg border border-line bg-panel p-5 shadow-xl">
-        <h2 className="text-base font-semibold">Export Part List</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold">Export Part List</h2>
+          <HelpButton helpKey="dialog.exportPartList" />
+        </div>
         <fieldset className="mt-4 flex gap-4 text-sm">
           <legend className="sr-only">Format</legend>
           {(['html', 'txt', 'csv'] as const).map((f) => (

@@ -17,6 +17,7 @@ import {
   type LayerOptionsForm,
 } from './layerOptions';
 import { ColorAlphaInput } from './ColorAlphaInput';
+import { HelpButton } from '../help/HelpButton';
 
 interface Props {
   layer: Layer;
@@ -108,7 +109,10 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
         className="max-h-[90vh] w-104 overflow-y-auto rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold text-ink">Layer Options</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-ink">Layer Options</h2>
+          <HelpButton helpKey="dialog.sheetOptions" />
+        </div>
 
         <div className="flex flex-col gap-0.5">
           <label className={rowCls}>

@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { partInfo, type PartChoice, type PartDifference } from '../layoutParts';
+import { HelpButton } from '../help/HelpButton';
 
 interface Props {
   differences: PartDifference[];
@@ -49,7 +50,10 @@ export function PartDifferencesDialog({ differences, onDone }: Props) {
   return (
     <div role="dialog" aria-modal="true" aria-label="Parts That Differ" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <div className="max-h-full w-full max-w-3xl overflow-y-auto rounded-lg border border-line bg-panel p-5 shadow-xl">
-        <h2 className="text-base font-semibold">Parts That Differ</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold">Parts That Differ</h2>
+          <HelpButton helpKey="partsDiffer.about" target="table" />
+        </div>
         <p className="mt-2 text-sm text-muted">
           This layout has its own version of {n} part{n === 1 ? '' : 's'} the server already has. Choose which to use for
           each.
@@ -60,7 +64,12 @@ export function PartDifferencesDialog({ differences, onDone }: Props) {
               <th className="pb-2 pr-3 font-medium">Part</th>
               <th className="pb-2 pr-3 font-medium">On the server</th>
               <th className="pb-2 pr-3 font-medium">In the file</th>
-              <th className="pb-2 font-medium">Use</th>
+              <th className="pb-2 font-medium">
+                <span className="flex items-center gap-1.5">
+                  Use
+                  <HelpButton helpKey="partsDiffer.choice" target="tbody select" />
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
