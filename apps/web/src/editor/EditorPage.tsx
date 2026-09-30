@@ -360,7 +360,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // state so the user's resize survives reload.
   const leftWidthPx = showLeft ? `${dock.state.leftWidth}px` : '0px';
   const rightWidthPx = showRight ? `${dock.state.rightWidth}px` : '0px';
-  const cols = `${leftWidthPx} 1fr ${rightWidthPx}`;
+  const cols = `${leftWidthPx} minmax(0, 1fr) ${rightWidthPx}`;
   const headerColSpan = 4;
 
   // Returns just the inner content for a panel (shared by docked + floating).
@@ -421,7 +421,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       style={{ gridTemplateColumns: viewport.isMobile ? '0px 0px 1fr 0px' : `${showRail ? '76px' : '0px'} ${cols}` }}
     >
       <header
-        className="grid min-h-[60px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4 py-2"
+        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4 py-1.5"
         style={{ gridColumn: '1 / -1' }}
       >
         <div className="flex min-w-0 items-center gap-3">
@@ -458,7 +458,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       <div
         role="toolbar"
         aria-label="Edit"
-        className="flex min-h-[46px] items-center gap-2 border-b border-line bg-panel px-3 py-1.5"
+        className="flex min-h-[42px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-line bg-panel px-3 py-1"
         style={{ gridColumn: '1 / -1' }}
       >
           <button
@@ -3380,7 +3380,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
   const zoomBtn = 'flex h-[26px] min-w-[26px] items-center justify-center rounded-md bg-soft px-1.5 text-ink hover:bg-neutral-700';
   return (
     <footer
-      className="flex min-h-9 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-1 text-xs text-muted"
+      className="flex min-h-8 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-0.5 text-xs text-muted"
       style={{ gridColumn: `span ${gridSpan}` }}
     >
       <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap">
@@ -3591,8 +3591,9 @@ function MapMenu({
           // Fixed, not absolute: the header row scrolls horizontally, which
           // would clip an absolutely positioned dropdown. Above the modeless
           // Find / Budget panels (z-40), below modal dialogs (z-50).
-          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-lg border border-border bg-panel text-xs shadow-sm"
-          style={anchor}
+          className="fixed z-[45] w-52 overflow-y-auto rounded-lg border border-border bg-panel text-xs shadow-sm"
+          // Fill the space below the button and scroll past that.
+          style={{ ...anchor, maxHeight: `calc(100vh - ${Number(anchor.top ?? 64) + 8}px)` }}
           onClick={() => setOpen(false)}
         >
           {items.map((it, i) =>

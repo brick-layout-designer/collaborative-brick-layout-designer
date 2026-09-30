@@ -89,10 +89,10 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
   const btn = 'rounded-lg border border-border px-2 py-0.5 hover:bg-neutral-700 disabled:opacity-40';
 
   return (
-    <div className="flex h-full flex-col text-xs">
+    <div className="flex h-full flex-col overflow-y-auto text-xs">
       <div className="border-b border-line p-2">
         <input
-          placeholder="Filter venues…"
+          placeholder="Filter rooms…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
@@ -103,7 +103,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
       {!isViewer && list.isLoading && <p className="p-2 text-muted">Loading…</p>}
       {!isViewer && list.isError && <p className="p-2 text-danger">Failed to load venue library.</p>}
 
-      <div className="flex-1 overflow-y-auto" role="listbox" aria-label="Saved venues">
+      <div className="min-h-[4.5rem] flex-1 overflow-y-auto" role="listbox" aria-label="Saved rooms">
         {filtered.length === 0 && !list.isLoading && (
           <p className="p-2 text-muted">{filter ? 'No matches.' : '(no saved venues)'}</p>
         )}

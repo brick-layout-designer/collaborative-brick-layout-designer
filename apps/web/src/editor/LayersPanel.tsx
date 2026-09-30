@@ -397,7 +397,7 @@ function AddLayerButton({ doc, onAdd }: { doc: Y.Doc; onAdd: (layerId: string) =
         className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft"
         title="Add a new sheet"
       >
-        + Add layer
+        + Add sheet
       </button>
       {open && (
         <ul

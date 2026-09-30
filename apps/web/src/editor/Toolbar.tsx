@@ -44,7 +44,7 @@ export function Toolbar() {
 
   // A labelled rail down the left edge (the mockup's tool rail).
   return (
-    <nav aria-label="Tools" className="flex flex-col items-center gap-1">
+    <nav aria-label="Build tools" className="flex flex-col items-center gap-1">
       {TOOLS.map((t) => {
         const on = tool === t.id;
         return (

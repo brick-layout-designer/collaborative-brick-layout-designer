@@ -83,15 +83,9 @@ test.describe('editor — tool switching', () => {
   test('clicking delete tool activates it', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    // /delete|erase|remove/i ambiguously matches multiple buttons: the
-    // global "Delete (Del)" selection-delete action, the "Erase" tool,
-    // and the Toolbar's own "Delete" tool — and even an exact accessible
-    // name of "Delete" still matches both Delete buttons (the global
-    // one's computed name apparently still satisfies it). The `title`
-    // attribute is the only thing that disambiguates them: the
-    // Toolbar's tool has no shortcut suffix (see TOOLS.map in
-    // Toolbar.tsx), so its title is the bare string "Delete".
-    const deleteBtn = page.getByTitle('Delete', { exact: true });
+    // "Delete" also names the global selection-delete action; the tool
+    // rail's buttons carry data-tool, which is unambiguous.
+    const deleteBtn = page.getByRole('navigation', { name: 'Build tools' }).locator('[data-tool="delete"]');
     await deleteBtn.click();
     await expect(page.locator('footer')).toContainText('Tool: delete');
     await expect(page.locator('canvas').first()).toBeVisible();

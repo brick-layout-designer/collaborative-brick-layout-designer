@@ -23,7 +23,7 @@ test.beforeAll(async () => {
 test('designs a venue from typed sizes and saves it to the library', async ({ page }) => {
   await signIn(page, EMAIL);
   await page.goto('/venues/new');
-  await expect(page.getByRole('navigation', { name: 'Tools' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Tools', exact: true })).toBeVisible();
 
   // Room: click one corner, type width x depth, Enter.
   await page.keyboard.press('r');
@@ -69,7 +69,7 @@ test('designs a venue from typed sizes and saves it to the library', async ({ pa
 test('undo and redo walk back through each drawing step', async ({ page }) => {
   await signIn(page, EMAIL);
   await page.goto('/venues/new');
-  await expect(page.getByRole('navigation', { name: 'Tools' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Tools', exact: true })).toBeVisible();
   await page.keyboard.press('c');
   await clickCanvas(page, 0.3, 0.3);
   await clickCanvas(page, 0.35, 0.35);
@@ -95,7 +95,7 @@ test("opens from a layout's Map menu and saves the venue into the layout", async
 
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await page.getByRole('button', { name: /Open Venue Designer/ }).click();
-  await expect(page.getByRole('navigation', { name: 'Tools' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Tools', exact: true })).toBeVisible();
   await page.keyboard.press('r');
   await clickCanvas(page, 0.3, 0.3);
   await page.mouse.move(700, 600);
