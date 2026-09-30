@@ -585,3 +585,19 @@ export const venueLibrary = sqliteTable('venue_library', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 export type VenueLibraryEntry = typeof venueLibrary.$inferSelect;
+
+/**
+ * Per-account appearance and help settings (theme, colour, bigger text,
+ * expert mode, help icons, tours seen). One row per user; `prefs` is a
+ * validated JSON object (see routes/preferences.ts) so new keys don't
+ * need a migration. `updatedAt` lets clients that cache the settings
+ * (the desktop app) decide which copy is newer.
+ */
+export const userPreferences = sqliteTable('user_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  prefs: text('prefs').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+export type UserPreferencesRow = typeof userPreferences.$inferSelect;

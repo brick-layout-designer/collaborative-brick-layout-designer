@@ -167,11 +167,13 @@ describe('scopeSummary (P1b scopes)', () => {
     expect(scopeSummary({ scopes: ['layouts:read', 'parts:read', 'parts:write'] })).toBe('Read only, upload parts');
     expect(scopeSummary({ scopes: ['layouts:read', 'venues:read'] })).toBe('Read only, download venues');
     expect(scopeSummary({ scopes: ['layouts:read', 'venues:read', 'venues:write'] })).toBe('Read only, save venues');
+    expect(scopeSummary({ scopes: ['layouts:read', 'account:prefs'] })).toBe('Read only, sync settings');
   });
 
   it('labels every scope on the approval page', async () => {
     const { SCOPE_LABELS } = await import('../DevicePage');
     expect(Object.keys(SCOPE_LABELS).sort()).toEqual([
+      'account:prefs',
       'layouts:create',
       'layouts:read',
       'layouts:write',

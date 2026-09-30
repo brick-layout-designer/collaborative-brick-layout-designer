@@ -29,6 +29,7 @@ import { layoutRoutes } from './routes/layouts.js';
 import { moduleRoutes } from './routes/modules.js';
 import { moduleTransferRoutes } from './routes/moduleTransfers.js';
 import { venueRoutes } from './routes/venues.js';
+import { preferencesRoutes } from './routes/preferences.js';
 import { orgRoutes } from './routes/orgs.js';
 import { orgInviteRoutes } from './routes/orgInvites.js';
 import { partsRoutes } from './routes/parts.js';
@@ -107,6 +108,7 @@ async function main() {
   await app.register(moduleRoutes);
   await app.register(moduleTransferRoutes);
   await app.register(venueRoutes);
+  await app.register(preferencesRoutes);
   await app.register(partsManifestRoutes);
   await app.register(auditRoutes);
   await app.register(adminRoutes);

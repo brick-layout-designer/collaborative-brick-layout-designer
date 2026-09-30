@@ -19,9 +19,10 @@ declare module 'fastify' {
      * Opt this route in to `Authorization: Bearer bld_pat_…` auth, with
      * the scope the token needs. Routes without it reject every
      * token-authenticated request (403), so the allow-list is exactly
-     * the set of routes carrying this config.
+     * the set of routes carrying this config. A list means any one of
+     * those scopes is enough.
      */
-    apiToken?: ApiScope;
+    apiToken?: ApiScope | readonly ApiScope[];
   }
 }
 
@@ -66,8 +67,9 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
       reply.header('WWW-Authenticate', 'Bearer error="invalid_token"');
       return reply.code(401).send({ error: 'invalid_token' });
     }
-    if (!hasScope(result.scopes, needed)) {
-      reply.header('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${needed}"`);
+    const anyOf: readonly ApiScope[] = typeof needed === 'string' ? [needed] : needed;
+    if (!anyOf.some((s) => hasScope(result.scopes, s))) {
+      reply.header('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${anyOf.join(' ')}"`);
       return reply.code(403).send({ error: 'insufficient_scope' });
     }
     req.user = result.user;

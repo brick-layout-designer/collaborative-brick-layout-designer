@@ -1,0 +1,126 @@
+// Account preferences (theme, colour, text size, expert mode, help
+// icons, tours seen): session round-trip, validation, and which API
+// token scopes may read or change them.
+
+import Fastify, { type FastifyInstance } from 'fastify';
+import cookie from '@fastify/cookie';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { issueToken, loginAs, resetDb } from '../../test/helpers.js';
+import { attachUser } from '../../auth/cookie.js';
+import { passwordRoutes } from '../auth/password.js';
+import { deviceRoutes } from '../auth/device.js';
+import { preferencesRoutes, DEFAULT_PREFERENCES } from '../preferences.js';
+
+async function buildApp(): Promise<FastifyInstance> {
+  const app = Fastify();
+  await app.register(cookie);
+  app.addHook('preHandler', attachUser);
+  await app.register(passwordRoutes);
+  await app.register(deviceRoutes);
+  await app.register(preferencesRoutes);
+  return app;
+}
+
+const URL = '/api/me/preferences';
+
+describe('account preferences', () => {
+  let app: FastifyInstance;
+  let user: { cookie: string; id: string };
+  beforeEach(async () => {
+    resetDb();
+    app = await buildApp();
+    user = await loginAs(app, 'prefs@example.com');
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+  const put = (headers: Record<string, string>, prefs: unknown) =>
+    app.inject({ method: 'PUT', url: URL, headers, payload: { prefs } });
+
+  it('needs a signed-in user', async () => {
+    expect((await app.inject({ method: 'GET', url: URL })).statusCode).toBe(401);
+    expect((await put({}, { theme: 'dark' })).statusCode).toBe(401);
+  });
+
+  it('starts at the defaults with no updatedAt', async () => {
+    const res = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ prefs: DEFAULT_PREFERENCES, updatedAt: null });
+  });
+
+  it('saves, merges and reads back', async () => {
+    const first = await put({ cookie: user.cookie }, { theme: 'dark', accent: 'ocean' });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json() as { prefs: typeof DEFAULT_PREFERENCES; updatedAt: string };
+    expect(firstBody.prefs).toEqual({ ...DEFAULT_PREFERENCES, theme: 'dark', accent: 'ocean' });
+    expect(Number.isNaN(Date.parse(firstBody.updatedAt))).toBe(false);
+
+    // A second client changing one other key keeps the first change.
+    const second = await put({ cookie: user.cookie }, { largeText: true, toursSeen: ['welcome', 'welcome', 'sheets'] });
+    expect(second.statusCode).toBe(200);
+
+    const got = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    const body = got.json() as { prefs: typeof DEFAULT_PREFERENCES; updatedAt: string };
+    expect(body.prefs).toEqual({
+      ...DEFAULT_PREFERENCES,
+      theme: 'dark',
+      accent: 'ocean',
+      largeText: true,
+      toursSeen: ['welcome', 'sheets'],
+    });
+    expect(Date.parse(body.updatedAt)).toBeGreaterThanOrEqual(Date.parse(firstBody.updatedAt));
+
+    // Another account sees only its own.
+    const other = await loginAs(app, 'other@example.com');
+    const theirs = await app.inject({ method: 'GET', url: URL, headers: { cookie: other.cookie } });
+    expect(theirs.json()).toEqual({ prefs: DEFAULT_PREFERENCES, updatedAt: null });
+  });
+
+  it('refuses unknown keys and wrong values without storing anything', async () => {
+    const bad: unknown[] = [
+      { theme: 'purple' },
+      { accent: 'teal' },
+      { largeText: 'yes' },
+      { expertMode: 1 },
+      { helpIcons: null },
+      { toursSeen: 'welcome' },
+      { toursSeen: ['has space'] },
+      { toursSeen: Array.from({ length: 201 }, (_, i) => `t${i}`) },
+      { fontSize: 20 },
+      ['theme'],
+      null,
+    ];
+    for (const prefs of bad) {
+      const res = await put({ cookie: user.cookie }, prefs);
+      expect(res.statusCode, JSON.stringify(prefs)).toBe(400);
+    }
+    const missing = await app.inject({ method: 'PUT', url: URL, headers: { cookie: user.cookie }, payload: { theme: 'dark' } });
+    expect(missing.statusCode).toBe(400);
+    const got = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    expect(got.json()).toEqual({ prefs: DEFAULT_PREFERENCES, updatedAt: null });
+  });
+
+  it('tokens: layouts:read may read, account:prefs may read and write, others may not', async () => {
+    const reader = await issueToken(app, user.cookie, 'layouts:read');
+    expect((await app.inject({ method: 'GET', url: URL, headers: bearer(reader) })).statusCode).toBe(200);
+    expect((await put(bearer(reader), { theme: 'dark' })).statusCode).toBe(403);
+
+    const prefsOnly = await issueToken(app, user.cookie, 'account:prefs');
+    const saved = await put(bearer(prefsOnly), { accent: 'forest' });
+    expect(saved.statusCode).toBe(200);
+    const read = await app.inject({ method: 'GET', url: URL, headers: bearer(prefsOnly) });
+    expect(read.statusCode).toBe(200);
+    expect((read.json() as { prefs: { accent: string } }).prefs.accent).toBe('forest');
+
+    const venuesOnly = await issueToken(app, user.cookie, 'venues:write');
+    expect((await app.inject({ method: 'GET', url: URL, headers: bearer(venuesOnly) })).statusCode).toBe(403);
+    expect((await put(bearer(venuesOnly), { theme: 'dark' })).statusCode).toBe(403);
+  });
+
+  it('device sign-in without a scope list grants account:prefs', async () => {
+    const all = await issueToken(app, user.cookie);
+    expect((await put(bearer(all), { theme: 'light' })).statusCode).toBe(200);
+  });
+});

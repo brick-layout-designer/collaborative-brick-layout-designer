@@ -229,7 +229,8 @@ export type ApiScope =
   | 'parts:read'
   | 'parts:write'
   | 'venues:read'
-  | 'venues:write';
+  | 'venues:write'
+  | 'account:prefs';
 
 /** A pending desktop sign-in, as shown on the /device approval page. */
 export interface DeviceRequest {

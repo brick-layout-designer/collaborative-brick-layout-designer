@@ -13,6 +13,7 @@ export function scopeSummary(t: Pick<ApiTokenSummary, 'scopes'>): string {
   else if (has('parts:read')) parts.push('download parts');
   if (has('venues:write')) parts.push('save venues');
   else if (has('venues:read')) parts.push('download venues');
+  if (has('account:prefs')) parts.push('sync settings');
   return parts.join(', ');
 }
 

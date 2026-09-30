@@ -47,6 +47,7 @@ export function resetDb(): void {
     DELETE FROM device_codes;
     DELETE FROM email_verifications;
     DELETE FROM platform_settings;
+    DELETE FROM user_preferences;
     DELETE FROM users;
   `);
 }
