@@ -69,7 +69,9 @@ const ORG_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // ---- list orgs the current user belongs to -----------------------------
-  app.get('/api/orgs', async (req) => {
+  // The desktop reads this with its API token too, for Publish to Server's
+  // owner picker (layouts:read: your own memberships).
+  app.get('/api/orgs', { config: { apiToken: 'layouts:read' } }, async (req) => {
     const user = requireUser(req);
     const rows = await db
       .select({
