@@ -46,6 +46,7 @@ import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
 import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, type LayoutImage } from '../layoutFile';
+import { layoutPartFiles } from '../layoutParts';
 import { backgroundImageRectPx } from './background';
 import { scaleBar } from './scaleBar';
 import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
@@ -164,6 +165,8 @@ function Editor({ layoutId }: { layoutId: string }) {
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
   });
+  // The parts catalog, for Save's offline download (declared further down).
+  const partsRef = useRef<readonly PartWire[] | undefined>(undefined);
   // Save / Ctrl+S: every edit is already persisted server-side while the
   // socket is synced; when it isn't, offer the local state as a .bbm so
   // nothing is lost (desktop's Save always leaves a file on disk).
@@ -175,7 +178,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       return;
     }
     if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a copy of the current local version (.bld-layout) now?')) {
-      void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout');
+      void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout', partsRef.current);
     }
   }, [doc, checkSaved, meta.data?.layout.title]);
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -277,6 +280,9 @@ function Editor({ layoutId }: { layoutId: string }) {
     queryFn: api.parts.catalog,
     staleTime: 5 * 60 * 1000,
   });
+  useEffect(() => {
+    partsRef.current = catalog.data?.parts;
+  }, [catalog.data]);
   useConnectivity(doc, catalog.data?.parts);
   const partIndex = useMemo(() => indexParts(catalog.data?.parts), [catalog.data]);
 
@@ -475,7 +481,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onZoomIn={() => canvasActionsRef.current?.zoom(ZOOM_STEP)}
               onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
               onFit={() => canvasActionsRef.current?.fit()}
-              onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout')}
+              onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout', catalog.data?.parts)}
               onDownloadAs={() => setShowDownloadAs(true)}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
@@ -758,7 +764,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           map={docMap}
           parts={catalog.data?.parts ?? []}
           title={meta.data?.layout.title ?? 'layout'}
-          onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout')}
+          onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout', catalog.data?.parts)}
           onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
           blueBrickLeavesOut={blueBrickLeavesOut(readSidecarFromDoc(doc))}
           onClose={() => setShowDownloadAs(false)}
@@ -3866,10 +3872,13 @@ function saveFile(file: { filename: string; type: string; data: Uint8Array }): v
  * and download it: the whole layout in one file, background image
  * included.
  */
-async function downloadLocalLayout(doc: Y.Doc, title: string): Promise<void> {
+async function downloadLocalLayout(doc: Y.Doc, title: string, parts: readonly PartWire[] | undefined): Promise<void> {
   try {
     const { writeBbm, writeSidecar } = await import('@cld/bbm');
-    const xml = writeBbm(docToBbm(doc));
+    const map = docToBbm(doc);
+    const xml = writeBbm(map);
+    // The custom parts it uses travel with it.
+    const partFiles = parts ? await layoutPartFiles(map, parts) : {};
     const sidecar = readSidecarFromDoc(doc);
     let background: LayoutImage | undefined;
     const bgUrl = sidecar?.backgroundImage?.url;
@@ -3883,6 +3892,7 @@ async function downloadLocalLayout(doc: Y.Doc, title: string): Promise<void> {
         bbm: xml,
         sidecar: sidecar ? writeSidecar(sidecar) : null,
         ...(background ? { background } : {}),
+        parts: partFiles,
       }),
     );
   } catch (e) {

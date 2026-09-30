@@ -16,6 +16,7 @@ import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { api } from './api';
 import { layoutsFromFiles, type DroppedLayout } from './bbmFiles';
+import { uploadLayoutParts } from './layoutParts';
 import { catalogMapConverter, MAP_FORMAT_FILE, type OpenedMapState } from './mapFormats';
 import './styles.css';
 
@@ -70,14 +71,21 @@ function GlobalBbmDrop() {
         if (files.some((f) => MAP_FORMAT_FILE.test(f.name) || /\.bld-layout$/i.test(f.name))) window.alert(`Open failed: ${(err as Error).message}`);
         return;
       }
+      const loadCatalog = async () =>
+        (await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 })).parts;
       for (const l of layouts) {
         try {
+          // The parts a .bld-layout carries that this server lacks become the user's custom parts.
+          const partNotes = await uploadLayoutParts(l.parts, loadCatalog);
+          // The browser keeps the catalog for 60 s: fetch past that so the editor sees the new parts.
+          if (partNotes.length) await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
+          const warnings = [...(l.warnings ?? []), ...partNotes];
           const created = await api.layouts.create({
             bbm: l.bbm,
             ...(l.sidecar !== undefined ? { sidecar: l.sidecar } : {}),
             ...(l.background ? { backgroundImage: l.background } : {}),
           });
-          const state: OpenedMapState | undefined = l.warnings ? { openWarnings: l.warnings } : undefined;
+          const state: OpenedMapState | undefined = warnings.length ? { openWarnings: warnings } : undefined;
           navigate(`/editor/${created.id}`, state ? { state } : undefined);
         } catch {
           // silently ignore — editor page shows its own error
