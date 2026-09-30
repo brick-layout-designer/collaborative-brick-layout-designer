@@ -187,6 +187,29 @@ describe('parts catalog — authenticated with custom parts', () => {
     expect(custom).not.toHaveProperty('fourDBrix');
   });
 
+  it('a replaced custom part changes the ETag, so a revalidating browser gets the new one', async () => {
+    const cookie = await registerAndLogin(app, 'replace@example.com');
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/custom-parts',
+      headers: { cookie },
+      payload: { partNumber: 'SWAP1', displayName: 'Old', xmlBase64: SAMPLE_XML, spriteBase64: FAKE_GIF, spriteMime: 'image/gif' },
+    });
+    const id = (up.json() as { id: string }).id;
+    const before = (await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie } })).headers['etag'] as string;
+    await new Promise((r) => setTimeout(r, 5));
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/api/custom-parts/${id}`,
+      headers: { cookie },
+      payload: { partNumber: 'SWAP1', displayName: 'New', xmlBase64: SAMPLE_XML, spriteBase64: FAKE_GIF, spriteMime: 'image/gif' },
+    });
+    expect(put.statusCode).toBe(200);
+    const after = await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie, 'if-none-match': before } });
+    expect(after.statusCode).toBe(200);
+    expect(after.headers['etag']).not.toBe(before);
+  });
+
   it('authenticated ETag differs from anonymous ETag (user-scoped cache)', async () => {
     const anonRes = await app.inject({ method: 'GET', url: '/api/parts/catalog' });
     const anonEtag = anonRes.headers['etag'] as string;

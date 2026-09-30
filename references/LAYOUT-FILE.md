@@ -35,14 +35,30 @@ the part extensions. Readers skip any other name and warn.
   its bundled library: imported parts, your own folders and server parts.
 - **Desktop, opening.** It writes the parts its library lacks to
   `layout-parts/` in its app data folder, which joins the library paths.
-  Where it already has a part of that number with different XML, it keeps
-  its own and says so.
+  Where it already has a part of that number with different XML, it shows
+  both before the map loads (Parts That Differ): Keep mine, Use the layout's
+  (its own is backed up to `replaced-parts/<time>/` first), or Keep both.
 - **Web, downloading.** The web carries the custom parts the layout uses
   (bundled parts win over a custom part of the same key, as in the editor).
 - **Web, opening.** It uploads the parts the server's catalog lacks as your
   custom parts, or the organisation's when the layout is created for one.
   That happens before the layout is created, so the layout opens with them.
   A part needs a `.png` or `.gif` sprite to become a custom part.
+- **A part that differs.** Where the server already has a custom part of that
+  number and its XML differs from the file's (trimmed text compared), both
+  apps show the two side by side (sprite, description, author) and ask, per
+  part:
+  - **Keep the server's / mine** (the default). The layout uses it as it is.
+  - **Use the file's / the layout's.** The part is replaced: on the web by
+    `PUT /api/custom-parts/:id`, which needs editor role on the part.
+  - **Keep both.** The file's is added under the next free number,
+    `<PartNumber>-2.<Color>` (then `-3` and on, counting the catalog and the
+    file's own parts, a set's being `.set.xml`), and the opened layout's
+    bricks and groups of that part switch to it.
+
+  What happened goes in the opened layout's status notes. Bundled parts
+  can't be replaced from the web: one that differs is kept and named in
+  the notes.
 
 ## Versions
 
@@ -81,4 +97,5 @@ the desktop repository (`fixtures/layouts/`), and both apps' tests read both:
   downloaded again.
 - **`with-parts.bld-layout`**, made by the desktop. It holds one brick of
   `CLDTEST.1`, a part the file carries. The web's e2e opens it and gets
-  `CLDTEST.1` as a custom part.
+  `CLDTEST.1` as a custom part. Another e2e first uploads a different
+  `CLDTEST.1`, answers Keep both, and gets the layout on `CLDTEST-2.1`.

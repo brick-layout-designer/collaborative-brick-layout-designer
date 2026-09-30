@@ -129,18 +129,21 @@ export async function partsRoutes(app: FastifyInstance): Promise<void> {
     // can hit it without a session.
     const user = req.user;
     let customWire: PartWire[] = [];
+    let latest = 0;
     try {
-      customWire = await loadCustom(user?.id ?? null);
+      ({ wire: customWire, latest } = await loadCustom(user?.id ?? null));
     } catch (err) {
       app.log.warn({ err }, 'custom parts merge failed; serving bundled only');
     }
 
-    // ETag includes the user id + count of custom parts so a fresh
-    // upload busts the cache for that user without touching the
-    // bundled cache. Falls back to anonymous (global-only) when no user.
+    // ETag includes the user id + count of custom parts and the latest
+    // change to one, so a fresh upload or a replaced part busts the cache
+    // for that user without touching the bundled cache. Falls back to
+    // anonymous (global-only) when no user.
+    const custom = `${customWire.length}-${latest.toString(36)}`;
     const etag = user
-      ? `"${bundled.etag.slice(1, -1)}-u-${user.id.slice(0, 8)}-${customWire.length}"`
-      : `"${bundled.etag.slice(1, -1)}-anon-${customWire.length}"`;
+      ? `"${bundled.etag.slice(1, -1)}-u-${user.id.slice(0, 8)}-${custom}"`
+      : `"${bundled.etag.slice(1, -1)}-anon-${custom}"`;
     reply.header('etag', etag);
     reply.header('cache-control', 'private, max-age=60');
     if (req.headers['if-none-match'] === etag) {
@@ -320,10 +323,11 @@ export async function visibleCustomParts(userId: string | null): Promise<CustomC
   return rows;
 }
 
-async function loadCustom(userId: string | null): Promise<PartWire[]> {
+async function loadCustom(userId: string | null): Promise<{ wire: PartWire[]; latest: number }> {
   const rows = await visibleCustomParts(userId);
   const parsed = await parsedCustomXml(rows);
-  return rows.map((r) => customRowToWire(r, parsed.get(r.id)));
+  const latest = rows.reduce((m, r) => Math.max(m, r.updatedAt.getTime()), 0);
+  return { wire: rows.map((r) => customRowToWire(r, parsed.get(r.id))), latest };
 }
 
 function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {

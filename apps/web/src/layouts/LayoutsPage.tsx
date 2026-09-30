@@ -5,7 +5,8 @@ import { api, type LayoutSummary } from '../api';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
-import { uploadLayoutParts } from '../layoutParts';
+import { takeLayoutParts, type PartChoice, type PartDifference } from '../layoutParts';
+import { PartDifferencesDialog } from './PartDifferencesDialog';
 import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
@@ -248,6 +249,8 @@ function CreateLayoutDialog({
   const [background, setBackground] = useState<LayoutImage | null>(null);
   // …and its parts, the missing ones uploaded as custom parts on Create.
   const [layoutParts, setLayoutParts] = useState<Record<string, Uint8Array> | null>(null);
+  // Parts the picked layout defines differently from the server, asked about on Create.
+  const [asking, setAsking] = useState<{ differing: PartDifference[]; answer: (c: PartChoice[] | null) => void } | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
   const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
@@ -343,17 +346,22 @@ function CreateLayoutDialog({
       }
     }
     if (ownerSlug) body.orgSlug = ownerSlug;
-    // The file's parts this server lacks go up first, so the layout opens with them.
+    // The file's parts this server lacks go up first, so the layout opens with them;
+    // the ones it defines differently are asked about first.
     let partNotes: string[] = [];
     if (bbm && layoutParts) {
       try {
-        partNotes = await uploadLayoutParts(
+        const parts = await takeLayoutParts(
           layoutParts,
+          bbm,
           async () => (await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 })).parts,
+          (differing) => new Promise((answer) => setAsking({ differing, answer })),
           ownerSlug || undefined,
         );
+        body.bbm = parts.bbm;
+        partNotes = parts.notes;
         // The browser keeps the catalog for 60 s: fetch past that so the editor sees the new parts.
-        if (partNotes.length) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
+        if (parts.changed) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
       } catch (err) {
         partNotes = [`the layout's parts could not be added: ${(err as Error).message}`];
       }
@@ -363,6 +371,15 @@ function CreateLayoutDialog({
 
   return (
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
+      {asking && (
+        <PartDifferencesDialog
+          differences={asking.differing}
+          onDone={(choices) => {
+            setAsking(null);
+            asking.answer(choices);
+          }}
+        />
+      )}
       <form
         onSubmit={(e) => void submit(e)}
         className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
