@@ -35,11 +35,17 @@ export function ShareDialog({
   const isOwner = myRole === 'owner';
 
   return (
-    <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
-      <div className="w-full max-w-lg space-y-4 rounded-lg border border-line bg-panel p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-lg font-semibold">Share "{layoutTitle}"</h3>
+    <div className="fixed inset-0 grid place-items-center bg-black/60 p-3 sm:p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Share ${layoutTitle}`}
+        // On a phone it fills the width and scrolls inside itself.
+        className="max-h-full w-full max-w-lg space-y-4 overflow-y-auto overscroll-contain rounded-lg border border-line bg-panel p-4 sm:p-6"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="break-words text-lg font-semibold">Share "{layoutTitle}"</h3>
             <p className="text-xs text-muted">
               {isOwner
                 ? 'Invite people by email or manage existing access.'
@@ -48,7 +54,8 @@ export function ShareDialog({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1 text-muted hover:bg-soft"
+            aria-label="Close"
+            className="shrink-0 rounded-lg p-1 text-muted hover:bg-soft"
           >
             ✕
           </button>
@@ -129,8 +136,9 @@ function InviteForm({
 
   return (
     <form onSubmit={submit} className="rounded-lg border border-line p-3 text-sm">
-      <div className="flex items-end gap-2">
-        <label className="flex-1">
+      {/* Email gets its own row on a phone; role and Invite share the next. */}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="min-w-[12rem] flex-1">
           <span className="mb-1 block text-xs text-muted">Email</span>
           <input
             type="email"
@@ -258,13 +266,13 @@ function CollaboratorRow({
   });
 
   return (
-    <li className="flex items-center justify-between px-3 py-2 text-sm">
-      <div>
-        <p>
+    <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+      <div className="min-w-0">
+        <p className="break-words">
           {collaborator.displayName}{' '}
           {isSelf && <span className="text-xs text-muted">(you)</span>}
         </p>
-        <p className="text-xs text-muted">{collaborator.email}</p>
+        <p className="break-all text-xs text-muted">{collaborator.email}</p>
       </div>
       <div className="flex items-center gap-2">
         {isOwner && collaborator.role !== 'owner' ? (

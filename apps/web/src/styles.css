@@ -333,3 +333,52 @@ body,
 .help-pulse[data-help-inset] {
   --help-pulse-offset: -4px;
 }
+
+/* Touch screens (phones, tablets): every control is at least a 44 px tap
+   target, and text fields use 16 px text so iOS doesn't zoom the page in
+   when one is focused. `.tap-inline` opts a control out (a link inside a
+   sentence). */
+@layer base {
+  @media (pointer: coarse) {
+    button:not(.tap-inline),
+    [role='button']:not(.tap-inline),
+    [role='menuitem'],
+    [role='radio'],
+    [role='tab'],
+    select,
+    summary,
+    a.tap-target {
+      min-height: 44px;
+    }
+    button:not(.tap-inline),
+    [role='button']:not(.tap-inline) {
+      min-width: 44px;
+    }
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+    select,
+    textarea {
+      font-size: max(16px, 1em);
+      min-height: 44px;
+    }
+    input[type='checkbox'],
+    input[type='radio'] {
+      width: 22px;
+      height: 22px;
+    }
+  }
+}
+
+/* Small screens: a dialog (the child of a full-screen `fixed inset-0`
+   overlay) never grows past the screen; it scrolls inside itself. The
+   overlay is sized in dvh so the browser's bars don't hide its bottom. */
+@media (max-width: 640px), (max-height: 500px) {
+  .fixed.inset-0 {
+    max-height: 100dvh;
+  }
+  .fixed.inset-0 > :is(div, form, section) {
+    max-width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

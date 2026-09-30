@@ -171,9 +171,11 @@ function LayoutRow({
     return () => window.removeEventListener('cld:template-changed', sync);
   }, [layout.id]);
   return (
-    <li className="flex items-center justify-between px-4 py-3">
-      <div>
-        <p className="font-medium">{layout.title}</p>
+    // On a phone the name sits above its buttons, which wrap; nothing
+    // runs off the side of the screen.
+    <li className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="break-words font-medium">{layout.title}</p>
         <p className="text-xs text-muted">
           updated {new Date(layout.updatedAt).toLocaleString()}
           {layout.expiresAt && (
@@ -186,10 +188,10 @@ function LayoutRow({
           )}
         </p>
       </div>
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <Link
           to={`/editor/${layout.id}`}
-          className="rounded-lg bg-accent px-3 py-1 text-accent-ink hover:bg-accent-hover"
+          className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1 text-accent-ink hover:bg-accent-hover"
         >
           Open
         </Link>
@@ -201,12 +203,12 @@ function LayoutRow({
         </button>
         <a
           href={api.layouts.exportZipUrl(layout.id)}
-          className="rounded-lg border border-border px-3 py-1 hover:bg-soft"
+          className="tap-target inline-flex items-center whitespace-nowrap rounded-lg border border-border px-3 py-1 hover:bg-soft"
           title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
         >
           Export .zip
         </a>
-        <label className="flex items-center gap-1 text-xs text-muted" title="New layouts start as a copy of this one">
+        <label className="flex min-h-11 items-center gap-2 text-xs text-muted sm:min-h-0 sm:gap-1" title="New layouts start as a copy of this one">
           <input
             type="checkbox"
             checked={isTemplate}
