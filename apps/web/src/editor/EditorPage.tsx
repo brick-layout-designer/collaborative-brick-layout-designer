@@ -2981,7 +2981,7 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
   return (
     <div
       data-testid="scale-bar"
-      className="pointer-events-none absolute rounded-md border border-black/50 bg-white/85 px-3 py-0.5 text-[11px] leading-tight"
+      className="pointer-events-none absolute rounded-md border border-black/50 bg-white/95 px-3 py-0.5 text-[11px] leading-tight"
       style={{
         userSelect: 'none',
         width: bar.px + 24,
@@ -3521,9 +3521,12 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
         className="flex items-center justify-between gap-2 border-t border-line bg-panel px-3 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-sm text-muted"
         style={{ gridColumn: `span ${gridSpan}`, gridRow: '4' }}
       >
-        <span data-testid="piece-count" className="min-w-0 truncate whitespace-nowrap">
-          {pieces === 1 ? '1 piece' : `${pieces} pieces`}
-          {mapW !== null && mapH !== null && <> · {studDisplay(mapW)} × {studDisplay(mapH)}</>}
+        {/* Stacked, so nothing gets cut short on a narrow phone. */}
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span data-testid="piece-count" className="truncate">{pieces === 1 ? '1 piece' : `${pieces} pieces`}</span>
+          {mapW !== null && mapH !== null && (
+            <span className="truncate" title="Size of everything on the map">{studDisplay(mapW)} × {studDisplay(mapH)}</span>
+          )}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={bigBtn}>−</button>

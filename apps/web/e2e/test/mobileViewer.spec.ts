@@ -218,8 +218,15 @@ for (const phone of PHONES) {
       const pill = page.getByTestId('view-only');
       expect(await pill.evaluate((p) => p.getBoundingClientRect().height)).toBeLessThan(32); // one line
 
+      // The status bar's readouts aren't cut short.
+      const cut = await page.getByTestId('status-bar').evaluate((f) =>
+        Array.from(f.querySelectorAll('span')).filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent),
+      );
+      expect(cut).toEqual([]);
+
       expect(await noSidewaysScroll(page)).toBe(true);
       expect(await smallTapTargets(page)).toEqual([]);
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/mobile-test-editor-${phone.name.replace(/\W+/g, '-').toLowerCase()}.png` });
     });
   });
 }
