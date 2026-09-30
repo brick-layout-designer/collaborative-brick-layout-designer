@@ -13,6 +13,8 @@ import { signIn } from '../helpers';
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures');
 const TIGHT_CORNER = readFileSync(join(FIXTURES, 'tight-corner.bbm'), 'utf-8');
 const CORNER_LOBBY = readFileSync(join(FIXTURES, 'corner-lobby.bld-layout'));
+// One brick of the desktop user's own part CLDTEST.1, which the file carries.
+const WITH_PARTS = readFileSync(join(FIXTURES, 'with-parts.bld-layout'));
 const EMAIL = `layout-file-e2e-${Date.now()}@example.com`;
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -150,5 +152,44 @@ test.describe('layout file', () => {
     const download = await dl;
     expect(download.suggestedFilename()).toBe('File Test.bbm');
     expect(readFileSync(await download.path(), 'utf-8')).toContain('<Map');
+  });
+
+  test('a dropped .bld-layout brings its own parts as custom parts, and downloads with them', async ({ page }) => {
+    await signIn(page, EMAIL, 'File Tester');
+    await page.goto('/');
+    await expect(page.locator('body')).toBeVisible();
+    await page.evaluate((bytes) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array(bytes)], 'with-parts.bld-layout'));
+      window.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }, [...WITH_PARTS]);
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    await expect(page.locator('footer')).toContainText('1 part from the layout added to your custom parts');
+
+    const mine = (await (await page.request.get('/api/custom-parts')).json()) as { parts: { id: string; partNumber: string }[] };
+    const part = mine.parts.find((p) => p.partNumber === 'CLDTEST.1');
+    expect(part).toBeTruthy();
+    expect((await page.request.get(`/api/custom-parts/${part!.id}/sprite`)).headers()['content-type']).toBe('image/png');
+
+    // Downloaded again, the layout carries it.
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    const dl = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download Layout (.bld-layout)' }).click();
+    const entries = unzip(readFileSync(await (await dl).path()));
+    expect([...entries.keys()].filter((n) => n.startsWith('parts/'))).toEqual(['parts/CLDTEST.1.png', 'parts/CLDTEST.1.xml']);
+
+    // Dropped again: the server has the part now, so nothing is uploaded twice.
+    await page.goto('/');
+    await page.evaluate((bytes) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array(bytes)], 'with-parts.bld-layout'));
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }, [...WITH_PARTS]);
+    await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
+    const after = (await (await page.request.get('/api/custom-parts')).json()) as { parts: { partNumber: string }[] };
+    expect(after.parts.filter((p) => p.partNumber === 'CLDTEST.1')).toHaveLength(1);
   });
 });

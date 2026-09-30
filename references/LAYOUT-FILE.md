@@ -17,6 +17,7 @@ Readers must accept both, and must ignore entries they don't know.
 | `layout.bbm` | yes | The map exactly as a `.bbm` file holds it (desktop docs/bbm-schema.md). |
 | `sidecar.json` | no | Labels, modules, venue and background image. Same shape as the `.bbm.bld` sidecar (desktop docs/bbm-bld-schema.md), with two differences listed below. Left out when the layout has none of these. |
 | `background.<ext>` | no | The background image's bytes, named by `sidecar.json`'s `backgroundImage.file`. |
+| `parts/<file>` | no | The parts the layout uses that aren't in the bundled BlueBrick library. Each is a `<PartNumber>.<Color>.xml` (`.set.xml` for a set) with the sprites beside it (`.png`, `.gif`, `.jpg`). Sets bring their subparts too. |
 
 `sidecar.json` differs from a `.bbm.bld` sidecar in two ways:
 
@@ -24,6 +25,24 @@ Readers must accept both, and must ignore entries they don't know.
 - In `backgroundImage`, `file` (the entry name) replaces `path`, a location on
   one machine. Only a writer that couldn't read the image keeps `path`, and it
   warns that it did.
+
+## Parts
+
+`parts/` names are plain file names: no folders, no leading dot, and one of
+the part extensions. Readers skip any other name and warn.
+
+- **Desktop, saving.** The desktop carries every part it uses from outside
+  its bundled library: imported parts, your own folders and server parts.
+- **Desktop, opening.** It writes the parts its library lacks to
+  `layout-parts/` in its app data folder, which joins the library paths.
+  Where it already has a part of that number with different XML, it keeps
+  its own and says so.
+- **Web, downloading.** The web carries the custom parts the layout uses
+  (bundled parts win over a custom part of the same key, as in the editor).
+- **Web, opening.** It uploads the parts the server's catalog lacks as your
+  custom parts, or the organisation's when the layout is created for one.
+  That happens before the layout is created, so the layout opens with them.
+  A part needs a `.png` or `.gif` sprite to become a custom part.
 
 ## Versions
 
@@ -60,3 +79,6 @@ the desktop repository (`fixtures/layouts/`), and both apps' tests read both:
   background image.
 - **`web-made.bld-layout`**, the same layout opened by the web app and
   downloaded again.
+- **`with-parts.bld-layout`**, made by the desktop. It holds one brick of
+  `CLDTEST.1`, a part the file carries. The web's e2e opens it and gets
+  `CLDTEST.1` as a custom part.

@@ -5,6 +5,7 @@ import { api, type LayoutSummary } from '../api';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
+import { uploadLayoutParts } from '../layoutParts';
 import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
@@ -245,6 +246,8 @@ function CreateLayoutDialog({
   const [sidecar, setSidecar] = useState<string | null>(null);
   // A picked .bld-layout's background image.
   const [background, setBackground] = useState<LayoutImage | null>(null);
+  // …and its parts, the missing ones uploaded as custom parts on Create.
+  const [layoutParts, setLayoutParts] = useState<Record<string, Uint8Array> | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
   const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
@@ -262,7 +265,6 @@ function CreateLayoutDialog({
 
   const create = useMutation({
     mutationFn: api.layouts.create,
-    onSuccess: (res) => onCreated(res.id, openWarnings),
     onError: (e: Error) => setError(e.message),
   });
 
@@ -273,6 +275,7 @@ function CreateLayoutDialog({
     let text: string;
     let warnings: string[] = [];
     setBackground(null);
+    setLayoutParts(null);
     if (LAYOUT_FILE.test(file.name)) {
       // The whole layout: labels, modules, venue and background come with it.
       try {
@@ -281,6 +284,7 @@ function CreateLayoutDialog({
         warnings = l.warnings;
         setSidecar(l.sidecar ?? null);
         setBackground(l.background ?? null);
+        setLayoutParts(l.parts ?? null);
       } catch (err) {
         setError(`Could not open ${file.name}: ${(err as Error).message}`);
         return;
@@ -339,7 +343,22 @@ function CreateLayoutDialog({
       }
     }
     if (ownerSlug) body.orgSlug = ownerSlug;
-    create.mutate(body);
+    // The file's parts this server lacks go up first, so the layout opens with them.
+    let partNotes: string[] = [];
+    if (bbm && layoutParts) {
+      try {
+        partNotes = await uploadLayoutParts(
+          layoutParts,
+          async () => (await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 })).parts,
+          ownerSlug || undefined,
+        );
+        // The browser keeps the catalog for 60 s: fetch past that so the editor sees the new parts.
+        if (partNotes.length) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
+      } catch (err) {
+        partNotes = [`the layout's parts could not be added: ${(err as Error).message}`];
+      }
+    }
+    create.mutate(body, { onSuccess: (res) => onCreated(res.id, [...openWarnings, ...partNotes]) });
   }
 
   return (

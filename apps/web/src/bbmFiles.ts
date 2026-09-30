@@ -163,6 +163,8 @@ export interface DroppedLayout {
   warnings?: string[];
   /** A .bld-layout's background image, for the server to keep. */
   background?: { type: string; data: Uint8Array };
+  /** A .bld-layout's parts, by file name (layoutParts.ts uploads the missing ones). */
+  parts?: Record<string, Uint8Array>;
 }
 
 /** Turns an LDraw / TrackDesigner / 4DBrix file into .bbm text (mapFormats.ts). */
@@ -220,6 +222,7 @@ export async function layoutsFromFiles(files: readonly File[], convertMap?: MapC
         bbm: l.bbm,
         ...(l.sidecar !== undefined ? { sidecar: l.sidecar } : {}),
         ...(l.background ? { background: l.background } : {}),
+        ...(l.parts ? { parts: l.parts } : {}),
         ...(l.warnings.length ? { warnings: l.warnings } : {}),
       });
     } else if (MAP_FILE.test(f.name)) {

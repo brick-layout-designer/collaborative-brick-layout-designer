@@ -6,9 +6,16 @@
 //   sidecar.json       labels, modules, venue, background, if any
 //   background.<ext>   the background image, named by sidecar.json's
 //                      backgroundImage.file
+//   parts/<file>       the parts it uses that aren't bundled (layoutParts.ts)
 // .bbm is still a download, with what BlueBrick supports.
 
 import { buildZip, deflatedEntry, readZip, sanitizeFilename, type ZipEntry } from './bbmFiles';
+
+/** A file name a layout file may carry under parts/ (desktop isLayoutPartFileName). */
+export function isLayoutPartFileName(name: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /^[^./\\:*?"<>|\x00-\x1F][^/\\:*?"<>|\x00-\x1F]{0,199}\.(xml|png|gif|jpe?g)$/i.test(name) && !name.includes('..');
+}
 
 export const LAYOUT_FILE_VERSION = 1;
 export const LAYOUT_FILE = /\.bld-layout$/i;
@@ -36,6 +43,8 @@ export interface LayoutFileContents {
   /** Sidecar JSON for the server; a background image travels beside it. */
   sidecar?: string;
   background?: LayoutImage;
+  /** The parts the file carries, by file name (without `parts/`). */
+  parts?: Record<string, Uint8Array>;
   /** Read, but with something left out. */
   warnings: string[];
 }
@@ -86,6 +95,12 @@ export async function readLayoutFile(bytes: Uint8Array): Promise<LayoutFileConte
       out.sidecar = JSON.stringify(sidecar);
     }
   }
+  for (const e of entries) {
+    if (!e.name.startsWith('parts/') || e.name.endsWith('/')) continue;
+    const name = e.name.slice('parts/'.length);
+    if (isLayoutPartFileName(name)) (out.parts ??= {})[name] = e.data;
+    else out.warnings.push(`The part file ${name} in the layout could not be read.`);
+  }
   return out;
 }
 
@@ -95,6 +110,8 @@ export interface LayoutFileInput {
   sidecar: string | null;
   /** The background image's bytes, when there is one to carry. */
   background?: LayoutImage;
+  /** Part files to carry under parts/ (layoutPartFiles). */
+  parts?: Record<string, Uint8Array>;
 }
 
 /** The .bld-layout bytes. */
@@ -121,6 +138,11 @@ export async function buildLayoutFile(input: LayoutFileInput): Promise<Uint8Arra
       entries.push({ name, data: input.background.data }); // images are compressed already
     }
     entries.push(await deflatedEntry({ name: 'sidecar.json', data: enc.encode(JSON.stringify(sidecar, null, 2)) }));
+  }
+  for (const name of Object.keys(input.parts ?? {}).sort()) {
+    if (!isLayoutPartFileName(name)) continue;
+    const entry = { name: `parts/${name}`, data: input.parts![name]! };
+    entries.push(/\.xml$/i.test(name) ? await deflatedEntry(entry) : entry); // images are compressed already
   }
   return buildZip(entries);
 }

@@ -323,6 +323,12 @@ export const api = {
 
   parts: {
     catalog: () => get<{ parts: PartWire[] }>('/api/parts/catalog'),
+    /** The catalog past the browser's 60 s cache, after parts were added. */
+    catalogFresh: async () => {
+      const res = await fetch('/api/parts/catalog', { credentials: 'include', cache: 'no-cache' });
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+      return (await res.json()) as { parts: PartWire[] };
+    },
   },
 
   collaborators: {
