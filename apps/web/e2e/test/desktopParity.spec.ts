@@ -257,7 +257,7 @@ test.describe('module drag ghost', () => {
 
     const hostId = await createLayout(page);
     await openEditor(page, hostId);
-    await page.getByRole('button', { name: 'Panels' }).click();
+    await page.getByRole('button', { name: 'Panels', exact: true }).click();
     await page.getByLabel('Module Library').check();
     await page.mouse.click(400, 400); // click-away backdrop closes the menu
     const row = page.locator('li[draggable="true"]', { hasText: 'Fordyce Loop' });
@@ -399,7 +399,7 @@ test.describe('venue library', () => {
     });
     expect(created.ok()).toBe(true);
     await openEditor(page, id);
-    await page.getByRole('button', { name: 'Panels' }).click();
+    await page.getByRole('button', { name: 'Panels', exact: true }).click();
     await page.getByLabel('Room library').check();
     await page.mouse.click(400, 400); // close the menu
 
@@ -496,7 +496,7 @@ test.describe('header dropdowns at a narrow viewport', () => {
     await page.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(mapMenu).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Panels' }).click();
+    await page.getByRole('button', { name: 'Panels', exact: true }).click();
     const panelsMenu = page.locator('ul', { has: page.getByLabel('Module Library') });
     await inside(panelsMenu);
   });
@@ -1095,7 +1095,7 @@ test.describe('part list export', () => {
     let dialog = await openDialog();
     await dialog.getByLabel('CSV').check();
     let dl = page.waitForEvent('download');
-    await dialog.getByRole('button', { name: 'Export' }).click();
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
     let file = await dl;
     expect(file.suggestedFilename()).toBe('Parity Test.csv');
     const csv = readFileSync(await file.path(), 'utf-8').split('\n');
@@ -1107,7 +1107,7 @@ test.describe('part list export', () => {
     dialog = await openDialog();
     await expect(dialog.getByLabel('HTML (with pictures)')).toBeChecked();
     dl = page.waitForEvent('download');
-    await dialog.getByRole('button', { name: 'Export' }).click();
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
     file = await dl;
     expect(file.suggestedFilename()).toBe('Parity Test.html');
     const html = readFileSync(await file.path(), 'utf-8');

@@ -9,6 +9,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { usePreferences } from '../theme/PrefsProvider';
 import { ACCENTS, ACCENT_IDS, NEUTRALS } from '../theme/tokens';
 import type { ThemeChoice } from '../theme/theme';
+import { HelpButton } from '../help/HelpButton';
+import type { HelpKey } from '../help/helpTexts';
 
 const THEME_CARDS: { id: ThemeChoice; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -51,12 +53,15 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+function Section({ id, title, help, children }: { id: string; title: string; help?: HelpKey; children: React.ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="flex scroll-mt-6 flex-col gap-4 rounded-section border border-line bg-panel p-6">
-      <h2 id={`${id}-title`} className="font-display text-xl font-bold">
-        {title}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id={`${id}-title`} className="font-display text-xl font-bold">
+          {title}
+        </h2>
+        {help && <HelpButton helpKey={help} target={`#${id}`} />}
+      </div>
       {children}
     </section>
   );
@@ -91,12 +96,16 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
                   <path d="M18 3v4h-4M6 21v-4h4" />
                 </svg>
                 Synced with {host}
+                <HelpButton helpKey="settings.sync" target='[data-testid="settings-sync-note"]' />
               </div>
               <div>These settings follow your account, so they're the same wherever you sign in to {host}.</div>
             </>
           ) : (
             <>
-              <div className="font-bold">Saved in this browser</div>
+              <div className="flex items-center gap-1.5 font-bold">
+                Saved in this browser
+                <HelpButton helpKey="settings.sync" target='[data-testid="settings-sync-note"]' />
+              </div>
               <div>Sign in to keep these settings with your account.</div>
             </>
           )}
@@ -125,7 +134,7 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
           </div>
         </Section>
 
-        <Section id="colour" title="Colour">
+        <Section id="colour" title="Colour" help="settings.colour">
           <div className="flex flex-wrap gap-5" role="radiogroup" aria-label="Colour">
             {ACCENT_IDS.map((id) => {
               const a = ACCENTS[id];
@@ -152,28 +161,37 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
               );
             })}
           </div>
-          <label className="flex items-center gap-3 text-[15px] font-semibold">
-            <input
-              type="checkbox"
-              className="h-5 w-5 accent-accent"
-              checked={prefs.largeText}
-              onChange={(e) => setPrefs({ largeText: e.target.checked })}
-            />
-            Bigger text and buttons
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-3 text-[15px] font-semibold">
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-accent"
+                checked={prefs.largeText}
+                onChange={(e) => setPrefs({ largeText: e.target.checked })}
+              />
+              Bigger text and buttons
+            </label>
+            <HelpButton helpKey="settings.largeText" />
+          </div>
         </Section>
 
         <Section id="help" title="Help and tours">
           <div className="flex items-center justify-between gap-6">
             <div>
-              <div className="text-[15px] font-semibold">Show help buttons</div>
+              <div className="flex items-center gap-2 text-[15px] font-semibold">
+                Show help buttons
+                <HelpButton helpKey="settings.helpIcons" target='[role="switch"][aria-label="Show help buttons"]' />
+              </div>
               <div className="text-sm text-muted">The small round question marks next to panel titles and settings.</div>
             </div>
             <Switch label="Show help buttons" checked={prefs.helpIcons} onChange={(v) => setPrefs({ helpIcons: v })} />
           </div>
           <div className="flex items-center justify-between gap-6">
             <div>
-              <div className="text-[15px] font-semibold">Tours</div>
+              <div className="flex items-center gap-2 text-[15px] font-semibold">
+                Tours
+                <HelpButton helpKey="settings.tours" />
+              </div>
               <div className="text-sm text-muted">
                 {prefs.toursSeen.length === 0 ? "You haven't finished any tours yet." : `You've seen ${prefs.toursSeen.length === 1 ? 'one tour' : `${prefs.toursSeen.length} tours`}.`}
               </div>

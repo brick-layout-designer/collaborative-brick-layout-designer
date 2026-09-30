@@ -18,6 +18,7 @@ import type { AnchoredLabel } from '@cld/bbm';
 import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel, makeId } from './mutations';
 import { labelColorHex, labelColorToSave } from './labelColor';
 import { DEFAULT_LABEL_FONT, labelFontStyle } from './mixedSelection';
+import { HelpButton } from '../help/HelpButton';
 
 interface Props {
   doc: Y.Doc;
@@ -98,7 +99,10 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
         className="w-md rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold text-ink">{isEdit ? 'Edit Anchored Label' : 'Add Anchored Label'}</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-ink">{isEdit ? 'Edit Anchored Label' : 'Add Anchored Label'}</h2>
+          <HelpButton helpKey="dialog.label" />
+        </div>
 
         <div className="flex flex-col gap-0.5">
           <div className={rowCls}>

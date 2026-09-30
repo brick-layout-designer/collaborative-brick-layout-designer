@@ -10,6 +10,7 @@ import type { BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import type { PartWire } from '../api';
 import { LOSSY_FORMAT_WARNING, MAP_FORMATS, mapDownload, type MapFormat } from '../mapFormats';
+import { HelpButton } from '../help/HelpButton';
 
 const WARN_KEY = 'cld:warnNonBbmSave';
 
@@ -92,18 +93,24 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
   return (
     <div role="dialog" aria-modal="true" aria-label="Download As" className="fixed inset-0 z-50 grid place-items-center bg-black/60" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-md rounded-lg border border-line bg-panel p-5 shadow-xl">
-        <h2 className="text-base font-semibold">Download As</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold">Download As</h2>
+          <HelpButton helpKey="download.formats" target="fieldset" />
+        </div>
         <fieldset className="mt-4 space-y-1 text-sm">
           <legend className="sr-only">Format</legend>
           {[
-            { format: 'layout' as const, label: 'Brick Layout Designer layout (.bld-layout)' },
-            { format: 'bbm' as const, label: 'BlueBrick map (.bbm)' },
+            { format: 'layout' as const, label: 'Brick Layout Designer layout (.bld-layout)', help: 'download.layout' as const },
+            { format: 'bbm' as const, label: 'BlueBrick map (.bbm)', help: 'download.bbm' as const },
             ...MAP_FORMATS,
           ].map((f) => (
-            <label key={f.format} className="flex items-center gap-2">
-              <input type="radio" name="download-format" checked={format === f.format} onChange={() => setFormat(f.format)} />
-              {f.label}
-            </label>
+            <div key={f.format} className="flex items-center gap-2">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="download-format" checked={format === f.format} onChange={() => setFormat(f.format)} />
+                {f.label}
+              </label>
+              {'help' in f && <HelpButton helpKey={f.help} />}
+            </div>
           ))}
         </fieldset>
         {lossy && warn && (

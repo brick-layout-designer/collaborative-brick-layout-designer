@@ -8,6 +8,7 @@ import { useState, useMemo } from 'react';
 import type { BbmMap } from '@cld/model';
 import { mergeBudgets, parseBbb, writeBbb, type BudgetEntry } from './budgetFile';
 import { budgetRows } from './budgetUsage';
+import { HelpButton } from '../help/HelpButton';
 
 interface Props {
   map: BbmMap | null;
@@ -116,8 +117,11 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
     <div className="fixed bottom-8 right-8 z-40 flex w-[540px] flex-col rounded-lg border border-border bg-panel shadow-2xl text-sm">
       {/* Title bar */}
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
-        <span className="font-semibold text-xs">
-          Budget{fileName ? ` — ${fileName}` : ''}
+        <span className="flex items-center gap-2">
+          <span className="font-semibold text-xs">
+            Budget{fileName ? ` — ${fileName}` : ''}
+          </span>
+          <HelpButton helpKey="dialog.budget" />
         </span>
         <button onClick={onClose} className="text-muted hover:text-ink text-base leading-none">×</button>
       </div>

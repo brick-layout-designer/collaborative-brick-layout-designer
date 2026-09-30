@@ -3,11 +3,13 @@
 // volts, estimated), or the venue's own when nothing is selected. Lengths
 // are typed like anywhere else in the designer (12'6", 3.2m).
 
-import { useEffect, useState, type Dispatch, type ReactNode } from 'react';
+import { useEffect, useId, useState, type Dispatch, type ReactNode } from 'react';
 import type { Venue, VenueObstacleKind } from '@cld/bbm';
 import { venueOf, type Action, type DesignerState } from './designerState';
 import { bbox, dist, estimateCount, polylineLength, resizeObstacle, roomSize, updatePart, type Pt, type Selection } from './model';
 import { formatLength, parseLength, STUDS_PER_INCH, type LengthUnit } from './units';
+import { HelpButton } from '../../help/HelpButton';
+import type { HelpKey } from '../../help/helpTexts';
 
 const FT = 12 * STUDS_PER_INCH;
 
@@ -16,7 +18,8 @@ const label = 'flex flex-col gap-1 text-xs text-muted';
 const heading = 'text-[11px] font-semibold uppercase tracking-wider text-muted';
 
 /** A text box for a length: shows it in `unit`, applies what's typed on Enter or leaving the box. */
-function LengthField({ name, studs, unit, onChange }: { name: string; studs: number; unit: LengthUnit; onChange: (studs: number) => void }) {
+function LengthField({ name, studs, unit, onChange, help }: { name: string; studs: number; unit: LengthUnit; onChange: (studs: number) => void; help?: HelpKey }) {
+  const id = useId();
   const shown = formatLength(studs, unit);
   const [text, setText] = useState(shown);
   const [bad, setBad] = useState(false);
@@ -30,20 +33,36 @@ function LengthField({ name, studs, unit, onChange }: { name: string; studs: num
     if (v === null || v < 0) return setBad(true);
     onChange(v);
   };
+  const input = (
+    <input
+      id={id}
+      value={text}
+      aria-invalid={bad}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={apply}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') apply();
+        if (e.key === 'Escape') e.currentTarget.blur();
+      }}
+      className={`${field} font-mono ${bad ? 'border-red-500' : ''}`}
+    />
+  );
+  if (help) {
+    // The "?" sits beside the name, outside the <label>, so it isn't part of the box's name.
+    return (
+      <div className={label}>
+        <span className="flex items-center gap-1.5">
+          <label htmlFor={id}>{name}</label>
+          <HelpButton helpKey={help} target={`[id="${id}"]`} />
+        </span>
+        {input}
+      </div>
+    );
+  }
   return (
     <label className={label}>
       {name}
-      <input
-        value={text}
-        aria-invalid={bad}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={apply}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') apply();
-          if (e.key === 'Escape') e.currentTarget.blur();
-        }}
-        className={`${field} font-mono ${bad ? 'border-red-500' : ''}`}
-      />
+      {input}
     </label>
   );
 }
@@ -265,7 +284,7 @@ function VenueFields({ venue, unit, set }: { venue: Venue; unit: LengthUnit; set
   return (
     <>
       <TextField name="Name" value={venue.name} onChange={(t) => set({ ...venue, name: t.trim() || venue.name })} />
-      <LengthField name="Minimum walkway" studs={venue.minWalkwayStuds} unit={unit} onChange={(w) => set({ ...venue, minWalkwayStuds: w })} />
+      <LengthField name="Minimum walkway" help="room.walkway" studs={venue.minWalkwayStuds} unit={unit} onChange={(w) => set({ ...venue, minWalkwayStuds: w })} />
       <div className="grid grid-cols-2 gap-2 text-sm">
         <span className="text-muted">Size</span>
         <span className="font-mono">{size ? `${formatLength(size.w, unit)} × ${formatLength(size.h, unit)}` : '—'}</span>
@@ -277,7 +296,10 @@ function VenueFields({ venue, unit, set }: { venue: Venue; unit: LengthUnit; set
         <span className="font-mono">{venue.obstacles.length}</span>
         <span className="text-muted">Power points</span>
         <span className="font-mono">{venue.power?.length ?? 0}</span>
-        <span className="text-muted">Still estimated</span>
+        <span className="flex items-center gap-1.5 text-muted">
+          Still estimated
+          <HelpButton helpKey="room.estimates" />
+        </span>
         <span className={`font-mono ${est ? 'text-amber-300' : ''}`}>{est}</span>
       </div>
       <p className="text-xs text-muted">Pick a tool on the left to draw. Select something to edit it here.</p>

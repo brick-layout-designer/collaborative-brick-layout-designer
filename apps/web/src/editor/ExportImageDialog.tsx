@@ -22,6 +22,7 @@ import { MAX_CANVAS_SIDE, aspectHeight, type StudRect } from './exportRender';
 import { useEditorStore } from './editorStore';
 import { buildImagePdf, dataUrlBytes, pdfPageLayout, printPixelRatio, printTiles } from './printLayout';
 import { loadExportSettings, saveExportSettings } from './exportSettings';
+import { HelpButton } from '../help/HelpButton';
 
 export interface ExportHandle {
   /**
@@ -206,7 +207,10 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
         className="w-96 rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold text-ink">Export / Print</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-ink">Export / Print</h2>
+          <HelpButton helpKey="dialog.exportImage" />
+        </div>
 
         {/* Mode toggle */}
         <div className="mb-4 flex rounded-lg border border-border text-xs">

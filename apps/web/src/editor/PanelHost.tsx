@@ -4,22 +4,17 @@
 
 import { useState } from 'react';
 import type { DockZone } from './dockLayout';
-import { usePreferences } from '../theme/PrefsProvider';
+import { HelpButton } from '../help/HelpButton';
+import type { HelpKey } from '../help/helpTexts';
 
-/** One-line explanations behind each panel's "?" (Settings > Show help buttons). */
-export const PANEL_HELP: Record<string, { question: string; answer: string }> = {
-  parts: { question: 'What are parts?', answer: 'Parts are the pieces you build with. Drag one onto the map, or click it to drop it in the middle.' },
-  layers: {
-    question: 'What are sheets?',
-    answer: 'Sheets are like see-through pages stacked on the map: track on one, buildings on another. Hide or lock a sheet to work on the rest.',
-  },
-  usedparts: { question: 'What is the parts list?', answer: 'Every part this layout uses, with how many of each.' },
-  modules: { question: 'What are modules?', answer: 'Groups of pieces kept together, so you can move or reuse them as one.' },
-  modlibrary: { question: 'What is the module library?', answer: 'Modules saved to your account or your club, ready to drop into this layout.' },
-  venuelibrary: {
-    question: 'What is the room library?',
-    answer: 'Rooms and halls saved to your account or your club. Put one under the layout to check that it fits.',
-  },
+/** The help behind each panel's "?" (Settings > Show help buttons). */
+export const PANEL_HELP: Record<string, HelpKey> = {
+  parts: 'panel.parts',
+  layers: 'panel.sheets',
+  usedparts: 'panel.partsList',
+  modules: 'panel.modules',
+  modlibrary: 'panel.moduleLibrary',
+  venuelibrary: 'panel.roomLibrary',
 };
 
 const DRAG_MIME = 'application/x-cld-panel';
@@ -44,8 +39,6 @@ export { DRAG_MIME };
 export function PanelHost({ panelId, title, zone, onMove, onReorder, children }: Props) {
   const [open, setOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const { prefs } = usePreferences();
   const help = PANEL_HELP[panelId];
   const moveTargets: { zone: DockZone; label: string }[] = [];
   if (zone !== 'left') moveTargets.push({ zone: 'left', label: 'Move to left' });
@@ -55,6 +48,8 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
 
   return (
     <section
+      data-panel={panelId}
+      data-help-inset
       className={`flex h-full min-h-0 w-full flex-col bg-panel transition-colors ${dragOver ? 'outline-solid outline-2 outline-accent' : ''}`}
       onDragOver={onReorder ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(true); } : undefined}
       onDragLeave={onReorder ? () => setDragOver(false) : undefined}
@@ -76,18 +71,7 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
           ⠿
         </span>
         <h2 className="min-w-0 truncate font-display text-[15px] font-bold text-ink">{title}</h2>
-        {help && prefs.helpIcons && (
-          <button
-            type="button"
-            aria-label={help.question}
-            title={help.question}
-            aria-expanded={showHelp}
-            onClick={() => setShowHelp((v) => !v)}
-            className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[1.6px] border-muted text-[10px] font-extrabold text-muted hover:border-ink hover:text-ink"
-          >
-            ?
-          </button>
-        )}
+        {help && <HelpButton helpKey={help} target={`[data-panel="${panelId}"]`} />}
         <span className="grow" />
         <button
           onClick={() => setOpen((v) => !v)}
@@ -114,9 +98,6 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
           </ul>
         )}
       </header>
-      {showHelp && help && prefs.helpIcons && (
-        <p className="border-b border-line bg-accent-soft px-3 py-2 text-[13px] leading-snug text-ink">{help.answer}</p>
-      )}
       <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
     </section>
   );

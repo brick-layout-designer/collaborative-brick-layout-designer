@@ -303,3 +303,33 @@ body,
   height: 100%;
   overflow: hidden;
 }
+
+/* "Show me" on a help popover: the control it explains pulses its outline
+   (src/help/HelpButton.tsx). A steady outline when motion is turned down. */
+@keyframes help-pulse {
+  0%,
+  100% {
+    outline-color: transparent;
+    outline-offset: var(--help-pulse-offset);
+  }
+  50% {
+    outline-color: var(--accent);
+    outline-offset: var(--help-pulse-offset);
+  }
+}
+.help-pulse {
+  --help-pulse-offset: 5px;
+  outline: 3px solid transparent;
+  animation: help-pulse 0.9s ease-in-out 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .help-pulse {
+    animation: none;
+    outline-color: var(--accent);
+    outline-offset: var(--help-pulse-offset);
+  }
+}
+/* Panels sit in columns that clip: pulse inside their edge instead. */
+.help-pulse[data-help-inset] {
+  --help-pulse-offset: -4px;
+}
