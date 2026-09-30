@@ -203,18 +203,18 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       onClick={onClose}
     >
       <div
-        className="w-96 rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+        className="w-96 rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold text-neutral-200">Export / Print</h2>
+        <h2 className="mb-4 text-sm font-semibold text-ink">Export / Print</h2>
 
         {/* Mode toggle */}
-        <div className="mb-4 flex rounded-sm border border-neutral-700 text-xs">
+        <div className="mb-4 flex rounded-lg border border-border text-xs">
           {(['image', 'print', 'pdf'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`flex-1 py-1.5 ${mode === m ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-800'}`}
+              className={`flex-1 py-1.5 ${mode === m ? 'bg-neutral-700 text-ink' : 'text-muted hover:bg-soft'}`}
             >
               {m === 'image' ? 'Export Image' : m === 'print' ? 'Print (1:1)' : 'PDF (A3)'}
             </button>
@@ -225,7 +225,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
           {mode === 'image' ? (
             <>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">Width (px)</span>
+                <span className="text-xs text-muted">Width (px)</span>
                 <input
                   type="number"
                   aria-label="Width (px)"
@@ -233,10 +233,10 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   max={MAX_CANVAS_SIDE}
                   value={width}
                   onChange={(e) => setWidth(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                  className="w-24 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-24 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </label>
-              <label className="flex items-center gap-2 text-xs text-neutral-400">
+              <label className="flex items-center gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={keepAspect}
@@ -248,7 +248,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 Keep aspect ratio (height auto)
               </label>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">Height (px)</span>
+                <span className="text-xs text-muted">Height (px)</span>
                 <input
                   type="number"
                   aria-label="Height (px)"
@@ -257,18 +257,18 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   value={height}
                   disabled={keepAspect}
                   onChange={(e) => setCustomHeight(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-                  className="w-24 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs disabled:opacity-50"
+                  className="w-24 rounded-lg border border-border bg-soft px-2 py-1 text-xs disabled:opacity-50"
                 />
               </label>
               {scene && (
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-neutral-400">Preset</span>
+                  <span className="text-xs text-muted">Preset</span>
                   <div className="flex gap-1">
                     {[1, 2, 4].map((k) => (
                       <button
                         key={k}
                         onClick={() => setScale(k)}
-                        className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800"
+                        className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft"
                         title={`${Math.round(scene.width * k)} × ${Math.round(scene.height * k)} px`}
                       >
                         {k}×
@@ -278,14 +278,14 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 </div>
               )}
               {!sizeValid && (
-                <p className="text-[10px] text-red-400">Width and height must be 1–{MAX_CANVAS_SIDE} px.</p>
+                <p className="text-[10px] text-danger">Width and height must be 1–{MAX_CANVAS_SIDE} px.</p>
               )}
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">Format</span>
+                <span className="text-xs text-muted">Format</span>
                 <select
                   value={format}
                   onChange={(e) => setFormat(e.target.value as 'png' | 'jpeg')}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   <option value="png">PNG</option>
                   <option value="jpeg">JPEG</option>
@@ -293,7 +293,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
               </label>
               {format === 'jpeg' && (
                 <label className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-neutral-400">JPEG quality</span>
+                  <span className="text-xs text-muted">JPEG quality</span>
                   <span className="flex items-center gap-2">
                     <input
                       type="range"
@@ -307,7 +307,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   </span>
                 </label>
               )}
-              <label className="flex items-center gap-2 text-xs text-neutral-400">
+              <label className="flex items-center gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={antialias}
@@ -315,7 +315,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 />
                 Antialias
               </label>
-              <label className="flex items-center gap-2 text-xs text-neutral-400">
+              <label className="flex items-center gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={transparent && format === 'png'}
@@ -324,7 +324,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 />
                 Transparent background{format === 'jpeg' ? ' (PNG only)' : ''}
               </label>
-              <label className="flex items-center gap-2 text-xs text-neutral-400">
+              <label className="flex items-center gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   checked={watermark}
@@ -334,18 +334,18 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
               </label>
             </>
           ) : mode === 'pdf' ? (
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-muted">
               One A3 page ({region && region.width >= region.height ? 'landscape' : 'portrait'}, from the layout&apos;s
               shape) with the whole map fitted inside 12 mm margins.
             </p>
           ) : (
             <>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">Paper size</span>
+                <span className="text-xs text-muted">Paper size</span>
                 <select
                   value={paperKey}
                   onChange={(e) => setPaperKey(e.target.value)}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   {Object.entries(PAPER_SIZES).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
@@ -353,11 +353,11 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 </select>
               </label>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">DPI</span>
+                <span className="text-xs text-muted">DPI</span>
                 <select
                   value={dpi}
                   onChange={(e) => setDpi(Number(e.target.value))}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   <option value={96}>96 (screen)</option>
                   <option value={150}>150 (draft print)</option>
@@ -365,7 +365,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 </select>
               </label>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">Page margin (mm)</span>
+                <span className="text-xs text-muted">Page margin (mm)</span>
                 <input
                   type="number"
                   aria-label="Page margin (mm)"
@@ -374,11 +374,11 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   max={50}
                   step={1}
                   onChange={(e) => setMarginMm(Math.max(0, Number(e.target.value)))}
-                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </label>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-xs text-neutral-400">Tile overlap (mm)</span>
+                <span className="text-xs text-muted">Tile overlap (mm)</span>
                 <input
                   type="number"
                   value={overlapMm}
@@ -386,32 +386,32 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                   max={50}
                   step={1}
                   onChange={(e) => setOverlapMm(Math.max(0, Number(e.target.value)))}
-                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </label>
               <p className="text-xs text-neutral-300" data-testid="print-pages">
                 {tiling ? `${tiling.cols} × ${tiling.rows} = ${tiling.tiles.length} page(s) at actual size (1 stud = 8 mm)` : 'The map is empty.'}
               </p>
-              <p className="text-[10px] text-neutral-500">
+              <p className="text-[10px] text-muted">
                 Opens a new tab with one page per tile — print it at 100 % scale (no &quot;fit to page&quot;) to keep the actual size.
               </p>
             </>
           )}
         </div>
 
-        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+            className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={mode === 'image' ? doExportImage : mode === 'print' ? doTiledPrint : doExportPdf}
             disabled={exporting || (mode === 'image' && !sizeValid)}
-            className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {exporting ? 'Working…' : mode === 'image' ? `Export ${format === 'jpeg' ? 'JPEG' : 'PNG'}` : mode === 'print' ? 'Open Print Preview' : 'Export PDF'}
           </button>

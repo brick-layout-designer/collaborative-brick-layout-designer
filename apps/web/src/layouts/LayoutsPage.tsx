@@ -28,7 +28,7 @@ export function LayoutsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['layouts'] }),
   });
 
-  if (list.isLoading) return <p className="text-neutral-500">Loading layouts…</p>;
+  if (list.isLoading) return <p className="text-muted">Loading layouts…</p>;
 
   const allLayouts = list.data?.layouts ?? [];
   // Personal layouts only — org-owned layouts live on the org's page.
@@ -45,23 +45,23 @@ export function LayoutsPage() {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Layouts</h2>
+        <h2 className="text-2xl font-bold">Layouts</h2>
         <button
           onClick={() => setShowCreate(true)}
-          className="rounded-sm bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-500"
+          className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
         >
           New layout
         </button>
       </div>
 
       {Object.values(orgGroups).length > 0 && (
-        <div className="rounded-sm border border-neutral-700 bg-neutral-800/40 px-4 py-3 text-sm text-neutral-400">
+        <div className="rounded-lg border border-border bg-soft/40 px-4 py-3 text-sm text-muted">
           Some layouts are owned by your orgs and are not shown here.{' '}
           {Object.values(orgGroups).map((org) => (
             <Link
               key={org.slug}
               to={`/orgs/${org.slug}`}
-              className="text-blue-400 hover:underline"
+              className="text-accent-text hover:underline"
             >
               View {org.name}
             </Link>
@@ -70,11 +70,11 @@ export function LayoutsPage() {
       )}
 
       {layouts.length === 0 ? (
-        <p className="rounded-sm border border-dashed border-neutral-700 p-8 text-center text-neutral-500">
+        <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
           No layouts yet. Click <em>New layout</em> to create or import one.
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-800 rounded-sm border border-neutral-800">
+        <ul className="divide-y divide-line rounded-lg border border-line">
           {layouts.map((l) => (
             <LayoutRow
               key={l.id}
@@ -107,7 +107,7 @@ export function LayoutsPage() {
       )}
 
       <div className="space-y-2 pt-4">
-        <h2 className="text-lg font-semibold">My venues</h2>
+        <h2 className="text-2xl font-bold">My rooms</h2>
         <VenueList canManage />
       </div>
 
@@ -174,7 +174,7 @@ function LayoutRow({
     <li className="flex items-center justify-between px-4 py-3">
       <div>
         <p className="font-medium">{layout.title}</p>
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-muted">
           updated {new Date(layout.updatedAt).toLocaleString()}
           {layout.expiresAt && (
             <>
@@ -189,24 +189,24 @@ function LayoutRow({
       <div className="flex items-center gap-2 text-sm">
         <Link
           to={`/editor/${layout.id}`}
-          className="rounded-sm bg-blue-600 px-3 py-1 text-white hover:bg-blue-500"
+          className="rounded-lg bg-accent px-3 py-1 text-accent-ink hover:bg-accent-hover"
         >
           Open
         </Link>
         <button
           onClick={onShare}
-          className="rounded-sm border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          className="rounded-lg border border-border px-3 py-1 hover:bg-soft"
         >
           Share
         </button>
         <a
           href={api.layouts.exportZipUrl(layout.id)}
-          className="rounded-sm border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          className="rounded-lg border border-border px-3 py-1 hover:bg-soft"
           title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
         >
           Export .zip
         </a>
-        <label className="flex items-center gap-1 text-xs text-neutral-400" title="New layouts start as a copy of this one">
+        <label className="flex items-center gap-1 text-xs text-muted" title="New layouts start as a copy of this one">
           <input
             type="checkbox"
             checked={isTemplate}
@@ -219,7 +219,7 @@ function LayoutRow({
         </label>
         <button
           onClick={onDelete}
-          className="rounded-sm border border-red-900 px-3 py-1 text-red-400 hover:bg-red-950"
+          className="rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
         >
           Delete
         </button>
@@ -382,7 +382,7 @@ function CreateLayoutDialog({
       )}
       <form
         onSubmit={(e) => void submit(e)}
-        className="w-full max-w-md space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
+        className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6"
       >
         <h3 className="text-lg font-semibold">New layout</h3>
 
@@ -394,22 +394,22 @@ function CreateLayoutDialog({
         )}
 
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Title</span>
+          <span className="mb-1 block text-muted">Title</span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled Layout"
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
           />
         </label>
 
         {orgs.data && orgs.data.orgs.length > 0 && (
           <label className="block text-sm">
-            <span className="mb-1 block text-neutral-400">Owner</span>
+            <span className="mb-1 block text-muted">Owner</span>
             <select
               value={ownerSlug}
               onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             >
               <option value="">Personal (you)</option>
               {orgs.data.orgs.map((o) => (
@@ -423,11 +423,11 @@ function CreateLayoutDialog({
 
         {venues.data && venues.data.venues.length > 0 && (
           <label className="block text-sm">
-            <span className="mb-1 block text-neutral-400">Start from venue</span>
+            <span className="mb-1 block text-muted">Start from venue</span>
             <select
               value={venueId}
               onChange={(e) => setVenueId(e.target.value)}
-              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             >
               <option value="">No venue</option>
               {orderVenuesForOwner(
@@ -444,18 +444,18 @@ function CreateLayoutDialog({
         )}
 
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">
+          <span className="mb-1 block text-muted">
             Optional: open a layout file (.bld-layout), .bbm, LDraw, TrackDesigner or 4DBrix
           </span>
           <input type="file" accept={LAYOUT_ACCEPT} onChange={pickBbm} className="text-sm" />
-          {bbmFilename && <p className="mt-1 text-xs text-neutral-500">{bbmFilename}</p>}
+          {bbmFilename && <p className="mt-1 text-xs text-muted">{bbmFilename}</p>}
           {openWarnings.map((w) => (
             <p key={w} className="mt-1 text-xs text-amber-400">{w}</p>
           ))}
         </label>
 
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Optional: sidecar (.bbm.cld / desktop .bbm.bld)</span>
+          <span className="mb-1 block text-muted">Optional: sidecar (.bbm.cld / desktop .bbm.bld)</span>
           <input
             type="file"
             accept=".cld,.bbm.cld,.bld,.bbm.bld,application/json"
@@ -464,20 +464,20 @@ function CreateLayoutDialog({
           />
         </label>
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-2 hover:bg-neutral-800"
+            className="rounded-lg border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-sm bg-blue-600 px-4 py-2 hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>

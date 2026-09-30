@@ -45,10 +45,10 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
   }
 
   const rowCls = 'flex items-center justify-between gap-4 py-1.5';
-  const labelCls = 'text-xs text-neutral-400 w-40 shrink-0';
-  const inputCls = 'flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs';
-  const colorCls = 'h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5';
-  const sectionCls = 'mt-3 border-t border-neutral-800 pt-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500';
+  const labelCls = 'text-xs text-muted w-40 shrink-0';
+  const inputCls = 'flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs';
+  const colorCls = 'h-7 w-12 cursor-pointer rounded-lg border border-border bg-soft p-0.5';
+  const sectionCls = 'mt-3 border-t border-line pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted';
   const num = (v: string, fallback: number) => {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n : fallback;
@@ -61,7 +61,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="accent-blue-500"
+        className="accent-accent"
       />
     </label>
   );
@@ -83,7 +83,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
         onChange={(e) => onChange(num(e.target.value, value))}
         className={inputCls}
       />
-      {suffix && <span className="text-xs text-neutral-500">{suffix}</span>}
+      {suffix && <span className="text-xs text-muted">{suffix}</span>}
     </label>
   );
   const color = (label: string, value: string, onChange: (v: string) => void) => (
@@ -106,10 +106,10 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
       }}
     >
       <div
-        className="max-h-[90vh] w-104 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+        className="max-h-[90vh] w-104 overflow-y-auto rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-sm font-semibold text-neutral-200">Layer Options</h2>
+        <h2 className="mb-4 text-sm font-semibold text-ink">Layer Options</h2>
 
         <div className="flex flex-col gap-0.5">
           <label className={rowCls}>
@@ -152,7 +152,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
           {form.areaCellSize !== undefined && (
             <>
               {number('Paint cell size', form.areaCellSize, 1, 256, (v) => set('areaCellSize', v), 'studs')}
-              <p className="py-1 text-[11px] leading-snug text-neutral-500">
+              <p className="py-1 text-[11px] leading-snug text-muted">
                 Changing cell size on a layer with painted cells leaves existing cells at their old
                 indexing — paint over to clean up.
               </p>
@@ -160,13 +160,13 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
           )}
         </div>
 
-        <div className="mt-5 flex justify-end gap-2 border-t border-neutral-700 pt-4">
-          <button onClick={onClose} className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800">
+        <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft">
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover"
           >
             OK
           </button>

@@ -91,7 +91,7 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Download As" className="fixed inset-0 z-50 grid place-items-center bg-black/60" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-md rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl">
+      <div onClick={(e) => e.stopPropagation()} className="w-md rounded-lg border border-line bg-panel p-5 shadow-xl">
         <h2 className="text-base font-semibold">Download As</h2>
         <fieldset className="mt-4 space-y-1 text-sm">
           <legend className="sr-only">Format</legend>
@@ -107,7 +107,7 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
           ))}
         </fieldset>
         {lossy && warn && (
-          <div className="mt-4 rounded-sm border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+          <div className="mt-4 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
             <p>{LOSSY_FORMAT_WARNING}</p>
             <label className="mt-2 flex items-center gap-2">
               <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} />
@@ -116,16 +116,16 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
           </div>
         )}
         {bbmLeavesOut && (
-          <p className="mt-4 rounded-sm border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
+          <p className="mt-4 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">
             BlueBrick can&apos;t hold {lost.join(', ')}, so the .bbm leaves them out. Your layout keeps them.
           </p>
         )}
-        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-xs text-danger">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800">
+          <button onClick={onClose} className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft">
             Cancel
           </button>
-          <button onClick={() => void onDownload()} disabled={busy} className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:opacity-50">
+          <button onClick={() => void onDownload()} disabled={busy} className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover disabled:opacity-50">
             {lossy && warn ? 'Download anyway' : 'Download'}
           </button>
         </div>

@@ -71,11 +71,11 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-96 rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+        className="w-96 rounded-lg border border-border bg-panel p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-1 text-sm font-semibold text-neutral-200">Import .bbm as Module</h2>
-        <p className="mb-4 text-xs text-neutral-500">
+        <h2 className="mb-1 text-sm font-semibold text-ink">Import .bbm as Module</h2>
+        <p className="mb-4 text-xs text-muted">
           Bricks keep their layers (matched by name, created when missing),
           are centred at the map origin and become a module named after the file.
         </p>
@@ -88,19 +88,19 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
           onChange={onFile}
         />
 
-        {error && <p className="mb-3 text-xs text-red-400">{error}</p>}
+        {error && <p className="mb-3 text-xs text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+            className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={() => fileRef.current?.click()}
             disabled={importing}
-            className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {importing ? 'Importing…' : 'Choose .bbm file…'}
           </button>

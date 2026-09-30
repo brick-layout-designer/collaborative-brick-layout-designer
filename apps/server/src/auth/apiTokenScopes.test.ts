@@ -20,6 +20,7 @@ describe('API token scopes', () => {
       'parts:write',
       'venues:read',
       'venues:write',
+      'account:prefs',
     ]);
   });
 

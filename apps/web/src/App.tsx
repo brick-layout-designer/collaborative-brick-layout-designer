@@ -10,7 +10,7 @@ export function App() {
   if (!data?.user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={data.user} />
       <main className="mt-8">
         <LayoutsPage />
@@ -20,5 +20,5 @@ export function App() {
 }
 
 function Loading() {
-  return <div className="grid h-full place-items-center text-neutral-500">Loading…</div>;
+  return <div className="grid h-full place-items-center text-muted">Loading…</div>;
 }

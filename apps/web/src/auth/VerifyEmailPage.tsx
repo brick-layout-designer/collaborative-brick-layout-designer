@@ -35,18 +35,18 @@ export function VerifyEmailPage() {
 
   return (
     <div className="grid min-h-screen place-items-center px-4">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-8 text-center shadow-sm">
-        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-sm" />
+      <div className="w-full max-w-sm space-y-4 rounded-lg border border-line bg-panel p-8 text-center shadow-sm">
+        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
         {verify.isSuccess && <p className="text-neutral-300">Email verified! Taking you in…</p>}
         {verify.isError && (
           <>
-            <p className="text-red-400">{(verify.error as Error).message}</p>
-            <a href="/login" className="block text-sm text-blue-400 hover:underline">
+            <p className="text-danger">{(verify.error as Error).message}</p>
+            <a href="/login" className="block text-sm text-accent-text hover:underline">
               Back to sign in
             </a>
           </>
         )}
-        {!verify.isSuccess && !verify.isError && <p className="text-neutral-400">Verifying…</p>}
+        {!verify.isSuccess && !verify.isError && <p className="text-muted">Verifying…</p>}
       </div>
     </div>
   );

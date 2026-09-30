@@ -113,35 +113,35 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
   }
 
   return (
-    <div className="fixed bottom-8 right-8 z-40 flex w-[540px] flex-col rounded-lg border border-neutral-700 bg-neutral-900 shadow-2xl text-sm">
+    <div className="fixed bottom-8 right-8 z-40 flex w-[540px] flex-col rounded-lg border border-border bg-panel shadow-2xl text-sm">
       {/* Title bar */}
-      <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <span className="font-semibold text-xs">
           Budget{fileName ? ` — ${fileName}` : ''}
         </span>
-        <button onClick={onClose} className="text-neutral-400 hover:text-white text-base leading-none">×</button>
+        <button onClick={onClose} className="text-muted hover:text-ink text-base leading-none">×</button>
       </div>
 
       {/* Toolbar */}
-      <div className="flex gap-2 border-b border-neutral-800 px-3 py-2">
+      <div className="flex gap-2 border-b border-line px-3 py-2">
         {/* The budget lives in the layout, so desktop's New and Close both mean: no limits. */}
         <button onClick={handleNew} title="Remove every limit (desktop New / Close Budget)"
-          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">New</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">New</button>
         <button onClick={handleOpen}
-          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Open…</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">Open…</button>
         <button onClick={handleMerge} title="Add the limits of another budget file to the current budget"
-          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Import and Merge…</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">Import and Merge…</button>
         <button onClick={handleSave}
-          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800">Save…</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft">Save…</button>
         <button onClick={() => setRefreshKey((k) => k + 1)}
-          className="rounded-sm border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800" title="Re-count parts from current map">Refresh</button>
+          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft" title="Re-count parts from current map">Refresh</button>
       </div>
 
       {/* Table */}
       <div className="overflow-auto" style={{ maxHeight: '340px' }}>
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-neutral-900">
-            <tr className="border-b border-neutral-800 text-left text-neutral-500">
+          <thead className="sticky top-0 bg-panel">
+            <tr className="border-b border-line text-left text-muted">
               <th className="px-2 py-1">Part</th>
               <th className="px-2 py-1 text-right">Used</th>
               <th className="px-2 py-1">Limit (blank=unlimited)</th>
@@ -150,7 +150,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-2 py-3 text-center text-neutral-500">
+                <td colSpan={3} className="px-2 py-3 text-center text-muted">
                   No parts in map or budget. Use "Open…" to load a .bbb file.
                 </td>
               </tr>
@@ -159,9 +159,9 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
               const limit = lim ?? -1;
               const over = limit >= 0 && used > limit;
               return (
-                <tr key={part} className={over ? 'bg-red-950/60' : 'odd:bg-neutral-800/30'}>
+                <tr key={part} className={over ? 'bg-red-950/60' : 'odd:bg-soft/30'}>
                   <td className="px-2 py-1 font-mono">{part}</td>
-                  <td className={`px-2 py-1 text-right ${over ? 'text-red-400 font-bold' : ''}`}>{used}</td>
+                  <td className={`px-2 py-1 text-right ${over ? 'text-danger font-bold' : ''}`}>{used}</td>
                   <td className="px-2 py-1">
                     <input
                       type="number"
@@ -169,7 +169,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
                       placeholder="—"
                       value={limit >= 0 ? limit : ''}
                       onChange={(e) => setLimit(limitKey ?? part, e.target.value)}
-                      className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
+                      className="w-20 rounded-lg border border-border bg-soft px-1 py-0.5 text-xs"
                     />
                   </td>
                 </tr>
@@ -180,9 +180,9 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
       </div>
 
       {/* Status */}
-      <div className="border-t border-neutral-800 px-3 py-1.5 text-xs">
+      <div className="border-t border-line px-3 py-1.5 text-xs">
         {overBudgetCount > 0
-          ? <span className="text-red-400">⚠ {overBudgetCount} part(s) over budget</span>
+          ? <span className="text-danger">⚠ {overBudgetCount} part(s) over budget</span>
           : <span className="text-green-400">All parts within budget</span>}
       </div>
     </div>

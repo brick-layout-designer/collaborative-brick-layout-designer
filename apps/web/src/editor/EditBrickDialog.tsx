@@ -52,17 +52,17 @@ export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-md rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
+        className="w-md rounded-lg border border-line bg-panel p-5 shadow-xl"
       >
         <h2 className="text-base font-semibold">Edit brick</h2>
-        <p className="mt-1 text-xs text-neutral-500">id {brick.id}</p>
+        <p className="mt-1 text-xs text-muted">id {brick.id}</p>
         <div className="mt-4 grid grid-cols-[10rem_1fr] gap-2 text-sm">
           <label className="self-center">Part:</label>
           <input
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             placeholder={brick.partNumber}
-            className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           />
           <label className="self-center">X (studs):</label>
           <NumberField value={x} setValue={setX} step={0.5} />
@@ -83,13 +83,13 @@ export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             onClick={commit}
-            className="rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
           >
             OK
           </button>
@@ -120,7 +120,7 @@ function NumberField({
         const n = parseFloat(e.target.value);
         if (Number.isFinite(n)) setValue(n);
       }}
-      className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 disabled:opacity-50"
+      className="rounded-lg border border-border bg-soft px-2 py-1 disabled:opacity-50"
     />
   );
 }

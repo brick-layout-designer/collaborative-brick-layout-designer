@@ -65,9 +65,9 @@ export function Resizer({ axis, onResize, className }: Props) {
       onPointerDown={onPointerDown}
       className={
         (isColumn
-          ? 'w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/70'
-          : 'h-1 cursor-row-resize hover:bg-blue-500/40 active:bg-blue-500/70') +
-        ' shrink-0 bg-neutral-800 ' +
+          ? 'w-1 cursor-col-resize hover:bg-accent-hover/40 active:bg-accent-hover/70'
+          : 'h-1 cursor-row-resize hover:bg-accent-hover/40 active:bg-accent-hover/70') +
+        ' shrink-0 bg-soft ' +
         (className ?? '')
       }
     />

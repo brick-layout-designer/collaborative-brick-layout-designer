@@ -72,28 +72,20 @@ test.describe('editor — tool switching', () => {
   test('clicking the rotate tool activates it', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    // Toolbar.tsx has no aria-pressed / active|selected|current class —
-    // the active tool button gets `bg-blue-600 text-white` (see TOOLS.map
-    // in Toolbar.tsx) and the status bar's "Tool: <name>" also reflects
-    // the current tool; check both real signals.
+    // The tool rail marks the active tool with aria-pressed, and the
+    // status bar's "Tool: <name>" also reflects the current tool; check both.
     const rotateBtn = page.getByRole('button', { name: 'Rotate', exact: true });
     await rotateBtn.click();
-    await expect(rotateBtn).toHaveClass(/bg-blue-600/);
+    await expect(rotateBtn).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('footer')).toContainText('Tool: rotate');
   });
 
   test('clicking delete tool activates it', async ({ page }) => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
-    // /delete|erase|remove/i ambiguously matches multiple buttons: the
-    // global "Delete (Del)" selection-delete action, the "Erase" tool,
-    // and the Toolbar's own "Delete" tool — and even an exact accessible
-    // name of "Delete" still matches both Delete buttons (the global
-    // one's computed name apparently still satisfies it). The `title`
-    // attribute is the only thing that disambiguates them: the
-    // Toolbar's tool has no shortcut suffix (see TOOLS.map in
-    // Toolbar.tsx), so its title is the bare string "Delete".
-    const deleteBtn = page.getByTitle('Delete', { exact: true });
+    // "Delete" also names the global selection-delete action; the tool
+    // rail's buttons carry data-tool, which is unambiguous.
+    const deleteBtn = page.getByRole('navigation', { name: 'Build tools' }).locator('[data-tool="delete"]');
     await deleteBtn.click();
     await expect(page.locator('footer')).toContainText('Tool: delete');
     await expect(page.locator('canvas').first()).toBeVisible();
@@ -282,20 +274,20 @@ test.describe('editor — layers panel', () => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
 
-    const layersPanel = page.locator('aside', { hasText: 'Layers' });
+    const layersPanel = page.locator('aside', { hasText: 'Sheets' });
     await expect(layersPanel).toBeVisible();
 
     const countBefore = Number(await layersPanel.locator('span.text-neutral-600').innerText());
 
-    await layersPanel.getByTitle('Add a new layer').click();
-    await page.getByRole('button', { name: 'Parts layer' }).click();
+    await layersPanel.getByTitle('Add a new sheet').click();
+    await page.getByRole('button', { name: 'Parts sheet' }).click();
 
     await expect(layersPanel.locator('span.text-neutral-600')).toHaveText(String(countBefore + 1));
 
     // A second "Parts layer" click must add ANOTHER layer, not silently
     // no-op on top of the one that already exists (the original bug).
-    await layersPanel.getByTitle('Add a new layer').click();
-    await page.getByRole('button', { name: 'Parts layer' }).click();
+    await layersPanel.getByTitle('Add a new sheet').click();
+    await page.getByRole('button', { name: 'Parts sheet' }).click();
     await expect(layersPanel.locator('span.text-neutral-600')).toHaveText(String(countBefore + 2));
 
     // The two new parts layers get disambiguated default names.
@@ -307,9 +299,9 @@ test.describe('editor — layers panel', () => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
 
-    const layersPanel = page.locator('aside', { hasText: 'Layers' });
-    await layersPanel.getByTitle('Add a new layer').click();
-    await page.getByRole('button', { name: 'Area layer' }).click();
+    const layersPanel = page.locator('aside', { hasText: 'Sheets' });
+    await layersPanel.getByTitle('Add a new sheet').click();
+    await page.getByRole('button', { name: 'Area sheet' }).click();
 
     // The active row is highlighted with a blue left border + background;
     // the newly-added "Area" row should be the one carrying it.
@@ -321,11 +313,11 @@ test.describe('editor — layers panel', () => {
     const id = await loginAndCreateLayout(page);
     await openEditor(page, id);
 
-    const layersPanel = page.locator('aside', { hasText: 'Layers' });
+    const layersPanel = page.locator('aside', { hasText: 'Sheets' });
     // A freshly-created layout seeds one grid layer + one brick layer
     // named "Layout" (createDefaultLayoutDoc, packages/ydoc/src/index.ts).
     const partsRow = layersPanel.locator('li', { hasText: 'Layout' }).first();
     // Starts empty.
-    await expect(partsRow.locator('span.tabular-nums.text-\\[10px\\].text-neutral-500')).toHaveText('0');
+    await expect(partsRow.locator('span.tabular-nums.text-\\[10px\\].text-muted')).toHaveText('0');
   });
 });

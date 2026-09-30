@@ -23,23 +23,23 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
     onSave(target === 'personal' ? undefined : target, n);
   }
 
-  const inputCls = 'w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm';
+  const inputCls = 'w-full rounded-lg border border-border bg-soft px-2 py-1.5 text-sm';
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <form
         onSubmit={submit}
-        className="w-80 space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-5 text-sm"
+        className="w-80 space-y-4 rounded-lg border border-line bg-panel p-5 text-sm"
       >
         <h3 className="font-semibold">Save Venue to Library</h3>
 
         <label className="block">
-          <span className="mb-1 block text-xs text-neutral-400">Name for this venue</span>
+          <span className="mb-1 block text-xs text-muted">Name for this venue</span>
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} autoFocus />
         </label>
 
         <div>
-          <label className="mb-1 block text-xs text-neutral-400">Save as</label>
+          <label className="mb-1 block text-xs text-muted">Save as</label>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -58,13 +58,13 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-1.5 text-sm hover:bg-neutral-800"
+            className="rounded-lg border border-border px-4 py-1.5 text-sm hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-sm bg-blue-600 px-4 py-1.5 text-sm hover:bg-blue-500"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-1.5 text-sm hover:bg-accent-hover"
           >
             Save
           </button>

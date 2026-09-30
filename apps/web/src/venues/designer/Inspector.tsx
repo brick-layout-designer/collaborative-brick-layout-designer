@@ -11,9 +11,9 @@ import { formatLength, parseLength, STUDS_PER_INCH, type LengthUnit } from './un
 
 const FT = 12 * STUDS_PER_INCH;
 
-const field = 'h-9 w-full rounded-md border border-neutral-600 bg-neutral-800 px-2.5 text-sm';
-const label = 'flex flex-col gap-1 text-xs text-neutral-400';
-const heading = 'text-[11px] font-semibold uppercase tracking-wider text-neutral-500';
+const field = 'h-9 w-full rounded-md border border-neutral-600 bg-soft px-2.5 text-sm';
+const label = 'flex flex-col gap-1 text-xs text-muted';
+const heading = 'text-[11px] font-semibold uppercase tracking-wider text-muted';
 
 /** A text box for a length: shows it in `unit`, applies what's typed on Enter or leaving the box. */
 function LengthField({ name, studs, unit, onChange }: { name: string; studs: number; unit: LengthUnit; onChange: (studs: number) => void }) {
@@ -172,7 +172,7 @@ export function Inspector({ state, dispatch, extra }: { state: DesignerState; di
                   type="button"
                   aria-pressed={o.upDegrees === w.deg}
                   onClick={() => patch(sel, { upDegrees: w.deg })}
-                  className={`h-9 rounded-md border text-sm ${o.upDegrees === w.deg ? 'border-blue-500 bg-blue-500/20 text-blue-200' : 'border-neutral-600 hover:bg-neutral-800'}`}
+                  className={`h-9 rounded-md border text-sm ${o.upDegrees === w.deg ? 'border-accent bg-accent-hover/20 text-blue-200' : 'border-neutral-600 hover:bg-soft'}`}
                 >
                   {w.name}
                 </button>
@@ -197,7 +197,7 @@ export function Inspector({ state, dispatch, extra }: { state: DesignerState; di
                 type="button"
                 aria-pressed={p.kind === k}
                 onClick={() => patch(sel, { kind: k })}
-                className={`h-9 rounded-md border text-sm ${p.kind === k ? 'border-blue-500 bg-blue-500/20 text-blue-200' : 'border-neutral-600 hover:bg-neutral-800'}`}
+                className={`h-9 rounded-md border text-sm ${p.kind === k ? 'border-accent bg-accent-hover/20 text-blue-200' : 'border-neutral-600 hover:bg-soft'}`}
               >
                 {k === 'wall' ? 'Wall outlet' : 'Floor outlet'}
               </button>
@@ -224,10 +224,10 @@ export function Inspector({ state, dispatch, extra }: { state: DesignerState; di
     body = (
       <>
         <TextField name="Label" value={d.label ?? ''} onChange={(t) => patch(sel, { label: t || undefined })} />
-        <p className="text-sm text-neutral-400">
-          Measures <span className="font-mono text-neutral-200">{measured}</span>
+        <p className="text-sm text-muted">
+          Measures <span className="font-mono text-ink">{measured}</span>
           {d.label !== measured && (
-            <button type="button" onClick={() => patch(sel, { label: measured })} className="ml-2 text-blue-400 hover:underline">
+            <button type="button" onClick={() => patch(sel, { label: measured })} className="ml-2 text-accent-text hover:underline">
               Use as label
             </button>
           )}
@@ -238,7 +238,7 @@ export function Inspector({ state, dispatch, extra }: { state: DesignerState; di
   }
 
   return (
-    <aside aria-label="Inspector" className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-neutral-800 bg-neutral-900 p-4">
+    <aside aria-label="Inspector" className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel p-4">
       <div>
         <div className={heading}>{sel ? 'Selected' : 'Venue'}</div>
         <div className="text-lg font-semibold">{sel ? KIND_NAMES[sel.kind] : v.name || 'Venue'}</div>
@@ -247,7 +247,7 @@ export function Inspector({ state, dispatch, extra }: { state: DesignerState; di
       {extra}
       {sel && (
         <div className="mt-auto flex gap-2">
-          <button type="button" onClick={() => dispatch({ type: 'duplicate' })} className="h-9 flex-1 rounded-md border border-neutral-600 text-sm hover:bg-neutral-800">
+          <button type="button" onClick={() => dispatch({ type: 'duplicate' })} className="h-9 flex-1 rounded-md border border-neutral-600 text-sm hover:bg-soft">
             Duplicate
           </button>
           <button type="button" onClick={() => dispatch({ type: 'delete' })} className="h-9 flex-1 rounded-md border border-red-800 text-sm text-red-300 hover:bg-red-950/40">
@@ -267,20 +267,20 @@ function VenueFields({ venue, unit, set }: { venue: Venue; unit: LengthUnit; set
       <TextField name="Name" value={venue.name} onChange={(t) => set({ ...venue, name: t.trim() || venue.name })} />
       <LengthField name="Minimum walkway" studs={venue.minWalkwayStuds} unit={unit} onChange={(w) => set({ ...venue, minWalkwayStuds: w })} />
       <div className="grid grid-cols-2 gap-2 text-sm">
-        <span className="text-neutral-400">Size</span>
+        <span className="text-muted">Size</span>
         <span className="font-mono">{size ? `${formatLength(size.w, unit)} × ${formatLength(size.h, unit)}` : '—'}</span>
-        <span className="text-neutral-400">Floor area</span>
+        <span className="text-muted">Floor area</span>
         <span className="font-mono">{size ? `${Math.round(size.area / (FT * FT)).toLocaleString()} sq ft` : '—'}</span>
-        <span className="text-neutral-400">Walls, doors, openings</span>
+        <span className="text-muted">Walls, doors, openings</span>
         <span className="font-mono">{venue.edges.length}</span>
-        <span className="text-neutral-400">Obstacles</span>
+        <span className="text-muted">Obstacles</span>
         <span className="font-mono">{venue.obstacles.length}</span>
-        <span className="text-neutral-400">Power points</span>
+        <span className="text-muted">Power points</span>
         <span className="font-mono">{venue.power?.length ?? 0}</span>
-        <span className="text-neutral-400">Still estimated</span>
+        <span className="text-muted">Still estimated</span>
         <span className={`font-mono ${est ? 'text-amber-300' : ''}`}>{est}</span>
       </div>
-      <p className="text-xs text-neutral-500">Pick a tool on the left to draw. Select something to edit it here.</p>
+      <p className="text-xs text-muted">Pick a tool on the left to draw. Select something to edit it here.</p>
     </>
   );
 }

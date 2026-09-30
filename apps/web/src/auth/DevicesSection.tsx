@@ -13,6 +13,7 @@ export function scopeSummary(t: Pick<ApiTokenSummary, 'scopes'>): string {
   else if (has('parts:read')) parts.push('download parts');
   if (has('venues:write')) parts.push('save venues');
   else if (has('venues:read')) parts.push('download venues');
+  if (has('account:prefs')) parts.push('sync settings');
   return parts.join(', ');
 }
 
@@ -31,34 +32,34 @@ export function DevicesSection() {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Devices</h2>
-      <p className="text-sm text-neutral-500">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Devices</h2>
+      <p className="text-sm text-muted">
         Desktop apps signed in to your account. To add one, choose “Sign in” in the desktop app and
         follow its instructions.
       </p>
       {tokens.isLoading ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : tokens.isError ? (
-        <p className="text-sm text-red-400">{(tokens.error as Error).message}</p>
+        <p className="text-sm text-danger">{(tokens.error as Error).message}</p>
       ) : tokens.data!.tokens.length === 0 ? (
-        <p className="rounded-sm border border-neutral-800 px-4 py-3 text-sm text-neutral-500">
+        <p className="rounded-lg border border-line px-4 py-3 text-sm text-muted">
           No devices signed in.
         </p>
       ) : (
-        <ul className="rounded-sm border border-neutral-800">
+        <ul className="rounded-lg border border-line">
           {tokens.data!.tokens.map((t) => (
             <li
               key={t.id}
-              className="flex items-center justify-between gap-4 border-b border-neutral-800 px-4 py-2 last:border-b-0"
+              className="flex items-center justify-between gap-4 border-b border-line px-4 py-2 last:border-b-0"
             >
               <div className="min-w-0">
                 <div className="truncate">
                   {t.name}{' '}
-                  <span className="font-mono text-xs text-neutral-500">
+                  <span className="font-mono text-xs text-muted">
                     {t.prefix}…{t.last4}
                   </span>
                 </div>
-                <div className="text-xs text-neutral-500">
+                <div className="text-xs text-muted">
                   {scopeSummary(t)} · Created {formatDate(t.createdAt)} · Last used{' '}
                   {t.lastUsedAt ? formatDate(t.lastUsedAt) : 'never'} · Expires {formatDate(t.expiresAt)}
                 </div>
@@ -69,7 +70,7 @@ export function DevicesSection() {
                 }}
                 disabled={revoke.isPending}
                 aria-label={`Revoke ${t.name}`}
-                className="shrink-0 text-sm text-red-400 hover:underline disabled:opacity-50"
+                className="shrink-0 text-sm text-danger hover:underline disabled:opacity-50"
               >
                 Revoke
               </button>
@@ -77,7 +78,7 @@ export function DevicesSection() {
           ))}
         </ul>
       )}
-      {revoke.isError && <p className="text-sm text-red-400">{(revoke.error as Error).message}</p>}
+      {revoke.isError && <p className="text-sm text-danger">{(revoke.error as Error).message}</p>}
     </section>
   );
 }

@@ -60,7 +60,7 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <form
         onSubmit={submit}
-        className="w-80 space-y-3 rounded-lg border border-neutral-700 bg-neutral-900 p-5 text-sm shadow-xl"
+        className="w-80 space-y-3 rounded-lg border border-border bg-panel p-5 text-sm shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-base font-semibold">Save Selection as Set</h3>
@@ -68,31 +68,31 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
           <p className="text-xs text-amber-400">No bricks selected. Select bricks first.</p>
         )}
         {picked.length > 0 && (
-          <p className="text-xs text-neutral-400">{picked.length} brick{picked.length !== 1 ? 's' : ''} selected.</p>
+          <p className="text-xs text-muted">{picked.length} brick{picked.length !== 1 ? 's' : ''} selected.</p>
         )}
         <label className="block">
-          <span className="mb-1 block text-neutral-400">Set name</span>
+          <span className="mb-1 block text-muted">Set name</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="New Set"
-            className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             autoFocus
           />
         </label>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-4 py-1.5 hover:bg-neutral-800"
+            className="rounded-lg border border-border px-4 py-1.5 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={picked.length === 0}
-            className="rounded-sm bg-blue-600 px-4 py-1.5 hover:bg-blue-500 disabled:opacity-40"
+            className="rounded-lg bg-accent text-accent-ink px-4 py-1.5 hover:bg-accent-hover disabled:opacity-40"
           >
             Download .set.xml
           </button>

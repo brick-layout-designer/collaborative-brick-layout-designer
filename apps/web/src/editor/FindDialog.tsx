@@ -80,7 +80,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
       aria-modal="false"
       aria-label="Find & Replace"
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
-      className="fixed right-4 top-16 z-40 w-152 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-800 bg-neutral-900 p-5 shadow-xl"
+      className="fixed right-4 top-16 z-40 w-152 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel p-5 shadow-xl"
     >
       <div>
         <h2 className="text-base font-semibold">Find &amp; Replace</h2>
@@ -90,7 +90,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
           <select
             value={scope}
             onChange={(e) => { setScope(e.target.value as FindScope); setCurrent(0); }}
-            className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1"
+            className="rounded-lg border border-border bg-soft px-2 py-1"
           >
             <option value="text">Text content</option>
             <option value="part">Part number</option>
@@ -107,48 +107,48 @@ export function FindDialog({ map, doc, onClose }: Props) {
 
         {/* Find row */}
         <div className="mt-3 flex items-center gap-2">
-          <span className="w-16 text-right text-xs text-neutral-500">Find</span>
+          <span className="w-16 text-right text-xs text-muted">Find</span>
           <input
             autoFocus
             value={needle}
             onChange={(e) => { setNeedle(e.target.value); setCurrent(0); }}
             placeholder="Search…"
-            className="flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm"
+            className="flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-sm"
           />
         </div>
 
         {/* Replace row */}
         <div className="mt-2 flex items-center gap-2">
-          <span className="w-16 text-right text-xs text-neutral-500">Replace</span>
+          <span className="w-16 text-right text-xs text-muted">Replace</span>
           <input
             value={replacement}
             onChange={(e) => setReplacement(e.target.value)}
             placeholder={scope === 'part' ? 'New part-number text…' : 'Replacement…'}
-            className="flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm"
+            className="flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-sm"
           />
           <button
             onClick={replaceCurrent}
             disabled={cur < 0}
             title="Replace the current (highlighted) match"
-            className="rounded-sm border border-neutral-700 px-3 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40"
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft disabled:opacity-40"
           >
             Replace
           </button>
           <button
             onClick={replaceAll}
             disabled={!needle.trim() || hits.length === 0}
-            className="rounded-sm bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-40"
+            className="rounded-lg bg-accent px-3 py-1 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-40"
           >
             Replace all
           </button>
         </div>
 
         {/* Results */}
-        <div className="mt-3 max-h-64 min-h-24 overflow-y-auto rounded-sm border border-neutral-800">
+        <div className="mt-3 max-h-64 min-h-24 overflow-y-auto rounded-lg border border-line">
           {needle.trim() === '' ? (
-            <p className="p-2 text-xs text-neutral-500">Type a query above.</p>
+            <p className="p-2 text-xs text-muted">Type a query above.</p>
           ) : hits.length === 0 ? (
-            <p className="p-2 text-xs text-neutral-500">No matches.</p>
+            <p className="p-2 text-xs text-muted">No matches.</p>
           ) : (
             <ul>
               {hits.map((h, i) => (
@@ -161,8 +161,8 @@ export function FindDialog({ map, doc, onClose }: Props) {
                     onDoubleClick={onClose}
                     aria-current={i === cur ? 'true' : undefined}
                     className={
-                      'block w-full px-2 py-1 text-left text-sm hover:bg-neutral-800 ' +
-                      (i === cur ? 'bg-blue-950/60 text-neutral-100' : '')
+                      'block w-full px-2 py-1 text-left text-sm hover:bg-soft ' +
+                      (i === cur ? 'bg-blue-950/60 text-ink' : '')
                     }
                   >
                     {h.preview}
@@ -173,11 +173,11 @@ export function FindDialog({ map, doc, onClose }: Props) {
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
+        <div className="mt-3 flex items-center justify-between text-xs text-muted">
           <span>{hits.length} match{hits.length === 1 ? '' : 'es'}</span>
           <button
             onClick={onClose}
-            className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Close
           </button>

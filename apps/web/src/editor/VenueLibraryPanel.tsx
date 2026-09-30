@@ -86,26 +86,26 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
     setSaving(venue);
   }
 
-  const btn = 'rounded-sm border border-neutral-700 px-2 py-0.5 hover:bg-neutral-700 disabled:opacity-40';
+  const btn = 'rounded-lg border border-border px-2 py-0.5 hover:bg-neutral-700 disabled:opacity-40';
 
   return (
-    <div className="flex h-full flex-col text-xs">
-      <div className="border-b border-neutral-800 p-2">
+    <div className="flex h-full flex-col overflow-y-auto text-xs">
+      <div className="border-b border-line p-2">
         <input
-          placeholder="Filter venues…"
+          placeholder="Filter rooms…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+          className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
       </div>
 
-      {isViewer && <p className="p-2 text-neutral-500">Sign in to access the venue library.</p>}
-      {!isViewer && list.isLoading && <p className="p-2 text-neutral-500">Loading…</p>}
-      {!isViewer && list.isError && <p className="p-2 text-red-400">Failed to load venue library.</p>}
+      {isViewer && <p className="p-2 text-muted">Sign in to access the venue library.</p>}
+      {!isViewer && list.isLoading && <p className="p-2 text-muted">Loading…</p>}
+      {!isViewer && list.isError && <p className="p-2 text-danger">Failed to load venue library.</p>}
 
-      <div className="flex-1 overflow-y-auto" role="listbox" aria-label="Saved venues">
+      <div className="min-h-[4.5rem] flex-1 overflow-y-auto" role="listbox" aria-label="Saved rooms">
         {filtered.length === 0 && !list.isLoading && (
-          <p className="p-2 text-neutral-500">{filter ? 'No matches.' : '(no saved venues)'}</p>
+          <p className="p-2 text-muted">{filter ? 'No matches.' : '(no saved venues)'}</p>
         )}
         {filtered.map((v) => (
           <div
@@ -114,18 +114,18 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
             aria-selected={v.id === selectedId}
             onClick={() => setSelectedId(v.id)}
             onDoubleClick={() => void load(v.id)}
-            className={`cursor-pointer truncate border-b border-neutral-800 px-2 py-1.5 ${v.id === selectedId ? 'bg-blue-900/40' : 'hover:bg-neutral-800/40'}`}
+            className={`cursor-pointer truncate border-b border-line px-2 py-1.5 ${v.id === selectedId ? 'bg-blue-900/40' : 'hover:bg-soft/40'}`}
             title={v.name}
           >
             {v.name}
-            {v.ownerOrgId && <span className="ml-1 text-neutral-500">(org)</span>}
+            {v.ownerOrgId && <span className="ml-1 text-muted">(org)</span>}
           </div>
         ))}
       </div>
 
       {!isViewer && (
-        <div className="space-y-2 border-t border-neutral-800 p-2">
-          <p data-testid="venue-detail" className="min-h-8 whitespace-pre-line text-neutral-400">
+        <div className="space-y-2 border-t border-line p-2">
+          <p data-testid="venue-detail" className="min-h-8 whitespace-pre-line text-muted">
             {current ? (selected.data ? venueDetail(selected.data.data as Venue) : selected.isError ? '(could not read venue)' : '') : ''}
           </p>
           <div className="flex flex-wrap gap-1">
@@ -139,7 +139,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
               Rename…
             </button>
             <button
-              className={`${btn} border-red-900 text-red-400 hover:bg-red-950`}
+              className={`${btn} border-red-900 text-danger hover:bg-red-950`}
               disabled={!current}
               onClick={() => {
                 if (!current || !confirm(`Delete "${current.name}" from the library?`)) return;

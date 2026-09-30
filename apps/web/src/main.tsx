@@ -14,6 +14,8 @@ import { OrgDetailPage } from './orgs/OrgDetailPage';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
+import { SettingsPage } from './settings/SettingsPage';
+import { PrefsProvider } from './theme/PrefsProvider';
 import { api } from './api';
 import { layoutsFromFiles, type DroppedLayout } from './bbmFiles';
 import { takeLayoutParts, type PartChoice, type PartDifference } from './layoutParts';
@@ -120,6 +122,7 @@ function GlobalBbmDrop() {
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <PrefsProvider>
       <BrowserRouter>
         <GlobalBbmDrop />
         <Suspense fallback={null}>
@@ -142,10 +145,12 @@ createRoot(root).render(
           <Route path="/venues/:id/design" element={<VenueDesignPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/p/:token" element={<PublicLayoutPage />} />
         </Routes>
         </Suspense>
       </BrowserRouter>
+      </PrefsProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

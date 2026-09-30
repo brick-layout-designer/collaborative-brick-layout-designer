@@ -41,17 +41,17 @@ export function AdminPage() {
   if (!me.data.user.isGlobalAdmin) return <Forbidden />;
 
   return (
-    <div className="h-full overflow-y-auto bg-neutral-950 p-8 text-neutral-100">
+    <div className="h-full overflow-y-auto bg-bg p-8 text-ink">
       <AppHeader user={me.data.user} />
       <div className="mt-6">
         <h1 className="text-base font-semibold">
           Platform admin
-          <span className="ml-2 rounded-sm bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
+          <span className="ml-2 rounded-lg bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
             Restricted
           </span>
         </h1>
       </div>
-      <nav className="mt-2 flex border-b border-neutral-800 text-sm">
+      <nav className="mt-2 flex border-b border-line text-sm">
         {(['dashboard', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'audit', 'settings'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -59,8 +59,8 @@ export function AdminPage() {
             className={
               'border-b-2 px-3 py-2 capitalize ' +
               (tab === t
-                ? 'border-blue-500 text-white'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200')
+                ? 'border-accent text-ink'
+                : 'border-transparent text-muted hover:text-ink')
             }
           >
             {t}
@@ -84,7 +84,7 @@ export function AdminPage() {
 function Dashboard() {
   const stats = useQuery({ queryKey: ['admin-stats'], queryFn: api.admin.stats });
   if (stats.isLoading) return <Loading />;
-  if (!stats.data) return <p className="text-sm text-neutral-500">No stats available.</p>;
+  if (!stats.data) return <p className="text-sm text-muted">No stats available.</p>;
   const tiles: { label: string; value: number; sub?: string }[] = [
     { label: 'Users', value: stats.data.users, sub: `${stats.data.demoUsers} demo · ${stats.data.globalAdmins} admin` },
     { label: 'Active sessions', value: stats.data.activeSessions },
@@ -98,11 +98,11 @@ function Dashboard() {
       {tiles.map((t) => (
         <div
           key={t.label}
-          className="rounded-lg border border-neutral-800 bg-neutral-900 p-4"
+          className="rounded-lg border border-line bg-panel p-4"
         >
-          <p className="text-xs uppercase tracking-wider text-neutral-500">{t.label}</p>
+          <p className="text-xs uppercase tracking-wider text-muted">{t.label}</p>
           <p className="mt-1 text-3xl font-semibold tabular-nums">{t.value.toLocaleString()}</p>
-          {t.sub && <p className="mt-1 text-xs text-neutral-500">{t.sub}</p>}
+          {t.sub && <p className="mt-1 text-xs text-muted">{t.sub}</p>}
         </div>
       ))}
     </div>
@@ -159,9 +159,9 @@ function UsersTab({ selfId }: { selfId: string }) {
       {list.isLoading ? (
         <Loading />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-800">
+        <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-900 text-left text-xs uppercase tracking-wider text-neutral-500">
+            <thead className="bg-panel text-left text-xs uppercase tracking-wider text-muted">
               <tr>
                 <Th>Email</Th>
                 <Th>Name</Th>
@@ -178,9 +178,9 @@ function UsersTab({ selfId }: { selfId: string }) {
               {list.data?.users.map((u) => {
                 const isSelf = u.id === selfId;
                 return (
-                  <tr key={u.id} className="border-t border-neutral-800">
+                  <tr key={u.id} className="border-t border-line">
                     <Td>
-                      <button onClick={() => setDetailId(u.id)} className="text-blue-400 hover:underline">
+                      <button onClick={() => setDetailId(u.id)} className="text-accent-text hover:underline">
                         {u.email}
                       </button>
                     </Td>
@@ -193,7 +193,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                       )}
                     </Td>
                     <Td align="right" className="tabular-nums">{u.layoutCount}</Td>
-                    <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(u.layoutSizeBytes)}</Td>
+                    <Td align="right" className="tabular-nums text-muted">{formatBytes(u.layoutSizeBytes)}</Td>
                     <Td>{new Date(u.createdAt).toLocaleDateString()}</Td>
                     <Td>
                       <input
@@ -223,7 +223,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                               revokeSessions.mutate(u.id);
                             }
                           }}
-                          className="rounded-sm border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+                          className="rounded-lg border border-border px-2 py-0.5 hover:bg-soft"
                         >
                           Sign out
                         </button>
@@ -238,7 +238,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                               removeUser.mutate(u.id);
                             }
                           }}
-                          className="rounded-sm border border-red-900 px-2 py-0.5 text-red-300 hover:bg-red-900/40 disabled:opacity-30"
+                          className="rounded-lg border border-red-900 px-2 py-0.5 text-red-300 hover:bg-red-900/40 disabled:opacity-30"
                         >
                           Delete
                         </button>
@@ -260,7 +260,7 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <section className="space-y-4">
-      <button onClick={onBack} className="text-sm text-blue-400 hover:underline">
+      <button onClick={onBack} className="text-sm text-accent-text hover:underline">
         ← Back to users
       </button>
       {detail.isLoading && <Loading />}
@@ -268,7 +268,7 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
         <>
           <div>
             <h2 className="text-base font-semibold">{detail.data.user.displayName}</h2>
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-muted">
               {detail.data.user.email}{' '}
               {detail.data.user.emailVerified ? (
                 <span className="text-emerald-400">· verified</span>
@@ -285,8 +285,8 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
               { label: 'Layout size', value: formatBytes(detail.data.stats.layoutSizeBytes) },
               { label: 'Active sessions', value: detail.data.stats.activeSessions },
             ].map((t) => (
-              <div key={t.label} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-                <p className="text-xs uppercase tracking-wider text-neutral-500">{t.label}</p>
+              <div key={t.label} className="rounded-lg border border-line bg-panel p-3">
+                <p className="text-xs uppercase tracking-wider text-muted">{t.label}</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums">{t.value}</p>
               </div>
             ))}
@@ -295,13 +295,13 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
           <div>
             <h3 className="text-sm font-semibold text-neutral-300">Organizations</h3>
             {detail.data.orgMemberships.length === 0 ? (
-              <p className="mt-1 text-sm text-neutral-500">Not a member of any org.</p>
+              <p className="mt-1 text-sm text-muted">Not a member of any org.</p>
             ) : (
-              <ul className="mt-1 divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+              <ul className="mt-1 divide-y divide-line rounded-lg border border-line">
                 {detail.data.orgMemberships.map((m) => (
                   <li key={m.orgId} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <span>{m.name} <span className="text-neutral-500">/{m.slug}</span></span>
-                    <span className="text-xs uppercase text-neutral-500">{m.role}</span>
+                    <span>{m.name} <span className="text-muted">/{m.slug}</span></span>
+                    <span className="text-xs uppercase text-muted">{m.role}</span>
                   </li>
                 ))}
               </ul>
@@ -311,20 +311,20 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
           <div>
             <h3 className="text-sm font-semibold text-neutral-300">Layouts</h3>
             {detail.data.layouts.length === 0 ? (
-              <p className="mt-1 text-sm text-neutral-500">No layouts owned by this user.</p>
+              <p className="mt-1 text-sm text-muted">No layouts owned by this user.</p>
             ) : (
               <table className="mt-1 w-full text-sm">
-                <thead className="text-left text-xs uppercase tracking-wider text-neutral-500">
+                <thead className="text-left text-xs uppercase tracking-wider text-muted">
                   <tr><Th>Title</Th><Th>Updated</Th><Th align="right">Size</Th></tr>
                 </thead>
                 <tbody>
                   {detail.data.layouts.map((l) => (
-                    <tr key={l.id} className="border-t border-neutral-800">
+                    <tr key={l.id} className="border-t border-line">
                       <Td>
-                        <Link to={`/editor/${l.id}`} className="text-blue-400 hover:underline">{l.title}</Link>
+                        <Link to={`/editor/${l.id}`} className="text-accent-text hover:underline">{l.title}</Link>
                       </Td>
                       <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
-                      <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(l.sizeBytes)}</Td>
+                      <Td align="right" className="tabular-nums text-muted">{formatBytes(l.sizeBytes)}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -373,9 +373,9 @@ function OrgsTab() {
       {list.isLoading ? (
         <Loading />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-800">
+        <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-900 text-left text-xs uppercase tracking-wider text-neutral-500">
+            <thead className="bg-panel text-left text-xs uppercase tracking-wider text-muted">
               <tr>
                 <Th>Name</Th>
                 <Th>Slug</Th>
@@ -388,16 +388,16 @@ function OrgsTab() {
             </thead>
             <tbody>
               {list.data?.orgs.map((o) => (
-                <tr key={o.id} className="border-t border-neutral-800">
+                <tr key={o.id} className="border-t border-line">
                   <Td>
-                    <button onClick={() => setDetailId(o.id)} className="text-blue-400 hover:underline">
+                    <button onClick={() => setDetailId(o.id)} className="text-accent-text hover:underline">
                       {o.name}
                     </button>
                   </Td>
                   <Td>{o.slug}</Td>
                   <Td>{o.memberCount}</Td>
                   <Td align="right" className="tabular-nums">{o.layoutCount}</Td>
-                  <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(o.layoutSizeBytes)}</Td>
+                  <Td align="right" className="tabular-nums text-muted">{formatBytes(o.layoutSizeBytes)}</Td>
                   <Td>{new Date(o.createdAt).toLocaleDateString()}</Td>
                   <Td align="right">
                     <button
@@ -410,7 +410,7 @@ function OrgsTab() {
                           removeOrg.mutate(o.id);
                         }
                       }}
-                      className="rounded-sm border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
+                      className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
                     >
                       Delete
                     </button>
@@ -430,7 +430,7 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <section className="space-y-4">
-      <button onClick={onBack} className="text-sm text-blue-400 hover:underline">
+      <button onClick={onBack} className="text-sm text-accent-text hover:underline">
         ← Back to orgs
       </button>
       {detail.isLoading && <Loading />}
@@ -438,7 +438,7 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
         <>
           <div>
             <h2 className="text-base font-semibold">{detail.data.org.name}</h2>
-            <p className="text-sm text-neutral-400">/{detail.data.org.slug}</p>
+            <p className="text-sm text-muted">/{detail.data.org.slug}</p>
           </div>
 
           <div className="grid grid-cols-3 gap-3 sm:max-w-md">
@@ -447,8 +447,8 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
               { label: 'Layouts', value: detail.data.stats.layouts },
               { label: 'Layout size', value: formatBytes(detail.data.stats.layoutSizeBytes) },
             ].map((t) => (
-              <div key={t.label} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-                <p className="text-xs uppercase tracking-wider text-neutral-500">{t.label}</p>
+              <div key={t.label} className="rounded-lg border border-line bg-panel p-3">
+                <p className="text-xs uppercase tracking-wider text-muted">{t.label}</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums">{t.value}</p>
               </div>
             ))}
@@ -456,11 +456,11 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
 
           <div>
             <h3 className="text-sm font-semibold text-neutral-300">Members</h3>
-            <ul className="mt-1 divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+            <ul className="mt-1 divide-y divide-line rounded-lg border border-line">
               {detail.data.members.map((m) => (
                 <li key={m.userId} className="flex items-center justify-between px-3 py-2 text-sm">
-                  <span>{m.displayName} <span className="text-neutral-500">({m.email})</span></span>
-                  <span className="text-xs uppercase text-neutral-500">{m.role}</span>
+                  <span>{m.displayName} <span className="text-muted">({m.email})</span></span>
+                  <span className="text-xs uppercase text-muted">{m.role}</span>
                 </li>
               ))}
             </ul>
@@ -469,20 +469,20 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
           <div>
             <h3 className="text-sm font-semibold text-neutral-300">Layouts</h3>
             {detail.data.layouts.length === 0 ? (
-              <p className="mt-1 text-sm text-neutral-500">No layouts owned by this org.</p>
+              <p className="mt-1 text-sm text-muted">No layouts owned by this org.</p>
             ) : (
               <table className="mt-1 w-full text-sm">
-                <thead className="text-left text-xs uppercase tracking-wider text-neutral-500">
+                <thead className="text-left text-xs uppercase tracking-wider text-muted">
                   <tr><Th>Title</Th><Th>Updated</Th><Th align="right">Size</Th></tr>
                 </thead>
                 <tbody>
                   {detail.data.layouts.map((l) => (
-                    <tr key={l.id} className="border-t border-neutral-800">
+                    <tr key={l.id} className="border-t border-line">
                       <Td>
-                        <Link to={`/editor/${l.id}`} className="text-blue-400 hover:underline">{l.title}</Link>
+                        <Link to={`/editor/${l.id}`} className="text-accent-text hover:underline">{l.title}</Link>
                       </Td>
                       <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
-                      <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(l.sizeBytes)}</Td>
+                      <Td align="right" className="tabular-nums text-muted">{formatBytes(l.sizeBytes)}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -525,9 +525,9 @@ function LayoutsTab() {
       {list.isLoading ? (
         <Loading />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-800">
+        <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-900 text-left text-xs uppercase tracking-wider text-neutral-500">
+            <thead className="bg-panel text-left text-xs uppercase tracking-wider text-muted">
               <tr>
                 <Th>Title</Th>
                 <Th>Owner</Th>
@@ -540,16 +540,16 @@ function LayoutsTab() {
             </thead>
             <tbody>
               {list.data?.layouts.map((l) => (
-                <tr key={l.id} className="border-t border-neutral-800">
+                <tr key={l.id} className="border-t border-line">
                   <Td>
-                    <Link to={`/editor/${l.id}`} className="text-blue-400 hover:underline">
+                    <Link to={`/editor/${l.id}`} className="text-accent-text hover:underline">
                       {l.title}
                     </Link>
                   </Td>
-                  <Td className="text-xs text-neutral-400">
+                  <Td className="text-xs text-muted">
                     {l.ownerOrgName ?? l.ownerUserEmail ?? (l.ownerUserId ? '(deleted user)' : '—')}
                   </Td>
-                  <Td align="right" className="tabular-nums text-neutral-400">{formatBytes(l.sizeBytes)}</Td>
+                  <Td align="right" className="tabular-nums text-muted">{formatBytes(l.sizeBytes)}</Td>
                   <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
                   <Td>{l.docVersion}</Td>
                   <Td>{l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : '—'}</Td>
@@ -560,7 +560,7 @@ function LayoutsTab() {
                           removeLayout.mutate(l.id);
                         }
                       }}
-                      className="rounded-sm border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
+                      className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
                     >
                       Delete
                     </button>
@@ -600,23 +600,23 @@ function Toolbar({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={placeholder}
-        className="w-72 rounded-sm border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
+        className="w-72 rounded-lg border border-border bg-panel px-3 py-1.5 text-sm"
       />
-      <span className="text-xs text-neutral-500">
+      <span className="text-xs text-muted">
         {start}–{end} of {total.toLocaleString()}
       </span>
       <div className="ml-auto flex items-center gap-1">
         <button
           onClick={() => setOffset(Math.max(0, offset - limit))}
           disabled={offset === 0}
-          className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30"
+          className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30"
         >
           Prev
         </button>
         <button
           onClick={() => setOffset(offset + limit)}
           disabled={end >= total}
-          className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30"
+          className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30"
         >
           Next
         </button>
@@ -731,39 +731,39 @@ function GlobalPartsTab() {
     <div className="space-y-8">
       <section>
         <h2 className="mb-3 text-sm font-semibold text-neutral-300">Upload global part</h2>
-        <form onSubmit={handleUpload} className="space-y-3 rounded-sm border border-neutral-800 p-4">
+        <form onSubmit={handleUpload} className="space-y-3 rounded-lg border border-line p-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Part number
               <input
                 value={form.partNumber}
                 onChange={(e) => setForm((f) => ({ ...f, partNumber: e.target.value }))}
-                className="rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-100"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 required
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Display name
               <input
                 value={form.displayName}
                 onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-                className="rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-100"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 required
               />
             </label>
-            <div className="flex flex-col gap-1 text-xs text-neutral-400">
+            <div className="flex flex-col gap-1 text-xs text-muted">
               <CategoryPicker
                 categories={existingCategories}
                 value={form.category}
                 onChange={(v) => setForm((f) => ({ ...f, category: v }))}
               />
             </div>
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Owner org (optional)
               <select
                 value={form.orgSlug}
                 onChange={(e) => setForm((f) => ({ ...f, orgSlug: e.target.value }))}
-                className="rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-100"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
               >
                 <option value="">Global (all users)</option>
                 {(orgs.data?.orgs ?? []).map((o: OrgSummary) => (
@@ -771,22 +771,22 @@ function GlobalPartsTab() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Part XML (.xml)
               <input ref={xmlRef} type="file" accept=".xml,application/xml,text/xml" required
                 className="text-neutral-300" />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Sprite file (.gif / .png)
               <input ref={spriteRef} type="file" accept="image/gif,image/png" required
                 className="text-neutral-300" />
             </label>
           </div>
-          {uploadErr && <p className="text-xs text-red-400">{uploadErr}</p>}
+          {uploadErr && <p className="text-xs text-danger">{uploadErr}</p>}
           <button
             type="submit"
             disabled={uploading}
-            className="rounded-sm bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+            className="rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
           >
             {uploading ? 'Uploading…' : 'Upload global part'}
           </button>
@@ -799,18 +799,18 @@ function GlobalPartsTab() {
         </h2>
         {parts.isLoading && <Loading />}
         {parts.data && parts.data.parts.length === 0 && (
-          <p className="text-xs text-neutral-500">No global parts yet.</p>
+          <p className="text-xs text-muted">No global parts yet.</p>
         )}
         {parts.data && parts.data.parts.length > 0 && (
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-neutral-800 text-left text-neutral-500">
+              <tr className="border-b border-line text-left text-muted">
                 <Th>Part #</Th><Th>Name</Th><Th>Category</Th><Th>Sprite</Th><Th>Added</Th><Th>{''}</Th>
               </tr>
             </thead>
             <tbody>
               {parts.data.parts.map((p: AdminGlobalPart) => (
-                <tr key={p.id} className="border-b border-neutral-900 hover:bg-neutral-900/40">
+                <tr key={p.id} className="border-b border-line hover:bg-panel/40">
                   <Td>{p.partNumber}</Td>
                   <Td>{p.displayName}</Td>
                   <Td>{p.category}</Td>
@@ -823,7 +823,7 @@ function GlobalPartsTab() {
                           deletePart.mutate(p.id);
                         }
                       }}
-                      className="text-red-400 hover:underline"
+                      className="text-danger hover:underline"
                     >
                       Delete
                     </button>
@@ -1071,61 +1071,61 @@ function PartLibrariesTab() {
     <div className="space-y-8">
 
       {/* ── Base library ── */}
-      <section className="rounded-sm border border-neutral-800 p-4 space-y-4">
+      <section className="rounded-lg border border-line p-4 space-y-4">
 
         {/* Register on-disk library */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-neutral-300">BlueBrickParts base library</h2>
-            <p className="mt-1 text-xs text-neutral-500">
-              If the parts submodule is already on disk at <code className="text-neutral-400">PARTS_DIR</code>,
+            <p className="mt-1 text-xs text-muted">
+              If the parts submodule is already on disk at <code className="text-muted">PARTS_DIR</code>,
               this registers it so orgs can enable/disable it. No download needed.
             </p>
           </div>
           {baseInstalled ? (
-            <span className="shrink-0 rounded-sm bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
+            <span className="shrink-0 rounded-lg bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
               Installed
             </span>
           ) : (
             <button
               onClick={installBase}
               disabled={baseStatus === 'installing'}
-              className="shrink-0 rounded-sm bg-neutral-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-600 disabled:opacity-50"
+              className="shrink-0 rounded-lg bg-neutral-700 px-3 py-1.5 text-xs font-medium text-ink hover:bg-neutral-600 disabled:opacity-50"
             >
               {baseStatus === 'installing' ? 'Registering…' : 'Register on-disk library'}
             </button>
           )}
         </div>
-        {baseStatus === 'err' && <p className="text-xs text-red-400">{baseErr}</p>}
+        {baseStatus === 'err' && <p className="text-xs text-danger">{baseErr}</p>}
 
         {/* Download from GitHub — only shown when the on-disk submodule isn't already registered */}
         {!baseInstalled && (
           <>
-            <div className="flex items-start justify-between gap-4 border-t border-neutral-800 pt-4">
+            <div className="flex items-start justify-between gap-4 border-t border-line pt-4">
               <div>
                 <h2 className="text-sm font-semibold text-neutral-300">Download BlueBrickParts from GitHub</h2>
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-muted">
                   Downloads the latest{' '}
-                  <span className="text-neutral-400">Lswbanban/BlueBrickParts</span> archive (~27 MB),
-                  extracts it to <code className="text-neutral-400">PARTS_DIR/libraries/bluebrickparts-default/</code>,
+                  <span className="text-muted">Lswbanban/BlueBrickParts</span> archive (~27 MB),
+                  extracts it to <code className="text-muted">PARTS_DIR/libraries/bluebrickparts-default/</code>,
                   and enables it for all orgs by default.
                 </p>
               </div>
               {baseDownloaded ? (
-                <span className="shrink-0 rounded-sm bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
+                <span className="shrink-0 rounded-lg bg-emerald-900/30 px-2 py-1 text-xs text-emerald-400">
                   Downloaded
                 </span>
               ) : (
                 <button
                   onClick={downloadDefaultLibrary}
                   disabled={dlBaseStatus === 'downloading'}
-                  className="shrink-0 rounded-sm bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                  className="shrink-0 rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
                 >
                   {dlBaseStatus === 'downloading' ? 'Downloading…' : 'Download default library'}
                 </button>
               )}
             </div>
-            {dlBaseStatus === 'err' && <p className="text-xs text-red-400">{dlBaseErr}</p>}
+            {dlBaseStatus === 'err' && <p className="text-xs text-danger">{dlBaseErr}</p>}
             {dlBaseStatus === 'done' && <p className="text-xs text-emerald-400">Downloaded and installed successfully.</p>}
           </>
         )}
@@ -1135,12 +1135,12 @@ function PartLibrariesTab() {
       {/* ── Download Center ── */}
       <section>
         <h2 className="mb-1 text-sm font-semibold text-neutral-300">Download Center</h2>
-        <p className="mb-3 text-xs text-neutral-500">
+        <p className="mb-3 text-xs text-muted">
           Search the BlueBrick community package servers for additional part libraries (same sources as
           the desktop app). The server downloads and extracts the zip — no browser upload needed.
         </p>
 
-        <div className="space-y-2 rounded-sm border border-neutral-800 p-4">
+        <div className="space-y-2 rounded-lg border border-line p-4">
           {/* Source selection */}
           <div className="space-y-1">
             {KNOWN_SOURCES.map((src) => (
@@ -1149,7 +1149,7 @@ function PartLibrariesTab() {
                   type="checkbox"
                   checked={selectedSources.has(src.id)}
                   onChange={() => toggleSource(src.id)}
-                  className="accent-blue-500"
+                  className="accent-accent"
                 />
                 <span>{src.label}</span>
                 <span className="text-neutral-600">— {src.hint}</span>
@@ -1160,7 +1160,7 @@ function PartLibrariesTab() {
                 type="checkbox"
                 checked={selectedSources.has('custom')}
                 onChange={() => toggleSource('custom')}
-                className="accent-blue-500"
+                className="accent-accent"
               />
               <span>Custom URL</span>
               <input
@@ -1168,7 +1168,7 @@ function PartLibrariesTab() {
                 onChange={(e) => setCustomUrl(e.target.value)}
                 disabled={!selectedSources.has('custom')}
                 placeholder="https://example.com/parts/"
-                className="ml-1 flex-1 rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs disabled:opacity-40"
+                className="ml-1 flex-1 rounded-lg border border-border bg-panel px-2 py-0.5 text-xs disabled:opacity-40"
               />
             </label>
           </div>
@@ -1177,59 +1177,59 @@ function PartLibrariesTab() {
             <button
               onClick={handleSearch}
               disabled={searchStatus === 'searching'}
-              className="rounded-sm bg-neutral-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-600 disabled:opacity-50"
+              className="rounded-lg bg-neutral-700 px-3 py-1.5 text-xs font-medium text-ink hover:bg-neutral-600 disabled:opacity-50"
             >
               {searchStatus === 'searching' ? 'Searching…' : 'Search'}
             </button>
             {searchStatus === 'done' && (
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-muted">
                 {candidates.length} package(s) found
                 {candidates.filter((c) => c.installed).length > 0 &&
                   ` · ${candidates.filter((c) => c.installed).length} already installed`}
               </span>
             )}
-            {searchErr && <span className="text-xs text-red-400">{searchErr}</span>}
+            {searchErr && <span className="text-xs text-danger">{searchErr}</span>}
           </div>
 
           {candidates.length > 0 && (
             <div className="mt-3 space-y-2">
-              <div className="max-h-64 overflow-y-auto rounded-sm border border-neutral-700">
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
                 {candidates.map((pkg, idx) => (
                   <label
                     key={pkg.sourceUrl}
-                    className={`flex items-center gap-2 border-b border-neutral-800 px-3 py-1.5 text-xs last:border-0 ${pkg.installed ? 'opacity-50' : 'cursor-pointer hover:bg-neutral-900/40'}`}
+                    className={`flex items-center gap-2 border-b border-line px-3 py-1.5 text-xs last:border-0 ${pkg.installed ? 'opacity-50' : 'cursor-pointer hover:bg-panel/40'}`}
                   >
                     <input
                       type="checkbox"
                       checked={pkg.checked}
                       disabled={pkg.installed || pkg.installing}
                       onChange={() => toggleCandidate(idx)}
-                      className="accent-blue-500"
+                      className="accent-accent"
                     />
-                    <span className="flex-1 font-medium text-neutral-200">
+                    <span className="flex-1 font-medium text-ink">
                       {pkg.name}
-                      {pkg.version && <span className="ml-1 text-neutral-500">v{pkg.version}</span>}
+                      {pkg.version && <span className="ml-1 text-muted">v{pkg.version}</span>}
                     </span>
-                    {pkg.installing && <span className="text-blue-400">Installing…</span>}
+                    {pkg.installing && <span className="text-accent-text">Installing…</span>}
                     {pkg.installed && <span className="text-emerald-400">✓ installed</span>}
-                    {pkg.err && <span className="text-red-400">{pkg.err}</span>}
+                    {pkg.err && <span className="text-danger">{pkg.err}</span>}
                   </label>
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-neutral-400">
+                <label className="flex items-center gap-2 text-xs text-muted">
                   <input
                     type="checkbox"
                     checked={defaultEnabled}
                     onChange={(e) => setDefaultEnabled(e.target.checked)}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
                   Enable for all orgs by default
                 </label>
                 <button
                   onClick={handleDownloadSelected}
                   disabled={!anyChecked || anyDownloading}
-                  className="rounded-sm bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                  className="rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
                 >
                   {anyDownloading ? 'Installing…' : 'Download & Install selected'}
                 </button>
@@ -1242,7 +1242,7 @@ function PartLibrariesTab() {
       {/* ── Manual install ── */}
       <section>
         <h2 className="mb-1 text-sm font-semibold text-neutral-300">Manual install</h2>
-        <p className="mb-3 text-xs text-neutral-500">
+        <p className="mb-3 text-xs text-muted">
           Install from a direct zip URL or upload a local file. Use this for private or unlisted library zips.
         </p>
         <div className="mb-3 flex gap-2">
@@ -1250,65 +1250,65 @@ function PartLibrariesTab() {
             <button
               key={mode}
               onClick={() => setManualMode(mode)}
-              className={`rounded-sm px-3 py-1 text-xs ${manualMode === mode ? 'bg-blue-700 text-white' : 'border border-neutral-700 text-neutral-400 hover:bg-neutral-800'}`}
+              className={`rounded-lg px-3 py-1 text-xs ${manualMode === mode ? 'bg-accent-hover text-accent-ink' : 'border border-border text-muted hover:bg-soft'}`}
             >
               {mode === 'url' ? 'From URL' : 'Upload zip'}
             </button>
           ))}
         </div>
-        <form onSubmit={handleManualInstall} className="space-y-3 rounded-sm border border-neutral-800 p-4">
+        <form onSubmit={handleManualInstall} className="space-y-3 rounded-lg border border-line p-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Library name
               <input
                 value={manualForm.name}
                 onChange={(e) => setManualForm((f) => ({ ...f, name: e.target.value }))}
-                className="rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-100"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 placeholder="My Parts Pack"
                 required
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-neutral-400">
+            <label className="flex flex-col gap-1 text-xs text-muted">
               Slug (unique, URL-safe)
               <input
                 value={manualForm.slug}
                 onChange={(e) => setManualForm((f) => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))}
-                className="rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-100"
+                className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                 placeholder="my-parts-pack"
                 required
               />
             </label>
             {manualMode === 'url' ? (
-              <label className="col-span-2 flex flex-col gap-1 text-xs text-neutral-400">
+              <label className="col-span-2 flex flex-col gap-1 text-xs text-muted">
                 Direct zip URL
                 <input
                   value={manualForm.sourceUrl}
                   onChange={(e) => setManualForm((f) => ({ ...f, sourceUrl: e.target.value }))}
-                  className="rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-100"
+                  className="rounded-lg border border-border bg-panel px-2 py-1 text-ink"
                   placeholder="https://example.com/MyParts.zip"
                 />
               </label>
             ) : (
-              <label className="col-span-2 flex flex-col gap-1 text-xs text-neutral-400">
+              <label className="col-span-2 flex flex-col gap-1 text-xs text-muted">
                 Zip file
                 <input ref={zipRef} type="file" accept=".zip,application/zip" required className="text-neutral-300" />
               </label>
             )}
-            <label className="col-span-2 flex items-center gap-2 text-xs text-neutral-400">
+            <label className="col-span-2 flex items-center gap-2 text-xs text-muted">
               <input
                 type="checkbox"
                 checked={manualForm.defaultEnabled}
                 onChange={(e) => setManualForm((f) => ({ ...f, defaultEnabled: e.target.checked }))}
-                className="accent-blue-500"
+                className="accent-accent"
               />
               Enable for all orgs by default
             </label>
           </div>
-          {manualErr && <p className="text-xs text-red-400">{manualErr}</p>}
+          {manualErr && <p className="text-xs text-danger">{manualErr}</p>}
           <button
             type="submit"
             disabled={manualInstalling}
-            className="rounded-sm bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+            className="rounded-lg bg-accent-hover px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent disabled:opacity-50"
           >
             {manualInstalling ? 'Installing…' : 'Install'}
           </button>
@@ -1325,35 +1325,35 @@ function PartLibrariesTab() {
             onClick={() => reloadParts.mutate()}
             disabled={reloadParts.isPending}
             title="Rescan all part library directories without restarting the server"
-            className="rounded-sm border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-lg border border-border px-2 py-1 text-xs text-neutral-300 hover:bg-soft disabled:opacity-50"
           >
             {reloadParts.isPending ? 'Reloading…' : 'Reload parts'}
           </button>
         </div>
         {libs.isLoading && <Loading />}
         {libs.data && libs.data.libraries.length === 0 && (
-          <p className="text-xs text-neutral-500">No part libraries installed yet.</p>
+          <p className="text-xs text-muted">No part libraries installed yet.</p>
         )}
         {libs.data && libs.data.libraries.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-neutral-800">
+          <div className="overflow-x-auto rounded-lg border border-line">
             <table className="w-full text-xs">
-              <thead className="bg-neutral-900 text-left text-neutral-500">
+              <thead className="bg-panel text-left text-muted">
                 <tr>
                   <Th>Name</Th><Th>Slug</Th><Th>Parts</Th><Th>Default on</Th><Th>Source</Th><Th>Path on disk</Th><Th>Installed</Th><Th align="right">Actions</Th>
                 </tr>
               </thead>
               <tbody>
                 {libs.data.libraries.map((lib: PartLibrary) => (
-                  <tr key={lib.id} className="border-t border-neutral-800 hover:bg-neutral-900/40">
+                  <tr key={lib.id} className="border-t border-line hover:bg-panel/40">
                     <Td>
                       {lib.name}
                       {lib.locked && (
-                        <span className="ml-2 rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400" title="Always enabled for everyone — cannot be disabled by org admins">
+                        <span className="ml-2 rounded-lg bg-soft px-1.5 py-0.5 text-[10px] text-muted" title="Always enabled for everyone — cannot be disabled by org admins">
                           locked
                         </span>
                       )}
                     </Td>
-                    <Td className="font-mono text-neutral-400">{lib.slug}</Td>
+                    <Td className="font-mono text-muted">{lib.slug}</Td>
                     <Td>{lib.partCount.toLocaleString()}</Td>
                     <Td>
                       <input
@@ -1361,18 +1361,18 @@ function PartLibrariesTab() {
                         checked={lib.defaultEnabled}
                         disabled={lib.locked}
                         onChange={(e) => !lib.locked && patchLib.mutate({ id: lib.id, body: { defaultEnabled: e.target.checked } })}
-                        className="accent-blue-500 disabled:opacity-40"
+                        className="accent-accent disabled:opacity-40"
                         title={lib.locked ? 'Always enabled — cannot be changed' : 'Enable for all orgs by default'}
                       />
                     </Td>
-                    <Td className="max-w-[16rem] truncate text-neutral-500">
+                    <Td className="max-w-[16rem] truncate text-muted">
                       {lib.sourceUrl ? (
                         <span title={lib.sourceUrl}>{lib.sourceUrl}</span>
                       ) : (
                         <span className="italic text-neutral-600">upload</span>
                       )}
                     </Td>
-                    <Td className="max-w-[20rem] truncate font-mono text-[11px] text-neutral-500">
+                    <Td className="max-w-[20rem] truncate font-mono text-[11px] text-muted">
                       <span title={lib.diskPath}>{lib.diskPath}</span>
                     </Td>
                     <Td>{new Date(lib.installedAt).toLocaleDateString()}</Td>
@@ -1382,7 +1382,7 @@ function PartLibrariesTab() {
                           <button
                             onClick={() => updateLib.mutate(lib.id)}
                             disabled={updateLib.isPending}
-                            className="text-blue-400 hover:underline disabled:opacity-50"
+                            className="text-accent-text hover:underline disabled:opacity-50"
                             title={`Re-download from ${lib.sourceUrl}`}
                           >
                             {updateLib.isPending ? 'Updating…' : 'Update'}
@@ -1390,7 +1390,7 @@ function PartLibrariesTab() {
                         )}
                         <button
                           onClick={() => patchLib.mutate({ id: lib.id, body: { locked: !lib.locked } })}
-                          className="text-neutral-400 hover:underline"
+                          className="text-muted hover:underline"
                           title={lib.locked ? 'Unlock — allow org admins to disable this library' : 'Lock — force this library on for all orgs'}
                         >
                           {lib.locked ? 'Unlock' : 'Lock'}
@@ -1402,7 +1402,7 @@ function PartLibrariesTab() {
                                 deleteLib.mutate(lib.id);
                               }
                             }}
-                            className="text-red-400 hover:underline"
+                            className="text-danger hover:underline"
                           >
                             Delete
                           </button>
@@ -1441,20 +1441,20 @@ function AuditTab() {
         <>
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-neutral-800 text-left text-neutral-500">
+              <tr className="border-b border-line text-left text-muted">
                 <Th>Time</Th><Th>Event</Th><Th>User</Th><Th>Resource</Th><Th>Payload</Th>
               </tr>
             </thead>
             <tbody>
               {log.data.events.map((e: AdminAuditEvent) => (
-                <tr key={e.id} className="border-b border-neutral-900 hover:bg-neutral-900/40">
+                <tr key={e.id} className="border-b border-line hover:bg-panel/40">
                   <Td>{new Date(e.createdAt).toLocaleString()}</Td>
                   <Td>{e.eventType}</Td>
                   <Td>{e.userName ?? e.userId ?? '—'}</Td>
-                  <Td className="font-mono text-[10px] text-neutral-500">{e.layoutId ?? (e.resourceKind ? `${e.resourceKind}:${e.resourceId}` : '—')}</Td>
+                  <Td className="font-mono text-[10px] text-muted">{e.layoutId ?? (e.resourceKind ? `${e.resourceKind}:${e.resourceId}` : '—')}</Td>
                   <Td>
                     <details>
-                      <summary className="cursor-pointer text-neutral-500">view</summary>
+                      <summary className="cursor-pointer text-muted">view</summary>
                       <pre className="mt-1 max-w-xs overflow-auto whitespace-pre-wrap text-neutral-300">
                         {JSON.stringify(e.payload, null, 2)}
                       </pre>
@@ -1464,11 +1464,11 @@ function AuditTab() {
               ))}
             </tbody>
           </table>
-          <div className="flex gap-3 text-xs text-neutral-400">
+          <div className="flex gap-3 text-xs text-muted">
             <button
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - AUDIT_PAGE))}
-              className="rounded-sm border border-neutral-700 px-2 py-1 hover:bg-neutral-800 disabled:opacity-40"
+              className="rounded-lg border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
             >
               ← Prev
             </button>
@@ -1478,7 +1478,7 @@ function AuditTab() {
             <button
               disabled={offset + AUDIT_PAGE >= log.data.total}
               onClick={() => setOffset(offset + AUDIT_PAGE)}
-              className="rounded-sm border border-neutral-700 px-2 py-1 hover:bg-neutral-800 disabled:opacity-40"
+              className="rounded-lg border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
             >
               Next →
             </button>
@@ -1547,7 +1547,7 @@ function SettingsTab() {
   });
 
   if (settings.isLoading) return <Loading />;
-  if (!settings.data) return <p className="text-sm text-neutral-500">Couldn't load settings.</p>;
+  if (!settings.data) return <p className="text-sm text-muted">Couldn't load settings.</p>;
 
   const usingDbSmtp = smtpHost.trim() !== '';
 
@@ -1564,7 +1564,7 @@ function SettingsTab() {
           />
           <span>
             Require new email/password accounts to verify their email before signing in
-            <span className="block text-xs text-neutral-500">
+            <span className="block text-xs text-muted">
               Off: registration logs the user in immediately, matching pre-verification
               behaviour. Existing unverified accounts aren't retroactively marked verified —
               turning this off just stops enforcing the check.
@@ -1572,7 +1572,7 @@ function SettingsTab() {
           </span>
         </label>
         {requireVerification && !settings.data.smtp.active && (
-          <p className="rounded-sm border border-amber-900 bg-amber-950/30 p-2 text-xs text-amber-300">
+          <p className="rounded-lg border border-amber-900 bg-amber-950/30 p-2 text-xs text-amber-300">
             No SMTP server is configured below (or in the environment) — verification links
             will only be written to the server log, not emailed.
           </p>
@@ -1582,13 +1582,13 @@ function SettingsTab() {
       <section className="space-y-3">
         <div>
           <h2 className="text-sm font-semibold text-neutral-300">SMTP server</h2>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-muted">
             Used for signup verification links and org/layout invite emails.{' '}
             {settings.data.smtp.source === 'database' && (
               <span className="text-emerald-400">Using the configuration below.</span>
             )}
             {settings.data.smtp.source === 'env' && (
-              <span className="text-neutral-400">
+              <span className="text-muted">
                 Using the deployment's environment variables — fill in a host below to override.
               </span>
             )}
@@ -1599,17 +1599,17 @@ function SettingsTab() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="col-span-2 space-y-1 text-xs text-neutral-400">
+          <label className="col-span-2 space-y-1 text-xs text-muted">
             Host
             <input
               type="text"
               value={smtpHost}
               onChange={(e) => setSmtpHost(e.target.value)}
               placeholder="smtp.example.com"
-              className="block w-full rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink"
             />
           </label>
-          <label className="space-y-1 text-xs text-neutral-400">
+          <label className="space-y-1 text-xs text-muted">
             Port
             <input
               type="number"
@@ -1617,10 +1617,10 @@ function SettingsTab() {
               onChange={(e) => setSmtpPort(e.target.value)}
               placeholder="587"
               disabled={!usingDbSmtp}
-              className="block w-full rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
-          <label className="space-y-1 text-xs text-neutral-400">
+          <label className="space-y-1 text-xs text-muted">
             From address
             <input
               type="email"
@@ -1628,20 +1628,20 @@ function SettingsTab() {
               onChange={(e) => setSmtpFrom(e.target.value)}
               placeholder="noreply@example.com"
               disabled={!usingDbSmtp}
-              className="block w-full rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
-          <label className="space-y-1 text-xs text-neutral-400">
+          <label className="space-y-1 text-xs text-muted">
             Username
             <input
               type="text"
               value={smtpUser}
               onChange={(e) => setSmtpUser(e.target.value)}
               disabled={!usingDbSmtp}
-              className="block w-full rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
-          <label className="space-y-1 text-xs text-neutral-400">
+          <label className="space-y-1 text-xs text-muted">
             Password
             <input
               type="password"
@@ -1649,12 +1649,12 @@ function SettingsTab() {
               onChange={(e) => { setSmtpPass(e.target.value); setSmtpPassTouched(true); }}
               disabled={!usingDbSmtp}
               placeholder={settings.data.smtp.passSet ? '•••••••• (set — leave blank to keep)' : '(not set)'}
-              className="block w-full rounded-sm border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 disabled:opacity-40"
+              className="block w-full rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink disabled:opacity-40"
             />
           </label>
         </div>
         {!usingDbSmtp && (
-          <p className="text-xs text-neutral-500">Enter a host above to set a database-backed SMTP config.</p>
+          <p className="text-xs text-muted">Enter a host above to set a database-backed SMTP config.</p>
         )}
       </section>
 
@@ -1662,28 +1662,28 @@ function SettingsTab() {
         <button
           onClick={() => { setSaveStatus('saving'); setSaveErr(''); save.mutate(); }}
           disabled={save.isPending}
-          className="rounded-sm bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50"
+          className="rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover disabled:opacity-50"
         >
           {save.isPending ? 'Saving…' : 'Save settings'}
         </button>
         {saveStatus === 'saved' && <span className="text-sm text-emerald-400">Saved.</span>}
-        {saveStatus === 'err' && <span className="text-sm text-red-400">{saveErr}</span>}
+        {saveStatus === 'err' && <span className="text-sm text-danger">{saveErr}</span>}
       </div>
     </div>
   );
 }
 
 function Loading() {
-  return <p className="text-sm text-neutral-500">Loading…</p>;
+  return <p className="text-sm text-muted">Loading…</p>;
 }
 
 function Forbidden() {
   return (
-    <div className="grid min-h-screen place-items-center text-neutral-400">
-      <div className="rounded-sm border border-red-900 bg-red-950/30 p-6 text-center">
+    <div className="grid min-h-screen place-items-center text-muted">
+      <div className="rounded-lg border border-red-900 bg-red-950/30 p-6 text-center">
         <p className="font-semibold text-red-300">Forbidden</p>
         <p className="mt-1 text-sm">This page is restricted to platform admins.</p>
-        <Link to="/" className="mt-3 inline-block text-sm text-blue-400 hover:underline">
+        <Link to="/" className="mt-3 inline-block text-sm text-accent-text hover:underline">
           ← Back to app
         </Link>
       </div>

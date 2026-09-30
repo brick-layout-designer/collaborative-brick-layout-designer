@@ -51,28 +51,28 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
   }
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col bg-neutral-925 text-sm">
-      <div className="border-b border-neutral-800 p-2">
+    <aside className="flex h-full min-h-0 w-full flex-col bg-panel text-sm">
+      <div className="border-b border-line p-2">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter modules…"
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+          className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {list.isLoading && <p className="p-3 text-xs text-neutral-500">Loading…</p>}
+        {list.isLoading && <p className="p-3 text-xs text-muted">Loading…</p>}
         {!list.isLoading && modules.length === 0 && (
-          <p className="p-3 text-xs text-neutral-500">
+          <p className="p-3 text-xs text-muted">
             {filter ? 'No modules match.' : 'No saved modules yet.'}
           </p>
         )}
         {error && (
-          <p className="mx-2 mt-2 rounded-sm border border-red-900 bg-red-950/30 px-2 py-1 text-xs text-red-300">
+          <p className="mx-2 mt-2 rounded-lg border border-red-900 bg-red-950/30 px-2 py-1 text-xs text-red-300">
             {error}
           </p>
         )}
-        <ul className="divide-y divide-neutral-800/60">
+        <ul className="divide-y divide-line/60">
           {modules.map((m) => (
             <ModuleLibraryRow
               key={m.id}
@@ -150,7 +150,7 @@ function ModuleLibraryRow({
       onDragEnd={() => {
         activeModuleDrag.id = null;
       }}
-      className="group flex cursor-grab items-start justify-between gap-2 px-2 py-2 hover:bg-neutral-800/60 active:cursor-grabbing"
+      className="group flex cursor-grab items-start justify-between gap-2 px-2 py-2 hover:bg-soft/60 active:cursor-grabbing"
     >
       <div className="min-w-0 flex-1 leading-tight" onDoubleClick={isViewer ? undefined : onInsert}>
         {editing ? (
@@ -164,11 +164,11 @@ function ModuleLibraryRow({
               if (e.key === 'Escape') setEditing(false);
             }}
             disabled={renaming}
-            className="w-full rounded-sm border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-neutral-100"
+            className="w-full rounded-lg border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-ink"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <p className="truncate font-medium text-neutral-200 text-xs">{module.title}</p>
+          <p className="truncate font-medium text-ink text-xs">{module.title}</p>
         )}
         <p className="text-[10px] text-neutral-600">
           v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
@@ -180,7 +180,7 @@ function ModuleLibraryRow({
             onClick={onInsert}
             disabled={isInserting}
             title="Insert into layout"
-            className="rounded-sm px-1.5 py-0.5 text-[10px] text-blue-400 hover:bg-blue-900/40 disabled:opacity-40"
+            className="rounded-lg px-1.5 py-0.5 text-[10px] text-accent-text hover:bg-blue-900/40 disabled:opacity-40"
           >
             {isInserting ? '…' : '↓'}
           </button>
@@ -189,21 +189,21 @@ function ModuleLibraryRow({
             target="_blank"
             rel="noreferrer"
             title="Open / edit module"
-            className="rounded-sm px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
+            className="rounded-lg px-1.5 py-0.5 text-[10px] text-muted hover:bg-neutral-700"
           >
             ✎
           </a>
           <button
             onClick={startRename}
             title="Rename module"
-            className="rounded-sm px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-700"
+            className="rounded-lg px-1.5 py-0.5 text-[10px] text-muted hover:bg-neutral-700"
           >
             ⓘ
           </button>
           <button
             onClick={onDelete}
             title="Delete module"
-            className="rounded-sm px-1.5 py-0.5 text-[10px] text-red-400 hover:bg-red-900/40"
+            className="rounded-lg px-1.5 py-0.5 text-[10px] text-danger hover:bg-red-900/40"
           >
             ✕
           </button>

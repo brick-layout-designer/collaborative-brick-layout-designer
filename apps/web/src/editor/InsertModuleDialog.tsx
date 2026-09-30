@@ -42,30 +42,30 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
-      <div className="w-full max-w-md space-y-3 rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-sm">
+      <div className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold">Insert module</h3>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted">
               Pick a saved module to drop its bricks into the active layer.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-sm p-1 text-neutral-400 hover:bg-neutral-800"
+            className="rounded-lg p-1 text-muted hover:bg-soft"
           >
             ✕
           </button>
         </div>
 
-        {list.isLoading && <p className="text-neutral-500">Loading…</p>}
+        {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && list.data.modules.length === 0 && (
-          <p className="rounded-sm border border-dashed border-neutral-800 p-4 text-neutral-500">
+          <p className="rounded-lg border border-dashed border-line p-4 text-muted">
             No saved modules yet. Create one from the Library page.
           </p>
         )}
         {list.data && list.data.modules.length > 0 && (
-          <ul className="max-h-80 divide-y divide-neutral-800 overflow-y-auto rounded-sm border border-neutral-800">
+          <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {list.data.modules.map((m) => (
               <li
                 key={m.id}
@@ -73,14 +73,14 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
               >
                 <div>
                   <p>{m.title}</p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-muted">
                     v{m.docVersion} · updated {new Date(m.updatedAt).toLocaleString()}
                   </p>
                 </div>
                 <button
                   onClick={() => insert.mutate(m.id)}
                   disabled={insert.isPending}
-                  className="rounded-sm bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-50"
+                  className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover disabled:opacity-50"
                 >
                   Insert
                 </button>
@@ -90,7 +90,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         )}
 
         {error && (
-          <p className="rounded-sm border border-red-900 bg-red-950/30 p-2 text-xs text-red-300">
+          <p className="rounded-lg border border-red-900 bg-red-950/30 p-2 text-xs text-red-300">
             {error}
           </p>
         )}

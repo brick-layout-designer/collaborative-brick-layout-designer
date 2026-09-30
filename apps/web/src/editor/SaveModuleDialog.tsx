@@ -103,32 +103,32 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-80 rounded-lg border border-neutral-700 bg-neutral-900 p-5 shadow-xl">
-        <h2 className="mb-4 text-sm font-semibold text-neutral-200">Save Selection as Module</h2>
+      <div className="w-80 rounded-lg border border-border bg-panel p-5 shadow-xl">
+        <h2 className="mb-4 text-sm font-semibold text-ink">Save Selection as Module</h2>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">Module name</label>
+            <label className="mb-1 block text-xs text-muted">Module name</label>
             <input
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="My module"
-              className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm outline-hidden focus:border-blue-500"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent"
             />
           </div>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-sm px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+              className="rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-soft"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={save.isPending}
-              className="rounded-sm bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
             >
               {save.isPending ? 'Saving…' : 'Save'}
             </button>

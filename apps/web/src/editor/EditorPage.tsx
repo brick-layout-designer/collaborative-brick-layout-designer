@@ -120,6 +120,8 @@ import { PartListDialog } from './PartListDialog';
 import { blueBrickLeavesOut, DownloadAsDialog } from './DownloadAsDialog';
 import { saveVenueToLibrary } from './venueLibrary';
 import { gridCellAt, parseCellIndexCorner } from './render/gridIndex';
+import { AppMark, HelpMenu, LayoutNameMenu, SavePill, SettingsButton, TaskTabs, type EditorTask } from './EditorChrome';
+import { SettingsDialog } from '../settings/SettingsPage';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -194,6 +196,8 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showInsertModule, setShowInsertModule] = useState(false);
   const [showSaveModule, setShowSaveModule] = useState(false);
   const [showGeneralInfo, setShowGeneralInfo] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [task, setTask] = useState<EditorTask>('build');
   const [showBackgroundColor, setShowBackgroundColor] = useState(false);
   const [showBackgroundImage, setShowBackgroundImage] = useState(false);
   const [showFind, setShowFind] = useState(false);
@@ -356,8 +360,8 @@ function Editor({ layoutId }: { layoutId: string }) {
   // state so the user's resize survives reload.
   const leftWidthPx = showLeft ? `${dock.state.leftWidth}px` : '0px';
   const rightWidthPx = showRight ? `${dock.state.rightWidth}px` : '0px';
-  const cols = `${leftWidthPx} 1fr ${rightWidthPx}`;
-  const headerColSpan = 3;
+  const cols = `${leftWidthPx} minmax(0, 1fr) ${rightWidthPx}`;
+  const headerColSpan = 4;
 
   // Returns just the inner content for a panel (shared by docked + floating).
   function panelBody(panelId: string): React.ReactNode {
@@ -384,59 +388,84 @@ function Editor({ layoutId }: { layoutId: string }) {
     );
   }
 
+  const leaveLayout = () => {
+    if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error') {
+      if (!confirm('Changes may not be saved. Leave anyway?')) return;
+    }
+    window.location.href = '/';
+  };
+  // Task tabs are shortcuts onto the existing panels and dialogs.
+  const onTask = (t: EditorTask) => {
+    const show = (id: string) => {
+      if (dock.zoneOf(id) === 'hidden') dock.setZone(id, 'right');
+    };
+    if (t === 'notes') {
+      setShowGeneralInfo(true);
+      return;
+    }
+    setTask(t);
+    if (t === 'build') {
+      show('parts');
+      show('layers');
+    } else if (t === 'room') {
+      show('venuelibrary');
+    } else if (t === 'parts') {
+      show('usedparts');
+    }
+  };
+  const showRail = !viewport.isMobile && !isViewer;
+
   return (
     <div
-      className="grid h-screen grid-rows-[auto_1fr_auto] bg-neutral-950"
-      style={{ gridTemplateColumns: viewport.isMobile ? '1fr' : cols }}
+      className="grid h-screen grid-rows-[auto_auto_1fr_auto] bg-bg text-ink"
+      style={{ gridTemplateColumns: viewport.isMobile ? '0px 0px 1fr 0px' : `${showRail ? '76px' : '0px'} ${cols}` }}
     >
       <header
-        className="flex items-center justify-between border-b border-neutral-800 px-4 py-2"
-        style={{ gridColumn: `span ${headerColSpan}` }}
+        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4 py-1.5"
+        style={{ gridColumn: '1 / -1' }}
       >
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-sm text-neutral-400 hover:underline">
-            ← Layouts
-          </Link>
-          {!isViewer && (
-            <>
-              <button
-                title="New layout (Ctrl+N)"
-                onClick={() => {
-                  if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error') {
-                    if (!confirm('Changes may not be saved. Leave anyway?')) return;
-                  }
-                  window.location.href = '/';
-                }}
-                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-              >
-                New
-              </button>
-              <button
-                title="Open layout (Ctrl+O)"
-                onClick={() => {
-                  if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error') {
-                    if (!confirm('Changes may not be saved. Leave anyway?')) return;
-                  }
-                  window.location.href = '/';
-                }}
-                className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-              >
-                Open
-              </button>
-            </>
+        <div className="flex min-w-0 items-center gap-3">
+          <AppMark />
+          <LayoutNameMenu
+            title={meta.data?.layout.title ?? 'Untitled'}
+            onNew={isViewer ? undefined : leaveLayout}
+            onOpen={isViewer ? undefined : leaveLayout}
+          >
+            <button role="menuitem" type="button" onClick={() => setShowSettings(true)} className="block w-full px-3.5 py-2 text-left hover:bg-soft">
+              Settings
+            </button>
+          </LayoutNameMenu>
+          <SavePill status={status} />
+          {isViewer && (
+            <span className="rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300">
+              View only
+            </span>
           )}
-          <h1 className="text-sm font-semibold">
-            {meta.data?.layout.title ?? 'Untitled'}
-          </h1>
-          <SaveStatusIndicator status={status} />
-          <PresencePanel awareness={awareness} />
         </div>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+        {!isViewer && !viewport.isMobile ? <TaskTabs task={task} onTask={onTask} /> : <span />}
+        <div className="flex min-w-0 items-center justify-end gap-2.5">
+          <PresencePanel awareness={awareness} />
+          <button
+            onClick={() => setShowShare(true)}
+            className="h-[38px] shrink-0 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover"
+          >
+            Share
+          </button>
+          <HelpMenu onSettings={() => setShowSettings(true)} />
+          <SettingsButton onClick={() => setShowSettings(true)} />
+        </div>
+      </header>
+      <div
+        role="toolbar"
+        aria-label="Edit"
+        className="flex min-h-[42px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-line bg-panel px-3 py-1"
+        style={{ gridColumn: '1 / -1' }}
+      >
           <button
             onClick={undo.undo}
             disabled={!undo.canUndo}
             title="Undo (Cmd-Z)"
-            className="shrink-0 rounded-sm border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded-lg border border-border px-2 py-1 text-xs disabled:opacity-30"
           >
             Undo
           </button>
@@ -444,7 +473,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             onClick={undo.redo}
             disabled={!undo.canRedo}
             title="Redo (Cmd-Shift-Z)"
-            className="shrink-0 rounded-sm border border-neutral-700 px-2 py-1 text-xs disabled:opacity-30"
+            className="shrink-0 rounded-lg border border-border px-2 py-1 text-xs disabled:opacity-30"
           >
             Redo
           </button>
@@ -454,7 +483,6 @@ function Editor({ layoutId }: { layoutId: string }) {
               canvasActionsRef={canvasActionsRef}
             />
           )}
-          {!isViewer && <Toolbar />}
           {!isViewer && <SnapPicker />}
           {!isViewer && <RotationPicker />}
           {!isViewer && <PaintColorPicker />}
@@ -541,38 +569,31 @@ function Editor({ layoutId }: { layoutId: string }) {
           {!isViewer && (
             <button
               onClick={() => setShowInsertModule(true)}
-              className="rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800 whitespace-nowrap"
+              className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft whitespace-nowrap"
               title="Insert a saved module"
             >
               Insert module
             </button>
           )}
-          <button
-            onClick={() => setShowShare(true)}
-            className="shrink-0 rounded-sm border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
-          >
-            Share
-          </button>
           {!isViewer && (
             <button
               onClick={() => void saveNow()}
-              className="shrink-0 rounded-sm bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+              className="shrink-0 rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
             >
               Save
             </button>
           )}
-          {isViewer && (
-            <span className="rounded-sm bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
-              View only
-            </span>
-          )}
-        </div>
-      </header>
+      </div>
+      {showRail && (
+        <aside aria-label="Tool rail" className="overflow-y-auto border-r border-line bg-panel py-3" style={{ gridColumn: '1', gridRow: '3' }}>
+          <Toolbar />
+        </aside>
+      )}
       {showLeft && (
         <DockColumn
           panels={dock.state.left}
           renderPanel={(id) => renderPanel(id, 'left')}
-          gridColumn="1"
+          gridColumn="2"
           panelHeights={dock.state.panelHeights}
           onResizePanel={dock.setPanelHeight}
           edge={
@@ -586,7 +607,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       <main
         className="relative overflow-hidden"
-        style={{ gridColumn: '2', gridRow: '2' }}
+        style={{ gridColumn: '3', gridRow: '3' }}
       >
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
       </main>
@@ -594,7 +615,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         <DockColumn
           panels={dock.state.right}
           renderPanel={(id) => renderPanel(id, 'right')}
-          gridColumn="3"
+          gridColumn="4"
           panelHeights={dock.state.panelHeights}
           onResizePanel={dock.setPanelHeight}
           edge={
@@ -641,6 +662,9 @@ function Editor({ layoutId }: { layoutId: string }) {
           Spans every column. Shows mouse coords / selection count / zoom. */}
       {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
+        onZoomIn={() => canvasActionsRef.current?.zoom(ZOOM_STEP)}
+        onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
+        onFit={() => canvasActionsRef.current?.fit()}
         status={status}
         venue={doc ? (readSidecarFromDoc(doc)?.venue ?? null) : null}
         budgetLimits={budgetLimits}
@@ -661,6 +685,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           }}
         />
       )}
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       {showGeneralInfo && docMap && (
         <GeneralInfoDialog map={docMap} doc={doc} onClose={() => setShowGeneralInfo(false)} />
       )}
@@ -2834,9 +2859,9 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
     >
       <div>{bar.primary}</div>
       <div className="relative my-0.5 h-2" style={{ width: bar.px }}>
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-neutral-900" />
-        <div className="absolute left-0 top-0 h-2 w-0.5 bg-neutral-900" />
-        <div className="absolute right-0 top-0 h-2 w-0.5 bg-neutral-900" />
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-panel" />
+        <div className="absolute left-0 top-0 h-2 w-0.5 bg-panel" />
+        <div className="absolute right-0 top-0 h-2 w-0.5 bg-panel" />
       </div>
       <div>{bar.secondary}</div>
     </div>
@@ -2914,7 +2939,7 @@ function CanvasContextMenu({
     );
   }
   function sep(key: string) {
-    return <div key={key} className="my-1 border-t border-neutral-700" />;
+    return <div key={key} className="my-1 border-t border-border" />;
   }
 
   const entries: React.ReactNode[] = [];
@@ -2986,7 +3011,7 @@ function CanvasContextMenu({
     <div
       data-ctx-menu="1"
       style={{ position: 'fixed', left, top, zIndex: 9999, minWidth: menuW }}
-      className="flex flex-col rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-xl text-neutral-200"
+      className="flex flex-col rounded-lg border border-border bg-panel py-1 shadow-xl text-ink"
     >
       {entries}
     </div>
@@ -3021,7 +3046,8 @@ function SnapRing() {
  * Always available, even when no panels are currently hidden, so the
  * affordance stays visible.
  */
-const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Layers', usedparts: 'Used Parts', modules: 'Modules', modlibrary: 'Module Library', venuelibrary: 'Venue Library' };
+// UI words: layers are "Sheets" and the venue is the "Room" (the ids stay).
+const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module Library', venuelibrary: 'Room library' };
 
 /**
  * Renders a vertical stack of panels in one dock column, with:
@@ -3055,7 +3081,7 @@ function DockColumn({
   return (
     <div
       className="flex h-full flex-row overflow-hidden"
-      style={{ gridColumn, gridRow: '2' }}
+      style={{ gridColumn, gridRow: '3' }}
     >
       {edgeSide === 'start' && edge}
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -3310,8 +3336,11 @@ function VenueDraftPreview({
  *   - Selection count
  *   - Zoom percentage
  */
-function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
+function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn, onZoomOut, onFit }: {
   gridSpan: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFit: () => void;
   status: import('./useLayoutDoc').SaveStatus;
   venue: import('@cld/bbm').Venue | null;
   budgetLimits: Map<string, number>;
@@ -3344,37 +3373,41 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
     return `${studs} st`;
   }
   const dirty = status.kind === 'reconnecting' || status.kind === 'error';
+  const pieces = useMemo(
+    () => (budgetMap?.layers ?? []).reduce((n, l) => n + (l.type === 'brick' ? l.bricks.length : 0), 0),
+    [budgetMap],
+  );
+  const zoomBtn = 'flex h-[26px] min-w-[26px] items-center justify-center rounded-md bg-soft px-1.5 text-ink hover:bg-neutral-700';
   return (
     <footer
-      className="flex items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-925 px-3 py-1 text-[11px] text-neutral-400"
+      className="flex min-h-8 items-center justify-between gap-4 border-t border-line bg-panel px-4 py-0.5 text-xs text-muted"
       style={{ gridColumn: `span ${gridSpan}` }}
     >
-      <div className="flex items-center gap-3">
-        <span>Tool: <span className="text-neutral-200">{tool}{dirty ? ' *' : ''}</span></span>
-        <span title="Active layer — new parts are placed here">
-          Layer:{' '}
-          <span className={activeLayer ? 'text-neutral-200' : 'text-neutral-600'}>
+      <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap">
+        <span data-testid="piece-count">{pieces === 1 ? '1 piece' : `${pieces} pieces`}</span>
+        {mapW !== null && mapH !== null && (
+          <span title="Size of everything on the map">
+            {studDisplay(mapW)} × {studDisplay(mapH)}
+          </span>
+        )}
+        <span title="Active sheet: new parts are placed here">
+          Sheet:{' '}
+          <span className={activeLayer ? 'text-ink' : 'text-neutral-600'}>
             {activeLayer ? activeLayer.name || 'unnamed' : 'none'}
           </span>
         </span>
+        <span>Tool: <span className="text-ink">{tool}{dirty ? ' *' : ''}</span></span>
         {dropTargetHint || statusMessage ? (
-          <span className="text-blue-400 transition-opacity">{dropTargetHint ?? statusMessage}</span>
+          <span className="text-accent-text transition-opacity">{dropTargetHint ?? statusMessage}</span>
         ) : (
-          <>
-            <span>
-              {studX !== null && studY !== null
-                ? `Mouse: ${studX.toFixed(1)}, ${studY.toFixed(1)} st`
-                : 'Mouse: —'}
-            </span>
-            {mapW !== null && mapH !== null && (
-              <span title="Map bounding box">
-                {studDisplay(mapW)} × {studDisplay(mapH)}
-              </span>
-            )}
-          </>
+          <span className="tabular-nums">
+            {studX !== null && studY !== null
+              ? `Mouse: ${studX.toFixed(1)}, ${studY.toFixed(1)} st`
+              : 'Mouse: —'}
+          </span>
         )}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
         {venueReadout && (
           // Desktop MainWindow.cpp:917-936: "Venue: OK" / "Venue: N issue(s)"
           // with the problems listed in the tooltip.
@@ -3387,7 +3420,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
           </span>
         )}
         {budgetLimits.size > 0 && (
-          <span className={budgetOver > 0 ? 'text-red-400' : 'text-green-400'}
+          <span className={budgetOver > 0 ? 'text-danger' : 'text-green-400'}
             title="Budget status">
             Budget: {budgetOver > 0 ? `${budgetOver} over` : 'OK'}
           </span>
@@ -3397,7 +3430,10 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap }: {
             ? 'no selection'
             : `selected: ${selectionCount}`}
         </span>
-        <span>Zoom: {Math.round(zoom * 100)}%</span>
+        <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={zoomBtn}>−</button>
+        <span className="font-bold tabular-nums text-ink">Zoom: {Math.round(zoom * 100)}%</span>
+        <button type="button" aria-label="Zoom in" onClick={onZoomIn} className={zoomBtn}>+</button>
+        <button type="button" title="Fit everything in view" onClick={onFit} className={`${zoomBtn} px-2.5 font-bold`}>Fit</button>
       </div>
     </footer>
   );
@@ -3546,7 +3582,7 @@ function MapMenu({
           setAnchor(dropdownAnchor(e.currentTarget));
           setOpen((v) => !v);
         }}
-        className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+        className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft"
       >
         Map
       </button>
@@ -3555,20 +3591,21 @@ function MapMenu({
           // Fixed, not absolute: the header row scrolls horizontally, which
           // would clip an absolutely positioned dropdown. Above the modeless
           // Find / Budget panels (z-40), below modal dialogs (z-50).
-          className="fixed z-[45] max-h-[calc(100vh-4rem)] w-52 overflow-y-auto rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
-          style={anchor}
+          className="fixed z-[45] w-52 overflow-y-auto rounded-lg border border-border bg-panel text-xs shadow-sm"
+          // Fill the space below the button and scroll past that.
+          style={{ ...anchor, maxHeight: `calc(100vh - ${Number(anchor.top ?? 64) + 8}px)` }}
           onClick={() => setOpen(false)}
         >
           {items.map((it, i) =>
             it.label === '—' ? (
-              <li key={i} className="mx-2 my-0.5 border-t border-neutral-700" />
+              <li key={i} className="mx-2 my-0.5 border-t border-border" />
             ) : (
               <li key={it.label}>
                 <button
                   onClick={it.action}
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-neutral-800"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-soft"
                 >
-                  <span className="w-3 text-center text-neutral-400">
+                  <span className="w-3 text-center text-muted">
                     {it.checked === true ? '✓' : it.checked === false ? '' : ''}
                   </span>
                   {it.label}
@@ -3608,7 +3645,7 @@ function PanelsMenu({
           setAnchor(dropdownAnchor(e.currentTarget));
           setOpen((v) => !v);
         }}
-        className="rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+        className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft"
         title="Toggle panels"
       >
         Panels
@@ -3617,17 +3654,17 @@ function PanelsMenu({
         <>
           {/* Click-away backdrop */}
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <ul className="fixed z-[45] min-w-[168px] rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm" style={anchor}>
+          <ul className="fixed z-[45] min-w-[168px] rounded-lg border border-border bg-panel text-xs shadow-sm" style={anchor}>
             {allIds.map((id) => {
               const visible = dock.left.includes(id) || dock.right.includes(id) || dock.float.includes(id);
               return (
                 <li key={id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-neutral-800">
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-soft">
                     <input
                       type="checkbox"
                       checked={visible}
                       onChange={(e) => onToggle(id, e.target.checked)}
-                      className="accent-blue-500"
+                      className="accent-accent"
                     />
                     {PANEL_TITLES[id] ?? id}
                   </label>
@@ -3651,7 +3688,7 @@ function PaintColorPicker() {
   const set = useEditorStore((s) => s.setPaintColor);
   // Colour and alpha, like desktop's paint colour dialog (R6).
   return (
-    <label className="flex items-center gap-1 text-xs text-neutral-400" title="Paint colour">
+    <label className="flex items-center gap-1 text-xs text-muted" title="Paint colour">
       <span>Colour</span>
       <ColorAlphaInput compact label="Paint colour" value={value} onChange={(v) => set(v.toUpperCase())} />
     </label>
@@ -3668,12 +3705,12 @@ function SnapPicker() {
   const value = useEditorStore((s) => s.snapStepStuds);
   const set = useEditorStore((s) => s.setSnapStep);
   return (
-    <label className="flex items-center gap-1 text-xs text-neutral-400" title="Grid snap step (studs)">
+    <label className="flex items-center gap-1 text-xs text-muted" title="Grid snap step (studs)">
       <span>Snap</span>
       <select
         value={value}
         onChange={(e) => set(parseFloat(e.target.value))}
-        className="rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
+        className="rounded-lg border border-border bg-panel px-1 py-0.5 text-xs"
       >
         {SNAP_STEPS.map((s) => (
           <option key={s} value={s}>
@@ -3693,12 +3730,12 @@ function RotationPicker() {
   const value = useEditorStore((s) => s.rotationStepDegrees);
   const set = useEditorStore((s) => s.setRotationStep);
   return (
-    <label className="flex items-center gap-1 text-xs text-neutral-400" title="Rotation step (degrees)">
+    <label className="flex items-center gap-1 text-xs text-muted" title="Rotation step (degrees)">
       <span>Rot</span>
       <select
         value={value}
         onChange={(e) => set(parseFloat(e.target.value))}
-        className="rounded-sm border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-xs"
+        className="rounded-lg border border-border bg-panel px-1 py-0.5 text-xs"
       >
         {ROTATION_STEPS.map((s) => (
           <option key={s} value={s}>
@@ -3710,47 +3747,17 @@ function RotationPicker() {
   );
 }
 
-function SaveStatusIndicator({ status }: { status: import('./useLayoutDoc').SaveStatus }) {
-  switch (status.kind) {
-    case 'connecting':
-      return <span className="text-xs text-neutral-500">connecting…</span>;
-    case 'synced':
-      return <span className="text-xs text-emerald-500">synced</span>;
-    case 'reconnecting':
-      return (
-        <span className="text-xs text-amber-400">
-          reconnecting{status.lastSyncedAt ? ` · last synced ${timeAgo(status.lastSyncedAt)}` : ''}
-        </span>
-      );
-    case 'offline':
-      return (
-        <span className="text-xs text-amber-400">
-          offline{status.lastSyncedAt ? ` · edits saved locally, will sync on reconnect` : ''}
-        </span>
-      );
-    case 'error':
-      return <span className="text-xs text-red-400">{status.message}</span>;
-  }
-}
-
-function timeAgo(ts: number): string {
-  const secs = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (secs < 5) return 'just now';
-  if (secs < 60) return `${secs}s ago`;
-  return `${Math.round(secs / 60)}m ago`;
-}
-
 function LoadingScreen() {
-  return <div className="grid h-screen place-items-center text-neutral-500">Loading editor…</div>;
+  return <div className="grid h-screen place-items-center text-muted">Loading editor…</div>;
 }
 
 function ErrorScreen({ err }: { err: Error }) {
   return (
     <div className="grid h-screen place-items-center">
-      <div className="max-w-sm rounded-sm border border-red-900 bg-red-950/30 p-4 text-sm">
-        <p className="font-semibold text-red-400">Couldn't load this layout.</p>
+      <div className="max-w-sm rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
+        <p className="font-semibold text-danger">Couldn't load this layout.</p>
         <p className="mt-2 text-neutral-300">{err.message}</p>
-        <Link to="/" className="mt-4 inline-block text-blue-400 hover:underline">
+        <Link to="/" className="mt-4 inline-block text-accent-text hover:underline">
           ← back to layouts
         </Link>
       </div>
@@ -3760,7 +3767,7 @@ function ErrorScreen({ err }: { err: Error }) {
 
 function EmptyDoc() {
   return (
-    <div className="absolute inset-0 grid place-items-center text-neutral-500">
+    <div className="absolute inset-0 grid place-items-center text-muted">
       <div className="text-center">
         <p>This layout has no map data yet.</p>
         <p className="text-sm">Import a <code>.bbm</code> from the layouts list to populate it.</p>
@@ -3779,7 +3786,7 @@ function HeaderEditButtons({
   const selection = useEditorStore((s) => s.selection);
   const annoTotal = useEditorStore((s) => annoCount(s.annoSelection));
   const hasSel = selection.length > 0;
-  const btnCls = 'rounded-sm border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default';
+  const btnCls = 'rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30 disabled:cursor-default';
   const act = () => canvasActionsRef.current;
   return (
     <>

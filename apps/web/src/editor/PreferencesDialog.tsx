@@ -70,11 +70,11 @@ export function PreferencesDialog({ onClose }: Props) {
 
   const tabCls = (t: Tab) =>
     'px-3 py-1.5 text-xs rounded-t ' +
-    (tab === t ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-500 hover:text-neutral-300');
+    (tab === t ? 'bg-soft text-ink' : 'text-muted hover:text-neutral-300');
 
 
   const rowCls = 'flex items-center justify-between gap-4 py-1.5';
-  const labelCls = 'text-xs text-neutral-400 w-40';
+  const labelCls = 'text-xs text-muted w-40';
   const checkRowCls = 'flex items-center gap-2 py-1';
 
   return (
@@ -83,11 +83,11 @@ export function PreferencesDialog({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-136 rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl"
+        className="w-136 rounded-lg border border-border bg-panel shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Tab bar */}
-        <div className="flex border-b border-neutral-700 px-4 pt-3">
+        <div className="flex border-b border-border px-4 pt-3">
           <button className={tabCls('general')} onClick={() => setTab('general')}>General</button>
           <button className={tabCls('editing')} onClick={() => setTab('editing')}>Editing</button>
           <button className={tabCls('appearance')} onClick={() => setTab('appearance')}>Appearance</button>
@@ -107,9 +107,9 @@ export function PreferencesDialog({ onClose }: Props) {
                     step={0.05}
                     value={wheelZoomFactor}
                     onChange={(e) => setWheelZoomFactor(parseFloat(e.target.value))}
-                    className="flex-1 accent-blue-500"
+                    className="flex-1 accent-accent"
                   />
-                  <span className="w-8 text-right text-xs tabular-nums text-neutral-400">
+                  <span className="w-8 text-right text-xs tabular-nums text-muted">
                     {wheelZoomFactor.toFixed(2)}×
                   </span>
                 </div>
@@ -124,7 +124,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   aria-label="Parts without a budget"
                   value={budgetDefaultInfinite ? 'unlimited' : 'forbidden'}
                   onChange={(e) => setBudgetDefaultInfinite(e.target.value === 'unlimited')}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-sm"
+                  className="rounded-lg border border-border bg-soft px-2 py-0.5 text-sm"
                 >
                   <option value="unlimited">Unlimited</option>
                   <option value="forbidden">Forbidden (budget 0)</option>
@@ -137,7 +137,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   aria-label="Warn when the budget refuses a part"
                   checked={warnBudgetLimitation}
                   onChange={(e) => setWarnBudgetLimitation(e.target.checked)}
-                  className="accent-blue-500"
+                  className="accent-accent"
                 />
               </div>
               <div className={rowCls}>
@@ -146,7 +146,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   type="checkbox"
                   checked={reopenLastFile}
                   onChange={(e) => setReopenLastFile(e.target.checked)}
-                  className="accent-blue-500"
+                  className="accent-accent"
                 />
               </div>
               <div className={rowCls}>
@@ -159,7 +159,7 @@ export function PreferencesDialog({ onClose }: Props) {
                     step={10}
                     value={undoStackDepth}
                     onChange={(e) => setUndoStackDepth(parseInt(e.target.value, 10) || 0)}
-                    className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                    className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                   />
                   <span className="text-[10px] text-neutral-600">0 = unlimited</span>
                 </div>
@@ -174,7 +174,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 <select
                   value={snapStepStuds}
                   onChange={(e) => setSnapStep(Number(e.target.value))}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   {SNAP_STEPS.map((s) => (
                     <option key={s} value={s}>{s === 0 ? 'Off' : `${s} stud${s !== 1 ? 's' : ''}`}</option>
@@ -186,7 +186,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 <select
                   value={rotationStepDegrees}
                   onChange={(e) => setRotationStep(Number(e.target.value))}
-                  className="rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 >
                   {ROTATION_STEPS.map((r) => (
                     <option key={r} value={r}>{r}°</option>
@@ -199,7 +199,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   type="color"
                   value={pickerColor}
                   onChange={(e) => onPickerChange(e.target.value)}
-                  className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
+                  className="h-7 w-12 cursor-pointer rounded-lg border border-border bg-soft p-0.5"
                 />
               </div>
             </div>
@@ -223,22 +223,22 @@ export function PreferencesDialog({ onClose }: Props) {
                     type="checkbox"
                     checked={value}
                     onChange={(e) => set(e.target.checked)}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
                   <span className="text-xs text-neutral-300">{label}</span>
                 </label>
               ))}
               <div className="flex items-center justify-between gap-4 py-1.5">
-                <span className="text-xs text-neutral-400">Selection tint colour</span>
+                <span className="text-xs text-muted">Selection tint colour</span>
                 <input
                   type="color"
                   value={`#${selectionTint}`}
                   onChange={(e) => setSelectionTint(e.target.value.slice(1))}
-                  className="h-7 w-12 cursor-pointer rounded-sm border border-neutral-700 bg-neutral-800 p-0.5"
+                  className="h-7 w-12 cursor-pointer rounded-lg border border-border bg-soft p-0.5"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
-                <span className="text-xs text-neutral-400">Module frame thickness (px)</span>
+                <span className="text-xs text-muted">Module frame thickness (px)</span>
                 <input
                   type="number"
                   aria-label="Module frame thickness (px)"
@@ -247,12 +247,12 @@ export function PreferencesDialog({ onClose }: Props) {
                   step={0.5}
                   value={moduleFrameThickness}
                   onChange={(e) => setModuleFrameThickness(parseFloat(e.target.value) || 5)}
-                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
                 <span
-                  className="text-xs text-neutral-400"
+                  className="text-xs text-muted"
                   title="Module name size as a percentage of the module's long axis"
                 >
                   Module label size (% of long axis)
@@ -264,11 +264,11 @@ export function PreferencesDialog({ onClose }: Props) {
                   step={5}
                   value={moduleLabelPercent}
                   onChange={(e) => setModuleLabelPercent(parseInt(e.target.value, 10) || 35)}
-                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 py-1.5">
-                <span className="text-xs text-neutral-400">Venue label size (px)</span>
+                <span className="text-xs text-muted">Venue label size (px)</span>
                 <input
                   type="number"
                   min={4}
@@ -276,17 +276,17 @@ export function PreferencesDialog({ onClose }: Props) {
                   step={1}
                   value={venueLabelPx}
                   onChange={(e) => setVenueLabelPx(parseInt(e.target.value, 10) || 28)}
-                  className="w-20 rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+                  className="w-20 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
                 />
               </div>
             </div>
           )}
         </div>
 
-        <div className="flex justify-end border-t border-neutral-700 px-5 py-3">
+        <div className="flex justify-end border-t border-border px-5 py-3">
           <button
             onClick={onClose}
-            className="rounded-sm bg-blue-600 px-4 py-1.5 text-xs text-white hover:bg-blue-500"
+            className="rounded-lg bg-accent px-4 py-1.5 text-xs text-accent-ink hover:bg-accent-hover"
           >
             Close
           </button>

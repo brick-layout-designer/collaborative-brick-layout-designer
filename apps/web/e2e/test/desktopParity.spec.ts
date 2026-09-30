@@ -400,7 +400,7 @@ test.describe('venue library', () => {
     expect(created.ok()).toBe(true);
     await openEditor(page, id);
     await page.getByRole('button', { name: 'Panels' }).click();
-    await page.getByLabel('Venue Library').check();
+    await page.getByLabel('Room library').check();
     await page.mouse.click(400, 400); // close the menu
 
     const renamed = `${name} (main)`;
@@ -939,7 +939,7 @@ test.describe('drawing a ruler', () => {
   test('the preview reads studs and mm, and the ruler lands with desktop defaults on a Rulers layer', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
-    await page.getByRole('button', { name: 'Ruler ─' }).click();
+    await page.getByRole('button', { name: 'Measure', exact: true }).click();
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
     const x0 = box.x + 200;
     const y0 = box.y + 200;
@@ -1163,7 +1163,7 @@ test.describe('grid origin drag', () => {
 
     // Make the grid layer ("Layer 1") the active layer.
     await page.locator('aside').getByText('Layer 1', { exact: true }).click();
-    await expect(page.locator('footer')).toContainText('Layer: Layer 1');
+    await expect(page.locator('footer')).toContainText('Sheet: Layer 1');
 
     const z = await page.evaluate(() => (window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX());
     const cellStuds = Number(/<GridSizeInStud>(\d+)<\/GridSizeInStud>/.exec(FORDYCE_BBM)![1]);

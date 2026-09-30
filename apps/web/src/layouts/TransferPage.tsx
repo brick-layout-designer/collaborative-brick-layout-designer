@@ -48,7 +48,7 @@ export function TransferPage() {
     return (
       <Centered>
         <Box>
-          <p className="font-semibold text-red-400">This transfer isn't valid.</p>
+          <p className="font-semibold text-danger">This transfer isn't valid.</p>
           <p className="mt-1 text-xs">{(preview.error as Error).message}</p>
         </Box>
       </Centered>
@@ -66,26 +66,26 @@ export function TransferPage() {
     <Centered>
       <Box>
         <h1 className="text-lg font-semibold">Layout transfer</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-muted">
           You've been offered ownership of <strong>{t.layoutTitle}</strong>. Accepting
           makes you the new owner; the previous owner stays as an editor.
         </p>
         {!isSignedIn && (
           <Link
             to={`/login?next=${encodeURIComponent(`/transfer/${params.token}`)}`}
-            className="mt-3 block rounded-sm bg-blue-600 px-4 py-2 text-center hover:bg-blue-500"
+            className="mt-3 block rounded-lg bg-accent text-accent-ink px-4 py-2 text-center hover:bg-accent-hover"
           >
             Sign in as {t.recipientEmail}
           </Link>
         )}
         {wrongUser && (
-          <p className="mt-3 rounded-sm border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
+          <p className="mt-3 rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
             This transfer is for <strong>{t.recipientEmail}</strong>, but you're signed
             in as <strong>{me.data!.user!.email}</strong>.
           </p>
         )}
         {error && (
-          <p className="mt-2 rounded-sm border border-red-900 bg-red-950/30 p-3 text-xs text-red-300">
+          <p className="mt-2 rounded-lg border border-red-900 bg-red-950/30 p-3 text-xs text-red-300">
             Couldn't accept: {error}
           </p>
         )}
@@ -100,7 +100,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function Box({ children }: { children: React.ReactNode }) {
   return (
-    <div className="w-full max-w-md rounded-lg border border-neutral-800 bg-neutral-900 p-6">
+    <div className="w-full max-w-md rounded-lg border border-line bg-panel p-6">
       {children}
     </div>
   );

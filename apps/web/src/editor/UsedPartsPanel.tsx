@@ -92,31 +92,31 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
 
   function arrow(key: SortKey) {
     if (sortKey !== key) return null;
-    return <span className="ml-0.5 text-neutral-400">{sortDir === 'asc' ? '▲' : '▼'}</span>;
+    return <span className="ml-0.5 text-muted">{sortDir === 'asc' ? '▲' : '▼'}</span>;
   }
 
-  const thCls = 'cursor-pointer select-none px-2 py-1 text-left text-[10px] uppercase tracking-wide text-neutral-500 hover:text-neutral-300';
+  const thCls = 'cursor-pointer select-none px-2 py-1 text-left text-[10px] uppercase tracking-wide text-muted hover:text-neutral-300';
   const hasBudget = budgetLimits.size > 0;
 
   return (
-    <aside className="relative flex h-full min-h-0 w-full flex-col bg-neutral-925 text-sm">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-2 py-1.5 text-xs uppercase tracking-wider text-neutral-400">
+    <aside className="relative flex h-full min-h-0 w-full flex-col bg-panel text-sm">
+      <div className="flex items-center justify-between border-b border-line px-2 py-1.5 text-xs uppercase tracking-wider text-muted">
         <span>Used Parts</span>
         <span className="text-neutral-600">{rows.length} kinds · {total} total</span>
       </div>
-      <div className="border-b border-neutral-800 px-2 py-1">
+      <div className="border-b border-line px-2 py-1">
         <input
           type="search"
           placeholder={hasBudget ? "Filter by part #, description, or 'over'" : 'Filter by part # or description'}
           aria-label="Filter used parts"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded-sm border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-xs outline-hidden placeholder:text-neutral-600"
+          className="w-full rounded-lg border border-border bg-soft px-2 py-0.5 text-xs outline-hidden placeholder:text-neutral-600"
         />
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-neutral-900 border-b border-neutral-800">
+          <thead className="sticky top-0 bg-panel border-b border-line">
             <tr>
               <th className={thCls} onClick={() => handleSort('partNumber')}>Part {arrow('partNumber')}</th>
               <th className={thCls + ' text-right'} onClick={() => handleSort('count')}>Count {arrow('count')}</th>
@@ -138,17 +138,17 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
                     e.preventDefault();
                     setCtxMenu({ partNumber: row.partNumber, x: e.clientX, y: e.clientY });
                   }}
-                  className={`cursor-pointer border-b border-neutral-800/50 hover:bg-neutral-800/60 ${hasBudget && over > 0 ? 'bg-red-950/30' : ''}`}
+                  className={`cursor-pointer border-b border-line/50 hover:bg-soft/60 ${hasBudget && over > 0 ? 'bg-red-950/30' : ''}`}
                   title="Double-click or right-click to select all of this part"
                 >
                   <td className="px-2 py-1 font-mono text-neutral-300">{row.partNumber}</td>
-                  <td className="px-2 py-1 text-right tabular-nums text-neutral-200">{row.count}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-ink">{row.count}</td>
                   {hasBudget && (
-                    <td className={`px-2 py-1 text-right tabular-nums ${limit === undefined ? 'text-neutral-600' : over > 0 ? 'font-semibold text-red-400' : 'text-green-500'}`}>
+                    <td className={`px-2 py-1 text-right tabular-nums ${limit === undefined ? 'text-neutral-600' : over > 0 ? 'font-semibold text-danger' : 'text-green-500'}`}>
                       {limit === undefined ? '—' : over > 0 ? `+${over}` : `${row.count}/${limit}`}
                     </td>
                   )}
-                  <td className="px-2 py-1 text-neutral-400 truncate max-w-40">{row.description || '—'}</td>
+                  <td className="px-2 py-1 text-muted truncate max-w-40">{row.description || '—'}</td>
                 </tr>
               );
             })}
@@ -162,14 +162,14 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
           </tbody>
         </table>
       </div>
-      <div data-testid="used-parts-summary" className="border-t border-neutral-800 px-2 py-1 text-[11px] text-neutral-500">
+      <div data-testid="used-parts-summary" className="border-t border-line px-2 py-1 text-[11px] text-muted">
         {rows.length === 0 ? 'No bricks in map' : summary}
       </div>
       {ctxMenu && (
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[160px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
+          className="min-w-[160px] rounded-lg border border-border bg-panel py-1 shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
         >
           <button
@@ -178,9 +178,9 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
           >
             Select all of this part
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
-            className="block w-full px-3 py-1 text-left text-xs text-neutral-500 hover:bg-neutral-700 whitespace-nowrap"
+            className="block w-full px-3 py-1 text-left text-xs text-muted hover:bg-neutral-700 whitespace-nowrap"
             onClick={() => setCtxMenu(null)}
           >
             Cancel

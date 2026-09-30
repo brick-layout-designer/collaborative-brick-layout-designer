@@ -67,9 +67,9 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
   const rows = [...map.layers].reverse();
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col bg-neutral-925 text-sm">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-2 py-1.5 text-xs uppercase tracking-wider text-neutral-400">
-        <span>Layers</span>
+    <aside className="flex h-full min-h-0 w-full flex-col bg-panel text-sm">
+      <div className="flex items-center justify-between border-b border-line px-2 py-1.5 text-xs uppercase tracking-wider text-muted">
+        <span>Sheets</span>
         <span className="text-neutral-600">{map.layers.length}</span>
       </div>
       <ul className="flex-1 min-h-0 overflow-y-auto">
@@ -85,7 +85,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
         ))}
       </ul>
       {!isViewer && (
-        <div className="flex flex-col gap-1 border-t border-neutral-800 p-1">
+        <div className="flex flex-col gap-1 border-t border-line p-1">
           <div className="flex items-center gap-1">
             <AddLayerButton doc={doc} onAdd={setActiveLayer} />
             <button
@@ -94,8 +94,8 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 moveLayer(doc, activeLayerId, 'up');
               }}
               disabled={!activeLayerId}
-              className="rounded-sm px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
-              title="Move active layer toward the top"
+              className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+              title="Move active sheet toward the top"
             >
               ▲
             </button>
@@ -105,19 +105,19 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 moveLayer(doc, activeLayerId, 'down');
               }}
               disabled={!activeLayerId}
-              className="rounded-sm px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
-              title="Move active layer toward the bottom"
+              className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+              title="Move active sheet toward the bottom"
             >
               ▼
             </button>
             <button
               onClick={() => {
                 if (!activeLayerId) return;
-                if (!confirm('Delete this layer? This is undo-able.')) return;
+                if (!confirm('Delete this sheet? This is undo-able.')) return;
                 deleteLayer(doc, activeLayerId);
               }}
               disabled={!activeLayerId}
-              className="rounded-sm px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
+              className="rounded-lg px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
               title="Delete active layer"
             >
               ✕
@@ -126,8 +126,8 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => showAllLayers(doc)}
-              className="flex-1 rounded-sm py-0.5 text-xs hover:bg-neutral-800"
-              title="Make all layers visible"
+              className="flex-1 rounded-lg py-0.5 text-xs hover:bg-soft"
+              title="Make all sheets visible"
             >
               Show all
             </button>
@@ -137,8 +137,8 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 soloLayer(doc, activeLayerId);
               }}
               disabled={!activeLayerId}
-              className="flex-1 rounded-sm py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-30"
-              title="Show only the active layer, hide all others"
+              className="flex-1 rounded-lg py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+              title="Show only the active sheet, hide all others"
             >
               Solo
             </button>
@@ -219,17 +219,17 @@ function LayerRow({
       title={
         isViewer
           ? undefined
-          : `${isActive && layer.type === 'brick' ? 'Active layer — new parts are placed here. ' : ''}Double-click for Layer Options, F2 to rename`
+          : `${isActive && layer.type === 'brick' ? 'Active sheet — new parts are placed here. ' : ''}Double-click for sheet options, F2 to rename`
       }
       className={
-        'relative cursor-pointer border-b border-neutral-800/60 py-1.5 outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-500 ' +
+        'relative cursor-pointer border-b border-line/60 py-1.5 outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent ' +
         (isActive
           ? 'border-l-2 border-l-blue-500 bg-blue-900/30 pl-1.5 pr-2'
-          : 'border-l-2 border-l-transparent pl-1.5 pr-2 hover:bg-neutral-800/60')
+          : 'border-l-2 border-l-transparent pl-1.5 pr-2 hover:bg-soft/60')
       }
     >
       <div className="flex items-center gap-2">
-        <span className="w-4 text-center text-neutral-500" aria-hidden="true">
+        <span className="w-4 text-center text-muted" aria-hidden="true">
           {KIND_GLYPH[layer.type]}
         </span>
         <input
@@ -260,14 +260,14 @@ function LayerRow({
               renameLayer(doc, layer.id, draftName.trim() || layer.name);
               setEditing(false);
             }}
-            className="flex-1 rounded-sm border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs"
+            className="flex-1 rounded-lg border border-border bg-soft px-1 py-0.5 text-xs"
           />
         ) : (
           <span
             className={
               'flex-1 truncate text-sm ' +
-              (isActive ? 'font-semibold text-white ' : '') +
-              (layer.visible ? '' : 'text-neutral-500 line-through')
+              (isActive ? 'font-semibold text-ink ' : '') +
+              (layer.visible ? '' : 'text-muted line-through')
             }
           >
             {layer.name || '(untitled)'}
@@ -275,14 +275,14 @@ function LayerRow({
         )}
         {!editing && itemCount !== null && (
           <span
-            className="shrink-0 tabular-nums text-[10px] text-neutral-500"
-            title={layer.type === 'brick' ? `${itemCount} part${itemCount === 1 ? '' : 's'} on this layer` : undefined}
+            className="shrink-0 tabular-nums text-[10px] text-muted"
+            title={layer.type === 'brick' ? `${itemCount} part${itemCount === 1 ? '' : 's'} on this sheet` : undefined}
           >
             {itemCount}
           </span>
         )}
       </div>
-      <div className="ml-9 mt-1 flex items-center gap-2 text-[10px] text-neutral-500">
+      <div className="ml-9 mt-1 flex items-center gap-2 text-[10px] text-muted">
         <input
           type="range"
           min={0}
@@ -293,7 +293,7 @@ function LayerRow({
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => setLayerTransparency(doc, layer.id, parseInt(e.target.value, 10))}
           title="Transparency (0% transparent → 100% opaque)"
-          className="flex-1 accent-blue-600"
+          className="flex-1 accent-accent"
         />
         <span className="w-7 text-right tabular-nums">{layer.transparency}%</span>
       </div>
@@ -301,7 +301,7 @@ function LayerRow({
         <div
           ref={menuRef}
           style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
-          className="min-w-[170px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 text-xs shadow-lg"
+          className="min-w-[170px] rounded-lg border border-border bg-panel py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -309,7 +309,7 @@ function LayerRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setLayerVisible(doc, layer.id, !layer.visible); setCtxMenu(null); }}
           >
-            {layer.visible ? 'Hide layer' : 'Show layer'}
+            {layer.visible ? 'Hide sheet' : 'Show sheet'}
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
@@ -323,18 +323,18 @@ function LayerRow({
           >
             Show all layers
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); setShowOptions(true); }}
           >
-            Layer Options…  <span className="float-right text-neutral-500">dbl-click</span>
+            Layer Options…  <span className="float-right text-muted">dbl-click</span>
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={startRename}
           >
-            Rename…  <span className="float-right text-neutral-500">F2</span>
+            Rename…  <span className="float-right text-muted">F2</span>
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
@@ -348,20 +348,20 @@ function LayerRow({
           >
             Move down
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
-            className="block w-full px-3 py-1 text-left text-red-400 hover:bg-neutral-700"
+            className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
             onClick={() => {
               setCtxMenu(null);
-              if (!confirm('Delete this layer? This is undo-able.')) return;
+              if (!confirm('Delete this sheet? This is undo-able.')) return;
               deleteLayer(doc, layer.id);
             }}
           >
             Delete layer
           </button>
-          <hr className="my-1 border-neutral-700" />
+          <hr className="my-1 border-border" />
           <button
-            className="block w-full px-3 py-1 text-left text-neutral-500 hover:bg-neutral-700"
+            className="block w-full px-3 py-1 text-left text-muted hover:bg-neutral-700"
             onClick={() => setCtxMenu(null)}
           >
             Cancel
@@ -381,11 +381,11 @@ function LayerRow({
 
 // Same kinds as desktop's add-layer menu (LayerPanel.cpp:85-89).
 const ADD_LAYER_OPTIONS: { kind: LayerKind; label: string }[] = [
-  { kind: 'grid', label: 'Grid layer' },
-  { kind: 'brick', label: 'Parts layer' },
-  { kind: 'area', label: 'Area layer' },
-  { kind: 'text', label: 'Text layer' },
-  { kind: 'ruler', label: 'Ruler layer' },
+  { kind: 'grid', label: 'Grid sheet' },
+  { kind: 'brick', label: 'Parts sheet' },
+  { kind: 'area', label: 'Area sheet' },
+  { kind: 'text', label: 'Text sheet' },
+  { kind: 'ruler', label: 'Ruler sheet' },
 ];
 
 function AddLayerButton({ doc, onAdd }: { doc: Y.Doc; onAdd: (layerId: string) => void }) {
@@ -394,21 +394,21 @@ function AddLayerButton({ doc, onAdd }: { doc: Y.Doc; onAdd: (layerId: string) =
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded-sm px-2 py-0.5 text-xs hover:bg-neutral-800"
-        title="Add a new layer"
+        className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft"
+        title="Add a new sheet"
       >
-        + Add layer
+        + Add sheet
       </button>
       {open && (
         <ul
-          className="absolute bottom-7 left-0 z-10 w-40 rounded-sm border border-neutral-700 bg-neutral-900 text-xs shadow-sm"
+          className="absolute bottom-7 left-0 z-10 w-40 rounded-lg border border-border bg-panel text-xs shadow-sm"
           onClick={() => setOpen(false)}
         >
           {ADD_LAYER_OPTIONS.map(({ kind, label }) => (
             <li key={kind}>
               <button
                 onClick={() => onAdd(addLayer(doc, kind))}
-                className="block w-full px-2 py-1 text-left hover:bg-neutral-800"
+                className="block w-full px-2 py-1 text-left hover:bg-soft"
               >
                 {label}
               </button>
