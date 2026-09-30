@@ -49,7 +49,7 @@ export function LibraryPage() {
           </h2>
           <Link
             to="/"
-            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
+            className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
           >
             Manage layouts
           </Link>
@@ -65,7 +65,7 @@ export function LibraryPage() {
           {me.data?.user && !me.data.user.isDemoAccount && (
             <button
               onClick={() => setShowPart(true)}
-              className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
+              className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
             >
               Upload part
             </button>
@@ -82,7 +82,7 @@ export function LibraryPage() {
           {me.data?.user && (
             <button
               onClick={() => setShowModule(true)}
-              className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
+              className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
             >
               New module
             </button>
@@ -123,7 +123,7 @@ function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: 
           </div>
           <Link
             to={`/editor/${l.id}`}
-            className="rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover"
+            className="tap-target inline-flex items-center rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover"
           >
             Open
           </Link>

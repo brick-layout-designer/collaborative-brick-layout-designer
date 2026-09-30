@@ -55,7 +55,7 @@ export function HelpPage() {
   return (
     <div className="h-full overflow-y-auto bg-bg px-4 py-8 text-ink sm:px-16 sm:py-12">
       <div className="mx-auto flex max-w-3xl flex-col gap-5">
-        <Link to="/" className="text-sm font-semibold text-muted hover:text-ink">
+        <Link to="/" className="tap-target inline-flex items-center self-start text-sm font-semibold text-muted hover:text-ink">
           ← All layouts
         </Link>
         <h1 className="font-display text-3xl font-bold">Help</h1>

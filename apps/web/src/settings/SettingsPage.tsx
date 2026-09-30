@@ -21,7 +21,7 @@ const THEME_CARDS: { id: ThemeChoice; label: string }[] = [
 function ThemePreview({ id }: { id: ThemeChoice }) {
   if (id === 'system') {
     return (
-      <div className="flex h-[90px] overflow-hidden rounded-control border border-line" aria-hidden>
+      <div className="flex h-14 sm:h-[90px] overflow-hidden rounded-control border border-line" aria-hidden>
         <div className="grow" style={{ background: NEUTRALS.light.bg }} />
         <div className="grow" style={{ background: NEUTRALS.dark.bg }} />
       </div>
@@ -29,7 +29,7 @@ function ThemePreview({ id }: { id: ThemeChoice }) {
   }
   const n = NEUTRALS[id];
   return (
-    <div className="flex h-[90px] gap-1.5 rounded-control border border-line p-2" style={{ background: n.bg }} aria-hidden>
+    <div className="flex h-14 sm:h-[90px] gap-1.5 rounded-control border border-line p-2" style={{ background: n.bg }} aria-hidden>
       <div className="w-[22%] rounded-md" style={{ background: n.panel }} />
       <div className="grow rounded-md" style={{ background: n.gridLine }} />
     </div>
@@ -114,7 +114,7 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
 
       <div className="flex min-w-0 grow flex-col gap-5">
         <Section id="look" title="Light or dark">
-          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3" role="radiogroup" aria-label="Light or dark">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3.5" role="radiogroup" aria-label="Light or dark">
             {THEME_CARDS.map((t) => {
               const on = prefs.theme === t.id;
               return (
@@ -162,7 +162,7 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
             })}
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-3 text-[15px] font-semibold">
+            <label className="flex min-h-11 items-center gap-3 text-[15px] font-semibold">
               <input
                 type="checkbox"
                 className="h-5 w-5 accent-accent"

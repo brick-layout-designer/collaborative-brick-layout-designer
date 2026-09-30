@@ -18,6 +18,8 @@ import { studToPx, COLOR_DEFAULT } from './coords';
 import { textKey } from '../mixedSelection';
 import { fontStack } from './fontStack';
 import { colorSpecToCss } from '../layerOptions';
+import { useEditorStore } from '../editorStore';
+import { textReadable } from '../textLegibility';
 
 const PROBE_PX = 100;
 
@@ -120,6 +122,9 @@ function FittedTextCell({
   // Centre the text on displayArea centre, rotated in place. Konva
   // rotates around (x, y); offsetX/Y shift the local bbox so its centre
   // lands on (x, y).
+  // Too small to read on screen (phone viewer only): leave it out.
+  const readable = useEditorStore((st) => textReadable(layout.fontSize, st.zoom, st.minTextPx));
+
   const cx = (cell.displayArea.x + cell.displayArea.width / 2) * studToPx();
   const cy = (cell.displayArea.y + cell.displayArea.height / 2) * studToPx();
 
@@ -136,6 +141,7 @@ function FittedTextCell({
       offsetX={layout.w / 2}
       offsetY={layout.h / 2}
       rotation={cell.orientation}
+      visible={readable}
       listening={interactive ?? false}
       perfectDrawEnabled={false}
       hitStrokeWidth={0}

@@ -48,7 +48,9 @@ test('tapping a "?" on a phone opens a popover that fits, and tapping outside cl
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/web-help-phone-popover.png` });
 
   // Tapping somewhere else closes it.
-  await page.locator('main').tap({ position: { x: 40, y: 40 } });
+  // (Low on the canvas: on a phone the popover sits over its top.)
+  const main = (await page.locator('main').boundingBox())!;
+  await page.locator('main').tap({ position: { x: 40, y: main.height - 120 } });
   await expect(pop).toHaveCount(0);
 
   // The Help menu opens with a tap and fits the screen.

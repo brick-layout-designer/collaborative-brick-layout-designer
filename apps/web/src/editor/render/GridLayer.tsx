@@ -6,6 +6,7 @@ import { useEditorStore } from '../editorStore';
 import { colorSpecToCss } from '../layerOptions';
 import { cellIndexLabels, drawnGridLayer, parseCellIndexCorner } from './gridIndex';
 import { fontStack } from './fontStack';
+import { legibleLabelPx } from '../textLegibility';
 
 export interface ViewportRect {
   /** World-space (stud) bounds currently visible on the stage. */
@@ -101,6 +102,9 @@ function CellIndexLabels({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) 
   const px = studToPx();
   const fontPx = Math.max(1, Math.round((grid.cellIndexFont.size || 10) * (4 / 3) * px));
   const cellPx = grid.gridSizeInStud * px;
+  // Too small to read on screen (phone viewer only): grow them to a
+  // readable size while they fit their cell, else leave them out.
+  const shownPx = useEditorStore((s) => legibleLabelPx(fontPx, s.zoom, s.minTextPx, cellPx * 0.6));
   const labels = cellIndexLabels(
     bounds,
     grid.gridSizeInStud,
@@ -110,6 +114,7 @@ function CellIndexLabels({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) 
   );
   const style = (grid.cellIndexFont.style ?? '').toLowerCase();
   const fontStyle = `${style.includes('italic') ? 'italic ' : ''}${style.includes('bold') ? 'bold' : 'normal'}`;
+  if (shownPx === null) return null;
   return (
     <Group name="cell-index">
       {labels.map((l) => (
@@ -124,7 +129,7 @@ function CellIndexLabels({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) 
           text={l.text}
           fontFamily={fontStack(grid.cellIndexFont.family)}
           fontStyle={fontStyle}
-          fontSize={fontPx}
+          fontSize={shownPx}
           fill={colorSpecToCss(grid.cellIndexColor)}
           listening={false}
           perfectDrawEnabled={false}

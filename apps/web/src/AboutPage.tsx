@@ -82,27 +82,27 @@ export function AboutPage() {
           <h2 className="text-lg font-semibold">Links</h2>
           <ul className="mt-2 space-y-1 text-sm">
             <li>
-              <a href={REPO_URL} className="text-accent-text hover:underline">
+              <a href={REPO_URL} className="tap-target inline-flex items-center text-accent-text hover:underline">
                 Source code (GitHub)
               </a>
             </li>
             <li>
-              <a href={ISSUES_URL} className="text-accent-text hover:underline">
+              <a href={ISSUES_URL} className="tap-target inline-flex items-center text-accent-text hover:underline">
                 Report an issue
               </a>
             </li>
             <li>
-              <a href={DESKTOP_URL} className="text-accent-text hover:underline">
+              <a href={DESKTOP_URL} className="tap-target inline-flex items-center text-accent-text hover:underline">
                 Desktop CLD (Qt)
               </a>
             </li>
             <li>
-              <a href={ORIGINAL_BLUEBRICK_URL} className="text-accent-text hover:underline">
+              <a href={ORIGINAL_BLUEBRICK_URL} className="tap-target inline-flex items-center text-accent-text hover:underline">
                 Original BlueBrick
               </a>
             </li>
             <li>
-              <a href={BLUEBRICK_PARTS_URL} className="text-accent-text hover:underline">
+              <a href={BLUEBRICK_PARTS_URL} className="tap-target inline-flex items-center text-accent-text hover:underline">
                 BlueBrickParts library
               </a>
             </li>
