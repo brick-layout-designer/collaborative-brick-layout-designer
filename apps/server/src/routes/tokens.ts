@@ -1,6 +1,9 @@
 // Token management for the signed-in web user: list their API tokens
-// (desktop sign-ins) and revoke them. Web-session only — none of these
-// routes carry `config.apiToken`, so a token can't list or revoke tokens.
+// (desktop sign-ins) and revoke them. Web-session only — those routes
+// don't carry `config.apiToken`, so a token can't list or revoke tokens.
+// The one token route, GET /api/tokens/current, tells a desktop who its
+// own token belongs to (its display name for cursors on live layouts)
+// without opening the account routes to tokens.
 // Secrets are never returned; tokens are minted only by the device-code
 // flow (routes/auth/device.ts).
 
@@ -27,6 +30,15 @@ export async function tokenRoutes(app: FastifyInstance) {
   app.get('/api/tokens', async (req) => {
     const user = requireUser(req);
     return { tokens: (await listApiTokens(user.id)).map(toListItem) };
+  });
+
+  app.get('/api/tokens/current', { config: { apiToken: 'layouts:read' } }, async (req, reply) => {
+    const user = requireUser(req);
+    if (!req.apiToken) return reply.code(400).send({ error: 'not_a_token' });
+    return {
+      user: { id: user.id, displayName: user.displayName },
+      token: { id: req.apiToken.id, scopes: req.apiToken.scopes },
+    };
   });
 
   app.delete<{ Params: { id: string } }>(
