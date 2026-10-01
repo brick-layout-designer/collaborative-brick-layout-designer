@@ -32,11 +32,15 @@ COPY apps/server/migrations ./apps/server/migrations
 COPY apps/web/src ./apps/web/src
 COPY apps/web/public ./apps/web/public
 COPY packages ./packages
+# Shared with the desktop repo; the web's tests (type-checked by the build) read it.
+COPY compat ./compat
 
-RUN pnpm --filter @cld/model        build || true \
- && pnpm --filter @cld/bbm          build || true \
- && pnpm --filter @cld/ydoc         build || true \
- && pnpm --filter @cld/parts-catalog build || true \
+# Any failing step stops the image build (no `|| true`: a failure here used
+# to show up only as a confusing error later in the chain).
+RUN pnpm --filter @cld/model        build \
+ && pnpm --filter @cld/bbm          build \
+ && pnpm --filter @cld/ydoc         build \
+ && pnpm --filter @cld/parts-catalog build \
  && pnpm --filter @cld/web          build \
  && pnpm --filter @cld/server       build
 
