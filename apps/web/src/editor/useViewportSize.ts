@@ -17,8 +17,8 @@ export interface ViewportInfo {
  *
  * Below `MOBILE_BREAKPOINT` we drop the parts-panel sidebar so the
  * canvas gets the full window width. The editor uses `isMobile` to
- * force read-only behaviour on small screens (PLAN.md §1: read-only
- * mobile viewer, no touch editing).
+ * open in View mode on small screens, with touch editing behind a
+ * View / Edit switch (PLAN.md, "Touch editing").
  */
 export function useViewportSize(): ViewportInfo {
   const [info, setInfo] = useState(() => measure());
@@ -49,7 +49,7 @@ function measure(): ViewportInfo {
   };
 }
 
-function coarsePointer(): boolean {
+export function coarsePointer(): boolean {
   try {
     return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
   } catch {

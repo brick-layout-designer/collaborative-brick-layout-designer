@@ -28,6 +28,7 @@ import { indexParts } from '../partIndex';
 import { drawOrder, pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
 import { SELECTION } from './selectionStyle';
+import { isTouchEvent, tapGuard } from '../touchGesture';
 
 /** Konva's double-click window; the second press of a double-click starts a flex move. */
 const DOUBLE_CLICK_MS = 400;
@@ -251,14 +252,20 @@ const BrickGlyph = memo(function BrickGlyph({
       }
       return;
     }
+    const touch = isTouchEvent(e.evt);
+    // A finger that moved the view, or was held down, doesn't also pick
+    // the part it started on (touchGesture.ts tapGuard).
+    if (touch && tapGuard.suppress) return;
     if (tool === 'select') {
       // Match Qt's default QGraphicsScene selection (the path desktop's
       // MapView::mousePressEvent falls through to at MapView.cpp:534):
       //   * plain click  → clear selection, select THIS item
       //   * shift / ctrl → toggle this item, keep the rest
       e.cancelBubble = true;
+      // On a touch screen, "Select more" (or a long press) makes taps add.
       const additive =
-        'shiftKey' in e.evt ? e.evt.shiftKey || e.evt.metaKey || e.evt.ctrlKey : false;
+        (touch && useEditorStore.getState().touchSelectMore) ||
+        ('shiftKey' in e.evt ? e.evt.shiftKey || e.evt.metaKey || e.evt.ctrlKey : false);
 
       // Group-aware selection: clicking a brick that belongs to a
       // group selects every brick sharing that group id, mirroring the
@@ -292,6 +299,18 @@ const BrickGlyph = memo(function BrickGlyph({
    * and used as the snap lead of a single-brick drag.
    */
   const grabConnRef = useRef<number>(-1);
+
+  /** A finger on the part: grab the connection nearest it, as a mouse press does. */
+  function handleTouchStart(e: KonvaEventObject<TouchEvent>) {
+    grabConnRef.current = -1;
+    if (isViewer || tool !== 'select' || e.evt.touches.length !== 1) return;
+    const stage = e.target.getStage();
+    const ptr = stage?.getPointerPosition();
+    if (!stage || !ptr) return;
+    const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+    const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx());
+    if (idx >= 0) grabConnRef.current = idx;
+  }
 
   function handleMouseDown(e: KonvaEventObject<MouseEvent>) {
     grabConnRef.current = -1;
@@ -591,8 +610,10 @@ const BrickGlyph = memo(function BrickGlyph({
     const ptr = stage?.getPointerPosition();
     const stageW = stage?.width() ?? 0;
     const stageH = stage?.height() ?? 0;
+    // Not by touch: a finger that slides off the map onto the buttons
+    // round it shouldn't throw the parts away (Delete is a button there).
     const outOfBounds =
-      !ptr || ptr.x < 0 || ptr.y < 0 || ptr.x >= stageW || ptr.y >= stageH;
+      !isTouchEvent(e.evt) && (!ptr || ptr.x < 0 || ptr.y < 0 || ptr.x >= stageW || ptr.y >= stageH);
     if (outOfBounds) {
       // Desktop deleteSelected() removes the whole selection — bricks on
       // any layer plus rulers, labels and text — in one undo step.
@@ -655,6 +676,7 @@ const BrickGlyph = memo(function BrickGlyph({
       rotation={brick.orientation}
       draggable={!isViewer && (tool === 'select')}
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
       onClick={handleClick}
       onTap={handleClick}
       onDblClick={(e) => {

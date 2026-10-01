@@ -45,9 +45,11 @@ import { ElectricCircuitLayer } from './render/ElectricCircuitLayer';
 import { ModuleOverlay, measureBold, moduleLabelBoundsStuds } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
-import { useViewportSize } from './useViewportSize';
+import { coarsePointer, useViewportSize } from './useViewportSize';
 import { useElementSize } from './useElementSize';
 import { useTouchView } from './useTouchView';
+import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
+import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, type LayoutImage } from '../layoutFile';
@@ -205,11 +207,29 @@ function Editor({ layoutId }: { layoutId: string }) {
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const undo = useUndoManager(doc);
   const role = meta.data?.role ?? 'viewer';
-  // Mobile viewport forces read-only mode regardless of role (PLAN.md
-  // §1 non-goal: no touch editing on phones). We re-use the existing
-  // viewer-mode UI gating instead of inventing a new "mobile" mode.
+  // A phone opens a layout in View mode (the phone viewer). People who
+  // can edit get a View / Edit switch in the header; Edit turns on touch
+  // editing. The choice is kept per layout for this visit (sessionStorage).
+  // View re-uses the viewer-mode UI gating rather than a separate mode.
   const viewport = useViewportSize();
-  const isViewer = role === 'viewer' || viewport.isMobile;
+  const [phoneEdit, setPhoneEditState] = useState(() => readPhoneEdit(safeSessionStorage(), layoutId));
+  const setPhoneEdit = useCallback(
+    (edit: boolean) => {
+      writePhoneEdit(safeSessionStorage(), layoutId, edit);
+      setPhoneEditState(edit);
+      if (!edit) {
+        useEditorStore.getState().setSelection([]);
+        useEditorStore.setState({ touchSelectMore: false });
+      }
+    },
+    [layoutId],
+  );
+  const isViewer = role === 'viewer' || (viewport.isMobile && !phoneEdit);
+  /** Editing on a phone: the touch bar, Undo / Redo and Add part over the map. */
+  const touchEditing = viewport.isMobile && !isViewer;
+  /** A tablet (full editor, touch screen): the bar for picked parts. */
+  const touchTablet = !viewport.isMobile && !isViewer && coarsePointer();
+  const [showAddPart, setShowAddPart] = useState(false);
   // The canvas area's real size, after the header, the status bar and the
   // browser's own bars: the stage fills it and Fit uses it.
   // 0 until measured, so the first fit waits for the real size.
@@ -513,7 +533,7 @@ function Editor({ layoutId }: { layoutId: string }) {
     >
       {viewport.isMobile ? (
         <header
-          // Phone: the name gets a row of its own (with "View only"), and
+          // Phone: the name gets a row of its own (with View / Edit, or "View only"), and
           // the save state and the buttons share the second row, so the
           // title never runs into the pills.
           data-testid="editor-header"
@@ -542,7 +562,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                 </button>
               </LayoutNameMenu>
             </div>
-            {isViewer && <ViewOnlyPill />}
+            {role === 'viewer' ? <ViewOnlyPill /> : <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
             <SavePill status={status} />
@@ -636,7 +656,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       {/* The edit toolbar. A viewer can't change anything, so there is
           nothing here for them: no Undo / Redo either. */}
-      {!isViewer && (
+      {!isViewer && !viewport.isMobile && (
       <div
         role="toolbar"
         aria-label="Edit"
@@ -806,12 +826,14 @@ function Editor({ layoutId }: { layoutId: string }) {
         data-tour="map"
         // touch-action: none keeps the browser's page zoom and scrolling
         // off the canvas, so a pinch zooms the map, not the page.
-        className="relative touch-none overflow-hidden"
-        style={{ gridColumn: '3', gridRow: '3' }}
+        // No text selection or iOS callout on a long press either.
+        className="relative touch-none select-none overflow-hidden [-webkit-touch-callout:none]"
+        style={{ gridColumn: '3', gridRow: '3', ...(touchEditing ? { ['--touch-bar-h' as string]: '4.25rem' } : {}) }}
       >
         {activeView && (
           <div
             data-testid="active-view"
+            data-no-gesture
             className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center px-3"
           >
             <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full border border-line bg-panel py-1 pl-3.5 pr-1 text-sm text-ink shadow-pop">
@@ -823,6 +845,17 @@ function Editor({ layoutId }: { layoutId: string }) {
               </button>
             </div>
           </div>
+        )}
+        {touchEditing && <TouchUndoRedo undo={undo} top={activeView ? '3.25rem' : '0.5rem'} />}
+        {(touchEditing || touchTablet) && (
+          <TouchActionBar
+            actions={{
+              rotate: (cw) => canvasActionsRef.current?.rotate(cw),
+              duplicate: (beside) => canvasActionsRef.current?.duplicate(beside),
+              delete: () => canvasActionsRef.current?.delete(),
+            }}
+            onAddPart={touchEditing ? () => setShowAddPart(true) : undefined}
+          />
         )}
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
       </main>
@@ -863,6 +896,15 @@ function Editor({ layoutId }: { layoutId: string }) {
           </FloatingPanel>
         );
       })}
+      {showAddPart && touchEditing && (
+        <AddPartSheet
+          onClose={() => setShowAddPart(false)}
+          onPick={(part) => {
+            setShowAddPart(false);
+            placeAtCenterRef.current?.(part);
+          }}
+        />
+      )}
       <Suspense fallback={null}>
       {showShare && me.data?.user && meta.data && (
         <ShareDialog
@@ -1092,7 +1134,22 @@ function Canvas({
   const stageRef = useRef<Konva.Stage | null>(null);
   const hudLayerRef = useRef<Konva.Layer | null>(null);
   const { width, height } = size;
-  // Two fingers pan and zoom anywhere; on the phone viewer one finger pans.
+  // Touch, on phones and tablets alike: two fingers pan and zoom, one
+  // finger moves the view, except that when editing a finger on a picked
+  // part drags the part (Konva's drag, with the desktop's snapping). A tap
+  // picks a part (Konva's tap) or, on empty map, clears the pick; a long
+  // press picks more.
+  /** The part under a point of the canvas area, from Konva's own hit test. */
+  const brickAt = (p: Pt): { id: string; node: Konva.Node } | null => {
+    const stage = stageRef.current;
+    if (!stage || !touchEl) return null;
+    const area = touchEl.getBoundingClientRect();
+    const box = stage.container().getBoundingClientRect();
+    const shape = stage.getIntersection({ x: p.x + area.left - box.left, y: p.y + area.top - box.top });
+    const g = shape?.findAncestor((n: Konva.Node) => n.getClassName() === 'Group' && n.name().startsWith('brick-'));
+    return g ? { id: g.name().slice('brick-'.length), node: g } : null;
+  };
+  const isPicked = (id: string) => useEditorStore.getState().selection.includes(id);
   useTouchView(
     touchEl,
     () => {
@@ -1100,8 +1157,82 @@ function Canvas({
       return { zoom: st.zoom, panX: st.panX, panY: st.panY };
     },
     (v) => useEditorStore.setState(v),
-    { oneFingerPan: phone, range: { min: MIN_ZOOM, max: MAX_ZOOM } },
+    {
+      oneFingerPan: true,
+      range: { min: MIN_ZOOM, max: MAX_ZOOM },
+      panFrom: (p) => {
+        if (isViewer || useEditorStore.getState().tool !== 'select') return true;
+        const hit = brickAt(p);
+        return !(hit && isPicked(hit.id));
+      },
+      onPinchStart: () => {
+        // A part being dragged by the first finger stays where it is.
+        const stage = stageRef.current;
+        if (!stage) return;
+        for (const id of useEditorStore.getState().selection) {
+          const node = stage.findOne(`.brick-${id}`);
+          if (node?.isDragging()) node.stopDrag();
+        }
+      },
+      onTap: (p) => {
+        if (isViewer) return;
+        const st = useEditorStore.getState();
+        if (st.tool !== 'select' || st.touchSelectMore) return;
+        // A part handles its own tap; empty map clears the pick.
+        if (!brickAt(p)) st.setSelection([]);
+      },
+      onLongPress: (p) => {
+        if (isViewer || useEditorStore.getState().tool !== 'select') return;
+        const hit = brickAt(p);
+        if (!hit) return;
+        // Held down: pick this part as well, and keep picking more with taps.
+        const st = useEditorStore.getState();
+        if (!st.selection.includes(hit.id)) useEditorStore.setState({ selection: [...st.selection, hit.id] });
+        useEditorStore.setState({ touchSelectMore: true });
+        try {
+          navigator.vibrate?.(15);
+        } catch {
+          // No vibration here.
+        }
+      },
+    },
   );
+  // A finger on a part that isn't picked moves the view, so Konva mustn't
+  // start dragging that part. Turned off as the finger lands (capture, so
+  // before Konva sees it) and back on when it lifts.
+  useEffect(() => {
+    if (!touchEl || isViewer) return;
+    let held: Konva.Node | null = null;
+    const release = (e: TouchEvent) => {
+      if (held && e.touches.length === 0) {
+        held.draggable(true);
+        held = null;
+      }
+    };
+    const down = (e: TouchEvent) => {
+      lastTouchAtRef.current = Date.now();
+      if (e.touches.length !== 1 || held || (e.target as Element | null)?.closest?.('[data-no-gesture]')) return;
+      const t = e.touches[0]!;
+      const area = touchEl.getBoundingClientRect();
+      const hit = brickAt({ x: t.clientX - area.left, y: t.clientY - area.top });
+      if (hit && !isPicked(hit.id) && hit.node.draggable()) {
+        hit.node.draggable(false);
+        held = hit.node;
+      }
+    };
+    touchEl.addEventListener('touchstart', down, { capture: true });
+    touchEl.addEventListener('touchend', release);
+    touchEl.addEventListener('touchcancel', release);
+    return () => {
+      held?.draggable(true);
+      touchEl.removeEventListener('touchstart', down, { capture: true });
+      touchEl.removeEventListener('touchend', release);
+      touchEl.removeEventListener('touchcancel', release);
+    };
+    // brickAt reads refs only.
+  }, [touchEl, isViewer]);
+  /** When a finger last came down: a long press also fires contextmenu, which isn't a right-click. */
+  const lastTouchAtRef = useRef(0);
   // On a phone, text too small to read is left out (textLegibility.ts).
   useEffect(() => {
     useEditorStore.getState().setMinTextPx(phone ? PHONE_MIN_TEXT_PX : 0);
@@ -2397,7 +2528,7 @@ function Canvas({
     if (newIds.length > 0) setSelection(newIds);
   }
 
-  async function duplicateSelection(): Promise<void> {
+  async function duplicateSelection(beside = false): Promise<void> {
     await copySelection();
     // Desktop Duplicate is copy + paste (MapViewClipboard.cpp:144-147):
     // the copies land centred under the cursor. Each lands on its source
@@ -2417,7 +2548,9 @@ function Canvas({
         }));
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
-    const offset = pasteOffset([...perLayer.values()].flat().map((b) => b.displayArea), currentPasteTarget());
+    const areas = [...perLayer.values()].flat().map((b) => b.displayArea);
+    // By touch there's no cursor: the copy lands beside the original.
+    const offset = pasteOffset(areas, (beside ? besideTarget(areas) : null) ?? currentPasteTarget());
     // Bricks beyond their budget are left out, in layer order.
     const flat = [...perLayer].flatMap(([layerId, bricks]) => bricks.map((brick) => ({ layerId, brick })));
     perLayer.clear();
@@ -2714,6 +2847,7 @@ function Canvas({
     copy: () => void copySelection(),
     paste: () => void pasteAtCursor(),
     delete: () => deleteSelection(),
+    duplicate: (beside) => void duplicateSelection(beside),
     // Toolbar Rotate CCW / CW and Send to Back / Bring to Front
     // (MainWindow.cpp:733-742) — same actions as R / Shift+R and
     // Ctrl+Shift+[ / ].
@@ -2814,6 +2948,8 @@ function Canvas({
       onMouseLeave={handleStageMouseLeave}
       onContextMenu={(e) => {
         e.evt.preventDefault();
+        // A long press by touch picks more parts instead (useTouchView).
+        if (Date.now() - lastTouchAtRef.current < 1500) return;
         if (skipContextMenuRef.current) {
           skipContextMenuRef.current = false;
           return;
@@ -2884,9 +3020,8 @@ function Canvas({
         const rect = stage.container().getBoundingClientRect();
         setCtxMenu({ x: rect.left + ptr.x, y: rect.top + ptr.y, studX, studY, onBrick, textCellRef, rulerRef, brickIdUnderCursor });
       }}
-      // On the phone viewer a touch pans or pinches (useTouchView); it
-      // mustn't also start a marquee.
-      {...(phone ? {} : { onTouchStart: handleStageMouseDown as unknown as (e: KonvaEventObject<TouchEvent>) => void })}
+      // A touch pans, pinches, taps or long-presses (useTouchView); it
+      // doesn't start a marquee. "Select more" picks several by touch.
     >
       {/* Layer 1 — mostly-static background: grid, background image,
           venue outline, paint areas, electric circuits. Changing any of
@@ -3236,7 +3371,8 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
         width: bar.px + 24,
         color: '#1e2124',
         left: 'max(0.5rem, env(safe-area-inset-left))',
-        bottom: '0.5rem',
+        // Above the touch bar while editing by touch.
+        bottom: 'calc(0.5rem + var(--touch-bar-h, 0px))',
       }}
     >
       <div>{bar.primary}</div>
@@ -4363,6 +4499,8 @@ interface CanvasActions {
   copy: () => void;
   paste: () => void;
   delete: () => void;
+  /** Duplicate the selection: under the cursor, or `beside` the original (touch). */
+  duplicate: (beside?: boolean) => void;
   rotate: (cw: boolean) => void;
   reorder: (to: 'front' | 'back') => void;
   zoom: (factor: number) => void;
@@ -4426,6 +4564,7 @@ function ViewOnlyPill() {
   return (
     <span
       data-testid="view-only"
+      data-tour="view.edit"
       className="shrink-0 whitespace-nowrap rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300"
     >
       View only

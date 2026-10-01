@@ -25,7 +25,8 @@ multi-user editing, organizations, and layout sharing. Self-hosted via
   named, reusable module; ownable by user or org; same sharing tiers as
   layouts. Mirrors desktop CLD's `Module` concept but elevates it from
   "embedded in one layout" to "first-class shareable asset".
-- Read-only viewer that works on phones (pan/zoom, no editing)
+- Phones open layouts in a View mode (pan/zoom); people who can edit switch
+  to Edit for touch editing (see "Touch editing" below)
 - Built-in backup worker with retention (daily / weekly / monthly buckets)
 - Single-host Docker deploy (one `docker compose up`)
 - GitHub CI: per-PR build/lint, nightly builds on main, tagged releases on `v*`
@@ -33,8 +34,8 @@ multi-user editing, organizations, and layout sharing. Self-hosted via
 ### Non-goals (initial)
 - Multi-instance horizontal scaling (Redis pub/sub, k8s) — deferred
 - Voice/video chat
-- Touch-first editing on phones/tablets (read-only viewer only on small screens;
-  editing is desktop-canvas first)
+- A separate touch-first editor: touch editing re-uses the desktop canvas,
+  its mutations and its undo, rather than being a second editor
 - WASM port of the C++ rasterizer (use Konva for rendering instead)
 - Desktop CLD parity for every dialog (start with the editing primitives)
 - Instance-wide public parts/modules library — defer to v2 (moderation,
@@ -1054,10 +1055,21 @@ actually USE these in layouts lands in Phase 7 / a follow-up.
 - Health check: deeper `/api/health/ready` confirms DB connectivity
   via a `SELECT 1` ping. Returns 503 on failure. Suitable as a
   k8s/docker readiness probe.
-- Mobile read-only viewer: `useViewportSize` exposes an `isMobile`
-  flag (< 768px). The editor forces read-only mode (the existing
-  `isViewer` UI gating) on mobile and collapses the sidebar grid
-  column.
+- Mobile viewer: `useViewportSize` exposes an `isMobile`
+  flag (< 768px). On a phone the editor opens in View mode (the existing
+  `isViewer` UI gating) and collapses the sidebar grid column.
+- Touch editing (2026-10): a View / Edit switch in the phone header,
+  View by default, kept per layout for the visit (sessionStorage);
+  viewers never see Edit. In Edit: tap picks a part, a finger on a
+  picked part drags it (the desktop drag, with grid and connection
+  snapping), one finger elsewhere pans, two fingers pinch; a long press
+  or "Select more" picks several; a bottom bar has Rotate left / right,
+  Duplicate, Delete and Done; "Add part" slides up a sheet with search
+  and recent parts and places the part at the screen centre; Undo /
+  Redo float over the map. Tablets get the same gestures and the bar
+  for picked parts in the full editor. Everything goes through the
+  normal mutations and undo, so live sync is unchanged
+  (`touchGesture.ts`, `useTouchView.ts`, `TouchEdit.tsx`).
 - Deploy docs: TLS is the operator's responsibility — point their
   reverse proxy at port 3000.
 - WS rate-limiting: already enforced by `MAX_WS_PER_USER = 8` in
@@ -1211,7 +1223,9 @@ backups, and ops.
   swap to Postgres later is a driver change, not a rewrite.
 - **Parts library**: downloaded at runtime via Admin → Libraries; no submodule or bind mount needed.
 - **Auth providers**: Google + GitHub + Microsoft/OIDC + email-password (gated).
-- **Mobile**: read-only viewer (pan/zoom) on small screens; no touch editing.
+- **Mobile**: View mode (pan/zoom) by default on small screens, with touch
+  editing behind a View / Edit switch for people who can edit (changed
+  2026-10 from "no touch editing").
 - **Audit log**: full version — log every persisted action via `audit_events`.
 - **Layout transfer**: yes, in v1 (see §3.5).
 - **Custom parts**: user-owned (private + per-user share) and org-owned;
