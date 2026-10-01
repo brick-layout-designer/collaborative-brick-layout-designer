@@ -90,18 +90,20 @@ export async function downloadAllViews(input: {
   map: BbmMap;
   sidecar: Sidecar | null;
   handle: ExportHandle | null;
-  scale?: number;
+  maxSide?: number;
+  onProgress?: (done: number, total: number) => void;
 }): Promise<number> {
   const render = input.handle?.renderPicture;
   if (!render) return 0;
-  const scale = input.scale ?? loadExportViewsOptions().scale;
-  saveExportViewsOptions({ scale });
+  const maxSide = input.maxSide ?? loadExportViewsOptions().maxSide;
+  saveExportViewsOptions({ maxSide });
   const result = await exportAllViews({
     title: input.title,
     views: input.views,
     map: input.map,
     sidecar: input.sidecar,
-    scale,
+    maxSide,
+    ...(input.onProgress ? { onProgress: input.onProgress } : {}),
     render: async (spec, size) => {
       const canvas = await render(spec, size);
       if (!canvas) return null;

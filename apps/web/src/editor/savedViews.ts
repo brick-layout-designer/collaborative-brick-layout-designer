@@ -114,15 +114,27 @@ export function pictureSize(region: StudRect, scale: number): { width: number; h
   return clampExportSize(region.width * PX_PER_STUD * scale, region.height * PX_PER_STUD * scale);
 }
 
+/** Longest side of a shared picture: sharp on a phone, small enough for chat apps. */
+export const SHARE_MAX_SIDE = 2560;
+
+/**
+ * The scale (1 = 8 px per stud) that makes a region's longest side
+ * `maxSide` pixels, but never more than `most`, so a small corner isn't
+ * blown up past the parts' own detail.
+ */
+export function scaleForSide(region: StudRect, maxSide: number, most = 4): number {
+  const longest = Math.max(region.width, region.height) * PX_PER_STUD;
+  if (!(longest > 0)) return most;
+  return Math.min(most, maxSide / longest);
+}
+
 /**
  * A picture's scale for sharing: `preferred`, made smaller when the
  * longest side would pass `maxSide` (phones and chat apps choke on
  * huge images).
  */
-export function shareScale(region: StudRect, preferred = 2, maxSide = 4096): number {
-  const longest = Math.max(region.width, region.height) * PX_PER_STUD;
-  if (!(longest > 0)) return preferred;
-  return Math.min(preferred, maxSide / longest);
+export function shareScale(region: StudRect, preferred = 2, maxSide = SHARE_MAX_SIDE): number {
+  return scaleForSide(region, maxSide, preferred);
 }
 
 /** `<layout> - <view>.png`, safe as a file name. */
@@ -145,26 +157,31 @@ export type PictureRenderer = (spec: PictureSpec, size: { width: number; height:
 
 /** "Export all views" options, remembered between uses. */
 export interface ExportViewsOptions {
-  /** 1 = 8 px per stud. */
-  scale: number;
+  /** Longest side of each picture in pixels (one of EXPORT_VIEWS_SIZES). */
+  maxSide: number;
 }
 
-export const EXPORT_VIEWS_SCALES = [
-  { scale: 1, label: 'Small' },
-  { scale: 2, label: 'Medium' },
-  { scale: 4, label: 'Large' },
+/**
+ * Picture sizes by their longest side, so a big layout doesn't make a
+ * picture too big to open or send. Medium is a sharp full-screen picture.
+ */
+export const EXPORT_VIEWS_SIZES = [
+  { maxSide: 1280, label: 'Small' },
+  { maxSide: 2560, label: 'Medium' },
+  { maxSide: 5120, label: 'Large' },
 ] as const;
 
+const DEFAULT_MAX_SIDE = 2560;
 const PREFS_KEY = 'cld:exportViews';
 
 export function loadExportViewsOptions(): ExportViewsOptions {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     const v = raw ? (JSON.parse(raw) as Partial<ExportViewsOptions>) : {};
-    const scale = typeof v.scale === 'number' && v.scale > 0 && v.scale <= 8 ? v.scale : 2;
-    return { scale };
+    const known = EXPORT_VIEWS_SIZES.some((o) => o.maxSide === v.maxSide);
+    return { maxSide: known ? v.maxSide! : DEFAULT_MAX_SIDE };
   } catch {
-    return { scale: 2 };
+    return { maxSide: DEFAULT_MAX_SIDE };
   }
 }
 
@@ -194,16 +211,20 @@ export async function exportAllViews(input: {
   views: readonly SavedView[];
   map: BbmMap;
   sidecar: Sidecar | null | undefined;
-  scale: number;
+  /** Longest side of each picture in pixels. */
+  maxSide: number;
   render: PictureRenderer;
+  /** Called before each picture is made: (pictures done, how many in all). */
+  onProgress?: (done: number, total: number) => void;
 }): Promise<ExportAllResult> {
   const views = input.views.length > 0 ? input.views : [WHOLE_LAYOUT];
   const entries: ZipEntry[] = [];
   const skipped: string[] = [];
   const used = new Set<string>();
-  for (const view of views) {
+  for (const [i, view] of views.entries()) {
+    input.onProgress?.(i, views.length);
     const spec = viewPicture(view, input.map, input.sidecar);
-    const png = spec ? await input.render(spec, pictureSize(spec.region, input.scale)) : null;
+    const png = spec ? await input.render(spec, pictureSize(spec.region, scaleForSide(spec.region, input.maxSide))) : null;
     if (!png) {
       skipped.push(view.name);
       continue;

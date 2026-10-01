@@ -4,6 +4,7 @@
 // The limits themselves are stored in the doc's meta (`setBudgetLimits`), so
 // they persist and sync; .bbb Open/Save import and export them.
 
+import { noticeDownloaded } from './editorStore';
 import { useState, useMemo } from 'react';
 import type { BbmMap } from '@cld/model';
 import { mergeBudgets, parseBbb, writeBbb, type BudgetEntry } from './budgetFile';
@@ -98,6 +99,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
     a.href = URL.createObjectURL(blob);
     a.download = fileName ?? 'budget.bbb';
     a.click();
+    noticeDownloaded(a.download);
     URL.revokeObjectURL(a.href);
   }
 

@@ -26,6 +26,8 @@ export interface ViewsPanelProps {
   onShowEverything: () => void;
   onShare: (view: SavedView) => void;
   onExportAll: () => void;
+  /** Progress text while "Export all views" runs. */
+  exporting?: string | null;
   /** Phones: everything sized for fingers. */
   touch?: boolean;
 }
@@ -122,11 +124,12 @@ export function ViewsPanel(props: ViewsPanelProps) {
                       type="button"
                       aria-label={`Change ${view.name}`}
                       aria-expanded={open}
-                      title="Change this view"
+                      title={open ? 'Close the settings for this view' : 'Change what this view shows'}
                       onClick={() => setOpenId(open ? null : view.id)}
-                      className="flex w-11 shrink-0 items-center justify-center rounded-card text-muted hover:bg-soft hover:text-ink"
+                      className={`flex shrink-0 items-center justify-center gap-0.5 rounded-card px-2 text-xs font-semibold hover:bg-soft hover:text-ink ${open ? 'text-ink' : 'text-muted'}`}
                     >
-                      <DotsIcon />
+                      <span aria-hidden>Edit</span>
+                      <ChevronIcon open={open} />
                     </button>
                   )}
                 </div>
@@ -149,6 +152,7 @@ export function ViewsPanel(props: ViewsPanelProps) {
                     if (active) onGoTo({ ...view, ...patch });
                   }}
                   onRename={() => setRenaming({ id: view.id, name: view.name })}
+                  onClose={() => setOpenId(null)}
                   onDelete={() => {
                     if (!window.confirm(`Delete the view "${view.name}"? The layout itself doesn't change.`)) return;
                     deleteSavedView(doc, view.id);
@@ -204,8 +208,15 @@ export function ViewsPanel(props: ViewsPanelProps) {
       )}
 
       <div className="mt-auto border-t border-line pt-2">
-        <button type="button" className={`${BTN} w-full`} onClick={onExportAll} title="One picture of each view, in a zip file">
-          {views.length > 0 ? 'Export all views' : 'Export a picture'}
+        <button
+          type="button"
+          className={`${BTN} w-full gap-2`}
+          onClick={onExportAll}
+          disabled={!!props.exporting}
+          title="One picture of each view, in a zip file"
+        >
+          {props.exporting && <span aria-hidden className="size-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />}
+          {props.exporting ?? (views.length > 0 ? 'Export all views' : 'Export a picture')}
         </button>
       </div>
     </section>
@@ -223,6 +234,7 @@ function ViewOptions({
   onPatch,
   onRename,
   onDelete,
+  onClose,
 }: {
   view: SavedView;
   sheets: { id: string; name: string }[];
@@ -230,6 +242,7 @@ function ViewOptions({
   onPatch: (patch: Partial<SavedView>) => void;
   onRename: () => void;
   onDelete: () => void;
+  onClose: () => void;
 }) {
   const allSheets = view.sheets === null;
   const toggleSheet = (id: string, on: boolean) => {
@@ -295,6 +308,7 @@ function ViewOptions({
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={BTN} onClick={onRename}>Rename</button>
         <button type="button" className={`${BTN} text-danger`} onClick={onDelete}>Delete</button>
+        <button type="button" className={`${PRIMARY} ml-auto`} onClick={onClose}>Done</button>
       </div>
     </div>
   );
@@ -310,12 +324,22 @@ export function PictureIcon() {
   );
 }
 
-function DotsIcon() {
+/** A chevron that points down when closed and up when open. */
+export function ChevronIcon({ open, size = 16 }: { open: boolean; size?: number }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="1.8" />
-      <circle cx="12" cy="12" r="1.8" />
-      <circle cx="19" cy="12" r="1.8" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`transition-transform ${open ? 'rotate-180' : ''}`}
+    >
+      <path d="M6 9l6 6 6-6" />
     </svg>
   );
 }

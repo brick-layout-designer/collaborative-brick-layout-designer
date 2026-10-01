@@ -10,7 +10,7 @@ import type { SavedView, Sidecar } from '@cld/bbm';
 import type { ExportHandle } from './ExportImageDialog';
 import { useEditorStore } from './editorStore';
 import {
-  EXPORT_VIEWS_SCALES,
+  EXPORT_VIEWS_SIZES,
   WHOLE_LAYOUT,
   loadExportViewsOptions,
   pictureFileName,
@@ -73,8 +73,9 @@ export function SharePictureDialog({ layoutTitle, views, map, sidecar, exportIma
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState(() => loadExportViewsOptions().scale);
-  const [exporting, setExporting] = useState(false);
+  const [maxSide, setMaxSide] = useState(() => loadExportViewsOptions().maxSide);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [exportNote, setExportNote] = useState<{ ok: boolean; text: string } | null>(null);
   const useShare = useMemo(() => phone && canShareFiles(), [phone]);
   const canCopy = useMemo(() => canCopyImages(), []);
   const token = useRef(0);
@@ -147,16 +148,27 @@ export function SharePictureDialog({ layoutTitle, views, map, sidecar, exportIma
     }
   };
   const onExportAll = async () => {
-    setExporting(true);
-    setError(null);
+    setExporting('Making pictures…');
+    setExportNote(null);
     try {
-      const n = await downloadAllViews({ title: layoutTitle, views, map, sidecar, handle: exportImageRef.current, scale });
-      setMessage(n > 0 ? `Saved ${n} ${n === 1 ? 'picture' : 'pictures'} in a zip file.` : null);
-      if (n === 0) setError('There is nothing to show yet.');
+      const n = await downloadAllViews({
+        title: layoutTitle,
+        views,
+        map,
+        sidecar,
+        handle: exportImageRef.current,
+        maxSide,
+        onProgress: (done, total) => setExporting(total > 1 ? `Making picture ${done + 1} of ${total}…` : 'Making the picture…'),
+      });
+      setExportNote(
+        n > 0
+          ? { ok: true, text: `Downloaded ${n} ${n === 1 ? 'picture' : 'pictures'} in a zip file. Look in your Downloads folder.` }
+          : { ok: false, text: 'There is nothing to show yet.' },
+      );
     } catch (e) {
-      setError((e as Error).message);
+      setExportNote({ ok: false, text: (e as Error).message });
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -239,22 +251,26 @@ export function SharePictureDialog({ layoutTitle, views, map, sidecar, exportIma
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <div role="group" aria-label="Picture size" className="inline-flex rounded-control bg-soft p-1">
-              {EXPORT_VIEWS_SCALES.map((s) => (
+              {EXPORT_VIEWS_SIZES.map((s) => (
                 <button
-                  key={s.scale}
+                  key={s.maxSide}
                   type="button"
-                  aria-pressed={scale === s.scale}
-                  onClick={() => setScale(s.scale)}
-                  className={`min-h-9 rounded-control px-3 text-sm pointer-coarse:min-h-11 ${scale === s.scale ? 'bg-panel font-bold shadow-sm' : 'text-muted'}`}
+                  aria-pressed={maxSide === s.maxSide}
+                  onClick={() => setMaxSide(s.maxSide)}
+                  title={`Up to ${s.maxSide} pixels across`}
+                  className={`min-h-9 rounded-control px-3 text-sm pointer-coarse:min-h-11 ${maxSide === s.maxSide ? 'bg-panel font-bold shadow-sm' : 'text-muted'}`}
                 >
                   {s.label}
                 </button>
               ))}
             </div>
-            <button type="button" className={secondary} disabled={exporting} onClick={() => void onExportAll()}>
-              {exporting ? 'Making pictures…' : views.length > 0 ? 'Export all views' : 'Export picture'}
+            <button type="button" className={secondary} disabled={exporting !== null} onClick={() => void onExportAll()}>
+              {exporting ?? (views.length > 0 ? 'Export all views' : 'Export picture')}
             </button>
           </div>
+          <p aria-live="polite" data-testid="export-note" className="mt-2 min-h-5 text-sm">
+            {exportNote && <span className={exportNote.ok ? 'font-semibold text-ok' : 'text-danger'}>{exportNote.ok ? '✓ ' : ''}{exportNote.text}</span>}
+          </p>
         </div>
 
         <div className="mt-3 flex justify-between gap-2 border-t border-line pt-3">

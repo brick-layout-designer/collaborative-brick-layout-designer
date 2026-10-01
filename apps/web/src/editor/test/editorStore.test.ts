@@ -238,6 +238,33 @@ describe('editorStore — status message', () => {
   });
 });
 
+describe('showNotice', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetStore();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps a busy notice until something replaces it', () => {
+    useEditorStore.getState().showNotice('Making…', 'busy');
+    vi.advanceTimersByTime(60_000);
+    expect(useEditorStore.getState().notice).toMatchObject({ text: 'Making…', kind: 'busy' });
+  });
+
+  it('clears a result after its time, but not a newer notice', () => {
+    useEditorStore.getState().showNotice('Saved', 'done', 1000);
+    vi.advanceTimersByTime(500);
+    useEditorStore.getState().showNotice('Saved again', 'done', 1000);
+    vi.advanceTimersByTime(600);
+    expect(useEditorStore.getState().notice?.text).toBe('Saved again');
+    vi.advanceTimersByTime(500);
+    expect(useEditorStore.getState().notice).toBeNull();
+  });
+});
+
 describe('editorStore — misc setters', () => {
   beforeEach(resetStore);
 

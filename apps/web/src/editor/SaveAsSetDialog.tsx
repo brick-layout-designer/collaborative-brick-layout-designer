@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import * as Y from 'yjs';
 import { docToBbm } from '@cld/ydoc';
-import { useEditorStore } from './editorStore';
+import { noticeDownloaded, useEditorStore } from './editorStore';
 import type { LayerBrick } from '@cld/model';
 
 interface Props {
@@ -141,4 +141,5 @@ function downloadText(filename: string, text: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+  noticeDownloaded(filename);
 }

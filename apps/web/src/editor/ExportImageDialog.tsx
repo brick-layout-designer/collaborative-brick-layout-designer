@@ -19,7 +19,7 @@
 
 import { useState } from 'react';
 import { MAX_CANVAS_SIDE, aspectHeight, type StudRect } from './exportRender';
-import { useEditorStore } from './editorStore';
+import { useEditorStore, noticeDownloaded } from './editorStore';
 import { buildImagePdf, dataUrlBytes, pdfPageLayout, printPixelRatio, printTiles } from './printLayout';
 import { loadExportSettings, saveExportSettings } from './exportSettings';
 import { HelpButton } from '../help/HelpButton';
@@ -135,6 +135,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       a.href = dataUrl;
       a.download = `${safe}.${jpeg ? 'jpg' : 'png'}`;
       a.click();
+      noticeDownloaded(a.download);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -196,6 +197,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       a.href = url;
       a.download = `${safeTitle(layoutTitle)}.pdf`;
       a.click();
+      noticeDownloaded(a.download);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       onClose();
     } catch (e) {
