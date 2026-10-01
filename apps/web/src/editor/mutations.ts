@@ -10,7 +10,7 @@
 
 import * as Y from 'yjs';
 import type { ColorSpec, FontSpec, RectangleF } from '@cld/model';
-import type { AnchoredLabel, BackgroundImage, SidecarModule } from '@cld/bbm';
+import type { AnchoredLabel, BackgroundImage, SavedView, SidecarModule } from '@cld/bbm';
 import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
@@ -1758,6 +1758,44 @@ export function moveAnchoredLabel(doc: Y.Doc, id: string, dx: number, dy: number
         l.id === id ? { ...l, offset: { x: l.offset.x + dx, y: l.offset.y + dy } } : l,
       ),
     });
+  }, LOCAL_ORIGIN);
+}
+
+// ---------------------------------------------------------------------------
+// Sidecar — saved views (same pattern: a whole view is replaced at once,
+// so the last edit of a view wins; views are kept in list order)
+// ---------------------------------------------------------------------------
+
+function getSidecarViews(cache: Record<string, unknown>): SavedView[] {
+  return Array.isArray(cache.views) ? (cache.views as SavedView[]) : [];
+}
+
+/** The layout's saved views, in list order. */
+export function readSavedViews(doc: Y.Doc): SavedView[] {
+  return getSidecarViews(readSidecarCache(doc));
+}
+
+export function addSavedView(doc: Y.Doc, view: SavedView): void {
+  doc.transact(() => {
+    const cache = readSidecarCache(doc);
+    writeSidecarCache(doc, { ...cache, views: [...getSidecarViews(cache), view] });
+  }, LOCAL_ORIGIN);
+}
+
+/** Change one view; the other views are left as they are. */
+export function updateSavedView(doc: Y.Doc, id: string, patch: Partial<Omit<SavedView, 'id'>>): void {
+  doc.transact(() => {
+    const cache = readSidecarCache(doc);
+    const views = getSidecarViews(cache);
+    if (!views.some((v) => v.id === id)) return;
+    writeSidecarCache(doc, { ...cache, views: views.map((v) => (v.id === id ? { ...v, ...patch } : v)) });
+  }, LOCAL_ORIGIN);
+}
+
+export function deleteSavedView(doc: Y.Doc, id: string): void {
+  doc.transact(() => {
+    const cache = readSidecarCache(doc);
+    writeSidecarCache(doc, { ...cache, views: getSidecarViews(cache).filter((v) => v.id !== id) });
   }, LOCAL_ORIGIN);
 }
 

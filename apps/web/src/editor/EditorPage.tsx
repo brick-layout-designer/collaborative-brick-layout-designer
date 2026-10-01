@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import * as Y from 'yjs';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -86,6 +87,7 @@ import {
   paintAreaCells,
   placeBrick,
   readBudgetLimits,
+  readSavedViews,
   reorderBricks,
   setBudgetLimits,
   rotateBricksAboutCentroid,
@@ -113,7 +115,11 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
+import { applyViewSheets, pictureGrid, viewRegionStuds, type PictureSpec } from './savedViews';
+import { ViewsPanel, PictureIcon } from './ViewsPanel';
+import { downloadAllViews } from './sharePicture';
+import type { SavedView } from '@cld/bbm';
+import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
@@ -129,6 +135,7 @@ import { SettingsDialog } from '../settings/SettingsPage';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
+const SharePictureDialog = lazy(() => import('./SharePictureDialog').then((m) => ({ default: m.SharePictureDialog })));
 const ShareDialog = lazy(() => import('../layouts/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 const InsertModuleDialog = lazy(() => import('./InsertModuleDialog').then((m) => ({ default: m.InsertModuleDialog })));
 const SaveModuleDialog = lazy(() => import('./SaveModuleDialog').then((m) => ({ default: m.SaveModuleDialog })));
@@ -201,6 +208,10 @@ function Editor({ layoutId }: { layoutId: string }) {
   // 0 until measured, so the first fit waits for the real size.
   const [canvasBoxRef, canvasSize, canvasBox] = useElementSize({ width: 0, height: 0 });
   const [showShare, setShowShare] = useState(false);
+  // "Share picture", with the picture picked when it opens (a saved view's id).
+  const [sharePicture, setSharePicture] = useState<{ choice?: string } | null>(null);
+  const activeViewId = useEditorStore((s) => s.activeViewId);
+  const showGridNow = useEditorStore((s) => s.showGrid);
   const [showInsertModule, setShowInsertModule] = useState(false);
   const [showSaveModule, setShowSaveModule] = useState(false);
   const [showGeneralInfo, setShowGeneralInfo] = useState(false);
@@ -379,8 +390,28 @@ function Editor({ layoutId }: { layoutId: string }) {
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
     if (panelId === 'modlibrary') return <Suspense fallback={null}><ModuleLibraryPanel doc={doc} isViewer={isViewer} /></Suspense>;
+    if (panelId === 'views') return viewsPanel(false);
     if (panelId === 'venuelibrary') return <Suspense fallback={null}><VenueLibraryPanel doc={doc} isViewer={isViewer} /></Suspense>;
     return null;
+  }
+
+  function viewsPanel(touch: boolean): React.ReactNode {
+    if (!doc) return null;
+    return (
+      <ViewsPanel
+        doc={doc}
+        isViewer={isViewer}
+        touch={touch}
+        sheets={sheetList}
+        activeViewId={activeViewId}
+        gridShown={showGridNow}
+        screenRect={() => canvasActionsRef.current?.screenRect() ?? null}
+        onGoTo={(v) => canvasActionsRef.current?.goToView(v)}
+        onShowEverything={showEverything}
+        onShare={(v) => setSharePicture({ choice: v.id })}
+        onExportAll={() => void exportAll()}
+      />
+    );
   }
 
   function renderPanel(panelId: string, dockZone: 'left' | 'right'): React.ReactNode {
@@ -395,6 +426,32 @@ function Editor({ layoutId }: { layoutId: string }) {
       </PanelHost>
     );
   }
+
+  // Saved views (savedViews.ts) and their pictures.
+  const savedViews = readSavedViews(doc);
+  const sheetList = (docMap?.layers ?? []).filter((l) => l.type !== 'grid').map((l) => ({ id: l.id, name: l.name }));
+  const activeView = savedViews.find((v) => v.id === activeViewId) ?? null;
+  const showEverything = () => {
+    canvasActionsRef.current?.clearView();
+    canvasActionsRef.current?.fit();
+  };
+  const exportAll = async () => {
+    if (!docMap) return;
+    const status = useEditorStore.getState().showStatusMessage;
+    status('Making the pictures…', 30000);
+    try {
+      const n = await downloadAllViews({
+        title: meta.data?.layout.title ?? 'layout',
+        views: savedViews,
+        map: docMap,
+        sidecar: readSidecarFromDoc(doc),
+        handle: exportImageRef.current,
+      });
+      status(n > 0 ? `Saved ${n} ${n === 1 ? 'picture' : 'pictures'} in a zip file` : 'There is nothing to show yet', 5000);
+    } catch (e) {
+      status(`The pictures could not be made: ${(e as Error).message}`, 8000);
+    }
+  };
 
   const leaveLayout = () => {
     if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error') {
@@ -415,6 +472,7 @@ function Editor({ layoutId }: { layoutId: string }) {
     if (t === 'build') {
       show('parts');
       show('layers');
+      show('views');
     } else if (t === 'room') {
       show('venuelibrary');
     } else if (t === 'parts') {
@@ -449,6 +507,14 @@ function Editor({ layoutId }: { layoutId: string }) {
                 onNew={isViewer ? undefined : leaveLayout}
                 onOpen={isViewer ? undefined : leaveLayout}
               >
+                <ViewsMenuItems
+                  views={savedViews}
+                  activeViewId={activeViewId}
+                  onGoTo={(v) => canvasActionsRef.current?.goToView(v)}
+                  onWhole={showEverything}
+                  onSharePicture={() => setSharePicture({})}
+                  phone
+                />
                 <button role="menuitem" type="button" onClick={() => setShowSettings(true)} className="block w-full px-3.5 py-3 text-left hover:bg-soft">
                   Settings
                 </button>
@@ -462,7 +528,16 @@ function Editor({ layoutId }: { layoutId: string }) {
             <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
               <PresencePanel awareness={awareness} />
               <button
-                onClick={() => setShowShare(true)}
+                type="button"
+                aria-label="Share picture"
+                title="Share a picture of the layout"
+                onClick={() => setSharePicture({})}
+                className="flex size-11 shrink-0 items-center justify-center rounded-control border border-line text-ink hover:bg-soft"
+              >
+                <PictureIcon />
+              </button>
+              <button
+                onClick={() => (me.data?.user ? setShowShare(true) : setSharePicture({}))}
                 className="h-11 shrink-0 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover"
               >
                 Share
@@ -484,6 +559,15 @@ function Editor({ layoutId }: { layoutId: string }) {
             onNew={isViewer ? undefined : leaveLayout}
             onOpen={isViewer ? undefined : leaveLayout}
           >
+            {isViewer && (
+              <ViewsMenuItems
+                views={savedViews}
+                activeViewId={activeViewId}
+                onGoTo={(v) => canvasActionsRef.current?.goToView(v)}
+                onWhole={showEverything}
+                onSharePicture={() => setSharePicture({})}
+              />
+            )}
             <button role="menuitem" type="button" onClick={() => setShowSettings(true)} className="block w-full px-3.5 py-2 text-left hover:bg-soft">
               Settings
             </button>
@@ -503,7 +587,16 @@ function Editor({ layoutId }: { layoutId: string }) {
         <div className="flex min-w-0 items-center justify-end gap-2.5">
           <PresencePanel awareness={awareness} />
           <button
-            onClick={() => setShowShare(true)}
+            type="button"
+            title="Share a picture of the layout"
+            onClick={() => setSharePicture({})}
+            className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-control border border-line px-3 text-sm font-bold text-ink hover:bg-soft"
+          >
+            <PictureIcon />
+            Share picture
+          </button>
+          <button
+            onClick={() => (me.data?.user ? setShowShare(true) : setSharePicture({}))}
             className="h-[38px] shrink-0 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover"
           >
             Share
@@ -684,6 +777,21 @@ function Editor({ layoutId }: { layoutId: string }) {
         className="relative touch-none overflow-hidden"
         style={{ gridColumn: '3', gridRow: '3' }}
       >
+        {activeView && (
+          <div
+            data-testid="active-view"
+            className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center px-3"
+          >
+            <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full border border-line bg-panel py-1 pl-3.5 pr-1 text-sm text-ink shadow-pop">
+              <span className="min-w-0 truncate">
+                Showing <b>{activeView.name}</b>
+              </span>
+              <button type="button" onClick={showEverything} className="min-h-9 shrink-0 rounded-full px-3 text-accent-text hover:bg-soft pointer-coarse:min-h-11">
+                Show everything
+              </button>
+            </div>
+          </div>
+        )}
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
       </main>
       {showRight && (
@@ -731,6 +839,26 @@ function Editor({ layoutId }: { layoutId: string }) {
           myRole={role}
           myUserId={me.data.user.id}
           onClose={() => setShowShare(false)}
+          onSharePicture={() => {
+            setShowShare(false);
+            setSharePicture({});
+          }}
+        />
+      )}
+      {sharePicture && docMap && (
+        <SharePictureDialog
+          layoutTitle={meta.data?.layout.title ?? 'layout'}
+          views={savedViews}
+          map={docMap}
+          sidecar={readSidecarFromDoc(doc)}
+          exportImageRef={exportImageRef}
+          phone={viewport.isMobile}
+          {...(sharePicture.choice ? { initialChoice: sharePicture.choice } : {})}
+          onMoreOptions={() => {
+            setSharePicture(null);
+            setShowExportImage(true);
+          }}
+          onClose={() => setSharePicture(null)}
         />
       )}
       {/* Status bar — port of MainWindow.cpp:861-1014 status widgets.
@@ -1122,6 +1250,9 @@ function Canvas({
   const map = useDocMap(doc);
   const mapRef = useRef(map);
   mapRef.current = map;
+  // A saved view being looked at shows only its sheets (savedViews.ts).
+  const viewFilter = useEditorStore((s) => s.viewFilter);
+  const shownMap = useMemo(() => (map && viewFilter ? applyViewSheets(map, viewFilter.sheets) : map), [map, viewFilter]);
 
   // Ruler- or label-led drag of a mixed selection. Qt moves every
   // selected movable item with the grabbed one and commitDragIfMoved
@@ -2451,6 +2582,57 @@ function Canvas({
     void placePartAt(meta, centreStudX, centreStudY);
   };
 
+  /** The map area on screen now, in studs (what "Use this area" keeps). */
+  function screenRegion(): StudRect | null {
+    const st = stageRef.current;
+    const w = st?.width() ?? width;
+    const h = st?.height() ?? height;
+    if (!(w > 0 && h > 0 && zoom > 0)) return null;
+    const x = pxToStud(-panX / zoom);
+    const y = pxToStud(-panY / zoom);
+    return { x, y, width: pxToStud(w / zoom), height: pxToStud(h / zoom) };
+  }
+
+  /**
+   * One picture (savedViews.ts PictureSpec) at exactly `size` pixels.
+   * The canvas shows the picture's sheets, grid and labels for the moment
+   * it takes to draw it (with all text drawn, as on a computer), then goes
+   * back to what it showed.
+   */
+  async function renderPicture(spec: PictureSpec, size: { width: number; height: number }): Promise<HTMLCanvasElement | null> {
+    const stage = stageRef.current;
+    const live = mapRef.current;
+    if (!stage || !live) return null;
+    // The pictures of the bricks it shows, before they're drawn.
+    const shownLayers = applyViewSheets(live, spec.sheets).layers;
+    const urls = new Set<string>();
+    for (const l of shownLayers) {
+      if (l.type !== 'brick' || !l.visible) continue;
+      for (const b of l.bricks) {
+        const meta = partsByKey.get(b.partNumber.toLowerCase());
+        if (meta && !meta.spriteSize) urls.add(spriteUrlFor(meta));
+      }
+    }
+    await Promise.allSettled([...urls].map((u) => ensureSprite(u)));
+    const before = useEditorStore.getState();
+    const saved = { viewFilter: before.viewFilter, minTextPx: before.minTextPx };
+    flushSync(() => useEditorStore.setState({ viewFilter: { sheets: spec.sheets, grid: spec.grid, labels: spec.labels }, minTextPx: 0 }));
+    try {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const out = renderMapToCanvas(stage, live, readSidecarFromDoc(doc), {
+        pixelRatio: 1,
+        size,
+        transparent: false,
+        regionStuds: spec.region,
+        grid: pictureGrid(live, spec),
+        hudLayer: hudLayerRef.current,
+      });
+      return out?.canvas ?? null;
+    } finally {
+      flushSync(() => useEditorStore.setState(saved));
+    }
+  }
+
   // Keep the export-image handle fresh (needs stageRef).
   // Port of MainWindowMenus.cpp:97-201 — saves the canvas as a PNG.
   // Renders the whole map (content bounds + margin), not the viewport.
@@ -2470,6 +2652,8 @@ function Canvas({
       });
     },
     region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc)) : null),
+    screenRegion: () => screenRegion(),
+    renderPicture: (spec, size) => renderPicture(spec, size),
     sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
   };
 
@@ -2509,9 +2693,22 @@ function Canvas({
       setShowAddText(true);
     },
     viewCentre: () => stageCentreStuds(),
+    screenRect: () => screenRegion(),
+    goToView: (view) => {
+      if (!map) return;
+      useEditorStore.setState({
+        viewFilter: { sheets: view.sheets, grid: view.grid, labels: view.labels },
+        activeViewId: view.id,
+      });
+      const region = viewRegionStuds(view, map, readSidecarFromDoc(doc));
+      const fit = fitView(region, width, height, { min: MIN_ZOOM, max: MAX_ZOOM }, phone ? (width > height ? PHONE_LANDSCAPE_FIT_INSETS : PHONE_FIT_INSETS) : undefined);
+      if (fit) useEditorStore.setState(fit);
+    },
+    clearView: () => useEditorStore.setState({ viewFilter: null, activeViewId: null }),
   };
 
   if (!map) return <EmptyDoc />;
+  const shown = shownMap ?? map;
   const stageNode = (
     <Stage
       ref={stageRef}
@@ -2654,6 +2851,7 @@ function Canvas({
         <Group name={EXPORT_HIDE} listening={false}>
           <GridLayer
             map={map}
+            {...(viewFilter ? { showGrid: viewFilter.grid } : {})}
             cornerOverride={gridPreview}
             viewport={{
               studXMin: pxToStud(-panX / zoom),
@@ -2669,9 +2867,9 @@ function Canvas({
             ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
             : <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} onDoubleClick={onOpenVenueProps} />}
         </Group>
-        <AreaLayers map={map} />
+        <AreaLayers map={shown} />
         {showElectricCircuits && map && (
-          <ElectricCircuitLayer map={map} partsByKey={partsByKey} />
+          <ElectricCircuitLayer map={shown} partsByKey={partsByKey} />
         )}
       </KonvaLayer>
 
@@ -2679,21 +2877,21 @@ function Canvas({
           Hit-testing is enabled so clicks/drags on bricks and text work. */}
       <KonvaLayer perfectDrawEnabled={false}>
         <BrickLayer
-          map={map}
+          map={shown}
           doc={doc}
           isViewer={isViewer}
           onEditBrick={onEditBrick}
         />
         <Group listening={!isViewer}>
           <TextLayers
-            map={map}
+            map={shown}
             isViewer={isViewer}
             onEditText={(ref) => setEditingText(ref)}
             selectedKeys={selectedTextKeys}
             onSelectText={(key, additive) => selectAnno('texts', key, additive)}
           />
           <RulerLayers
-            map={map}
+            map={shown}
             partsByKey={partsByKey}
             selectedRulerIds={selectedRulerIds}
             handleRulerId={selection.length === 0 && annoCount(annoSelection) === 1 ? selectedRulerId : null}
@@ -2723,7 +2921,7 @@ function Canvas({
               moveRulerEndpoint(doc, layer.id, rulerId, which, { x: sx, y: sy });
             }}
           />
-          {isViewer
+          {viewFilter && !viewFilter.labels ? null : isViewer
             ? <AnchoredLabels map={map} partsByKey={partsByKey} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
             : <AnchoredLabels
                 partsByKey={partsByKey}
@@ -3180,7 +3378,7 @@ function SnapRing() {
  * affordance stays visible.
  */
 // UI words: layers are "Sheets" and the venue is the "Room" (the ids stay).
-const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module Library', venuelibrary: 'Room library' };
+const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', views: 'Views', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module Library', venuelibrary: 'Room library' };
 
 /**
  * Renders a vertical stack of panels in one dock column, with:
@@ -4101,6 +4299,53 @@ interface CanvasActions {
   insertText: () => void;
   /** World-stud position under the centre of the canvas stage. */
   viewCentre: () => { x: number; y: number };
+  /** The part of the map on screen now, in studs. */
+  screenRect: () => StudRect | null;
+  /** Show a saved view: its sheets, grid and labels, fitted to its area. */
+  goToView: (view: SavedView) => void;
+  /** Back to the layout as it is (every sheet as the layout has it). */
+  clearView: () => void;
+}
+
+/**
+ * Saved views in the layout-name menu, for anyone without the Views panel
+ * (viewers, phones): pick one to see it, or share a picture.
+ */
+function ViewsMenuItems({
+  views,
+  activeViewId,
+  onGoTo,
+  onWhole,
+  onSharePicture,
+  phone,
+}: {
+  views: readonly SavedView[];
+  activeViewId: string | null;
+  onGoTo: (v: SavedView) => void;
+  onWhole: () => void;
+  onSharePicture: () => void;
+  phone?: boolean;
+}) {
+  const item = `flex w-full items-center gap-2 px-3.5 text-left hover:bg-soft ${phone ? 'min-h-11 py-2' : 'py-2'}`;
+  return (
+    <div role="group" aria-label="Views" className="border-y border-line py-1">
+      <p className="px-3.5 pb-0.5 pt-1 text-xs font-bold uppercase tracking-wide text-muted">Views</p>
+      <button role="menuitemradio" aria-checked={activeViewId === null} type="button" onClick={onWhole} className={item}>
+        <span className="w-4 text-accent-text">{activeViewId === null ? '✓' : ''}</span>
+        Whole layout
+      </button>
+      {views.map((v) => (
+        <button key={v.id} role="menuitemradio" aria-checked={activeViewId === v.id} type="button" onClick={() => onGoTo(v)} className={item}>
+          <span className="w-4 text-accent-text">{activeViewId === v.id ? '✓' : ''}</span>
+          <span className="min-w-0 truncate">{v.name || 'View'}</span>
+        </button>
+      ))}
+      <button role="menuitem" type="button" onClick={onSharePicture} className={`${item} font-bold`}>
+        <PictureIcon />
+        Share picture…
+      </button>
+    </div>
+  );
 }
 
 /** Shown to anyone who can look but not change: viewers, and everyone on a phone. */

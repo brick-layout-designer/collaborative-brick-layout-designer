@@ -15,6 +15,7 @@ export const PANEL_HELP: Record<string, HelpKey> = {
   modules: 'panel.modules',
   modlibrary: 'panel.moduleLibrary',
   venuelibrary: 'panel.roomLibrary',
+  views: 'panel.views',
 };
 
 const DRAG_MIME = 'application/x-cld-panel';

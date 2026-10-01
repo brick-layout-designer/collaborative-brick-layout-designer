@@ -10,6 +10,7 @@ Real-world `.bbm` files used as goldens for load/round-trip tests.
 | `fordyce-2026.bbm` | Provided by @aronwk; 2026 Fordyce event layout | 557 KB |
 | `corner-lobby.bld-layout` | Made by the desktop's tests (tests/import/LayoutFileTest.cpp, `BLD_UPDATE_FIXTURES=1`): `tight-corner.bbm` with a label, a module, the Grand Lobby venue and a 4×4 background image, as a layout file (references/LAYOUT-FILE.md) | 14 KB |
 | `web-made.bld-layout` | The same layout opened and downloaded again by the web (apps/web/src/test/layoutFile.test.ts, `BLD_UPDATE_FIXTURES=1`); the desktop reads it | 14 KB |
+| `views.bld-layout` | Made by the web's tests (apps/web/src/test/viewsFixture.test.ts, `BLD_UPDATE_FIXTURES=1`): two sheets, a label and two saved views, one fitting the whole layout and one keeping an area of one sheet (references/LAYOUT-FILE.md "Saved views") | 1 KB |
 | `with-parts.bld-layout` | Made by the desktop's tests (LayoutFileTest `ReadsTheSharedFixtureWithParts`): one brick of `CLDTEST.1`, a part the file carries under `parts/` | 1 KB |
 | `oracle/*` | Copied from the desktop repo's `fixtures/bluebrick-oracle`: maps and budgets saved by vanilla BlueBrick 1.9.2 (under Wine), and its conversions of the `.ldr`, `.mpd`, `.tdl` and `.ncp` sources beside them. `sleepers.*` was made here: rails with LDraw sleepers and angle remaps, built by packages/parts-catalog/scripts/make-sleepers-fixture.ts and converted by vanilla's bbconv (see the desktop repo's scripts/bluebrick-oracle) | 1.1 MB |
 

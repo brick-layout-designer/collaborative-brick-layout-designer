@@ -14,7 +14,7 @@
 //   area:<layer>:<x>,<y>       area cells
 //   ruler:<layer>:<hash>       rulers have no stored id, so they're keyed by
 //                              content: an edited ruler is a delete plus an add
-//   label:<id> module:<id> venue background   sidecar data
+//   label:<id> module:<id> view:<id> venue background   sidecar data
 
 import { createHash } from 'node:crypto';
 import type { BbmMap } from '@cld/model';
@@ -29,7 +29,7 @@ export type SideChange = 'added' | 'edited' | 'deleted' | 'unchanged';
 
 export interface ItemChange {
   key: string;
-  kind: 'map' | 'layer' | 'brick' | 'group' | 'text' | 'area' | 'ruler' | 'label' | 'module' | 'venue' | 'background';
+  kind: 'map' | 'layer' | 'brick' | 'group' | 'text' | 'area' | 'ruler' | 'label' | 'module' | 'view' | 'venue' | 'background';
   layerId?: string;
   /** mine / server: only that side changed; same: both made the same change; conflict: they differ. */
   status: 'mine' | 'server' | 'same' | 'conflict';
@@ -91,6 +91,7 @@ function itemsOf({ map, sidecar }: LayoutSnapshot): Items {
   }
   for (const l of sidecar?.anchoredLabels ?? []) out.set(`label:${l.id}`, { kind: 'label', value: l });
   for (const m of sidecar?.modules ?? []) out.set(`module:${m.id}`, { kind: 'module', value: m });
+  for (const v of sidecar?.views ?? []) out.set(`view:${v.id}`, { kind: 'view', value: v });
   if (sidecar?.venue) out.set('venue', { kind: 'venue', value: sidecar.venue });
   if (sidecar?.backgroundImage) out.set('background', { kind: 'background', value: sidecar.backgroundImage });
   return out;

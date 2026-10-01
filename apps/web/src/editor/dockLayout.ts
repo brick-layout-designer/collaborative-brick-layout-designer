@@ -55,7 +55,7 @@ const DEFAULT_LAYOUT: DockState = {
   // Used Parts starts hidden — user can show it via the Panels menu.
   left: [],
   right: ['parts', 'layers'],
-  hidden: ['usedparts', 'modules', 'modlibrary', 'venuelibrary'],
+  hidden: ['usedparts', 'modules', 'modlibrary', 'venuelibrary', 'views'],
   float: [],
   leftWidth: DEFAULT_WIDTH,
   rightWidth: DEFAULT_WIDTH,

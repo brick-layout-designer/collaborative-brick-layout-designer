@@ -45,6 +45,13 @@ export interface ExportHandle {
   sceneSize: () => { width: number; height: number } | null;
   /** Stud region of the whole-map export, or null when empty. */
   region?: () => StudRect | null;
+  /** The map area on screen now, in studs. */
+  screenRegion?: () => StudRect | null;
+  /** One picture of a view at exactly `size` px (savedViews.ts), or null when it can't. */
+  renderPicture?: (
+    spec: import('./savedViews').PictureSpec,
+    size: { width: number; height: number },
+  ) => Promise<HTMLCanvasElement | null>;
 }
 
 /** Print-page resolution for the PDF image (the page is A3). */

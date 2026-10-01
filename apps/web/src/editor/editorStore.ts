@@ -35,6 +35,14 @@ export const ROTATION_STEPS = [90, 45, 22.5, 11.25, 5, 1] as const;
  * MapViewDrag.cpp:124-153). Text cells are keyed `${layerId}#${index}`
  * (see `textKey` in mixedSelection.ts); text cells have no id.
  */
+/** What a saved view shows on screen: see EditorState.viewFilter. */
+export interface ViewFilter {
+  /** Layer ids shown, or null for the layout's own on/off. */
+  sheets: string[] | null;
+  grid: boolean;
+  labels: boolean;
+}
+
 export interface AnnoSelection {
   rulers: string[];
   labels: string[];
@@ -146,6 +154,14 @@ export interface EditorState {
    */
   minTextPx: number;
   setMinTextPx: (px: number) => void;
+  /**
+   * The saved view being looked at (savedViews.ts): which sheets show and
+   * whether the grid and labels do. Only on this screen, never saved in
+   * the layout. Null shows the layout as it is.
+   */
+  viewFilter: ViewFilter | null;
+  /** The saved view picked last, so its row can show it; null for none. */
+  activeViewId: string | null;
   /**
    * Maximum undo stack depth. 0 = unlimited (default, matches desktop default of 100).
    * Mirrors `general/undoStackDepth`.
@@ -302,6 +318,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   })(),
   minTextPx: 0,
   setMinTextPx: (minTextPx) => set({ minTextPx }),
+  viewFilter: null,
+  activeViewId: null,
   venueLabelPx: (() => {
     const v = localStorage.getItem('cld:venueLabelPx');
     const n = v !== null ? parseInt(v, 10) : 28;
