@@ -87,6 +87,8 @@ function ModuleRow({
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(module.name);
   const [showMove, setShowMove] = useState(false);
+  // The Rotate submenu opens on hover with a mouse, and on a tap (no hover on a touch screen).
+  const [rotateOpen, setRotateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -210,6 +212,7 @@ function ModuleRow({
       onContextMenu={(e) => {
         if (isViewer) return;
         e.preventDefault();
+        setRotateOpen(false);
         setCtxMenu({ x: e.clientX, y: e.clientY });
       }}
       className={
@@ -269,10 +272,14 @@ function ModuleRow({
             Move…
           </button>
           <div className="group relative">
-            <button className="block w-full px-3 py-1 text-left hover:bg-neutral-700">
+            <button
+              className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
+              aria-expanded={rotateOpen}
+              onClick={() => setRotateOpen((o) => !o)}
+            >
               Rotate ▸
             </button>
-            <div className="absolute left-full top-0 hidden min-w-[100px] rounded-lg border border-border bg-panel py-1 shadow-lg group-hover:block">
+            <div className={`absolute left-full top-0 min-w-[100px] rounded-lg border border-border bg-panel py-1 shadow-lg group-hover:block ${rotateOpen ? 'block' : 'hidden'}`}>
               {([-90, -45, 45, 90, 180] as const).map((deg) => (
                 <button
                   key={deg}

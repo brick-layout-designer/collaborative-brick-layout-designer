@@ -77,7 +77,7 @@ function OrgAdmin({ slug }: { slug: string }) {
           <p className="text-sm text-muted">You’re an admin of this club.</p>
         </div>
 
-        <nav role="tablist" aria-label="Manage the club" className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1">
+        <nav role="tablist" aria-label="Manage the club" className="flex flex-wrap gap-1 border-b border-line">
           {TABS.map((t) => (
             <button
               key={t.id}

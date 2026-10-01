@@ -13,6 +13,7 @@ import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } fro
 import { downloadText } from './venueStart';
 import { defaultSaveTo, itemOrgSlug, matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
 import { MoveCopyDialog, OwnerChip, SaveToDialog } from '../owners/OwnerControls';
+import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 
 /** May change it: the server says so; older servers: yours, or a club you admin. */
 export function canManageVenue(v: VenueSummary, orgs: readonly OrgSummary[] | undefined): boolean {
@@ -130,54 +131,58 @@ export function VenueList({
             {list.map((v) => {
               const manage = canManageVenue(v, orgs);
               return (
-                <li key={v.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <li key={v.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                   <span className="flex min-w-0 flex-wrap items-center gap-2">
                     <span className="break-words font-medium">{v.name}</span>
                     <OwnerChip item={v} myUserId={myUserId} orgs={orgs} />
                   </span>
-                  <span className="flex flex-wrap gap-2">
+                  <span className="flex shrink-0 items-center gap-2">
                     <Link
                       to={startUrl(v)}
-                      className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1 text-sm text-accent-ink hover:bg-accent-hover"
+                      className="tap-target inline-flex min-h-9 items-center whitespace-nowrap rounded-lg bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
                     >
                       Start layout
                     </Link>
-                    {manage && (
-                      <Link to={designUrl(v)} className={btn}>
-                        Design
-                      </Link>
-                    )}
-                    <button type="button" className={btn} onClick={() => void download(v.id, v.name)}>
-                      Download
-                    </button>
-                    {hasClubs && (
-                      <button type="button" className={btn} onClick={() => setMoving(v)}>
-                        Move or copy…
+                    <MoreMenu label={`More for ${v.name}`}>
+                      {manage && (
+                        <Link role="menuitem" to={designUrl(v)} className={MORE_ITEM}>
+                          Design
+                        </Link>
+                      )}
+                      <button role="menuitem" type="button" className={MORE_ITEM} onClick={() => void download(v.id, v.name)}>
+                        Download
                       </button>
-                    )}
-                    {manage && (
-                      <>
-                        <button
-                          type="button"
-                          className={btn}
-                          onClick={() => {
-                            const next = prompt('New name:', v.name)?.trim();
-                            if (next && next !== v.name) rename.mutate({ id: v.id, name: next });
-                          }}
-                        >
-                          Rename
+                      {hasClubs && (
+                        <button role="menuitem" type="button" className={MORE_ITEM} onClick={() => setMoving(v)}>
+                          Move or copy…
                         </button>
-                        <button
-                          type="button"
-                          className={`${btn} text-danger`}
-                          onClick={() => {
-                            if (confirm(`Delete "${v.name}"?`)) remove.mutate(v.id);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
+                      )}
+                      {manage && (
+                        <>
+                          <button
+                            role="menuitem"
+                            type="button"
+                            className={MORE_ITEM}
+                            onClick={() => {
+                              const next = prompt('New name:', v.name)?.trim();
+                              if (next && next !== v.name) rename.mutate({ id: v.id, name: next });
+                            }}
+                          >
+                            Rename…
+                          </button>
+                          <button
+                            role="menuitem"
+                            type="button"
+                            className={`${MORE_ITEM} text-danger`}
+                            onClick={() => {
+                              if (confirm(`Delete "${v.name}"?`)) remove.mutate(v.id);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </MoreMenu>
                   </span>
                 </li>
               );

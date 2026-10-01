@@ -35,7 +35,7 @@ export function OwnerChip({
   );
 }
 
-/** All · Mine · each club, as a row of toggle buttons that scrolls sideways on a phone. */
+/** All · Mine · each club, as toggle buttons that wrap onto more lines on a phone (no club hidden off the side). */
 export function OwnerFilterBar({
   value,
   onChange,
@@ -51,7 +51,7 @@ export function OwnerFilterBar({
     ...orgs.map((o) => ({ value: o.slug, label: o.name })),
   ];
   return (
-    <div role="group" aria-label="Show whose things" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+    <div role="group" aria-label="Show whose things" className="flex flex-wrap gap-2">
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -60,11 +60,11 @@ export function OwnerFilterBar({
             type="button"
             aria-pressed={on}
             onClick={() => onChange(o.value)}
-            className={`tap-target inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-semibold ${
+            className={`tap-target inline-flex min-w-0 max-w-full items-center whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-semibold ${
               on ? 'border-accent bg-accent text-accent-ink' : 'border-border bg-panel text-ink hover:bg-soft'
             }`}
           >
-            {o.label}
+            <span className="truncate">{o.label}</span>
           </button>
         );
       })}

@@ -262,7 +262,7 @@ test.describe('module drag ghost', () => {
     const hostId = await createLayout(page);
     await openEditor(page, hostId);
     await page.getByRole('button', { name: 'Panels', exact: true }).click();
-    await page.getByLabel('Module Library').check();
+    await page.getByLabel('Module library').check();
     await page.mouse.click(400, 400); // click-away backdrop closes the menu
     const row = page.locator('li[draggable="true"]', { hasText: 'Fordyce Loop' });
     await expect(row).toBeVisible({ timeout: 10000 });
@@ -509,7 +509,7 @@ test.describe('header dropdowns at a narrow viewport', () => {
     await expect(mapMenu).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Panels', exact: true }).click();
-    const panelsMenu = page.locator('ul', { has: page.getByLabel('Module Library') });
+    const panelsMenu = page.locator('ul', { has: page.getByLabel('Module library') });
     await inside(panelsMenu);
   });
 });
@@ -1135,6 +1135,7 @@ test.describe('new layout template', () => {
     expect(rename.ok()).toBe(true);
     await page.goto('/');
     const row = page.locator('li', { has: page.getByRole('link', { name: 'Open' }) }).filter({ hasText: 'Club base' }).first();
+    await row.getByRole('button', { name: /^More for Club base/ }).click();
     await row.getByLabel('Template for new layouts').check();
 
     await page.getByRole('button', { name: 'New layout' }).click();

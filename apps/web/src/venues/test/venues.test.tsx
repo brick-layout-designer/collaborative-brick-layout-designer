@@ -115,9 +115,12 @@ describe('VenueList', () => {
     expect(screen.queryByText('Garage')).toBeNull();
     expect(within(row).getByTestId('owner-chip').textContent).toBe('Train Club');
     expect(within(row).getByRole('link', { name: 'Start layout' }).getAttribute('href')).toBe('/?newLayoutVenue=v-club&owner=club');
-    // Members can use the list; only admins rename or delete.
-    expect(within(row).queryByRole('button', { name: 'Rename' })).toBeNull();
-    expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull();
+    // Members can use the list; only admins rename or delete (in the row's ⋯ menu).
+    fireEvent.click(within(row).getByRole('button', { name: 'More for Grand Lobby' }));
+    expect(within(row).getByRole('menuitem', { name: 'Download' })).toBeTruthy();
+    expect(within(row).queryByRole('menuitem', { name: 'Rename…' })).toBeNull();
+    expect(within(row).queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'More for Grand Lobby' }));
 
     // Upload asks where it goes first, starting at the club being shown.
     fireEvent.click(screen.getByRole('button', { name: 'Upload room…' }));
@@ -145,9 +148,12 @@ describe('VenueList', () => {
     expect(within(row).getByTestId('owner-chip').textContent).toBe('Me');
     expect(within(row).getByRole('link', { name: 'Start layout' }).getAttribute('href')).toBe('/?newLayoutVenue=v-mine');
     // Not in a club: nothing to move it to.
-    expect(within(row).queryByRole('button', { name: 'Move or copy…' })).toBeNull();
-    fireEvent.click(within(row).getByRole('button', { name: 'Rename' }));
-    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+    const more = within(row).getByRole('button', { name: 'More for Garage' });
+    fireEvent.click(more);
+    expect(within(row).queryByRole('menuitem', { name: 'Move or copy…' })).toBeNull();
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Rename…' }));
+    fireEvent.click(more);
+    fireEvent.click(within(row).getByRole('menuitem', { name: 'Delete' }));
     await waitFor(() => expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path}`)).toEqual(['PATCH /api/venues/v-mine', 'DELETE /api/venues/v-mine']));
     expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({ name: 'Shed' });
   });
@@ -161,7 +167,8 @@ describe('VenueList', () => {
     expect(within(club).getByTestId('owner-chip').textContent).toBe('Train Club');
     expect(within(mine).getByTestId('owner-chip').textContent).toBe('Me');
 
-    fireEvent.click(within(club).getByRole('button', { name: 'Move or copy…' }));
+    fireEvent.click(within(club).getByRole('button', { name: 'More for Grand Lobby' }));
+    fireEvent.click(within(club).getByRole('menuitem', { name: 'Move or copy…' }));
     const dialog = screen.getByRole('dialog');
     // A member can't move the club's room; copying to Me is the way.
     expect((within(dialog).getByRole('radio', { name: /Move to a club/ }) as HTMLInputElement).disabled).toBe(true);

@@ -13,7 +13,7 @@ export function LinkPage() {
           flows land in the next pass — for now, contact the operator to
           merge accounts.
         </p>
-        <a href="/login" className="inline-block text-accent-text hover:underline">
+        <a href="/login" className="tap-target inline-flex items-center text-accent-text hover:underline">
           back to sign in
         </a>
       </div>

@@ -87,7 +87,8 @@ test('the club page links back to the list filtered to the club', async ({ page 
 test('copies a club layout to me', async ({ page }) => {
   await signIn(page, MEMBER);
   await page.goto('/?owner=all');
-  await row(page, 'Club Show').getByRole('button', { name: 'Move or copy…' }).click();
+  await row(page, 'Club Show').getByRole('button', { name: 'More for Club Show' }).click();
+  await row(page, 'Club Show').getByRole('menuitem', { name: 'Move or copy…' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('Copy to')).toHaveValue('');
   await dialog.getByRole('button', { name: 'Copy' }).click();

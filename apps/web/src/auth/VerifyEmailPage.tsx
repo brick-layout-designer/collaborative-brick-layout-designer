@@ -41,7 +41,7 @@ export function VerifyEmailPage() {
         {verify.isError && (
           <>
             <p className="text-danger">{(verify.error as Error).message}</p>
-            <a href="/login" className="block text-sm text-accent-text hover:underline">
+            <a href="/login" className="tap-target inline-flex items-center text-sm text-accent-text hover:underline">
               Back to sign in
             </a>
           </>

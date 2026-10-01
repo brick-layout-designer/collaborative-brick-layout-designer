@@ -195,7 +195,7 @@ describe('useDockLayout — persistence', () => {
 
 describe('splitterHeights (dragging the divider between stacked panels)', () => {
   it('changes only the two panels next to the divider', () => {
-    // Modules 300, Module Library 250, Room library fills the rest (200).
+    // Modules 300, Module library 250, Room library fills the rest (200).
     expect(splitterHeights([300, 250, 200], 0, 200)).toEqual([200, 350]);
     expect(splitterHeights([300, 250, 200], 1, 300)).toEqual([300, 300]);
   });

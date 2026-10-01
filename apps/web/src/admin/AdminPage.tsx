@@ -13,6 +13,7 @@
 // Every mutation routes through `/api/admin/*` and is audited server-side.
 
 import { lazy, Suspense, useRef, useState } from 'react';
+import { useCardTables } from '../ui/cardTables';
 import { Link, Navigate } from 'react-router-dom';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,13 +39,15 @@ function formatBytes(bytes: number): string {
 export function AdminPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const [tab, setTab] = useState<Tab>('dashboard');
+  // Its tables become cards on a phone.
+  const pageRef = useCardTables();
 
   if (me.isLoading) return <Loading />;
   if (!me.data?.user) return <Navigate to="/login" replace />;
   if (!me.data.user.isGlobalAdmin) return <Forbidden />;
 
   return (
-    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
+    <div ref={pageRef} className="cards-on-phone h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={me.data.user} />
       <div className="mt-6">
         <h1 className="text-base font-semibold">
@@ -54,7 +57,8 @@ export function AdminPage() {
           </span>
         </h1>
       </div>
-      <nav className="-mx-4 mt-2 flex overflow-x-auto border-b border-line px-4 text-sm sm:mx-0 sm:px-0">
+      {/* The tabs wrap onto a second line on a phone rather than hiding off the side. */}
+      <nav className="mt-2 flex flex-wrap border-b border-line text-sm">
         {(['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'audit', 'settings'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -193,17 +197,22 @@ function UsersTab({ selfId }: { selfId: string }) {
                     <Td align="right" className="tabular-nums text-muted">{formatBytes(u.layoutSizeBytes)}</Td>
                     <Td>{new Date(u.createdAt).toLocaleDateString()}</Td>
                     <Td>
+                      <label className="inline-flex items-center justify-center pointer-coarse:size-11">
                       <input
                         type="checkbox"
+                        aria-label={`Demo account: ${u.email}`}
                         checked={u.isDemoAccount}
                         onChange={(e) =>
                           patchDemo.mutate({ id: u.id, isDemoAccount: e.target.checked })
                         }
                       />
+                      </label>
                     </Td>
                     <Td>
+                      <label className="inline-flex items-center justify-center pointer-coarse:size-11">
                       <input
                         type="checkbox"
+                        aria-label={`Site admin: ${u.email}`}
                         checked={u.isGlobalAdmin}
                         disabled={isSelf}
                         title={isSelf ? "You can't demote yourself" : ''}
@@ -211,6 +220,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                           patchAdmin.mutate({ id: u.id, isGlobalAdmin: e.target.checked })
                         }
                       />
+                      </label>
                     </Td>
                     <Td align="right">
                       <div className="flex justify-end gap-1 text-xs">
@@ -318,7 +328,7 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
                   {detail.data.layouts.map((l) => (
                     <tr key={l.id} className="border-t border-line">
                       <Td>
-                        <Link to={`/editor/${l.id}`} className="text-accent-text hover:underline">{l.title}</Link>
+                        <Link to={`/editor/${l.id}`} className="tap-target inline-flex items-center text-accent-text hover:underline">{l.title}</Link>
                       </Td>
                       <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
                       <Td align="right" className="tabular-nums text-muted">{formatBytes(l.sizeBytes)}</Td>
@@ -480,7 +490,7 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
                   {detail.data.layouts.map((l) => (
                     <tr key={l.id} className="border-t border-line">
                       <Td>
-                        <Link to={`/editor/${l.id}`} className="text-accent-text hover:underline">{l.title}</Link>
+                        <Link to={`/editor/${l.id}`} className="tap-target inline-flex items-center text-accent-text hover:underline">{l.title}</Link>
                       </Td>
                       <Td>{new Date(l.updatedAt).toLocaleString()}</Td>
                       <Td align="right" className="tabular-nums text-muted">{formatBytes(l.sizeBytes)}</Td>
@@ -547,7 +557,7 @@ function LayoutsTab() {
               {list.data?.layouts.map((l) => (
                 <tr key={l.id} className="border-t border-line">
                   <Td>
-                    <Link to={`/editor/${l.id}`} className="text-accent-text hover:underline">
+                    <Link to={`/editor/${l.id}`} className="tap-target inline-flex items-center text-accent-text hover:underline">
                       {l.title}
                     </Link>
                   </Td>
@@ -600,12 +610,12 @@ function Toolbar({
   const start = total === 0 ? 0 : offset + 1;
   const end = Math.min(offset + limit, total);
   return (
-    <div className="mb-3 flex items-center gap-3">
+    <div className="mb-3 flex flex-wrap items-center gap-3">
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={placeholder}
-        className="w-72 rounded-lg border border-border bg-panel px-3 py-1.5 text-sm"
+        className="w-full rounded-lg border border-border bg-panel px-3 py-1.5 text-sm sm:w-72"
       />
       <span className="text-xs text-muted">
         {start}–{end} of {total.toLocaleString()}
@@ -1079,7 +1089,7 @@ function PartLibrariesTab() {
       <section className="rounded-lg border border-line p-4 space-y-4">
 
         {/* Register on-disk library */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
           <div>
             <h2 className="text-sm font-semibold text-neutral-300">BlueBrickParts base library</h2>
             <p className="mt-1 text-xs text-muted">
@@ -1106,13 +1116,13 @@ function PartLibrariesTab() {
         {/* Download from GitHub — only shown when the on-disk submodule isn't already registered */}
         {!baseInstalled && (
           <>
-            <div className="flex items-start justify-between gap-4 border-t border-line pt-4">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4 border-t border-line pt-4">
               <div>
                 <h2 className="text-sm font-semibold text-neutral-300">Download BlueBrickParts from GitHub</h2>
                 <p className="mt-1 text-xs text-muted">
                   Downloads the latest{' '}
                   <span className="text-muted">Lswbanban/BlueBrickParts</span> archive (~27 MB),
-                  extracts it to <code className="text-muted">PARTS_DIR/libraries/bluebrickparts-default/</code>,
+                  extracts it to <code className="break-all text-muted">PARTS_DIR/libraries/bluebrickparts-default/</code>,
                   and enables it for all orgs by default.
                 </p>
               </div>
@@ -1459,7 +1469,7 @@ function AuditTab() {
                   <Td className="font-mono text-[10px] text-muted">{e.layoutId ?? (e.resourceKind ? `${e.resourceKind}:${e.resourceId}` : '—')}</Td>
                   <Td>
                     <details>
-                      <summary className="cursor-pointer text-muted">view</summary>
+                      <summary className="cursor-pointer text-muted pointer-coarse:min-w-11">view</summary>
                       <pre className="mt-1 max-w-xs overflow-auto whitespace-pre-wrap text-neutral-300">
                         {JSON.stringify(e.payload, null, 2)}
                       </pre>

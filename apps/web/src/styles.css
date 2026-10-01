@@ -337,34 +337,102 @@ body,
 /* Touch screens (phones, tablets): every control is at least a 44 px tap
    target, and text fields use 16 px text so iOS doesn't zoom the page in
    when one is focused. `.tap-inline` opts a control out (a link inside a
-   sentence). */
-@layer base {
-  @media (pointer: coarse) {
-    button:not(.tap-inline),
-    [role='button']:not(.tap-inline),
-    [role='menuitem'],
-    [role='radio'],
-    [role='tab'],
-    select,
-    summary,
-    a.tap-target {
-      min-height: 44px;
-    }
-    button:not(.tap-inline),
-    [role='button']:not(.tap-inline) {
-      min-width: 44px;
-    }
-    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
-    select,
-    textarea {
-      font-size: max(16px, 1em);
-      min-height: 44px;
-    }
-    input[type='checkbox'],
-    input[type='radio'] {
-      width: 22px;
-      height: 22px;
-    }
+   sentence). These rules sit outside Tailwind's layers on purpose, so they
+   win over size utilities chosen for a mouse (`sm:min-h-9`, `h-[26px]`,
+   `text-xs`): a phone on its side or a tablet is wider than `sm` but is
+   still used with a finger. */
+@media (pointer: coarse) {
+  button:not(.tap-inline),
+  [role='button']:not(.tap-inline),
+  [role='menuitem'],
+  [role='radio'],
+  [role='tab'],
+  select,
+  summary,
+  a.tap-target {
+    min-height: 44px;
+  }
+  button:not(.tap-inline),
+  [role='button']:not(.tap-inline),
+  [role='radio'],
+  [role='tab'],
+  summary,
+  a.tap-target {
+    min-width: 44px;
+  }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+    min-height: 44px;
+  }
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 22px;
+    height: 22px;
+  }
+  /* A tick box or radio is tapped through its label: make that the 44 px target. */
+  label:has(> input[type='checkbox'], > input[type='radio']) {
+    min-height: 44px;
+  }
+  input[type='color'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  input[type='range'],
+  input[type='file'] {
+    min-height: 44px;
+  }
+}
+
+/* Tables inside a `.cards-on-phone` box become one card per row on a
+   phone, each value labelled with its column (ui/cardTables.ts copies the
+   header text into data-label). Up to a tablet held upright: a nine-column
+   table doesn't fit there either. */
+@media (max-width: 1023px) {
+  .cards-on-phone table,
+  .cards-on-phone tbody,
+  .cards-on-phone tr,
+  .cards-on-phone td {
+    display: block;
+    width: 100%;
+  }
+  .cards-on-phone thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cards-on-phone tr {
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    background: var(--panel);
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .cards-on-phone td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .cards-on-phone td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-align: left;
+  }
+  .cards-on-phone td[data-label='']::before {
+    content: none;
+  }
+  .cards-on-phone .overflow-x-auto {
+    overflow-x: visible;
   }
 }
 
@@ -374,6 +442,8 @@ body,
 @media (max-width: 640px), (max-height: 500px) {
   .fixed.inset-0 {
     max-height: 100dvh;
+    /* Stop above the on-screen keyboard (pwa/keyboard.ts). */
+    bottom: var(--keyboard-inset, 0px);
   }
   .fixed.inset-0 > :is(div, form, section) {
     max-width: 100%;
