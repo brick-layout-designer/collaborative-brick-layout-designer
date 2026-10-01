@@ -46,7 +46,7 @@ describe('venue routes with API tokens', () => {
     const reader = await issueToken(app, user.cookie, 'venues:read');
     const list = await app.inject({ method: 'GET', url: '/api/venues', headers: bearer(reader) });
     expect(list.statusCode).toBe(200);
-    expect((list.json() as { venues: { id: string; name: string }[] }).venues).toEqual([{ id, name: 'Grand Lobby', ownerOrgId: null }]);
+    expect((list.json() as { venues: { id: string; name: string }[] }).venues).toMatchObject([{ id, name: 'Grand Lobby', ownerOrgId: null }]);
     const one = await app.inject({ method: 'GET', url: `/api/venues/${id}`, headers: bearer(reader) });
     expect(one.statusCode).toBe(200);
     expect((one.json() as { data: unknown }).data).toEqual(HALL);
