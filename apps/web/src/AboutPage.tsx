@@ -64,6 +64,17 @@ export function AboutPage() {
           </p>
         </section>
 
+        <section aria-labelledby="privacy">
+          <h2 id="privacy" className="text-lg font-semibold">What the server counts</h2>
+          <p className="mt-2 text-sm text-neutral-300">
+            To keep the site healthy, the server keeps daily totals: how many people used it, with
+            the web or the desktop app, on a phone or a computer, and how many requests, errors and
+            refused requests it had. It also remembers when you were last signed in and when each
+            layout was last opened. It does not record which pages you visit or your IP address.
+            Daily totals are kept for about 13 months, and only site admins can see them.
+          </p>
+        </section>
+
         <section>
           <h2 className="text-lg font-semibold">Reporting issues</h2>
           <p className="mt-2 text-sm text-neutral-300">

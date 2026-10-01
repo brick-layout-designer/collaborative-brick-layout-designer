@@ -20,7 +20,19 @@ export const users = sqliteTable('users', {
    */
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(true),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
+  /**
+   * Last time this account made a signed-in request, rounded to a few
+   * minutes (metrics/activity.ts throttles the write). Powers the admin
+   * DAU/WAU/MAU numbers and "not seen in 6 months". Only the newest
+   * time is kept: no history, no pages, no IP. Null until first seen
+   * after this column was added.
+   */
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }),
+}, (t) => ({
+  // The admin "new users" graph and the active-user counts.
+  createdIdx: index('users_created_at_idx').on(t.createdAt),
+  lastSeenIdx: index('users_last_seen_at_idx').on(t.lastSeenAt),
+}));
 
 export const sessions = sqliteTable(
   'sessions',
@@ -240,8 +252,17 @@ export const layouts = sqliteTable(
     // signing in. The token is the only secret — owners rotate it by
     // disabling and re-enabling sharing.
     publicShareToken: text('public_share_token').unique(),
+    /**
+     * Last time anyone opened the layout (REST get or a live editor
+     * connection), throttled. Feeds the admin "not opened in 90 days"
+     * list. Null until first opened after this column was added.
+     */
+    lastOpenedAt: integer('last_opened_at', { mode: 'timestamp_ms' }),
   },
   (t) => ({
+    // The admin "layouts created / edited" graphs.
+    createdIdx: index('layouts_created_at_idx').on(t.createdAt),
+    updatedIdx: index('layouts_updated_at_idx').on(t.updatedAt),
     // Both power admin per-owner aggregate queries (layout count + size
     // by user/org) — see routes/admin.ts. Without these, GROUP BY
     // owner_user_id / owner_org_id is a full table scan.
@@ -410,6 +431,7 @@ export const customParts = sqliteTable(
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => ({
+    createdIdx: index('custom_parts_created_at_idx').on(t.createdAt),
     ownerUserIdx: index('custom_parts_owner_user_id_idx').on(t.ownerUserId),
     ownerOrgIdx: index('custom_parts_owner_org_id_idx').on(t.ownerOrgId),
   }),
@@ -471,6 +493,7 @@ export const modules = sqliteTable(
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => ({
+    createdIdx: index('modules_created_at_idx').on(t.createdAt),
     ownerUserIdx: index('modules_owner_user_id_idx').on(t.ownerUserId),
     ownerOrgIdx: index('modules_owner_org_id_idx').on(t.ownerOrgId),
   }),
@@ -608,3 +631,28 @@ export const userPreferences = sqliteTable('user_preferences', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 export type UserPreferencesRow = typeof userPreferences.$inferSelect;
+
+/**
+ * Tiny daily rollup for the admin dashboard: things the database keeps
+ * no history of (active users, requests, errors, refusals, live
+ * sessions, disk size). One row per (UTC day, metric, key); `key`
+ * narrows a metric (a route, a client kind, a layout id) and is '' when
+ * unused. Aggregate only: never a URL trail, never an IP, and person
+ * ids are only ever counted, not stored (see metrics/rollup.ts).
+ * Rows older than ROLLUP_RETENTION_DAYS are swept daily.
+ */
+export const dailyStats = sqliteTable(
+  'daily_stats',
+  {
+    day: text('day').notNull(),
+    metric: text('metric').notNull(),
+    key: text('key').notNull().default(''),
+    value: integer('value').notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.day, t.metric, t.key] }),
+    // "Collecting since" and per-metric range scans.
+    metricDayIdx: index('daily_stats_metric_day_idx').on(t.metric, t.day),
+  }),
+);
+export type DailyStat = typeof dailyStats.$inferSelect;

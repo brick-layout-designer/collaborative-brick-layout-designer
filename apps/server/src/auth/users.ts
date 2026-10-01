@@ -77,6 +77,7 @@ export async function resolveOauthUser(
     // OAuth/OIDC providers have already proven control of this email.
     emailVerified: true,
     createdAt: new Date(),
+    lastSeenAt: null,
   };
   await db.insert(schema.users).values(created);
   await db.insert(schema.oauthAccounts).values({

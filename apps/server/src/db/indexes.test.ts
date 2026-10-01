@@ -18,6 +18,14 @@ const EXPECTED = [
   'audit_events_resource_created_at_idx',
   'api_tokens_user_id_idx',
   'device_codes_expires_at_idx',
+  // Admin insights: time-series graphs bounded by a date range.
+  'users_created_at_idx',
+  'users_last_seen_at_idx',
+  'layouts_created_at_idx',
+  'layouts_updated_at_idx',
+  'custom_parts_created_at_idx',
+  'modules_created_at_idx',
+  'daily_stats_metric_day_idx',
 ];
 
 function plan(sql: string): string {
@@ -40,5 +48,14 @@ describe('schema indexes', () => {
     expect(
       plan(`SELECT * FROM audit_events WHERE resource_kind = 'module' AND resource_id = 'm' ORDER BY created_at DESC`),
     ).toContain('audit_events_resource_created_at_idx');
+  });
+
+  it('uses them for the admin graphs', () => {
+    expect(plan(`SELECT created_at FROM users WHERE created_at >= 0`)).toContain('users_created_at_idx');
+    expect(plan(`SELECT count(*) FROM users WHERE last_seen_at >= 0`)).toContain('users_last_seen_at_idx');
+    expect(plan(`SELECT created_at FROM layouts WHERE created_at >= 0`)).toContain('layouts_created_at_idx');
+    expect(plan(`SELECT day, value FROM daily_stats WHERE metric = 'dau' AND day >= '2026-01-01'`)).toMatch(
+      /daily_stats_metric_day_idx|sqlite_autoindex_daily_stats/,
+    );
   });
 });

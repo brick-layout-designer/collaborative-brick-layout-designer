@@ -109,3 +109,26 @@ export function resetInstallForTests(): void {
   justInstalled = false;
   snapshot = null;
 }
+
+/**
+ * Tell the server, once per page load, whether this copy runs as the
+ * installed app or in a browser tab. The server counts it per person
+ * per day for the admin dashboard (aggregate only; signed-out loads are
+ * ignored). Failures don't matter.
+ */
+export function reportDisplayMode(win: Window = window): void {
+  const display = runningInstalled(win) ? 'standalone' : 'browser';
+  try {
+    void win
+      .fetch('/api/metrics/client', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ display }),
+        keepalive: true,
+      })
+      .catch(() => undefined);
+  } catch {
+    /* offline or blocked */
+  }
+}

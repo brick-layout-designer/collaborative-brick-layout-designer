@@ -15,6 +15,7 @@ import { eq, and } from 'drizzle-orm';
 import { upgradeDoc } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
+import { rollup } from '../metrics/rollup.js';
 
 export class DocSession {
   readonly doc: Y.Doc;
@@ -165,6 +166,8 @@ export class DocSession {
       createdAt: new Date(),
     });
     this.pendingUpdates += 1;
+    rollup.distinct('layouts_edited', '', this.layoutId);
+    rollup.count('layout_edits', this.layoutId);
   }
 
   /**
@@ -263,6 +266,13 @@ class DocHub {
       this.sessions.delete(layoutId);
       throw err;
     }
+  }
+
+  /** How many layouts are open in the live editor right now. */
+  liveRoomCount(): number {
+    let n = 0;
+    for (const session of this.live.values()) if (!session.closed) n += 1;
+    return n;
   }
 
   /** True while a session for this layout is loaded or hydrating. */
