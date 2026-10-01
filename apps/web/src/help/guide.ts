@@ -52,6 +52,6 @@ export const GETTING_STARTED: string[] = [
   'Drag a part from the Parts panel onto the map, or click it to drop it in the middle.',
   'Ends of track snap together when they meet. Press R to turn the selected piece.',
   'Sheets keep things apart: track on one, buildings on another.',
-  'The Room tab holds the hall or room the layout has to fit in.',
+  'The Venue tab holds the hall the layout has to fit in.',
   'Ctrl+Z undoes, Ctrl+Shift+Z redoes. Everything saves by itself.',
 ];

@@ -407,7 +407,7 @@ export function SettingsSection({ org }: { org: OrgDetail }) {
             className="mt-1"
           />
           <span>
-            <span className="font-semibold">Members can add layouts, rooms and modules</span>
+            <span className="font-semibold">Members can add layouts, venues and modules</span>
             <span className="block text-xs text-muted">
               Turn this off if only admins should add things to the club. Everyone in the club can still open and use them.
             </span>

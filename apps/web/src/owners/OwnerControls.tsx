@@ -116,11 +116,11 @@ export function SaveToPicker({
 
 export type MovableKind = 'layout' | 'module' | 'room';
 
-const KIND_WORD: Record<MovableKind, string> = { layout: 'layout', module: 'module', room: 'room' };
+const KIND_WORD: Record<MovableKind, string> = { layout: 'layout', module: 'module', room: 'venue' };
 
 /**
- * Move or copy a layout, module or room between you and your clubs.
- * Moving uses the existing transfer (layouts, modules) or room move; a
+ * Move or copy a layout, module or venue between you and your clubs.
+ * Moving uses the existing transfer (layouts, modules) or venue move; a
  * club's thing never moves back out to one person, so only Copy is
  * offered there.
  */

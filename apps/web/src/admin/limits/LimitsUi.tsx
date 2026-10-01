@@ -17,7 +17,7 @@ const SORTS: { id: string; label: string; clubsOnly?: boolean }[] = [
   { id: 'layouts', label: 'Layouts' },
   { id: 'customParts', label: 'Custom parts' },
   { id: 'modules', label: 'Modules' },
-  { id: 'rooms', label: 'Rooms' },
+  { id: 'rooms', label: 'Venues' },
   { id: 'uploads1d', label: 'Uploads today' },
   { id: 'uploads7d', label: 'Uploads, 7 days' },
   { id: 'requests1d', label: 'Requests today' },
@@ -131,7 +131,7 @@ function AbuseTable({ kind, onOpen }: { kind: 'users' | 'clubs'; onOpen: (id: st
                   <th scope="col" className="px-2 py-1.5 text-right">{head('layouts', 'Layouts')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('customParts', 'Parts')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('modules', 'Modules')}</th>
-                  <th scope="col" className="px-2 py-1.5 text-right">{head('rooms', 'Rooms')}</th>
+                  <th scope="col" className="px-2 py-1.5 text-right">{head('rooms', 'Venues')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('uploads7d', 'Uploads 7d')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('requests1d', 'Requests today')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('refused7d', 'Refused 7d')}</th>

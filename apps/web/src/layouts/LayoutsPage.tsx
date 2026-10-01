@@ -30,7 +30,7 @@ export function LayoutsPage() {
   const orgs = orgsQuery.data?.orgs;
   // All · Mine · each club; remembered, and ?owner=<club> from a club page.
   const [filter, setFilter] = useOwnerFilter(orgs);
-  // "Start layout" on a room links here with ?newLayoutVenue=<id>[&owner=<club slug>].
+  // "Start layout" on a venue links here with ?newLayoutVenue=<id>[&owner=<club slug>].
   const [params, setParams] = useSearchParams();
   const startVenue = params.get('newLayoutVenue');
   const [showCreate, setShowCreate] = useState(startVenue !== null);
@@ -96,7 +96,7 @@ export function LayoutsPage() {
           <OwnerFilterBar value={filter} onChange={setFilter} orgs={orgs} />
           {club && (
             <p className="text-sm text-muted">
-              Showing {club.name}’s layouts, rooms, modules and parts.{' '}
+              Showing {club.name}’s layouts, venues, modules and parts.{' '}
               <Link to={`/orgs/${club.slug}`} className="font-semibold text-accent-text hover:underline">
                 Club page
               </Link>
@@ -157,7 +157,7 @@ export function LayoutsPage() {
       )}
 
       <div className="space-y-3">
-        <h2 className="text-2xl font-bold">Rooms</h2>
+        <h2 className="text-2xl font-bold">Venues</h2>
         <VenueList filter={filter} myUserId={myUserId} orgs={orgs} />
       </div>
 
@@ -551,7 +551,7 @@ function CreateLayoutDialog({
         const v = await api.venues.get(venueId);
         body.sidecar = sidecarWithVenue(body.sidecar, v.data as Venue);
       } catch (err) {
-        setError(`Could not load the room: ${(err as Error).message}`);
+        setError(`Could not load the venue: ${(err as Error).message}`);
         return;
       }
     }
@@ -620,13 +620,13 @@ function CreateLayoutDialog({
 
         {venues.data && venues.data.venues.length > 0 && (
           <label className="block text-sm">
-            <span className="mb-1 block text-muted">Start from a room</span>
+            <span className="mb-1 block text-muted">Start from a venue</span>
             <select
               value={venueId}
               onChange={(e) => setVenueId(e.target.value)}
               className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             >
-              <option value="">No room</option>
+              <option value="">No venue</option>
               {orderVenuesForOwner(
                 venues.data.venues,
                 orgs.data?.orgs.find((o) => o.slug === ownerSlug)?.id ?? null,

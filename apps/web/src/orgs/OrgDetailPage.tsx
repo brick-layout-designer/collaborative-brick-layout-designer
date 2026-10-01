@@ -126,7 +126,7 @@ function OrgPartLibraries({ slug }: { slug: string }) {
 }
 
 /**
- * The club's layouts, rooms and modules live in the one list on the home
+ * The club's layouts, venues and modules live in the one list on the home
  * page, next to your own; this sums them up and links there, filtered to
  * the club.
  */
@@ -138,7 +138,7 @@ function ClubThings({ org }: { org: { id: string; name: string; slug: string } }
     items ? items.filter((i) => i.ownerOrgId === org.id).length : null;
   const tiles = [
     { label: 'Layouts', n: count(layouts.data?.layouts) },
-    { label: 'Rooms', n: count(venues.data?.venues) },
+    { label: 'Venues', n: count(venues.data?.venues) },
     { label: 'Modules', n: count(modules.data?.modules) },
   ];
   const to = `/?owner=${encodeURIComponent(org.slug)}`;

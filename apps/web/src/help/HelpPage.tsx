@@ -16,10 +16,10 @@ const TOPICS: { id: string; title: string; body: string[] }[] = [
   },
   {
     id: 'room',
-    title: 'The room',
+    title: 'The venue',
     body: [
-      'The room is the hall your layout goes in: its walls, doors, columns and power points. Draw it once, save it to your club, and anyone can use it.',
-      'With a room under the layout, the status bar tells you if everything fits and leaves space to walk around.',
+      'The venue is the hall your layout goes in: its walls, doors, columns and power points. Draw it once, save it to your club, and anyone can use it.',
+      'With a venue under the layout, the status bar tells you if everything fits and leaves space to walk around.',
     ],
   },
   {
@@ -35,7 +35,7 @@ const TOPICS: { id: string; title: string; body: string[] }[] = [
     title: 'Saving a copy',
     body: [
       'Everything saves by itself on the server. To keep your own copy, download the layout file: it holds everything and opens in this app and the desktop app.',
-      'Download a BlueBrick map (.bbm) only for people who use the old BlueBrick program. It leaves out the room, labels, modules and background picture.',
+      'Download a BlueBrick map (.bbm) only for people who use the old BlueBrick program. It leaves out the venue, labels, modules and background picture.',
     ],
   },
 ];

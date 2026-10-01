@@ -32,7 +32,7 @@ test('designs a venue from typed sizes and saves it to the library', async ({ pa
   await typeKeys(page, "40'x20'");
   await expect(page.getByText("Typing 40'x20'")).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Room 40′ 0″ × 20′ 0″')).toBeVisible();
+  await expect(page.getByText('Venue 40′ 0″ × 20′ 0″')).toBeVisible();
 
   const inspector = page.getByRole('complementary', { name: 'Inspector' });
   // Floor outlet and a note.
@@ -60,9 +60,9 @@ test('designs a venue from typed sizes and saves it to the library', async ({ pa
   // Reopening shows what was saved.
   await page.reload();
   await expect(page.getByText('Grand Lobby test').first()).toBeVisible();
-  await expect(page.getByText('Room 40′ 0″ × 20′ 0″')).toBeVisible();
+  await expect(page.getByText('Venue 40′ 0″ × 20′ 0″')).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByRole('heading', { name: 'Rooms', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Venues', exact: true })).toBeVisible();
   await expect(page.getByText('Grand Lobby test')).toBeVisible();
 });
 
@@ -101,7 +101,7 @@ test("opens from a layout's Map menu and saves the venue into the layout", async
   await page.mouse.move(700, 600);
   await typeKeys(page, "30'x15'");
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Room 30′ 0″ × 15′ 0″')).toBeVisible();
+  await expect(page.getByText('Venue 30′ 0″ × 15′ 0″')).toBeVisible();
   await page.getByRole('button', { name: 'Save to layout' }).click();
   await expect(page.getByText('unsaved')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close' }).click();

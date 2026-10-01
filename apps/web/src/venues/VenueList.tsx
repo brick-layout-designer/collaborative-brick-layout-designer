@@ -1,4 +1,4 @@
-// Saved rooms on the home page: yours and your clubs', together, each with
+// Saved venues on the home page: yours and your clubs', together, each with
 // its owner chip, narrowed by the home page's owner filter. Start a layout
 // from one, download it as a .bld-venue file, upload one, move or copy it
 // between you and a club, and, when you manage it (your own, or a club you
@@ -47,14 +47,14 @@ export function VenueList({
     mutationFn: (body: { name: string; data: Venue }) =>
       api.venues.create({ ...body, ...(uploadTo.current ? { orgSlug: uploadTo.current } : {}) }),
     onSuccess: refresh,
-    onError: fail('upload the room'),
+    onError: fail('upload the venue'),
   });
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.venues.rename(id, name),
     onSuccess: refresh,
-    onError: fail('rename the room'),
+    onError: fail('rename the venue'),
   });
-  const remove = useMutation({ mutationFn: api.venues.remove, onSuccess: refresh, onError: fail('delete the room') });
+  const remove = useMutation({ mutationFn: api.venues.remove, onSuccess: refresh, onError: fail('delete the venue') });
 
   async function pick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -76,7 +76,7 @@ export function VenueList({
       const v = await api.venues.get(id);
       downloadText(`${name}${VENUE_FILE_EXT}`, writeVenueFile(v.data as Venue));
     } catch (err) {
-      alert(`Could not download the room: ${(err as Error).message}`);
+      alert(`Could not download the venue: ${(err as Error).message}`);
     }
   }
 
@@ -109,7 +109,7 @@ export function VenueList({
           className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
           onClick={() => (hasClubs ? setAsking('new') : startNew(''))}
         >
-          New room
+          New venue
         </button>
         <button
           type="button"
@@ -117,14 +117,14 @@ export function VenueList({
           disabled={upload.isPending}
           onClick={() => (hasClubs ? setAsking('upload') : startUpload(''))}
         >
-          Upload room…
+          Upload venue…
         </button>
       </div>
       {venues.isLoading && <p className="text-sm text-muted">Loading…</p>}
       {venues.data &&
         (list.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-            No saved rooms here yet. Make a new one, upload a .bld-venue file, or save one from the editor's Room library.
+            No saved venues here yet. Make a new one, upload a .bld-venue file, or save one from the editor's Venue library.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
@@ -195,11 +195,11 @@ export function VenueList({
         accept={VENUE_FILE_ACCEPT}
         onChange={(e) => void pick(e)}
         className="hidden"
-        aria-label="Room file"
+        aria-label="Venue file"
       />
       {asking && orgs && (
         <SaveToDialog
-          title={asking === 'new' ? 'New room' : 'Upload a room'}
+          title={asking === 'new' ? 'New venue' : 'Upload a venue'}
           confirmLabel={asking === 'new' ? 'Start designing' : 'Choose file…'}
           initial={defaultSaveTo(filter)}
           orgs={orgs}

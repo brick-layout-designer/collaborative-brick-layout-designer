@@ -53,7 +53,11 @@ describe('the tour catalogue', () => {
 
   it('uses plain words and no emoji', () => {
     expect(catalogueText).not.toMatch(/\p{Extended_Pictographic}/u);
-    expect(catalogueText).not.toMatch(/\b(layer|venue)s?\b/i);
+    // Sheets and venues, as the rest of the app calls them.
+    const words = [WELCOME.title, WELCOME.text, ...Object.values(WELCOME.actions).flatMap((a) => [a.label, a.text]),
+      ...TOURS.flatMap((t) => [t.title, ...t.steps.flatMap((s) => [s.title, s.text])])].join(' ');
+    expect(words).not.toMatch(/\b(layer|room)s?\b/i);
+    expect(getTour('rooms')!.title).toBe('Venues');
   });
 
   it('names where the desktop copy lives, so the two stay identical', () => {

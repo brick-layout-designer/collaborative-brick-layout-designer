@@ -92,7 +92,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
     <div className="flex h-full flex-col overflow-y-auto text-xs">
       <div className="border-b border-line p-2">
         <input
-          placeholder="Filter rooms…"
+          placeholder="Filter venues…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
@@ -103,7 +103,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
       {!isViewer && list.isLoading && <p className="p-2 text-muted">Loading…</p>}
       {!isViewer && list.isError && <p className="p-2 text-danger">Failed to load venue library.</p>}
 
-      <div className="min-h-[4.5rem] flex-1 overflow-y-auto" role="listbox" aria-label="Saved rooms">
+      <div className="min-h-[4.5rem] flex-1 overflow-y-auto" role="listbox" aria-label="Saved venues">
         {filtered.length === 0 && !list.isLoading && (
           <p className="p-2 text-muted">{filter ? 'No matches.' : '(no saved venues)'}</p>
         )}
@@ -163,7 +163,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
             void saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, venues, api.venues, (m) => confirm(m))
               .then((r) => {
                 if (r === 'cancelled') return;
-                useEditorStore.getState().showNotice('Room saved to the library.');
+                useEditorStore.getState().showNotice('Venue saved to the library.');
                 return refresh();
               })
               .catch((e) => alert(`Failed to save venue to library: ${(e as Error).message}`));
