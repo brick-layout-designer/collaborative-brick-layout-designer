@@ -149,8 +149,24 @@ export async function partsRoutes(app: FastifyInstance): Promise<void> {
     if (req.headers['if-none-match'] === etag) {
       return reply.code(304).send();
     }
-    return { parts: [...bundled.wire, ...customWire] };
+    return { parts: uniqueByKey([...bundled.wire, ...customWire]) };
   });
+}
+
+/**
+ * One entry per part key (case-insensitive). The same part can come from
+ * the base library, a downloaded library and a custom upload; the editor
+ * already draws the last one (indexParts), so the list keeps that one too
+ * instead of showing the part twice.
+ */
+export function uniqueByKey(parts: readonly PartWire[]): PartWire[] {
+  const byKey = new Map<string, PartWire>();
+  for (const p of parts) {
+    const k = p.key.toLowerCase();
+    byKey.delete(k);
+    byKey.set(k, p);
+  }
+  return [...byKey.values()];
 }
 
 async function loadBundled(
