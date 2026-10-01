@@ -67,3 +67,32 @@ describe('render parity: painted areas', () => {
     expect(areaCellCss(c.color, c.transparency)).toBe(`rgba(${r}, ${g}, ${b}, ${a / 255})`);
   });
 });
+
+import SEL from '../../../../packages/bbm/tests/fixtures/render-parity/selection.json';
+import { SELECTION, rulerHaloWidth } from '../editor/render/selectionStyle';
+import { selectionHalo } from '../editor/render/BrickLayer';
+
+describe('render parity: selection', () => {
+  it('outlines a part as the shared description says', () => {
+    expect(SELECTION.partPadPx).toBe(SEL.part.padPx);
+    expect(SELECTION.partOuter).toBe(SEL.part.outer);
+    expect(SELECTION.partOuterWidth).toBe(SEL.part.outerWidth);
+    expect(SELECTION.partInnerWidth).toBe(SEL.part.innerWidth);
+    expect(selectionHalo(SEL.part.tint.slice(1), false)).toEqual({
+      stroke: SEL.part.tint,
+      fill: `${SEL.part.tint}${SEL.part.fillAlpha.toString(16).toUpperCase()}`,
+    });
+    expect(selectionHalo('FFD700', true)).toEqual({ stroke: SEL.part.snapStroke, fill: SEL.part.snapFill });
+  });
+
+  it('makes text glow and rulers band as the shared description says', () => {
+    expect(SELECTION.textGlow).toBe(SEL.text.glow);
+    expect(SELECTION.textGlowBlur).toBe(SEL.text.blur);
+    expect(SELECTION.rulerHalo).toBe(SEL.ruler.halo);
+    for (const c of SEL.ruler.haloWidth) expect(rulerHaloWidth(c.thickness)).toBe(c.width);
+    expect(SELECTION.handleRadius).toBe(SEL.ruler.handle.radius);
+    expect(SELECTION.handleFill).toBe(SEL.ruler.handle.fill);
+    expect(SELECTION.handleStroke).toBe(SEL.ruler.handle.stroke);
+    expect(SELECTION.handleStrokeWidth).toBe(SEL.ruler.handle.strokeWidth);
+  });
+});

@@ -27,6 +27,7 @@ import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
 import { drawOrder, pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
+import { SELECTION } from './selectionStyle';
 
 /** Konva's double-click window; the second press of a double-click starts a flex move. */
 const DOUBLE_CLICK_MS = 400;
@@ -740,12 +741,12 @@ const BrickGlyph = memo(function BrickGlyph({
         <>
           <Rect
             name={EXPORT_HIDE}
-            x={-spriteWpx / 2 - 1}
-            y={-spriteHpx / 2 - 1}
-            width={spriteWpx + 2}
-            height={spriteHpx + 2}
-            stroke="rgba(0,0,0,0.9)"
-            strokeWidth={5}
+            x={-spriteWpx / 2 - SELECTION.partPadPx}
+            y={-spriteHpx / 2 - SELECTION.partPadPx}
+            width={spriteWpx + 2 * SELECTION.partPadPx}
+            height={spriteHpx + 2 * SELECTION.partPadPx}
+            stroke={SELECTION.partOuter}
+            strokeWidth={SELECTION.partOuterWidth}
             strokeScaleEnabled={false}
             listening={false}
             perfectDrawEnabled={false}
@@ -753,12 +754,12 @@ const BrickGlyph = memo(function BrickGlyph({
           />
           <Rect
             name={EXPORT_HIDE}
-            x={-spriteWpx / 2 - 1}
-            y={-spriteHpx / 2 - 1}
-            width={spriteWpx + 2}
-            height={spriteHpx + 2}
+            x={-spriteWpx / 2 - SELECTION.partPadPx}
+            y={-spriteHpx / 2 - SELECTION.partPadPx}
+            width={spriteWpx + 2 * SELECTION.partPadPx}
+            height={spriteHpx + 2 * SELECTION.partPadPx}
             stroke={selectionHalo(selectionTint, snapActive).stroke}
-            strokeWidth={2.5}
+            strokeWidth={SELECTION.partInnerWidth}
             strokeScaleEnabled={false}
             fill={selectionHalo(selectionTint, snapActive).fill}
             listening={false}
@@ -871,8 +872,8 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
  */
 export function selectionHalo(tint: string, snapActive: boolean): { stroke: string; fill: string } {
   return snapActive
-    ? { stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' }
-    : { stroke: `#${tint}`, fill: `#${tint}4D` };
+    ? { stroke: SELECTION.snapStroke, fill: SELECTION.snapFill }
+    : { stroke: `#${tint}`, fill: `#${tint}${SELECTION.partFillAlpha.toString(16).toUpperCase().padStart(2, '0')}` };
 }
 
 /** A part the library doesn't know, as vanilla BlueBrick draws it (unknownPart.ts). */

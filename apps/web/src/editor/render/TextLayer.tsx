@@ -22,6 +22,7 @@ import { MAP_FONT_STACK, MAP_LINE_HEIGHT, mapFontsReady, textCellLayout, type Li
 import { colorSpecToCss } from '../layerOptions';
 import { useEditorStore } from '../editorStore';
 import { textReadable } from '../textLegibility';
+import { TEXT_GLOW } from './selectionStyle';
 
 /** A line's width in the bundled font, as Konva measures it. */
 let measureCtx: CanvasRenderingContext2D | null = null;
@@ -161,7 +162,7 @@ function FittedTextCell({
             },
           }
         : {})}
-      {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
+      {...(isSelected ? TEXT_GLOW : {})}
     />
   );
 }
