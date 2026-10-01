@@ -1,0 +1,300 @@
+// Touch editing on phones (and the selection bar on tablets): the View /
+// Edit switch, Undo / Redo, the bar of actions for the picked parts and
+// the "Add part" sheet. Every action goes through the same canvas actions
+// and mutations as the mouse and keyboard, so undo and live sync just work.
+
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api, type PartWire } from '../api';
+import { useEditorStore } from './editorStore';
+import { indexParts } from './partIndex';
+import { fuzzyScore, PartThumbnail } from './PartsPanel';
+import { pushRecent } from './touchGesture';
+
+const RECENT_KEY = 'cld:recentParts';
+const MAX_RESULTS = 60;
+
+function readRecent(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as unknown;
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecent(keys: string[]): void {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(keys));
+  } catch {
+    // Storage blocked: the list lasts as long as the page.
+  }
+}
+
+/** View / Edit in the phone header. View is the default; people who can't edit never see this. */
+export function ModeSwitch({ edit, onChange }: { edit: boolean; onChange: (edit: boolean) => void }) {
+  const item = (on: boolean) =>
+    `min-h-11 min-w-14 rounded-full px-3.5 text-sm font-bold ${on ? 'bg-accent text-accent-ink' : 'text-ink hover:bg-soft'}`;
+  return (
+    <div
+      role="radiogroup"
+      aria-label="View or edit"
+      data-testid="mode-switch"
+      data-tour="view.edit"
+      className="flex shrink-0 items-center rounded-full border border-line bg-bg p-0.5"
+    >
+      <button type="button" role="radio" aria-checked={!edit} className={item(!edit)} onClick={() => onChange(false)}>
+        View
+      </button>
+      <button type="button" role="radio" aria-checked={edit} className={item(edit)} onClick={() => onChange(true)}>
+        Edit
+      </button>
+    </div>
+  );
+}
+
+interface Actions {
+  rotate: (cw: boolean) => void;
+  duplicate: (beside?: boolean) => void;
+  delete: () => void;
+}
+
+function BarButton({ label, onClick, children, pressed, danger, testId }: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  pressed?: boolean;
+  danger?: boolean;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
+      {...(testId ? { 'data-testid': testId } : {})}
+      onClick={onClick}
+      className={`flex min-h-14 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-control px-1 text-[11px] font-bold leading-tight ${
+        pressed ? 'bg-accent text-accent-ink' : danger ? 'text-red-600 hover:bg-soft dark:text-red-400' : 'text-ink hover:bg-soft'
+      }`}
+    >
+      {children}
+      <span className="whitespace-nowrap">{label}</span>
+    </button>
+  );
+}
+
+const svg = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
+const RotLeft = () => (<svg {...svg}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 3v5h5" /></svg>);
+const RotRight = () => (<svg {...svg}><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v5h-5" /></svg>);
+const Copy = () => (<svg {...svg}><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></svg>);
+const Trash = () => (<svg {...svg}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 15h10l1-15" /></svg>);
+const Check = () => (<svg {...svg}><path d="M5 12l5 5L20 7" /></svg>);
+const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
+const More = () => (<svg {...svg}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M17.5 14v7M14 17.5h7" /></svg>);
+const UndoIcon = () => (<svg {...svg}><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>);
+const RedoIcon = () => (<svg {...svg}><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" /></svg>);
+
+/** Undo / Redo, floating over the top corner of the map while editing by touch. */
+export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void }; top: string }) {
+  const btn = 'flex size-11 items-center justify-center rounded-full text-ink hover:bg-soft disabled:opacity-35';
+  return (
+    <div
+      data-no-gesture
+      className="absolute z-10 flex gap-1 rounded-full border border-line bg-panel p-0.5 shadow-pop"
+      style={{ top, left: 'max(0.5rem, env(safe-area-inset-left))' }}
+    >
+      <button type="button" aria-label="Undo" title="Undo" disabled={!undo.canUndo} onClick={undo.undo} className={btn}>
+        <UndoIcon />
+      </button>
+      <button type="button" aria-label="Redo" title="Redo" disabled={!undo.canRedo} onClick={undo.redo} className={btn}>
+        <RedoIcon />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The bar along the bottom of the map while editing by touch. With parts
+ * picked: Rotate left / right, Duplicate, Delete, Select more and Done.
+ * With nothing picked (phones): Add part and Select more.
+ */
+export function TouchActionBar({ actions, onAddPart }: { actions: Actions; onAddPart?: (() => void) | undefined }) {
+  const count = useEditorStore((s) => s.selection.length);
+  const more = useEditorStore((s) => s.touchSelectMore);
+  if (count === 0 && !onAddPart) return null;
+  const toggleMore = () => useEditorStore.setState({ touchSelectMore: !more });
+  return (
+    <div
+      role="toolbar"
+      aria-label={count > 0 ? `${count} picked` : 'Touch editing'}
+      data-testid="touch-bar"
+      data-tour="touch.bar"
+      className="absolute inset-x-0 bottom-0 z-10 border-t border-line bg-panel/95 pt-1 shadow-pop backdrop-blur"
+      style={{ paddingLeft: 'max(0.5rem, env(safe-area-inset-left))', paddingRight: 'max(0.5rem, env(safe-area-inset-right))', paddingBottom: '0.25rem' }}
+      // A tap here is a button press, never a gesture on the map below.
+      data-no-gesture
+    >
+      {count > 0 ? (
+        <div className="flex items-stretch gap-1">
+          <BarButton label="Rotate left" onClick={() => actions.rotate(false)}><RotLeft /></BarButton>
+          <BarButton label="Rotate right" onClick={() => actions.rotate(true)}><RotRight /></BarButton>
+          <BarButton label="Duplicate" onClick={() => actions.duplicate(true)}><Copy /></BarButton>
+          <BarButton label="Delete" danger onClick={() => actions.delete()}><Trash /></BarButton>
+          <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
+          <BarButton
+            label="Done"
+            onClick={() => {
+              useEditorStore.getState().setSelection([]);
+              useEditorStore.setState({ touchSelectMore: false });
+            }}
+          >
+            <Check />
+          </BarButton>
+        </div>
+      ) : (
+        <div className="flex items-stretch gap-1">
+          <button
+            type="button"
+            onClick={onAddPart}
+            data-testid="add-part"
+            className="flex min-h-14 flex-[2] items-center justify-center gap-2 rounded-control bg-accent px-4 text-base font-bold text-accent-ink hover:bg-accent-hover"
+          >
+            <Plus />
+            Add part
+          </button>
+          <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Add part": a sheet that slides up from the bottom, with a search box,
+ * the parts placed most recently, and the parts that match. A tap places
+ * the part in the middle of the screen, picked, ready to drag.
+ */
+export function AddPartSheet({ onPick, onClose }: { onPick: (part: PartWire) => void; onClose: () => void }) {
+  const { data, isLoading } = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 60 * 1000 });
+  const [filter, setFilter] = useState('');
+  const [open, setOpen] = useState(false);
+  const [recent] = useState(readRecent);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Slide in once mounted.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const partsByKey = useMemo(() => indexParts(data?.parts), [data]);
+  const recentParts = useMemo(
+    () => recent.map((k) => partsByKey.get(k.toLowerCase())).filter((p): p is PartWire => !!p),
+    [recent, partsByKey],
+  );
+  const results = useMemo(() => {
+    if (!data) return [];
+    const needle = filter.trim().toLowerCase();
+    const scored: { score: number; part: PartWire }[] = [];
+    for (const p of data.parts) {
+      const score = fuzzyScore(needle, `${p.key} ${p.description}`.toLowerCase());
+      if (score > 0) scored.push({ score, part: p });
+    }
+    scored.sort((a, b) => (needle && a.score !== b.score ? b.score - a.score : a.part.key.localeCompare(b.part.key)));
+    return scored.slice(0, MAX_RESULTS).map((s) => s.part);
+  }, [data, filter]);
+
+  const pick = (p: PartWire) => {
+    writeRecent(pushRecent(readRecent(), p.key));
+    onPick(p);
+  };
+
+  return (
+    <div className="fixed inset-0 z-40" data-no-gesture>
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add a part"
+        className={`absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col rounded-t-2xl border-t border-line bg-panel text-ink shadow-pop transition-transform duration-200 ease-out ${open ? 'translate-y-0' : 'translate-y-full'}`}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+      >
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-line" aria-hidden />
+        <div className="flex items-center gap-2 px-4 pt-2">
+          <h2 className="flex-1 text-lg font-bold">Add a part</h2>
+          <button type="button" onClick={onClose} className="min-h-11 rounded-control px-4 text-sm font-bold hover:bg-soft">
+            Close
+          </button>
+        </div>
+        <div className="px-4 pb-2 pt-1">
+          <input
+            ref={inputRef}
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search parts, like 2x4 or curve"
+            aria-label="Search parts"
+            // 16 px, so iOS doesn't zoom in on the field.
+            className="h-11 w-full rounded-control border border-line bg-bg px-3 text-base"
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+          {recentParts.length > 0 && !filter.trim() && (
+            <section aria-label="Recent parts" className="mb-3">
+              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-muted">Recent</h3>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {recentParts.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => pick(p)}
+                    title={p.description}
+                    aria-label={`${p.description || p.key} (recent)`}
+                    className="flex min-h-11 w-20 shrink-0 flex-col items-center gap-1 rounded-control border border-line p-1.5 text-[11px] hover:bg-soft"
+                  >
+                    <PartThumbnail part={p} partsByKey={partsByKey} imgCls="h-10 w-10" />
+                    <span className="w-full truncate">{p.partNumber}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-muted">{filter.trim() ? 'Matches' : 'All parts'}</h3>
+          {isLoading && <p className="py-4 text-sm text-muted">Loading parts…</p>}
+          {!isLoading && results.length === 0 && <p className="py-4 text-sm text-muted">No parts match “{filter}”.</p>}
+          <ul className="flex flex-col gap-1">
+            {results.map((p) => (
+              <li key={p.key}>
+                <button
+                  type="button"
+                  onClick={() => pick(p)}
+                  data-part-key={p.key}
+                  className="flex min-h-14 w-full items-center gap-3 rounded-control px-2 py-1 text-left hover:bg-soft"
+                >
+                  <PartThumbnail part={p} partsByKey={partsByKey} imgCls="h-11 w-11 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold">{p.description || p.partNumber}</span>
+                    <span className="block truncate text-xs text-muted">{p.key}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {results.length === MAX_RESULTS && <p className="pt-2 text-xs text-muted">Type to find more.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}

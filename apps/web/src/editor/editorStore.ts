@@ -76,6 +76,8 @@ export interface EditorState {
   selection: string[];
   /** Rulers / labels / text cells selected alongside `selection`. */
   annoSelection: AnnoSelection;
+  /** Touch editing: a tap adds a part to the selection (or takes it out) instead of replacing it. */
+  touchSelectMore: boolean;
   /** Layer id currently being edited. */
   activeLayerId: string | null;
   /** Part library key picked for the place tool. Empty when nothing chosen. */
@@ -268,6 +270,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selection: [],
   annoSelection: EMPTY_ANNO,
+  touchSelectMore: false,
   activeLayerId: null,
   placePartKey: '',
   zoom: 1,

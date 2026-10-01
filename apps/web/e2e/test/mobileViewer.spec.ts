@@ -1,6 +1,6 @@
 // The phone viewer ("mobile A"): what a club member sees opening a layout
 // on a phone. Covers the problems seen on a real Android phone (412 px):
-// the header running into itself, Undo / Redo in view-only mode, a fit
+// the header running into itself, Undo / Redo in View mode, a fit
 // that cut off column A and left a band above the layout, a scale card
 // cut off by the screen bottom, plus pinch zoom, 44 px tap targets and
 // no sideways page scroll on the main pages.
@@ -190,8 +190,9 @@ for (const phone of PHONES) {
       expect(card.y + card.height).toBeLessThanOrEqual(vp.height);
       expect(card.x + card.width).toBeLessThanOrEqual(vp.width);
 
-      // View only: no Undo / Redo, no edit toolbar.
-      await expect(page.getByTestId('view-only')).toBeVisible();
+      // View mode (the default, with the switch to Edit for the owner):
+      // no Undo / Redo, no edit toolbar.
+      await expect(page.getByTestId('mode-switch').getByRole('radio', { name: 'View' })).toHaveAttribute('aria-checked', 'true');
       await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Redo' })).toHaveCount(0);
       await expect(page.getByRole('toolbar', { name: 'Edit' })).toHaveCount(0);
@@ -202,7 +203,7 @@ for (const phone of PHONES) {
         [
           header.locator('h1'),
           page.getByTestId('save-status'),
-          page.getByTestId('view-only'),
+          page.getByTestId('mode-switch'),
           header.getByRole('button', { name: 'Share', exact: true }),
         ].map(async (l) => (await l.boundingBox())!),
       );
@@ -215,8 +216,8 @@ for (const phone of PHONES) {
         }
       }
       expect(await header.locator('h1').evaluate((h) => h.scrollWidth <= h.clientWidth + 1)).toBe(true);
-      const pill = page.getByTestId('view-only');
-      expect(await pill.evaluate((p) => p.getBoundingClientRect().height)).toBeLessThan(32); // one line
+      const pill = page.getByTestId('mode-switch');
+      expect(await pill.evaluate((p) => p.getBoundingClientRect().height)).toBeLessThan(52); // one line
 
       // The status bar's readouts aren't cut short.
       const cut = await page.getByTestId('status-bar').evaluate((f) =>

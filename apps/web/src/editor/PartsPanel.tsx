@@ -319,7 +319,7 @@ function PartContextMenuPopup({
  * Synthesis is async (subpart sprites must load); we re-render once
  * the data URL becomes available.
  */
-function PartThumbnail({
+export function PartThumbnail({
   part,
   partsByKey,
   imgCls = 'h-12 w-12',
@@ -360,7 +360,7 @@ function PartThumbnail({
   return <div className={`${imgCls} rounded-lg bg-soft`} />;
 }
 
-function fuzzyScore(needle: string, hay: string): number {
+export function fuzzyScore(needle: string, hay: string): number {
   if (needle.length === 0) return 1;
   let hi = 0;
   let score = 0;
