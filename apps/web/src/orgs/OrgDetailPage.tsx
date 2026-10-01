@@ -1,6 +1,7 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, type OrgMemberSummary, type OrgPartLibrary } from '../api';
+import { api, type OrgPartLibrary } from '../api';
+import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
 
 export function OrgDetailPage() {
@@ -37,79 +38,44 @@ function OrgDetail({ slug }: { slug: string }) {
   const myUserId = me.data.user.id;
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={me.data.user} />
-      <main className="mx-auto mt-8 max-w-4xl space-y-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">{org.name}</h1>
+      <main className="mx-auto mt-6 max-w-3xl space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="break-words text-2xl font-semibold">{org.name}</h1>
             <p className="text-sm text-muted">
-              /{org.slug} · you are {org.myRole === 'admin' ? 'an admin' : 'a member'}
+              {org.memberCount !== undefined && `${org.memberCount} ${org.memberCount === 1 ? 'member' : 'members'} · `}
+              you are {isAdmin ? 'an admin' : 'a member'}
             </p>
+            {org.description && <p className="mt-2 whitespace-pre-line text-sm">{org.description}</p>}
           </div>
           {isAdmin && (
             <Link
               to={`/orgs/${slug}/admin`}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
+              className="tap-target inline-flex shrink-0 items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
             >
-              Club settings →
+              Manage the club
             </Link>
           )}
         </div>
 
-        <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            Members
-          </h2>
-          {members.isLoading ? (
-            <p className="text-sm text-muted">Loading…</p>
-          ) : (
-            <MembersList
-              myUserId={myUserId}
-              members={members.data?.members ?? []}
-            />
-          )}
-        </section>
-
         <ClubThings org={org} />
 
-        <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            Part libraries
-          </h2>
+        {members.isLoading ? (
+          <p className="text-sm text-muted">Loading…</p>
+        ) : (
+          <MembersSection slug={slug} myUserId={myUserId} isAdmin={false} members={members.data?.members ?? []} />
+        )}
+
+        <section className="space-y-2 rounded-section border border-line bg-panel p-4">
+          <h2 className="text-lg font-semibold">Part libraries</h2>
           <OrgPartLibraries slug={slug} />
         </section>
+
+        <LeaveClubButton org={org} myUserId={myUserId} />
       </main>
     </div>
-  );
-}
-
-function MembersList({
-  myUserId,
-  members,
-}: {
-  myUserId: string;
-  members: OrgMemberSummary[];
-}) {
-  return (
-    <ul className="divide-y divide-line rounded-lg border border-line">
-      {members.map((m) => {
-        const isSelf = m.userId === myUserId;
-        return (
-          <li key={m.userId} className="flex items-center justify-between px-3 py-2 text-sm">
-            <div>
-              <p>
-                {m.displayName} {isSelf && <span className="text-xs text-muted">(you)</span>}
-              </p>
-              <p className="text-xs text-muted">{m.email}</p>
-            </div>
-            <span className="rounded-lg bg-soft px-2 py-1 text-xs text-neutral-300">
-              {m.role}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

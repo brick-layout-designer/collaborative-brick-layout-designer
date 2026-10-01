@@ -163,6 +163,13 @@ export const orgs = sqliteTable('orgs', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  /** A line or two about the club, shown on its page. */
+  description: text('description'),
+  /**
+   * Whether members (not only admins) may add layouts, rooms and modules
+   * to the club. On by default.
+   */
+  membersCanCreate: integer('members_can_create', { mode: 'boolean' }).notNull().default(true),
 });
 
 export const orgMembers = sqliteTable(

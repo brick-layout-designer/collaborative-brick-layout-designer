@@ -81,6 +81,10 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         if (!myDestMembership) {
           return reply.code(403).send({ error: 'not_a_member_of_recipient_org' });
         }
+        // A club that lets only admins add things takes them only from an admin.
+        if (!dest.membersCanCreate && myDestMembership.role !== 'admin') {
+          return reply.code(403).send({ error: 'only_club_admins_can_add' });
+        }
 
         const layout = await db
           .select()

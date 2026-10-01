@@ -115,29 +115,10 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     const body = req.body ?? {};
     const title = body.title?.trim() || 'Untitled Module';
 
-    let ownerUserId: string | null = user.id;
-    let ownerOrgId: string | null = null;
-    if (body.orgSlug) {
-      const org = await db
-        .select({ id: schema.orgs.id })
-        .from(schema.orgs)
-        .where(eq(schema.orgs.slug, body.orgSlug.toLowerCase()))
-        .get();
-      if (!org) return reply.code(404).send({ error: 'org_not_found' });
-      const membership = await db
-        .select()
-        .from(schema.orgMembers)
-        .where(
-          and(
-            eq(schema.orgMembers.orgId, org.id),
-            eq(schema.orgMembers.userId, user.id),
-          ),
-        )
-        .get();
-      if (!membership) return reply.code(403).send({ error: 'not_an_org_member' });
-      ownerUserId = null;
-      ownerOrgId = org.id;
-    }
+    const dest = await destinationOrg(user.id, body.orgSlug);
+    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+    const ownerUserId: string | null = dest.orgId ? null : user.id;
+    const ownerOrgId: string | null = dest.orgId;
 
     const id = randomUUID();
     const now = new Date();

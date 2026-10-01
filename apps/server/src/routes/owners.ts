@@ -88,8 +88,9 @@ export async function ownerLookup(items: readonly Owned[]): Promise<(item: Owned
 }
 
 /**
- * The club a new or copied item goes to: `orgSlug` must name a club the
- * caller belongs to. Undefined / empty means the caller's own.
+ * The club a new, copied or moved item goes to: `orgSlug` must name a club
+ * the caller belongs to, and when the club lets only admins add things,
+ * the caller must be an admin. Undefined / empty means the caller's own.
  */
 export async function destinationOrg(
   userId: string,
@@ -98,7 +99,7 @@ export async function destinationOrg(
   if (orgSlug === undefined || orgSlug === null || orgSlug === '') return { ok: true, orgId: null };
   if (typeof orgSlug !== 'string') return { ok: false, code: 404, error: 'org_not_found' };
   const org = await db
-    .select({ id: schema.orgs.id })
+    .select({ id: schema.orgs.id, membersCanCreate: schema.orgs.membersCanCreate })
     .from(schema.orgs)
     .where(eq(schema.orgs.slug, orgSlug.trim().toLowerCase()))
     .get();
@@ -109,5 +110,6 @@ export async function destinationOrg(
     .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, userId)))
     .get();
   if (!mem) return { ok: false, code: 403, error: 'not_an_org_member' };
+  if (!org.membersCanCreate && mem.role !== 'admin') return { ok: false, code: 403, error: 'only_club_admins_can_add' };
   return { ok: true, orgId: org.id };
 }

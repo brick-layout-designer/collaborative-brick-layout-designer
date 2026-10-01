@@ -100,24 +100,9 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       const { name, data, orgSlug } = req.body;
       if (!name || !data) return reply.code(400).send({ error: 'name and data required' });
 
-      let ownerOrgId: string | null = null;
-      if (orgSlug) {
-        const org = await db
-          .select()
-          .from(schema.orgs)
-          .where(eq(schema.orgs.slug, orgSlug))
-          .get();
-        if (!org) return reply.code(404).send({ error: 'Org not found' });
-        const mem = await db
-          .select()
-          .from(schema.orgMembers)
-          .where(
-            and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, user.id)),
-          )
-          .get();
-        if (!mem) return reply.code(403).send({ error: 'Not an org member' });
-        ownerOrgId = org.id;
-      }
+      const dest = await destinationOrg(user.id, orgSlug);
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const ownerOrgId = dest.orgId;
 
       const id = randomUUID();
       await db.insert(schema.venueLibrary).values({
