@@ -233,9 +233,9 @@ export function SharePictureDialog({ layoutTitle, views, map, sidecar, exportIma
             <HelpButton helpKey="share.exportAllViews" />
           </div>
           <p className="mt-0.5 text-sm text-muted">
-            {views.length > 0
-              ? `One picture of each of the ${views.length} saved ${views.length === 1 ? 'view' : 'views'}, in a zip file. Do it again after a change to get new pictures.`
-              : 'No saved views yet, so this makes one picture of the whole layout, in a zip file.'}
+            {views.length === 0
+              ? 'No saved views yet, so this makes one picture of the whole layout, in a zip file.'
+              : `${views.length === 1 ? 'A picture of your saved view' : `One picture of each of your ${views.length} saved views`}, in a zip file. Do it again after a change to get new pictures.`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <div role="group" aria-label="Picture size" className="inline-flex rounded-control bg-soft p-1">
