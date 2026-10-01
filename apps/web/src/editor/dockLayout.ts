@@ -115,7 +115,7 @@ function saveDockState(userId: string | null, state: DockState): void {
 
 const MIN_DOCK_WIDTH = 180;
 const MAX_DOCK_WIDTH = 600;
-const MIN_PANEL_HEIGHT = 80;
+export const MIN_PANEL_HEIGHT = 80;
 
 function clampWidth(v: number): number {
   return Math.max(MIN_DOCK_WIDTH, Math.min(MAX_DOCK_WIDTH, Math.round(v)));
@@ -220,3 +220,26 @@ export function useDockLayout(userId: string | null): {
 
   return { state, zoneOf, setZone, setDockWidth, setPanelHeight, reorderPanel, setFloatPos };
 }
+
+/**
+ * Dragging the divider below panel `index` in a column of stacked panels,
+ * the way a splitter works: only that panel and the one below it change
+ * size, by the same amount, and every other panel stays put. `heights`
+ * are the panels' current heights (the last one fills what's left), and
+ * `newHeight` the height the dragged panel should get. Returns the heights
+ * to keep for every panel but the last, each at least `min`.
+ */
+export function splitterHeights(
+  heights: readonly number[],
+  index: number,
+  newHeight: number,
+  min: number = MIN_PANEL_HEIGHT,
+): number[] {
+  const pair = heights[index]! + heights[index + 1]!;
+  const dragged = Math.round(Math.max(min, Math.min(pair - min, newHeight)));
+  const out = heights.slice(0, -1).map((h) => Math.round(h));
+  out[index] = dragged;
+  if (index + 1 < heights.length - 1) out[index + 1] = Math.round(pair - dragged);
+  return out;
+}
+
