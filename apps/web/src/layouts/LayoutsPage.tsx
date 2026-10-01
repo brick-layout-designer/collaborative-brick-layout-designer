@@ -34,6 +34,11 @@ export function LayoutsPage() {
   const [params, setParams] = useSearchParams();
   const startVenue = params.get('newLayoutVenue');
   const [showCreate, setShowCreate] = useState(startVenue !== null);
+  // A venue's Start layout links back to this same page, so the page is
+  // already open: open the dialog whenever the link arrives, not just on load.
+  useEffect(() => {
+    if (startVenue !== null) setShowCreate(true);
+  }, [startVenue]);
   const [showNewModule, setShowNewModule] = useState(false);
   const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
   const [moving, setMoving] = useState<{ kind: 'layout' | 'module'; item: LayoutSummary | ModuleSummary } | null>(null);
