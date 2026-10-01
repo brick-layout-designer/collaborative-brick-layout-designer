@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { App } from './App';
+import { listenForInstall } from './pwa/install';
 import { LoginPage } from './auth/LoginPage';
 import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
@@ -119,6 +120,9 @@ function GlobalBbmDrop() {
     />
   );
 }
+
+// Catch the browser's install offer early; Settings shows it.
+listenForInstall();
 
 createRoot(root).render(
   <StrictMode>
