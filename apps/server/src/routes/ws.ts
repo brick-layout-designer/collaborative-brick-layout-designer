@@ -167,14 +167,15 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         const { values } = await globalLimits();
         const ownerOv = owner?.ownerOrgId ? overrideFor('org', owner.ownerOrgId) : owner?.ownerUserId ? overrideFor('user', owner.ownerUserId) : null;
         const maxLive = ownerOv?.limits.liveEditorsPerLayout ?? values.liveEditorsPerLayout;
-        if (connectionsTo(layoutId) >= maxLive) {
+        if (env.limitsEnforce && connectionsTo(layoutId) >= maxLive) {
           ws.close(4429, 'limit_reached');
           return;
         }
         // A suspended person, or a suspended club's layout, opens read-only.
         const suspended =
-          isSuspended('user', userId) ||
-          (owner?.ownerOrgId ? isSuspended('org', owner.ownerOrgId) : owner?.ownerUserId ? isSuspended('user', owner.ownerUserId) : false);
+          env.limitsEnforce &&
+          (isSuspended('user', userId) ||
+            (owner?.ownerOrgId ? isSuspended('org', owner.ownerOrgId) : owner?.ownerUserId ? isSuspended('user', owner.ownerUserId) : false));
         const current = userConnections.get(userId) ?? 0;
         if (current >= MAX_WS_PER_USER) {
           ws.close(4429, 'too_many_connections');

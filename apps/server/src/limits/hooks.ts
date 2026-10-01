@@ -5,6 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import { globalLimits, overrideFor } from './limits.js';
 import { usage } from '../metrics/usage.js';
+import { env } from '../env.js';
 
 const WINDOW_MS = 60_000;
 const windows = new Map<string, { start: number; n: number }>();
@@ -48,6 +49,7 @@ export function registerLimitHooks(app: FastifyInstance): void {
     if (!url.startsWith('/api/') && !url.startsWith('/ws/')) return;
     const now = Date.now();
     usage.count('user', user.id, 'requests', 1, now);
+    if (!env.limitsEnforce) return; // counted, never refused
 
     const { values } = await globalLimits(now);
     const ov = overrideFor('user', user.id, now);

@@ -463,6 +463,12 @@ export function GlobalLimitsForm() {
           server’s default.
         </p>
       </div>
+      {data.data?.enforced === false && (
+        <p role="status" data-testid="limits-off" className="rounded-card border border-line bg-soft p-3 text-sm text-ink">
+          <b>Limits are off on this server.</b> Use is counted and shown on the Heavy use tab, but nothing is refused. To turn them
+          on, remove <code>LIMITS_ENFORCE=off</code> from the server’s settings and restart it.
+        </p>
+      )}
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {limits.map((l) => (
           <GlobalRow key={l.key} l={l} value={values[l.key] ?? ''} onChange={(v) => setDraft({ ...values, [l.key]: v })} />

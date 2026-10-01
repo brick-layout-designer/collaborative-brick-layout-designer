@@ -14,6 +14,7 @@ import { layoutRoutes } from '../layouts.js';
 import { wsRoutes } from '../ws.js';
 import { invalidateLimitCaches } from '../../limits/limits.js';
 import { docHub } from '../../ws/docHub.js';
+import { env } from '../../env.js';
 
 function open(port: number, layoutId: string, cookieStr: string): Promise<{ ws: WebSocket; closed: Promise<[number, string]> }> {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/layout/${layoutId}`, { headers: { cookie: cookieStr } });
@@ -56,6 +57,29 @@ describe('live editing limits', () => {
     expect(await b.closed).toEqual([4429, 'limit_reached']);
     a.ws.close();
     await a.closed;
+    await docHub.close(id);
+  });
+
+  it('lets everyone in when LIMITS_ENFORCE=off', async () => {
+    const u = await loginAs(app, 'open@example.com');
+    const id = ((await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: u.cookie }, payload: { title: 'L' } })).json() as { id: string }).id;
+    db.insert(schema.limitOverrides)
+      .values({ subjectKind: 'user', subjectId: u.id, limits: JSON.stringify({ liveEditorsPerLayout: 1 }), updatedAt: new Date() })
+      .run();
+    invalidateLimitCaches();
+    env.limitsEnforce = false;
+    try {
+      const a = await open(port, id, u.cookie);
+      const b = await open(port, id, u.cookie);
+      const outcome = await Promise.race([b.closed, new Promise((r) => setTimeout(() => r('still open'), 300))]);
+      expect(outcome).toBe('still open');
+      a.ws.close();
+      b.ws.close();
+      await a.closed;
+      await b.closed;
+    } finally {
+      env.limitsEnforce = true;
+    }
     await docHub.close(id);
   });
 

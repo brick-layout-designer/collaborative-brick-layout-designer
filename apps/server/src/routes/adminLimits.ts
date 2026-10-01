@@ -371,6 +371,8 @@ export async function adminLimitsRoutes(app: FastifyInstance): Promise<void> {
     const { stored, values } = await globalLimits();
     const defaults = envDefaults();
     return {
+      // False when LIMITS_ENFORCE=off: limits are shown but not applied.
+      enforced: env.limitsEnforce,
       limits: LIMITS.map((l) => ({
         key: l.key,
         label: l.label,

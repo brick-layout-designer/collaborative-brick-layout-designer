@@ -25,6 +25,7 @@ import { adminLimitsRoutes, flagRows, median } from '../adminLimits.js';
 import { registerLimitHooks, resetRateWindows } from '../../limits/hooks.js';
 import { checkGrowth, envDefaults, invalidateLimitCaches, orgLimits, usageOf } from '../../limits/limits.js';
 import { usage } from '../../metrics/usage.js';
+import { env } from '../../env.js';
 import type { User } from '../../db/schema.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -445,5 +446,33 @@ describe('abuse view', () => {
     expect(d.series.days).toHaveLength(30);
     expect(d.series.requests.at(-1)).toBeGreaterThan(0);
     expect(d.activity.map((a) => a.eventType)).toContain('create');
+  });
+});
+
+describe('LIMITS_ENFORCE=off', () => {
+  beforeEach(() => {
+    env.limitsEnforce = false;
+  });
+  afterEach(() => {
+    env.limitsEnforce = true;
+  });
+
+  it('counts and shows use but refuses nothing: no limit, no rate cap, no read-only', async () => {
+    const u = await loginAs(app, 'free@example.com');
+    await setGlobal({ layoutsPerUser: 1, requestsPerMinuteUser: 2 });
+    resetRateWindows();
+    usage.reset();
+    expect((await newLayout(u.cookie)).statusCode).toBe(201);
+    expect((await newLayout(u.cookie)).statusCode).toBe(201); // over the limit of 1
+    for (let i = 0; i < 3; i++) expect((await app.inject({ url: '/api/layouts', headers: { cookie: u.cookie } })).statusCode).toBe(200);
+    await app.inject({ method: 'PUT', url: `/api/admin/users/${u.id}/limits`, headers: { cookie: admin.cookie }, payload: { suspended: true, reason: 't' } });
+    expect((await newLayout(u.cookie)).statusCode).toBe(201);
+    // Still counted, and the admin page says limits are off.
+    usage.flush();
+    const rows = db.select().from(schema.usageDaily).where(eq(schema.usageDaily.subjectId, u.id)).all();
+    expect(Object.fromEntries(rows.map((r) => [r.metric, r.value])).requests).toBeGreaterThanOrEqual(6);
+    const page = await app.inject({ url: '/api/admin/limits', headers: { cookie: admin.cookie } });
+    expect((page.json() as { enforced: boolean }).enforced).toBe(false);
+    expect(await checkGrowth({ actor: { id: u.id } as User, owner: { kind: 'user', id: u.id }, add: { layouts: 1 } })).toBeNull();
   });
 });

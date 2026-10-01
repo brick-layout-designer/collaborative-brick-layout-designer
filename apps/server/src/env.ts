@@ -34,6 +34,10 @@ export const env = {
   cookieSecure: bool(process.env.COOKIE_SECURE, process.env.NODE_ENV === 'production'),
   partsDir: process.env.PARTS_DIR ?? './data/parts',
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  // LIMITS_ENFORCE=off: usage limits are counted and shown to admins but
+  // nothing is refused (no limit_reached, no 429, no read-only suspension).
+  // For trying limits out on a live site before turning them on.
+  limitsEnforce: !['off', 'false', '0', 'no'].includes((process.env.LIMITS_ENFORCE ?? 'on').trim().toLowerCase()),
 
   enablePasswordAuth: bool(process.env.ENABLE_PASSWORD_AUTH, false),
   demoMode: bool(process.env.DEMO_MODE, false),

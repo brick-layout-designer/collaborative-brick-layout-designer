@@ -366,6 +366,7 @@ export async function checkGrowth(opts: {
   /** Size of a single uploaded file or body. */
   uploadBytes?: number;
 }): Promise<Refusal | null> {
+  if (!env.limitsEnforce) return null; // counted and shown, never refused
   const { actor, owner } = opts;
   const add = opts.add ?? {};
   const actorOv = overrideFor('user', actor.id);
