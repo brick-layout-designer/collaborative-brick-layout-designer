@@ -2,7 +2,7 @@
 // draws (the last one), so a part from two libraries isn't shown twice.
 
 import { describe, expect, it } from 'vitest';
-import { uniqueByKey } from '../parts.js';
+import { categoryFromXmlRelPath, uniqueByKey } from '../parts.js';
 
 type PartWire = Parameters<typeof uniqueByKey>[0][number];
 
@@ -17,5 +17,14 @@ describe('uniqueByKey', () => {
   it('leaves distinct keys alone', () => {
     const out = uniqueByKey([part('a', '1'), part('b', '2')]);
     expect(out.map((p) => p.key)).toEqual(['a', 'b']);
+  });
+});
+
+describe('categoryFromXmlRelPath', () => {
+  it('is the folder the part is in, like desktop', () => {
+    expect(categoryFromXmlRelPath('Train/10017-1.set.xml')).toBe('Train');
+    expect(categoryFromXmlRelPath('parts/Train/10017-1.set.xml')).toBe('Train');
+    expect(categoryFromXmlRelPath('3001.xml')).toBe('Other');
+    expect(categoryFromXmlRelPath('')).toBe('Other');
   });
 });
