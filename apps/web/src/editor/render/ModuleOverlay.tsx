@@ -12,6 +12,7 @@ import { Group, Rect, Text } from 'react-konva';
 import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import { useEditorStore } from '../editorStore';
+import { MAP_FONT_STACK } from './mapText';
 import { MODULE_FRAME_DASH, MODULE_FRAME_STROKE, MODULE_NAME_FILL, MODULE_NAME_STROKE, moduleLabelLayouts, moduleNameStrokePx } from './moduleLabels';
 
 export { fitModuleLabel, moduleLabelFontPx, moduleLabelLayouts, moduleLabelBoundsStuds, type ModuleLabelLayout } from './moduleLabels';
@@ -22,7 +23,7 @@ interface Props {
 }
 
 export function measureBold(text: string): (fontPx: number) => number {
-  return (fontPx) => new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold' }).width();
+  return (fontPx) => new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold', fontFamily: MAP_FONT_STACK }).width();
 }
 
 export function ModuleOverlay({ map, modules }: Props) {
@@ -56,6 +57,7 @@ export function ModuleOverlay({ map, modules }: Props) {
             text={name}
             fontSize={text.fontPx}
             fontStyle="bold"
+            fontFamily={MAP_FONT_STACK}
             fill={MODULE_NAME_FILL}
             stroke={MODULE_NAME_STROKE}
             strokeWidth={moduleNameStrokePx(text.fontPx)}

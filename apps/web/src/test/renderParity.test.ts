@@ -33,3 +33,19 @@ describe('render parity: modules', () => {
     expect(moduleNameStrokePx(120)).toBe(10);
   });
 });
+
+import TEXT from '../../../../packages/bbm/tests/fixtures/render-parity/text.json';
+import { MAP_LINE_HEIGHT, textCellLayout } from '../editor/render/mapText';
+import { fontStack } from '../editor/render/fontStack';
+
+describe('render parity: text', () => {
+  it.each(TEXT.cases)('lays out "$text" as the shared description says', (c) => {
+    expect(textCellLayout(c, (l, px) => l.length * TEXT.charWidth * px)).toEqual(c.expect);
+  });
+
+  it('uses the shared line spacing and the bundled font', () => {
+    expect(MAP_LINE_HEIGHT).toBe(TEXT.lineHeight);
+    expect(fontStack('Tahoma')).toContain(TEXT.fontFamily);
+  });
+});
+

@@ -1,3 +1,4 @@
+import { MAP_FONT_STACK } from './render/mapText';
 // Mixed selection — bricks together with rulers, anchored labels and
 // text cells, like the desktop's Qt scene selection.
 //
@@ -233,11 +234,9 @@ export function labelFontPx(sizePt: number): number {
  * default the files carry) is missing off Windows, so fall back to its
  * closest metric matches.
  */
-export function labelFontFamily(family: string): string {
-  const fallback = 'Tahoma, "Segoe UI", Arial, sans-serif';
-  const f = family.replace(/["\\]/g, '').trim();
-  if (!f) return `"${DEFAULT_LABEL_FONT.family}", ${fallback}`;
-  return f === DEFAULT_LABEL_FONT.family ? `"${f}", ${fallback}` : `"${f}", "${DEFAULT_LABEL_FONT.family}", ${fallback}`;
+export function labelFontFamily(_family: string): string {
+  // The bundled map font, whatever the label names (render/mapText.ts).
+  return MAP_FONT_STACK;
 }
 
 /**

@@ -382,3 +382,10 @@ body,
     overscroll-behavior: contain;
   }
 }
+
+/* The map's one font (editor/render/mapText.ts), the same file the
+   desktop bundles: Liberation Sans, SIL OFL 1.1 (assets/fonts). */
+@font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: block; }
+@font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: block; }
+@font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-BoldItalic.woff2') format('woff2'); font-weight: 700; font-style: italic; font-display: block; }
