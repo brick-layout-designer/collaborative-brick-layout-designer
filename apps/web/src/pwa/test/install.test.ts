@@ -3,7 +3,7 @@
 // says so.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installState, isAppleMobile, listenForInstall, resetInstallForTests } from '../install';
+import { installState, isAppleMobile, isMobileDevice, listenForInstall, resetInstallForTests } from '../install';
 
 import manifestText from '../../../public/manifest.webmanifest?raw';
 import indexHtml from '../../../index.html?raw';
@@ -11,11 +11,13 @@ import indexHtml from '../../../index.html?raw';
 // Every file in public/, by its URL path.
 const publicFiles = new Set(Object.keys(import.meta.glob('../../../public/*')).map((p) => p.replace('../../../public', '')));
 
-function fakeWindow(opts: { ua?: string; standalone?: boolean; touch?: number } = {}) {
+function fakeWindow(opts: { ua?: string; standalone?: boolean; touch?: number; media?: string[] } = {}) {
   const target = new EventTarget();
   return Object.assign(target, {
     navigator: { userAgent: opts.ua ?? 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140', maxTouchPoints: opts.touch ?? 0 },
-    matchMedia: (q: string) => ({ matches: q === '(display-mode: standalone)' && !!opts.standalone }),
+    matchMedia: (q: string) => ({
+      matches: (q === '(display-mode: standalone)' && !!opts.standalone) || (opts.media ?? []).includes(q),
+    }),
   }) as unknown as Window;
 }
 
@@ -72,6 +74,16 @@ describe('install the app', () => {
     listenForInstall(win);
     win.dispatchEvent(offer('accepted'));
     expect(installState(win).kind).toBe('prompt');
+  });
+
+  it('offers installing on phones and tablets only', () => {
+    expect(isMobileDevice(fakeWindow({ ua: 'Mozilla/5.0 (Linux; Android 15; Pixel 7) Chrome/140 Mobile Safari/537.36' }))).toBe(true);
+    expect(isMobileDevice(fakeWindow({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' }))).toBe(true);
+    expect(isMobileDevice(fakeWindow({ ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', touch: 5 }))).toBe(true); // iPad
+    expect(isMobileDevice(fakeWindow())).toBe(false); // a computer
+    // A touch-only tablet that hides its make; a touch laptop still has a mouse.
+    expect(isMobileDevice(fakeWindow({ media: ['(pointer: coarse)'] }))).toBe(true);
+    expect(isMobileDevice(fakeWindow({ media: ['(pointer: coarse)', '(any-pointer: fine)'] }))).toBe(false);
   });
 
   it('has a manifest browsers accept, with every icon it lists', () => {

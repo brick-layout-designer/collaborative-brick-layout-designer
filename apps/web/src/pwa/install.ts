@@ -50,6 +50,17 @@ export function isAppleMobile(nav: Navigator = navigator): boolean {
   return /iPhone|iPad|iPod/.test(nav.userAgent) || (/Macintosh/.test(nav.userAgent) && nav.maxTouchPoints > 1);
 }
 
+/**
+ * A phone or tablet: a mobile browser, an iPad, or a touch-only screen.
+ * Installing the app is offered there only.
+ */
+export function isMobileDevice(win: Window = window): boolean {
+  const ua = win.navigator.userAgent;
+  if (/Android|iPhone|iPad|iPod|Mobile/.test(ua) || isAppleMobile(win.navigator)) return true;
+  // A touch screen with no mouse at all (no fine pointer, no hover).
+  return win.matchMedia?.('(pointer: coarse)').matches === true && win.matchMedia?.('(any-pointer: fine)').matches !== true;
+}
+
 export function installState(win: Window = window): InstallState {
   if (runningInstalled(win)) return { kind: 'installed' };
   if (deferred) {
