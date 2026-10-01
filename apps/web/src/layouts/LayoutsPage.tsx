@@ -5,6 +5,7 @@ import { api, type LayoutSummary, type ModuleSummary, type OrgSummary } from '..
 import { defaultSaveTo, matchesOwnerFilter, useOwnerFilter, type OwnedItem } from '../owners/owners';
 import { MoveCopyDialog, OwnerChip, OwnerFilterBar, SaveToPicker } from '../owners/OwnerControls';
 import { HelpButton } from '../help/HelpButton';
+import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
@@ -146,7 +147,7 @@ export function LayoutsPage() {
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
             {moduleList.map((m) => (
-              <li key={m.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="break-words font-medium">{m.title}</span>
@@ -154,28 +155,27 @@ export function LayoutsPage() {
                   </p>
                   <p className="text-xs text-muted">updated {new Date(m.updatedAt).toLocaleString()}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {hasClubs && (
-                    <button
-                      type="button"
-                      onClick={() => setMoving({ kind: 'module', item: m })}
-                      className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft"
-                    >
-                      Move or copy…
-                    </button>
-                  )}
-                  {(m.role === undefined || m.role === 'owner') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm(`Delete "${m.title}"?`)) removeModule.mutate(m.id);
-                      }}
-                      className="tap-target rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
+                {(hasClubs || m.role === undefined || m.role === 'owner') && (
+                  <MoreMenu label={`More for ${m.title}`}>
+                    {hasClubs && (
+                      <button role="menuitem" type="button" onClick={() => setMoving({ kind: 'module', item: m })} className={MORE_ITEM}>
+                        Move or copy…
+                      </button>
+                    )}
+                    {(m.role === undefined || m.role === 'owner') && (
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Delete "${m.title}"?`)) removeModule.mutate(m.id);
+                        }}
+                        className={`${MORE_ITEM} text-danger`}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </MoreMenu>
+                )}
               </li>
             ))}
           </ul>
@@ -330,9 +330,9 @@ function LayoutRow({
     return () => window.removeEventListener('cld:template-changed', sync);
   }, [layout.id]);
   return (
-    // On a phone the name sits above its buttons, which wrap; nothing
-    // runs off the side of the screen.
-    <li className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    // The name, then Open and a "⋯" menu with everything else: one tidy
+    // line even on a phone.
+    <li className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2">
           <span className="break-words font-medium">{layout.title}</span>
@@ -350,50 +350,47 @@ function LayoutRow({
           )}
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex shrink-0 items-center gap-2 text-sm">
         <Link
           to={`/editor/${layout.id}`}
-          className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1 text-accent-ink hover:bg-accent-hover"
+          className="tap-target inline-flex min-h-9 items-center rounded-lg bg-accent px-4 font-semibold text-accent-ink hover:bg-accent-hover"
         >
           Open
         </Link>
-        <button
-          onClick={onShare}
-          className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft"
-        >
-          Share
-        </button>
-        <a
-          href={api.layouts.exportZipUrl(layout.id)}
-          className="tap-target inline-flex items-center whitespace-nowrap rounded-lg border border-border px-3 py-1 hover:bg-soft"
-          title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
-        >
-          Export .zip
-        </a>
-        <label className="flex min-h-11 items-center gap-2 text-xs text-muted sm:min-h-0 sm:gap-1" title="New layouts start as a copy of this one">
-          <input
-            type="checkbox"
-            checked={isTemplate}
-            onChange={(e) => {
-              setNewLayoutTemplate(e.target.checked ? { id: layout.id, title: layout.title } : null);
-              window.dispatchEvent(new Event('cld:template-changed'));
-            }}
-          />
-          Template for new layouts
-        </label>
-        {onMove && (
-          <button onClick={onMove} className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft">
-            Move or copy…
+        <MoreMenu label={`More for ${layout.title}`}>
+          <button role="menuitem" type="button" onClick={onShare} className={MORE_ITEM}>
+            Share…
           </button>
-        )}
-        {isOwner && (
-          <button
-            onClick={onDelete}
-            className="tap-target rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
+          <a
+            role="menuitem"
+            href={api.layouts.exportZipUrl(layout.id)}
+            className={MORE_ITEM}
+            title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
           >
-            Delete
-          </button>
-        )}
+            Export .zip
+          </a>
+          <label role="menuitemcheckbox" aria-checked={isTemplate} data-keep-open className={MORE_ITEM} title="New layouts start as a copy of this one">
+            <input
+              type="checkbox"
+              checked={isTemplate}
+              onChange={(e) => {
+                setNewLayoutTemplate(e.target.checked ? { id: layout.id, title: layout.title } : null);
+                window.dispatchEvent(new Event('cld:template-changed'));
+              }}
+            />
+            Template for new layouts
+          </label>
+          {onMove && (
+            <button role="menuitem" type="button" onClick={onMove} className={MORE_ITEM}>
+              Move or copy…
+            </button>
+          )}
+          {isOwner && (
+            <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
+              Delete
+            </button>
+          )}
+        </MoreMenu>
       </div>
     </li>
   );
@@ -541,7 +538,7 @@ function CreateLayoutDialog({
   }
 
   return (
-    <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
       {asking && (
         <PartDifferencesDialog
           differences={asking.differing}
@@ -552,8 +549,11 @@ function CreateLayoutDialog({
         />
       )}
       <form
+        role="dialog"
+        aria-modal="true"
+        aria-label="New layout"
         onSubmit={(e) => void submit(e)}
-        className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6"
+        className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-5 sm:p-6"
       >
         <h3 className="text-lg font-semibold">New layout</h3>
 
@@ -625,14 +625,14 @@ function CreateLayoutDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 hover:bg-soft"
+            className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
+            className="tap-target rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Create
           </button>

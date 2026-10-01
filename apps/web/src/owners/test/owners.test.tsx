@@ -104,9 +104,15 @@ describe('home page', () => {
     expect(within(show).getByTestId('owner-chip').textContent).toBe('ArkLUG');
     expect(await screen.findByText('Club Station')).toBeTruthy();
     expect(await screen.findByText('My Garage')).toBeTruthy();
+    // Open is on the row; the rest is in its ⋯ menu.
+    expect(within(town).getByRole('link', { name: 'Open' })).toBeTruthy();
+    expect(within(town).queryByRole('button', { name: 'Delete' })).toBeNull();
     // A member can't delete the club's layout; the owner can delete theirs.
-    expect(within(show).queryByRole('button', { name: 'Delete' })).toBeNull();
-    expect(within(town).getByRole('button', { name: 'Delete' })).toBeTruthy();
+    fireEvent.click(within(show).getByRole('button', { name: 'More for Club Show' }));
+    expect(within(show).getByRole('menuitem', { name: 'Share…' })).toBeTruthy();
+    expect(within(show).queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+    fireEvent.click(within(town).getByRole('button', { name: 'More for My Town' }));
+    expect(within(town).getByRole('menuitem', { name: 'Delete' })).toBeTruthy();
   });
 
   it('filters by owner and remembers the choice', async () => {
