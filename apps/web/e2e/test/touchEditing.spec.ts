@@ -328,6 +328,9 @@ test.describe('touch editing on a tablet', () => {
     await finger.drag({ x: a!.sx, y: a!.sy }, { x: a!.sx + 50, y: a!.sy });
     expect((await stageX(page)) - x0).toBeCloseTo(50, 0);
     expect((await bricks(page))[0]!.x).toBeCloseTo(a!.x, 6);
+    // ...and Konva never dragged it along (a drag ends with "Moved" or a
+    // connection snap in the status bar).
+    await expect(page.locator('footer')).not.toContainText(/Moved|Connection snap/);
     // Tap picks it; the bar for picked parts shows.
     [a] = await bricks(page);
     await finger.tap({ x: a!.sx, y: a!.sy });
