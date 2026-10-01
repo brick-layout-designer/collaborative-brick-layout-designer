@@ -64,6 +64,16 @@ describe('install the app', () => {
     expect(isAppleMobile({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 0 } as Navigator)).toBe(false);
   });
 
+  it('tells Firefox users what their Firefox can do', () => {
+    expect(installState(fakeWindow({ ua: 'Mozilla/5.0 (Android 15; Mobile; rv:143.0) Gecko/143.0 Firefox/143.0' })).kind).toBe('firefox-android');
+    expect(installState(fakeWindow({ ua: 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0' })).kind).toBe('firefox-desktop');
+    // An offer still wins, should a Firefox ever make one.
+    const win = fakeWindow({ ua: 'Mozilla/5.0 (Windows NT 10.0; rv:150.0) Gecko/20100101 Firefox/150.0' });
+    listenForInstall(win);
+    win.dispatchEvent(offer('accepted'));
+    expect(installState(win).kind).toBe('prompt');
+  });
+
   it('has a manifest browsers accept, with every icon it lists', () => {
     const m = JSON.parse(manifestText) as {
       name: string;

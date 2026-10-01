@@ -326,6 +326,26 @@ function InstallApp() {
       </div>
     );
   }
+  if (state.kind === 'firefox-android') {
+    return (
+      <div className="flex flex-col gap-2 text-[15px]" data-testid="install-state">
+        <p className="text-sm text-muted">{lead}</p>
+        <p>
+          In Firefox, tap the <b>⋮</b> menu, then <b>Add app to Home screen</b> (on some versions, <b>Install</b>).
+        </p>
+      </div>
+    );
+  }
+  if (state.kind === 'firefox-desktop') {
+    return (
+      <div className="flex flex-col gap-2 text-[15px]" data-testid="install-state">
+        <p className="text-sm text-muted">
+          Firefox on a computer doesn't install web apps. Keep it as a bookmark, or open this page in Chrome or Edge to install
+          it. On a phone, Firefox can add it to the home screen.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-2 text-[15px]" data-testid="install-state">
       <p className="text-sm text-muted">{lead}</p>

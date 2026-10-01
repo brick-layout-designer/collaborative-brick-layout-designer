@@ -13,6 +13,8 @@ export type InstallState =
   | { kind: 'installed' }
   | { kind: 'prompt'; install: () => Promise<boolean> }
   | { kind: 'ios' }
+  | { kind: 'firefox-android' }
+  | { kind: 'firefox-desktop' }
   | { kind: 'browser-menu' };
 
 let deferred: InstallPromptEvent | null = null;
@@ -64,7 +66,13 @@ export function installState(win: Window = window): InstallState {
       },
     };
   }
-  return isAppleMobile(win.navigator) ? { kind: 'ios' } : { kind: 'browser-menu' };
+  if (isAppleMobile(win.navigator)) return { kind: 'ios' };
+  // Firefox never offers its own prompt: on Android it installs from the
+  // menu; on a computer it doesn't install web apps.
+  if (/Firefox\//.test(win.navigator.userAgent)) {
+    return /Android/.test(win.navigator.userAgent) ? { kind: 'firefox-android' } : { kind: 'firefox-desktop' };
+  }
+  return { kind: 'browser-menu' };
 }
 
 let snapshot: InstallState | null = null;
