@@ -42,7 +42,7 @@ import { TextLayers, type TextCellRef } from './render/TextLayer';
 import { RulerLayers } from './render/RulerLayer';
 import { AnchoredLabels } from './render/AnchoredLabels';
 import { ElectricCircuitLayer } from './render/ElectricCircuitLayer';
-import { ModuleOverlay, moduleLabelBoundsStuds } from './render/ModuleOverlay';
+import { ModuleOverlay, measureBold, moduleLabelBoundsStuds } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
@@ -115,7 +115,7 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { applyViewSheets, moduleNamesShown, pictureGrid, viewRegionStuds, type PictureSpec } from './savedViews';
+import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, viewRegionStuds, type PictureSpec } from './savedViews';
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
 import { NoticeToast } from './NoticeToast';
@@ -4270,8 +4270,14 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
 /** Module frames and names as drawn now (none when View ▸ Module names is off), in studs. */
 function moduleNameBoxes(map: import('@cld/model').BbmMap, sidecar: import('@cld/bbm').Sidecar | null | undefined): StudRect[] {
   const names = moduleNamesShown();
-  return names && sidecar?.modules?.length ? moduleLabelBoundsStuds(map, sidecar.modules, names.percent) : [];
+  return names && sidecar?.modules?.length ? moduleLabelBoundsStuds(map, sidecar.modules, names.percent, names.measure) : [];
 }
+
+// Saved views fit module names the way the map draws them.
+setModuleNamesSource(() => {
+  const s = useEditorStore.getState();
+  return s.showModuleNames ? { percent: s.moduleLabelPercent, measure: measureBold } : null;
+});
 
 function saveFile(file: { filename: string; type: string; data: Uint8Array }): void {
   const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));

@@ -11,8 +11,7 @@
 import type { BbmMap, LayerGrid } from '@cld/model';
 import type { SavedView, Sidecar } from '@cld/bbm';
 import { contentBoundsStuds, clampExportSize, unionStudRects, type StudRect } from './exportRender';
-import { moduleLabelBoundsStuds } from './render/ModuleOverlay';
-import { useEditorStore } from './editorStore';
+import { moduleLabelBoundsStuds, type TextMeasure } from './render/moduleLabels';
 import { buildZip, sanitizeFilename, type ZipEntry } from '../bbmFiles';
 import { drawnGridLayer } from './render/gridIndex';
 
@@ -96,14 +95,20 @@ export function fitRegionStuds(
 /** How module names are drawn, when they are (View ▸ Module names). */
 export interface ModuleNamesShown {
   percent: number;
-  /** Text width at a font size; the map's own measure when left out. */
-  measure?: (text: string) => (fontPx: number) => number;
+  measure: TextMeasure;
+}
+
+// The editor tells saved views how it draws module names (this file stays
+// free of the store so plain-Node code can use it); none until it does.
+let moduleNamesSource: () => ModuleNamesShown | null = () => null;
+
+export function setModuleNamesSource(source: () => ModuleNamesShown | null): void {
+  moduleNamesSource = source;
 }
 
 /** The editor's module-name setting now: null when names are hidden. */
 export function moduleNamesShown(): ModuleNamesShown | null {
-  const s = useEditorStore.getState();
-  return s.showModuleNames ? { percent: s.moduleLabelPercent } : null;
+  return moduleNamesSource();
 }
 
 /** The area a view's picture covers, in studs, or null when there's nothing to show. */
