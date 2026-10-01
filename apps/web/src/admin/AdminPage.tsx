@@ -1,12 +1,14 @@
 // Platform-admin page — only mounted when `me.user.isGlobalAdmin === true`.
 // Tabs:
 //   - Dashboard: graphs, breakdowns, health and alerts (insights/Dashboard.tsx)
+//   - Heavy use: top people and clubs with flags; usage against limits,
+//                overrides and read-only (limits/LimitsUi.tsx)
 //   - Users:     list + search + grant/revoke admin + revoke-sessions + delete
 //   - Orgs:      list + search + delete
 //   - Layouts:   list + search + delete (works across users)
 //   - Parts:     manage global parts library (visible to all users)
 //   - Audit:     full platform audit log (paginated)
-//   - Settings:  email verification requirement + SMTP config
+//   - Settings:  email verification requirement + SMTP config + usage limits
 //
 // Every mutation routes through `/api/admin/*` and is audited server-side.
 
@@ -16,8 +18,9 @@ import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminGlobalPart, type AdminAuditEvent, type AdminSettings, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
 import { CategoryPicker } from '../library/LibraryPage';
+import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
 
-type Tab = 'dashboard' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'audit' | 'settings';
+type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'audit' | 'settings';
 
 /** Content size (doc snapshot + sidecar + unflushed Yjs updates) — see adminLayoutStats.ts. Not raw disk usage. */
 function formatBytes(bytes: number): string {
@@ -52,7 +55,7 @@ export function AdminPage() {
         </h1>
       </div>
       <nav className="-mx-4 mt-2 flex overflow-x-auto border-b border-line px-4 text-sm sm:mx-0 sm:px-0">
-        {(['dashboard', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'audit', 'settings'] as Tab[]).map((t) => (
+        {(['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'audit', 'settings'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -63,7 +66,7 @@ export function AdminPage() {
                 : 'border-transparent text-muted hover:text-ink')
             }
           >
-            {t === 'orgs' ? 'clubs' : t}
+            {t === 'orgs' ? 'clubs' : t === 'heavy' ? 'heavy use' : t}
           </button>
         ))}
       </nav>
@@ -73,6 +76,7 @@ export function AdminPage() {
             <Dashboard />
           </Suspense>
         )}
+        {tab === 'heavy' && <HeavyUse />}
         {tab === 'users' && <UsersTab selfId={me.data.user.id} />}
         {tab === 'orgs' && <OrgsTab />}
         {tab === 'layouts' && <LayoutsTab />}
@@ -88,6 +92,19 @@ export function AdminPage() {
 // The dashboard (graphs, breakdowns, health) is its own lazily loaded
 // chunk: the charts never weigh on the rest of the admin page or the app.
 const Dashboard = lazy(() => import('./insights/Dashboard'));
+
+/** Heavy use: top people and clubs; opening one shows its usage and limits. */
+function HeavyUse() {
+  const [open, setOpen] = useState<{ kind: 'user' | 'org'; id: string } | null>(null);
+  if (open) {
+    return open.kind === 'user' ? (
+      <UserDetailPanel id={open.id} onBack={() => setOpen(null)} />
+    ) : (
+      <OrgDetailPanel id={open.id} onBack={() => setOpen(null)} />
+    );
+  }
+  return <HeavyUseTab onOpen={(kind, id) => setOpen({ kind, id })} />;
+}
 
 function UsersTab({ selfId }: { selfId: string }) {
   const qc = useQueryClient();
@@ -311,6 +328,10 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
               </table>
             )}
           </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-neutral-300">Use, limits and read-only</h3>
+            <SubjectLimitsPanel kind="user" id={id} />
+          </div>
         </>
       )}
     </section>
@@ -468,6 +489,10 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
                 </tbody>
               </table>
             )}
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-neutral-300">Use, limits and read-only</h3>
+            <SubjectLimitsPanel kind="org" id={id} />
           </div>
         </>
       )}
@@ -1532,6 +1557,7 @@ function SettingsTab() {
   const usingDbSmtp = smtpHost.trim() !== '';
 
   return (
+    <>
     <div className="max-w-xl space-y-8">
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-neutral-300">Email verification</h2>
@@ -1650,6 +1676,10 @@ function SettingsTab() {
         {saveStatus === 'err' && <span className="text-sm text-danger">{saveErr}</span>}
       </div>
     </div>
+    <div className="mt-10 border-t border-line pt-8">
+      <GlobalLimitsForm />
+    </div>
+    </>
   );
 }
 

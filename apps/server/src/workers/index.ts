@@ -30,6 +30,7 @@ import { env } from '../env.js';
 import { classifyBackups } from './retention.js';
 import { docHub } from '../ws/docHub.js';
 import { sweepRollup } from '../metrics/rollup.js';
+import { sweepUsage } from '../metrics/usage.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -60,6 +61,7 @@ async function tick(): Promise<void> {
   // Admin dashboard rollup: keep ROLLUP_RETENTION_DAYS (about 13 months).
   await safeRun('rollupRetention', async () => {
     sweepRollup();
+    sweepUsage();
   });
 }
 

@@ -15,6 +15,7 @@ import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth, type Subject } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { createLayoutDoc, encodeDoc } from '@cld/ydoc';
@@ -126,6 +127,9 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     // module-snapshot endpoint then accepts updates.
     const doc = createLayoutDoc();
     const docBytes = encodeDoc(doc);
+    const owner: Subject = ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id };
+    const refusal = await checkGrowth({ actor: user, owner, add: { bytes: docBytes.length } });
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
 
     await db.insert(schema.modules).values({
       id,
@@ -164,6 +168,10 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
       const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
+      const copyOwner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
+      const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
+      const refusal = await checkGrowth({ actor: user, owner: copyOwner, add: { bytes: copyBytes } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
       const id = randomUUID();
       const now = new Date();
       await db.insert(schema.modules).values({
@@ -268,10 +276,20 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     }
     const updatedAt = new Date();
     const current = await db
-      .select({ docVersion: schema.modules.docVersion })
+      .select({
+        docVersion: schema.modules.docVersion,
+        ownerUserId: schema.modules.ownerUserId,
+        ownerOrgId: schema.modules.ownerOrgId,
+        bytes: sql<number>`length(${schema.modules.docSnapshot})`.mapWith(Number),
+      })
       .from(schema.modules)
       .where(eq(schema.modules.id, req.params.id))
       .get();
+    if (current) {
+      const owner: Subject = current.ownerOrgId ? { kind: 'org', id: current.ownerOrgId } : { kind: 'user', id: current.ownerUserId ?? user.id };
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: bytes.length - current.bytes }, uploadBytes: bytes.length });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
+    }
     await db
       .update(schema.modules)
       .set({

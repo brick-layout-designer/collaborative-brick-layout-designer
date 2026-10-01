@@ -15,6 +15,8 @@ import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth, declaredBytes, type Subject } from '../limits/limits.js';
+import { recordUpload } from '../metrics/usage.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
@@ -213,6 +215,12 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     const dup = await dupQuery.get();
     if (dup) return reply.code(409).send({ error: 'part_number_taken' });
 
+    const owner: Subject = ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id };
+    const partBytes = xmlBlob.length + spriteBlob.length;
+    const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: partBytes }, uploadBytes: partBytes });
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
+    recordUpload(user.id, owner, partBytes);
+
     const id = randomUUID();
     const now = new Date();
     const category = body.category?.trim() || 'Custom';
@@ -257,11 +265,28 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       const { partNumber, displayName, xmlBlob, spriteBlob } = parsed;
 
       const current = await db
-        .select({ partNumber: schema.customParts.partNumber, ownerUserId: schema.customParts.ownerUserId, ownerOrgId: schema.customParts.ownerOrgId })
+        .select({
+          partNumber: schema.customParts.partNumber,
+          ownerUserId: schema.customParts.ownerUserId,
+          ownerOrgId: schema.customParts.ownerOrgId,
+          bytes: sql<number>`length(${schema.customParts.xmlBlob}) + length(${schema.customParts.spriteBlob})`.mapWith(Number),
+        })
         .from(schema.customParts)
         .where(eq(schema.customParts.id, req.params.id))
         .get();
       if (!current) return reply.code(404).send({ error: 'not_found' });
+      // Global parts have no owner and aren't limited.
+      const owner: Subject | null = current.ownerOrgId
+        ? { kind: 'org', id: current.ownerOrgId }
+        : current.ownerUserId
+          ? { kind: 'user', id: current.ownerUserId }
+          : null;
+      if (owner) {
+        const newBytes = xmlBlob.length + spriteBlob.length;
+        const refusal = await checkGrowth({ actor: user, owner, add: { bytes: newBytes - current.bytes }, uploadBytes: newBytes });
+        if (refusal) return reply.code(refusal.status).send(refusal.body);
+        recordUpload(user.id, owner, newBytes);
+      }
       if (partNumber !== current.partNumber) {
         const dup = await db
           .select({ id: schema.customParts.id })

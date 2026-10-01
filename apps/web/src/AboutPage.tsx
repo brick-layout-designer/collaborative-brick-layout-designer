@@ -71,7 +71,9 @@ export function AboutPage() {
             the web or the desktop app, on a phone or a computer, and how many requests, errors and
             refused requests it had. It also remembers when you were last signed in and when each
             layout was last opened. It does not record which pages you visit or your IP address.
-            Daily totals are kept for about 13 months, and only site admins can see them.
+            Daily totals are kept for about 13 months, and only site admins can see them. To spot
+            misuse, it also counts each account’s and club’s requests, refused requests, uploads and
+            share-link views per day; those counts are kept for 90 days.
           </p>
         </section>
 

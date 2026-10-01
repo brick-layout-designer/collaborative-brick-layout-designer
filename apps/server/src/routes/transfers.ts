@@ -23,6 +23,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, isNull, ne } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
@@ -92,6 +93,10 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(schema.layouts.id, req.params.id))
           .get();
         if (!layout) return reply.code(404).send({ error: 'not_found' });
+        if (layout.ownerOrgId !== dest.id) {
+          const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: dest.id }, add: { layouts: 1, bytes: (layout.docSnapshot as Uint8Array).length + ((layout.sidecarSnapshot as Uint8Array | null)?.length ?? 0) } });
+          if (refusal) return reply.code(refusal.status).send(refusal.body);
+        }
 
         await db
           .update(schema.layouts)
@@ -251,6 +256,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.layouts.id, transfer.layoutId))
         .get();
       if (!layout) return reply.code(404).send({ error: 'layout_not_found' });
+      const refusal = await checkGrowth({ actor: user, owner: { kind: 'user', id: user.id }, add: { layouts: 1, bytes: (layout.docSnapshot as Uint8Array).length + ((layout.sidecarSnapshot as Uint8Array | null)?.length ?? 0) } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
       const now = new Date();
       // The transfer is only valid while its initiator still personally

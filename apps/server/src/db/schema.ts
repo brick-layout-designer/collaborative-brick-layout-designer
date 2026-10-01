@@ -166,6 +166,12 @@ export const platformSettings = sqliteTable('platform_settings', {
   smtpUser: text('smtp_user'),
   smtpPass: text('smtp_pass'),
   smtpFrom: text('smtp_from'),
+  /**
+   * Global usage limits set by an admin, as a JSON object of
+   * limit key -> number (see limits/limits.ts). Keys left out use the
+   * env var (LIMIT_*) or the built-in default. Null = nothing set here.
+   */
+  limits: text('limits'),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
@@ -182,6 +188,11 @@ export const orgs = sqliteTable('orgs', {
    * to the club. On by default.
    */
   membersCanCreate: integer('members_can_create', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * Who created the club, for the "clubs a person may create" limit.
+   * Null for clubs made before this column existed (they don't count).
+   */
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
 });
 
 export const orgMembers = sqliteTable(
@@ -656,3 +667,45 @@ export const dailyStats = sqliteTable(
   }),
 );
 export type DailyStat = typeof dailyStats.$inferSelect;
+
+/**
+ * Per-person and per-club limit overrides, and suspension. One row per
+ * subject; `limits` is a JSON object of limit key -> number that wins
+ * over the global value (raise or lower). A suspended subject is
+ * read-only (see limits/enforce.ts).
+ */
+export const limitOverrides = sqliteTable(
+  'limit_overrides',
+  {
+    subjectKind: text('subject_kind', { enum: ['user', 'org'] }).notNull(),
+    subjectId: text('subject_id').notNull(),
+    limits: text('limits').notNull().default('{}'),
+    suspended: integer('suspended', { mode: 'boolean' }).notNull().default(false),
+    suspendedReason: text('suspended_reason'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.subjectKind, t.subjectId] }) }),
+);
+export type LimitOverride = typeof limitOverrides.$inferSelect;
+
+/**
+ * Daily per-person and per-club counters for spotting abuse: requests,
+ * refused requests, uploads, upload bytes, share-link views. Counts
+ * only (no URLs, no IPs); swept after USAGE_RETENTION_DAYS.
+ */
+export const usageDaily = sqliteTable(
+  'usage_daily',
+  {
+    day: text('day').notNull(),
+    subjectKind: text('subject_kind', { enum: ['user', 'org'] }).notNull(),
+    subjectId: text('subject_id').notNull(),
+    metric: text('metric').notNull(),
+    value: integer('value').notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.day, t.subjectKind, t.subjectId, t.metric] }),
+    kindMetricDayIdx: index('usage_daily_kind_metric_day_idx').on(t.subjectKind, t.metric, t.day),
+    subjectIdx: index('usage_daily_subject_idx').on(t.subjectKind, t.subjectId, t.day),
+  }),
+);

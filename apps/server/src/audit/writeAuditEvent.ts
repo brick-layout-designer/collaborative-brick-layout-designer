@@ -46,6 +46,12 @@ export type AuditEventType =
   | 'admin_part_library_delete'
   | 'org_part_library_toggle'
   | 'admin_settings_patch'
+  // Usage limits: global values, a person's or club's override, and
+  // suspending or lifting it (subject = the person or club).
+  | 'admin_limits_patch'
+  | 'admin_limits_override'
+  | 'admin_suspend'
+  | 'admin_unsuspend'
   // API tokens (desktop sign-in). Subject is the token's owner
   // (`resourceKind: 'user'`); the payload names the token.
   | 'api_token_issue'
