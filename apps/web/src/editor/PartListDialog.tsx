@@ -35,7 +35,7 @@ async function pictureOf(part: PartWire | undefined): Promise<string | null> {
   const url = part ? spriteUrlFor(part) : '';
   if (!url) return null;
   try {
-    const img = await ensureSprite(url);
+    const img = await ensureSprite(url, { count: false });
     const k = Math.min(1, 160 / Math.max(img.naturalWidth, img.naturalHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(img.naturalWidth * k));

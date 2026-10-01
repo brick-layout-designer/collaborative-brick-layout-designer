@@ -100,7 +100,9 @@ import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
 import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
 import { pxToStud, studToPx } from './render/coords';
-import { ensureSprite, getSpriteSync } from './render/spriteCache';
+import { ensureSprite, getSpriteSync, resetSpriteProgress, wantSprites } from './render/spriteCache';
+import { layoutSpriteUrls } from './render/layoutSprites';
+import { MapLoadingCard, OpeningLayoutScreen } from './LoadingCard';
 import { PlaceGhost } from './render/PlaceGhost';
 import { ModuleGhost } from './render/ModuleGhost';
 import { snapPlacement, snapToAnchorBrick } from './snap';
@@ -170,6 +172,8 @@ export function EditorPage() {
 
 function Editor({ layoutId }: { layoutId: string }) {
   const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = useLayoutDoc(layoutId);
+  // A layout is opening: the loading card counts its pictures afresh.
+  useEffect(() => resetSpriteProgress(), [layoutId]);
   // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
   // shows it in the status bar after the open).
   const openWarnings = (useLocation().state as OpenedMapState | null)?.openWarnings;
@@ -374,7 +378,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   const showRight = !viewport.isMobile && !isViewer && dock.state.right.length > 0;
 
   if (loadError) return <ErrorScreen err={loadError} />;
-  if (loading || !doc) return <LoadingScreen />;
+  if (loading || !doc) return <OpeningLayoutScreen />;
 
   // Three fixed columns: left dock | canvas | right dock. Each dock
   // collapses to 0 when empty so we don't have to juggle headerColSpan
@@ -1398,6 +1402,13 @@ function Canvas({
     return indexParts(catalog.data?.parts);
   }, [catalog.data]);
   const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
+  // Ask for every picture the shown layout needs at once, so the loading
+  // card counts against the real total ("132 of 480") from the start.
+  useEffect(() => {
+    const m = shownMap ?? map;
+    if (!m || !catalog.data) return;
+    wantSprites(layoutSpriteUrls(m, partsByKey));
+  }, [shownMap, map, partsByKey, catalog.data]);
   const linkCatalog = useMemo(() => catalogFromParts(catalog.data?.parts), [catalog.data]);
 
   /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
@@ -3037,6 +3048,7 @@ function Canvas({
   return (
     <>
       {stageNode}
+      <MapLoadingCard catalogLoading={catalog.isPending} />
       <Suspense fallback={null}>
       {editing && (
         <EditBrickDialog
@@ -4151,9 +4163,6 @@ function RotationPicker() {
   );
 }
 
-function LoadingScreen() {
-  return <div className="grid h-screen place-items-center text-muted">Loading editor…</div>;
-}
 
 function ErrorScreen({ err }: { err: Error }) {
   return (

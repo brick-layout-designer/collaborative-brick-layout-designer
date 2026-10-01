@@ -389,3 +389,23 @@ body,
 @font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: block; }
 @font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: block; }
 @font-face { font-family: 'BLD Map Sans'; src: url('./assets/fonts/LiberationSans-BoldItalic.woff2') format('woff2'); font-weight: 700; font-style: italic; font-display: block; }
+
+/* The "busy" stripe of a loading bar whose total isn't known yet. */
+.loading-busy {
+  animation: loading-busy 1.2s ease-in-out infinite;
+}
+@keyframes loading-busy {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-busy {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
