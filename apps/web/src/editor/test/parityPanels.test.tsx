@@ -1,5 +1,5 @@
 // The module-drag ghost (MapView.cpp:1796-1900) and the panel changes
-// behind it: the Module Library publishing the dragged module, and the
+// behind it: the Module library publishing the dragged module, and the
 // Venue Library (VenueLibraryPanel.cpp): details, Rename with its
 // duplicate-name check, and Save Current Venue.
 

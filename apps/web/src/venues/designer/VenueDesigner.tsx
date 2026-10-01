@@ -150,8 +150,9 @@ export function VenueDesigner({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-bg text-ink">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-panel px-4">
-        <div className="min-w-0 flex-1">
+      {/* On a phone or a narrow tablet the buttons wrap under the name. */}
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-panel px-3 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:flex-nowrap md:px-4 md:py-0">
+        <div className="min-w-0 basis-full md:basis-auto md:flex-1">
           <div className="truncate font-semibold">
             {venue.name || 'Venue'}
             {dirty && <span className="ml-2 text-xs font-normal text-amber-300">unsaved</span>}
@@ -171,7 +172,7 @@ export function VenueDesigner({
           </select>
         </label>
         <HelpButton helpKey="room.units" />
-        <label className="flex items-center gap-2 text-sm text-neutral-300" title="Snap to corners, walls, 45° and whole inches (hold Shift for any angle)">
+        <label className="flex items-center gap-2 text-sm text-neutral-300 pointer-coarse:min-h-11" title="Snap to corners, walls, 45° and whole inches (hold Shift for any angle)">
           <input type="checkbox" checked={state.snap} onChange={(e) => dispatch({ type: 'snap', on: e.target.checked })} />
           Snap
         </label>
@@ -195,9 +196,15 @@ export function VenueDesigner({
         </button>
       </header>
       {error && <div className="border-b border-red-900 bg-red-950/60 px-4 py-2 text-sm text-red-200">{error}</div>}
-      <div className="flex min-h-0 flex-1">
-        <nav aria-label="Tools" className="flex w-20 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-panel p-2">
-          <div className="flex justify-center py-1">
+      {/* Upright on a phone (or a narrow tablet): tools in a row along the
+          top, the map, then the inspector underneath. */}
+      <div className="flex min-h-0 flex-1 max-md:portrait:flex-col">
+        <nav
+          aria-label="Tools"
+          data-scroll-x
+          className="flex w-20 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-panel p-2 max-md:landscape:w-16 max-md:portrait:w-auto max-md:portrait:flex-row max-md:portrait:overflow-x-auto max-md:portrait:overflow-y-hidden max-md:portrait:border-b max-md:portrait:border-r-0 max-md:portrait:p-1"
+        >
+          <div className="flex shrink-0 items-center justify-center py-1">
             <HelpButton helpKey="room.tools" target='nav[aria-label="Tools"]' />
           </div>
           {TOOLS.map((t) => (
@@ -210,7 +217,7 @@ export function VenueDesigner({
                 setPlanMoving(false);
                 dispatch({ type: 'tool', tool: t.tool });
               }}
-              className={`flex h-12 flex-col items-center justify-center rounded-lg text-xs ${state.tool === t.tool ? 'bg-accent-hover/20 font-semibold text-blue-200' : 'text-neutral-300 hover:bg-soft'}`}
+              className={`flex h-12 shrink-0 flex-col items-center justify-center rounded-lg text-xs max-md:portrait:min-w-16 ${state.tool === t.tool ? 'bg-accent-hover/20 font-semibold text-blue-200' : 'text-neutral-300 hover:bg-soft'}`}
             >
               {t.label}
               <span className="font-mono text-[10px] text-muted">{t.key.toUpperCase()}</span>
@@ -218,13 +225,13 @@ export function VenueDesigner({
           ))}
         </nav>
         <main className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-10 shrink-0 items-center gap-4 border-b border-line bg-panel/60 px-4 text-sm text-neutral-300">
+          <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-line bg-panel/60 px-4 py-1 text-sm text-neutral-300">
             <span className="flex items-center gap-1.5 font-semibold">
               Show
               <HelpButton helpKey="room.show" target="main > div" />
             </span>
             {LAYERS.map((l) => (
-              <label key={l.layer} className="flex items-center gap-1.5">
+              <label key={l.layer} className="flex items-center gap-1.5 pointer-coarse:min-h-11">
                 <input type="checkbox" checked={state.show[l.layer]} onChange={(e) => dispatch({ type: 'show', layer: l.layer, on: e.target.checked })} />
                 {l.name}
               </label>
@@ -254,14 +261,14 @@ export function VenueDesigner({
               </button>
             </div>
           </div>
-          <footer className="flex h-8 shrink-0 items-center gap-6 border-t border-line bg-panel px-4 text-xs text-muted">
-            <span className="font-mono">{cursor ? `${formatLength(cursor.x, state.unit)}, ${formatLength(cursor.y, state.unit)}` : '—'}</span>
+          <footer className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-6 gap-y-0.5 border-t border-line bg-panel px-4 pb-[env(safe-area-inset-bottom)] text-xs text-muted">
+            <span className="font-mono pointer-coarse:hidden">{cursor ? `${formatLength(cursor.x, state.unit)}, ${formatLength(cursor.y, state.unit)}` : '—'}</span>
             {size && (
               <span>
                 Room {formatLength(size.w, state.unit)} × {formatLength(size.h, state.unit)} · {Math.round(size.area / (FT * FT)).toLocaleString()} sq ft
               </span>
             )}
-            <span className={`truncate ${state.message ? 'text-amber-300' : ''}`}>
+            <span className={`min-w-0 truncate ${state.message ? 'text-amber-300' : ''}`}>
               {state.typed ? `Typing ${state.typed} — Enter to apply` : hint}
             </span>
           </footer>

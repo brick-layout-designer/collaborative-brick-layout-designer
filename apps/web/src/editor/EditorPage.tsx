@@ -570,7 +570,9 @@ function Editor({ layoutId }: { layoutId: string }) {
         </header>
       ) : (
       <header
-        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4 py-1.5"
+        // A tablet held upright (768-1023 px) has no room for three columns:
+        // the task tabs get a row of their own under the name and buttons.
+        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-4 py-1.5 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
         style={{ gridColumn: '1 / -1' }}
       >
         <div className="flex min-w-0 items-center gap-3">
@@ -598,23 +600,25 @@ function Editor({ layoutId }: { layoutId: string }) {
           {isViewer && <ViewOnlyPill />}
         </div>
         {!isViewer ? (
-          <div className="flex items-center gap-2">
+          <div className="order-last col-span-2 flex items-center justify-center gap-2 lg:order-none lg:col-span-1">
             <TaskTabs task={task} onTask={onTask} />
             <HelpButton helpKey="topbar.tasks" />
           </div>
         ) : (
-          <span />
+          <span className="hidden lg:block" />
         )}
         <div className="flex min-w-0 items-center justify-end gap-2.5">
           <PresencePanel awareness={awareness} />
           <button
             type="button"
             title="Share a picture of the layout"
+            aria-label="Share picture"
             onClick={() => setSharePicture({})}
             className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-control border border-line px-3 text-sm font-bold text-ink hover:bg-soft"
           >
             <PictureIcon />
-            Share picture
+            {/* Just the picture on a narrower screen. */}
+            <span className="hidden xl:inline">Share picture</span>
           </button>
           <button
             onClick={() => (me.data?.user ? setShowShare(true) : setSharePicture({}))}
@@ -633,7 +637,9 @@ function Editor({ layoutId }: { layoutId: string }) {
       <div
         role="toolbar"
         aria-label="Edit"
-        className="flex min-h-[42px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-line bg-panel px-3 py-1"
+        // Wraps onto a second row on a narrower screen rather than hiding
+        // controls off the side.
+        className="flex min-h-[42px] min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-panel px-3 py-1"
         style={{ gridColumn: '1 / -1' }}
       >
           <button
@@ -1129,7 +1135,7 @@ function Canvas({
   // user sees a live preview with snap-to-connection. Mirrors desktop
   // `MapView::dragMoveEvent` + `updateDragPreview` (MapView.cpp:1678-1761).
   const [dropPart, setDropPart] = useState<{ key: string; studX: number; studY: number } | null>(null);
-  // Same for a module dragged from the Module Library: cursor position
+  // Same for a module dragged from the Module library: cursor position
   // plus the module's snapshot, fetched once per drag (MapView.cpp:1796-1900).
   const [dropModule, setDropModule] = useState<{ studX: number; studY: number } | null>(null);
   const moduleDragRef = useRef<{ key: string; batches: Promise<ModuleBatch[]>; ready: ModuleBatch[] | null } | null>(null);
@@ -3419,7 +3425,7 @@ function SnapRing() {
  * affordance stays visible.
  */
 // UI words: layers are "Sheets" and the venue is the "Room" (the ids stay).
-const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', views: 'Views', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module Library', venuelibrary: 'Room library' };
+const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', views: 'Views', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module library', venuelibrary: 'Room library' };
 
 /**
  * Renders a vertical stack of panels in one dock column, with:
@@ -3810,7 +3816,8 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
         {dropTargetHint || statusMessage ? (
           <span className="text-accent-text transition-opacity">{dropTargetHint ?? statusMessage}</span>
         ) : (
-          <span className="tabular-nums">
+          // No mouse on a touch screen: nothing to read out.
+          <span className="tabular-nums pointer-coarse:hidden">
             {studX !== null && studY !== null
               ? `Mouse: ${studX.toFixed(1)}, ${studY.toFixed(1)} st`
               : 'Mouse: —'}
@@ -4199,7 +4206,7 @@ function HeaderEditButtons({
   const selection = useEditorStore((s) => s.selection);
   const annoTotal = useEditorStore((s) => annoCount(s.annoSelection));
   const hasSel = selection.length > 0;
-  const btnCls = 'rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30 disabled:cursor-default';
+  const btnCls = 'shrink-0 whitespace-nowrap rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft disabled:opacity-30 disabled:cursor-default';
   const act = () => canvasActionsRef.current;
   return (
     <>

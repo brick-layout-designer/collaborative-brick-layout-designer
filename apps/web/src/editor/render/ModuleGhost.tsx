@@ -14,7 +14,7 @@ interface Props {
 }
 
 /**
- * Faded preview of a module being dragged from the Module Library — port
+ * Faded preview of a module being dragged from the Module library — port
  * of desktop `MapView::updateModuleDragPreview` (MapView.cpp:1796-1900).
  * Each brick is drawn where the drop will put it: the same translation
  * (`moduleDropTranslation`) the drop applies, so the ghost lands exactly

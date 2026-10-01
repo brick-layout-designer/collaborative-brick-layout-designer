@@ -90,7 +90,7 @@ function TextField({ name, value, onChange, autoFocus }: { name: string; value: 
 
 function Estimated({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   return (
-    <label className="flex items-center gap-2 text-sm">
+    <label className="flex items-center gap-2 text-sm pointer-coarse:min-h-11">
       <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />
       Estimated, not measured yet
     </label>
@@ -257,7 +257,10 @@ export function Inspector({ state, dispatch, extra }: { state: DesignerState; di
   }
 
   return (
-    <aside aria-label="Inspector" className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel p-4">
+    <aside
+      aria-label="Inspector"
+      className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel p-4 max-md:landscape:w-60 max-md:portrait:max-h-[40%] max-md:portrait:w-full max-md:portrait:border-l-0 max-md:portrait:border-t max-md:portrait:pb-[max(1rem,env(safe-area-inset-bottom))]"
+    >
       <div>
         <div className={heading}>{sel ? 'Selected' : 'Venue'}</div>
         <div className="text-lg font-semibold">{sel ? KIND_NAMES[sel.kind] : v.name || 'Venue'}</div>

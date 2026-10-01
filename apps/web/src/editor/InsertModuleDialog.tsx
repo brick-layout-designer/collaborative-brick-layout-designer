@@ -29,7 +29,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
     mutationFn: async (moduleId: string) => {
       const batches = await fetchModuleBatches(moduleId);
       // Modules are saved centred on the origin, so the block lands at
-      // (0,0); drag from the Module Library to drop it at the cursor.
+      // (0,0); drag from the Module library to drop it at the cursor.
       // Bricks keep their source layer names and become a sidecar module
       // in the same undo step (desktop ImportBbmAsModuleCommand).
       const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';

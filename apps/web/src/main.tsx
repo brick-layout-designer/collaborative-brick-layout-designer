@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { App } from './App';
 import { listenForInstall, reportDisplayMode } from './pwa/install';
+import { watchKeyboard } from './pwa/keyboard';
 import { LoginPage } from './auth/LoginPage';
 import { ProfilePage } from './auth/ProfilePage';
 import { LinkPage } from './auth/LinkPage';
@@ -124,6 +125,8 @@ function GlobalBbmDrop() {
 
 // Catch the browser's install offer early; Settings shows it.
 listenForInstall();
+// Keep dialogs and the focused field above the on-screen keyboard.
+watchKeyboard();
 // Installed app or browser tab, for the admin dashboard's counts.
 reportDisplayMode();
 

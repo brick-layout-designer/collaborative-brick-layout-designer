@@ -48,7 +48,7 @@ export function OrgsPage() {
                 </div>
                 <Link
                   to={`/orgs/${o.slug}`}
-                  className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
+                  className="tap-target inline-flex shrink-0 items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
                 >
                   Open
                 </Link>

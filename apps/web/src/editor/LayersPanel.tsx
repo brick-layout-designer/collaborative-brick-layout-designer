@@ -232,15 +232,18 @@ function LayerRow({
         <span className="w-4 text-center text-muted" aria-hidden="true">
           {KIND_GLYPH[layer.type]}
         </span>
-        <input
-          type="checkbox"
-          checked={layer.visible}
-          disabled={isViewer}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => setLayerVisible(doc, layer.id, e.target.checked)}
-          title="Visible"
-          className="cursor-pointer"
-        />
+        {/* The label gives a finger a 44 px target round the small box. */}
+        <label className="-my-1 flex shrink-0 cursor-pointer items-center justify-center pointer-coarse:-my-2.5 pointer-coarse:size-11" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={layer.visible}
+            disabled={isViewer}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setLayerVisible(doc, layer.id, e.target.checked)}
+            title="Visible"
+            className="cursor-pointer"
+          />
+        </label>
         {editing ? (
           <input
             autoFocus

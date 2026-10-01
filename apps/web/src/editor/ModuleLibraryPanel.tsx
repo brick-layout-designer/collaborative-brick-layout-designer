@@ -1,4 +1,4 @@
-// Module Library Panel — port of desktop ModuleLibraryPanel.cpp.
+// Module library panel — port of desktop ModuleLibraryPanel.cpp.
 // Lists the user's saved server modules; supports click-to-insert and
 // drag-to-canvas (MIME `application/x-cld-module` carrying the module id).
 // Drag drop is handled by the canvas event listeners in EditorPage.
@@ -174,8 +174,9 @@ function ModuleLibraryRow({
           v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
         </p>
       </div>
+      {/* Shown on hover with a mouse; always shown on a touch screen, which has no hover. */}
       {!isViewer && (
-        <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100">
+        <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
           <button
             onClick={onInsert}
             disabled={isInserting}
