@@ -375,6 +375,9 @@ describe('request rates', () => {
     const limited = await app.inject({ url: '/api/layouts', headers: { cookie: u.cookie } });
     expect(body(limited)).toMatchObject({ error: 'rate_limited', limit: 'requestsPerMinuteUser' });
     expect(limited.headers['retry-after']).toBe('60');
+    // Part pictures don't count against the cap (a big library fetches hundreds).
+    const sprite = await app.inject({ url: '/api/custom-parts/none/sprite', headers: { cookie: u.cookie } });
+    expect(sprite.statusCode).not.toBe(429);
     const t: number[] = [];
     for (let i = 0; i < 3; i++) t.push((await app.inject({ url: '/api/layouts', headers: { authorization: `Bearer ${token}` } })).statusCode);
     expect(t).toEqual([200, 200, 429]);

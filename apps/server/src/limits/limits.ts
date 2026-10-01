@@ -70,8 +70,8 @@ export const LIMITS: readonly LimitInfo[] = [
   { key: 'shareLinksPerUser', label: 'Share links per person', help: 'Personal layouts shared with a public link at once.', unit: 'count', applies: 'user', builtIn: 200, envVar: 'LIMIT_SHARE_LINKS_PER_USER' },
   { key: 'shareLinksPerClub', label: 'Share links per club', help: 'Club layouts shared with a public link at once.', unit: 'count', applies: 'org', builtIn: 1000, envVar: 'LIMIT_SHARE_LINKS_PER_CLUB' },
   { key: 'liveEditorsPerLayout', label: 'People editing one layout at once', help: 'Live connections to one layout.', unit: 'count', applies: 'both', builtIn: 50, envVar: 'LIMIT_LIVE_EDITORS_PER_LAYOUT' },
-  { key: 'requestsPerMinuteUser', label: 'Requests per minute (browser)', help: 'Requests one signed-in person may make in a minute from the web app.', unit: 'per_minute', applies: 'user', builtIn: 1200, envVar: 'LIMIT_REQUESTS_PER_MINUTE_USER' },
-  { key: 'requestsPerMinuteToken', label: 'Requests per minute (desktop app)', help: 'Requests one desktop sign-in may make in a minute.', unit: 'per_minute', applies: 'user', builtIn: 1200, envVar: 'LIMIT_REQUESTS_PER_MINUTE_TOKEN' },
+  { key: 'requestsPerMinuteUser', label: 'Requests per minute (browser)', help: 'Requests one signed-in person may make in a minute from the web app.', unit: 'per_minute', applies: 'user', builtIn: 2400, envVar: 'LIMIT_REQUESTS_PER_MINUTE_USER' },
+  { key: 'requestsPerMinuteToken', label: 'Requests per minute (desktop app)', help: 'Requests one desktop sign-in may make in a minute.', unit: 'per_minute', applies: 'user', builtIn: 2400, envVar: 'LIMIT_REQUESTS_PER_MINUTE_TOKEN' },
 ];
 
 const LIMIT_BY_KEY = new Map(LIMITS.map((l) => [l.key, l]));

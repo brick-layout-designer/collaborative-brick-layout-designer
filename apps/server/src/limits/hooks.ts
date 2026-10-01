@@ -28,6 +28,13 @@ export function overRate(key: string, max: number, now: number = Date.now()): bo
   return w.n > max;
 }
 
+/**
+ * Part pictures and files, and layout background pictures: a big custom
+ * library (or the desktop syncing one) fetches hundreds at once, so these
+ * GETs are counted but never rate-limited.
+ */
+const ASSET_ROUTES = new Set(['/api/custom-parts/:id/sprite', '/api/custom-parts/:id/xml', '/api/layouts/:id/background-image']);
+
 /** Routes a suspended person may still POST to: signing in and out, and the client beacon. */
 function allowedWhileSuspended(url: string): boolean {
   return url.startsWith('/api/auth/') || url.startsWith('/api/metrics/');
@@ -48,7 +55,8 @@ export function registerLimitHooks(app: FastifyInstance): void {
     const max = token
       ? (ov.limits.requestsPerMinuteToken ?? values.requestsPerMinuteToken)
       : (ov.limits.requestsPerMinuteUser ?? values.requestsPerMinuteUser);
-    if (overRate(token ? `t:${token.id}` : `u:${user.id}`, max, now)) {
+    const asset = req.method === 'GET' && ASSET_ROUTES.has(req.routeOptions?.url ?? '');
+    if (!asset && overRate(token ? `t:${token.id}` : `u:${user.id}`, max, now)) {
       reply.header('retry-after', '60');
       return reply.code(429).send({
         error: 'rate_limited',
