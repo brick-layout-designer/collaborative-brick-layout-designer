@@ -10,7 +10,9 @@
 
 import type { BbmMap, LayerGrid } from '@cld/model';
 import type { SavedView, Sidecar } from '@cld/bbm';
-import { contentBoundsStuds, clampExportSize, type StudRect } from './exportRender';
+import { contentBoundsStuds, clampExportSize, unionStudRects, type StudRect } from './exportRender';
+import { moduleLabelBoundsStuds } from './render/ModuleOverlay';
+import { useEditorStore } from './editorStore';
 import { buildZip, sanitizeFilename, type ZipEntry } from '../bbmFiles';
 import { drawnGridLayer } from './render/gridIndex';
 
@@ -77,16 +79,31 @@ export function fitRegionStuds(
   sidecar: Sidecar | null | undefined,
   sheets: readonly string[] | null,
   labels: boolean,
+  moduleNames: ModuleNamesShown | null = moduleNamesShown(),
 ): StudRect | null {
   const shown = applyViewSheets(map, sheets);
   const labelsOnly: Sidecar | null =
     labels && sidecar?.anchoredLabels?.length
       ? { schemaVersion: sidecar.schemaVersion, bbmHashSha256: '', anchoredLabels: sidecar.anchoredLabels }
       : null;
-  const b = contentBoundsStuds(shown, labelsOnly);
+  const names = moduleNames && sidecar?.modules?.length ? moduleLabelBoundsStuds(shown, sidecar.modules, moduleNames.percent, moduleNames.measure) : [];
+  const b = unionStudRects(contentBoundsStuds(shown, labelsOnly), names);
   if (!b) return null;
   const m = VIEW_FIT_MARGIN_STUDS;
   return { x: b.x - m, y: b.y - m, width: b.width + 2 * m, height: b.height + 2 * m };
+}
+
+/** How module names are drawn, when they are (View ▸ Module names). */
+export interface ModuleNamesShown {
+  percent: number;
+  /** Text width at a font size; the map's own measure when left out. */
+  measure?: (text: string) => (fontPx: number) => number;
+}
+
+/** The editor's module-name setting now: null when names are hidden. */
+export function moduleNamesShown(): ModuleNamesShown | null {
+  const s = useEditorStore.getState();
+  return s.showModuleNames ? { percent: s.moduleLabelPercent } : null;
 }
 
 /** The area a view's picture covers, in studs, or null when there's nothing to show. */

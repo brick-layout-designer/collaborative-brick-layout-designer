@@ -32,6 +32,21 @@ export interface StudRect {
  * World-anchored labels and the venue outline/obstacles. Null for an
  * empty map. Mirrors what desktop's scene contains.
  */
+/** The smallest rect holding `base` and every one of `more`; null when there's nothing. */
+export function unionStudRects(base: StudRect | null, more: readonly StudRect[]): StudRect | null {
+  let r = base;
+  for (const m of more) {
+    if (!r) {
+      r = { ...m };
+      continue;
+    }
+    const x = Math.min(r.x, m.x);
+    const y = Math.min(r.y, m.y);
+    r = { x, y, width: Math.max(r.x + r.width, m.x + m.width) - x, height: Math.max(r.y + r.height, m.y + m.height) - y };
+  }
+  return r;
+}
+
 export function contentBoundsStuds(map: BbmMap, sidecar?: Sidecar | null): StudRect | null {
   let minX = Infinity;
   let minY = Infinity;
@@ -98,8 +113,8 @@ export function clampPixelRatio(widthPx: number, heightPx: number, requested: nu
 }
 
 /** Stud region of the full-map export: content bounds plus the desktop margin. Null for an empty map. */
-export function exportRegionStuds(map: BbmMap, sidecar?: Sidecar | null): StudRect | null {
-  const b = contentBoundsStuds(map, sidecar);
+export function exportRegionStuds(map: BbmMap, sidecar?: Sidecar | null, extra: readonly StudRect[] = []): StudRect | null {
+  const b = unionStudRects(contentBoundsStuds(map, sidecar), extra);
   if (!b) return null;
   return {
     x: b.x - EXPORT_MARGIN_STUDS,
@@ -120,8 +135,12 @@ export function watermarkFontPx(imageHeight: number): number {
 }
 
 /** Scene-pixel size (1 stud = 8 px) of the full-map export, margin included. Null for an empty map. */
-export function exportSceneSize(map: BbmMap, sidecar?: Sidecar | null): { width: number; height: number } | null {
-  const b = contentBoundsStuds(map, sidecar);
+export function exportSceneSize(
+  map: BbmMap,
+  sidecar?: Sidecar | null,
+  extra: readonly StudRect[] = [],
+): { width: number; height: number } | null {
+  const b = unionStudRects(contentBoundsStuds(map, sidecar), extra);
   if (!b) return null;
   return {
     width: Math.ceil((b.width + 2 * EXPORT_MARGIN_STUDS) * 8),

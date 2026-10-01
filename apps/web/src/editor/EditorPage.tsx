@@ -42,7 +42,7 @@ import { TextLayers, type TextCellRef } from './render/TextLayer';
 import { RulerLayers } from './render/RulerLayer';
 import { AnchoredLabels } from './render/AnchoredLabels';
 import { ElectricCircuitLayer } from './render/ElectricCircuitLayer';
-import { ModuleOverlay } from './render/ModuleOverlay';
+import { ModuleOverlay, moduleLabelBoundsStuds } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useViewportSize } from './useViewportSize';
@@ -115,12 +115,12 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
 import { createModuleFromSelection } from './moduleActions';
-import { applyViewSheets, pictureGrid, viewRegionStuds, type PictureSpec } from './savedViews';
+import { applyViewSheets, moduleNamesShown, pictureGrid, viewRegionStuds, type PictureSpec } from './savedViews';
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
 import { NoticeToast } from './NoticeToast';
 import type { SavedView } from '@cld/bbm';
-import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
+import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, unionStudRects, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
 import '../konvaSetup';
@@ -410,6 +410,8 @@ function Editor({ layoutId }: { layoutId: string }) {
         screenRect={() => canvasActionsRef.current?.screenRect() ?? null}
         onGoTo={(v) => canvasActionsRef.current?.goToView(v)}
         onShowEverything={showEverything}
+        onApply={(v) => canvasActionsRef.current?.showViewFilter(v)}
+        onLeave={() => canvasActionsRef.current?.clearView()}
         onShare={(v) => setSharePicture({ choice: v.id })}
         onExportAll={() => void exportAll()}
         exporting={exportingViews}
@@ -1621,7 +1623,9 @@ function Canvas({
     // desktop keeps BlueBrick's fit.
     const showGrid = phone && useEditorStore.getState().showGrid;
     const grid = showGrid ? (drawnGridLayer(map.layers) as import('@cld/model').LayerGrid | undefined) : undefined;
-    const bounds = withGridLabels(contentBoundsStuds(map, readSidecarFromDoc(doc)), grid);
+    const sidecar = readSidecarFromDoc(doc);
+    // Module names sit outside their frames; keep them on screen too.
+    const bounds = withGridLabels(unionStudRects(contentBoundsStuds(map, sidecar), moduleNameBoxes(map, sidecar)) ?? null, grid);
     const fit = fitView(bounds, width, height, { min: MIN_ZOOM, max: MAX_ZOOM }, phone ? (width > height ? PHONE_LANDSCAPE_FIT_INSETS : PHONE_FIT_INSETS) : undefined);
     if (!fit) return false;
     useEditorStore.setState(fit);
@@ -2656,21 +2660,23 @@ function Canvas({
     render: ({ pixelRatio, transparent, size, antialias, watermark, regionStuds }) => {
       const stage = stageRef.current;
       if (!stage || !map) return null;
-      return renderMapToCanvas(stage, map, readSidecarFromDoc(doc), {
+      const sidecar = readSidecarFromDoc(doc);
+      const region = regionStuds ?? exportRegionStuds(map, sidecar, moduleNameBoxes(map, sidecar));
+      return renderMapToCanvas(stage, map, sidecar, {
         pixelRatio,
         transparent,
         ...(size ? { size } : {}),
         ...(antialias !== undefined ? { antialias } : {}),
-        ...(regionStuds ? { regionStuds } : {}),
+        ...(region ? { regionStuds: region } : {}),
         hudLayer: hudLayerRef.current,
         // Per-export option, desktop's "Embed general-info watermark".
         ...(watermark ? { watermark: watermarkText(map) } : {}),
       });
     },
-    region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc)) : null),
+    region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc), moduleNameBoxes(map, readSidecarFromDoc(doc))) : null),
     screenRegion: () => screenRegion(),
     renderPicture: (spec, size) => renderPicture(spec, size),
-    sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc)) : null),
+    sceneSize: () => (map ? exportSceneSize(map, readSidecarFromDoc(doc), moduleNameBoxes(map, readSidecarFromDoc(doc))) : null),
   };
 
   // The Stage's own size (not a window estimate): World labels and
@@ -2720,6 +2726,11 @@ function Canvas({
       const fit = fitView(region, width, height, { min: MIN_ZOOM, max: MAX_ZOOM }, phone ? (width > height ? PHONE_LANDSCAPE_FIT_INSETS : PHONE_FIT_INSETS) : undefined);
       if (fit) useEditorStore.setState(fit);
     },
+    showViewFilter: (view) =>
+      useEditorStore.setState({
+        viewFilter: { sheets: view.sheets, grid: view.grid, labels: view.labels },
+        activeViewId: view.id,
+      }),
     clearView: () => useEditorStore.setState({ viewFilter: null, activeViewId: null }),
   };
 
@@ -2951,7 +2962,7 @@ function Canvas({
                 {...(tool === 'select' ? { drag: annoDrag } : {})}
               />}
           <ModuleOverlay
-            map={map}
+            map={shown}
             modules={readSidecarFromDoc(doc)?.modules ?? []}
           />
         </Group>
@@ -4256,6 +4267,12 @@ function buildConnectedAdj(map: import('@cld/model').BbmMap): Map<string, string
   return adj;
 }
 
+/** Module frames and names as drawn now (none when View ▸ Module names is off), in studs. */
+function moduleNameBoxes(map: import('@cld/model').BbmMap, sidecar: import('@cld/bbm').Sidecar | null | undefined): StudRect[] {
+  const names = moduleNamesShown();
+  return names && sidecar?.modules?.length ? moduleLabelBoundsStuds(map, sidecar.modules, names.percent) : [];
+}
+
 function saveFile(file: { filename: string; type: string; data: Uint8Array }): void {
   const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
   const a = document.createElement('a');
@@ -4329,6 +4346,8 @@ interface CanvasActions {
   screenRect: () => StudRect | null;
   /** Show a saved view: its sheets, grid and labels, fitted to its area. */
   goToView: (view: SavedView) => void;
+  /** Show a view's sheets, grid and labels, leaving the map where it is. */
+  showViewFilter: (view: SavedView) => void;
   /** Back to the layout as it is (every sheet as the layout has it). */
   clearView: () => void;
 }

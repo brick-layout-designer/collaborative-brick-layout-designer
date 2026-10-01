@@ -24,6 +24,10 @@ export interface ViewsPanelProps {
   gridShown: boolean;
   onGoTo: (view: SavedView) => void;
   onShowEverything: () => void;
+  /** Show a view's sheets, grid and labels without moving the map. */
+  onApply: (view: SavedView) => void;
+  /** Stop showing the view, leaving the map where it is. */
+  onLeave: () => void;
   onShare: (view: SavedView) => void;
   onExportAll: () => void;
   /** Progress text while "Export all views" runs. */
@@ -44,7 +48,7 @@ export function viewSummary(view: SavedView, sheetCount: number): string {
 }
 
 export function ViewsPanel(props: ViewsPanelProps) {
-  const { doc, isViewer, sheets, activeViewId, onGoTo, onShowEverything, onShare, onExportAll, touch } = props;
+  const { doc, isViewer, sheets, activeViewId, onGoTo, onShowEverything, onApply, onLeave, onShare, onExportAll, touch } = props;
   // Follow the doc: views change when anyone on the layout edits them.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -102,13 +106,14 @@ export function ViewsPanel(props: ViewsPanelProps) {
                 <div className="flex items-stretch">
                   <button
                     type="button"
-                    onClick={() => onGoTo(view)}
+                    onClick={() => (active ? onLeave() : onGoTo(view))}
                     aria-current={active ? 'true' : undefined}
-                    title={`Show ${view.name}`}
+                    title={active ? `Showing ${view.name}. Tap again to stop` : `Show ${view.name}`}
                     className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-card px-2.5 py-1.5 text-left hover:bg-soft"
                   >
                     <span className="truncate font-bold">{view.name || 'View'}</span>
                     <span className="truncate text-xs text-muted">{viewSummary(view, sheets.length)}</span>
+                    {active && <span className="truncate text-xs font-semibold text-accent-text">On screen now · tap to stop</span>}
                   </button>
                   <button
                     type="button"
@@ -149,7 +154,8 @@ export function ViewsPanel(props: ViewsPanelProps) {
                   }}
                   onPatch={(patch) => {
                     updateSavedView(doc, view.id, patch);
-                    if (active) onGoTo({ ...view, ...patch });
+                    // Changing a view never moves the map: it may be on the next area.
+                    if (active) onApply({ ...view, ...patch });
                   }}
                   onRename={() => setRenaming({ id: view.id, name: view.name })}
                   onClose={() => setOpenId(null)}
