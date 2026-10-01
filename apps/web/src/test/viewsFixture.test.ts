@@ -12,7 +12,7 @@ import { readSidecar, writeSidecar, type SavedView } from '@cld/bbm';
 import { readBbm } from '@cld/bbm';
 import { docToBbm, readSidecarFromDoc } from '@cld/ydoc';
 import { buildLayoutFile, readLayoutFile } from '../layoutFile';
-import { addAnchoredLabel, addLayer, addSavedView, ensureBrickLayer, placeBrick, renameLayer } from '../editor/mutations';
+import { addAnchoredLabel, addLayer, ensureBrickLayer, placeBrick, renameLayer } from '../editor/mutations';
 import { viewRegionStuds } from '../editor/savedViews';
 import VIEWS from '../../../../packages/bbm/tests/fixtures/views.bld-layout?inline';
 
