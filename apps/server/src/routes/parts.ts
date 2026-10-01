@@ -389,11 +389,11 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
  * pre-rendered `.set.gif` — they all bucketed into "Other" and the
  * Parts panel's category dropdown effectively hid them.
  */
-function categoryFromXmlRelPath(xmlRelPath: string): string {
-  if (!xmlRelPath) return 'Other';
-  const idx = xmlRelPath.indexOf('/');
-  if (idx <= 0) return 'Other';
-  return xmlRelPath.slice(0, idx);
+export function categoryFromXmlRelPath(xmlRelPath: string): string {
+  // The folder the file is in, like desktop: a library that keeps its
+  // parts one level down (`parts/Train/…`) still files them under Train.
+  const dirs = xmlRelPath.split('/').slice(0, -1).filter((d) => d.length > 0);
+  return dirs.length > 0 ? dirs[dirs.length - 1]! : 'Other';
 }
 
 function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXml {

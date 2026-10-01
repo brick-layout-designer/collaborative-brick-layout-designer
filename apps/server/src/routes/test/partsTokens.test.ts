@@ -4,6 +4,10 @@
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
+import fastifyStatic from '@fastify/static';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { issueToken, loginAs, resetDb } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
@@ -79,5 +83,28 @@ describe('parts routes with API tokens', () => {
     const del = await app.inject({ method: 'DELETE', url: `/api/custom-parts/${id}`, headers: bearer(writer) });
     expect(del.statusCode).toBe(403);
     expect(del.json().error).toBe('token_not_allowed');
+  });
+
+  it('serves public part files to a desktop that sends its token with them', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cld-libfiles-'));
+    try {
+      mkdirSync(join(dir, 'bricktracks'));
+      writeFileSync(join(dir, 'bricktracks', 'R056.8.xml'), '<part/>');
+      const files = Fastify();
+      await files.register(cookie);
+      files.addHook('preHandler', attachUser);
+      await files.register(fastifyStatic, { root: dir, prefix: '/parts/libraries/', decorateReply: false });
+      await files.register(customPartRoutes);
+      const reader = await issueToken(app, user.cookie, 'parts:read');
+      const got = await files.inject({ method: 'GET', url: '/parts/libraries/bricktracks/R056.8.xml', headers: bearer(reader) });
+      expect(got.statusCode).toBe(200);
+      expect(got.body).toBe('<part/>');
+      // Anything else still refuses a token it isn't allowed.
+      const del = await files.inject({ method: 'DELETE', url: '/api/custom-parts/x', headers: bearer(reader) });
+      expect(del.json().error).toBe('token_not_allowed');
+      await files.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
