@@ -16,6 +16,8 @@ import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.j
 import { env } from '../env.js';
 import { docHub } from '../ws/docHub.js';
 import { rollup } from '../metrics/rollup.js';
+import { checkGrowth, declaredBytes, type Subject } from '../limits/limits.js';
+import { recordUpload, usage } from '../metrics/usage.js';
 import { touchLayoutOpened } from '../metrics/activity.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
@@ -229,6 +231,13 @@ export async function layoutRoutes(app: FastifyInstance) {
     const ownerUserId: string | null = dest.orgId ? null : user.id;
     const ownerOrgId: string | null = dest.orgId;
 
+    const owner: Subject = ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id };
+    const addBytes = docSnapshot.length + (sidecarSnapshot?.length ?? 0) + (background?.bytes.length ?? 0);
+    const uploaded = declaredBytes(req.headers);
+    const refusal = await checkGrowth({ actor: user, owner, add: { layouts: 1, bytes: addBytes }, uploadBytes: uploaded });
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
+    if (body.bbm || background) recordUpload(user.id, owner, uploaded);
+
     const now = new Date();
     // Demo TTL only applies to user-owned layouts; org layouts persist
     // until an admin deletes them.
@@ -328,8 +337,12 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (cache && bg && typeof bg.url === 'string' && bg.url.startsWith(oldBg)) {
         meta.set('cache', { ...cache, backgroundImage: { ...bg, url: `/api/layouts/${id}/background-image` } });
       }
-      const now = new Date();
       const ownerUserId = dest.orgId ? null : user.id;
+      const copyOwner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
+      const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
+      const refusal = await checkGrowth({ actor: user, owner: copyOwner, add: { layouts: 1, bytes: copyBytes } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
+      const now = new Date();
       await db.insert(schema.layouts).values({
         id,
         title,
@@ -475,6 +488,20 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (docHub.has(req.params.id)) {
       return reply.code(409).send({ error: 'layout_open_in_editor' });
     }
+    const existing = await db
+      .select({
+        ownerUserId: schema.layouts.ownerUserId,
+        ownerOrgId: schema.layouts.ownerOrgId,
+        bytes: sql<number>`length(${schema.layouts.docSnapshot})`.mapWith(Number),
+      })
+      .from(schema.layouts)
+      .where(eq(schema.layouts.id, req.params.id))
+      .get();
+    if (existing) {
+      const owner: Subject = existing.ownerOrgId ? { kind: 'org', id: existing.ownerOrgId } : { kind: 'user', id: existing.ownerUserId ?? user.id };
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: bytes.length - existing.bytes }, uploadBytes: bytes.length });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
+    }
 
     const updatedAt = new Date();
     await db
@@ -589,6 +616,9 @@ export async function layoutRoutes(app: FastifyInstance) {
 
     let token = layout.publicShareToken;
     if (!token) {
+      const owner: Subject = layout.ownerOrgId ? { kind: 'org', id: layout.ownerOrgId } : { kind: 'user', id: layout.ownerUserId ?? user.id };
+      const refusal = await checkGrowth({ actor: user, owner, add: { shareLinks: 1 } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
       // 32 hex chars (16 bytes) is plenty for a public-share secret —
       // collision search is infeasible and the URL stays compact.
       token = randomUUID().replaceAll('-', '');
@@ -627,6 +657,8 @@ export async function layoutRoutes(app: FastifyInstance) {
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
     rollup.count('share_views');
+    if (layout.ownerOrgId) usage.count('org', layout.ownerOrgId, 'share_views');
+    else if (layout.ownerUserId) usage.count('user', layout.ownerUserId, 'share_views');
     reply.header('Cache-Control', 'no-store');
     return {
       layout: {
@@ -652,6 +684,18 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!layoutId) return reply.code(400).send({ error: 'invalid_id' });
       const role = await resolveResourceRole(user.id, 'layout', layoutId);
       if (!hasAtLeast(role.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
+      const target = await db
+        .select({ ownerUserId: schema.layouts.ownerUserId, ownerOrgId: schema.layouts.ownerOrgId })
+        .from(schema.layouts)
+        .where(eq(schema.layouts.id, layoutId))
+        .get();
+      if (target) {
+        const owner: Subject = target.ownerOrgId ? { kind: 'org', id: target.ownerOrgId } : { kind: 'user', id: target.ownerUserId ?? user.id };
+        const size = declaredBytes(req.headers);
+        const refusal = await checkGrowth({ actor: user, owner, add: { bytes: size }, uploadBytes: size });
+        if (refusal) return reply.code(refusal.status).send(refusal.body);
+        recordUpload(user.id, owner, size);
+      }
 
       const data = await req.file({ limits: { fileSize: 10 * 1024 * 1024 } });
       if (!data) return reply.code(400).send({ error: 'no_file' });

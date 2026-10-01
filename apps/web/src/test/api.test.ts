@@ -252,3 +252,20 @@ describe('error propagation', () => {
     await expect(api.passwordLogin('a@b.com', 'wrongpass')).rejects.toThrow('Incorrect email or password.');
   });
 });
+
+describe('limit messages', () => {
+  it('shows the server’s sentence for a reached limit', async () => {
+    stubFetch(okResponse({ error: 'limit_reached', limit: 'storagePerClub', message: 'Your club has used its 10 GB. Ask the site admin for more room.' }, 403));
+    await expect(api.layouts.create({ title: 'x' })).rejects.toThrow('Your club has used its 10 GB. Ask the site admin for more room.');
+  });
+
+  it('falls back to friendly text when no sentence came with it', async () => {
+    stubFetch(okResponse({ error: 'suspended' }, 403));
+    await expect(api.layouts.create({ title: 'x' })).rejects.toThrow('This account is read-only for now. Ask the site admin why.');
+  });
+
+  it('ignores a message on other errors', async () => {
+    stubFetch(okResponse({ error: 'forbidden', message: '<b>raw</b>' }, 403));
+    await expect(api.layouts.create({ title: 'x' })).rejects.toThrow("You don't have permission to do that.");
+  });
+});

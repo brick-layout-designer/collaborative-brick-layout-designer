@@ -33,7 +33,10 @@ import { bearerToken } from '../auth/cookie.js';
 import { hasScope } from '../auth/apiTokens.js';
 import { env } from '../env.js';
 import { rollup } from '../metrics/rollup.js';
+import { globalLimits, isSuspended, overrideFor } from '../limits/limits.js';
 import { touchLayoutOpened } from '../metrics/activity.js';
+import { eq } from 'drizzle-orm';
+import { db, schema } from '../db/index.js';
 
 // Per-user cap on concurrent WS connections. Prevents one tab fork-bomb
 // from exhausting the server. 8 is enough for a normal user across a
@@ -55,8 +58,29 @@ export const WS_MAX_PAYLOAD = 16 * 1024 * 1024;
 /** Open sockets and the credential/user they authenticated as. */
 const openSockets = new Map<
   { close(code?: number, reason?: string): void },
-  { userId: string; credential: Credential }
+  { userId: string; credential: Credential; layoutId: string }
 >();
+
+/** Live connections to one layout right now. */
+function connectionsTo(layoutId: string): number {
+  let n = 0;
+  for (const s of openSockets.values()) if (s.layoutId === layoutId) n += 1;
+  return n;
+}
+
+/** Live connections per person right now (for the admin abuse view). */
+export function liveConnectionsByUser(): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const s of openSockets.values()) out.set(s.userId, (out.get(s.userId) ?? 0) + 1);
+  return out;
+}
+
+/** Live connections per layout right now. */
+export function liveConnectionsByLayout(): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const s of openSockets.values()) out.set(s.layoutId, (out.get(s.layoutId) ?? 0) + 1);
+  return out;
+}
 
 /**
  * True when a handshake may proceed as far as the Origin goes: token
@@ -134,6 +158,24 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         }
 
         const userId = req.user.id;
+        // People editing one layout at once (an override on the layout's owner wins).
+        const owner = await db
+          .select({ ownerUserId: schema.layouts.ownerUserId, ownerOrgId: schema.layouts.ownerOrgId })
+          .from(schema.layouts)
+          .where(eq(schema.layouts.id, layoutId))
+          .get();
+        const { values } = await globalLimits();
+        const ownerOv = owner?.ownerOrgId ? overrideFor('org', owner.ownerOrgId) : owner?.ownerUserId ? overrideFor('user', owner.ownerUserId) : null;
+        const maxLive = ownerOv?.limits.liveEditorsPerLayout ?? values.liveEditorsPerLayout;
+        if (env.limitsEnforce && connectionsTo(layoutId) >= maxLive) {
+          ws.close(4429, 'limit_reached');
+          return;
+        }
+        // A suspended person, or a suspended club's layout, opens read-only.
+        const suspended =
+          env.limitsEnforce &&
+          (isSuspended('user', userId) ||
+            (owner?.ownerOrgId ? isSuspended('org', owner.ownerOrgId) : owner?.ownerUserId ? isSuspended('user', owner.ownerUserId) : false));
         const current = userConnections.get(userId) ?? 0;
         if (current >= MAX_WS_PER_USER) {
           ws.close(4429, 'too_many_connections');
@@ -147,7 +189,7 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         const credential: Credential = token
           ? { kind: 'token', id: token.id }
           : { kind: 'session', id: sessionIdForToken(req.cookies[SESSION_COOKIE] ?? '') };
-        const readOnly = token !== null && !hasScope(token.scopes, 'layouts:write');
+        const readOnly = suspended || (token !== null && !hasScope(token.scopes, 'layouts:write'));
         let detach: () => Promise<void>;
         try {
           detach = await attachWsHandlers(ws, layoutId, userId, role.role!, { credential, readOnly });
@@ -163,7 +205,7 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         // while we were hydrating. Run the cleanup exactly once either way:
         // a double detach used to double-decrement the connection count and
         // arm a second idle timer that destroyed the doc under a live client.
-        openSockets.set(ws, { userId, credential });
+        openSockets.set(ws, { userId, credential, layoutId });
         const openedAt = Date.now();
         rollup.count('live_sessions', '', 1, openedAt);
         rollup.peak('live_peak', '', openSockets.size, openedAt);

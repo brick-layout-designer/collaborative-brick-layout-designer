@@ -6,8 +6,9 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
@@ -72,6 +73,10 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
           .where(eq(schema.modules.id, req.params.id))
           .get();
         if (!module) return reply.code(404).send({ error: 'not_found' });
+        if (module.ownerOrgId !== dest.id) {
+          const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: dest.id }, add: { bytes: (module.docSnapshot as Uint8Array).length + ((module.sidecarSnapshot as Uint8Array | null)?.length ?? 0) } });
+          if (refusal) return reply.code(refusal.status).send(refusal.body);
+        }
 
         await db
           .update(schema.modules)
@@ -215,6 +220,14 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
       if (!(await hasVerifiedEmail(user))) {
         return reply.code(403).send({ error: 'email_not_verified' });
       }
+
+      const incoming = await db
+        .select({ bytes: sql<number>`length(${schema.modules.docSnapshot}) + coalesce(length(${schema.modules.sidecarSnapshot}), 0)`.mapWith(Number) })
+        .from(schema.modules)
+        .where(eq(schema.modules.id, transfer.moduleId))
+        .get();
+      const refusal = await checkGrowth({ actor: user, owner: { kind: 'user', id: user.id }, add: { bytes: incoming?.bytes ?? 0 } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
       const now = new Date();
       // Only valid while the initiator still personally owns the module

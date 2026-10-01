@@ -16,6 +16,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
@@ -117,6 +118,9 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (!name || name.length < 1 || name.length > 80) {
       return reply.code(400).send({ error: 'invalid_name' });
     }
+    // Confirmed email first; a week-old account may start one club; then the limit.
+    const refusal = await checkGrowth({ actor: user, owner: { kind: 'user', id: user.id }, add: { clubs: 1 } });
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
 
     // Resolve the final slug. If the caller passed one, validate it
     // and reject collisions explicitly so they see a clear error.
@@ -151,7 +155,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
 
     const id = randomUUID();
     const now = new Date();
-    await db.insert(schema.orgs).values({ id, name, slug, createdAt: now });
+    await db.insert(schema.orgs).values({ id, name, slug, createdAt: now, createdBy: user.id });
     await db.insert(schema.orgMembers).values({
       orgId: id,
       userId: user.id,
@@ -394,6 +398,8 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (role !== 'admin' && role !== 'member') {
         return reply.code(400).send({ error: 'invalid_role' });
       }
+      const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: org.id }, add: { members: 1 } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
       let email: string;
       let existingUser: typeof schema.users.$inferSelect | undefined;

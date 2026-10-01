@@ -10,6 +10,7 @@
 import type { FastifyInstance } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
@@ -92,6 +93,16 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
       if (inviter?.role !== 'admin') {
         await db.delete(schema.orgInvites).where(eq(schema.orgInvites.id, invite.id));
         return reply.code(409).send({ error: 'invite_revoked' });
+      }
+
+      const already = await db
+        .select({ role: schema.orgMembers.role })
+        .from(schema.orgMembers)
+        .where(and(eq(schema.orgMembers.orgId, invite.orgId), eq(schema.orgMembers.userId, user.id)))
+        .get();
+      if (!already) {
+        const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: invite.orgId }, add: { members: 1 } });
+        if (refusal) return reply.code(refusal.status).send(refusal.body);
       }
 
       const now = new Date();

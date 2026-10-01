@@ -16,6 +16,7 @@ import { statSync } from 'node:fs';
 import { and, gte, lt, sql } from 'drizzle-orm';
 import { db, schema, sqlite } from '../db/index.js';
 import { env } from '../env.js';
+import { usage } from './usage.js';
 
 /** Rollup rows older than this many days are swept by the daily worker. */
 export const ROLLUP_RETENTION_DAYS = 400;
@@ -191,6 +192,7 @@ export function flushRollup(now: number = Date.now()): void {
     recordActiveUsers(now);
     rollup.gauge('db_bytes', '', databaseBytes(), now);
     rollup.flush(now);
+    usage.flush();
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[metrics] rollup flush failed:', err);

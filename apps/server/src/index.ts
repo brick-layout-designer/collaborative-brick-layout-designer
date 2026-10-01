@@ -21,6 +21,8 @@ import { versionRoutes } from './routes/version.js';
 import { auditRoutes } from './routes/audit.js';
 import { adminRoutes, syncLibrariesFromDisk } from './routes/admin.js';
 import { adminInsightsRoutes } from './routes/adminInsights.js';
+import { adminLimitsRoutes } from './routes/adminLimits.js';
+import { registerLimitHooks } from './limits/hooks.js';
 import { registerRequestMetrics } from './metrics/activity.js';
 import { startRollup, stopRollup } from './metrics/rollup.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
@@ -77,6 +79,9 @@ async function main() {
   app.addHook('preHandler', attachUser);
   // Admin dashboard counters (aggregate only — see metrics/rollup.ts).
   registerRequestMetrics(app);
+  // Usage limits: request rates per person and per token, read-only
+  // suspended accounts, per-person request counts (limits/hooks.ts).
+  registerLimitHooks(app);
 
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
@@ -118,6 +123,7 @@ async function main() {
   await app.register(auditRoutes);
   await app.register(adminRoutes);
   await app.register(adminInsightsRoutes);
+  await app.register(adminLimitsRoutes);
   await app.register(wsRoutes);
 
   // Serve the BlueBrickParts base library at /parts/*.

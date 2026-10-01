@@ -137,7 +137,15 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           syncTimer = null;
         }
         setLoadError(new Error(event.code === 4404 ? 'layout not found' : 'not signed in'));
-      } else if (event.code === 4429) setLoadError(new Error('too many connections'));
+      } else if (event.code === 4429) {
+        setLoadError(
+          new Error(
+            event.reason === 'limit_reached'
+              ? 'Too many people have this layout open right now. Try again in a little while.'
+              : 'too many connections',
+          ),
+        );
+      }
     };
 
     provider.on('sync', onSync);

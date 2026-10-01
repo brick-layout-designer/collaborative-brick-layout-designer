@@ -11,6 +11,11 @@ process.env.NODE_ENV = 'test';
 process.env.COOKIE_SECURE = 'false';
 process.env.PUBLIC_URL = 'http://localhost:3000';
 process.env.ENABLE_PASSWORD_AUTH = 'true';
+// Test accounts are always minutes old; without this, the "one club in
+// an account's first week" rule would stop every suite that makes two
+// clubs. limits.test.ts turns it back on where it tests that rule.
+process.env.LIMIT_NEW_ACCOUNT_CLUBS = '1000';
+process.env.LIMIT_CLUBS_PER_USER = '1000';
 
 beforeAll(async () => {
   // Apply migrations once for the suite. Server module reads env.DB_PATH on

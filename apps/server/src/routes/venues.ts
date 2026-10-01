@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 
@@ -103,6 +104,12 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       const dest = await destinationOrg(user.id, orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
       const ownerOrgId = dest.orgId;
+      const refusal = await checkGrowth({
+        actor: user,
+        owner: ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id },
+        add: { bytes: JSON.stringify(data).length },
+      });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
       const id = randomUUID();
       await db.insert(schema.venueLibrary).values({
@@ -192,6 +199,12 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       const dest = await destinationOrg(user.id, req.body?.orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
       const ownerUserId = dest.orgId ? null : user.id;
+      const refusal = await checkGrowth({
+        actor: user,
+        owner: dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id },
+        add: { bytes: row.data.length },
+      });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
       const name = await freeName(row.name, ownerUserId, dest.orgId);
       const id = randomUUID();
       await db.insert(schema.venueLibrary).values({
@@ -229,6 +242,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       if (taken.some((v) => v.name.toLowerCase() === row.name.toLowerCase())) {
         return reply.code(409).send({ error: 'name_taken' });
       }
+      const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: dest.orgId! }, add: { bytes: row.data.length } });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
       await db
         .update(schema.venueLibrary)
         .set({ ownerUserId: null, ownerOrgId: dest.orgId })

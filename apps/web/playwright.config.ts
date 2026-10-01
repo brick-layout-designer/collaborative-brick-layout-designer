@@ -8,7 +8,11 @@ import { defineConfig, devices } from '@playwright/test';
 // 1. Start the server from apps/server (once per fresh DB, run the migration first):
 //      export DB_PATH=/tmp/cld-e2e.sqlite ENABLE_PASSWORD_AUTH=true \
 //             COOKIE_SECURE=false PUBLIC_URL=http://localhost:5173 \
-//             PARTS_DIR=<path to a BlueBrick parts library> BACKUPS_DIR=/tmp/cld-e2e-backups
+//             PARTS_DIR=<path to a BlueBrick parts library> BACKUPS_DIR=/tmp/cld-e2e-backups \
+//             LIMIT_NEW_ACCOUNT_CLUBS=1000 LIMIT_CLUBS_PER_USER=1000
+//      (test accounts are minutes old; without the two LIMIT_* values the
+//      "one club in an account's first week" rule stops specs that make
+//      several clubs)
 //      npx tsx src/db/migrate.ts && npx tsx src/index.ts
 //
 // 2. Run the suite from apps/web with the SAME DB_PATH exported — the

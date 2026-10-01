@@ -51,6 +51,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   verification_expired: 'That verification link has expired. Request a new one below.',
   invalid_display_name: 'Display name must be between 1 and 60 characters.',
   invalid_code: 'That code is invalid or has expired. Check the code shown in the app.',
+  limit_reached: 'You’ve reached a limit on this site. Ask the site admin for more room.',
+  suspended: 'This account is read-only for now. Ask the site admin why.',
+  rate_limited: 'Too many requests at once. Please wait a minute and try again.',
+  verify_email_first: 'Please confirm your email address first.',
 };
 
 /** `some_error_code` -> "Some error code." */
@@ -67,7 +71,16 @@ function humanizeErrorCode(code: string): string {
  */
 async function friendlyErrorMessage(res: Response): Promise<string> {
   try {
-    const body = (await res.clone().json()) as { error?: unknown };
+    const body = (await res.clone().json()) as { error?: unknown; message?: unknown };
+    // Limits, suspension and rate limits come with a ready-made sentence
+    // that names the limit ("Your club has used its 10 GB. …").
+    if (
+      (body.error === 'limit_reached' || body.error === 'suspended' || body.error === 'rate_limited' || body.error === 'verify_email_first') &&
+      typeof body.message === 'string' &&
+      body.message
+    ) {
+      return body.message;
+    }
     if (typeof body.error === 'string' && body.error) {
       return ERROR_MESSAGES[body.error] ?? humanizeErrorCode(body.error);
     }
@@ -82,6 +95,18 @@ async function friendlyErrorMessage(res: Response): Promise<string> {
 
 export async function apiGet<T>(path: string): Promise<T> {
   return get<T>(path);
+}
+
+/** JSON request with the same friendly errors (for lazily loaded admin code). */
+export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST', path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  return res.json() as Promise<T>;
 }
 
 async function get<T>(path: string): Promise<T> {

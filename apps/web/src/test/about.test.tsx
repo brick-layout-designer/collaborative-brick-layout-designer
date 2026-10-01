@@ -33,5 +33,6 @@ describe('About page privacy note', () => {
     expect(screen.getByRole('heading', { name: 'What the server counts' })).toBeTruthy();
     expect(screen.getByText(/does not record which pages you visit or your IP address/)).toBeTruthy();
     expect(screen.getByText(/about 13 months/)).toBeTruthy();
+    expect(screen.getByText(/kept for 90 days/)).toBeTruthy();
   });
 });
