@@ -6,6 +6,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { desktopVersionOf } from '../compat.js';
 import { rollup } from './rollup.js';
 
 /** Requests slower than this count as "slow" on the dashboard. */
@@ -55,7 +56,6 @@ export type ClientKind =
   | { kind: 'desktop'; version: string }
   | { kind: 'web'; device: 'phone' | 'tablet' | 'computer' };
 
-const DESKTOP_UA = /^BrickLayoutDesigner\/([0-9][0-9A-Za-z.+-]{0,31}) \(desktop\)/;
 
 /**
  * What kind of client sent a request, from its User-Agent. The desktop
@@ -64,8 +64,8 @@ const DESKTOP_UA = /^BrickLayoutDesigner\/([0-9][0-9A-Za-z.+-]{0,31}) \(desktop\
  */
 export function classifyClient(userAgent: string | undefined): ClientKind {
   const ua = userAgent ?? '';
-  const desktop = DESKTOP_UA.exec(ua);
-  if (desktop) return { kind: 'desktop', version: desktop[1]! };
+  const version = desktopVersionOf(ua);
+  if (version) return { kind: 'desktop', version };
   if (/iPad|Tablet|Android(?!.*Mobile)/i.test(ua)) return { kind: 'web', device: 'tablet' };
   if (/Mobi|iPhone|iPod/i.test(ua)) return { kind: 'web', device: 'phone' };
   return { kind: 'web', device: 'computer' };

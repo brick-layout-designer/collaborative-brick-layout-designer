@@ -17,6 +17,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { invalidateAllSessions } from '../auth/session.js';
 import { notifyCredentialRevoked } from '../auth/revocation.js';
 import { revokeAllApiTokens } from '../auth/apiTokens.js';
+import { DESKTOP_MINIMUM, compareVersions, resetDesktopPolicy, resolvePolicy } from '../compat.js';
 import { parsePartXml } from '@cld/parts-catalog';
 import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
@@ -1136,6 +1137,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         source: resolvedSmtp?.source ?? null,
         active: resolvedSmtp !== null,
       },
+      // "Oldest desktop allowed": what the admin set (null = the code's
+      // own), what's in force, and the floor it can't go below.
+      desktop: {
+        minimumSet: settings.minDesktopVersion,
+        ...resolvePolicy(settings.minDesktopVersion),
+        codeMinimum: DESKTOP_MINIMUM,
+      },
       updatedAt: settings.updatedAt.getTime(),
     };
   });
@@ -1148,6 +1156,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       smtpUser?: string | null;
       smtpPass?: string | null;
       smtpFrom?: string | null;
+      minDesktopVersion?: string | null;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1182,6 +1191,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       patch.smtpPass = body.smtpPass === '' ? null : body.smtpPass;
     }
 
+    if ('minDesktopVersion' in body) {
+      // null or "" = back to the code's own minimum.
+      const v = typeof body.minDesktopVersion === 'string' ? body.minDesktopVersion.trim().replace(/^[vV]/, '') : '';
+      if (v && (v.length > 32 || compareVersions(v, DESKTOP_MINIMUM) === null)) {
+        return reply.code(400).send({ error: 'invalid_desktop_version' });
+      }
+      patch.minDesktopVersion = v || null;
+    }
+
     if (Object.keys(patch).length === 0) {
       return reply.code(400).send({ error: 'empty_patch' });
     }
@@ -1192,6 +1210,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .set({ ...patch, updatedAt: new Date(), updatedBy: me.id })
       .where(eq(schema.platformSettings.id, PLATFORM_SETTINGS_ID));
     invalidateTransporter();
+    resetDesktopPolicy();
 
     await writeAuditEvent({
       resourceKind: 'platform_settings',

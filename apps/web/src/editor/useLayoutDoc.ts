@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { Awareness } from 'y-protocols/awareness';
+import { canReadDoc } from '@cld/ydoc';
 
 export type SaveStatus =
   | { kind: 'connecting' }
@@ -56,6 +57,10 @@ export const LOCAL_ORIGIN = Symbol('cld-local-origin');
 export type SaveResult = 'saved' | 'offline';
 
 const SYNC_TIMEOUT_MS = 10_000;
+
+/** Why a layout won't open when its doc is newer than this page reads. */
+export const UNREADABLE_LAYOUT =
+  'This layout was saved by a newer version of Brick Layout Designer. Reload the page to get the newest version, then open it again.';
 
 /** Build the WS URL relative to the current page (so dev + prod both work). */
 function wsUrlBase(): string {
@@ -98,8 +103,28 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       setStatus({ kind: 'error', message: 'connection timed out' });
     }, SYNC_TIMEOUT_MS);
 
+    // A layout written by a newer (or much older) version than this page
+    // reads: stop syncing rather than edit what we don't understand.
+    const meta = fresh.getMap('meta');
+    const unreadable = (): boolean => {
+      if (canReadDoc(meta.get('schemaVersion'))) return false;
+      provider.disconnect();
+      if (syncTimer) {
+        clearTimeout(syncTimer);
+        syncTimer = null;
+      }
+      setDoc(null);
+      setLoadError(new Error(UNREADABLE_LAYOUT));
+      return true;
+    };
+    const onMeta = (): void => {
+      unreadable();
+    };
+    meta.observe(onMeta);
+
     const onSync = (isSynced: boolean): void => {
       if (isSynced) {
+        if (unreadable()) return;
         if (syncTimer) {
           clearTimeout(syncTimer);
           syncTimer = null;
@@ -154,6 +179,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
 
     return () => {
       if (syncTimer) clearTimeout(syncTimer);
+      meta.unobserve(onMeta);
       provider.off('sync', onSync);
       provider.off('status', onStatus);
       provider.off('connection-close', onConnectionClose);

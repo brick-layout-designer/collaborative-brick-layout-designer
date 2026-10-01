@@ -40,9 +40,9 @@ class WsClient {
   readonly closed: Promise<number>;
   private closedCode = 0;
 
-  constructor(port: number, layoutId: string, cookieStr?: string) {
+  constructor(port: number, layoutId: string, cookieStr?: string, userAgent?: string) {
     this.ws = new WebSocket(`ws://127.0.0.1:${port}/ws/layout/${layoutId}`, {
-      headers: cookieStr ? { cookie: cookieStr } : {},
+      headers: { ...(cookieStr ? { cookie: cookieStr } : {}), ...(userAgent ? { 'user-agent': userAgent } : {}) },
     });
 
     // Buffer every message immediately so we never miss one.
@@ -232,6 +232,17 @@ describe('WS /ws/layout/:id — auth & access checks', () => {
     const client = new WsClient(port, 'no-such-layout-id', cookieStr);
     const code = await client.closed;
     expect(code).toBe(4404);
+  });
+
+  it('closes with 4426 for a desktop app older than the server allows', async () => {
+    const ownerCookie = await registerAndLogin(app, 'ws-old-desktop@example.com');
+    const layoutId = await createLayout(app, ownerCookie);
+    const old = new WsClient(port, layoutId, ownerCookie, 'BrickLayoutDesigner/1.1.0 (desktop)');
+    expect(await old.closed).toBe(4426);
+    const current = new WsClient(port, layoutId, ownerCookie, 'BrickLayoutDesigner/1.3.0 (desktop)');
+    await current.nextMessageOfType(0); // sync step 1: it's in
+    current.ws.close();
+    await current.closed;
   });
 
   it('closes with 4404 when the user has no access to the layout', async () => {

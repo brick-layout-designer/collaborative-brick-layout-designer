@@ -16,7 +16,7 @@ import { bbmToDoc, docToBbm } from './projection.js';
 import { DOC_SCHEMA_VERSION } from './ids.js';
 
 export { bbmToDoc, docToBbm, createDocProjector, type DocProjector } from './projection.js';
-export { DOC_SCHEMA_VERSION, makeId, upgradeDoc } from './ids.js';
+export { DOC_MIN_READABLE, DOC_SCHEMA_VERSION, canReadDoc, makeId, upgradeDoc } from './ids.js';
 
 export function createLayoutDoc(): Y.Doc {
   const doc = new Y.Doc();

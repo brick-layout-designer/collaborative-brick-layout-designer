@@ -38,6 +38,7 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     smtpPass: null,
     smtpFrom: null,
     limits: null,
+    minDesktopVersion: null,
     updatedAt: new Date(),
     updatedBy: null,
   };

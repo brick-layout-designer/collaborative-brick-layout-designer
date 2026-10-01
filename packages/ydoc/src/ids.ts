@@ -13,6 +13,28 @@ import * as Y from 'yjs';
 export const DOC_SCHEMA_VERSION = 1;
 
 /**
+ * The oldest `meta.schemaVersion` this code still reads. Raise it only
+ * when a change drops support for older docs; compat/compat.json (shared
+ * with the desktop app) records both numbers.
+ */
+export const DOC_MIN_READABLE = 1;
+
+/**
+ * Whether a reader that writes `schemaVersion` and reads back to
+ * `minReadable` can safely sync a doc stamped `docSchema`. An unstamped
+ * doc (from before schema versions) is read and upgraded in place.
+ */
+export function canReadDoc(
+  docSchema: unknown,
+  schemaVersion: number = DOC_SCHEMA_VERSION,
+  minReadable: number = DOC_MIN_READABLE,
+): boolean {
+  if (docSchema === undefined || docSchema === null) return true;
+  if (typeof docSchema !== 'number') return false;
+  return docSchema >= minReadable && docSchema <= schemaVersion;
+}
+
+/**
  * Generate a fresh decimal-numeric id (bricks, layers, groups, text
  * cells, ...).
  *

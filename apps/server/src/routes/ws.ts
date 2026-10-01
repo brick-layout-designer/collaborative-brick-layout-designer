@@ -31,6 +31,7 @@ import { onCredentialRevoked } from '../auth/revocation.js';
 import { isRevokedBy, revokedReason, type Credential } from '../auth/credentials.js';
 import { bearerToken } from '../auth/cookie.js';
 import { hasScope } from '../auth/apiTokens.js';
+import { blockedDesktopMinimum } from '../compat.js';
 import { env } from '../env.js';
 import { rollup } from '../metrics/rollup.js';
 import { globalLimits, isSuspended, overrideFor } from '../limits/limits.js';
@@ -146,6 +147,12 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
       try {
         if (!req.user) {
           ws.close(1008, 'unauthorized');
+          return;
+        }
+        // 4426 = this desktop app is older than the server allows; the
+        // desktop stops retrying and asks its user to update.
+        if (await blockedDesktopMinimum(req.headers['user-agent'])) {
+          ws.close(4426, 'update_required');
           return;
         }
         const layoutId = req.params.id;

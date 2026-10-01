@@ -52,6 +52,8 @@ export interface UsageResponse {
   liveSessions: number;
   clients: KeyValue[];
   desktopVersions: KeyValue[];
+  /** The desktop versions this server allows and recommends (marks the chart). */
+  desktopPolicy?: { minimum: string; recommended: string };
   devices: KeyValue[];
   display: KeyValue[];
   shareViews: number;
