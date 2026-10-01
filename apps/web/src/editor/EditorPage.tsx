@@ -136,6 +136,7 @@ import { saveVenueToLibrary } from './venueLibrary';
 import { drawnGridLayer, gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 import { AppMark, HelpMenu, LayoutNameMenu, SavePill, SettingsButton, TaskTabs, type EditorTask } from './EditorChrome';
 import { SettingsDialog } from '../settings/SettingsPage';
+import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -341,7 +342,7 @@ function Editor({ layoutId }: { layoutId: string }) {
     setActiveLayer(null);
     useEditorStore.getState().setSelection([]);
     // Record the last-visited layout for "reopen last file" (general/reopenLastFile).
-    localStorage.setItem('cld:lastLayoutId', layoutId);
+    localStorage.setItem(LAST_LAYOUT_KEY, layoutId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutId]);
 
@@ -392,7 +393,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // Returns just the inner content for a panel (shared by docked + floating).
   function panelBody(panelId: string): React.ReactNode {
     if (!doc) return null;
-    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} />;
+    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} canUploadPart={!!me.data?.user && !me.data.user.isDemoAccount} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;

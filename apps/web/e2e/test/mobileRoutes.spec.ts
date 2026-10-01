@@ -84,7 +84,8 @@ const ROUTES: RouteCase[] = [
   { name: 'orgs', who: 'owner', path: () => '/orgs' },
   { name: 'org', who: 'owner', path: (s) => `/orgs/${s.orgSlug}` },
   { name: 'org-admin', who: 'owner', path: (s) => `/orgs/${s.orgSlug}/admin` },
-  { name: 'library', who: 'owner', path: () => '/library' },
+  // The old Library page now lands on the home page's Custom parts.
+  { name: 'library-to-parts', who: 'owner', path: () => '/library' },
   { name: 'editor-owner', who: 'owner', path: (s) => `/editor/${s.layoutId}`, ready: canvasReady },
   { name: 'editor-viewer', who: 'viewer', path: (s) => `/editor/${s.layoutId}`, ready: canvasReady },
   { name: 'venue-new', who: 'owner', path: () => '/venues/new' },

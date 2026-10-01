@@ -15,6 +15,7 @@ import { layoutRoutes } from '../layouts.js';
 import { moduleRoutes } from '../modules.js';
 import { orgRoutes } from '../orgs.js';
 import { venueRoutes } from '../venues.js';
+import { customPartRoutes } from '../customParts.js';
 
 const VENUE = { name: 'Hall', enabled: true, edges: [], obstacles: [], minWalkwayStuds: 0 };
 
@@ -27,6 +28,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(moduleRoutes);
   await app.register(orgRoutes);
   await app.register(venueRoutes);
+  await app.register(customPartRoutes);
   return app;
 }
 
@@ -120,6 +122,61 @@ describe('owner-tagged lists', () => {
     expect((await list(alice, 'venues')).find((v) => v.id === ids['venues:club'])!.canManage).toBe(true);
     expect((await list(bob, 'venues')).find((v) => v.id === ids['venues:club'])!.canManage).toBe(false);
     expect((await list(bob, 'venues')).find((v) => v.id === ids['venues:bob'])!.canManage).toBe(true);
+  });
+
+  describe('custom parts', () => {
+    const GIF = Buffer.from('GIF89a    \xff\xff\xff   !\xf9    ,       D ;', 'binary').toString('base64');
+    const XML = Buffer.from('<?xml version="1.0"?><part><Author>Test</Author></part>').toString('base64');
+    async function part(who: Who, partNumber: string, orgSlug?: string) {
+      const res = await call(who, 'POST', '/api/custom-parts', {
+        partNumber, displayName: partNumber, xmlBase64: XML, spriteBase64: GIF, spriteMime: 'image/gif',
+        ...(orgSlug ? { orgSlug } : {}),
+      });
+      expect(res.statusCode).toBe(201);
+      return (res.json() as { id: string }).id;
+    }
+    async function parts(who: Who, owner?: string): Promise<(Item & { partNumber: string })[]> {
+      const res = await call(who, 'GET', `/api/custom-parts${owner ? `?owner=${owner}` : ''}`);
+      expect(res.statusCode).toBe(200);
+      return (res.json() as { parts: (Item & { partNumber: string })[] }).parts;
+    }
+    const num = (p: { partNumber: string }) => p.partNumber;
+    let clubPart: string;
+    beforeEach(async () => {
+      await part(bob, 'BOB.1');
+      clubPart = await part(alice, 'CLUB.1', 'arklug');
+      await part(carol, 'CAROL.1');
+    });
+
+    it('lists mine and my clubs\' parts, each with its owner and my role', async () => {
+      const items = await parts(bob);
+      expect(items.map(num).sort()).toEqual(['BOB.1', 'CLUB.1']);
+      expect(items.find((p) => p.partNumber === 'BOB.1')!.owner).toEqual({ kind: 'user', id: bob.id, name: 'bob@example.com', slug: null });
+      expect(items.find((p) => p.id === clubPart)!.owner).toMatchObject({ kind: 'org', name: 'ArkLUG', slug: 'arklug' });
+      expect(items.find((p) => p.id === clubPart)!.role).toBe('editor');
+      expect(items.find((p) => p.partNumber === 'BOB.1')!.role).toBe('owner');
+      expect((await parts(alice)).find((p) => p.id === clubPart)!.role).toBe('owner');
+    });
+
+    it('?owner=me and ?owner=<club> narrow the list', async () => {
+      expect((await parts(bob, 'me')).map(num)).toEqual(['BOB.1']);
+      expect((await parts(bob, 'arklug')).map(num)).toEqual(['CLUB.1']);
+      expect((await parts(bob, 'all')).length).toBe(2);
+    });
+
+    it('never shows a club\'s parts to someone outside it', async () => {
+      expect((await parts(carol)).map(num)).toEqual(['CAROL.1']);
+      expect((await call(carol, 'GET', '/api/custom-parts?owner=arklug')).statusCode).toBe(404);
+      expect((await call(bob, 'GET', '/api/custom-parts?owner=no-such-club')).statusCode).toBe(404);
+    });
+
+    it('a part shared with someone shows who shared it', async () => {
+      await db.insert(schema.customPartCollaborators).values({ customPartId: (await parts(bob, 'me'))[0]!.id, userId: carol.id, role: 'viewer', addedAt: new Date() });
+      const shared = (await parts(carol)).find((p) => p.partNumber === 'BOB.1')!;
+      expect(shared.owner).toMatchObject({ kind: 'user', id: bob.id });
+      expect(shared.role).toBe('viewer');
+      expect((await parts(carol, 'me')).map(num)).toEqual(['CAROL.1']);
+    });
   });
 
   describe('copy', () => {

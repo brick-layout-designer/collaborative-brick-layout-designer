@@ -1,0 +1,120 @@
+// Custom parts on the home page: yours, your clubs' and the ones shared
+// with you, each with its owner chip, narrowed by the home page's owner
+// filter. Upload a new one, download one's XML, or delete one you own.
+// (This used to be the separate Library page.)
+
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, type CustomPartSummary, type OrgSummary } from '../api';
+import { matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
+import { OwnerChip } from '../owners/OwnerControls';
+import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
+import { UploadPartDialog } from './UploadPartDialog';
+
+/** Where the old Library page (/library) now lands: the home page's parts section. */
+export const PARTS_SECTION = { pathname: '/', hash: '#parts' } as const;
+
+/** May delete it: the server says so; older servers: your own, or a club you admin. */
+export function canDeletePart(p: CustomPartSummary, myUserId: string | undefined, orgs: readonly OrgSummary[] | undefined): boolean {
+  if (p.role !== undefined) return p.role === 'owner';
+  if (p.ownerOrgId) return orgs?.find((o) => o.id === p.ownerOrgId)?.myRole === 'admin';
+  return p.ownerUserId === myUserId;
+}
+
+export function CustomPartsSection({
+  filter,
+  myUserId,
+  orgs,
+  canUpload,
+}: {
+  filter: OwnerFilter;
+  myUserId: string | undefined;
+  orgs: readonly OrgSummary[] | undefined;
+  /** Demo accounts can't add parts. */
+  canUpload: boolean;
+}) {
+  const qc = useQueryClient();
+  const parts = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
+  const [uploading, setUploading] = useState(false);
+  const remove = useMutation({
+    mutationFn: api.customParts.remove,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['custom-parts'] });
+      qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+    },
+    onError: (e: Error) => alert(`Could not delete the part: ${e.message}`),
+  });
+  const list = (parts.data?.parts ?? [])
+    .filter((p) => matchesOwnerFilter(p, filter, myUserId, orgs))
+    .sort((a, b) => a.partNumber.localeCompare(b.partNumber));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="parts-heading" className="text-2xl font-bold">
+          Custom parts
+        </h2>
+        {canUpload && (
+          <button
+            type="button"
+            onClick={() => setUploading(true)}
+            className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+          >
+            Upload part
+          </button>
+        )}
+      </div>
+      {parts.isLoading ? (
+        <p className="text-sm text-muted">Loading…</p>
+      ) : list.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
+          No custom parts here yet. Upload a part’s XML and picture to use it in your layouts.
+        </p>
+      ) : (
+        <ul aria-labelledby="parts-heading" className="divide-y divide-line rounded-lg border border-line bg-panel">
+          {list.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+              <div className="flex min-w-0 items-center gap-3">
+                <img
+                  src={api.customParts.spriteUrl(p.id)}
+                  alt=""
+                  className="h-10 w-10 shrink-0 object-contain"
+                  loading="lazy"
+                />
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="break-words font-medium">{p.displayName || p.partNumber}</span>
+                    <OwnerChip item={p} myUserId={myUserId} orgs={orgs} />
+                  </p>
+                  <p className="break-all font-mono text-xs text-muted">{p.partNumber}</p>
+                </div>
+              </div>
+              <MoreMenu label={`More for ${p.partNumber}`}>
+                <a role="menuitem" href={api.customParts.xmlUrl(p.id)} download={`${p.partNumber}.xml`} className={MORE_ITEM}>
+                  Download XML
+                </a>
+                <a role="menuitem" href={api.customParts.spriteUrl(p.id)} download className={MORE_ITEM}>
+                  Download picture
+                </a>
+                {canDeletePart(p, myUserId, orgs) && (
+                  <button
+                    role="menuitem"
+                    type="button"
+                    className={`${MORE_ITEM} text-danger`}
+                    onClick={() => {
+                      if (confirm(`Delete "${p.partNumber}"? Layouts that use it will show a placeholder.`)) remove.mutate(p.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+              </MoreMenu>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* It saves to the club being shown, like New layout. */}
+      {uploading && <UploadPartDialog onClose={() => setUploading(false)} />}
+    </div>
+  );
+}

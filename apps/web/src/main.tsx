@@ -1,7 +1,8 @@
 import { lazy, StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { PARTS_SECTION } from './parts/CustomPartsSection';
 import { App } from './App';
 import { listenForInstall, reportDisplayMode } from './pwa/install';
 import { watchKeyboard } from './pwa/keyboard';
@@ -31,7 +32,6 @@ import './styles.css';
 // the editor (Konva, Yjs, parts rendering) or the admin console.
 const EditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ default: m.EditorPage })));
 const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })));
-const LibraryPage = lazy(() => import('./library/LibraryPage').then((m) => ({ default: m.LibraryPage })));
 const OrgAdminPage = lazy(() => import('./orgs/OrgAdminPage').then((m) => ({ default: m.OrgAdminPage })));
 const NewVenuePage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.NewVenuePage })));
 const VenueDesignPage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.VenueDesignPage })));
@@ -152,7 +152,8 @@ createRoot(root).render(
           <Route path="/orgs" element={<OrgsPage />} />
           <Route path="/orgs/:slug" element={<OrgDetailPage />} />
           <Route path="/orgs/:slug/admin" element={<OrgAdminPage />} />
-          <Route path="/library" element={<LibraryPage />} />
+          {/* The Library page's custom parts now live on the home page. */}
+          <Route path="/library" element={<Navigate to={PARTS_SECTION} replace />} />
           <Route path="/editor/:id" element={<EditorPage />} />
           <Route path="/venues/new" element={<NewVenuePage />} />
           <Route path="/venues/:id/design" element={<VenueDesignPage />} />

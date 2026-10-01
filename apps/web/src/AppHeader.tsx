@@ -2,7 +2,7 @@
 // editor, which has its own dense per-document toolbar).
 //
 // Top-left: app title (links to Layouts home).
-// Top-right: Library / Clubs / [Admin if applicable] / display
+// Top-right: Clubs / About / [Admin if applicable] / Settings / display
 //            name → Profile / Sign out.
 //
 // All routes go through `<Link>` so React Router takes the
@@ -55,9 +55,6 @@ export function AppHeader({ user }: Props) {
           if ((e.target as HTMLElement).closest('a')) setMenuOpen(false);
         }}
       >
-        <Link to="/library" className={link}>
-          Library
-        </Link>
         <Link to="/orgs" className={link}>
           Clubs
         </Link>
