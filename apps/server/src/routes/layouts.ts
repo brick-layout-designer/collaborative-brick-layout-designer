@@ -219,30 +219,12 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (sidecar) doc.getMap('meta').set('cache', sidecar as unknown as Record<string, unknown>);
     docSnapshot = encodeDoc(doc);
 
-    // Resolve owner — personal by default, or an org if `orgSlug` provided.
-    let ownerUserId: string | null = user.id;
-    let ownerOrgId: string | null = null;
-    if (body.orgSlug) {
-      const org = await db
-        .select({ id: schema.orgs.id })
-        .from(schema.orgs)
-        .where(eq(schema.orgs.slug, body.orgSlug.toLowerCase()))
-        .get();
-      if (!org) return reply.code(404).send({ error: 'org_not_found' });
-      const membership = await db
-        .select({ role: schema.orgMembers.role })
-        .from(schema.orgMembers)
-        .where(
-          and(
-            eq(schema.orgMembers.orgId, org.id),
-            eq(schema.orgMembers.userId, user.id),
-          ),
-        )
-        .get();
-      if (!membership) return reply.code(403).send({ error: 'not_an_org_member' });
-      ownerUserId = null;
-      ownerOrgId = org.id;
-    }
+    // Resolve owner — personal by default, or a club if `orgSlug` provided
+    // (a member, and an admin when the club lets only admins add things).
+    const dest = await destinationOrg(user.id, body.orgSlug);
+    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+    const ownerUserId: string | null = dest.orgId ? null : user.id;
+    const ownerOrgId: string | null = dest.orgId;
 
     const now = new Date();
     // Demo TTL only applies to user-owned layouts; org layouts persist

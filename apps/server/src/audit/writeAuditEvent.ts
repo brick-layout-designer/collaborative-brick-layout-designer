@@ -26,6 +26,10 @@ export type AuditEventType =
   | 'rename'
   | 'create'
   | 'delete'
+  // A club's admin changed its name, address, description or who may add things.
+  | 'settings'
+  // A club's admin handed the club to another member (they swap roles).
+  | 'hand_over'
   // Platform-admin actions. Subject is the resource being modified
   // (`resourceKind: 'user' | 'org' | 'layout' | ...`); the userId
   // field on the event is the admin who performed the action.

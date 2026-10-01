@@ -20,6 +20,7 @@ import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
+import { docHub } from '../ws/docHub.js';
 import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
 
 interface CreateOrgBody {
@@ -62,10 +63,19 @@ interface OrgMemberInviteBody {
   email?: string;
   userId?: string;
   role: 'admin' | 'member';
+  /** How long the invite lasts, 1 to 30 days (default 14). */
+  expiresInDays?: number;
 }
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const ORG_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** An invite's lifetime: `expiresInDays` (1 to 30), else 14 days; null when out of range. */
+function inviteTtlMs(days: unknown): number | null {
+  if (days === undefined || days === null) return ORG_INVITE_TTL_MS;
+  if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > 30) return null;
+  return days * 24 * 60 * 60 * 1000;
+}
 
 export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // ---- list orgs the current user belongs to -----------------------------
@@ -176,14 +186,137 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       .get();
     if (!myMembership) return reply.code(404).send({ error: 'not_found' });
 
+    const counts = await db
+      .select({ role: schema.orgMembers.role })
+      .from(schema.orgMembers)
+      .where(eq(schema.orgMembers.orgId, org.id));
     return {
       id: org.id,
       name: org.name,
       slug: org.slug,
       createdAt: org.createdAt.getTime(),
       myRole: myMembership.role,
+      description: org.description ?? '',
+      membersCanCreate: org.membersCanCreate,
+      memberCount: counts.length,
+      adminCount: counts.filter((c) => c.role === 'admin').length,
     };
   });
+
+  // ---- club settings (admins) ---------------------------------------------
+  // Name, address (slug), description, and whether members may add
+  // layouts, rooms and modules to the club.
+  app.patch<{
+    Params: { slug: string };
+    Body: { name?: unknown; slug?: unknown; description?: unknown; membersCanCreate?: unknown };
+  }>('/api/orgs/:slug', async (req, reply) => {
+    const user = requireUser(req);
+    const org = await loadOrgBySlug(req.params.slug);
+    if (!org) return reply.code(404).send({ error: 'not_found' });
+    const mine = await getMembership(org.id, user.id);
+    if (!mine) return reply.code(404).send({ error: 'not_found' });
+    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+
+    const body = req.body ?? {};
+    const updates: Partial<typeof schema.orgs.$inferInsert> = {};
+    if (body.name !== undefined) {
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name || name.length > 80) return reply.code(400).send({ error: 'invalid_name' });
+      updates.name = name;
+    }
+    if (body.slug !== undefined) {
+      const slug = typeof body.slug === 'string' ? body.slug.trim().toLowerCase() : '';
+      if (!SLUG_RE.test(slug)) return reply.code(400).send({ error: 'invalid_slug' });
+      if (slug !== org.slug) {
+        const taken = await db.select({ id: schema.orgs.id }).from(schema.orgs).where(eq(schema.orgs.slug, slug)).get();
+        if (taken) return reply.code(409).send({ error: 'slug_taken' });
+        updates.slug = slug;
+      }
+    }
+    if (body.description !== undefined) {
+      if (typeof body.description !== 'string' || body.description.length > 500) {
+        return reply.code(400).send({ error: 'invalid_description' });
+      }
+      updates.description = body.description.trim() || null;
+    }
+    if (body.membersCanCreate !== undefined) {
+      if (typeof body.membersCanCreate !== 'boolean') return reply.code(400).send({ error: 'invalid_input' });
+      updates.membersCanCreate = body.membersCanCreate;
+    }
+    if (Object.keys(updates).length === 0) return reply.code(400).send({ error: 'no_updates' });
+
+    await db.update(schema.orgs).set(updates).where(eq(schema.orgs.id, org.id));
+    await writeAuditEvent({
+      resourceKind: 'org',
+      resourceId: org.id,
+      userId: user.id,
+      eventType: 'settings',
+      payload: { ...updates },
+    });
+    return { ok: true, slug: updates.slug ?? org.slug, name: updates.name ?? org.name };
+  });
+
+  // ---- delete the club (admins, typed confirmation) -----------------------
+  // Its layouts, rooms, modules, custom parts, members and invites go with
+  // it (the foreign keys cascade), so the caller must type its name.
+  app.delete<{ Params: { slug: string }; Body: { confirm?: unknown } }>('/api/orgs/:slug', async (req, reply) => {
+    const user = requireUser(req);
+    const org = await loadOrgBySlug(req.params.slug);
+    if (!org) return reply.code(404).send({ error: 'not_found' });
+    const mine = await getMembership(org.id, user.id);
+    if (!mine) return reply.code(404).send({ error: 'not_found' });
+    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+    const typed = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
+    if (typed !== org.name.trim().toLowerCase()) return reply.code(400).send({ error: 'confirm_name_mismatch' });
+
+    // Close live editing sessions on the club's layouts first.
+    const layouts = await db.select({ id: schema.layouts.id }).from(schema.layouts).where(eq(schema.layouts.ownerOrgId, org.id));
+    for (const l of layouts) await docHub.close(l.id);
+    await db.delete(schema.orgs).where(eq(schema.orgs.id, org.id));
+    await writeAuditEvent({
+      resourceKind: 'org',
+      resourceId: org.id,
+      userId: user.id,
+      eventType: 'delete',
+      payload: { name: org.name, slug: org.slug, layouts: layouts.length },
+    });
+    return { ok: true };
+  });
+
+  // ---- hand the club over --------------------------------------------------
+  // An admin makes another member an admin and steps down to member in one
+  // go, so the club is never left without an admin.
+  app.post<{ Params: { slug: string }; Body: { userId?: unknown } }>(
+    '/api/orgs/:slug/hand-over',
+    async (req, reply) => {
+      const user = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const mine = await getMembership(org.id, user.id);
+      if (!mine) return reply.code(404).send({ error: 'not_found' });
+      if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+      const targetId = typeof req.body?.userId === 'string' ? req.body.userId : '';
+      if (!targetId || targetId === user.id) return reply.code(400).send({ error: 'invalid_input' });
+      const target = await getMembership(org.id, targetId);
+      if (!target) return reply.code(404).send({ error: 'member_not_found' });
+
+      const setRole = (userId: string, role: 'admin' | 'member') =>
+        db
+          .update(schema.orgMembers)
+          .set({ role })
+          .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, userId)));
+      await setRole(targetId, 'admin');
+      await setRole(user.id, 'member');
+      await writeAuditEvent({
+        resourceKind: 'org',
+        resourceId: org.id,
+        userId: user.id,
+        eventType: 'hand_over',
+        payload: { toUserId: targetId, fromUserId: user.id },
+      });
+      return { ok: true };
+    },
+  );
 
   // ---- list members + pending invites -------------------------------------
   app.get<{ Params: { slug: string } }>(
@@ -233,6 +366,8 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           invitedEmail: i.invitedEmail,
           role: i.role,
           expiresAt: i.expiresAt.getTime(),
+          // Admins only see invites at all; the link lets them send it themselves.
+          inviteUrl: `${env.publicUrl}/org-invite/${i.token}`,
         })),
       };
     },
@@ -288,9 +423,11 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         if (m) return reply.code(409).send({ error: 'already_member' });
       }
 
+      const ttl = inviteTtlMs(req.body.expiresInDays);
+      if (ttl === null) return reply.code(400).send({ error: 'invalid_expiry' });
       const token = randomBytes(24).toString('hex');
       const id = randomUUID();
-      const expiresAt = new Date(Date.now() + ORG_INVITE_TTL_MS);
+      const expiresAt = new Date(Date.now() + ttl);
       await db.insert(schema.orgInvites).values({
         id,
         orgId: org.id,
@@ -416,6 +553,39 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           ),
         );
       return { ok: true };
+    },
+  );
+
+  // ---- resend an invite ------------------------------------------------------
+  // Sends the same link again and gives it a fresh expiry.
+  app.post<{ Params: { slug: string; inviteId: string }; Body: { expiresInDays?: unknown } }>(
+    '/api/orgs/:slug/invites/:inviteId/resend',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const mine = await getMembership(org.id, user.id);
+      if (!mine) return reply.code(404).send({ error: 'not_found' });
+      if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+      const invite = await db
+        .select()
+        .from(schema.orgInvites)
+        .where(and(eq(schema.orgInvites.id, req.params.inviteId), eq(schema.orgInvites.orgId, org.id)))
+        .get();
+      if (!invite || invite.acceptedAt !== null) return reply.code(404).send({ error: 'not_found' });
+      const ttl = inviteTtlMs(req.body?.expiresInDays);
+      if (ttl === null) return reply.code(400).send({ error: 'invalid_expiry' });
+      const expiresAt = new Date(Date.now() + ttl);
+      await db.update(schema.orgInvites).set({ expiresAt }).where(eq(schema.orgInvites.id, invite.id));
+      const inviteUrl = `${env.publicUrl}/org-invite/${invite.token}`;
+      let emailDelivered = false;
+      try {
+        emailDelivered = await sendInviteEmail({ to: invite.invitedEmail, inviteUrl, inviterName: user.displayName });
+      } catch {
+        /* ignored — the admin can copy the link */
+      }
+      return { ok: true, inviteUrl, emailDelivered, expiresAt: expiresAt.getTime() };
     },
   );
 
