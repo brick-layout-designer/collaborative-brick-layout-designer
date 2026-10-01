@@ -4,6 +4,8 @@
 
 import { useState, type FormEvent } from 'react';
 import type { OrgSummary } from '../api';
+import { defaultSaveTo, readOwnerFilter, validOwnerFilter } from '../owners/owners';
+import { SaveToPicker } from '../owners/OwnerControls';
 
 interface Props {
   venueName: string;
@@ -13,14 +15,15 @@ interface Props {
 }
 
 export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Props) {
-  const [target, setTarget] = useState<'personal' | string>('personal');
+  // '' = Me, else a club's slug; starts at the club the home page shows.
+  const [target, setTarget] = useState(() => defaultSaveTo(validOwnerFilter(readOwnerFilter(), orgs)));
   const [name, setName] = useState(venueName || 'Venue');
 
   function submit(e: FormEvent) {
     e.preventDefault();
     const n = name.trim();
     if (!n) return;
-    onSave(target === 'personal' ? undefined : target, n);
+    onSave(target || undefined, n);
   }
 
   const inputCls = 'w-full rounded-lg border border-border bg-soft px-2 py-1.5 text-sm';
@@ -38,21 +41,7 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} autoFocus />
         </label>
 
-        <div>
-          <label className="mb-1 block text-xs text-muted">Save as</label>
-          <select
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            className={inputCls}
-          >
-            <option value="personal">Personal library</option>
-            {orgs.map((org) => (
-              <option key={org.slug} value={org.slug}>
-                {org.name} (org)
-              </option>
-            ))}
-          </select>
-        </div>
+        <SaveToPicker value={target} onChange={setTarget} orgs={orgs} />
 
         <div className="flex justify-end gap-2 pt-1">
           <button

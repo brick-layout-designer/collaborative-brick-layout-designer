@@ -19,6 +19,7 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { createLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 
 interface CreateModuleBody {
@@ -45,15 +46,18 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   }
 
   // ---- list modules the user can see -------------------------------------
-  app.get('/api/modules', async (req) => {
+  app.get<{ Querystring: { owner?: string } }>('/api/modules', async (req, reply) => {
     const user = requireUser(req);
+    // ?owner=all|me|<club slug>: a club the caller isn't in is not found.
+    const filter = await resolveOwnerFilter(user.id, req.query?.owner);
+    if (!filter) return reply.code(404).send({ error: 'org_not_found' });
     // Metadata columns only — never the doc blobs.
     const personal = await db
       .select(moduleListColumns)
       .from(schema.modules)
       .where(eq(schema.modules.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ module: moduleListColumns })
+      .select({ module: moduleListColumns, memberRole: schema.orgMembers.role })
       .from(schema.orgMembers)
       .innerJoin(
         schema.modules,
@@ -61,7 +65,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ module: moduleListColumns })
+      .select({ module: moduleListColumns, role: schema.moduleCollaborators.role })
       .from(schema.moduleCollaborators)
       .innerJoin(
         schema.modules,
@@ -70,23 +74,25 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.moduleCollaborators.userId, user.id));
 
     const seen = new Set<string>();
-    const all: ReturnType<typeof toListItem>[] = [];
+    const all: (ReturnType<typeof toListItem> & { role: Role })[] = [];
     for (const m of personal) {
       if (seen.has(m.id)) continue;
       seen.add(m.id);
-      all.push(toListItem(m));
+      all.push({ ...toListItem(m), role: 'owner' });
     }
-    for (const { module } of orgOwned) {
+    for (const { module, memberRole } of orgOwned) {
       if (seen.has(module.id)) continue;
       seen.add(module.id);
-      all.push(toListItem(module));
+      all.push({ ...toListItem(module), role: memberRole === 'admin' ? 'owner' : 'editor' });
     }
-    for (const { module } of shared) {
+    for (const { module, role } of shared) {
       if (seen.has(module.id)) continue;
       seen.add(module.id);
-      all.push(toListItem(module));
+      all.push({ ...toListItem(module), role });
     }
-    return { modules: all };
+    const shown = all.filter((m) => matchesOwner(m, filter, user.id));
+    const ownerOf = await ownerLookup(shown);
+    return { modules: shown.map((m) => ({ ...m, owner: ownerOf(m) })) };
   });
 
   // ---- get one module ---------------------------------------------------
@@ -161,6 +167,46 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     });
     return reply.code(201).send({ id, title });
   });
+
+  // ---- copy to yourself or a club ----------------------------------------
+  // Anyone who can open a module can copy it, into their own modules or a
+  // club they're in (moving uses the transfer route).
+  app.post<{ Params: { id: string }; Body: { orgSlug?: string; title?: string } }>(
+    '/api/modules/:id/copy',
+    async (req, reply) => {
+      const user = requireUser(req);
+      const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
+      if (role === null) return reply.code(404).send({ error: 'not_found' });
+      const src = await db.select().from(schema.modules).where(eq(schema.modules.id, req.params.id)).get();
+      if (!src) return reply.code(404).send({ error: 'not_found' });
+      const dest = await destinationOrg(user.id, req.body?.orgSlug);
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
+      const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
+      const id = randomUUID();
+      const now = new Date();
+      await db.insert(schema.modules).values({
+        id,
+        title,
+        ownerUserId: dest.orgId ? null : user.id,
+        ownerOrgId: dest.orgId,
+        createdBy: user.id,
+        docSnapshot: src.docSnapshot,
+        docVersion: 0,
+        sidecarSnapshot: src.sidecarSnapshot,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await writeAuditEvent({
+        resourceKind: 'module',
+        resourceId: id,
+        userId: user.id,
+        eventType: 'create',
+        payload: { title, copiedFrom: src.id, owner: dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id } },
+      });
+      return reply.code(201).send({ id, title });
+    },
+  );
 
   // ---- patch (rename) ---------------------------------------------------
   app.patch<{ Params: { id: string }; Body: { title?: string } }>(

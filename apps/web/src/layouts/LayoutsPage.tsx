@@ -1,7 +1,10 @@
-import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type LayoutSummary } from '../api';
+import { api, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
+import { defaultSaveTo, matchesOwnerFilter, useOwnerFilter, type OwnedItem } from '../owners/owners';
+import { MoveCopyDialog, OwnerChip, OwnerFilterBar, SaveToPicker } from '../owners/OwnerControls';
+import { HelpButton } from '../help/HelpButton';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
 import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
@@ -17,81 +20,94 @@ export function LayoutsPage() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const list = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
-  // "Start layout" on a venue list links here with ?newLayoutVenue=<id>[&owner=<org slug>].
+  const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
+  const orgsQuery = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
+  const orgs = orgsQuery.data?.orgs;
+  // All · Mine · each club; remembered, and ?owner=<club> from a club page.
+  const [filter, setFilter] = useOwnerFilter(orgs);
+  // "Start layout" on a room links here with ?newLayoutVenue=<id>[&owner=<club slug>].
   const [params, setParams] = useSearchParams();
   const startVenue = params.get('newLayoutVenue');
   const [showCreate, setShowCreate] = useState(startVenue !== null);
+  const [showNewModule, setShowNewModule] = useState(false);
   const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
+  const [moving, setMoving] = useState<{ kind: 'layout' | 'module'; item: LayoutSummary | ModuleSummary } | null>(null);
 
   const remove = useMutation({
     mutationFn: api.layouts.remove,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['layouts'] }),
   });
+  const removeModule = useMutation({
+    mutationFn: api.modules.remove,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
+  });
 
   if (list.isLoading) return <p className="text-muted">Loading layouts…</p>;
 
-  const allLayouts = list.data?.layouts ?? [];
-  // Personal layouts only — org-owned layouts live on the org's page.
-  const layouts = allLayouts.filter((l) => l.ownerOrgId === null);
-  // Collect distinct orgs that own at least one layout this user can see.
-  const orgLayouts = allLayouts.filter((l) => l.ownerOrgId !== null);
-  const orgGroups = orgLayouts.reduce<Record<string, { name: string; slug: string }>>((acc, l) => {
-    if (l.ownerOrgSlug && !acc[l.ownerOrgSlug]) {
-      acc[l.ownerOrgSlug] = { name: l.ownerOrgName ?? l.ownerOrgSlug, slug: l.ownerOrgSlug };
-    }
-    return acc;
-  }, {});
+  const myUserId = me.data?.user?.id;
+  const hasClubs = (orgs?.length ?? 0) > 0;
+  const shown = <T extends OwnedItem>(items: readonly T[]) => items.filter((i) => matchesOwnerFilter(i, filter, myUserId, orgs));
+  const layouts = shown(list.data?.layouts ?? []);
+  const moduleList = shown(modules.data?.modules ?? []);
+  const club = orgs?.find((o) => o.slug === filter);
+  const where = club ? `${club.name} has` : filter === 'me' ? 'You have' : 'There are';
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Layouts</h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
-        >
-          New layout
-        </button>
-      </div>
-
-      {Object.values(orgGroups).length > 0 && (
-        <div className="rounded-lg border border-border bg-soft/40 px-4 py-3 text-sm text-muted">
-          Some layouts are owned by your orgs and are not shown here.{' '}
-          {Object.values(orgGroups).map((org) => (
-            <Link
-              key={org.slug}
-              to={`/orgs/${org.slug}`}
-              className="text-accent-text hover:underline"
-            >
-              View {org.name}
-            </Link>
-          ))}
+    <section className="space-y-8">
+      {hasClubs && orgs && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Show</h2>
+            <HelpButton helpKey="owners.filter" />
+          </div>
+          <OwnerFilterBar value={filter} onChange={setFilter} orgs={orgs} />
+          {club && (
+            <p className="text-sm text-muted">
+              Showing {club.name}’s layouts, rooms and modules.{' '}
+              <Link to={`/orgs/${club.slug}`} className="font-semibold text-accent-text hover:underline">
+                Club page
+              </Link>
+            </p>
+          )}
         </div>
       )}
 
-      {layouts.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
-          No layouts yet. Click <em>New layout</em> to create or import one.
-        </p>
-      ) : (
-        <ul className="divide-y divide-line rounded-lg border border-line">
-          {layouts.map((l) => (
-            <LayoutRow
-              key={l.id}
-              layout={l}
-              onDelete={() => {
-                if (confirm(`Delete "${l.title}"? This cannot be undone.`)) remove.mutate(l.id);
-              }}
-              onShare={() => setShareLayout(l)}
-            />
-          ))}
-        </ul>
-      )}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl font-bold">Layouts</h2>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+          >
+            New layout
+          </button>
+        </div>
+        {layouts.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
+            {where} no layouts yet. Click <em>New layout</em> to create or import one.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
+            {layouts.map((l) => (
+              <LayoutRow
+                key={l.id}
+                layout={l}
+                chip={<OwnerChip item={l} myUserId={myUserId} orgs={orgs} />}
+                onDelete={() => {
+                  if (confirm(`Delete "${l.title}"? This cannot be undone.`)) remove.mutate(l.id);
+                }}
+                onShare={() => setShareLayout(l)}
+                onMove={hasClubs ? () => setMoving({ kind: 'layout', item: l }) : undefined}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
 
       {showCreate && (
         <CreateLayoutDialog
           initialVenueId={startVenue ?? ''}
-          initialOwnerSlug={params.get('owner') ?? ''}
+          initialOwnerSlug={params.get('owner') ?? defaultSaveTo(filter)}
           onClose={() => {
             setShowCreate(false);
             if (startVenue !== null) setParams({}, { replace: true });
@@ -106,10 +122,79 @@ export function LayoutsPage() {
         />
       )}
 
-      <div className="space-y-2 pt-4">
-        <h2 className="text-2xl font-bold">My rooms</h2>
-        <VenueList canManage />
+      <div className="space-y-3">
+        <h2 className="text-2xl font-bold">Rooms</h2>
+        <VenueList filter={filter} myUserId={myUserId} orgs={orgs} />
       </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-2xl font-bold">Modules</h2>
+          <button
+            onClick={() => setShowNewModule(true)}
+            className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+          >
+            New module
+          </button>
+        </div>
+        {modules.isLoading ? (
+          <p className="text-sm text-muted">Loading…</p>
+        ) : moduleList.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
+            {where} no saved modules yet. Pick some parts in a layout and use <em>Save as module</em>.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
+            {moduleList.map((m) => (
+              <li key={m.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="break-words font-medium">{m.title}</span>
+                    <OwnerChip item={m} myUserId={myUserId} orgs={orgs} />
+                  </p>
+                  <p className="text-xs text-muted">updated {new Date(m.updatedAt).toLocaleString()}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {hasClubs && (
+                    <button
+                      type="button"
+                      onClick={() => setMoving({ kind: 'module', item: m })}
+                      className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft"
+                    >
+                      Move or copy…
+                    </button>
+                  )}
+                  {(m.role === undefined || m.role === 'owner') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Delete "${m.title}"?`)) removeModule.mutate(m.id);
+                      }}
+                      className="tap-target rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {showNewModule && (
+        <NewModuleDialog initialOwnerSlug={defaultSaveTo(filter)} orgs={orgs} onClose={() => setShowNewModule(false)} />
+      )}
+
+      {moving && orgs && (
+        <MoveCopyDialog
+          kind={moving.kind}
+          item={{ id: moving.item.id, title: moving.item.title, ownerOrgId: moving.item.ownerOrgId }}
+          canMove={moving.item.role === undefined || moving.item.role === 'owner'}
+          orgs={orgs}
+          onClose={() => setMoving(null)}
+        />
+      )}
 
       {shareLayout && me.data?.user && (
         <ShareDialogLoader
@@ -119,6 +204,73 @@ export function LayoutsPage() {
         />
       )}
     </section>
+  );
+}
+
+/** New module: a title and where it's saved. */
+function NewModuleDialog({
+  initialOwnerSlug,
+  orgs,
+  onClose,
+}: {
+  initialOwnerSlug: string;
+  orgs: readonly OrgSummary[] | undefined;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState('');
+  const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
+  const [error, setError] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: api.modules.create,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['modules'] });
+      onClose();
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-label="New module"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          create.mutate({
+            ...(title.trim() ? { title: title.trim() } : {}),
+            ...(ownerSlug ? { orgSlug: ownerSlug } : {}),
+          });
+        }}
+        className="w-full max-w-md space-y-4 rounded-section border border-line bg-panel p-5 text-sm"
+      >
+        <h3 className="text-lg font-semibold">New module</h3>
+        <label className="block">
+          <span className="mb-1 block text-muted">Title</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Untitled Module"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
+          />
+        </label>
+        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs} />
+        {error && <p className="text-xs text-danger">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={create.isPending}
+            className="tap-target rounded-lg bg-accent px-4 py-2 text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+          >
+            Create
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -156,13 +308,20 @@ function ShareDialogLoader({
 
 function LayoutRow({
   layout,
+  chip,
   onDelete,
   onShare,
+  onMove,
 }: {
   layout: LayoutSummary;
+  chip: ReactNode;
   onDelete: () => void;
   onShare: () => void;
+  /** Move or copy… (only offered to people in a club). */
+  onMove?: (() => void) | undefined;
 }) {
+  // Older servers don't send the role: their list held only your own layouts.
+  const isOwner = layout.role === undefined || layout.role === 'owner';
   // New layouts can start as a copy of this one (desktop's File > New template).
   const [isTemplate, setIsTemplate] = useState(() => getNewLayoutTemplate()?.id === layout.id);
   useEffect(() => {
@@ -175,7 +334,10 @@ function LayoutRow({
     // runs off the side of the screen.
     <li className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="break-words font-medium">{layout.title}</p>
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="break-words font-medium">{layout.title}</span>
+          {chip}
+        </p>
         <p className="text-xs text-muted">
           updated {new Date(layout.updatedAt).toLocaleString()}
           {layout.expiresAt && (
@@ -197,7 +359,7 @@ function LayoutRow({
         </Link>
         <button
           onClick={onShare}
-          className="rounded-lg border border-border px-3 py-1 hover:bg-soft"
+          className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft"
         >
           Share
         </button>
@@ -219,12 +381,19 @@ function LayoutRow({
           />
           Template for new layouts
         </label>
-        <button
-          onClick={onDelete}
-          className="rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
-        >
-          Delete
-        </button>
+        {onMove && (
+          <button onClick={onMove} className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft">
+            Move or copy…
+          </button>
+        )}
+        {isOwner && (
+          <button
+            onClick={onDelete}
+            className="tap-target rounded-lg border border-red-900 px-3 py-1 text-danger hover:bg-red-950"
+          >
+            Delete
+          </button>
+        )}
       </div>
     </li>
   );
@@ -343,7 +512,7 @@ function CreateLayoutDialog({
         const v = await api.venues.get(venueId);
         body.sidecar = sidecarWithVenue(body.sidecar, v.data as Venue);
       } catch (err) {
-        setError(`Could not load the venue: ${(err as Error).message}`);
+        setError(`Could not load the room: ${(err as Error).message}`);
         return;
       }
     }
@@ -405,40 +574,24 @@ function CreateLayoutDialog({
           />
         </label>
 
-        {orgs.data && orgs.data.orgs.length > 0 && (
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Owner</span>
-            <select
-              value={ownerSlug}
-              onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
-            >
-              <option value="">Personal (you)</option>
-              {orgs.data.orgs.map((o) => (
-                <option key={o.slug} value={o.slug}>
-                  Org: {o.name} ({o.myRole})
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs.data?.orgs} />
 
         {venues.data && venues.data.venues.length > 0 && (
           <label className="block text-sm">
-            <span className="mb-1 block text-muted">Start from venue</span>
+            <span className="mb-1 block text-muted">Start from a room</span>
             <select
               value={venueId}
               onChange={(e) => setVenueId(e.target.value)}
               className="w-full rounded-lg border border-border bg-soft px-3 py-2"
             >
-              <option value="">No venue</option>
+              <option value="">No room</option>
               {orderVenuesForOwner(
                 venues.data.venues,
                 orgs.data?.orgs.find((o) => o.slug === ownerSlug)?.id ?? null,
               ).map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.name}
-                  {v.ownerOrgId ? ` (${orgs.data?.orgs.find((o) => o.id === v.ownerOrgId)?.name ?? 'org'})` : ''}
+                  {v.ownerOrgId ? ` (${orgs.data?.orgs.find((o) => o.id === v.ownerOrgId)?.name ?? 'club'})` : ''}
                 </option>
               ))}
             </select>

@@ -2,7 +2,6 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type OrgMemberSummary, type OrgPartLibrary } from '../api';
 import { AppHeader } from '../AppHeader';
-import { VenueList } from '../venues/VenueList';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -17,10 +16,6 @@ function OrgDetail({ slug }: { slug: string }) {
     queryKey: ['org-members', slug],
     queryFn: () => api.orgs.members(slug),
   });
-  const layouts = useQuery({
-    queryKey: ['org-layouts', slug],
-    queryFn: () => api.orgs.layouts(slug),
-  });
 
   if (me.isLoading || detail.isLoading) {
     return <div className="grid h-screen place-items-center text-muted">Loading…</div>;
@@ -30,7 +25,7 @@ function OrgDetail({ slug }: { slug: string }) {
     return (
       <div className="grid h-screen place-items-center">
         <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-danger">Organization not found.</p>
+          <p className="font-semibold text-danger">Club not found.</p>
           <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
         </div>
       </div>
@@ -49,7 +44,7 @@ function OrgDetail({ slug }: { slug: string }) {
           <div>
             <h1 className="text-2xl font-semibold">{org.name}</h1>
             <p className="text-sm text-muted">
-              /{org.slug} · you are {org.myRole}
+              /{org.slug} · you are {org.myRole === 'admin' ? 'an admin' : 'a member'}
             </p>
           </div>
           {isAdmin && (
@@ -57,7 +52,7 @@ function OrgDetail({ slug }: { slug: string }) {
               to={`/orgs/${slug}/admin`}
               className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
             >
-              Org settings →
+              Club settings →
             </Link>
           )}
         </div>
@@ -76,45 +71,7 @@ function OrgDetail({ slug }: { slug: string }) {
           )}
         </section>
 
-        <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            Org-owned layouts
-          </h2>
-          {layouts.isLoading && <p className="text-sm text-muted">Loading…</p>}
-          {layouts.data &&
-            (layouts.data.layouts.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-                No layouts owned by this org yet. Open a personal layout and use{' '}
-                <em>Transfer</em> to move it here.
-              </p>
-            ) : (
-              <ul className="divide-y divide-line rounded-lg border border-line">
-                {layouts.data.layouts.map((l) => (
-                  <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div>
-                      <p>{l.title}</p>
-                      <p className="text-xs text-muted">
-                        updated {new Date(l.updatedAt).toLocaleString()}
-                      </p>
-                    </div>
-                    <Link
-                      to={`/editor/${l.id}`}
-                      className="rounded-lg bg-accent text-accent-ink px-3 py-1 hover:bg-accent-hover"
-                    >
-                      Open
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ))}
-        </section>
-
-        <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            Venues
-          </h2>
-          <VenueList org={{ id: org.id, slug: org.slug }} canManage={isAdmin} />
-        </section>
+        <ClubThings org={org} />
 
         <section>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
@@ -199,5 +156,52 @@ function OrgPartLibraries({ slug }: { slug: string }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The club's layouts, rooms and modules live in the one list on the home
+ * page, next to your own; this sums them up and links there, filtered to
+ * the club.
+ */
+function ClubThings({ org }: { org: { id: string; name: string; slug: string } }) {
+  const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
+  const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
+  const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
+  const count = (items: readonly { ownerOrgId: string | null }[] | undefined) =>
+    items ? items.filter((i) => i.ownerOrgId === org.id).length : null;
+  const tiles = [
+    { label: 'Layouts', n: count(layouts.data?.layouts) },
+    { label: 'Rooms', n: count(venues.data?.venues) },
+    { label: 'Modules', n: count(modules.data?.modules) },
+  ];
+  const to = `/?owner=${encodeURIComponent(org.slug)}`;
+  return (
+    <section aria-labelledby="club-things" className="space-y-3 rounded-section border border-line bg-panel p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="club-things" className="text-lg font-semibold">
+          The club’s things
+        </h2>
+        <Link
+          to={to}
+          className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+        >
+          Open the club’s list
+        </Link>
+      </div>
+      <ul className="grid grid-cols-3 gap-2">
+        {tiles.map((t) => (
+          <li key={t.label}>
+            <Link to={to} className="tap-target block rounded-lg border border-line bg-soft px-3 py-2 text-center hover:border-accent">
+              <span className="block text-2xl font-bold">{t.n ?? '…'}</span>
+              <span className="text-xs text-muted">{t.label}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="text-sm text-muted">
+        They sit with your own things on the home page, marked “{org.name}”. To add one, choose {org.name} under “Save to”.
+      </p>
+    </section>
   );
 }

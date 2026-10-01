@@ -1,34 +1,59 @@
-// Saved venues outside the editor: an org's (on its page) or your own (on
-// the layouts page). Start a layout from one, download it as a
-// .bld-venue file, upload one, and, when you manage the list (your own,
-// or an org you admin), rename or delete.
+// Saved rooms on the home page: yours and your clubs', together, each with
+// its owner chip, narrowed by the home page's owner filter. Start a layout
+// from one, download it as a .bld-venue file, upload one, move or copy it
+// between you and a club, and, when you manage it (your own, or a club you
+// admin), design, rename or delete it.
 
-import { useRef, type ChangeEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useRef, useState, type ChangeEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Venue } from '@cld/bbm';
-import { api } from '../api';
+import { api, type OrgSummary, type VenueSummary } from '../api';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from '../editor/venueFile';
 import { downloadText } from './venueStart';
+import { defaultSaveTo, itemOrgSlug, matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
+import { MoveCopyDialog, OwnerChip, SaveToDialog } from '../owners/OwnerControls';
 
-export function VenueList({ org, canManage }: { org?: { id: string; slug: string }; canManage: boolean }) {
+/** May change it: the server says so; older servers: yours, or a club you admin. */
+export function canManageVenue(v: VenueSummary, orgs: readonly OrgSummary[] | undefined): boolean {
+  if (v.canManage !== undefined) return v.canManage;
+  if (!v.ownerOrgId) return true;
+  return orgs?.find((o) => o.id === v.ownerOrgId)?.myRole === 'admin';
+}
+
+export function VenueList({
+  filter,
+  myUserId,
+  orgs,
+}: {
+  filter: OwnerFilter;
+  myUserId: string | undefined;
+  orgs: readonly OrgSummary[] | undefined;
+}) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement>(null);
   const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
   const refresh = () => qc.invalidateQueries({ queryKey: ['venues'] });
   const fail = (what: string) => (e: Error) => alert(`Could not ${what}: ${e.message}`);
+  // Where an upload goes, picked before the file is.
+  const uploadTo = useRef('');
+  const [asking, setAsking] = useState<'new' | 'upload' | null>(null);
+  const [moving, setMoving] = useState<VenueSummary | null>(null);
+  const hasClubs = (orgs?.length ?? 0) > 0;
 
   const upload = useMutation({
-    mutationFn: (body: { name: string; data: Venue }) => api.venues.create({ ...body, ...(org ? { orgSlug: org.slug } : {}) }),
+    mutationFn: (body: { name: string; data: Venue }) =>
+      api.venues.create({ ...body, ...(uploadTo.current ? { orgSlug: uploadTo.current } : {}) }),
     onSuccess: refresh,
-    onError: fail('upload the venue'),
+    onError: fail('upload the room'),
   });
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => api.venues.rename(id, name),
     onSuccess: refresh,
-    onError: fail('rename the venue'),
+    onError: fail('rename the room'),
   });
-  const remove = useMutation({ mutationFn: api.venues.remove, onSuccess: refresh, onError: fail('delete the venue') });
+  const remove = useMutation({ mutationFn: api.venues.remove, onSuccess: refresh, onError: fail('delete the room') });
 
   async function pick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -50,87 +75,147 @@ export function VenueList({ org, canManage }: { org?: { id: string; slug: string
       const v = await api.venues.get(id);
       downloadText(`${name}${VENUE_FILE_EXT}`, writeVenueFile(v.data as Venue));
     } catch (err) {
-      alert(`Could not download the venue: ${(err as Error).message}`);
+      alert(`Could not download the room: ${(err as Error).message}`);
     }
   }
 
+  function startNew(slug: string) {
+    navigate(`/venues/new${slug ? `?org=${encodeURIComponent(slug)}` : ''}`);
+  }
+  function startUpload(slug: string) {
+    uploadTo.current = slug;
+    fileInput.current?.click();
+  }
+
   const list = (venues.data?.venues ?? [])
-    .filter((v) => v.ownerOrgId === (org?.id ?? null))
+    .filter((v) => matchesOwnerFilter(v, filter, myUserId, orgs))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const startUrl = (id: string) => `/?newLayoutVenue=${encodeURIComponent(id)}${org ? `&owner=${encodeURIComponent(org.slug)}` : ''}`;
-  const btn = 'tap-target inline-flex items-center rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft';
+  const startUrl = (v: VenueSummary) => {
+    const slug = itemOrgSlug(v, orgs);
+    return `/?newLayoutVenue=${encodeURIComponent(v.id)}${slug ? `&owner=${encodeURIComponent(slug)}` : ''}`;
+  };
+  const designUrl = (v: VenueSummary) => {
+    const slug = itemOrgSlug(v, orgs);
+    return `/venues/${encodeURIComponent(v.id)}/design${slug ? `?org=${encodeURIComponent(slug)}` : ''}`;
+  };
+  const btn = 'tap-target inline-flex items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft';
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+          onClick={() => (hasClubs ? setAsking('new') : startNew(''))}
+        >
+          New room
+        </button>
+        <button
+          type="button"
+          className={btn}
+          disabled={upload.isPending}
+          onClick={() => (hasClubs ? setAsking('upload') : startUpload(''))}
+        >
+          Upload room…
+        </button>
+      </div>
       {venues.isLoading && <p className="text-sm text-muted">Loading…</p>}
       {venues.data &&
         (list.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-            No saved rooms yet. Upload a .bld-venue file, or save one from the editor's Room library.
+            No saved rooms here yet. Make a new one, upload a .bld-venue file, or save one from the editor's Room library.
           </p>
         ) : (
-          <ul className="divide-y divide-line rounded-lg border border-line">
-            {list.map((v) => (
-              <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                <span>{v.name}</span>
-                <span className="flex flex-wrap gap-1">
-                  <Link to={startUrl(v.id)} className="tap-target inline-flex items-center rounded-lg bg-accent text-accent-ink px-2 py-1 text-xs hover:bg-accent-hover">
-                    Start layout
-                  </Link>
-                  {canManage && (
-                    <Link to={`/venues/${encodeURIComponent(v.id)}/design${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className={btn}>
-                      Design
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
+            {list.map((v) => {
+              const manage = canManageVenue(v, orgs);
+              return (
+                <li key={v.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="break-words font-medium">{v.name}</span>
+                    <OwnerChip item={v} myUserId={myUserId} orgs={orgs} />
+                  </span>
+                  <span className="flex flex-wrap gap-2">
+                    <Link
+                      to={startUrl(v)}
+                      className="tap-target inline-flex items-center rounded-lg bg-accent px-3 py-1 text-sm text-accent-ink hover:bg-accent-hover"
+                    >
+                      Start layout
                     </Link>
-                  )}
-                  <button type="button" className={btn} onClick={() => void download(v.id, v.name)}>
-                    Download
-                  </button>
-                  {canManage && (
-                    <>
-                      <button
-                        type="button"
-                        className={btn}
-                        onClick={() => {
-                          const next = prompt('New name:', v.name)?.trim();
-                          if (next && next !== v.name) rename.mutate({ id: v.id, name: next });
-                        }}
-                      >
-                        Rename
+                    {manage && (
+                      <Link to={designUrl(v)} className={btn}>
+                        Design
+                      </Link>
+                    )}
+                    <button type="button" className={btn} onClick={() => void download(v.id, v.name)}>
+                      Download
+                    </button>
+                    {hasClubs && (
+                      <button type="button" className={btn} onClick={() => setMoving(v)}>
+                        Move or copy…
                       </button>
-                      <button
-                        type="button"
-                        className={`${btn} text-danger`}
-                        onClick={() => {
-                          if (confirm(`Delete "${v.name}"?`)) remove.mutate(v.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </span>
-              </li>
-            ))}
+                    )}
+                    {manage && (
+                      <>
+                        <button
+                          type="button"
+                          className={btn}
+                          onClick={() => {
+                            const next = prompt('New name:', v.name)?.trim();
+                            if (next && next !== v.name) rename.mutate({ id: v.id, name: next });
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className={`${btn} text-danger`}
+                          onClick={() => {
+                            if (confirm(`Delete "${v.name}"?`)) remove.mutate(v.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         ))}
-      <div className="flex gap-2">
-        {(canManage || org) && (
-          <Link to={`/venues/new${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`} className="tap-target inline-flex items-center rounded-lg bg-accent text-accent-ink px-2 py-1 text-xs hover:bg-accent-hover">
-            New room
-          </Link>
-        )}
-        <button type="button" className={btn} disabled={upload.isPending} onClick={() => fileInput.current?.click()}>
-          Upload room…
-        </button>
-      </div>
       <input
         ref={fileInput}
         type="file"
         accept={VENUE_FILE_ACCEPT}
         onChange={(e) => void pick(e)}
         className="hidden"
-        aria-label="Venue file"
+        aria-label="Room file"
       />
+      {asking && orgs && (
+        <SaveToDialog
+          title={asking === 'new' ? 'New room' : 'Upload a room'}
+          confirmLabel={asking === 'new' ? 'Start designing' : 'Choose file…'}
+          initial={defaultSaveTo(filter)}
+          orgs={orgs}
+          onClose={() => setAsking(null)}
+          onConfirm={(slug) => {
+            const what = asking;
+            setAsking(null);
+            if (what === 'new') startNew(slug);
+            else startUpload(slug);
+          }}
+        />
+      )}
+      {moving && orgs && (
+        <MoveCopyDialog
+          kind="room"
+          item={{ id: moving.id, title: moving.name, ownerOrgId: moving.ownerOrgId }}
+          canMove={canManageVenue(moving, orgs)}
+          orgs={orgs}
+          onClose={() => setMoving(null)}
+        />
+      )}
     </div>
   );
 }

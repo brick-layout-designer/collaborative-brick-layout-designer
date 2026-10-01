@@ -2,7 +2,7 @@
 // editor, which has its own dense per-document toolbar).
 //
 // Top-left: app title (links to Layouts home).
-// Top-right: Library / Organizations / [Admin if applicable] / display
+// Top-right: Library / Clubs / [Admin if applicable] / display
 //            name → Profile / Sign out.
 //
 // All routes go through `<Link>` so React Router takes the
@@ -59,7 +59,7 @@ export function AppHeader({ user }: Props) {
           Library
         </Link>
         <Link to="/orgs" className={link}>
-          Organizations
+          Clubs
         </Link>
         <Link to="/about" className={link}>
           About

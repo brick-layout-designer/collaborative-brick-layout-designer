@@ -28,7 +28,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Incorrect email or password.',
   invalid_input: 'Please fill in all required fields.',
   email_taken: 'An account with that email already exists.',
-  name_taken: 'Another saved venue already has that name.',
+  name_taken: 'Another saved room already has that name.',
+  not_an_org_member: 'You are not in that club.',
+  not_a_member_of_recipient_org: 'You are not in that club.',
+  org_not_found: 'That club was not found.',
+  recipient_org_not_found: 'That club was not found.',
+  org_owned_rooms_can_only_move_to_orgs: "A club's room stays with the club. Make a copy for yourself instead.",
+  org_owned_layouts_can_only_transfer_to_orgs: "A club's layout stays with the club. Make a copy for yourself instead.",
   invalid_email: 'Enter a valid email address.',
   forbidden: "You don't have permission to do that.",
   not_found: 'That item could not be found.',
@@ -84,9 +90,36 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Who owns a layout, room or module: a person, or a club. */
+export interface OwnerInfo {
+  kind: 'user' | 'org';
+  id: string;
+  name: string;
+  /** The club's slug; null for a person. */
+  slug: string | null;
+}
+
+/** `?owner=` on the list endpoints: everything, only mine, or one club's (by slug). */
+export type OwnerQuery = 'all' | 'me' | string;
+
+export interface VenueSummary {
+  id: string;
+  name: string;
+  ownerUserId?: string | null;
+  ownerOrgId: string | null;
+  ownerOrgName?: string | null;
+  ownerOrgSlug?: string | null;
+  /** May rename, redesign, move or delete it (yours, or a club you admin). */
+  canManage?: boolean;
+  owner?: OwnerInfo | null;
+}
+
 export interface LayoutSummary {
   id: string;
   title: string;
+  /** The caller's role on it (list responses). */
+  role?: 'owner' | 'editor' | 'viewer' | null;
+  owner?: OwnerInfo | null;
   ownerUserId: string | null;
   ownerOrgId: string | null;
   ownerOrgName: string | null;
@@ -284,6 +317,9 @@ export const api = {
 
   layouts: {
     list: () => get<{ layouts: LayoutSummary[] }>('/api/layouts'),
+    /** Copy into your own layouts (no `orgSlug`) or a club's. */
+    copy: (id: string, orgSlug?: string) =>
+      post<{ id: string; title: string }>(`/api/layouts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
     get: (id: string) => get<{ layout: LayoutSummary; role: 'owner' | 'editor' | 'viewer' }>(
       `/api/layouts/${id}`,
     ),
@@ -485,6 +521,9 @@ export const api = {
 
   modules: {
     list: () => get<{ modules: ModuleSummary[] }>('/api/modules'),
+    /** Copy into your own modules (no `orgSlug`) or a club's. */
+    copy: (id: string, orgSlug?: string) =>
+      post<{ id: string; title: string }>(`/api/modules/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
     get: (id: string) =>
       get<{ module: ModuleSummary; role: 'owner' | 'editor' | 'viewer' }>(
         `/api/modules/${id}`,
@@ -501,7 +540,13 @@ export const api = {
   },
 
   venues: {
-    list: () => get<{ venues: { id: string; name: string; ownerOrgId: string | null }[] }>('/api/venues'),
+    list: () => get<{ venues: VenueSummary[] }>('/api/venues'),
+    /** Copy into your own rooms (no `orgSlug`) or a club's. */
+    copy: (id: string, orgSlug?: string) =>
+      post<{ id: string; name: string }>(`/api/venues/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
+    /** Hand a room to a club (a club's room never moves back to one person). */
+    move: (id: string, orgSlug: string) =>
+      post<{ ok: true; id: string; name: string }>(`/api/venues/${encodeURIComponent(id)}/move`, { orgSlug }),
     get: (id: string) => get<{ id: string; name: string; data: unknown }>(`/api/venues/${id}`),
     create: (body: { name: string; data: unknown; orgSlug?: string }) =>
       post<{ id: string; name: string }>('/api/venues', body),
@@ -817,6 +862,9 @@ export interface CustomPartSummary {
 export interface ModuleSummary {
   id: string;
   title: string;
+  /** The caller's role on it (list responses). */
+  role?: 'owner' | 'editor' | 'viewer';
+  owner?: OwnerInfo | null;
   ownerUserId: string | null;
   ownerOrgId: string | null;
   docVersion: number;

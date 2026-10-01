@@ -304,6 +304,13 @@ export const HELP_TEXTS = {
     short: 'Keep the server’s part, use the file’s, or keep both.',
     more: '“Use the file’s” replaces the part for everyone on this server. “Keep both” adds the file’s under a new number, and only this layout uses it.',
   },
+
+  // Yours and your clubs'
+  'owners.filter': {
+    title: 'Whose things',
+    short: 'Show everything you can use, only your own, or one club’s.',
+    more: 'Your own things and your clubs’ things sit in one list, each marked with who owns it. Pick a club to see just its things; new things are saved there too unless you choose otherwise.',
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_TEXTS;

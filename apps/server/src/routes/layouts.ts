@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createWriteStream, createReadStream, existsSync } from 'node:fs';
-import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
@@ -15,6 +15,7 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
 import { docHub } from '../ws/docHub.js';
+import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
 
 interface CreateLayoutBody {
@@ -73,8 +74,11 @@ export async function layoutRoutes(app: FastifyInstance) {
   }
 
   // ---- list ----------------------------------------------------------------
-  app.get('/api/layouts', { config: TOKEN_READ }, async (req) => {
+  app.get<{ Querystring: { owner?: string } }>('/api/layouts', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
+    // ?owner=all|me|<club slug>: a club the caller isn't in is not found.
+    const filter = await resolveOwnerFilter(user.id, req.query?.owner);
+    if (!filter) return reply.code(404).send({ error: 'org_not_found' });
     // Three sources of layouts the user can see:
     //   1. ownerUserId === user.id          (personal)
     //   2. ownerOrgId joined to org_members (org-owned where they're a member)
@@ -122,7 +126,9 @@ export async function layoutRoutes(app: FastifyInstance) {
       seen.add(layout.id);
       all.push(toListItem(layout, role));
     }
-    return { layouts: all };
+    const shown = all.filter((l) => matchesOwner(l, filter, user.id));
+    const ownerOf = await ownerLookup(shown);
+    return { layouts: shown.map((l) => ({ ...l, owner: ownerOf(l) })) };
   });
 
   // ---- get -----------------------------------------------------------------
@@ -308,6 +314,61 @@ export async function layoutRoutes(app: FastifyInstance) {
     await docHub.close(req.params.id);
     return { ok: true };
   });
+
+  // ---- copy to yourself or a club -------------------------------------------
+  // Anyone who can open a layout can copy it, into their own layouts or a
+  // club they're in (moving uses the transfer route). The copy carries the
+  // current document, live edits included, its sidecar and its background.
+  app.post<{ Params: { id: string }; Body: { orgSlug?: string; title?: string } }>(
+    '/api/layouts/:id/copy',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+      if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
+      const src = await db.select().from(schema.layouts).where(eq(schema.layouts.id, req.params.id)).get();
+      if (!src) return reply.code(404).send({ error: 'not_found' });
+      const dest = await destinationOrg(user.id, req.body?.orgSlug);
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+
+      const id = randomUUID();
+      const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
+      const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
+      const doc = decodeDoc(await currentDocBytes(src.id, src.docSnapshot as Uint8Array));
+      // The background is served per layout: point the copy at its own.
+      const oldBg = `/api/layouts/${src.id}/background-image`;
+      const meta = doc.getMap('meta');
+      const cache = meta.get('cache') as Record<string, unknown> | undefined;
+      const bg = cache?.backgroundImage as Record<string, unknown> | undefined;
+      if (cache && bg && typeof bg.url === 'string' && bg.url.startsWith(oldBg)) {
+        meta.set('cache', { ...cache, backgroundImage: { ...bg, url: `/api/layouts/${id}/background-image` } });
+      }
+      const now = new Date();
+      const ownerUserId = dest.orgId ? null : user.id;
+      await db.insert(schema.layouts).values({
+        id,
+        title,
+        ownerUserId,
+        ownerOrgId: dest.orgId,
+        createdBy: user.id,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: user.isDemoAccount && ownerUserId ? new Date(now.getTime() + env.demoLayoutTtlDays * 86400_000) : null,
+        docSnapshot: Buffer.from(encodeDoc(doc)),
+        docVersion: 0,
+        sidecarSnapshot: src.sidecarSnapshot,
+      });
+      const bgDir = join(dirname(env.dbPath), 'bgimages');
+      for (const ext of BG_EXTS) {
+        const from = join(bgDir, `${src.id}.${ext}`);
+        if (existsSync(from)) {
+          await copyFile(from, join(bgDir, `${id}.${ext}`));
+          break;
+        }
+      }
+      return reply.code(201).send({ id, title });
+    },
+  );
 
   // ---- compare (desktop reconnect preview) -------------------------------
   // Sync phase P1b: the desktop sends the copy it went offline with and its
@@ -759,6 +820,8 @@ function toListItem(
     ownerOrgId: l.ownerOrgId,
     ownerOrgName: ownerOrgName ?? null,
     ownerOrgSlug: ownerOrgSlug ?? null,
+    // The caller's role (the desktop's Access column reads it).
+    role,
     createdAt: l.createdAt,
     updatedAt: l.updatedAt,
     expiresAt: l.expiresAt,
