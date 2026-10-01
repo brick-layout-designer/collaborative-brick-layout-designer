@@ -18,7 +18,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminGlobalPart, type AdminAuditEvent, type AdminSettings, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
-import { CategoryPicker } from '../library/LibraryPage';
+import { CategoryPicker } from '../parts/CategoryPicker';
 import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
 
 type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'audit' | 'settings';

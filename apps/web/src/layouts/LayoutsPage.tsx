@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
 import { defaultSaveTo, matchesOwnerFilter, useOwnerFilter, type OwnedItem } from '../owners/owners';
@@ -14,6 +14,9 @@ import { PartDifferencesDialog } from './PartDifferencesDialog';
 import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
+import { CustomPartsSection } from '../parts/CustomPartsSection';
+import { lastLayoutToReopen } from './reopenLast';
+import { useEditorStore } from '../editor/editorStore';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -43,6 +46,27 @@ export function LayoutsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
   });
 
+  // "Reopen last layout on startup" (Preferences): once per visit, and
+  // never over a link that came here for something else.
+  const reopenLastFile = useEditorStore((s) => s.reopenLastFile);
+  const location = useLocation();
+  useEffect(() => {
+    const id = lastLayoutToReopen(reopenLastFile, location.search, location.hash);
+    if (id) navigate(`/editor/${id}`, { replace: true });
+  // Only on arriving here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // /library and the club page's Parts tab link to #parts: scroll there
+  // once the lists are in.
+  // Every list above the parts section, so it doesn't move after the scroll.
+  const venuesQuery = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
+  const partsQuery = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
+  const listsReady = !list.isLoading && !modules.isLoading && !venuesQuery.isLoading && !partsQuery.isLoading;
+  useEffect(() => {
+    if (listsReady && location.hash === '#parts') document.getElementById('parts')?.scrollIntoView({ block: 'start' });
+  }, [listsReady, location.hash]);
+
   if (list.isLoading) return <p className="text-muted">Loading layouts…</p>;
 
   const myUserId = me.data?.user?.id;
@@ -64,7 +88,7 @@ export function LayoutsPage() {
           <OwnerFilterBar value={filter} onChange={setFilter} orgs={orgs} />
           {club && (
             <p className="text-sm text-muted">
-              Showing {club.name}’s layouts, rooms and modules.{' '}
+              Showing {club.name}’s layouts, rooms, modules and parts.{' '}
               <Link to={`/orgs/${club.slug}`} className="font-semibold text-accent-text hover:underline">
                 Club page
               </Link>
@@ -181,6 +205,15 @@ export function LayoutsPage() {
           </ul>
         )}
       </div>
+
+      <section id="parts" className="scroll-mt-4">
+        <CustomPartsSection
+          filter={filter}
+          myUserId={myUserId}
+          orgs={orgs}
+          canUpload={!!me.data?.user && !me.data.user.isDemoAccount}
+        />
+      </section>
 
       {showNewModule && (
         <NewModuleDialog initialOwnerSlug={defaultSaveTo(filter)} orgs={orgs} onClose={() => setShowNewModule(false)} />

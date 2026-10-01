@@ -6,6 +6,7 @@ import { indexParts } from './partIndex';
 import type { BbmMap } from '@cld/model';
 import { countUsage, effectiveLimit } from './budgetUsage';
 import { useEditorStore } from './editorStore';
+import { UploadPartDialog } from '../parts/UploadPartDialog';
 
 interface PartContextMenu {
   part: PartWire;
@@ -27,8 +28,11 @@ export function PartsPanel({
   onPlacePart,
   budgetLimits,
   map,
+  canUploadPart = false,
 }: {
   onPlacePart: (part: PartWire) => void;
+  /** Offer "Upload part…" (signed in, not a demo account). */
+  canUploadPart?: boolean;
   /** The layout's budget; without limits there is no budget to show or filter by. */
   budgetLimits?: ReadonlyMap<string, number>;
   map?: BbmMap | null;
@@ -40,6 +44,7 @@ export function PartsPanel({
   const defaultInfinite = useEditorStore((s) => s.budgetDefaultInfinite);
   const hasBudget = (budgetLimits?.size ?? 0) > 0;
   const [selectedTile, setSelectedTile] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const usage = useMemo(() => (hasBudget && showNumbers ? countUsage(map) : null), [hasBudget, showNumbers, map]);
   const [ctxMenu, setCtxMenu] = useState<PartContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -153,6 +158,15 @@ export function PartsPanel({
           placeholder='Fuzzy filter — e.g. "plt2" matches "plate2x4"'
           className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
+        {canUploadPart && (
+          <button
+            type="button"
+            onClick={() => setUploading(true)}
+            className="text-xs font-semibold text-accent-text hover:underline"
+          >
+            Upload part…
+          </button>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {isLoading && <p className="p-3 text-xs text-muted">Loading catalog…</p>}
@@ -230,6 +244,7 @@ export function PartsPanel({
           })}
         </ul>
       </div>
+      {uploading && <UploadPartDialog onClose={() => setUploading(false)} />}
       {ctxMenu && (
         <PartContextMenuPopup
           ref={menuRef}

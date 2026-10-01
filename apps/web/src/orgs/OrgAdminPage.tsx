@@ -13,7 +13,7 @@ import {
   Section,
   SettingsSection,
 } from './ClubManage';
-import { CategoryPicker } from '../library/LibraryPage';
+import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
 
 export function OrgAdminPage() {
@@ -234,7 +234,10 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">
-          Parts owned by this club are visible to all members in the parts panel.
+          Parts owned by this club are visible to all members in the parts panel.{' '}
+          <Link to={`/?owner=${encodeURIComponent(slug)}#parts`} className="font-semibold text-accent-text hover:underline">
+            See them on the home page
+          </Link>
         </p>
         <button
           onClick={() => setShowUpload(true)}

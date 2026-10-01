@@ -23,6 +23,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -52,15 +53,20 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- list parts the user can see ---------------------------------------
   // Desktop sync (P1b): API tokens with parts:read may list and download
   // custom parts, and with parts:write upload them.
-  app.get('/api/custom-parts', { config: { apiToken: 'parts:read' } }, async (req) => {
+  // Each part comes with its owner and the caller's role, narrowed by
+  // ?owner=all|me|<club slug> like the other home-page lists.
+  app.get<{ Querystring: { owner?: string } }>('/api/custom-parts', { config: { apiToken: 'parts:read' } }, async (req, reply) => {
     const user = requireUser(req);
+    // A club the caller isn't in is not found.
+    const filter = await resolveOwnerFilter(user.id, req.query?.owner);
+    if (!filter) return reply.code(404).send({ error: 'org_not_found' });
     // Metadata columns only — never the xml/sprite blobs.
     const personal = await db
       .select(partListColumns)
       .from(schema.customParts)
       .where(eq(schema.customParts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ part: partListColumns })
+      .select({ part: partListColumns, memberRole: schema.orgMembers.role })
       .from(schema.orgMembers)
       .innerJoin(
         schema.customParts,
@@ -68,7 +74,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       )
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
-      .select({ part: partListColumns })
+      .select({ part: partListColumns, role: schema.customPartCollaborators.role })
       .from(schema.customPartCollaborators)
       .innerJoin(
         schema.customParts,
@@ -77,23 +83,25 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.customPartCollaborators.userId, user.id));
 
     const seen = new Set<string>();
-    const all: ReturnType<typeof toListItem>[] = [];
+    const all: (ReturnType<typeof toListItem> & { role: Role })[] = [];
     for (const p of personal) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
-      all.push(toListItem(p));
+      all.push({ ...toListItem(p), role: 'owner' });
     }
-    for (const { part } of orgOwned) {
+    for (const { part, memberRole } of orgOwned) {
       if (seen.has(part.id)) continue;
       seen.add(part.id);
-      all.push(toListItem(part));
+      all.push({ ...toListItem(part), role: memberRole === 'admin' ? 'owner' : 'editor' });
     }
-    for (const { part } of shared) {
+    for (const { part, role } of shared) {
       if (seen.has(part.id)) continue;
       seen.add(part.id);
-      all.push(toListItem(part));
+      all.push({ ...toListItem(part), role });
     }
-    return { parts: all };
+    const shown = all.filter((p) => matchesOwner(p, filter, user.id));
+    const ownerOf = await ownerLookup(shown);
+    return { parts: shown.map((p) => ({ ...p, owner: ownerOf(p) })) };
   });
 
   // ---- get one part (metadata + role; sprite via separate URL) -----------

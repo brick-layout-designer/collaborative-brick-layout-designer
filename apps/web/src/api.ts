@@ -927,6 +927,10 @@ export interface CustomPartSummary {
   displayName: string;
   ownerUserId: string | null;
   ownerOrgId: string | null;
+  /** The caller's role on it (newer servers). */
+  role?: 'owner' | 'editor' | 'viewer';
+  /** Who owns it, by name (newer servers). */
+  owner?: OwnerInfo | null;
   spriteMime: 'image/gif' | 'image/png';
   createdAt: number;
   updatedAt: number;
