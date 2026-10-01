@@ -15,7 +15,7 @@ import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { checkGrowth, declaredBytes, type Subject } from '../limits/limits.js';
+import { checkGrowth, type Subject } from '../limits/limits.js';
 import { recordUpload } from '../metrics/usage.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
