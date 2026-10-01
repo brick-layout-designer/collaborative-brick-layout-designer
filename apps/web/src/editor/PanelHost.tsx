@@ -50,6 +50,7 @@ export function PanelHost({ panelId, title, zone, onMove, onReorder, children }:
   return (
     <section
       data-panel={panelId}
+      data-tour={help}
       data-help-inset
       className={`flex h-full min-h-0 w-full flex-col bg-panel transition-colors ${dragOver ? 'outline-solid outline-2 outline-accent' : ''}`}
       onDragOver={onReorder ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(true); } : undefined}

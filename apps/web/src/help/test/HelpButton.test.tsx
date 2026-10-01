@@ -24,6 +24,7 @@ function withPrefs(helpIcons: boolean, ui: React.ReactNode) {
     setPrefs: () => {},
     syncedToAccount: false,
     updatedAt: null,
+    ready: true,
   };
   return <PrefsContext.Provider value={value}>{ui}</PrefsContext.Provider>;
 }

@@ -12,6 +12,7 @@ import { estimateCount, roomSize, type Pt } from './model';
 import { calibrate, loadPlan, planOf, withPlan, type FloorPlan } from './plan';
 import { formatLength, parseLength, STUDS_PER_INCH, type LengthUnit } from './units';
 import { HelpButton } from '../../help/HelpButton';
+import { HelpMenu } from '../../editor/EditorChrome';
 
 const FT = 12 * STUDS_PER_INCH;
 const LAYERS: { layer: Layer; name: string }[] = [
@@ -159,7 +160,7 @@ export function VenueDesigner({
           </div>
           {subtitle && <div className="truncate text-xs text-muted">{subtitle}</div>}
         </div>
-        <label className="flex items-center gap-2 text-sm text-neutral-300">
+        <label data-tour="room.units" className="flex items-center gap-2 text-sm text-neutral-300">
           Units
           <select
             value={state.unit}
@@ -172,7 +173,7 @@ export function VenueDesigner({
           </select>
         </label>
         <HelpButton helpKey="room.units" />
-        <label className="flex items-center gap-2 text-sm text-neutral-300 pointer-coarse:min-h-11" title="Snap to corners, walls, 45° and whole inches (hold Shift for any angle)">
+        <label data-tour="room.snap" className="flex items-center gap-2 text-sm text-neutral-300 pointer-coarse:min-h-11" title="Snap to corners, walls, 45° and whole inches (hold Shift for any angle)">
           <input type="checkbox" checked={state.snap} onChange={(e) => dispatch({ type: 'snap', on: e.target.checked })} />
           Snap
         </label>
@@ -183,17 +184,18 @@ export function VenueDesigner({
         <button type="button" onClick={() => dispatch({ type: 'redo' })} disabled={!state.history.future.length} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-soft disabled:opacity-40">
           Redo
         </button>
-        <button type="button" onClick={() => fileInput.current?.click()} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-soft">
+        <button type="button" data-tour="room.floorPlan" onClick={() => fileInput.current?.click()} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-soft">
           {plan ? 'Replace floor plan…' : 'Floor plan…'}
         </button>
         <HelpButton helpKey="room.floorPlan" />
         <input ref={fileInput} type="file" accept="image/*" className="hidden" aria-label="Floor plan image" onChange={(e) => void pickPlan(e.target.files?.[0]).then(() => (e.target.value = ''))} />
-        <button type="button" onClick={() => void save()} disabled={saving || !dirty} className="h-9 rounded-md bg-accent text-accent-ink px-4 text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
+        <button type="button" data-tour="roomDesigner.save" onClick={() => void save()} disabled={saving || !dirty} className="h-9 rounded-md bg-accent text-accent-ink px-4 text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
           {saving ? 'Saving…' : saveLabel}
         </button>
         <button type="button" onClick={close} className="h-9 rounded-md border border-neutral-600 px-3 text-sm hover:bg-soft">
           Close
         </button>
+        <HelpMenu />
       </header>
       {error && <div className="border-b border-red-900 bg-red-950/60 px-4 py-2 text-sm text-red-200">{error}</div>}
       {/* Upright on a phone (or a narrow tablet): tools in a row along the
@@ -201,6 +203,7 @@ export function VenueDesigner({
       <div className="flex min-h-0 flex-1 max-md:portrait:flex-col">
         <nav
           aria-label="Tools"
+          data-tour="room.tools"
           data-scroll-x
           className="flex w-20 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-panel p-2 max-md:landscape:w-16 max-md:portrait:w-auto max-md:portrait:flex-row max-md:portrait:overflow-x-auto max-md:portrait:overflow-y-hidden max-md:portrait:border-b max-md:portrait:border-r-0 max-md:portrait:p-1"
         >

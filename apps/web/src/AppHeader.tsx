@@ -3,6 +3,7 @@
 //
 // Top-left: app title (links to Layouts home).
 // Top-right: Clubs / About / [Admin if applicable] / Settings / display
+//            name → Profile / Sign out, then the Help menu (tours).
 //            name → Profile / Sign out.
 //
 // All routes go through `<Link>` so React Router takes the
@@ -13,6 +14,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Me } from './api';
+import { HelpMenu } from './editor/EditorChrome';
 
 interface Props {
   user: Me;
@@ -38,6 +40,10 @@ export function AppHeader({ user }: Props) {
         <img src="/logo.png" alt="" className="h-9 w-9 shrink-0 rounded-[9px]" />
         <span className="truncate font-display text-xl font-bold text-ink">Brick Layout Designer</span>
       </Link>
+      {/* Help (tours, help topics) stays one tap away on a phone too. */}
+      <div className="ml-auto sm:order-last sm:ml-0">
+        <HelpMenu />
+      </div>
       <button
         type="button"
         aria-expanded={menuOpen}
@@ -55,7 +61,7 @@ export function AppHeader({ user }: Props) {
           if ((e.target as HTMLElement).closest('a')) setMenuOpen(false);
         }}
       >
-        <Link to="/orgs" className={link}>
+        <Link to="/orgs" data-tour="clubs.page" className={link}>
           Clubs
         </Link>
         <Link to="/about" className={link}>
