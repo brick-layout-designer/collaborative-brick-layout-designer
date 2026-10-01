@@ -6,6 +6,16 @@ import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import { studToPx } from './coords';
 
+/** The module look both apps draw (packages/bbm/tests/fixtures/render-parity/modules.json). */
+export const MODULE_FRAME_STROKE = 'rgba(100,180,255,0.8)';
+export const MODULE_FRAME_DASH: [number, number] = [6, 4];
+export const MODULE_NAME_FILL = 'rgba(100,180,255,0.9)';
+export const MODULE_NAME_STROKE = 'rgba(0,0,0,0.6)';
+/** The name's outline width. */
+export function moduleNameStrokePx(fontPx: number): number {
+  return Math.max(2, fontPx / 12);
+}
+
 /** Width of `text` in bold at a font size, in px. */
 export type TextMeasure = (text: string) => (fontPx: number) => number;
 
