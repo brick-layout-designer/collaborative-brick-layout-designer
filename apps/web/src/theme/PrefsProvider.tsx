@@ -27,6 +27,8 @@ export interface PrefsContextValue {
   /** True when the settings are stored on a signed-in account. */
   syncedToAccount: boolean;
   updatedAt: string | null;
+  /** The account's settings have loaded (or there's no account): safe to act on toursSeen. */
+  ready: boolean;
 }
 
 export const PrefsContext = createContext<PrefsContextValue | null>(null);
@@ -37,6 +39,7 @@ const FALLBACK: PrefsContextValue = {
   setPrefs: () => {},
   syncedToAccount: false,
   updatedAt: null,
+  ready: true,
 };
 
 function sameAsDefaults(p: Preferences): boolean {
@@ -115,8 +118,15 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<PrefsContextValue>(
-    () => ({ prefs, mode, setPrefs, syncedToAccount: userId !== null, updatedAt }),
-    [prefs, mode, setPrefs, userId, updatedAt],
+    () => ({
+      prefs,
+      mode,
+      setPrefs,
+      syncedToAccount: userId !== null,
+      updatedAt,
+      ready: !me.isLoading && (userId === null || remote.isSuccess || remote.isError),
+    }),
+    [prefs, mode, setPrefs, userId, updatedAt, me.isLoading, remote.isSuccess, remote.isError],
   );
   return <PrefsContext.Provider value={value}>{children}</PrefsContext.Provider>;
 }

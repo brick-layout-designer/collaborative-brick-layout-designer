@@ -16,7 +16,7 @@ function setup(helpIcons: boolean) {
   render(
     <MemoryRouter>
       <PrefsContext.Provider
-        value={{ prefs: { ...DEFAULT_PREFERENCES, helpIcons }, mode: 'light', setPrefs, syncedToAccount: false, updatedAt: null }}
+        value={{ prefs: { ...DEFAULT_PREFERENCES, helpIcons }, mode: 'light', setPrefs, syncedToAccount: false, updatedAt: null, ready: true }}
       >
         <HelpMenu />
       </PrefsContext.Provider>

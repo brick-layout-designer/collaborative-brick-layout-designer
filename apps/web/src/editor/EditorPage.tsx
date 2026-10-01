@@ -552,6 +552,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               <button
                 type="button"
                 aria-label="Share picture"
+                data-tour="share.picture"
                 title="Share a picture of the layout"
                 onClick={() => setSharePicture({})}
                 className="flex size-11 shrink-0 items-center justify-center rounded-control border border-line text-ink hover:bg-soft"
@@ -614,6 +615,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             type="button"
             title="Share a picture of the layout"
             aria-label="Share picture"
+                data-tour="share.picture"
             onClick={() => setSharePicture({})}
             className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-control border border-line px-3 text-sm font-bold text-ink hover:bg-soft"
           >
@@ -801,6 +803,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       <main
         ref={canvasBoxRef}
         data-testid="canvas-area"
+        data-tour="map"
         // touch-action: none keeps the browser's page zoom and scrolling
         // off the canvas, so a pinch zooms the map, not the page.
         className="relative touch-none overflow-hidden"

@@ -15,6 +15,7 @@ import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
 import { CustomPartsSection } from '../parts/CustomPartsSection';
+import { WelcomeCard } from '../tours/WelcomeCard';
 import { lastLayoutToReopen } from './reopenLast';
 import { useEditorStore } from '../editor/editorStore';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
@@ -79,8 +80,10 @@ export function LayoutsPage() {
 
   return (
     <section className="space-y-8">
+      <WelcomeCard name={me.data?.user?.displayName} onLayout={() => setShowCreate(true)} />
+
       {hasClubs && orgs && (
-        <div className="space-y-2">
+        <div className="space-y-2" data-tour="owners.filter">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Show</h2>
             <HelpButton helpKey="owners.filter" />
@@ -102,6 +105,7 @@ export function LayoutsPage() {
           <h2 className="text-2xl font-bold">Layouts</h2>
           <button
             onClick={() => setShowCreate(true)}
+            data-tour="publish.owner"
             className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
           >
             New layout

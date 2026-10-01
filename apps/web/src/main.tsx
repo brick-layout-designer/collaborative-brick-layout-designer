@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { PARTS_SECTION } from './parts/CustomPartsSection';
+import { TourProvider } from './tours/TourProvider';
 import { App } from './App';
 import { listenForInstall, reportDisplayMode } from './pwa/install';
 import { watchKeyboard } from './pwa/keyboard';
@@ -137,6 +138,7 @@ createRoot(root).render(
       <BrowserRouter>
         <GlobalBbmDrop />
         <SiteVersionBar />
+        <TourProvider>
         <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<App />} />
@@ -163,6 +165,7 @@ createRoot(root).render(
           <Route path="/p/:token" element={<PublicLayoutPage />} />
         </Routes>
         </Suspense>
+        </TourProvider>
       </BrowserRouter>
       </PrefsProvider>
     </QueryClientProvider>

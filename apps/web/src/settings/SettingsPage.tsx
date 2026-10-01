@@ -12,6 +12,8 @@ import type { ThemeChoice } from '../theme/theme';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
 import { isMobileDevice, useInstallState } from '../pwa/install';
+import { isPhoneScreen, useTours } from '../tours/TourProvider';
+import { toursFor } from '../tours/tours';
 
 const THEME_CARDS: { id: ThemeChoice; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -75,6 +77,7 @@ function Section({ id, title, help, children }: { id: string; title: string; hel
 }
 
 export function SettingsContent({ onClose }: { onClose?: () => void }) {
+  const { startTour } = useTours();
   const { prefs, setPrefs, syncedToAccount } = usePreferences();
   const host = window.location.host;
   // Installing is for phones and tablets; computers use the site as it is.
@@ -218,6 +221,23 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
             >
               Show tours again
             </button>
+          </div>
+          <div role="group" aria-label="Take a tour" className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted">Take a tour:</span>
+            {toursFor(isPhoneScreen()).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  onClose?.();
+                  startTour(t.id);
+                }}
+                className="h-10 rounded-control border border-border px-4 text-sm font-semibold hover:bg-soft"
+              >
+                {t.title}
+                {prefs.toursSeen.includes(t.id) && <span className="sr-only"> (seen)</span>}
+              </button>
+            ))}
           </div>
         </Section>
 

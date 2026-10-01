@@ -9,6 +9,8 @@ import type { SaveStatus } from './useLayoutDoc';
 import { usePreferences } from '../theme/PrefsProvider';
 import { GETTING_STARTED } from '../help/guide';
 import { ShortcutList } from '../help/HelpPage';
+import { isPhoneScreen, useTours } from '../tours/TourProvider';
+import { toursFor } from '../tours/tours';
 
 export type EditorTask = 'build' | 'room' | 'notes' | 'parts';
 
@@ -67,6 +69,7 @@ export function LayoutNameMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        data-tour="layout.menu"
         onClick={() => setOpen((v) => !v)}
         className="flex min-w-0 max-w-full items-center gap-1.5 rounded-lg px-2 py-1.5 pointer-coarse:min-h-11 font-display text-[17px] font-bold text-ink hover:bg-soft"
       >
@@ -127,6 +130,7 @@ export function SavePill({ status }: { status: SaveStatus }) {
   return (
     <span
       data-testid="save-status"
+      data-tour="topbar.saveStatus"
       title={title}
       className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${tone}`}
     >
@@ -182,6 +186,7 @@ export function HelpMenu() {
   // On a phone the menu spans the screen just under the Help button.
   const [phoneTop, setPhoneTop] = useState(0);
   const { prefs, setPrefs } = usePreferences();
+  const { startTour } = useTours();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => {
@@ -207,6 +212,7 @@ export function HelpMenu() {
         aria-label="Help"
         aria-haspopup="dialog"
         aria-expanded={open}
+        data-tour="help.menu"
         onClick={() => {
           if (open) return close();
           setPhoneTop((buttonRef.current?.getBoundingClientRect().bottom ?? 52) + 4);
@@ -235,6 +241,20 @@ export function HelpMenu() {
         >
           {view === 'menu' && (
             <>
+              {toursFor(isPhoneScreen()).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={item}
+                  onClick={() => {
+                    close();
+                    startTour(t.id);
+                  }}
+                >
+                  <span className="flex-1">Tour: {t.title}</span>
+                  {prefs.toursSeen.includes(t.id) && <span className="text-xs font-normal text-muted">seen</span>}
+                </button>
+              ))}
               <button type="button" className={item} onClick={() => setView('start')}>
                 Getting started
               </button>

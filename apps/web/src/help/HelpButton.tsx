@@ -162,6 +162,7 @@ export function HelpButton({ helpKey, target, className = '' }: Props) {
         aria-controls={open ? popId : undefined}
         aria-haspopup="dialog"
         data-help-key={helpKey}
+        data-help-target={target}
         onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)}
         onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(false)}
         onPointerDown={(e) => {
