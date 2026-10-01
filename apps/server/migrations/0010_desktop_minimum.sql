@@ -1,0 +1,1 @@
+ALTER TABLE `platform_settings` ADD `min_desktop_version` text;

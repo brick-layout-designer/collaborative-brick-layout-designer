@@ -753,6 +753,7 @@ export const api = {
       smtpUser?: string | null;
       smtpPass?: string | null;
       smtpFrom?: string | null;
+      minDesktopVersion?: string | null;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
   },
 
@@ -813,6 +814,13 @@ export interface AdminSettings {
     /** Which config is actually in effect right now — null means neither is configured. */
     source: 'database' | 'env' | null;
     active: boolean;
+  };
+  /** "Oldest desktop allowed": what an admin set (null = the code's own), and what's in force. */
+  desktop: {
+    minimumSet: string | null;
+    minimum: string;
+    recommended: string;
+    codeMinimum: string;
   };
   updatedAt: number;
 }

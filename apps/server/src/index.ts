@@ -18,6 +18,7 @@ import { sessionRoutes } from './routes/auth/session.js';
 import { deviceRoutes } from './routes/auth/device.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { versionRoutes } from './routes/version.js';
+import { registerDesktopGate } from './compat.js';
 import { auditRoutes } from './routes/audit.js';
 import { adminRoutes, syncLibrariesFromDisk } from './routes/admin.js';
 import { adminInsightsRoutes } from './routes/adminInsights.js';
@@ -82,6 +83,8 @@ async function main() {
   // Usage limits: request rates per person and per token, read-only
   // suspended accounts, per-person request counts (limits/hooks.ts).
   registerLimitHooks(app);
+  // Desktop apps older than the minimum get a clear "please update" (426).
+  registerDesktopGate(app);
 
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true }));

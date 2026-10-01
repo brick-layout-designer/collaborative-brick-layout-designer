@@ -1514,6 +1514,7 @@ function SettingsTab() {
   const [smtpFrom, setSmtpFrom] = useState('');
   const [smtpPass, setSmtpPass] = useState(''); // always starts blank — never echoed by the server
   const [smtpPassTouched, setSmtpPassTouched] = useState(false);
+  const [minDesktop, setMinDesktop] = useState('');
 
   if (settings.data && !seeded) {
     setSeeded(true);
@@ -1522,6 +1523,7 @@ function SettingsTab() {
     setSmtpPort(settings.data.smtp.port?.toString() ?? '');
     setSmtpUser(settings.data.smtp.user ?? '');
     setSmtpFrom(settings.data.smtp.from ?? '');
+    setMinDesktop(settings.data.desktop.minimumSet ?? '');
   }
 
   const save = useMutation({
@@ -1533,6 +1535,7 @@ function SettingsTab() {
         smtpPort: Number.isNaN(port) ? null : port,
         smtpUser: smtpUser.trim() === '' ? null : smtpUser.trim(),
         smtpFrom: smtpFrom.trim() === '' ? null : smtpFrom.trim(),
+        minDesktopVersion: minDesktop.trim() === '' ? null : minDesktop.trim(),
         // Omit entirely if untouched — leaves the saved password as-is.
         // "" means the user cleared the field on purpose.
         ...(smtpPassTouched ? { smtpPass } : {}),
@@ -1559,6 +1562,27 @@ function SettingsTab() {
   return (
     <>
     <div className="max-w-xl space-y-8">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-neutral-300">Desktop app</h2>
+        <label className="block space-y-1 text-xs text-muted">
+          Oldest desktop allowed
+          <input
+            type="text"
+            value={minDesktop}
+            onChange={(e) => setMinDesktop(e.target.value)}
+            placeholder={settings.data.desktop.codeMinimum}
+            aria-describedby="min-desktop-help"
+            className="block w-40 rounded-lg border border-border bg-panel px-2 py-1.5 text-sm text-ink"
+          />
+        </label>
+        <p id="min-desktop-help" className="text-xs text-muted">
+          People with an older desktop app are asked to download the new one before they can connect. Leave it
+          empty to allow everything from {settings.data.desktop.codeMinimum}, the oldest version that works with
+          this server. Right now: {settings.data.desktop.minimum} or newer is allowed, and{' '}
+          {settings.data.desktop.recommended} or newer is recommended.
+        </p>
+      </section>
+
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-neutral-300">Email verification</h2>
         <label className="flex items-start gap-2 text-sm">

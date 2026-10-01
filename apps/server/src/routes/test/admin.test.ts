@@ -594,6 +594,25 @@ describe('admin settings', () => {
     expect(patch.statusCode).toBe(403);
   });
 
+  it('sets the oldest desktop allowed, never below the code minimum, and clears it', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const get = async () =>
+      (await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie: adminCookie } })).json().desktop;
+    const patch = (minDesktopVersion: string | null) =>
+      app.inject({ method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie }, payload: { minDesktopVersion } });
+
+    expect(await get()).toEqual({ minimumSet: null, minimum: '1.2.0', recommended: '1.3.0', codeMinimum: '1.2.0' });
+    expect((await patch('v1.4.0')).statusCode).toBe(200);
+    expect(await get()).toEqual({ minimumSet: '1.4.0', minimum: '1.4.0', recommended: '1.4.0', codeMinimum: '1.2.0' });
+    // Below the code's own minimum: kept, but not in force.
+    expect((await patch('1.0.0')).statusCode).toBe(200);
+    expect((await get()).minimum).toBe('1.2.0');
+    expect((await patch('soon')).json()).toEqual({ error: 'invalid_desktop_version' });
+    expect((await patch('')).statusCode).toBe(200);
+    expect((await get()).minimumSet).toBeNull();
+  });
+
   it('GET creates the singleton row on first access with the pre-existing default (verification required, no DB SMTP)', async () => {
     const adminCookie = await registerAndLogin(app, 'admin@example.com');
     await promoteToAdmin('admin@example.com');

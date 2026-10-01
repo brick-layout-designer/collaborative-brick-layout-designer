@@ -172,6 +172,13 @@ export const platformSettings = sqliteTable('platform_settings', {
    * env var (LIMIT_*) or the built-in default. Null = nothing set here.
    */
   limits: text('limits'),
+  /**
+   * "Oldest desktop allowed": desktop apps older than this are asked to
+   * update (426 update_required) instead of connecting. Null = the code's
+   * own minimum (compat.ts DESKTOP_MINIMUM); a value below that minimum
+   * is ignored, since those apps don't work with this server anyway.
+   */
+  minDesktopVersion: text('min_desktop_version'),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });

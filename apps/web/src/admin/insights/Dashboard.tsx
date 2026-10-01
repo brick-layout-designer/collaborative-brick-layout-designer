@@ -6,6 +6,7 @@
 import { useState, type ReactNode } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarList, Card, CollectingNote, DataTable, LineChart, SERIES_STYLE, StatTile, type BarItem } from './charts';
+import { desktopVersionBars } from './desktopVersions';
 import { formatAgo, formatBytes, formatCompact, formatDate, formatDuration } from './format';
 import { insightsApi, RANGES, type KeyValue, type RangeId } from './insightsApi';
 
@@ -146,7 +147,13 @@ export default function Dashboard() {
 
       <Section id="dash-usage" title="How people use it">
         <BarList title="Web or desktop" unit="person-days" items={u ? toBars(u.clients) : []} note={<>Each person counts once a day. <CollectingNote since={since.client ?? null} /></>} />
-        <BarList title="Desktop versions" unit="person-days" items={u ? toBars(u.desktopVersions, (k) => `Version ${k}`) : []} empty="No desktop app seen in this period." />
+        <BarList
+          title="Desktop versions"
+          unit="person-days"
+          items={u ? desktopVersionBars(u.desktopVersions, u.desktopPolicy) : []}
+          empty="No desktop app seen in this period."
+          note={u?.desktopPolicy ? `Version ${u.desktopPolicy.minimum} or newer can connect; ${u.desktopPolicy.recommended} or newer is recommended.` : undefined}
+        />
         <BarList title="Phone or computer" unit="person-days" items={u ? toBars(u.devices) : []} note="Web app only." />
         <BarList title="Installed app or browser" unit="person-days" items={u ? toBars(u.display) : []} note={<>Web app only. <CollectingNote since={since.display ?? null} /></>} />
         <Card title="New and returning">

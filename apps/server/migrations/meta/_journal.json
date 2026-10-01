@@ -71,6 +71,13 @@
       "when": 1790861595718,
       "tag": "0009_usage_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790872230265,
+      "tag": "0010_desktop_minimum",
+      "breakpoints": true
     }
   ]
 }

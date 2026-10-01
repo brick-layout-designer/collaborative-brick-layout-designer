@@ -298,7 +298,7 @@ describe('computeAlerts', () => {
     rmSync(backups, { recursive: true, force: true });
   });
 
-  it('flags old backups, refusal floods, error spikes and old desktop apps', () => {
+  it('flags old backups, refusal floods, error spikes and desktop apps that need updating', () => {
     const now = Date.now();
     const f = join(backups, 'cbld-2026-01-01.sqlite.gz');
     writeFileSync(f, 'x');
@@ -309,15 +309,29 @@ describe('computeAlerts', () => {
       { day: today, metric: 'refused', key: '403 GET /api/orgs', value: 5 },
       { day: today, metric: 'errors_5xx', key: '', value: 30 },
       { day: dayKey(now - DAY), metric: 'errors_5xx', key: '', value: 2 },
-      { day: today, metric: 'desktop_version', key: '1.10.0', value: 3 },
-      { day: today, metric: 'desktop_version', key: '1.9.2', value: 1 },
+      { day: today, metric: 'desktop_version', key: '1.4.0', value: 3 },
+      { day: today, metric: 'desktop_version', key: '1.2.0', value: 2 },
+      { day: today, metric: 'desktop_version', key: '1.1.0', value: 1 },
+      { day: dayKey(now - DAY), metric: 'desktop_version', key: '1.0.0', value: 4 },
     ]).run();
     const ids = computeAlerts(now).map((a) => a.id);
     expect(ids).toContain('backup-old');
     expect(ids).toContain('refused:403 GET /api/layouts');
     expect(ids).not.toContain('refused:403 GET /api/orgs');
     expect(ids).toContain('error-spike');
-    expect(computeAlerts(now).find((a) => a.id === 'desktop-old')?.text).toContain('1.9.2');
+    // People seen today on apps below the minimum / recommended version.
+    const policy = { minimum: '1.2.0', recommended: '1.3.0' };
+    const alerts = computeAlerts(now, policy);
+    expect(alerts.find((a) => a.id === 'desktop-update-required')?.text).toBe(
+      '1 person tried a desktop app too old for this server today (1.1.0). They need version 1.2.0 or newer.',
+    );
+    expect(alerts.find((a) => a.id === 'desktop-update-suggested')?.text).toBe(
+      '2 people used an older desktop app today (1.2.0). Version 1.3.0 is recommended.',
+    );
+    // An admin raising the minimum moves 1.2.0 into "must update".
+    const raised = computeAlerts(now, { minimum: '1.3.0', recommended: '1.3.0' });
+    expect(raised.find((a) => a.id === 'desktop-update-required')?.text).toContain('3 people');
+    expect(raised.some((a) => a.id === 'desktop-update-suggested')).toBe(false);
   });
 
   it('is quiet when all is well', () => {

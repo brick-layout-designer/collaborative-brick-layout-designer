@@ -28,6 +28,7 @@ import { liveStats } from './ws.js';
 import { appVersion } from './version.js';
 import { bundledPartKeys } from './parts.js';
 import { currentDocBytes } from './layouts.js';
+import { type DesktopPolicy, desktopPolicy, desktopStanding, resolvePolicy } from '../compat.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -349,7 +350,7 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export function computeAlerts(now: number = Date.now()): Alert[] {
+export function computeAlerts(now: number = Date.now(), policy: DesktopPolicy = resolvePolicy(null)): Alert[] {
   const alerts: Alert[] = [];
   if (env.backupsEnabled) {
     const last = listBackups()[0];
@@ -377,17 +378,37 @@ export function computeAlerts(now: number = Date.now()): Alert[] {
       alerts.push({ level: 'warn', id: `refused:${r.key}`, text: `${r.value} refused requests today on ${r.key}.` });
     }
   }
-  const versions = rollupByKey('desktop_version', week, 50).filter((v) => v.value > 0);
-  if (versions.length > 1) {
-    const newest = versions.map((v) => v.key).sort(compareVersions).at(-1)!;
-    const older = versions.filter((v) => compareVersions(v.key, newest) < 0);
-    if (older.length > 0) {
-      alerts.push({
-        level: 'info',
-        id: 'desktop-old',
-        text: `Some desktop apps are older than ${newest}: ${older.map((v) => v.key).join(', ')}.`,
-      });
+  // People seen today on a desktop app this server turns away, or asks
+  // to update (compat.ts).
+  const required: string[] = [];
+  const suggested: string[] = [];
+  let mustUpdate = 0;
+  let shouldUpdate = 0;
+  for (const v of rollupByKey('desktop_version', todayOnly, 50)) {
+    if (v.value <= 0) continue;
+    const standing = desktopStanding(v.key, policy.minimum, policy.recommended);
+    if (standing === 'updateRequired') {
+      required.push(v.key);
+      mustUpdate += v.value;
+    } else if (standing === 'updateSuggested') {
+      suggested.push(v.key);
+      shouldUpdate += v.value;
     }
+  }
+  const people = (n: number) => (n === 1 ? '1 person' : `${n} people`);
+  if (mustUpdate > 0) {
+    alerts.push({
+      level: 'warn',
+      id: 'desktop-update-required',
+      text: `${people(mustUpdate)} tried a desktop app too old for this server today (${required.join(', ')}). They need version ${policy.minimum} or newer.`,
+    });
+  }
+  if (shouldUpdate > 0) {
+    alerts.push({
+      level: 'info',
+      id: 'desktop-update-suggested',
+      text: `${people(shouldUpdate)} used an older desktop app today (${suggested.join(', ')}). Version ${policy.recommended} is recommended.`,
+    });
   }
   return alerts;
 }
@@ -459,6 +480,8 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
       liveSessions: rollupTotal('live_sessions', r),
       clients: rollupByKey('client', r),
       desktopVersions: rollupByKey('desktop_version', r),
+      // So the chart can mark versions that must or should update.
+      desktopPolicy: await desktopPolicy(),
       devices: rollupByKey('device', r),
       display: rollupByKey('display', r),
       shareViews: rollupTotal('share_views', r),
@@ -705,7 +728,7 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/admin/insights/alerts', async (req) => {
     requireGlobalAdmin(req);
     flushRollup();
-    return { alerts: computeAlerts() };
+    return { alerts: computeAlerts(Date.now(), await desktopPolicy()) };
   });
 
   // Signed-in web clients say once per load whether they run as an
