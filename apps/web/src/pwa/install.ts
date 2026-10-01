@@ -1,0 +1,92 @@
+// Installing the web app (manifest.webmanifest): Chrome, Edge and Samsung
+// Internet offer their own prompt, which we keep to show from Settings;
+// Safari on iPhone and iPad installs from Share › Add to Home Screen.
+
+import { useSyncExternalStore } from 'react';
+
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+export type InstallState =
+  | { kind: 'installed' }
+  | { kind: 'prompt'; install: () => Promise<boolean> }
+  | { kind: 'ios' }
+  | { kind: 'browser-menu' };
+
+let deferred: InstallPromptEvent | null = null;
+let justInstalled = false;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+
+/** Start listening for the browser's install offer; call once at startup. */
+export function listenForInstall(win: Window = window): void {
+  win.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); // shown from Settings instead of a mini-bar
+    deferred = e as InstallPromptEvent;
+    notify();
+  });
+  win.addEventListener('appinstalled', () => {
+    deferred = null;
+    justInstalled = true;
+    notify();
+  });
+}
+
+/** Running as the installed app, not in a browser tab. */
+export function runningInstalled(win: Window = window): boolean {
+  return (
+    justInstalled ||
+    win.matchMedia?.('(display-mode: standalone)').matches === true ||
+    (win.navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+/** iPhone or iPad (iPadOS reports itself as a Mac with touch). */
+export function isAppleMobile(nav: Navigator = navigator): boolean {
+  return /iPhone|iPad|iPod/.test(nav.userAgent) || (/Macintosh/.test(nav.userAgent) && nav.maxTouchPoints > 1);
+}
+
+export function installState(win: Window = window): InstallState {
+  if (runningInstalled(win)) return { kind: 'installed' };
+  if (deferred) {
+    const event = deferred;
+    return {
+      kind: 'prompt',
+      install: async () => {
+        await event.prompt();
+        const { outcome } = await event.userChoice;
+        deferred = null;
+        if (outcome === 'accepted') justInstalled = true;
+        notify();
+        return outcome === 'accepted';
+      },
+    };
+  }
+  return isAppleMobile(win.navigator) ? { kind: 'ios' } : { kind: 'browser-menu' };
+}
+
+let snapshot: InstallState | null = null;
+function subscribe(l: () => void) {
+  const wrapped = () => {
+    snapshot = null;
+    l();
+  };
+  listeners.add(wrapped);
+  return () => listeners.delete(wrapped);
+}
+function getSnapshot(): InstallState {
+  return (snapshot ??= installState());
+}
+
+export function useInstallState(): InstallState {
+  return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/** Test hook: forget any captured offer. */
+export function resetInstallForTests(): void {
+  deferred = null;
+  justInstalled = false;
+  snapshot = null;
+}

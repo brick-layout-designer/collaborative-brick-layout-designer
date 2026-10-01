@@ -4,13 +4,14 @@
 // in this browser only. Used as a page (/settings) and as a dialog over
 // the editor, so changing the look doesn't mean leaving a layout.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePreferences } from '../theme/PrefsProvider';
 import { ACCENTS, ACCENT_IDS, NEUTRALS } from '../theme/tokens';
 import type { ThemeChoice } from '../theme/theme';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
+import { useInstallState } from '../pwa/install';
 
 const THEME_CARDS: { id: ThemeChoice; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -80,6 +81,9 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
         </a>
         <a href="#help" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Help and tours
+        </a>
+        <a href="#install" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
+          Install the app
         </a>
         <a href="#account" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Account
@@ -207,6 +211,10 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
           </div>
         </Section>
 
+        <Section id="install" title="Install the app">
+          <InstallApp />
+        </Section>
+
         <Section id="account" title="Account">
           {syncedToAccount ? (
             <p className="text-[15px] text-muted">
@@ -273,6 +281,58 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </button>
         <SettingsContent onClose={onClose} />
       </div>
+    </div>
+  );
+}
+
+/** Install as an app on this phone, tablet or computer (pwa/install.ts). */
+function InstallApp() {
+  const state = useInstallState();
+  const [declined, setDeclined] = useState(false);
+  const lead = 'Open it from your home screen like any other app, full screen, without the browser bars.';
+  if (state.kind === 'installed') {
+    return (
+      <p className="text-[15px] font-semibold text-ok" data-testid="install-state">
+        ✓ Installed on this device.
+      </p>
+    );
+  }
+  if (state.kind === 'prompt') {
+    return (
+      <div className="flex items-center justify-between gap-6" data-testid="install-state">
+        <div className="text-sm text-muted">{declined ? 'Not now. You can install it any time from here.' : lead}</div>
+        <button
+          type="button"
+          onClick={() => void state.install().then((ok) => setDeclined(!ok))}
+          className="h-10 shrink-0 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover"
+        >
+          Install app
+        </button>
+      </div>
+    );
+  }
+  if (state.kind === 'ios') {
+    return (
+      <div className="flex flex-col gap-2 text-[15px]" data-testid="install-state">
+        <p className="text-sm text-muted">{lead}</p>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>
+            In Safari, tap <b>Share</b> (the square with an arrow).
+          </li>
+          <li>
+            Choose <b>Add to Home Screen</b>, then <b>Add</b>.
+          </li>
+        </ol>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2 text-[15px]" data-testid="install-state">
+      <p className="text-sm text-muted">{lead}</p>
+      <p>
+        Open your browser's menu and choose <b>Install app</b> or <b>Add to Home screen</b>. On a computer, Chrome and Edge show an
+        install button at the end of the address bar.
+      </p>
     </div>
   );
 }
