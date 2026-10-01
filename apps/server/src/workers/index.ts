@@ -29,6 +29,7 @@ import { db, schema, sqlite } from '../db/index.js';
 import { env } from '../env.js';
 import { classifyBackups } from './retention.js';
 import { docHub } from '../ws/docHub.js';
+import { sweepRollup } from '../metrics/rollup.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -56,6 +57,10 @@ async function tick(): Promise<void> {
   if (env.demoTtlSweepEnabled) await safeRun('demoTtlSweep', demoTtlSweep);
   if (env.dailyCompactionEnabled) await safeRun('dailyCompaction', dailyCompaction);
   if (env.backupsEnabled) await safeRun('backupWorker', backupWorker);
+  // Admin dashboard rollup: keep ROLLUP_RETENTION_DAYS (about 13 months).
+  await safeRun('rollupRetention', async () => {
+    sweepRollup();
+  });
 }
 
 async function safeRun(name: string, fn: () => Promise<void>): Promise<void> {

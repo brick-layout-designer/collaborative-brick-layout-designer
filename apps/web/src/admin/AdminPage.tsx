@@ -1,6 +1,6 @@
 // Platform-admin page — only mounted when `me.user.isGlobalAdmin === true`.
 // Tabs:
-//   - Dashboard: aggregate counts
+//   - Dashboard: graphs, breakdowns, health and alerts (insights/Dashboard.tsx)
 //   - Users:     list + search + grant/revoke admin + revoke-sessions + delete
 //   - Orgs:      list + search + delete
 //   - Layouts:   list + search + delete (works across users)
@@ -10,7 +10,7 @@
 //
 // Every mutation routes through `/api/admin/*` and is audited server-side.
 
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +41,7 @@ export function AdminPage() {
   if (!me.data.user.isGlobalAdmin) return <Forbidden />;
 
   return (
-    <div className="h-full overflow-y-auto bg-bg p-8 text-ink">
+    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={me.data.user} />
       <div className="mt-6">
         <h1 className="text-base font-semibold">
@@ -51,13 +51,13 @@ export function AdminPage() {
           </span>
         </h1>
       </div>
-      <nav className="mt-2 flex border-b border-line text-sm">
+      <nav className="-mx-4 mt-2 flex overflow-x-auto border-b border-line px-4 text-sm sm:mx-0 sm:px-0">
         {(['dashboard', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'audit', 'settings'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={
-              'border-b-2 px-3 py-2 capitalize ' +
+              'min-h-11 shrink-0 whitespace-nowrap border-b-2 px-3 py-2 capitalize ' +
               (tab === t
                 ? 'border-accent text-ink'
                 : 'border-transparent text-muted hover:text-ink')
@@ -68,7 +68,11 @@ export function AdminPage() {
         ))}
       </nav>
       <main className="mt-6">
-        {tab === 'dashboard' && <Dashboard />}
+        {tab === 'dashboard' && (
+          <Suspense fallback={<Loading />}>
+            <Dashboard />
+          </Suspense>
+        )}
         {tab === 'users' && <UsersTab selfId={me.data.user.id} />}
         {tab === 'orgs' && <OrgsTab />}
         {tab === 'layouts' && <LayoutsTab />}
@@ -81,33 +85,9 @@ export function AdminPage() {
   );
 }
 
-function Dashboard() {
-  const stats = useQuery({ queryKey: ['admin-stats'], queryFn: api.admin.stats });
-  if (stats.isLoading) return <Loading />;
-  if (!stats.data) return <p className="text-sm text-muted">No stats available.</p>;
-  const tiles: { label: string; value: number; sub?: string }[] = [
-    { label: 'Users', value: stats.data.users, sub: `${stats.data.demoUsers} demo · ${stats.data.globalAdmins} admin` },
-    { label: 'Active sessions', value: stats.data.activeSessions },
-    { label: 'Clubs', value: stats.data.orgs },
-    { label: 'Layouts', value: stats.data.layouts },
-    { label: 'Custom parts', value: stats.data.customParts },
-    { label: 'Saved modules', value: stats.data.modules },
-  ];
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {tiles.map((t) => (
-        <div
-          key={t.label}
-          className="rounded-lg border border-line bg-panel p-4"
-        >
-          <p className="text-xs uppercase tracking-wider text-muted">{t.label}</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">{t.value.toLocaleString()}</p>
-          {t.sub && <p className="mt-1 text-xs text-muted">{t.sub}</p>}
-        </div>
-      ))}
-    </div>
-  );
-}
+// The dashboard (graphs, breakdowns, health) is its own lazily loaded
+// chunk: the charts never weigh on the rest of the admin page or the app.
+const Dashboard = lazy(() => import('./insights/Dashboard'));
 
 function UsersTab({ selfId }: { selfId: string }) {
   const qc = useQueryClient();

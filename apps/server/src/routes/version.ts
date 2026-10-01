@@ -16,7 +16,7 @@ export const PROTOCOLS = ['y-websocket/1'] as const;
  * package's own version. The runtime image ships no package.json, hence
  * the fallback.
  */
-function appVersion(): string {
+export function appVersion(): string {
   if (process.env.APP_VERSION) return process.env.APP_VERSION;
   try {
     const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {

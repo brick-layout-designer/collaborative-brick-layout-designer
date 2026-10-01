@@ -169,8 +169,28 @@ export function uniqueByKey(parts: readonly PartWire[]): PartWire[] {
   return [...byKey.values()];
 }
 
+/** Just enough of a Fastify instance to log scan problems. */
+interface ScanLogger {
+  log: { warn: (obj: object, msg?: string) => void; error: (obj: object, msg?: string) => void };
+}
+
+/**
+ * Every part key the server's installed libraries know (lower-cased,
+ * old names included). The admin dashboard compares placed parts with
+ * this to list the ones missing from every library.
+ */
+export async function bundledPartKeys(logger: ScanLogger): Promise<Set<string>> {
+  const { wire } = await loadBundled(logger);
+  const keys = new Set<string>();
+  for (const p of wire) {
+    keys.add(p.key.toLowerCase());
+    for (const old of p.oldNames ?? []) keys.add(old.toLowerCase());
+  }
+  return keys;
+}
+
 async function loadBundled(
-  app: FastifyInstance,
+  app: ScanLogger,
 ): Promise<{ etag: string; wire: PartWire[] }> {
   if (bundledCache) return bundledCache;
 

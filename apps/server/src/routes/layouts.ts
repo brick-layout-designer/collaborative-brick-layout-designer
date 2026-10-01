@@ -15,6 +15,8 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
 import { docHub } from '../ws/docHub.js';
+import { rollup } from '../metrics/rollup.js';
+import { touchLayoutOpened } from '../metrics/activity.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
 
@@ -143,6 +145,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .where(eq(schema.layouts.id, req.params.id))
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
+    touchLayoutOpened(layout.id);
 
     return {
       layout: toListItem(layout, role.role),
@@ -414,6 +417,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
     }
     const xml = writeBbm(map);
+    rollup.count('exports', 'bbm');
     reply.header('Content-Type', 'application/xml; charset=utf-8');
     reply.header(
       'Content-Disposition',
@@ -492,6 +496,8 @@ export async function layoutRoutes(app: FastifyInstance) {
           eq(schema.layoutUpdates.doc, 'main'),
         ),
       );
+    rollup.distinct('layouts_edited', '', req.params.id);
+    rollup.count('layout_edits', req.params.id);
     return { ok: true, updatedAt: updatedAt.getTime() };
   });
 
@@ -516,6 +522,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       const map = exportBbmFromDoc(doc);
       const json = sidecarJson(doc, layout.sidecarSnapshot as Uint8Array | null, map ? writeBbm(map) : null);
       if (!json) return reply.code(404).send({ error: 'no_sidecar' });
+      rollup.count('exports', 'sidecar');
       reply.header('Content-Type', 'application/json; charset=utf-8');
       reply.header(
         'Content-Disposition',
@@ -555,6 +562,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (json) entries.push({ name: `${safe}.bbm.bld`, data: Buffer.from(json, 'utf8') });
 
     const zip = buildZip(entries);
+    rollup.count('exports', 'zip');
     reply.header('Content-Type', 'application/zip');
     reply.header('Content-Disposition', `attachment; filename="${safe}.zip"`);
     return reply.send(zip);
@@ -618,6 +626,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       .where(eq(schema.layouts.publicShareToken, req.params.token))
       .get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
+    rollup.count('share_views');
     reply.header('Cache-Control', 'no-store');
     return {
       layout: {
@@ -821,7 +830,7 @@ function toListItem(
  * replayed (same as DocSession.hydrate). Reading only docSnapshot made
  * exports / GET snapshot / the public viewer miss recent edits.
  */
-async function currentDocBytes(layoutId: string, snapshot: Uint8Array): Promise<Uint8Array> {
+export async function currentDocBytes(layoutId: string, snapshot: Uint8Array): Promise<Uint8Array> {
   const live = docHub.peek(layoutId);
   if (live) return Y.encodeStateAsUpdate(live.doc);
   const updates = await db

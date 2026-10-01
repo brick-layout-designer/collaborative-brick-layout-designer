@@ -57,6 +57,13 @@
       "when": 1790857651263,
       "tag": "0007_club_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790860357523,
+      "tag": "0008_admin_insights",
+      "breakpoints": true
     }
   ]
 }

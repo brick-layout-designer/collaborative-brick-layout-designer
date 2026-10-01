@@ -20,6 +20,9 @@ import { tokenRoutes } from './routes/tokens.js';
 import { versionRoutes } from './routes/version.js';
 import { auditRoutes } from './routes/audit.js';
 import { adminRoutes, syncLibrariesFromDisk } from './routes/admin.js';
+import { adminInsightsRoutes } from './routes/adminInsights.js';
+import { registerRequestMetrics } from './metrics/activity.js';
+import { startRollup, stopRollup } from './metrics/rollup.js';
 import { collaboratorRoutes } from './routes/collaborators.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 import { customPartRoutes } from './routes/customParts.js';
@@ -72,6 +75,8 @@ async function main() {
   await app.register(fastifyMultipart);
 
   app.addHook('preHandler', attachUser);
+  // Admin dashboard counters (aggregate only — see metrics/rollup.ts).
+  registerRequestMetrics(app);
 
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.get('/api/health', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
@@ -112,6 +117,7 @@ async function main() {
   await app.register(partsManifestRoutes);
   await app.register(auditRoutes);
   await app.register(adminRoutes);
+  await app.register(adminInsightsRoutes);
   await app.register(wsRoutes);
 
   // Serve the BlueBrickParts base library at /parts/*.
@@ -189,8 +195,10 @@ async function main() {
   }
 
   startWorkers();
+  startRollup();
   app.addHook('onClose', async () => {
     stopWorkers();
+    stopRollup();
   });
 
   await app.listen({ port: env.port, host: '0.0.0.0' });

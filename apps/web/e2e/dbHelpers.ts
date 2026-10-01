@@ -61,3 +61,13 @@ export async function expireVerificationToken(email: string): Promise<void> {
     db.close();
   }
 }
+
+/** Make `email` a platform admin (there is no API for the first admin; real servers use BOOTSTRAP_ADMIN_EMAIL). */
+export function makeGlobalAdmin(email: string): void {
+  const db = new Database(dbPath());
+  try {
+    db.prepare(`UPDATE users SET is_global_admin = 1 WHERE email = ?`).run(email);
+  } finally {
+    db.close();
+  }
+}

@@ -32,6 +32,8 @@ import { isRevokedBy, revokedReason, type Credential } from '../auth/credentials
 import { bearerToken } from '../auth/cookie.js';
 import { hasScope } from '../auth/apiTokens.js';
 import { env } from '../env.js';
+import { rollup } from '../metrics/rollup.js';
+import { touchLayoutOpened } from '../metrics/activity.js';
 
 // Per-user cap on concurrent WS connections. Prevents one tab fork-bomb
 // from exhausting the server. 8 is enough for a normal user across a
@@ -68,6 +70,11 @@ export function isAllowedWsOrigin(origin: string | undefined, hasBearer: boolean
   } catch {
     return false;
   }
+}
+
+/** Live editing right now: open sockets and the layouts they are in. */
+export function liveStats(): { connections: number; rooms: number } {
+  return { connections: openSockets.size, rooms: docHub.liveRoomCount() };
 }
 
 export async function wsRoutes(app: FastifyInstance): Promise<void> {
@@ -157,11 +164,17 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         // a double detach used to double-decrement the connection count and
         // arm a second idle timer that destroyed the doc under a live client.
         openSockets.set(ws, { userId, credential });
+        const openedAt = Date.now();
+        rollup.count('live_sessions', '', 1, openedAt);
+        rollup.peak('live_peak', '', openSockets.size, openedAt);
+        touchLayoutOpened(layoutId, openedAt);
         let cleanedUp = false;
         const cleanup = async () => {
           if (cleanedUp) return;
           cleanedUp = true;
           openSockets.delete(ws);
+          rollup.count('live_session_ms', '', Date.now() - openedAt);
+          rollup.count('live_sessions_ended');
           const n = (userConnections.get(userId) ?? 1) - 1;
           if (n <= 0) userConnections.delete(userId);
           else userConnections.set(userId, n);

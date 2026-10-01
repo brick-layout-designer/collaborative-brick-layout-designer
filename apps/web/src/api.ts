@@ -80,6 +80,10 @@ async function friendlyErrorMessage(res: Response): Promise<string> {
   return 'Something went wrong. Please try again.';
 }
 
+export async function apiGet<T>(path: string): Promise<T> {
+  return get<T>(path);
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: 'include' });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res));
