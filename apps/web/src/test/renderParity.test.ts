@@ -57,3 +57,13 @@ describe('render parity: parts the library does not know', () => {
     expect(unknownPartLook(c.partNumber, c.widthStuds, c.heightStuds)).toEqual(c.expect);
   });
 });
+
+import AREAS from '../../../../packages/bbm/tests/fixtures/render-parity/areas.json';
+import { areaCellCss } from '../editor/render/AreaLayer';
+
+describe('render parity: painted areas', () => {
+  it.each(AREAS.cases)('draws $color at $transparency% as BlueBrick does', (c) => {
+    const { r, g, b, a } = c.expect;
+    expect(areaCellCss(c.color, c.transparency)).toBe(`rgba(${r}, ${g}, ${b}, ${a / 255})`);
+  });
+});

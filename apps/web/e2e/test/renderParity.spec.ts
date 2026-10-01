@@ -1,6 +1,7 @@
 // The map must look the same on the web and in the desktop. Both apps draw
 // render-parity/parity.bld-layout's saved views at the same size (Export
-// all views, Small); the desktop's tests/ui/RenderParityTest.cpp draws the
+// all views, Small): parity.bld-layout (modules, a see-through sheet, text,
+// the room) and rulers-areas.bld-layout. The desktop's tests/ui/RenderParityTest.cpp draws the
 // same views from its own copy of the fixture.
 //
 // Each picture is compared with this app's golden PNG
@@ -19,7 +20,7 @@ import { inflateRawSync } from 'node:zlib';
 import { signIn } from '../helpers';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FIXTURE = join(HERE, '../../../../packages/bbm/tests/fixtures/render-parity/parity.bld-layout');
+const FIXTURES = join(HERE, '../../../../packages/bbm/tests/fixtures/render-parity');
 const GOLDENS = join(HERE, '../fixtures/render-parity/web');
 const OUT = process.env.PARITY_OUT;
 
@@ -65,43 +66,46 @@ async function diffShare(page: Page, a: Buffer, b: Buffer): Promise<number> {
   );
 }
 
-test('the parity layout draws the same pictures as its goldens', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  const file = unzip(readFileSync(FIXTURE));
-  await signIn(page, `parity-${Date.now()}@example.com`, 'Parity Tester');
-  const res = await page.request.post('/api/layouts', {
-    data: {
-      title: 'Parity',
-      bbm: file.get('layout.bbm')!.toString('utf-8'),
-      sidecar: file.get('sidecar.json')!.toString('utf-8'),
-      backgroundImage: { type: 'image/png', data: file.get('background.png')!.toString('base64') },
-    },
+for (const stem of ['parity', 'rulers-areas']) {
+  test(`the ${stem} layout draws the same pictures as its goldens`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const file = unzip(readFileSync(join(FIXTURES, `${stem}.bld-layout`)));
+    await signIn(page, `parity-${stem}-${Date.now()}@example.com`, 'Parity Tester');
+    const background = file.get('background.png');
+    const res = await page.request.post('/api/layouts', {
+      data: {
+        title: 'Parity',
+        bbm: file.get('layout.bbm')!.toString('utf-8'),
+        sidecar: file.get('sidecar.json')!.toString('utf-8'),
+        ...(background ? { backgroundImage: { type: 'image/png', data: background.toString('base64') } } : {}),
+      },
+    });
+    expect(res.status()).toBe(201);
+    const id = ((await res.json()) as { id: string }).id;
+    await page.addInitScript(() => localStorage.setItem('cld:exportViews', JSON.stringify({ maxSide: 1280 })));
+    await page.goto(`/editor/${id}`);
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('save-status')).toHaveText('Saved', { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    await page.getByRole('group', { name: 'Tasks' }).getByRole('button', { name: 'Build' }).click();
+    const dl = page.waitForEvent('download');
+    await page.getByRole('region', { name: 'Views' }).getByRole('button', { name: 'Export all views' }).click();
+    const pictures = unzip(readFileSync(await (await dl).path()));
+    expect(pictures.size).toBe(2);
+
+    for (const [name, png] of pictures) {
+      const view = name.replace(/^Parity - /, '');
+      if (OUT) {
+        mkdirSync(OUT, { recursive: true });
+        writeFileSync(join(OUT, view), png);
+      }
+      if (process.env.UPDATE_GOLDENS === '1') {
+        mkdirSync(GOLDENS, { recursive: true });
+        writeFileSync(join(GOLDENS, view), png);
+      } else if (process.env.RENDER_GOLDENS === '1') {
+        expect(await diffShare(page, png, readFileSync(join(GOLDENS, view))), view).toBeLessThanOrEqual(0.002);
+      }
+    }
   });
-  expect(res.status()).toBe(201);
-  const id = ((await res.json()) as { id: string }).id;
-  await page.addInitScript(() => localStorage.setItem('cld:exportViews', JSON.stringify({ maxSide: 1280 })));
-  await page.goto(`/editor/${id}`);
-  await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByTestId('save-status')).toHaveText('Saved', { timeout: 15000 });
-  await page.waitForTimeout(1000);
-
-  await page.getByRole('group', { name: 'Tasks' }).getByRole('button', { name: 'Build' }).click();
-  const dl = page.waitForEvent('download');
-  await page.getByRole('region', { name: 'Views' }).getByRole('button', { name: 'Export all views' }).click();
-  const pictures = unzip(readFileSync(await (await dl).path()));
-  expect([...pictures.keys()]).toEqual(['Parity - All.png', 'Parity - Close.png']);
-
-  for (const [name, png] of pictures) {
-    const view = name.replace(/^Parity - /, '');
-    if (OUT) {
-      mkdirSync(OUT, { recursive: true });
-      writeFileSync(join(OUT, view), png);
-    }
-    if (process.env.UPDATE_GOLDENS === '1') {
-      mkdirSync(GOLDENS, { recursive: true });
-      writeFileSync(join(GOLDENS, view), png);
-    } else if (process.env.RENDER_GOLDENS === '1') {
-      expect(await diffShare(page, png, readFileSync(join(GOLDENS, view))), view).toBeLessThanOrEqual(0.002);
-    }
-  }
-});
+}
