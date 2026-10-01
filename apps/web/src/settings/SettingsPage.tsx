@@ -4,14 +4,14 @@
 // in this browser only. Used as a page (/settings) and as a dialog over
 // the editor, so changing the look doesn't mean leaving a layout.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePreferences } from '../theme/PrefsProvider';
 import { ACCENTS, ACCENT_IDS, NEUTRALS } from '../theme/tokens';
 import type { ThemeChoice } from '../theme/theme';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
-import { useInstallState } from '../pwa/install';
+import { isMobileDevice, useInstallState } from '../pwa/install';
 
 const THEME_CARDS: { id: ThemeChoice; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -38,6 +38,8 @@ function ThemePreview({ id }: { id: ThemeChoice }) {
 }
 
 function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  // The button is the tap target (44 px tall on touch screens); the track
+  // inside keeps its pill shape at any button height.
   return (
     <button
       type="button"
@@ -45,11 +47,15 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${checked ? 'bg-accent text-accent-ink' : 'bg-border'}`}
+      className="group inline-flex shrink-0 items-center justify-center rounded-full"
     >
       <span
-        className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-[left] ${checked ? 'left-7' : 'left-1'}`}
-      />
+        aria-hidden
+        data-testid="switch-track"
+        className={`relative block h-8 w-14 rounded-full transition-colors group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-accent ${checked ? 'bg-accent' : 'bg-border'}`}
+      >
+        <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-[left] ${checked ? 'left-7' : 'left-1'}`} />
+      </span>
     </button>
   );
 }
@@ -71,6 +77,8 @@ function Section({ id, title, help, children }: { id: string; title: string; hel
 export function SettingsContent({ onClose }: { onClose?: () => void }) {
   const { prefs, setPrefs, syncedToAccount } = usePreferences();
   const host = window.location.host;
+  // Installing is for phones and tablets; computers use the site as it is.
+  const mobile = useMemo(() => isMobileDevice(), []);
 
   return (
     <div className="flex flex-col gap-8 md:flex-row">
@@ -82,9 +90,11 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
         <a href="#help" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Help and tours
         </a>
-        <a href="#install" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
-          Install the app
-        </a>
+        {mobile && (
+          <a href="#install" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
+            Install the app
+          </a>
+        )}
         <a href="#account" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Account
         </a>
@@ -211,9 +221,11 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
           </div>
         </Section>
 
-        <Section id="install" title="Install the app">
-          <InstallApp />
-        </Section>
+        {mobile && (
+          <Section id="install" title="Install the app">
+            <InstallApp />
+          </Section>
+        )}
 
         <Section id="account" title="Account">
           {syncedToAccount ? (
