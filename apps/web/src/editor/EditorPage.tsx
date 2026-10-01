@@ -36,7 +36,7 @@ import { PanelHost } from './PanelHost';
 import { HelpButton } from '../help/HelpButton';
 import { FloatingPanel } from './FloatingPanel';
 import { Resizer } from './Resizer';
-import { useDockLayout, type DockZone } from './dockLayout';
+import { splitterHeights, useDockLayout, type DockZone } from './dockLayout';
 import { AreaLayers } from './render/AreaLayer';
 import { TextLayers, type TextCellRef } from './render/TextLayer';
 import { RulerLayers } from './render/RulerLayer';
@@ -3391,6 +3391,10 @@ const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets',
  * `panelHeights[id]` if set; otherwise they fall back to a content
  * size with a soft cap. This matches the desktop's QSplitter "the
  * bottom panel takes whatever space is left" convention.
+ *
+ * Dragging a divider works like a splitter (splitterHeights): only the
+ * panels on either side of it change size; every other panel keeps the
+ * height it has on screen.
  */
 function DockColumn({
   panels,
@@ -3405,10 +3409,20 @@ function DockColumn({
   renderPanel: (id: string) => React.ReactNode;
   gridColumn: string;
   panelHeights: Record<string, number>;
-  onResizePanel: (panelId: string, clientY: number) => void;
+  onResizePanel: (panelId: string, heightPx: number) => void;
   edge: React.ReactNode;
   edgeSide: 'start' | 'end';
 }) {
+  const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // The divider under panel `i` moved to `clientY`.
+  const dragDivider = (i: number, clientY: number) => {
+    const els = slotRefs.current.slice(0, panels.length);
+    if (els.some((e) => !e)) return;
+    const heights = els.map((e) => e!.getBoundingClientRect().height);
+    const top = els[i]!.getBoundingClientRect().top;
+    const next = splitterHeights(heights, i, clientY - top);
+    next.forEach((h, j) => onResizePanel(panels[j]!, h));
+  };
   return (
     <div
       className="flex h-full flex-row overflow-hidden"
@@ -3427,10 +3441,11 @@ function DockColumn({
             isLast: boolean;
             fixedHeightPx?: number;
             onResize?: (clientY: number) => void;
-          } = { panelId: id, isLast };
+            slotRef: (el: HTMLDivElement | null) => void;
+          } = { panelId: id, isLast, slotRef: (el) => { slotRefs.current[i] = el; } };
           if (!isLast && typeof height === 'number') slotProps.fixedHeightPx = height;
           if (!isLast) {
-            slotProps.onResize = (clientY) => onResizePanel(id, clientY);
+            slotProps.onResize = (clientY) => dragDivider(i, clientY);
           }
           return (
             <ResizableDockSlot key={id} {...slotProps}>
@@ -3446,24 +3461,24 @@ function DockColumn({
 
 /**
  * Single slot in a dock column. Holds the panel content and (for non-
- * last slots) a row-axis Resizer at the bottom edge. The slot itself
- * captures its top offset via a ref so the row resizer can convert
- * the global clientY to a panel height.
+ * last slots) a row-axis Resizer at the bottom edge, which reports the
+ * pointer's clientY to the column (DockColumn works out the sizes).
  */
 function ResizableDockSlot({
   panelId,
   isLast,
   fixedHeightPx,
   onResize,
+  slotRef,
   children,
 }: {
   panelId: string;
   isLast: boolean;
   fixedHeightPx?: number;
   onResize?: (clientY: number) => void;
+  slotRef: (el: HTMLDivElement | null) => void;
   children: React.ReactNode;
 }) {
-  const slotRef = useRef<HTMLDivElement | null>(null);
   return (
     <>
       <div
@@ -3478,13 +3493,7 @@ function ResizableDockSlot({
         {children}
       </div>
       {!isLast && onResize && (
-        <Resizer
-          axis="row"
-          onResize={(clientY) => {
-            const top = slotRef.current?.getBoundingClientRect().top ?? 0;
-            onResize(clientY - top);
-          }}
-        />
+        <Resizer axis="row" onResize={onResize} />
       )}
     </>
   );

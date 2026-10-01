@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { useDockLayout } from '../dockLayout';
+import { splitterHeights, useDockLayout } from '../dockLayout';
 
 // jsdom ships a real localStorage implementation, so no stub needed.
 
@@ -190,5 +190,31 @@ describe('useDockLayout — persistence', () => {
     const { result: u2 } = renderHook(() => useDockLayout('user-2'));
     // user-2 should start from defaults, not user-1's state.
     expect(u2.current.state.leftWidth).toBe(280);
+  });
+});
+
+describe('splitterHeights (dragging the divider between stacked panels)', () => {
+  it('changes only the two panels next to the divider', () => {
+    // Modules 300, Module Library 250, Room library fills the rest (200).
+    expect(splitterHeights([300, 250, 200], 0, 200)).toEqual([200, 350]);
+    expect(splitterHeights([300, 250, 200], 1, 300)).toEqual([300, 300]);
+  });
+
+  it('the panel above the divider never moves when dragging the one below it', () => {
+    const before = [300, 250, 200];
+    const after = splitterHeights(before, 1, 150);
+    expect(after[0]).toBe(300);
+    expect(after[1]).toBe(150);
+  });
+
+  it('keeps both panels at least the minimum height', () => {
+    expect(splitterHeights([300, 250, 200], 0, 10, 80)).toEqual([80, 470]);
+    expect(splitterHeights([300, 250, 200], 0, 999, 80)).toEqual([470, 80]);
+    // Against the last panel: it can't be squeezed below the minimum either.
+    expect(splitterHeights([300, 250, 200], 1, 999, 80)).toEqual([300, 370]);
+  });
+
+  it('with two panels, only the top one keeps a height', () => {
+    expect(splitterHeights([400, 300], 0, 500)).toEqual([500]);
   });
 });
