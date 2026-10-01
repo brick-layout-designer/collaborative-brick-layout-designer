@@ -7,6 +7,7 @@
 // as `moduleLabelPercent`% of the long axis (SceneBuilderSidecar.cpp:242-368).
 // Desktop also dodges other modules' labels; we keep the first slot.
 
+import Konva from 'konva';
 import { Group, Rect, Text } from 'react-konva';
 import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
@@ -26,6 +27,29 @@ export function moduleLabelFontPx(frameWpx: number, frameHpx: number, percent: n
   const longAxis = Math.max(frameWpx, frameHpx);
   const pct = Math.max(5, Math.min(100, percent));
   return Math.round(Math.max(16, Math.min(400, longAxis * (pct / 100))));
+}
+
+/**
+ * The whole name always shows: when it is wider than the frame side at
+ * `fontPx`, the font shrinks to fit (down to 60% of `fontPx`, and never
+ * under 16 px), and if it is still wider the label grows past the frame
+ * ends, centred on the side.
+ */
+export function fitModuleLabel(
+  textWidthAt: (fontPx: number) => number,
+  fontPx: number,
+  sideLength: number,
+): { fontPx: number; width: number } {
+  const natural = textWidthAt(fontPx);
+  if (natural <= sideLength) return { fontPx, width: sideLength };
+  const smallest = Math.max(16, Math.round(fontPx * 0.6));
+  const fitted = Math.max(smallest, Math.floor((fontPx * sideLength) / natural));
+  const width = Math.max(sideLength, Math.ceil(textWidthAt(fitted)) + 2);
+  return { fontPx: fitted, width };
+}
+
+function measureBold(text: string): (fontPx: number) => number {
+  return (fontPx) => new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold' }).width();
 }
 
 export function ModuleOverlay({ map, modules }: Props) {
@@ -73,11 +97,15 @@ export function ModuleOverlay({ map, modules }: Props) {
         const ph = (maxY - minY) * pxPerStud;
         const PAD = 4;
         const portrait = ph > pw;
-        const fontPx = moduleLabelFontPx(pw, ph, labelPercent);
+        const name = mod.name || '(module)';
+        const baseFontPx = moduleLabelFontPx(pw, ph, labelPercent);
         const GAP = 16; // desktop padOut
         // Landscape: centred above the frame. Portrait: rotated along the
         // left edge, reading bottom-to-top.
-        const labelW = portrait ? ph + PAD * 2 : pw + PAD * 2;
+        const side = portrait ? ph + PAD * 2 : pw + PAD * 2;
+        const { fontPx, width: labelW } = fitModuleLabel(measureBold(name), baseFontPx, side);
+        // A label wider than its side stays centred on it.
+        const over = (labelW - side) / 2;
 
         return (
           <Group key={mod.id}>
@@ -98,12 +126,12 @@ export function ModuleOverlay({ map, modules }: Props) {
             {(
               <Text
                 {...(portrait
-                  ? { x: px - PAD - GAP - fontPx, y: py + ph + PAD, rotation: -90 }
-                  : { x: px - PAD, y: py - PAD - GAP - fontPx })}
+                  ? { x: px - PAD - GAP - fontPx, y: py + ph + PAD + over, rotation: -90 }
+                  : { x: px - PAD - over, y: py - PAD - GAP - fontPx })}
                 width={labelW}
                 align="center"
                 wrap="none"
-                text={mod.name || '(module)'}
+                text={name}
                 fontSize={fontPx}
                 fontStyle="bold"
                 fill="rgba(100,180,255,0.9)"

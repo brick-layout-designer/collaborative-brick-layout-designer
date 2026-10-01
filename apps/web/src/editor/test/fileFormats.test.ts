@@ -10,7 +10,7 @@ import BUDGET_EMPTY from '../../../../../packages/bbm/tests/fixtures/oracle/budg
 import GRAND_LOBBY from '../../../../../packages/bbm/tests/fixtures/grand-lobby.bld-venue?raw';
 import { parseVenueFile, writeVenueFile } from '../venueFile';
 import { formatDistance } from '../render/RulerLayer';
-import { moduleLabelFontPx } from '../render/ModuleOverlay';
+import { fitModuleLabel, moduleLabelFontPx } from '../render/ModuleOverlay';
 
 describe('.bbb budget files (vanilla BlueBrick format, Budget.cpp)', () => {
   it('reads vanilla files in file order, ids as written', () => {
@@ -152,3 +152,32 @@ describe('moduleLabelFontPx', () => {
     expect(moduleLabelFontPx(4000, 10, 100)).toBe(400);
   });
 });
+
+describe('fitModuleLabel', () => {
+  // A stand-in for the real measurement: each character is half the font size wide.
+  const widthOf = (chars: number) => (fontPx: number) => chars * fontPx * 0.5;
+
+  it('keeps the size when the whole name fits the side', () => {
+    expect(fitModuleLabel(widthOf(10), 100, 600)).toEqual({ fontPx: 100, width: 600 });
+  });
+
+  it('shrinks the font so a longer name still shows in full', () => {
+    // 20 chars at 100 px = 1000 px on a 900 px side: 90 px fits.
+    const r = fitModuleLabel(widthOf(20), 100, 900);
+    expect(r.fontPx).toBe(90);
+    expect(widthOf(20)(r.fontPx)).toBeLessThanOrEqual(r.width);
+  });
+
+  it('never hides part of the name: past the smallest size the label grows wider than the side', () => {
+    // "Straight 2 table deep" on a short side: 21 chars at 100 px = 1050 px on 300 px.
+    const r = fitModuleLabel(widthOf(21), 100, 300);
+    expect(r.fontPx).toBe(60);
+    expect(r.width).toBeGreaterThanOrEqual(widthOf(21)(60));
+    expect(r.width).toBeGreaterThan(300);
+  });
+
+  it('keeps small labels readable (not under 16 px)', () => {
+    expect(fitModuleLabel(widthOf(30), 20, 50).fontPx).toBe(16);
+  });
+});
+
