@@ -1,6 +1,6 @@
 // The Venue Designer: a full-screen editor for one venue. Tools on the
 // left, the drawing in the middle, the inspector on the right, layer
-// toggles above and the cursor, room size and hint below. It edits a copy;
+// toggles above and the cursor, venue size and hint below. It edits a copy;
 // `onSave` gets the result (a library venue, or the layout's venue).
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
@@ -268,7 +268,7 @@ export function VenueDesigner({
             <span className="font-mono pointer-coarse:hidden">{cursor ? `${formatLength(cursor.x, state.unit)}, ${formatLength(cursor.y, state.unit)}` : '—'}</span>
             {size && (
               <span>
-                Room {formatLength(size.w, state.unit)} × {formatLength(size.h, state.unit)} · {Math.round(size.area / (FT * FT)).toLocaleString()} sq ft
+                Venue {formatLength(size.w, state.unit)} × {formatLength(size.h, state.unit)} · {Math.round(size.area / (FT * FT)).toLocaleString()} sq ft
               </span>
             )}
             <span className={`min-w-0 truncate ${state.message ? 'text-amber-300' : ''}`}>

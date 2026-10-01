@@ -28,7 +28,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Incorrect email or password.',
   invalid_input: 'Please fill in all required fields.',
   email_taken: 'An account with that email already exists.',
-  name_taken: 'Another saved room already has that name.',
+  name_taken: 'Another saved venue already has that name.',
   not_an_org_member: 'You are not in that club.',
   not_a_member_of_recipient_org: 'You are not in that club.',
   org_not_found: 'That club was not found.',
@@ -40,7 +40,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_slug: 'Use lowercase letters, numbers and dashes for the address.',
   already_member: 'That person is already in the club.',
   invalid_expiry: 'Pick between 1 and 30 days.',
-  org_owned_rooms_can_only_move_to_orgs: "A club's room stays with the club. Make a copy for yourself instead.",
+  org_owned_rooms_can_only_move_to_orgs: "A club's venue stays with the club. Make a copy for yourself instead.",
   org_owned_layouts_can_only_transfer_to_orgs: "A club's layout stays with the club. Make a copy for yourself instead.",
   invalid_email: 'Enter a valid email address.',
   forbidden: "You don't have permission to do that.",
@@ -126,7 +126,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** Who owns a layout, room or module: a person, or a club. */
+/** Who owns a layout, venue or module: a person, or a club. */
 export interface OwnerInfo {
   kind: 'user' | 'org';
   id: string;
@@ -606,10 +606,10 @@ export const api = {
 
   venues: {
     list: () => get<{ venues: VenueSummary[] }>('/api/venues'),
-    /** Copy into your own rooms (no `orgSlug`) or a club's. */
+    /** Copy into your own venues (no `orgSlug`) or a club's. */
     copy: (id: string, orgSlug?: string) =>
       post<{ id: string; name: string }>(`/api/venues/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
-    /** Hand a room to a club (a club's room never moves back to one person). */
+    /** Hand a venue to a club (a club's venue never moves back to one person). */
     move: (id: string, orgSlug: string) =>
       post<{ ok: true; id: string; name: string }>(`/api/venues/${encodeURIComponent(id)}/move`, { orgSlug }),
     get: (id: string) => get<{ id: string; name: string; data: unknown }>(`/api/venues/${id}`),
@@ -960,7 +960,7 @@ export interface OrgSummary {
 
 export interface OrgDetail extends OrgSummary {
   description?: string;
-  /** Members (not only admins) may add layouts, rooms and modules. */
+  /** Members (not only admins) may add layouts, venues and modules. */
   membersCanCreate?: boolean;
   memberCount?: number;
   adminCount?: number;

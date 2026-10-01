@@ -54,7 +54,7 @@ function OrgAdmin({ slug }: { slug: string }) {
   const memberList = members.data?.members ?? [];
   const count = (items: readonly { ownerOrgId: string | null }[] | undefined) => items?.filter((i) => i.ownerOrgId === org.id).length ?? 0;
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-  const things = `its ${plural(count(layouts.data?.layouts), 'layout')}, ${plural(count(venues.data?.venues), 'room')}, ${plural(count(modules.data?.modules), 'module')} and custom parts`;
+  const things = `its ${plural(count(layouts.data?.layouts), 'layout')}, ${plural(count(venues.data?.venues), 'venue')}, ${plural(count(modules.data?.modules), 'module')} and custom parts`;
 
   const TABS: { id: Tab; label: string }[] = [
     { id: 'people', label: 'People' },

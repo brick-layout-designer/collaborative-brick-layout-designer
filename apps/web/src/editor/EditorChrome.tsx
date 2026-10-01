@@ -16,7 +16,7 @@ export type EditorTask = 'build' | 'room' | 'notes' | 'parts';
 
 export const TASKS: { id: EditorTask; label: string; hint: string }[] = [
   { id: 'build', label: 'Build', hint: 'Parts and sheets: lay out the track and buildings' },
-  { id: 'room', label: 'Room', hint: 'The room the layout goes in' },
+  { id: 'room', label: 'Venue', hint: 'The venue the layout goes in' },
   { id: 'notes', label: 'Notes', hint: 'Author, club, event and notes for this layout' },
   { id: 'parts', label: 'Parts list', hint: 'Every part this layout uses' },
 ];

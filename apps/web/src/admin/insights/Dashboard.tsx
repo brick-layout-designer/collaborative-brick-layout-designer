@@ -188,14 +188,14 @@ export default function Dashboard() {
           note="Layout content size, not disk use."
         />
         <DataTable
-          title="Clubs’ layouts, rooms and modules"
+          title="Clubs’ layouts, venues and modules"
           rows={c?.byOwner.clubs ?? []}
           rowKey={(r) => r.orgId}
           columns={[
             { label: 'Club', value: (r) => r.name },
             { label: 'Layouts', value: (r) => r.layouts, align: 'right' },
             { label: 'Size', value: (r) => r.bytes, render: (r) => formatBytes(r.bytes), align: 'right' },
-            { label: 'Rooms', value: (r) => r.rooms, align: 'right' },
+            { label: 'Venues', value: (r) => r.rooms, align: 'right' },
             { label: 'Modules', value: (r) => r.modules, align: 'right' },
             { label: 'Custom parts', value: (r) => r.customParts, align: 'right' },
           ]}
@@ -259,7 +259,7 @@ export default function Dashboard() {
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <Stat term="Custom parts" value={`${formatCompact(c.totals.customParts)} · ${formatBytes(c.totals.customPartBytes)}`} />
               <Stat term="Modules" value={formatCompact(c.totals.modules)} />
-              <Stat term="Rooms" value={formatCompact(c.totals.rooms)} />
+              <Stat term="Venues" value={formatCompact(c.totals.rooms)} />
               <Stat term="Parts waiting for review" value="No review step" />
             </dl>
           ) : (

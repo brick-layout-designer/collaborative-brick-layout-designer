@@ -412,7 +412,7 @@ test.describe('venue library', () => {
     expect(created.ok()).toBe(true);
     await openEditor(page, id);
     await page.getByRole('button', { name: 'Panels', exact: true }).click();
-    await page.getByLabel('Room library').check();
+    await page.getByLabel('Venue library').check();
     await page.mouse.click(400, 400); // close the menu
 
     const renamed = `${name} (main)`;

@@ -3428,8 +3428,8 @@ function SnapRing() {
  * Always available, even when no panels are currently hidden, so the
  * affordance stays visible.
  */
-// UI words: layers are "Sheets" and the venue is the "Room" (the ids stay).
-const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', views: 'Views', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module library', venuelibrary: 'Room library' };
+// UI words: layers are "Sheets" (the ids stay).
+const PANEL_TITLES: Record<string, string> = { parts: 'Parts', layers: 'Sheets', views: 'Views', usedparts: 'Parts list', modules: 'Modules', modlibrary: 'Module library', venuelibrary: 'Venue library' };
 
 /**
  * Renders a vertical stack of panels in one dock column, with:

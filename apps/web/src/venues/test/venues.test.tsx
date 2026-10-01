@@ -107,7 +107,7 @@ function renderAt(ui: ReactNode, url = '/') {
 const CLUB = { id: 'org1', name: 'Train Club', slug: 'club', createdAt: 0, myRole: 'member' as const };
 
 describe('VenueList', () => {
-  it("shows a club's rooms under its filter, links Start layout to the new-layout dialog, and uploads to the club", async () => {
+  it("shows a club's venues under its filter, links Start layout to the new-layout dialog, and uploads to the club", async () => {
     routes['POST /api/venues'] = () => ({ status: 201, body: { id: 'v-new', name: 'Grand Lobby' } });
     renderAt(<VenueList filter="club" myUserId="u1" orgs={[CLUB]} />);
 
@@ -123,12 +123,12 @@ describe('VenueList', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'More for Grand Lobby' }));
 
     // Upload asks where it goes first, starting at the club being shown.
-    fireEvent.click(screen.getByRole('button', { name: 'Upload room…' }));
-    const dialog = screen.getByRole('dialog', { name: 'Upload a room' });
+    fireEvent.click(screen.getByRole('button', { name: 'Upload venue…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Upload a venue' });
     expect((within(dialog).getByLabelText('Save to') as HTMLSelectElement).value).toBe('club');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Choose file…' }));
     const file = new File([JSON.stringify({ schema: 'bld-venue/1', ...HALL })], 'lobby.bld-venue');
-    fireEvent.change(screen.getByLabelText('Room file'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Venue file'), { target: { files: [file] } });
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/venues')).toBe(true));
     const post = calls.find((c) => c.method === 'POST')!.body as { name: string; orgSlug: string; data: Venue };
     expect(post.orgSlug).toBe('club');
@@ -143,7 +143,7 @@ describe('VenueList', () => {
     expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 
-  it('lets the owner of personal rooms rename and delete them', async () => {
+  it('lets the owner of personal venues rename and delete them', async () => {
     routes['PATCH /api/venues/v-mine'] = () => ({ body: { ok: true, id: 'v-mine', name: 'Shed' } });
     routes['DELETE /api/venues/v-mine'] = () => ({ body: { ok: true } });
     vi.stubGlobal('prompt', () => 'Shed');
@@ -165,7 +165,7 @@ describe('VenueList', () => {
     expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({ name: 'Shed' });
   });
 
-  it('shows mine and my clubs\' rooms together under All, and copies a club room to me', async () => {
+  it('shows mine and my clubs\' venues together under All, and copies a club venue to me', async () => {
     routes['POST /api/venues/v-club/copy'] = () => ({ status: 201, body: { id: 'v-copy', name: 'Grand Lobby' } });
     // In two clubs, so there is somewhere else to move it, but only a club admin may.
     renderAt(<VenueList filter="all" myUserId="u1" orgs={[CLUB, { ...CLUB, id: 'org2', name: 'Other Club', slug: 'other' }]} />);
@@ -192,10 +192,10 @@ describe('New layout from a venue', () => {
     routes['POST /api/layouts'] = () => ({ status: 201, body: { id: 'lay1' } });
     renderAt(<LayoutsPage />, '/?newLayoutVenue=v-club&owner=club');
 
-    const select = (await screen.findByLabelText('Start from a room')) as HTMLSelectElement;
+    const select = (await screen.findByLabelText('Start from a venue')) as HTMLSelectElement;
     await waitFor(() => expect(select.value).toBe('v-club'));
     // The owner's org venues come first.
-    expect([...select.options].map((o) => o.textContent)).toEqual(['No room', 'Grand Lobby (Train Club)', 'Garage']);
+    expect([...select.options].map((o) => o.textContent)).toEqual(['No venue', 'Grand Lobby (Train Club)', 'Garage']);
     expect((screen.getByLabelText('Save to') as HTMLSelectElement).value).toBe('club');
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));

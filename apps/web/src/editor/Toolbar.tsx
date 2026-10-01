@@ -7,15 +7,15 @@ import { isEditableTarget } from './keyboardGuard';
 // and `X` (commonly cut-on-other-platforms). Desktop has no equivalent
 // 1-key tool switcher at all — these are a web-port convenience.
 // Labels are plain words for club members; the tooltip keeps the
-// shortcut. "Room" is the UI name for the venue.
+// shortcut.
 const TOOLS: { id: Tool; label: string; hint: string; shortcut: string | null; icon: ReactNode }[] = [
   { id: 'select', label: 'Select', hint: 'Select and move pieces', shortcut: 'V', icon: <path d="M5 3l14 8-6 2-2 6z" /> },
   { id: 'paint', label: 'Paint', hint: 'Paint pieces a colour', shortcut: 'B', icon: <><path d="M4 20c0-3 2-5 5-5l6-6 3 3-6 6c0 3-2 5-5 5H4z" /><path d="M14 5l2-2 5 5-2 2" /></> },
   { id: 'erase', label: 'Erase', hint: 'Erase areas', shortcut: 'E', icon: <><path d="M16 3l5 5-11 11H5l-2-2z" /><path d="M9 21h12" /></> },
   { id: 'rulerLinear', label: 'Measure', hint: 'Measure a straight distance', shortcut: null, icon: <><path d="M3 17L17 3l4 4L7 21z" /><path d="M8 12l2 2M11 9l2 2M14 6l2 2" /></> },
   { id: 'rulerCircular', label: 'Circle', hint: 'Measure with a circle', shortcut: null, icon: <><circle cx="12" cy="12" r="8" /><path d="M12 12h8" /></> },
-  { id: 'venueOutline', label: 'Room', hint: 'Draw the room walls', shortcut: null, icon: <path d="M4 20V8l8-5 8 5v12z" /> },
-  { id: 'venueObstacle', label: 'Obstacle', hint: 'Mark something in the room to avoid', shortcut: null, icon: <><rect x="5" y="5" width="14" height="14" rx="2" /><path d="M5 5l14 14" /></> },
+  { id: 'venueOutline', label: 'Venue', hint: 'Draw the venue walls', shortcut: null, icon: <path d="M4 20V8l8-5 8 5v12z" /> },
+  { id: 'venueObstacle', label: 'Obstacle', hint: 'Mark something in the venue to avoid', shortcut: null, icon: <><rect x="5" y="5" width="14" height="14" rx="2" /><path d="M5 5l14 14" /></> },
   { id: 'rotate', label: 'Rotate', hint: 'Turn pieces', shortcut: null, icon: <><path d="M20 12a8 8 0 11-3-6.2" /><path d="M20 4v5h-5" /></> },
   { id: 'delete', label: 'Delete', hint: 'Click pieces to remove them', shortcut: null, icon: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /> },
 ];

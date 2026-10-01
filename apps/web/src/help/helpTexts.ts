@@ -48,9 +48,9 @@ export const HELP_TEXTS = {
     more: 'Drag a module from here onto the map to add a copy of it. Your club’s modules are shared with everyone in the club.',
   },
   'panel.roomLibrary': {
-    title: 'Room library',
-    short: 'Rooms and halls saved to your account or your club.',
-    more: 'Put a room under your layout to check that it fits, with space to walk around. Anyone in your club can use the club’s rooms.',
+    title: 'Venue library',
+    short: 'Venues saved to your account or your club.',
+    more: 'Put a venue under your layout to check that it fits, with space to walk around. Anyone in your club can use the club’s venues.',
     learnMoreUrl: '/help#room',
   },
   'panel.views': {
@@ -67,7 +67,7 @@ export const HELP_TEXTS = {
   },
   'topbar.tasks': {
     title: 'Tasks',
-    short: 'Jump to what you want to do: build, draw the room, add notes or see the parts list.',
+    short: 'Jump to what you want to do: build, draw the venue, add notes or see the parts list.',
     more: 'Each task opens the panels you need for it. Nothing is lost when you switch between them.',
   },
   'people.here': {
@@ -101,7 +101,7 @@ export const HELP_TEXTS = {
   'tools.rail': {
     title: 'Tools',
     short: 'Pick what a click on the map does.',
-    more: 'Select moves pieces. Measure and Circle add a ruler you can keep on the map. Room and Obstacle draw the walls of the room and things to keep clear of.',
+    more: 'Select moves pieces. Measure and Circle add a ruler you can keep on the map. Venue and Obstacle draw the walls of the venue and things to keep clear of.',
     learnMoreUrl: '/help#shortcuts',
   },
 
@@ -113,8 +113,8 @@ export const HELP_TEXTS = {
     learnMoreUrl: '/help#sheets',
   },
   'status.room': {
-    title: 'Room check',
-    short: 'Says whether the layout fits the room, with space to walk around.',
+    title: 'Venue check',
+    short: 'Says whether the layout fits the venue, with space to walk around.',
     more: 'It checks for pieces outside the walls, on top of obstacles, or too close to leave a walkway. Point at it to see what needs fixing.',
     learnMoreUrl: '/help#room',
   },
@@ -166,14 +166,14 @@ export const HELP_TEXTS = {
   },
   'download.layout': {
     title: 'Layout file',
-    short: 'Everything in one file: parts, sheets, room, labels and modules.',
+    short: 'Everything in one file: parts, sheets, venue, labels and modules.',
     more: 'Pick this to keep a backup or to open the layout in the desktop app. Nothing is left out.',
     learnMoreUrl: '/help#files',
   },
   'download.bbm': {
     title: 'BlueBrick map',
     short: 'For people who still use the old BlueBrick program.',
-    more: 'BlueBrick can’t hold everything this app can, so the room, labels, modules and background picture are left out. Your layout here keeps them.',
+    more: 'BlueBrick can’t hold everything this app can, so the venue, labels, modules and background picture are left out. Your layout here keeps them.',
     learnMoreUrl: '/help#files',
   },
 
@@ -249,7 +249,7 @@ export const HELP_TEXTS = {
     more: 'A tour points at the real buttons, one step at a time. Press “Show tours again” to see the ones you have already finished.',
   },
 
-  // The room designer
+  // The venue designer
   'room.tools': {
     title: 'Drawing tools',
     short: 'Pick what to draw: walls, doors, columns, power points and more.',
@@ -259,7 +259,7 @@ export const HELP_TEXTS = {
   'room.units': {
     title: 'Units',
     short: 'Show lengths in feet and inches, metres or studs.',
-    more: 'Change it any time: the room stays the same size. A stud is 8 mm, the width of one LEGO bump.',
+    more: 'Change it any time: the venue stays the same size. A stud is 8 mm, the width of one LEGO bump.',
   },
   'room.snap': {
     title: 'Snap',
@@ -268,7 +268,7 @@ export const HELP_TEXTS = {
   },
   'room.floorPlan': {
     title: 'Floor plan',
-    short: 'Put a picture of the room’s plan underneath, and trace over it.',
+    short: 'Put a picture of the venue’s plan underneath, and trace over it.',
     more: 'A photo or a drawing both work. Scale it by clicking two points you know the real distance between.',
     learnMoreUrl: '/help#room',
   },
@@ -280,12 +280,12 @@ export const HELP_TEXTS = {
   'room.show': {
     title: 'Show',
     short: 'Hide parts of the drawing to see the rest more clearly.',
-    more: 'Hiding something only hides it here. It is still part of the room.',
+    more: 'Hiding something only hides it here. It is still part of the venue.',
   },
   'room.walkway': {
     title: 'Walkway',
     short: 'The space to leave clear around the layout for people to walk.',
-    more: 'The room check warns you when the layout comes closer than this to a wall or an obstacle. It starts at about 90 cm.',
+    more: 'The venue check warns you when the layout comes closer than this to a wall or an obstacle. It starts at about 90 cm.',
   },
   'room.estimates': {
     title: 'Estimates',
