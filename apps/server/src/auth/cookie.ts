@@ -48,6 +48,11 @@ export function bearerToken(req: FastifyRequest): string | null {
   return m ? m[1]! : null;
 }
 
+/** A GET or HEAD for a parts-library file, served to everyone. */
+export function isPublicPartFile(req: Pick<FastifyRequest, 'method' | 'url'>): boolean {
+  return (req.method === 'GET' || req.method === 'HEAD') && req.url.startsWith('/parts/');
+}
+
 /**
  * Populate `req.user` from the session cookie, or — only on routes that
  * opt in via `config.apiToken` — from a Bearer API token. A request that
@@ -61,6 +66,9 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
   if (bearer !== null) {
     req.user = null;
     const needed = req.routeOptions.config?.apiToken;
+    // Part files are public: a desktop that sends its token with them (as
+    // 1.2.0 does for every request to its server) gets them like anyone.
+    if (!needed && isPublicPartFile(req)) return;
     if (!needed) return reply.code(403).send({ error: 'token_not_allowed' });
     const result = await validateApiToken(bearer);
     if (!result) {
