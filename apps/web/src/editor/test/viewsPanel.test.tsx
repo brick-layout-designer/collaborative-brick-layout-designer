@@ -25,6 +25,8 @@ function setup(over: Partial<ViewsPanelProps> = {}) {
     gridShown: true,
     onGoTo: vi.fn(),
     onShowEverything: vi.fn(),
+    onApply: vi.fn(),
+    onLeave: vi.fn(),
     onShare: vi.fn(),
     onExportAll: vi.fn(),
     ...over,
@@ -62,14 +64,36 @@ describe('ViewsPanel', () => {
     const onGoTo = vi.fn();
     const onShare = vi.fn();
     const onExportAll = vi.fn();
-    setup({ doc, onGoTo, onShare, onExportAll, activeViewId: 'a' });
+    setup({ doc, onGoTo, onShare, onExportAll, activeViewId: null });
     fireEvent.click(screen.getByRole('button', { name: /^Station/ }));
     expect(onGoTo).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
-    expect(screen.getByRole('button', { name: /^Station/ }).getAttribute('aria-current')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Share a picture of Station' }));
     expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
     fireEvent.click(screen.getByRole('button', { name: 'Export all views' }));
     expect(onExportAll).toHaveBeenCalled();
+  });
+
+  it('tapping the view on show stops showing it, without moving the map', () => {
+    const doc = new Y.Doc();
+    addSavedView(doc, newView('a', 'Station'));
+    const { props } = setup({ doc, activeViewId: 'a' });
+    const row = screen.getByRole('button', { name: /^Station/ });
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(row.textContent).toContain('tap to stop');
+    fireEvent.click(row);
+    expect(props.onLeave).toHaveBeenCalled();
+    expect(props.onGoTo).not.toHaveBeenCalled();
+  });
+
+  it('changing the view on show updates what shows, without snapping the map back', () => {
+    const doc = new Y.Doc();
+    addSavedView(doc, newView('a', 'Station'));
+    const { props } = setup({ doc, activeViewId: 'a' });
+    fireEvent.click(screen.getByRole('button', { name: 'Change Station' }));
+    fireEvent.click(screen.getByLabelText('Show labels'));
+    expect(props.onApply).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', labels: false }));
+    fireEvent.click(within(screen.getByTestId('view-options')).getByRole('button', { name: 'Use this area' }));
+    expect(props.onGoTo).not.toHaveBeenCalled();
   });
 
   it('shows that a view opens and closes, and Done closes it', () => {

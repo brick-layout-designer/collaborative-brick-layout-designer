@@ -11,6 +11,7 @@ import {
   addAnchoredLabel,
   addLayer,
   addSavedView,
+  createSidecarModule,
   deleteSavedView,
   ensureBrickLayer,
   placeBrick,
@@ -44,6 +45,44 @@ function twoSheets() {
 }
 
 const view = (over: Partial<SavedView>): SavedView => ({ ...newView('v', 'V'), ...over });
+
+describe('fit the whole layout with module names', () => {
+  // Bold text about 0.6 em per letter, the same in every run.
+  const measure = (text: string) => (fontPx: number) => text.length * fontPx * 0.6;
+  const names = { percent: 10, measure };
+  const withModule = (name: string) => {
+    const { doc, track, town } = twoSheets();
+    const id = docToBbm(doc).layers.find((l) => l.id === town)!;
+    const brick = (id as { bricks: { id: string }[] }).bricks[0]!.id;
+    createSidecarModule(doc, name, [brick]);
+    return { doc, track, town };
+  };
+
+  it('takes in the name above a wide module', () => {
+    const { doc, town } = withModule('Town');
+    // The town brick is 20 x 10 studs at (100, 50); its frame is half a
+    // stud out, and the 16 px name sits 16 px above that.
+    expect(fitRegionStuds(docToBbm(doc), readSidecarFromDoc(doc), [town], true, names)).toEqual({
+      x: 99.5 - M,
+      y: 45.5 - M,
+      width: 21 + 2 * M,
+      height: 15 + 2 * M,
+    });
+  });
+
+  it('takes in a name longer than its module, centred on it', () => {
+    const { doc, town } = withModule('A very long module name');
+    const r = fitRegionStuds(docToBbm(doc), readSidecarFromDoc(doc), [town], true, names)!;
+    expect(r.x).toBeCloseTo(96.0625 - M);
+    expect(r.width).toBeCloseTo(223 / 8 + 2 * M);
+  });
+
+  it('leaves the names out when they are hidden, or their sheet is', () => {
+    const { doc, town, track } = withModule('Town');
+    expect(fitRegionStuds(docToBbm(doc), readSidecarFromDoc(doc), [town], true, null)).toEqual({ x: 100 - M, y: 50 - M, width: 20 + 2 * M, height: 10 + 2 * M });
+    expect(fitRegionStuds(docToBbm(doc), readSidecarFromDoc(doc), [track], true, names)).toEqual({ x: -M, y: -M, width: 10 + 2 * M, height: 10 + 2 * M });
+  });
+});
 
 describe('fit the whole layout', () => {
   it('is the bounds of every shown sheet plus the margin', () => {
