@@ -12,7 +12,8 @@ import { Group, Rect, Text } from 'react-konva';
 import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import { useEditorStore } from '../editorStore';
-import { moduleLabelLayouts } from './moduleLabels';
+import { MAP_FONT_STACK } from './mapText';
+import { MODULE_FRAME_DASH, MODULE_FRAME_STROKE, MODULE_NAME_FILL, MODULE_NAME_STROKE, moduleLabelLayouts, moduleNameStrokePx } from './moduleLabels';
 
 export { fitModuleLabel, moduleLabelFontPx, moduleLabelLayouts, moduleLabelBoundsStuds, type ModuleLabelLayout } from './moduleLabels';
 
@@ -22,7 +23,7 @@ interface Props {
 }
 
 export function measureBold(text: string): (fontPx: number) => number {
-  return (fontPx) => new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold' }).width();
+  return (fontPx) => new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold', fontFamily: MAP_FONT_STACK }).width();
 }
 
 export function ModuleOverlay({ map, modules }: Props) {
@@ -39,10 +40,10 @@ export function ModuleOverlay({ map, modules }: Props) {
         <Group key={id}>
           <Rect
             {...frame}
-            stroke="rgba(100,180,255,0.8)"
+            stroke={MODULE_FRAME_STROKE}
             strokeWidth={frameThickness}
             strokeScaleEnabled={false}
-            dash={[6, 4]}
+            dash={MODULE_FRAME_DASH}
             fillEnabled={false}
             perfectDrawEnabled={false}
           />
@@ -56,9 +57,10 @@ export function ModuleOverlay({ map, modules }: Props) {
             text={name}
             fontSize={text.fontPx}
             fontStyle="bold"
-            fill="rgba(100,180,255,0.9)"
-            stroke="rgba(0,0,0,0.6)"
-            strokeWidth={Math.max(2, text.fontPx / 12)}
+            fontFamily={MAP_FONT_STACK}
+            fill={MODULE_NAME_FILL}
+            stroke={MODULE_NAME_STROKE}
+            strokeWidth={moduleNameStrokePx(text.fontPx)}
             fillAfterStrokeEnabled
             perfectDrawEnabled={false}
           />

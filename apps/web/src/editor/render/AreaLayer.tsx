@@ -4,8 +4,8 @@
 // Each cell is a square of side `areaCellSize` studs at world-coords
 // (cell.x * areaCellSize, cell.y * areaCellSize). The cell colour is
 // stored as `aarrggbb` UPPERCASE hex (per AreaCell.color comment in
-// @cld/model). The desktop multiplies the cell's own alpha by the
-// layer's `transparency / 100`.
+// @cld/model). A cell is drawn in its RGB at the sheet's alpha, as
+// vanilla BlueBrick does (areaCellCss).
 
 import { Group, Rect } from 'react-konva';
 import type { BbmMap, LayerArea } from '@cld/model';
@@ -25,11 +25,10 @@ export function AreaLayers({ map }: { map: BbmMap }) {
 
 function SingleAreaLayer({ layer }: { layer: LayerArea }) {
   const sizePx = studToPx(layer.areaCellSize);
-  const alphaScale = Math.max(0, Math.min(100, layer.transparency)) / 100;
   return (
     <Group>
       {layer.areas.map((cell, i) => {
-        const fill = argbHexToCss(cell.color, alphaScale);
+        const fill = areaCellCss(cell.color, layer.transparency);
         if (!fill) return null;
         return (
           <Rect
@@ -50,29 +49,19 @@ function SingleAreaLayer({ layer }: { layer: LayerArea }) {
 }
 
 /**
- * Convert AARRGGBB / RRGGBB hex (uppercase per AreaCell.color comment in
- * @cld/model) to a CSS rgba() with the layer's transparency multiplied
- * into the alpha channel.
+ * A painted cell's colour: its RGB with the sheet's alpha. Vanilla BlueBrick
+ * replaces a cell's own alpha with the sheet's, (255 × transparency) / 100
+ * in whole numbers (LayerArea.cs paintCell / AlphaValue); the desktop does
+ * the same. render-parity/areas.json holds the cases both apps check.
  */
-function argbHexToCss(hex: string, alphaScale: number): string | null {
+export function areaCellCss(hex: string, transparency: number): string | null {
   const h = hex.replace(/^#/, '');
-  let a = 255;
-  let r: number;
-  let g: number;
-  let b: number;
-  if (h.length === 8) {
-    a = parseInt(h.slice(0, 2), 16);
-    r = parseInt(h.slice(2, 4), 16);
-    g = parseInt(h.slice(4, 6), 16);
-    b = parseInt(h.slice(6, 8), 16);
-  } else if (h.length === 6) {
-    r = parseInt(h.slice(0, 2), 16);
-    g = parseInt(h.slice(2, 4), 16);
-    b = parseInt(h.slice(4, 6), 16);
-  } else {
-    return null;
-  }
+  if (h.length !== 8 && h.length !== 6) return null;
+  const rgb = h.slice(-6);
+  const r = parseInt(rgb.slice(0, 2), 16);
+  const g = parseInt(rgb.slice(2, 4), 16);
+  const b = parseInt(rgb.slice(4, 6), 16);
   if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
-  const finalAlpha = (a * alphaScale) / 255;
-  return `rgba(${r}, ${g}, ${b}, ${finalAlpha})`;
+  const alpha = Math.trunc((255 * Math.max(0, Math.min(100, transparency))) / 100);
+  return `rgba(${r}, ${g}, ${b}, ${alpha / 255})`;
 }

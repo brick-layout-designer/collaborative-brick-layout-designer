@@ -1,6 +1,7 @@
 // Render LayerText cells (free text labels) — port of
 // SceneBuilder::addTextLayer (rendering/SceneBuilder.cpp:377-435).
 //
+// Laid out by mapText.ts textCellLayout, as the desktop lays it out.
 // Algorithm:
 //   1. Render at a probe pixel-size, measure its bbox.
 //   2. Scale the font so the bbox fits inside displayArea (accounting
@@ -10,18 +11,47 @@
 // Per-layer transparency lands on the layer Group (matches desktop
 // SceneBuilder.cpp:832-834).
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Konva from 'konva';
 import { Group, Text as KonvaText } from 'react-konva';
-import type Konva from 'konva';
 import type { BbmMap, ColorSpec, LayerText, TextCell } from '@cld/model';
-import { studToPx, COLOR_DEFAULT } from './coords';
+import { COLOR_DEFAULT } from './coords';
 import { textKey } from '../mixedSelection';
 import { fontStack } from './fontStack';
+import { MAP_FONT_STACK, MAP_LINE_HEIGHT, mapFontsReady, textCellLayout, type LineWidthAt } from './mapText';
 import { colorSpecToCss } from '../layerOptions';
 import { useEditorStore } from '../editorStore';
 import { textReadable } from '../textLegibility';
+import { TEXT_GLOW } from './selectionStyle';
 
-const PROBE_PX = 100;
+/** A line's width in the bundled font, as Konva measures it. */
+let measureCtx: CanvasRenderingContext2D | null = null;
+function measureLine(fontStyle: string): LineWidthAt {
+  return (line, px) => {
+    measureCtx ??= Konva.Util.createCanvasElement().getContext('2d');
+    if (!measureCtx) return 0;
+    measureCtx.font = `${fontStyle} normal ${px}px ${MAP_FONT_STACK}`;
+    return measureCtx.measureText(line).width;
+  };
+}
+
+let fontsLoaded = false;
+/** True once the bundled map font has loaded (re-renders then). */
+export function useMapFontsReady(): boolean {
+  const [ready, setReady] = useState(fontsLoaded);
+  useEffect(() => {
+    if (ready) return;
+    let live = true;
+    void mapFontsReady().then(() => {
+      fontsLoaded = true;
+      if (live) setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [ready]);
+  return ready;
+}
 
 export interface TextCellRef {
   layerId: string;
@@ -82,65 +112,42 @@ function FittedTextCell({
   onDblClick?: () => void;
   onClick?: (additive: boolean) => void;
 }) {
-  const ref = useRef<Konva.Text | null>(null);
-  const [layout, setLayout] = useState({ fontSize: PROBE_PX, w: 0, h: 0 });
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    // Force the node to its probe size to get a clean measurement.
-    node.fontSize(PROBE_PX);
-    const probe = node.getClientRect({ skipTransform: true, skipShadow: true, skipStroke: true });
-    if (probe.width <= 0 || probe.height <= 0) return;
-
-    const orient = ((cell.orientation % 360) + 360) % 360;
-    const rot90 = Math.abs(orient - 90) < 1 || Math.abs(orient - 270) < 1;
-    const boxWpx = (rot90 ? cell.displayArea.height : cell.displayArea.width) * studToPx();
-    const boxHpx = (rot90 ? cell.displayArea.width : cell.displayArea.height) * studToPx();
-
-    const scale = Math.min(boxWpx / probe.width, boxHpx / probe.height);
-    const finalSize = Math.max(1, Math.floor(PROBE_PX * scale));
-
-    // Re-measure at the final size so the offsetX/Y centring is exact.
-    node.fontSize(finalSize);
-    const final = node.getClientRect({ skipTransform: true, skipShadow: true, skipStroke: true });
-    setLayout({ fontSize: finalSize, w: final.width, h: final.height });
-  }, [
-    cell.text,
-    cell.displayArea.width,
-    cell.displayArea.height,
-    cell.orientation,
-    cell.font.family,
-    cell.font.style,
-  ]);
-
   const style = (cell.font.style ?? '').toLowerCase();
   const isBold = style.includes('bold');
   const isItalic = style.includes('italic');
   const fontStyle = isBold && isItalic ? 'bold italic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
+  // Laid out as the desktop lays it out (mapText.ts), again once the
+  // bundled font has loaded.
+  const fontsReady = useMapFontsReady();
+  const layout = useMemo(
+    () => textCellLayout(cell, measureLine(fontStyle)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cell.text, cell.displayArea.x, cell.displayArea.y, cell.displayArea.width, cell.displayArea.height, cell.orientation, cell.textAlignment, fontStyle, fontsReady],
+  );
 
   // Centre the text on displayArea centre, rotated in place. Konva
   // rotates around (x, y); offsetX/Y shift the local bbox so its centre
   // lands on (x, y).
   // Too small to read on screen (phone viewer only): leave it out.
-  const readable = useEditorStore((st) => textReadable(layout.fontSize, st.zoom, st.minTextPx));
+  const readable = useEditorStore((st) => textReadable(layout.fontPx, st.zoom, st.minTextPx));
 
-  const cx = (cell.displayArea.x + cell.displayArea.width / 2) * studToPx();
-  const cy = (cell.displayArea.y + cell.displayArea.height / 2) * studToPx();
 
   return (
     <KonvaText
-      ref={ref}
-      x={cx}
-      y={cy}
-      text={cell.text}
+      x={layout.centre.x}
+      y={layout.centre.y}
+      text={layout.lines.map((l) => l.text).join('\n')}
+      width={layout.width}
+      wrap="none"
+      align={(cell.textAlignment ?? '').toLowerCase() === 'near' ? 'left' : (cell.textAlignment ?? '').toLowerCase() === 'far' ? 'right' : 'center'}
+      lineHeight={MAP_LINE_HEIGHT}
       fontFamily={fontStack(cell.font.family)}
       fontStyle={fontStyle}
-      fontSize={layout.fontSize}
+      fontSize={layout.fontPx}
       fill={cssColor(cell.fontColor)}
-      offsetX={layout.w / 2}
-      offsetY={layout.h / 2}
-      rotation={cell.orientation}
+      offsetX={layout.width / 2}
+      offsetY={layout.height / 2}
+      rotation={layout.rotation}
       visible={readable}
       listening={interactive ?? false}
       perfectDrawEnabled={false}
@@ -155,7 +162,7 @@ function FittedTextCell({
             },
           }
         : {})}
-      {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
+      {...(isSelected ? TEXT_GLOW : {})}
     />
   );
 }

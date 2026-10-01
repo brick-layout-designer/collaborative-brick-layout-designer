@@ -18,6 +18,8 @@ import {
 import { annoCount, deleteMixedSelection, translateMixedSelection } from '../mixedSelection';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { studToPx } from './coords';
+import { unknownPartLook } from './unknownPart';
+import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
@@ -25,6 +27,7 @@ import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
 import { drawOrder, pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
+import { SELECTION } from './selectionStyle';
 
 /** Konva's double-click window; the second press of a double-click starts a flex move. */
 const DOUBLE_CLICK_MS = 400;
@@ -98,16 +101,17 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
     <Group>
       {brickLayers.map((layer) => {
         if (!layer.visible) return null;
-        // Apply the per-layer transparency (0-100 → 0..1) on the layer
-        // group so every brick inherits it. Mirrors desktop
-        // SceneBuilder.cpp:832-834 — `setOpacity(L.transparency/100.0)`.
+        // The sheet's transparency (0-100 → 0..1) goes on each brick, not
+        // on the sheet as one picture: vanilla BlueBrick draws every part
+        // with the alpha (LayerBrick.cs mImageAttributeDefault), so a part
+        // shows the parts under it, as desktop's per-item setOpacity does.
         const opacity = Math.max(0, Math.min(100, layer.transparency)) / 100;
         const hull = layer.hullProperties;
         const showHull = (!isViewer && view.showBrickHulls) || hull.isVisible;
         const hullColor = hullColorToCss(hull.hullColor);
         const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
-          <Group key={layer.id} opacity={opacity}>
+          <Group key={layer.id}>
             {drawOrder(layer.bricks).map((brick) => {
               const lower = brick.partNumber.toLowerCase();
               return (
@@ -126,6 +130,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullColor={hullColor}
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
+                  opacity={opacity}
                   selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
                   // Only a selected glyph shows the halo, so only it re-renders
                   // when a snap starts or ends.
@@ -157,6 +162,7 @@ const BrickGlyph = memo(function BrickGlyph({
   hullColor,
   hullThickness,
   showElevation,
+  opacity,
   selectionTint,
   snapActive,
   getMap,
@@ -176,6 +182,8 @@ const BrickGlyph = memo(function BrickGlyph({
   hullColor: string;
   hullThickness: number;
   showElevation: boolean;
+  /** The sheet's transparency, 0..1. */
+  opacity: number;
   selectionTint: string;
   /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
   snapActive: boolean;
@@ -636,6 +644,7 @@ const BrickGlyph = memo(function BrickGlyph({
       // Stable name so multi-brick drag can find sibling Groups via
       // `stage.findOne('.brick-<id>')` and translate them in step.
       name={`brick-${brick.id}`}
+      opacity={opacity}
       x={studToPx(pivot.x)}
       y={studToPx(pivot.y)}
       rotation={brick.orientation}
@@ -680,21 +689,12 @@ const BrickGlyph = memo(function BrickGlyph({
           perfectDrawEnabled={false}
         />
       ) : (
-        <Rect
-          name={meta ? 'brick-loading' : 'brick-unresolved'}
-          x={-w / 2}
-          y={-h / 2}
-          width={w}
-          height={h}
-          // A part the library doesn't know: desktop's placeholder, a dashed
-          // red outline over a translucent pink fill (SceneBuilder.cpp:230-242).
+        meta ? (
           // A known part whose sprite is still loading: a neutral box.
-          {...(meta
-            ? { fill: '#404040', stroke: '#888' }
-            : { fill: 'rgba(255,200,200,0.314)', stroke: 'rgb(200,80,80)', dash: [4, 2], strokeScaleEnabled: false })}
-          strokeWidth={1}
-          perfectDrawEnabled={false}
-        />
+          <Rect name="brick-loading" x={-w / 2} y={-h / 2} width={w} height={h} fill="#404040" stroke="#888" strokeWidth={1} perfectDrawEnabled={false} />
+        ) : (
+          <UnknownPart partNumber={brick.partNumber} widthStuds={brick.displayArea.width} heightStuds={brick.displayArea.height} />
+        )
       )}
       {/*
         Connection-point dots — port of SceneBuilder.cpp:238-310.
@@ -741,12 +741,12 @@ const BrickGlyph = memo(function BrickGlyph({
         <>
           <Rect
             name={EXPORT_HIDE}
-            x={-spriteWpx / 2 - 1}
-            y={-spriteHpx / 2 - 1}
-            width={spriteWpx + 2}
-            height={spriteHpx + 2}
-            stroke="rgba(0,0,0,0.9)"
-            strokeWidth={5}
+            x={-spriteWpx / 2 - SELECTION.partPadPx}
+            y={-spriteHpx / 2 - SELECTION.partPadPx}
+            width={spriteWpx + 2 * SELECTION.partPadPx}
+            height={spriteHpx + 2 * SELECTION.partPadPx}
+            stroke={SELECTION.partOuter}
+            strokeWidth={SELECTION.partOuterWidth}
             strokeScaleEnabled={false}
             listening={false}
             perfectDrawEnabled={false}
@@ -754,12 +754,12 @@ const BrickGlyph = memo(function BrickGlyph({
           />
           <Rect
             name={EXPORT_HIDE}
-            x={-spriteWpx / 2 - 1}
-            y={-spriteHpx / 2 - 1}
-            width={spriteWpx + 2}
-            height={spriteHpx + 2}
+            x={-spriteWpx / 2 - SELECTION.partPadPx}
+            y={-spriteHpx / 2 - SELECTION.partPadPx}
+            width={spriteWpx + 2 * SELECTION.partPadPx}
+            height={spriteHpx + 2 * SELECTION.partPadPx}
             stroke={selectionHalo(selectionTint, snapActive).stroke}
-            strokeWidth={2.5}
+            strokeWidth={SELECTION.partInnerWidth}
             strokeScaleEnabled={false}
             fill={selectionHalo(selectionTint, snapActive).fill}
             listening={false}
@@ -872,6 +872,35 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
  */
 export function selectionHalo(tint: string, snapActive: boolean): { stroke: string; fill: string } {
   return snapActive
-    ? { stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' }
-    : { stroke: `#${tint}`, fill: `#${tint}4D` };
+    ? { stroke: SELECTION.snapStroke, fill: SELECTION.snapFill }
+    : { stroke: `#${tint}`, fill: `#${tint}${SELECTION.partFillAlpha.toString(16).toUpperCase().padStart(2, '0')}` };
+}
+
+/** A part the library doesn't know, as vanilla BlueBrick draws it (unknownPart.ts). */
+function UnknownPart({ partNumber, widthStuds, heightStuds }: { partNumber: string; widthStuds: number; heightStuds: number }) {
+  const look = unknownPartLook(partNumber, widthStuds, heightStuds);
+  const x = -look.width / 2;
+  const y = -look.height / 2;
+  return (
+    <Group name="brick-unresolved">
+      {/* Clear, but it still takes clicks (Konva hit-tests the fill). */}
+      <Rect x={x} y={y} width={look.width} height={look.height} fill="rgba(0,0,0,0)" perfectDrawEnabled={false} />
+      <Line points={[x, y, -x, -y]} stroke="#ff0000" strokeWidth={look.penPx} listening={false} perfectDrawEnabled={false} />
+      <Line points={[x, -y, -x, y]} stroke="#ff0000" strokeWidth={look.penPx} listening={false} perfectDrawEnabled={false} />
+      <KonvaText
+        x={x}
+        y={-(look.fontPx * MAP_LINE_HEIGHT) / 2}
+        width={look.width}
+        align="center"
+        wrap="none"
+        lineHeight={MAP_LINE_HEIGHT}
+        text={partNumber}
+        fontSize={look.fontPx}
+        fontFamily={MAP_FONT_STACK}
+        fill="#000000"
+        listening={false}
+        perfectDrawEnabled={false}
+      />
+    </Group>
+  );
 }

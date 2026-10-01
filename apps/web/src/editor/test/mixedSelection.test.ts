@@ -189,11 +189,10 @@ describe('label fonts (points, desktop default)', () => {
     expect(labelFontPx(0.5)).toBe(12); // invalid size → QFont default 9 pt
   });
 
-  it('defaults to 8.25 pt Microsoft Sans Serif with a web fallback stack', () => {
+  it('defaults to 8.25 pt Microsoft Sans Serif, drawn in the bundled map font', () => {
     expect(DEFAULT_LABEL_FONT).toEqual({ family: 'Microsoft Sans Serif', size: 8.25, style: 'Regular' });
-    expect(labelFontFamily('Microsoft Sans Serif')).toBe('"Microsoft Sans Serif", Tahoma, "Segoe UI", Arial, sans-serif');
-    expect(labelFontFamily('')).toMatch(/^"Microsoft Sans Serif", /);
-    expect(labelFontFamily('Comic "Sans')).toMatch(/^"Comic Sans", "Microsoft Sans Serif", /);
+    for (const f of ['Microsoft Sans Serif', '', 'Comic "Sans'])
+      expect(labelFontFamily(f)).toBe('"BLD Map Sans", "Liberation Sans", Arial, sans-serif');
   });
 
   it('writes C# FontStyle strings', () => {

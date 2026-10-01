@@ -28,6 +28,7 @@ import type { AnnoDragHandlers } from './groupDragNodes';
 import type { PartWire } from '../../api';
 import { useEditorStore } from '../editorStore';
 import { textReadable } from '../textLegibility';
+import { TEXT_GLOW } from './selectionStyle';
 
 interface Props {
   map: BbmMap;
@@ -120,7 +121,7 @@ export function AnchoredLabels({
               fill={fill}
               rotation={place.rotation}
               listening={!!onDoubleClick || !!onSelect || !!drag}
-              {...(isSelected ? { shadowColor: '#ffcc00', shadowBlur: 8, shadowOpacity: 1 } : {})}
+              {...(isSelected ? TEXT_GLOW : {})}
               perfectDrawEnabled={false}
             />
           </Group>

@@ -6,7 +6,7 @@ import * as Y from 'yjs';
 import { docToBbm, readSidecarFromDoc } from '@cld/ydoc';
 import type { SavedView } from '@cld/bbm';
 import { readZip } from '../../bbmFiles';
-import { paintGridLines } from '../exportRender';
+import { paintCellIndices, paintGridLines } from '../exportRender';
 import {
   addAnchoredLabel,
   addLayer,
@@ -236,5 +236,24 @@ describe('the grid in a picture', () => {
     // Columns at 0, 32, 64 studs; rows at 0 and 32.
     expect(n).toBe(5);
     expect(moves).toEqual([[8, 0], [72, 0], [136, 0], [0, 0], [0, 64]]);
+  });
+
+  it('paints the cell indices along the origin row and column, centred in their cells, as BlueBrick exports them', () => {
+    const texts: [string, number, number][] = [];
+    const ctx = {
+      font: '', fillStyle: '' as unknown, textAlign: '', textBaseline: '',
+      save() {}, restore() {},
+      measureText: () => ({ fontBoundingBoxAscent: 10, fontBoundingBoxDescent: 2 }),
+      fillText: (t: string, x: number, y: number) => void texts.push([t, x, y]),
+    } as unknown as CanvasRenderingContext2D;
+    const grid = {
+      gridSizeInStud: 32, displayCellIndex: true, cellIndexCorner: { x: 0, y: 0 }, cellIndexColumnType: 0, cellIndexRowType: 1,
+      cellIndexFont: { family: 'Arial', size: 18, style: 'Regular' }, cellIndexColor: { kind: 'known', name: 'Black' },
+    } as never;
+    expect(paintCellIndices(ctx, grid, { x: 0, y: 0, width: 64, height: 64 }, 2)).toBeGreaterThan(0);
+    // Cell (1,0) is A, cell (0,1) is 1 (the origin stays blank), centred and lifted by (ascent - descent) / 2.
+    expect(texts).toContainEqual(['A', 96, 36]);
+    expect(texts).toContainEqual(['1', 32, 100]);
+    expect(ctx.font).toContain('BLD Map Sans');
   });
 });

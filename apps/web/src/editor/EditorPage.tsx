@@ -53,6 +53,7 @@ import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, type LayoutImage } from '../layoutFile';
 import { layoutPartFiles } from '../layoutParts';
 import { backgroundImageRectPx } from './background';
+import { mapFontsReady } from './render/mapText';
 import { scaleBar } from './scaleBar';
 import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
 import { imageOffset } from '@cld/parts-catalog/browser';
@@ -2634,6 +2635,7 @@ function Canvas({
       }
     }
     await Promise.allSettled([...urls].map((u) => ensureSprite(u)));
+    await mapFontsReady();
     const before = useEditorStore.getState();
     const saved = { viewFilter: before.viewFilter, minTextPx: before.minTextPx };
     flushSync(() => useEditorStore.setState({ viewFilter: { sheets: spec.sheets, grid: spec.grid, labels: spec.labels }, minTextPx: 0 }));

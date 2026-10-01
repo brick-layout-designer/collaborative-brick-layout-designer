@@ -8,6 +8,8 @@ import type Konva from 'konva';
 import type { BbmMap, LayerGrid } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import { colorSpecToCss } from './layerOptions';
+import { cellIndexLabels, parseCellIndexCorner } from './render/gridIndex';
+import { MAP_FONT_STACK } from './render/mapText';
 
 /** Konva node name for view-only chrome hidden while exporting. */
 export const EXPORT_HIDE = 'export-hide';
@@ -210,6 +212,48 @@ export interface ExportOptions {
 }
 
 /**
+ * Paint a grid's cell indices (the origin row's letters and column's
+ * numbers, as BlueBrick's exported pictures show them) over `region`,
+ * centred in their cells in the bundled map font, sized like the map's
+ * (pt × 4/3 scene px per stud, scaled with the picture); the desktop's
+ * pictures draw the same (SavedViews.cpp paintGrid).
+ */
+export function paintCellIndices(
+  ctx: CanvasRenderingContext2D,
+  grid: LayerGrid,
+  region: StudRect,
+  pxPerStudX: number,
+  pxPerStudY: number = pxPerStudX,
+): number {
+  if (!grid.displayCellIndex) return 0;
+  const labels = cellIndexLabels(
+    { xMin: region.x, yMin: region.y, xMax: region.x + region.width, yMax: region.y + region.height },
+    grid.gridSizeInStud,
+    parseCellIndexCorner(grid.cellIndexCorner),
+    grid.cellIndexColumnType,
+    grid.cellIndexRowType,
+  );
+  if (labels.length === 0) return 0;
+  const scale = Math.min(pxPerStudX, pxPerStudY) / 8;
+  const fontPx = Math.max(1, Math.round((grid.cellIndexFont.size || 10) * (4 / 3) * 8)) * scale;
+  const style = (grid.cellIndexFont.style ?? '').toLowerCase();
+  ctx.save();
+  ctx.font = `${style.includes('italic') ? 'italic ' : ''}${style.includes('bold') ? 'bold ' : ''}${fontPx}px ${MAP_FONT_STACK}`;
+  ctx.fillStyle = colorSpecToCss(grid.cellIndexColor);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const m = ctx.measureText('M');
+  const lift = ((m.fontBoundingBoxAscent ?? fontPx * 0.905) - (m.fontBoundingBoxDescent ?? fontPx * 0.212)) / 2;
+  for (const l of labels) {
+    const cx = (l.x + grid.gridSizeInStud / 2 - region.x) * pxPerStudX;
+    const cy = (l.y + grid.gridSizeInStud / 2 - region.y) * pxPerStudY;
+    ctx.fillText(l.text, cx, cy + lift);
+  }
+  ctx.restore();
+  return labels.length;
+}
+
+/**
  * Paint a grid's lines (sub-grid first, then the main grid) over `region`
  * onto `ctx`, where one stud is `pxPerStud` output pixels. Lines sit on
  * whole multiples of the grid size, like the on-screen grid.
@@ -312,7 +356,10 @@ export function renderMapToCanvas(
     ctx.fillStyle = exportBackground(map);
     ctx.fillRect(0, 0, out.width, out.height);
   }
-  if (opts.grid) paintGridLines(ctx, opts.grid, region, out.width / region.width, out.height / region.height);
+  if (opts.grid) {
+    paintGridLines(ctx, opts.grid, region, out.width / region.width, out.height / region.height);
+    paintCellIndices(ctx, opts.grid, region, out.width / region.width, out.height / region.height);
+  }
   ctx.imageSmoothingEnabled = smooth;
   ctx.drawImage(content, 0, 0, out.width, out.height);
   if (opts.watermark) {

@@ -1,12 +1,9 @@
-// CSS font stack for a font family stored in a .bbm. Desktop hands the
-// family to Qt, which substitutes a sans-serif face when it isn't
-// installed; a bare "Tahoma" in CSS falls back to the browser default,
-// usually a serif. So always end the stack in sans-serif faces.
+// CSS font stack for map text. Every family a file names draws in the
+// bundled map font (mapText.ts), so the map looks the same on every
+// machine and in the desktop, which bundles the same font.
 
-const SANS_FALLBACK = 'Arial, Helvetica, "Liberation Sans", sans-serif';
+import { MAP_FONT_STACK } from './mapText';
 
-export function fontStack(family: string | undefined): string {
-  const f = (family ?? '').replace(/["\\]/g, '').trim();
-  if (!f || /^(arial|helvetica|sans-serif)$/i.test(f)) return SANS_FALLBACK;
-  return `"${f}", ${SANS_FALLBACK}`;
+export function fontStack(_family?: string): string {
+  return MAP_FONT_STACK;
 }

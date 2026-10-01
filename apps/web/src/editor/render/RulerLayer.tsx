@@ -42,6 +42,7 @@ import { fontStack } from './fontStack';
 import { colorSpecToCss } from '../layerOptions';
 import { pivotOf } from '../brickGeometry';
 import type { PartWire } from '../../api';
+import { SELECTION, rulerHaloWidth } from './selectionStyle';
 
 interface Props {
   map: BbmMap;
@@ -434,8 +435,8 @@ function LinearRulerView({
         <Line
           points={[o1.x, o1.y, o2.x, o2.y]}
           name="export-hide"
-          stroke="rgba(255, 215, 0, 0.5)"
-          strokeWidth={Math.max(strokeWidth + 4, 6)}
+          stroke={SELECTION.rulerHalo}
+          strokeWidth={rulerHaloWidth(strokeWidth)}
           listening={false}
           perfectDrawEnabled={false}
         />
@@ -504,10 +505,10 @@ function EndpointHandle({
       name="ruler-endpoint"
       x={x}
       y={y}
-      radius={6}
-      fill="rgb(255,215,0)"
-      stroke="rgb(20,20,20)"
-      strokeWidth={1.5}
+      radius={SELECTION.handleRadius}
+      fill={SELECTION.handleFill}
+      stroke={SELECTION.handleStroke}
+      strokeWidth={SELECTION.handleStrokeWidth}
       strokeScaleEnabled={false}
       draggable
       onDragMove={(e) => {
@@ -587,8 +588,8 @@ function CircularRulerView({
           y={cy}
           radius={rPx}
           name="export-hide"
-          stroke="rgba(255, 215, 0, 0.5)"
-          strokeWidth={Math.max(strokeWidth + 4, 6)}
+          stroke={SELECTION.rulerHalo}
+          strokeWidth={rulerHaloWidth(strokeWidth)}
           fillEnabled={false}
           listening={false}
           perfectDrawEnabled={false}
