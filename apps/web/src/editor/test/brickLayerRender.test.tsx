@@ -56,7 +56,8 @@ describe('BrickLayer re-render scope', () => {
     // Selecting one brick re-renders the layer groups + that one glyph.
     prims = 0;
     await act(async () => useEditorStore.getState().setSelection([ids[0]!]));
-    expect(prims).toBeLessThan(10);
+    // (An unknown part is 5 primitives: its clear box, the cross and its number.)
+    expect(prims).toBeLessThan(15);
 
     // Moving one brick: new projection, but only that glyph re-renders.
     moveBrick(doc, layerId, ids[5]!, 3, 3);
@@ -65,14 +66,14 @@ describe('BrickLayer re-render scope', () => {
     map = next;
     prims = 0;
     await act(async () => root.render(render(map)));
-    expect(prims).toBeLessThan(10);
+    expect(prims).toBeLessThan(15);
 
     // A snap starting re-renders only the selected glyph (its halo turns
     // green); further live-snap updates during the drag touch no glyph.
     prims = 0;
     await act(async () => useEditorStore.getState().setLiveSnap({ studX: 1, studY: 0 }));
     expect(prims).toBeGreaterThan(0);
-    expect(prims).toBeLessThan(10);
+    expect(prims).toBeLessThan(15);
     prims = 0;
     await act(async () => useEditorStore.getState().setLiveSnap({ studX: 2, studY: 0 }));
     expect(prims).toBe(0);

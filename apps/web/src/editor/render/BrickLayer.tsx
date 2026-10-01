@@ -18,6 +18,8 @@ import {
 import { annoCount, deleteMixedSelection, translateMixedSelection } from '../mixedSelection';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { studToPx } from './coords';
+import { unknownPartLook } from './unknownPart';
+import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync } from './spriteCache';
 import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
@@ -686,21 +688,12 @@ const BrickGlyph = memo(function BrickGlyph({
           perfectDrawEnabled={false}
         />
       ) : (
-        <Rect
-          name={meta ? 'brick-loading' : 'brick-unresolved'}
-          x={-w / 2}
-          y={-h / 2}
-          width={w}
-          height={h}
-          // A part the library doesn't know: desktop's placeholder, a dashed
-          // red outline over a translucent pink fill (SceneBuilder.cpp:230-242).
+        meta ? (
           // A known part whose sprite is still loading: a neutral box.
-          {...(meta
-            ? { fill: '#404040', stroke: '#888' }
-            : { fill: 'rgba(255,200,200,0.314)', stroke: 'rgb(200,80,80)', dash: [4, 2], strokeScaleEnabled: false })}
-          strokeWidth={1}
-          perfectDrawEnabled={false}
-        />
+          <Rect name="brick-loading" x={-w / 2} y={-h / 2} width={w} height={h} fill="#404040" stroke="#888" strokeWidth={1} perfectDrawEnabled={false} />
+        ) : (
+          <UnknownPart partNumber={brick.partNumber} widthStuds={brick.displayArea.width} heightStuds={brick.displayArea.height} />
+        )
       )}
       {/*
         Connection-point dots — port of SceneBuilder.cpp:238-310.
@@ -880,4 +873,33 @@ export function selectionHalo(tint: string, snapActive: boolean): { stroke: stri
   return snapActive
     ? { stroke: 'rgb(80,255,120)', fill: 'rgba(80,255,120,0.353)' }
     : { stroke: `#${tint}`, fill: `#${tint}4D` };
+}
+
+/** A part the library doesn't know, as vanilla BlueBrick draws it (unknownPart.ts). */
+function UnknownPart({ partNumber, widthStuds, heightStuds }: { partNumber: string; widthStuds: number; heightStuds: number }) {
+  const look = unknownPartLook(partNumber, widthStuds, heightStuds);
+  const x = -look.width / 2;
+  const y = -look.height / 2;
+  return (
+    <Group name="brick-unresolved">
+      {/* Clear, but it still takes clicks (Konva hit-tests the fill). */}
+      <Rect x={x} y={y} width={look.width} height={look.height} fill="rgba(0,0,0,0)" perfectDrawEnabled={false} />
+      <Line points={[x, y, -x, -y]} stroke="#ff0000" strokeWidth={look.penPx} listening={false} perfectDrawEnabled={false} />
+      <Line points={[x, -y, -x, y]} stroke="#ff0000" strokeWidth={look.penPx} listening={false} perfectDrawEnabled={false} />
+      <KonvaText
+        x={x}
+        y={-(look.fontPx * MAP_LINE_HEIGHT) / 2}
+        width={look.width}
+        align="center"
+        wrap="none"
+        lineHeight={MAP_LINE_HEIGHT}
+        text={partNumber}
+        fontSize={look.fontPx}
+        fontFamily={MAP_FONT_STACK}
+        fill="#000000"
+        listening={false}
+        perfectDrawEnabled={false}
+      />
+    </Group>
+  );
 }

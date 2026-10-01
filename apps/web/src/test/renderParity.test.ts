@@ -49,3 +49,11 @@ describe('render parity: text', () => {
   });
 });
 
+import PARTS from '../../../../packages/bbm/tests/fixtures/render-parity/parts.json';
+import { unknownPartLook } from '../editor/render/unknownPart';
+
+describe('render parity: parts the library does not know', () => {
+  it.each(PARTS.cases)('draws "$partNumber" as the shared description says', (c) => {
+    expect(unknownPartLook(c.partNumber, c.widthStuds, c.heightStuds)).toEqual(c.expect);
+  });
+});
