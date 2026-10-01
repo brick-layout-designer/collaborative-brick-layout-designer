@@ -98,16 +98,17 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
     <Group>
       {brickLayers.map((layer) => {
         if (!layer.visible) return null;
-        // Apply the per-layer transparency (0-100 → 0..1) on the layer
-        // group so every brick inherits it. Mirrors desktop
-        // SceneBuilder.cpp:832-834 — `setOpacity(L.transparency/100.0)`.
+        // The sheet's transparency (0-100 → 0..1) goes on each brick, not
+        // on the sheet as one picture: vanilla BlueBrick draws every part
+        // with the alpha (LayerBrick.cs mImageAttributeDefault), so a part
+        // shows the parts under it, as desktop's per-item setOpacity does.
         const opacity = Math.max(0, Math.min(100, layer.transparency)) / 100;
         const hull = layer.hullProperties;
         const showHull = (!isViewer && view.showBrickHulls) || hull.isVisible;
         const hullColor = hullColorToCss(hull.hullColor);
         const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
-          <Group key={layer.id} opacity={opacity}>
+          <Group key={layer.id}>
             {drawOrder(layer.bricks).map((brick) => {
               const lower = brick.partNumber.toLowerCase();
               return (
@@ -126,6 +127,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullColor={hullColor}
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
+                  opacity={opacity}
                   selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
                   // Only a selected glyph shows the halo, so only it re-renders
                   // when a snap starts or ends.
@@ -157,6 +159,7 @@ const BrickGlyph = memo(function BrickGlyph({
   hullColor,
   hullThickness,
   showElevation,
+  opacity,
   selectionTint,
   snapActive,
   getMap,
@@ -176,6 +179,8 @@ const BrickGlyph = memo(function BrickGlyph({
   hullColor: string;
   hullThickness: number;
   showElevation: boolean;
+  /** The sheet's transparency, 0..1. */
+  opacity: number;
   selectionTint: string;
   /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
   snapActive: boolean;
@@ -636,6 +641,7 @@ const BrickGlyph = memo(function BrickGlyph({
       // Stable name so multi-brick drag can find sibling Groups via
       // `stage.findOne('.brick-<id>')` and translate them in step.
       name={`brick-${brick.id}`}
+      opacity={opacity}
       x={studToPx(pivot.x)}
       y={studToPx(pivot.y)}
       rotation={brick.orientation}
