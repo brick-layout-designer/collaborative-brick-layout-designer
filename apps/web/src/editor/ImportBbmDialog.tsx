@@ -55,7 +55,7 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
         useEditorStore.getState().setSelection(res.ids);
         useEditorStore
           .getState()
-          .showStatusMessage(`Imported ${res.ids.length} bricks as module '${name}'`, 4000);
+          .showNotice(`Imported ${res.ids.length} bricks as module “${name}”`);
       }
       onClose();
     } catch (err) {

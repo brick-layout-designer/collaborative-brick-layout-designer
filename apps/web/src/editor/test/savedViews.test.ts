@@ -27,6 +27,7 @@ import {
   newView,
   pictureFileName,
   pictureSize,
+  scaleForSide,
   shareScale,
   viewRegionStuds,
   type PictureRenderer,
@@ -99,7 +100,15 @@ describe('picture sizes and names', () => {
   it('8 px per stud times the scale, and a smaller scale for huge layouts when sharing', () => {
     expect(pictureSize({ x: 0, y: 0, width: 100, height: 50 }, 2)).toEqual({ width: 1600, height: 800 });
     expect(shareScale({ x: 0, y: 0, width: 100, height: 50 })).toBe(2);
-    expect(shareScale({ x: 0, y: 0, width: 1024, height: 50 })).toBe(0.5); // 4096 px across at most
+    expect(shareScale({ x: 0, y: 0, width: 640, height: 50 })).toBe(0.5); // 2560 px across at most
+  });
+
+  it('sizes a picture by its longest side, never past 32 px per stud', () => {
+    // A big layout shrinks to fit: 1000 studs across is 8000 px at 1x.
+    expect(scaleForSide({ x: 0, y: 0, width: 1000, height: 400 }, 2560)).toBeCloseTo(0.32);
+    expect(scaleForSide({ x: 0, y: 0, width: 400, height: 1000 }, 2560)).toBeCloseTo(0.32);
+    // A small corner stops at 4x (the parts' own detail).
+    expect(scaleForSide({ x: 0, y: 0, width: 20, height: 10 }, 2560)).toBe(4);
   });
 
   it('names pictures <layout> - <view>.png, safe as a file name', () => {
@@ -142,35 +151,38 @@ const pngSize = (b: Uint8Array) => ({ width: new DataView(b.buffer, b.byteOffset
 describe('export all views', () => {
   const render: PictureRenderer = async (_spec, size) => ({ ...size, data: fakePng(size.width, size.height) });
 
-  it('makes one picture per view, each its area times the scale, in one zip', async () => {
+  it('makes one picture per view, each at most the chosen size across, in one zip', async () => {
     const { doc, town } = twoSheets();
     const views = [
       newView('a', 'Whole'),
       view({ id: 'b', name: 'Station', fit: false, rect: { x: 0, y: 0, w: 40, h: 25 } }),
       view({ id: 'c', name: 'Town', sheets: [town] }),
     ];
-    const out = await exportAllViews({ title: 'Show', views, map: docToBbm(doc), sidecar: null, scale: 2, render });
+    const progress: string[] = [];
+    const out = await exportAllViews({ title: 'Show', views, map: docToBbm(doc), sidecar: null, maxSide: 1280, render, onProgress: (d, t) => progress.push(`${d}/${t}`) });
     expect(out.filename).toBe('Show - views.zip');
     expect(out.skipped).toEqual([]);
     const entries = await readZip(out.data);
     expect(entries.map((e) => e.name)).toEqual(['Show - Whole.png', 'Show - Station.png', 'Show - Town.png']);
+    const wholeK = 1280 / ((120 + 2 * M) * 8);
     expect(entries.map((e) => pngSize(e.data))).toEqual([
-      { width: (120 + 2 * M) * 16, height: (60 + 2 * M) * 16 },
-      { width: 40 * 16, height: 25 * 16 },
-      { width: (20 + 2 * M) * 16, height: (10 + 2 * M) * 16 },
+      { width: 1280, height: Math.round((60 + 2 * M) * 8 * wholeK) },
+      { width: 40 * 32, height: 25 * 32 }, // 1280 across is exactly 4x
+      { width: (20 + 2 * M) * 32, height: (10 + 2 * M) * 32 }, // capped at 4x
     ]);
+    expect(progress).toEqual(['0/3', '1/3', '2/3']);
   });
 
   it('with no saved views makes one "Whole layout" picture', async () => {
     const { doc } = twoSheets();
-    const out = await exportAllViews({ title: 'Show', views: [], map: docToBbm(doc), sidecar: null, scale: 1, render });
+    const out = await exportAllViews({ title: 'Show', views: [], map: docToBbm(doc), sidecar: null, maxSide: 1280, render });
     expect(out.files).toEqual([`Show - ${WHOLE_LAYOUT.name}.png`]);
   });
 
   it('keeps two views with the same name apart, and leaves out a view with nothing to show', async () => {
     const { doc } = twoSheets();
     const views = [newView('a', 'Yard'), newView('b', 'Yard'), view({ id: 'c', name: 'Empty', sheets: [] })];
-    const out = await exportAllViews({ title: 'Show', views, map: docToBbm(doc), sidecar: null, scale: 1, render });
+    const out = await exportAllViews({ title: 'Show', views, map: docToBbm(doc), sidecar: null, maxSide: 1280, render });
     expect(out.files).toEqual(['Show - Yard.png', 'Show - Yard (2).png']);
     expect(out.skipped).toEqual(['Empty']);
   });

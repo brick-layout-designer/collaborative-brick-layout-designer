@@ -49,10 +49,25 @@ export function invalidateManifestCache(): void {
 
 const sha256 = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex');
 
+/** Script files a library may carry for its maintainer (CreatePackage.bat); never part data. */
+const SCRIPT_EXTENSIONS = new Set(['.bat', '.cmd', '.com', '.exe', '.ps1', '.sh', '.vbs', '.js', '.msi']);
+
+/**
+ * Whether a file or folder of a library belongs in the manifest. Hidden
+ * entries (.git, .gitignore) and scripts are left out, so the desktop
+ * never downloads them.
+ */
+export function isLibraryContent(name: string): boolean {
+  if (name.startsWith('.')) return false;
+  const dot = name.lastIndexOf('.');
+  return dot < 0 || !SCRIPT_EXTENSIONS.has(name.slice(dot).toLowerCase());
+}
+
 async function listFiles(root: string): Promise<LibraryFile[]> {
   const out: LibraryFile[] = [];
   const walk = async (dir: string): Promise<void> => {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (!isLibraryContent(entry.name)) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) await walk(full);
       else if (entry.isFile()) {

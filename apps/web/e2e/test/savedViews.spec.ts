@@ -118,8 +118,11 @@ test.describe('saved views', () => {
     expect(download.suggestedFilename()).toBe('Views Test - views.zip');
     const entries = unzip(readFileSync(await download.path()));
     expect([...entries.keys()]).toEqual(['Views Test - Whole.png', 'Views Test - Corner.png']);
-    // Medium (2x): 16 px per stud.
-    expect(pngSize(entries.get('Views Test - Corner.png')!)).toEqual({ width: Math.round(rect.w * 16), height: Math.round(rect.h * 16) });
+    // Medium: 2560 px across the longest side, at most 32 px per stud.
+    const k = Math.min(4, 2560 / (Math.max(rect.w, rect.h) * 8)) * 8;
+    expect(pngSize(entries.get('Views Test - Corner.png')!)).toEqual({ width: Math.round(rect.w * k), height: Math.round(rect.h * k) });
+    // The editor says the download happened.
+    await expect(page.getByTestId('notice')).toContainText('Downloaded 2 pictures');
     const whole = pngSize(entries.get('Views Test - Whole.png')!);
     expect(whole.width).toBeGreaterThan(100);
     expect(whole.height).toBeGreaterThan(100);

@@ -10,7 +10,7 @@ import { api, spriteUrlFor, type PartWire } from '../api';
 import { useLayoutDoc } from './useLayoutDoc';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
-import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection } from './editorStore';
+import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -118,6 +118,7 @@ import { createModuleFromSelection } from './moduleActions';
 import { applyViewSheets, pictureGrid, viewRegionStuds, type PictureSpec } from './savedViews';
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
+import { NoticeToast } from './NoticeToast';
 import type { SavedView } from '@cld/bbm';
 import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
@@ -210,6 +211,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   const [showShare, setShowShare] = useState(false);
   // "Share picture", with the picture picked when it opens (a saved view's id).
   const [sharePicture, setSharePicture] = useState<{ choice?: string } | null>(null);
+  const [exportingViews, setExportingViews] = useState<string | null>(null);
   const activeViewId = useEditorStore((s) => s.activeViewId);
   const showGridNow = useEditorStore((s) => s.showGrid);
   const [showInsertModule, setShowInsertModule] = useState(false);
@@ -410,6 +412,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         onShowEverything={showEverything}
         onShare={(v) => setSharePicture({ choice: v.id })}
         onExportAll={() => void exportAll()}
+        exporting={exportingViews}
       />
     );
   }
@@ -436,9 +439,14 @@ function Editor({ layoutId }: { layoutId: string }) {
     canvasActionsRef.current?.fit();
   };
   const exportAll = async () => {
+    if (exportingViews) return;
     if (!docMap) return;
-    const status = useEditorStore.getState().showStatusMessage;
-    status('Making the pictures…', 30000);
+    const { showNotice } = useEditorStore.getState();
+    const busy = (text: string) => {
+      setExportingViews(text);
+      showNotice(text, 'busy');
+    };
+    busy('Making the pictures…');
     try {
       const n = await downloadAllViews({
         title: meta.data?.layout.title ?? 'layout',
@@ -446,10 +454,16 @@ function Editor({ layoutId }: { layoutId: string }) {
         map: docMap,
         sidecar: readSidecarFromDoc(doc),
         handle: exportImageRef.current,
+        onProgress: (done, total) => {
+          if (total > 1) busy(`Making picture ${done + 1} of ${total}…`);
+        },
       });
-      status(n > 0 ? `Saved ${n} ${n === 1 ? 'picture' : 'pictures'} in a zip file` : 'There is nothing to show yet', 5000);
+      if (n > 0) showNotice(`Downloaded ${n} ${n === 1 ? 'picture' : 'pictures'} in a zip file. Look in your Downloads folder.`, 'done', 8000);
+      else showNotice('There is nothing to show yet.', 'error');
     } catch (e) {
-      status(`The pictures could not be made: ${(e as Error).message}`, 8000);
+      showNotice(`The pictures could not be made: ${(e as Error).message}`, 'error', 10000);
+    } finally {
+      setExportingViews(null);
     }
   };
 
@@ -704,6 +718,7 @@ function Editor({ layoutId }: { layoutId: string }) {
                 a.href = url;
                 a.download = `${venue.name || 'venue'}${VENUE_FILE_EXT}`;
                 a.click();
+                noticeDownloaded(a.download);
                 URL.revokeObjectURL(url);
               }}
               onVenueLoadFromFile={() => {
@@ -863,6 +878,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       {/* Status bar — port of MainWindow.cpp:861-1014 status widgets.
           Spans every column. Shows mouse coords / selection count / zoom. */}
+      <NoticeToast />
       {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
         compact={viewport.isMobile}
@@ -4247,6 +4263,7 @@ function saveFile(file: { filename: string; type: string; data: Uint8Array }): v
   a.download = file.filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  noticeDownloaded(file.filename);
 }
 
 /**

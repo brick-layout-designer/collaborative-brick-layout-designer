@@ -32,6 +32,11 @@ describe('parts manifest', () => {
     mkdirSync(join(dir, 'parts', 'Track'), { recursive: true });
     writeFileSync(join(dir, 'parts', 'Track', '2865.8.xml'), '<part/>');
     writeFileSync(join(dir, 'parts', 'Track', '2865.8.gif'), FAKE_GIF);
+    // A library's own housekeeping, which the manifest leaves out.
+    writeFileSync(join(dir, 'parts', 'CreatePackage.bat'), 'REM zip');
+    writeFileSync(join(dir, 'parts', '.gitignore'), '*.zip');
+    mkdirSync(join(dir, 'parts', '.git'));
+    writeFileSync(join(dir, 'parts', '.git', 'HEAD'), 'ref: refs/heads/master');
     saved = env.partsDir;
     env.partsDir = dir;
     invalidatePartsCache();
@@ -54,7 +59,7 @@ describe('parts manifest', () => {
 
   const get = (url: string, headers: Record<string, string>) => app.inject({ method: 'GET', url, headers });
 
-  it('hashes each library file and the library, and follows changes after a reload', async () => {
+  it('hashes each library file (not hidden files or scripts) and the library, and follows changes after a reload', async () => {
     const token = await issueToken(app, user.cookie, 'parts:read');
     const auth = { authorization: `Bearer ${token}` };
     const manifest = (await get('/api/parts/manifest', auth)).json() as { libraries: { slug: string; hash: string; fileCount: number; urlPrefix: string }[] };

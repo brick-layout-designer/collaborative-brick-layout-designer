@@ -9,7 +9,7 @@ import { bricksByLayer, createSidecarModule } from './mutations';
 import { projectDoc } from './useDocMap';
 
 export function createModuleFromSelection(doc: Y.Doc): void {
-  const { selection, showStatusMessage } = useEditorStore.getState();
+  const { selection } = useEditorStore.getState();
   // Only bricks can be module members; drop ids that aren't bricks.
   const map = projectDoc(doc);
   const members = map ? [...bricksByLayer(map, selection).values()].flat() : [];
@@ -19,5 +19,5 @@ export function createModuleFromSelection(doc: Y.Doc): void {
   }
   const name = window.prompt('Module name:', 'New Module');
   if (name === null || name.trim() === '') return;
-  if (createSidecarModule(doc, name, members)) showStatusMessage('Module created', 3000);
+  if (createSidecarModule(doc, name, members)) useEditorStore.getState().showNotice(`Module “${name}” created`);
 }

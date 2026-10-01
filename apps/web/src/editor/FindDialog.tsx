@@ -21,7 +21,6 @@ interface Props {
 
 export function FindDialog({ map, doc, onClose }: Props) {
   const setMixedSelection = useEditorStore((s) => s.setMixedSelection);
-  const showStatusMessage = useEditorStore((s) => s.showStatusMessage);
   const [needle, setNeedle] = useState('');
   const [replacement, setReplacement] = useState('');
   // Desktop opens on "Text content", listed first (FindDialog.cpp:36-38).
@@ -57,7 +56,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
   }
 
   function report(count: number) {
-    showStatusMessage(`Replaced ${count} occurrence${count === 1 ? '' : 's'}`);
+    useEditorStore.getState().showNotice(`Replaced ${count} part${count === 1 ? '' : 's'}`);
   }
 
   function replaceCurrent() {

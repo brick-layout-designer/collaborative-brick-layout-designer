@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
 import { spriteUrlFor } from '../api';
-import { useEditorStore } from './editorStore';
+import { noticeDownloaded, useEditorStore } from './editorStore';
 import { buildPartList, partListCsv, partListHtml, partListText } from './partList';
 import { ensureSprite } from './render/spriteCache';
 import { HelpButton } from '../help/HelpButton';
@@ -57,6 +57,7 @@ function download(name: string, type: string, text: string) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  noticeDownloaded(name);
 }
 
 interface Props {

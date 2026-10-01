@@ -72,6 +72,28 @@ describe('ViewsPanel', () => {
     expect(onExportAll).toHaveBeenCalled();
   });
 
+  it('shows that a view opens and closes, and Done closes it', () => {
+    const doc = new Y.Doc();
+    addSavedView(doc, newView('a', 'Station'));
+    setup({ doc });
+    const toggle = screen.getByRole('button', { name: 'Change Station' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.textContent).toContain('Edit');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(within(screen.getByTestId('view-options')).getByRole('button', { name: 'Done' }));
+    expect(screen.queryByTestId('view-options')).toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('shows progress on Export all views while it runs', () => {
+    const doc = new Y.Doc();
+    addSavedView(doc, newView('a', 'Station'));
+    setup({ doc, exporting: 'Making picture 1 of 2…' });
+    const btn = screen.getByRole('button', { name: 'Making picture 1 of 2…' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
   it('"Use this area" keeps what is on screen; "Fit whole layout" goes back', () => {
     const doc = new Y.Doc();
     addSavedView(doc, newView('a', 'Station'));

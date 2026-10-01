@@ -5,6 +5,7 @@
 // what; the other formats show the desktop's warning, with "Don't show
 // this again".
 
+import { noticeDownloaded } from './editorStore';
 import { useState } from 'react';
 import type { BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
@@ -37,6 +38,7 @@ function download(file: { filename: string; type: string; data: Uint8Array }) {
   a.download = file.filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  noticeDownloaded(file.filename);
 }
 
 /** What a .bbm can't hold of this layout (desktop onExportBbm's list). */

@@ -55,6 +55,21 @@ export const EMPTY_ANNO: AnnoSelection = Object.freeze({
   texts: [],
 }) as AnnoSelection;
 
+export type NoticeKind = 'busy' | 'done' | 'error';
+
+export interface Notice {
+  id: number;
+  text: string;
+  kind: NoticeKind;
+}
+
+let noticeSeq = 0;
+
+/** Tell the user a file went to their Downloads folder (browsers often show nothing). */
+export function noticeDownloaded(filename: string): void {
+  useEditorStore.getState().showNotice(`Downloaded “${filename}”. Look in your Downloads folder.`, 'done', 7000);
+}
+
 export interface EditorState {
   tool: Tool;
   /** Brick ids currently selected. */
@@ -183,6 +198,12 @@ export interface EditorState {
   statusMessage: string | null;
   statusMessageTimerId: ReturnType<typeof setTimeout> | null;
   /**
+   * A notice that pops up over the map for something the user asked for
+   * and would otherwise miss: a download, a save, a long job's progress.
+   * The status bar is for passing hints; this is for results.
+   */
+  notice: Notice | null;
+  /**
    * Where a part / module being dragged over the canvas will land
    * ("Drop onto: <layer> ..."), shown in the status bar until the drag
    * leaves or drops. Port of MapView::showDropTargetHint (MapView.cpp:1653-1683).
@@ -228,6 +249,12 @@ export interface EditorState {
   setHudMapBounds: (w: number | null, h: number | null) => void;
   /** Show a transient message in the status bar; auto-clears after `durationMs` (default 3000). */
   showStatusMessage: (msg: string, durationMs?: number) => void;
+  /**
+   * Pop up a notice. 'busy' stays until replaced; the others clear after
+   * `durationMs` (default 6 s).
+   */
+  showNotice: (text: string, kind?: NoticeKind, durationMs?: number) => void;
+  dismissNotice: () => void;
   setDropTargetHint: (hint: string | null) => void;
   /**
    * Atomic zoom-around-point. Used by the wheel handler so the world
@@ -248,6 +275,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   panY: 0,
   statusMessage: null,
   statusMessageTimerId: null,
+  notice: null,
   dropTargetHint: null,
   snapStepStuds: (() => {
     // Off by default, like desktop snapStepStuds (PreferencesDialog.cpp:137).
@@ -424,6 +452,16 @@ export const useEditorStore = create<EditorState>((set) => ({
   },
   setHudMapBounds: (hudMapWidthStuds, hudMapHeightStuds) => set({ hudMapWidthStuds, hudMapHeightStuds }),
   setDropTargetHint: (dropTargetHint) => set((s) => (s.dropTargetHint === dropTargetHint ? s : { dropTargetHint })),
+  showNotice: (text, kind = 'done', durationMs = 6000) => {
+    const id = ++noticeSeq;
+    set({ notice: { id, text, kind } });
+    if (kind !== 'busy') {
+      setTimeout(() => {
+        if (useEditorStore.getState().notice?.id === id) useEditorStore.setState({ notice: null });
+      }, durationMs);
+    }
+  },
+  dismissNotice: () => set({ notice: null }),
   showStatusMessage: (msg, durationMs = 3000) =>
     set((s) => {
       if (s.statusMessageTimerId !== null) clearTimeout(s.statusMessageTimerId);
