@@ -203,7 +203,7 @@ for (const phone of PHONES) {
           header.locator('h1'),
           page.getByTestId('save-status'),
           page.getByTestId('view-only'),
-          header.getByRole('button', { name: 'Share' }),
+          header.getByRole('button', { name: 'Share', exact: true }),
         ].map(async (l) => (await l.boundingBox())!),
       );
       for (let i = 0; i < boxes.length; i++) {
@@ -296,7 +296,7 @@ test.describe('phone viewer gestures and pages', () => {
     // dialog fits and scrolls inside itself.
     const vp = page.viewportSize()!;
     await page.setViewportSize({ width: vp.width, height: 560 });
-    await page.getByTestId('editor-header').getByRole('button', { name: 'Share' }).tap();
+    await page.getByTestId('editor-header').getByRole('button', { name: 'Share', exact: true }).tap();
     const share = page.getByRole('dialog', { name: /^Share / });
     await expect(share).toBeVisible();
     const box = (await share.boundingBox())!;

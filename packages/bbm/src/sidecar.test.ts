@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CURRENT_SCHEMA_VERSION,
   readSidecar,
+  readView,
   writeSidecar,
   type Sidecar,
 } from './sidecar.js';
@@ -148,5 +149,36 @@ describe('hashBbmBytes', () => {
     const s = hashBbmBytes('hello');
     const b = hashBbmBytes(new TextEncoder().encode('hello'));
     expect(s).toBe(b);
+  });
+});
+
+describe('views', () => {
+  const fit = { id: 'v1', name: 'Whole layout', fit: true, rect: null, sheets: null, grid: true, labels: true };
+  const area = { id: 'v2', name: 'Station', fit: false, rect: { x: -8, y: -8, w: 48, h: 32 }, sheets: ['L2'], grid: false, labels: false };
+
+  it('round-trips saved views in list order', () => {
+    const raw = writeSidecar({ ...baseSidecar, views: [fit, area] });
+    expect(JSON.parse(raw).views).toEqual([fit, area]);
+    expect(readSidecar(raw).views).toEqual([fit, area]);
+    expect(readSidecar(raw).extras).toBeUndefined();
+  });
+
+  it('keeps unknown fields of a view and unknown top-level keys beside the views', () => {
+    const raw = JSON.stringify({ schemaVersion: 1, bbmHashSha256: '', views: [{ ...area, zoom: 3 }], futureThing: [1] });
+    const back = JSON.parse(writeSidecar(readSidecar(raw)));
+    expect(back.views[0]).toEqual({ ...area, zoom: 3 });
+    expect(back.futureThing).toEqual([1]);
+  });
+
+  it('fills what a view leaves out: no area means fit, everything shows', () => {
+    const s = readSidecar(JSON.stringify({ schemaVersion: 1, views: [{ id: 'a' }, { id: 'b', rect: [1, 2, 3, 4] }, { name: 'no id' }] }));
+    expect(s.views).toEqual([
+      { id: 'a', name: '', fit: true, rect: null, sheets: null, grid: true, labels: true },
+      { id: 'b', name: '', fit: false, rect: { x: 1, y: 2, w: 3, h: 4 }, sheets: null, grid: true, labels: true },
+    ]);
+  });
+
+  it('a view without an area is always fit', () => {
+    expect(readView({ id: 'a', fit: false })!.fit).toBe(true);
   });
 });

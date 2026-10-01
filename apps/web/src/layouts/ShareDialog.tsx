@@ -11,6 +11,8 @@ interface Props {
   /** Caller's user id — used to mark "you" in the list. */
   myUserId: string;
   onClose: () => void;
+  /** The editor's "Share a picture" (pictures need the open map). */
+  onSharePicture?: () => void;
 }
 
 /**
@@ -25,6 +27,7 @@ export function ShareDialog({
   myRole,
   myUserId,
   onClose,
+  onSharePicture,
 }: Props) {
   const qc = useQueryClient();
   const list = useQuery({
@@ -60,6 +63,17 @@ export function ShareDialog({
             ✕
           </button>
         </div>
+
+        {onSharePicture && (
+          <button
+            type="button"
+            onClick={onSharePicture}
+            className="flex min-h-11 w-full items-center gap-3 rounded-lg border border-line px-3 py-2 text-left hover:bg-soft"
+          >
+            <span className="font-semibold">Share a picture</span>
+            <span className="text-xs text-muted">Send a picture of the layout to anyone, no account needed</span>
+          </button>
+        )}
 
         {isOwner && (
           <InviteForm

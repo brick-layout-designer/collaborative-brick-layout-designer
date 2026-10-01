@@ -26,6 +26,55 @@ Readers must accept both, and must ignore entries they don't know.
   one machine. Only a writer that couldn't read the image keeps `path`, and it
   warns that it did.
 
+## Saved views
+
+`sidecar.json` (and the `.bbm.bld` sidecar, and the live doc's `meta.cache`)
+may hold `views`, a list of saved views in the order the Views panel shows
+them. Each view is a named picture of the layout:
+
+```json
+{
+  "id": "view-station",
+  "name": "Station",
+  "fit": false,
+  "rect": { "x": 90, "y": 40, "w": 40, "h": 30 },
+  "sheets": ["sheet-town"],
+  "grid": false,
+  "labels": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | Unique in the layout. A view without one is dropped on reading. |
+| `name` | Shown in the list and used in picture file names. |
+| `fit` | `true` (the default for a new view): fit the whole layout, worked out each time a picture is made (below); `rect` is ignored and written as `null`. `false`: use `rect`. A reader treats a view with no usable `rect` as `fit`. |
+| `rect` | The area in studs (`x`, `y` = top left, `w`, `h`), or `null`. Readers also accept `[x, y, w, h]`. |
+| `sheets` | Layer ids shown, or `null`. `null` follows the layout's own sheet on/off. A list shows exactly those sheets, whatever their own on/off. The grid layer is not a sheet here. |
+| `grid` | Draw the grid (the drawn grid layer's lines) under the picture. Missing means `true`. |
+| `labels` | Show the anchored labels. Missing means `true`. |
+
+Unknown fields of a view, and unknown sidecar keys, are kept when a file is
+read and written again.
+
+**Fit the whole layout.** The area is the bounding box of what's drawn on
+the view's shown sheets: bricks, text cells, rulers and painted area cells,
+plus the World, Group and Module labels when `labels` is on. The room
+(venue) and the background image don't count. The box is then grown by
+**4 studs** on every side. A view with nothing to show makes no picture.
+
+**Pictures.** One picture covers the view's area at 8 px per stud times a
+scale (Small 1×, Medium 2×, Large 4× on the web), rounded to whole pixels.
+Picture files are named `<layout title> - <view name>.png`, both parts made
+safe as file names; "Export all views" writes one per view (on the web, in
+`<layout title> - views.zip`). With no saved views it makes one
+"Whole layout" picture (fit, all sheets, no grid, labels on).
+
+**Live layouts.** Views live in `meta.cache.views`. An edit replaces one
+whole view; the last edit of a view wins. The server's three-way compare
+(`apps/server/src/sync/compare.ts`) reports each changed view as a
+`view:<id>` item, like `label:<id>` and `module:<id>`.
+
 ## Parts
 
 `parts/` names are plain file names: no folders, no leading dot, and one of
@@ -95,6 +144,15 @@ the desktop repository (`fixtures/layouts/`), and both apps' tests read both:
   background image.
 - **`web-made.bld-layout`**, the same layout opened by the web app and
   downloaded again.
+- **`views.bld-layout`**, made by the web (`apps/web/src/test/viewsFixture.test.ts`,
+  `BLD_UPDATE_FIXTURES=1`). Two brick sheets, `sheet-track` "Track" (bricks
+  at (0,0)–(64,8)) and `sheet-town` "Town" (a brick at (100,50)–(120,60)),
+  a World label at (70,−20), and two views: `view-whole` "Whole layout"
+  (fit, all sheets, grid on, labels on) and `view-station` "Station" (the
+  area x 90, y 40, w 40, h 30, only `sheet-town`, no grid, no labels). Both
+  apps must read the two views back unchanged, and work out the fit area of
+  `view-whole` as x −4, y −24, w 128, h 88 (and `view-station`, if switched
+  to fit, as x 96, y 46, w 28, h 18).
 - **`with-parts.bld-layout`**, made by the desktop. It holds one brick of
   `CLDTEST.1`, a part the file carries. The web's e2e opens it and gets
   `CLDTEST.1` as a custom part. Another e2e first uploads a different

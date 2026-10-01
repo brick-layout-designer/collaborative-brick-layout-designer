@@ -99,3 +99,32 @@ describe('compareLayouts', () => {
     expect(compareLayouts(base, clone(base), clone(base))).toEqual([]);
   });
 });
+
+describe('compareLayouts — saved views', () => {
+  const v = (id: string, name: string, over: Record<string, unknown> = {}) => ({ id, name, fit: true, rect: null, sheets: null, grid: false, labels: true, ...over });
+  const withViews = (views: ReturnType<typeof v>[]): LayoutSnapshot => {
+    const s = snapshot([brick('a', 0)], { labelText: 'x' });
+    (s.sidecar as Sidecar).views = views as NonNullable<Sidecar['views']>;
+    return s;
+  };
+
+  it('reports each changed view as a view:<id> item', () => {
+    const base = withViews([v('v1', 'Station'), v('v2', 'Yard'), v('v3', 'Town')]);
+    const mine = withViews([v('v1', 'Main station'), v('v2', 'Yard'), v('v3', 'Town'), v('v4', 'New')]);
+    const server = withViews([v('v1', 'Station'), v('v2', 'Yard', { fit: false, rect: { x: 0, y: 0, w: 10, h: 10 } })]);
+    const changes = compareLayouts(base, mine, server).filter((c) => c.kind === 'view');
+    const by = Object.fromEntries(changes.map((c) => [c.key, [c.mine, c.server, c.status]]));
+    expect(by).toEqual({
+      'view:v1': ['edited', 'unchanged', 'mine'],
+      'view:v2': ['unchanged', 'edited', 'server'],
+      'view:v3': ['unchanged', 'deleted', 'server'],
+      'view:v4': ['added', 'unchanged', 'mine'],
+    });
+  });
+
+  it('a view both sides changed differently is a clash', () => {
+    const base = withViews([v('v1', 'Station')]);
+    const c = compareLayouts(base, withViews([v('v1', 'A')]), withViews([v('v1', 'B')])).find((x) => x.key === 'view:v1');
+    expect(c).toMatchObject({ kind: 'view', mine: 'edited', server: 'edited', status: 'conflict' });
+  });
+});

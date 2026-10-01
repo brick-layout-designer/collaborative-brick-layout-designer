@@ -1150,6 +1150,32 @@ backups, and ops.
   dropdown listing all panels with checkboxes for show/hide toggle instead of
   a flat show-all / hide-all approach.
 
+### Saved views and Share picture (web half)
+
+- **Saved views** (references/LAYOUT-FILE.md "Saved views"): sidecar key
+  `views: [{id, name, fit, rect: {x,y,w,h} | null, sheets: string[] | null,
+  grid, labels}]`, in `packages/bbm` sidecar.ts and the live doc's
+  `meta.cache` (last write wins per view), carried by `.bld-layout` files,
+  and `view:<id>` items in the server's three-way compare. A new view fits
+  the whole layout: the bounds of what's drawn on its sheets plus 4 studs,
+  worked out each time a picture is made.
+- **Views panel** (Build tab, Panels menu): add (named, fit), go to a view
+  (its sheets, grid and labels show on this screen only, with a "Showing …
+  / Show everything" chip), "Fit whole layout" / "Use this area", sheets,
+  grid, labels, rename, delete, share. Viewers and phones get the views in
+  the layout-name menu.
+- **Share picture** (header button, phone header, Share dialog, menus):
+  whole layout, what's on screen or a saved view, rendered by
+  `exportRender.ts` at 2× (longest side 4096 px at most). Phones use
+  `navigator.share({files})` when `canShare` allows, else download; "Copy
+  picture" where the clipboard takes images; "More options…" opens Export
+  Image.
+- **Export all views**: one PNG per view (or one "Whole layout"), named
+  `<layout> - <view>.png`, zipped as `<layout> - views.zip`; the size
+  (Small / Medium / Large) is remembered, so a re-export is one click.
+- Shared fixture `packages/bbm/tests/fixtures/views.bld-layout` for the
+  desktop half (SidecarIO, LayoutMerge `view:<id>`, a folder of PNGs).
+
 ## 7. Risks & open questions
 
 ### Risks

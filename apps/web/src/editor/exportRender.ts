@@ -5,7 +5,7 @@
 // drawBackground / drawForeground rather than as scene items.
 
 import type Konva from 'konva';
-import type { BbmMap } from '@cld/model';
+import type { BbmMap, LayerGrid } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import { colorSpecToCss } from './layerOptions';
 
@@ -182,6 +182,56 @@ export interface ExportOptions {
    * background colour.
    */
   regionStuds?: StudRect;
+  /**
+   * Draw this grid layer's lines under the map (a saved view with the
+   * grid on). The on-screen grid only covers the screen, so the export
+   * paints its own over the whole region.
+   */
+  grid?: LayerGrid | null;
+}
+
+/**
+ * Paint a grid's lines (sub-grid first, then the main grid) over `region`
+ * onto `ctx`, where one stud is `pxPerStud` output pixels. Lines sit on
+ * whole multiples of the grid size, like the on-screen grid.
+ */
+export function paintGridLines(
+  ctx: Pick<CanvasRenderingContext2D, 'beginPath' | 'moveTo' | 'lineTo' | 'stroke'> & { strokeStyle: unknown; lineWidth: number },
+  grid: LayerGrid,
+  region: StudRect,
+  pxPerStudX: number,
+  pxPerStudY: number = pxPerStudX,
+): number {
+  let drawn = 0;
+  const pass = (step: number, color: string, thickness: number) => {
+    if (!(step > 0)) return;
+    const nx = Math.floor(region.width / step) + 2;
+    const ny = Math.floor(region.height / step) + 2;
+    if (nx > 4000 || ny > 4000) return; // too fine to see anyway
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, thickness * Math.min(pxPerStudX, pxPerStudY) / 8);
+    ctx.beginPath();
+    const w = region.width * pxPerStudX;
+    const h = region.height * pxPerStudY;
+    for (let x = Math.ceil(region.x / step) * step; x <= region.x + region.width; x += step) {
+      const px = (x - region.x) * pxPerStudX;
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, h);
+      drawn++;
+    }
+    for (let y = Math.ceil(region.y / step) * step; y <= region.y + region.height; y += step) {
+      const py = (y - region.y) * pxPerStudY;
+      ctx.moveTo(0, py);
+      ctx.lineTo(w, py);
+      drawn++;
+    }
+    ctx.stroke();
+  };
+  if (grid.displaySubGrid) {
+    pass(grid.gridSizeInStud / Math.max(2, grid.subDivisionNumber), colorSpecToCss(grid.subGridColor), grid.subGridThickness);
+  }
+  if (grid.displayGrid !== false) pass(grid.gridSizeInStud, colorSpecToCss(grid.gridColor), grid.gridThickness);
+  return drawn;
 }
 
 /**
@@ -243,6 +293,7 @@ export function renderMapToCanvas(
     ctx.fillStyle = exportBackground(map);
     ctx.fillRect(0, 0, out.width, out.height);
   }
+  if (opts.grid) paintGridLines(ctx, opts.grid, region, out.width / region.width, out.height / region.height);
   ctx.imageSmoothingEnabled = smooth;
   ctx.drawImage(content, 0, 0, out.width, out.height);
   if (opts.watermark) {

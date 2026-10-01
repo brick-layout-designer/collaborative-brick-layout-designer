@@ -133,6 +133,26 @@ export interface BackgroundImage {
   rect?: { x: number; y: number; w: number; h: number };
 }
 
+/**
+ * A saved view (references/LAYOUT-FILE.md "Saved views"): a named picture
+ * of the layout that can be shown again, shared or exported. Everything is
+ * in studs. `fit: true` means "fit the whole layout": the area is worked
+ * out at export time from the bounds of what's drawn on the view's visible
+ * sheets, plus a small margin, and `rect` is then ignored (usually null).
+ * `sheets: null` means every sheet. Unknown fields are kept.
+ */
+export interface SavedView {
+  id: string;
+  name: string;
+  fit: boolean;
+  rect: { x: number; y: number; w: number; h: number } | null;
+  /** Layer ids shown in this view, or null for all of them. */
+  sheets: string[] | null;
+  grid: boolean;
+  labels: boolean;
+  [extra: string]: unknown;
+}
+
 export interface Sidecar {
   schemaVersion: number;
   /** Lowercase hex of the .bbm bytes at write time, or empty when unknown. */
@@ -141,6 +161,8 @@ export interface Sidecar {
   modules?: SidecarModule[];
   venue?: Venue;
   backgroundImage?: BackgroundImage;
+  /** Saved views, in list order. */
+  views?: SavedView[];
   /** Unknown top-level fields preserved verbatim across round-trip. */
   extras?: Record<string, unknown>;
 }
@@ -170,6 +192,9 @@ export function readSidecar(raw: string): Sidecar {
   }
   const bg = readBackgroundImage(parsed.backgroundImage);
   if (bg) sidecar.backgroundImage = bg;
+  if (Array.isArray(parsed.views)) {
+    sidecar.views = parsed.views.map(readView).filter((v): v is SavedView => v !== null);
+  }
 
   const knownKeys = new Set([
     'schemaVersion',
@@ -178,6 +203,7 @@ export function readSidecar(raw: string): Sidecar {
     'modules',
     'venue',
     'backgroundImage',
+    'views',
   ]);
   const extras: Record<string, unknown> = {};
   for (const key of Object.keys(parsed)) {
@@ -215,6 +241,7 @@ export function writeSidecar(sidecar: Sidecar, opts: WriteSidecarOptions = {}): 
   if (sidecar.modules) out.modules = sidecar.modules;
   if (sidecar.venue) out.venue = sidecar.venue;
   if (sidecar.backgroundImage) out.backgroundImage = encodeBackgroundImage(sidecar.backgroundImage);
+  if (sidecar.views) out.views = sidecar.views;
   if (sidecar.extras) {
     for (const [k, v] of Object.entries(sidecar.extras)) out[k] = v;
   }
@@ -271,6 +298,30 @@ function encodeBackgroundImage(bg: BackgroundImage): Record<string, unknown> {
   if (bg.rect) out.rect = [bg.rect.x, bg.rect.y, bg.rect.w, bg.rect.h];
   out.url = bg.url;
   return out;
+}
+
+/**
+ * Reads one saved view, filling defaults for missing fields so a view
+ * written by an older or newer build still opens. Returns null for
+ * something that isn't a view at all (no id). Unknown fields are kept.
+ */
+export function readView(raw: unknown): SavedView | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== 'string' || o.id === '') return null;
+  const rect = readRect(o.rect) ?? null;
+  const sheets = Array.isArray(o.sheets) ? o.sheets.filter((s): s is string => typeof s === 'string') : null;
+  return {
+    ...o,
+    id: o.id,
+    name: typeof o.name === 'string' ? o.name : '',
+    // A view with no area can only be "fit"; one with an area is fit only when it says so.
+    fit: typeof o.fit === 'boolean' ? o.fit || rect === null : rect === null,
+    rect,
+    sheets,
+    grid: typeof o.grid === 'boolean' ? o.grid : true,
+    labels: typeof o.labels === 'boolean' ? o.labels : true,
+  };
 }
 
 function numberField(node: Record<string, unknown>, key: string): number {
