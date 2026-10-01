@@ -33,6 +33,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_a_member_of_recipient_org: 'You are not in that club.',
   org_not_found: 'That club was not found.',
   recipient_org_not_found: 'That club was not found.',
+  only_club_admins_can_add: 'Only the club’s admins can add things to this club.',
+  last_admin: 'A club needs at least one admin. Make someone else an admin first, or hand the club over.',
+  confirm_name_mismatch: 'Type the club’s name exactly to delete it.',
+  slug_taken: 'Another club already uses that address.',
+  invalid_slug: 'Use lowercase letters, numbers and dashes for the address.',
+  already_member: 'That person is already in the club.',
+  invalid_expiry: 'Pick between 1 and 30 days.',
   org_owned_rooms_can_only_move_to_orgs: "A club's room stays with the club. Make a copy for yourself instead.",
   org_owned_layouts_can_only_transfer_to_orgs: "A club's layout stays with the club. Make a copy for yourself instead.",
   invalid_email: 'Enter a valid email address.',
@@ -420,14 +427,43 @@ export const api = {
         `/api/orgs/${slug}/members`,
       ),
     /** Invite by email, OR by userId (the autocomplete path — see searchUsers). Pass exactly one. */
-    invite: (slug: string, target: { email: string } | { userId: string }, role: 'admin' | 'member') =>
+    invite: (
+      slug: string,
+      target: { email: string } | { userId: string },
+      role: 'admin' | 'member',
+      /** 1 to 30; the server's default is 14. */
+      expiresInDays?: number,
+    ) =>
       post<{
         id: string;
         token: string;
         inviteUrl: string;
         emailDelivered: boolean;
         expiresAt: number;
-      }>(`/api/orgs/${slug}/invites`, { ...target, role }),
+      }>(`/api/orgs/${slug}/invites`, { ...target, role, ...(expiresInDays ? { expiresInDays } : {}) }),
+    /** Send an invite again, with a fresh expiry. */
+    resendInvite: (slug: string, inviteId: string, expiresInDays?: number) =>
+      post<{ ok: true; inviteUrl: string; emailDelivered: boolean; expiresAt: number }>(
+        `/api/orgs/${slug}/invites/${encodeURIComponent(inviteId)}/resend`,
+        expiresInDays ? { expiresInDays } : {},
+      ),
+    /** Club settings (admins): name, address, description, who may add things. */
+    update: (
+      slug: string,
+      body: { name?: string; slug?: string; description?: string; membersCanCreate?: boolean },
+    ) => patch<{ ok: true; slug: string; name: string }>(`/api/orgs/${slug}`, body),
+    /** Delete the club and everything it owns; `confirm` is its name, typed out. */
+    remove: async (slug: string, confirm: string) => {
+      const res = await fetch(`/api/orgs/${slug}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirm }),
+      });
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+    },
+    /** Make `userId` an admin and step down to member, in one go. */
+    handOver: (slug: string, userId: string) => post<{ ok: true }>(`/api/orgs/${slug}/hand-over`, { userId }),
     revokeInvite: (slug: string, inviteId: string) =>
       del(`/api/orgs/${slug}/invites/${inviteId}`),
     /** Autocomplete for the invite form — org-admin-only, min 2 chars, capped results. */
@@ -881,7 +917,13 @@ export interface OrgSummary {
   myRole: 'admin' | 'member';
 }
 
-export interface OrgDetail extends OrgSummary {}
+export interface OrgDetail extends OrgSummary {
+  description?: string;
+  /** Members (not only admins) may add layouts, rooms and modules. */
+  membersCanCreate?: boolean;
+  memberCount?: number;
+  adminCount?: number;
+}
 
 export interface OrgMemberSummary {
   userId: string;
@@ -897,6 +939,8 @@ export interface OrgInviteSummary {
   invitedEmail: string;
   role: 'admin' | 'member';
   expiresAt: number;
+  /** The invite's link, for the admin to send themselves. */
+  inviteUrl?: string;
 }
 
 export interface CollaboratorSummary {

@@ -1,7 +1,18 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type OrgMemberSummary, type OrgInviteSummary, type AuditEventSummary, type OrgPartLibrary, type CustomPartSummary, type ModuleSummary } from '../api';
+import { api, type OrgPartLibrary, type CustomPartSummary } from '../api';
+import {
+  ActivitySection,
+  DeleteClubSection,
+  HandOverSection,
+  InviteSection,
+  LeaveClubButton,
+  MembersSection,
+  PendingInvitesSection,
+  Section,
+  SettingsSection,
+} from './ClubManage';
 import { CategoryPicker } from '../library/LibraryPage';
 import { AppHeader } from '../AppHeader';
 
@@ -11,12 +22,16 @@ export function OrgAdminPage() {
   return <OrgAdmin slug={params.slug} />;
 }
 
-type Tab = 'members' | 'libraries' | 'parts' | 'modules' | 'audit';
+type Tab = 'people' | 'settings' | 'parts' | 'activity';
 
 function OrgAdmin({ slug }: { slug: string }) {
-  const [tab, setTab] = useState<Tab>('members');
+  const [tab, setTab] = useState<Tab>('people');
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const detail = useQuery({ queryKey: ['org', slug], queryFn: () => api.orgs.get(slug) });
+  const members = useQuery({ queryKey: ['org-members', slug], queryFn: () => api.orgs.members(slug) });
+  const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
+  const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
+  const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
 
   if (me.isLoading || detail.isLoading) {
     return <div className="grid h-screen place-items-center text-muted">Loading…</div>;
@@ -35,39 +50,42 @@ function OrgAdmin({ slug }: { slug: string }) {
 
   const org = detail.data!;
   if (org.myRole !== 'admin') return <Navigate to={`/orgs/${slug}`} replace />;
+  const myUserId = me.data.user.id;
+  const memberList = members.data?.members ?? [];
+  const count = (items: readonly { ownerOrgId: string | null }[] | undefined) => items?.filter((i) => i.ownerOrgId === org.id).length ?? 0;
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const things = `its ${plural(count(layouts.data?.layouts), 'layout')}, ${plural(count(venues.data?.venues), 'room')}, ${plural(count(modules.data?.modules), 'module')} and custom parts`;
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'members', label: 'Members' },
-    { id: 'libraries', label: 'Part Libraries' },
-    { id: 'parts', label: 'Custom Parts' },
-    { id: 'modules', label: 'Modules' },
-    { id: 'audit', label: 'Audit Log' },
+    { id: 'people', label: 'People' },
+    { id: 'settings', label: 'Settings' },
+    { id: 'parts', label: 'Parts' },
+    { id: 'activity', label: 'Activity' },
   ];
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={me.data.user} />
-      <main className="mx-auto mt-8 max-w-4xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">{org.name} — Settings</h1>
-            <p className="text-sm text-muted">
-              <Link to={`/orgs/${slug}`} className="text-accent-text hover:underline">
-                ← back to the club
-              </Link>
-            </p>
-          </div>
+      <main className="mx-auto mt-6 max-w-3xl space-y-5">
+        <div>
+          <p className="text-sm">
+            <Link to={`/orgs/${slug}`} className="tap-target inline-flex items-center text-accent-text hover:underline">
+              ← {org.name}
+            </Link>
+          </p>
+          <h1 className="text-2xl font-semibold">Manage {org.name}</h1>
+          <p className="text-sm text-muted">You’re an admin of this club.</p>
         </div>
 
-        <nav className="flex gap-1 border-b border-line pb-0">
+        <nav role="tablist" aria-label="Manage the club" className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1">
           {TABS.map((t) => (
             <button
               key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              className={`rounded-t px-4 py-2 text-sm font-medium transition-colors ${
-                tab === t.id
-                  ? 'border-b-2 border-accent text-accent-text'
-                  : 'text-muted hover:text-ink'
+              className={`tap-target shrink-0 rounded-t px-4 py-2 text-sm font-semibold ${
+                tab === t.id ? 'border-b-2 border-accent text-accent-text' : 'text-muted hover:text-ink'
               }`}
             >
               {t.label}
@@ -75,270 +93,40 @@ function OrgAdmin({ slug }: { slug: string }) {
           ))}
         </nav>
 
-        {tab === 'members' && <MembersTab slug={slug} myUserId={me.data.user.id} />}
-        {tab === 'libraries' && <LibrariesTab slug={slug} />}
-        {tab === 'parts' && <OrgCustomPartsTab slug={slug} orgId={org.id} />}
-        {tab === 'modules' && <OrgModulesTab slug={slug} orgId={org.id} />}
-        {tab === 'audit' && <AuditTab slug={slug} />}
+        {tab === 'people' && (
+          <div className="space-y-5">
+            {members.isLoading ? (
+              <p className="text-sm text-muted">Loading…</p>
+            ) : (
+              <MembersSection slug={slug} myUserId={myUserId} isAdmin members={memberList} />
+            )}
+            <InviteSection slug={slug} />
+            <PendingInvitesSection slug={slug} invites={members.data?.invites ?? []} />
+          </div>
+        )}
+        {tab === 'settings' && (
+          <div className="space-y-5">
+            <SettingsSection key={`${org.slug}:${org.name}`} org={org} />
+            <HandOverSection slug={slug} myUserId={myUserId} members={memberList} />
+            <Section title="Leave the club">
+              <LeaveClubButton org={org} myUserId={myUserId} />
+            </Section>
+            <DeleteClubSection org={org} counts={things} />
+          </div>
+        )}
+        {tab === 'parts' && (
+          <div className="space-y-5">
+            <Section title="Part libraries" hint="Which part libraries the club’s members see in the parts panel.">
+              <LibrariesTab slug={slug} />
+            </Section>
+            <Section title="Club parts" hint="Custom parts the club has added, shared with everyone in the club.">
+              <OrgCustomPartsTab slug={slug} orgId={org.id} />
+            </Section>
+          </div>
+        )}
+        {tab === 'activity' && <ActivitySection slug={slug} members={memberList} />}
       </main>
     </div>
-  );
-}
-
-function MembersTab({ slug, myUserId }: { slug: string; myUserId: string }) {
-  const members = useQuery({
-    queryKey: ['org-members', slug],
-    queryFn: () => api.orgs.members(slug),
-  });
-
-  if (members.isLoading) return <p className="text-sm text-muted">Loading…</p>;
-
-  return (
-    <div className="space-y-4">
-      <MembersList
-        slug={slug}
-        myUserId={myUserId}
-        members={members.data?.members ?? []}
-        invites={members.data?.invites ?? []}
-      />
-      <InviteForm slug={slug} />
-    </div>
-  );
-}
-
-function MembersList({
-  slug,
-  myUserId,
-  members,
-  invites,
-}: {
-  slug: string;
-  myUserId: string;
-  members: OrgMemberSummary[];
-  invites: OrgInviteSummary[];
-}) {
-  const qc = useQueryClient();
-  const change = useMutation({
-    mutationFn: (vars: { userId: string; role: 'admin' | 'member' }) =>
-      api.orgs.changeMemberRole(slug, vars.userId, vars.role),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['org-members', slug] }),
-  });
-  const remove = useMutation({
-    mutationFn: (userId: string) => api.orgs.removeMember(slug, userId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['org-members', slug] }),
-  });
-  const revoke = useMutation({
-    mutationFn: (inviteId: string) => api.orgs.revokeInvite(slug, inviteId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['org-members', slug] }),
-  });
-
-  return (
-    <div className="space-y-3">
-      <ul className="divide-y divide-line rounded-lg border border-line">
-        {members.map((m) => {
-          const isSelf = m.userId === myUserId;
-          return (
-            <li key={m.userId} className="flex items-center justify-between px-3 py-2 text-sm">
-              <div>
-                <p>
-                  {m.displayName} {isSelf && <span className="text-xs text-muted">(you)</span>}
-                </p>
-                <p className="text-xs text-muted">{m.email}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={m.role}
-                  onChange={(e) =>
-                    change.mutate({ userId: m.userId, role: e.target.value as 'admin' | 'member' })
-                  }
-                  className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
-                >
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <button
-                  onClick={() => {
-                    if (confirm(isSelf ? 'Leave this club?' : `Remove ${m.displayName}?`))
-                      remove.mutate(m.userId);
-                  }}
-                  className="rounded-lg border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
-                >
-                  {isSelf ? 'Leave' : 'Remove'}
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {invites.length > 0 && (
-        <div>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-            Pending invites
-          </h3>
-          <ul className="divide-y divide-line rounded-lg border border-line">
-            {invites.map((i) => (
-              <li key={i.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                <div>
-                  <p>{i.invitedEmail}</p>
-                  <p className="text-xs text-muted">
-                    {i.role} · expires {new Date(i.expiresAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <button
-                  onClick={() => revoke.mutate(i.id)}
-                  className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft"
-                >
-                  Revoke
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InviteForm({ slug }: { slug: string }) {
-  const qc = useQueryClient();
-  const [email, setEmail] = useState('');
-  const [pickedUserId, setPickedUserId] = useState<string | null>(null);
-  const [role, setRole] = useState<'admin' | 'member'>('member');
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Autocomplete against real accounts — see /api/orgs/:slug/user-search
-  // (org-admin-only, distinct from the platform-admin user search). It
-  // deliberately never returns an arbitrary user's email address, so
-  // picking a suggestion invites by userId (the server resolves the
-  // email itself — see the invite route's userId branch) rather than
-  // filling the email field with something we were never given. The
-  // actual invite still always goes through the normal token/accept
-  // flow, existing account or not, so the invitee's own action is
-  // still required to join.
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedQuery(email.trim()), 250);
-    return () => clearTimeout(id);
-  }, [email]);
-  const suggestions = useQuery({
-    queryKey: ['org-user-search', slug, debouncedQuery],
-    queryFn: () => api.orgs.searchUsers(slug, debouncedQuery),
-    enabled: debouncedQuery.length >= 2 && showSuggestions && pickedUserId === null,
-  });
-
-  const invite = useMutation({
-    mutationFn: () => api.orgs.invite(slug, pickedUserId ? { userId: pickedUserId } : { email }, role),
-    onSuccess: (res) => {
-      setShareUrl(res.inviteUrl);
-      setEmail('');
-      setPickedUserId(null);
-      setShowSuggestions(false);
-      qc.invalidateQueries({ queryKey: ['org-members', slug] });
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setShareUrl(null);
-    setShowSuggestions(false);
-    invite.mutate();
-  }
-
-  return (
-    <form onSubmit={submit} className="rounded-lg border border-line p-3 text-sm">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-        Invite member
-      </h3>
-      <div className="flex items-end gap-2">
-        <label className="relative flex-1">
-          <span className="mb-1 block text-xs text-muted">Email</span>
-          <input
-            type="text"
-            required
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); setPickedUserId(null); setShowSuggestions(true); }}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            className="w-full rounded-lg border border-border bg-soft px-2 py-1.5"
-            placeholder="Search by name or paste an email…"
-            autoComplete="off"
-          />
-          {showSuggestions && pickedUserId === null && debouncedQuery.length >= 2 && (
-            <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
-              {suggestions.isLoading && (
-                <li className="px-2 py-1.5 text-xs text-muted">Searching…</li>
-              )}
-              {suggestions.data && suggestions.data.users.length === 0 && (
-                <li className="px-2 py-1.5 text-xs text-muted">
-                  No matching account — you can still invite by email.
-                </li>
-              )}
-              {suggestions.data?.users.map((u) => (
-                <li key={u.id}>
-                  <button
-                    type="button"
-                    disabled={u.alreadyMember}
-                    onMouseDown={(e) => {
-                      // onMouseDown (not onClick) fires before the input's
-                      // onBlur closes this list.
-                      e.preventDefault();
-                      setEmail(u.displayName);
-                      setPickedUserId(u.id);
-                      setShowSuggestions(false);
-                    }}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-soft disabled:opacity-40"
-                  >
-                    {u.avatarUrl && <img src={u.avatarUrl} alt="" className="h-5 w-5 rounded-full" />}
-                    <span className="flex-1 truncate">{u.displayName}</span>
-                    {u.alreadyMember && <span className="text-[10px] text-muted">already a member</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </label>
-        <label>
-          <span className="mb-1 block text-xs text-muted">Role</span>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-            className="rounded-lg border border-border bg-soft px-2 py-1.5"
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={invite.isPending}
-          className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 hover:bg-accent-hover disabled:opacity-50"
-        >
-          Invite
-        </button>
-      </div>
-      <p className="mt-1 text-[11px] text-muted">
-        Search by name to find an existing account, or type an email directly. Either way the
-        invite still requires them to accept.
-      </p>
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      {shareUrl && (
-        <div className="mt-3 rounded-lg border border-emerald-900 bg-emerald-950/30 p-2 text-xs">
-          <p className="text-emerald-400">Invite created.</p>
-          <code className="mt-1 block break-all rounded-lg bg-bg p-1 text-[11px]">{shareUrl}</code>
-          <button
-            type="button"
-            onClick={() => navigator.clipboard.writeText(shareUrl)}
-            className="mt-1 text-xs text-accent-text hover:underline"
-          >
-            Copy link
-          </button>
-        </div>
-      )}
-    </form>
   );
 }
 
@@ -620,174 +408,6 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
           </button>
         </div>
       </form>
-    </div>
-  );
-}
-
-function OrgModulesTab({ slug, orgId }: { slug: string; orgId: string }) {
-  const qc = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
-  const all = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
-  const modules = (all.data?.modules ?? []).filter((m) => m.ownerOrgId === orgId);
-
-  const remove = useMutation({
-    mutationFn: api.modules.remove,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
-  });
-
-  if (all.isLoading) return <p className="text-sm text-muted">Loading…</p>;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">
-          Modules owned by this club are shared with all members.
-        </p>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
-        >
-          New module
-        </button>
-      </div>
-      {modules.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-          No modules yet.
-        </p>
-      ) : (
-        <ul className="divide-y divide-line rounded-lg border border-line">
-          {modules.map((m) => (
-            <li key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <div>
-                <p>{m.title}</p>
-                <p className="text-xs text-muted">
-                  v{m.docVersion} · updated {new Date(m.updatedAt).toLocaleString()}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  if (confirm(`Delete "${m.title}"?`)) remove.mutate(m.id);
-                }}
-                className="rounded-lg border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {showCreate && (
-        <OrgNewModuleDialog
-          slug={slug}
-          onClose={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ['modules'] }); }}
-        />
-      )}
-    </div>
-  );
-}
-
-function OrgNewModuleDialog({ slug, onClose }: { slug: string; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [title, setTitle] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: api.modules.create,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['modules'] });
-      onClose();
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    create.mutate({
-      ...(title.trim() ? { title: title.trim() } : {}),
-      orgSlug: slug,
-    });
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
-      >
-        <h3 className="text-lg font-semibold">New club module</h3>
-        <label className="block">
-          <span className="mb-1 block text-muted">Title</span>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Untitled Module"
-            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
-          />
-        </label>
-        {error && <p className="text-xs text-danger">{error}</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 hover:bg-soft"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={create.isPending}
-            className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
-          >
-            Create
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function AuditTab({ slug }: { slug: string }) {
-  const log = useQuery({
-    queryKey: ['org-audit', slug],
-    queryFn: () => api.audit.forOrg(slug),
-  });
-  if (log.isLoading) return <p className="text-sm text-muted">Loading…</p>;
-  if (log.error) return <p className="text-sm text-danger">Failed to load audit log.</p>;
-  if (!log.data || log.data.events.length === 0) {
-    return <p className="text-sm text-muted">No audit events yet.</p>;
-  }
-  return (
-    <div className="overflow-auto rounded-lg border border-line">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-line text-left text-muted">
-            <th className="px-3 py-2">Time</th>
-            <th className="px-3 py-2">Event</th>
-            <th className="px-3 py-2">User</th>
-            <th className="px-3 py-2">Layout</th>
-            <th className="px-3 py-2">Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {log.data.events.map((e: AuditEventSummary) => (
-            <tr key={e.id} className="border-b border-line hover:bg-panel/40">
-              <td className="px-3 py-1.5 text-muted">{new Date(e.createdAt).toLocaleString()}</td>
-              <td className="px-3 py-1.5">{e.eventType}</td>
-              <td className="px-3 py-1.5 text-muted">{e.userName ?? e.userId ?? '—'}</td>
-              <td className="px-3 py-1.5 font-mono text-muted">{e.layoutId ?? '—'}</td>
-              <td className="px-3 py-1.5">
-                <details>
-                  <summary className="cursor-pointer text-muted">view</summary>
-                  <pre className="mt-1 max-w-xs overflow-auto whitespace-pre-wrap text-neutral-300">
-                    {JSON.stringify(e.payload, null, 2)}
-                  </pre>
-                </details>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
