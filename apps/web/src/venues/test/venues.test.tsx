@@ -136,6 +136,13 @@ describe('VenueList', () => {
     expect(post.data.obstacles).toEqual(HALL.obstacles);
   });
 
+  it('opens the new-layout dialog when Start layout is clicked on the home page itself', async () => {
+    renderAt(<LayoutsPage />);
+    const row = (await screen.findByText('Garage')).closest('li')!;
+    fireEvent.click(within(row).getByRole('link', { name: 'Start layout' }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+
   it('lets the owner of personal rooms rename and delete them', async () => {
     routes['PATCH /api/venues/v-mine'] = () => ({ body: { ok: true, id: 'v-mine', name: 'Shed' } });
     routes['DELETE /api/venues/v-mine'] = () => ({ body: { ok: true } });
