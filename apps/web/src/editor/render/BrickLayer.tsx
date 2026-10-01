@@ -20,7 +20,7 @@ import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { studToPx } from './coords';
 import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
-import { ensureSprite, getSpriteSync } from './spriteCache';
+import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
 import { liveDragSnap, nearestConnectionIndex } from '../snap';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
@@ -205,8 +205,13 @@ const BrickGlyph = memo(function BrickGlyph({
         if (!cancelled) setRev((r) => r + 1);
       })
       .catch(() => undefined);
+    // A failed picture can arrive later, after a Retry on the loading card.
+    const off = onSpriteReady(spriteUrl, () => {
+      if (!cancelled) setRev((r) => r + 1);
+    });
     return () => {
       cancelled = true;
+      off();
     };
   }, [spriteUrl]);
 

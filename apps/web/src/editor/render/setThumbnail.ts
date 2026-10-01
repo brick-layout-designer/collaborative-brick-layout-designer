@@ -75,7 +75,7 @@ async function composeSetThumbnail(
     const url = spriteUrlFor(meta);
     if (!url) continue;
     try {
-      const img = await ensureSprite(url);
+      const img = await ensureSprite(url, { count: false });
       resolved.push({
         img,
         pxPerStud: meta.pxPerStud > 0 ? meta.pxPerStud : 8,
