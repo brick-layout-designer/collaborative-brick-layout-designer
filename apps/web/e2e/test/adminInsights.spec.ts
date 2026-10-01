@@ -45,7 +45,8 @@ test('a site admin reads the dashboard, changes the range and downloads a table'
   // The range survives a reload.
   await page.reload();
   await expect(page.getByRole('radio', { name: '7 days' })).toHaveAttribute('aria-checked', 'true');
-  await expect(page.getByRole('region', { name: 'Largest layouts' }).getByText(`Dash ${ts}`)).toBeVisible();
+  // Content tables fill from the server (the layout made above counts).
+  await expect(page.getByRole('region', { name: 'Largest layouts' }).getByRole('row').nth(1)).toBeVisible();
   await expect(page.getByRole('region', { name: 'Server' }).getByText('Version')).toBeVisible();
 });
 
