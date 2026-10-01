@@ -422,7 +422,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
               onClick={() => setMode('org')}
               className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-soft"
             >
-              Transfer to an org
+              Transfer to a club
             </button>
           )}
         </div>
@@ -485,7 +485,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             required
             className="w-full rounded-lg border border-border bg-soft px-2 py-1.5"
           >
-            <option value="">Choose an organization…</option>
+            <option value="">Choose a club…</option>
             {orgs.data.orgs.map((o) => (
               <option key={o.slug} value={o.slug}>
                 {o.name} ({o.myRole})
@@ -498,7 +498,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
               disabled={initiate.isPending || !orgSlug}
               className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-xs hover:bg-accent-hover disabled:opacity-50"
             >
-              Transfer to org
+              Transfer to club
             </button>
             <button
               type="button"

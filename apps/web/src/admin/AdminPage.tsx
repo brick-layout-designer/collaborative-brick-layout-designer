@@ -63,7 +63,7 @@ export function AdminPage() {
                 : 'border-transparent text-muted hover:text-ink')
             }
           >
-            {t}
+            {t === 'orgs' ? 'clubs' : t}
           </button>
         ))}
       </nav>
@@ -88,7 +88,7 @@ function Dashboard() {
   const tiles: { label: string; value: number; sub?: string }[] = [
     { label: 'Users', value: stats.data.users, sub: `${stats.data.demoUsers} demo · ${stats.data.globalAdmins} admin` },
     { label: 'Active sessions', value: stats.data.activeSessions },
-    { label: 'Organizations', value: stats.data.orgs },
+    { label: 'Clubs', value: stats.data.orgs },
     { label: 'Layouts', value: stats.data.layouts },
     { label: 'Custom parts', value: stats.data.customParts },
     { label: 'Saved modules', value: stats.data.modules },
@@ -293,7 +293,7 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-neutral-300">Organizations</h3>
+            <h3 className="text-sm font-semibold text-neutral-300">Clubs</h3>
             {detail.data.orgMemberships.length === 0 ? (
               <p className="mt-1 text-sm text-muted">Not a member of any org.</p>
             ) : (
@@ -759,7 +759,7 @@ function GlobalPartsTab() {
               />
             </div>
             <label className="flex flex-col gap-1 text-xs text-muted">
-              Owner org (optional)
+              Owner club (optional)
               <select
                 value={form.orgSlug}
                 onChange={(e) => setForm((f) => ({ ...f, orgSlug: e.target.value }))}
@@ -1348,7 +1348,7 @@ function PartLibrariesTab() {
                     <Td>
                       {lib.name}
                       {lib.locked && (
-                        <span className="ml-2 rounded-lg bg-soft px-1.5 py-0.5 text-[10px] text-muted" title="Always enabled for everyone — cannot be disabled by org admins">
+                        <span className="ml-2 rounded-lg bg-soft px-1.5 py-0.5 text-[10px] text-muted" title="Always enabled for everyone — cannot be turned off by club admins">
                           locked
                         </span>
                       )}
@@ -1391,7 +1391,7 @@ function PartLibrariesTab() {
                         <button
                           onClick={() => patchLib.mutate({ id: lib.id, body: { locked: !lib.locked } })}
                           className="text-muted hover:underline"
-                          title={lib.locked ? 'Unlock — allow org admins to disable this library' : 'Lock — force this library on for all orgs'}
+                          title={lib.locked ? 'Unlock — allow club admins to turn this library off' : 'Lock — force this library on for all clubs'}
                         >
                           {lib.locked ? 'Unlock' : 'Lock'}
                         </button>
@@ -1583,7 +1583,7 @@ function SettingsTab() {
         <div>
           <h2 className="text-sm font-semibold text-neutral-300">SMTP server</h2>
           <p className="text-xs text-muted">
-            Used for signup verification links and org/layout invite emails.{' '}
+            Used for signup verification links and club and layout invite emails.{' '}
             {settings.data.smtp.source === 'database' && (
               <span className="text-emerald-400">Using the configuration below.</span>
             )}

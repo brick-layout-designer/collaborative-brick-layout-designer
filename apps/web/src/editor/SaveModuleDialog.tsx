@@ -4,11 +4,13 @@
 // origin, seeds a new Y.Doc, and POSTs it to /api/modules.
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Y from 'yjs';
 import { seedFromBbm, encodeDoc } from '@cld/ydoc';
 import type { BbmMap, Brick } from '@cld/model';
 import { api } from '../api';
+import { defaultSaveTo, readOwnerFilter, validOwnerFilter } from '../owners/owners';
+import { SaveToPicker } from '../owners/OwnerControls';
 
 interface Props {
   map: BbmMap;
@@ -21,6 +23,10 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
+  // Where it's saved: picked, else the club the home page shows, else Me.
+  const [picked, setPicked] = useState<string | null>(null);
+  const ownerSlug = picked ?? defaultSaveTo(validOwnerFilter(readOwnerFilter(), orgs.data?.orgs ?? []));
 
   const save = useMutation({
     mutationFn: async (name: string) => {
@@ -83,7 +89,7 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
       const bytes = encodeDoc(doc);
       doc.destroy();
 
-      const created = await api.modules.create({ title: name });
+      const created = await api.modules.create(ownerSlug ? { title: name, orgSlug: ownerSlug } : { title: name });
       await api.modules.saveSnapshot(created.id, bytes);
       return { id: created.id, title: created.title };
     },
@@ -116,6 +122,7 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
               className="w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent"
             />
           </div>
+          <SaveToPicker value={ownerSlug} onChange={setPicked} orgs={orgs.data?.orgs} />
           {error && <p className="text-xs text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
             <button

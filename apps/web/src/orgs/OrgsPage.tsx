@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
 
-/** /orgs landing — list orgs the user is a member of, plus a create button. */
+/** /orgs landing: the clubs the user is in, plus a create button. */
 export function OrgsPage() {
   const list = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -18,13 +18,13 @@ export function OrgsPage() {
       <AppHeader user={me.data.user} />
       <main className="mx-auto mt-8 max-w-3xl space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Organizations</h1>
+          <h1 className="text-xl font-semibold">Clubs</h1>
           {!me.data.user.isDemoAccount && (
             <button
               onClick={() => setShowCreate(true)}
               className="rounded-lg bg-accent text-accent-ink px-3 py-1.5 text-sm hover:bg-accent-hover"
             >
-              New org
+              New club
             </button>
           )}
         </div>
@@ -32,7 +32,7 @@ export function OrgsPage() {
         {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && (list.data.orgs.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
-            You're not a member of any organizations yet.
+            You’re not in a club yet. Make one, or ask a club’s admin to invite you.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line">
@@ -43,7 +43,7 @@ export function OrgsPage() {
                     {o.name}
                   </Link>
                   <p className="text-xs text-muted">
-                    /{o.slug} · you are {o.myRole}
+                    /{o.slug} · you are {o.myRole === 'admin' ? 'an admin' : 'a member'}
                   </p>
                 </div>
                 <Link
@@ -107,7 +107,7 @@ function CreateOrgDialog({ onClose }: { onClose: () => void }) {
         onSubmit={submit}
         className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6"
       >
-        <h3 className="text-lg font-semibold">New organization</h3>
+        <h3 className="text-lg font-semibold">New club</h3>
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Name</span>
           <input

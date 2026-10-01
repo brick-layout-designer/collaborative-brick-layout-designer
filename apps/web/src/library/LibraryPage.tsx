@@ -1,7 +1,9 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CustomPartSummary, type LayoutSummary, type ModuleSummary } from '../api';
+import { api, type CustomPartSummary } from '../api';
+import { defaultSaveTo, readOwnerFilter } from '../owners/owners';
+import { SaveToPicker } from '../owners/OwnerControls';
 import { AppHeader } from '../AppHeader';
 import { useEditorStore } from '../editor/editorStore';
 
@@ -11,11 +13,8 @@ import { useEditorStore } from '../editor/editorStore';
  */
 export function LibraryPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
-  const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const parts = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
-  const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   const [showPart, setShowPart] = useState(false);
-  const [showModule, setShowModule] = useState(false);
   const navigate = useNavigate();
   const reopenLastFile = useEditorStore((s) => s.reopenLastFile);
 
@@ -38,24 +37,10 @@ export function LibraryPage() {
         <div>
           <h1 className="text-xl font-semibold">Library</h1>
           <p className="text-sm text-muted">
-            Layouts, custom parts, and saved modules accessible to you.
+            Custom parts you and your clubs have added. Your layouts, rooms and modules are on the{' '}
+            <Link to="/" className="font-semibold text-accent-text hover:underline">home page</Link>.
           </p>
         </div>
-
-      <section>
-        <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-            Layouts
-          </h2>
-          <Link
-            to="/"
-            className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
-          >
-            Manage layouts
-          </Link>
-        </header>
-        <LayoutsList layouts={layouts.data?.layouts ?? []} loading={layouts.isLoading} />
-      </section>
 
       <section>
         <header className="flex items-center justify-between">
@@ -74,62 +59,9 @@ export function LibraryPage() {
         <CustomPartsList parts={parts.data?.parts ?? []} loading={parts.isLoading} />
       </section>
 
-      <section>
-        <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-            Saved modules
-          </h2>
-          {me.data?.user && (
-            <button
-              onClick={() => setShowModule(true)}
-              className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft"
-            >
-              New module
-            </button>
-          )}
-        </header>
-        <ModulesList modules={modules.data?.modules ?? []} loading={modules.isLoading} />
-      </section>
-
         {showPart && <UploadPartDialog onClose={() => setShowPart(false)} />}
-        {showModule && <NewModuleDialog onClose={() => setShowModule(false)} />}
       </main>
     </div>
-  );
-}
-
-function LayoutsList({ layouts, loading }: { layouts: LayoutSummary[]; loading: boolean }) {
-  if (loading) return <p className="mt-2 text-sm text-muted">Loading…</p>;
-  if (layouts.length === 0)
-    return (
-      <p className="mt-2 rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-        No layouts yet. <Link to="/" className="text-accent-text hover:underline">Create one</Link> to get started.
-      </p>
-    );
-  return (
-    <ul className="mt-2 divide-y divide-line rounded-lg border border-line">
-      {layouts.map((l) => (
-        <li key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
-          <div>
-            <p>{l.title}</p>
-            <p className="text-xs text-muted">
-              v{l.docVersion} · updated {new Date(l.updatedAt).toLocaleString()}
-              {l.expiresAt && (
-                <span className="ml-2 text-amber-500">
-                  expires {new Date(l.expiresAt).toLocaleDateString()}
-                </span>
-              )}
-            </p>
-          </div>
-          <Link
-            to={`/editor/${l.id}`}
-            className="tap-target inline-flex items-center rounded-lg bg-accent text-accent-ink px-3 py-1 text-xs hover:bg-accent-hover"
-          >
-            Open
-          </Link>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -181,49 +113,6 @@ function CustomPartsList({
   );
 }
 
-function ModulesList({
-  modules,
-  loading,
-}: {
-  modules: ModuleSummary[];
-  loading: boolean;
-}) {
-  const qc = useQueryClient();
-  const remove = useMutation({
-    mutationFn: api.modules.remove,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['modules'] }),
-  });
-  if (loading) return <p className="mt-2 text-sm text-muted">Loading…</p>;
-  if (modules.length === 0)
-    return (
-      <p className="mt-2 rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-        No saved modules yet.
-      </p>
-    );
-  return (
-    <ul className="mt-2 divide-y divide-line rounded-lg border border-line">
-      {modules.map((m) => (
-        <li key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
-          <div>
-            <p>{m.title}</p>
-            <p className="text-xs text-muted">
-              v{m.docVersion} · updated {new Date(m.updatedAt).toLocaleString()}
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              if (confirm(`Delete "${m.title}"?`)) remove.mutate(m.id);
-            }}
-            className="rounded-lg border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
-          >
-            Delete
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function UploadPartDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
@@ -233,7 +122,11 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
   const [category, setCategory] = useState('Custom');
   const [xmlText, setXmlText] = useState('');
   const [spriteFile, setSpriteFile] = useState<File | null>(null);
-  const [ownerSlug, setOwnerSlug] = useState('');
+  const [ownerSlug, setOwnerSlug] = useState(() => defaultSaveTo(readOwnerFilter()));
+  // A remembered club you've since left: save to Me.
+  useEffect(() => {
+    if (ownerSlug && orgs.data && !orgs.data.orgs.some((o) => o.slug === ownerSlug)) setOwnerSlug('');
+  }, [orgs.data, ownerSlug]);
   const [error, setError] = useState<string | null>(null);
 
   const existingCategories = Array.from(
@@ -318,23 +211,7 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
           onChange={setCategory}
         />
 
-        {orgs.data && orgs.data.orgs.length > 0 && (
-          <label className="block">
-            <span className="mb-1 block text-muted">Owner</span>
-            <select
-              value={ownerSlug}
-              onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
-            >
-              <option value="">Personal (you)</option>
-              {orgs.data.orgs.map((o) => (
-                <option key={o.slug} value={o.slug}>
-                  Org: {o.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs.data?.orgs} />
 
         <label className="block">
           <span className="mb-1 block text-muted">Part XML</span>
@@ -372,86 +249,6 @@ function UploadPartDialog({ onClose }: { onClose: () => void }) {
             className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
           >
             Upload
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function NewModuleDialog({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
-  const [title, setTitle] = useState('');
-  const [ownerSlug, setOwnerSlug] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: api.modules.create,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['modules'] });
-      onClose();
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    create.mutate({
-      ...(title.trim() ? { title: title.trim() } : {}),
-      ...(ownerSlug ? { orgSlug: ownerSlug } : {}),
-    });
-  }
-
-  return (
-    <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
-      >
-        <h3 className="text-lg font-semibold">New module</h3>
-        <label className="block">
-          <span className="mb-1 block text-muted">Title</span>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Untitled Module"
-            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
-          />
-        </label>
-        {orgs.data && orgs.data.orgs.length > 0 && (
-          <label className="block">
-            <span className="mb-1 block text-muted">Owner</span>
-            <select
-              value={ownerSlug}
-              onChange={(e) => setOwnerSlug(e.target.value)}
-              className="w-full rounded-lg border border-border bg-soft px-3 py-2"
-            >
-              <option value="">Personal (you)</option>
-              {orgs.data.orgs.map((o) => (
-                <option key={o.slug} value={o.slug}>
-                  Org: {o.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {error && <p className="text-xs text-danger">{error}</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 hover:bg-soft"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={create.isPending}
-            className="rounded-lg bg-accent text-accent-ink px-4 py-2 hover:bg-accent-hover disabled:opacity-50"
-          >
-            Create
           </button>
         </div>
       </form>

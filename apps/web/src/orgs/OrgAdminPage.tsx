@@ -26,7 +26,7 @@ function OrgAdmin({ slug }: { slug: string }) {
     return (
       <div className="grid h-screen place-items-center">
         <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-danger">Organization not found.</p>
+          <p className="font-semibold text-danger">Club not found.</p>
           <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
         </div>
       </div>
@@ -53,7 +53,7 @@ function OrgAdmin({ slug }: { slug: string }) {
             <h1 className="text-2xl font-semibold">{org.name} — Settings</h1>
             <p className="text-sm text-muted">
               <Link to={`/orgs/${slug}`} className="text-accent-text hover:underline">
-                ← back to org
+                ← back to the club
               </Link>
             </p>
           </div>
@@ -158,7 +158,7 @@ function MembersList({
                 </select>
                 <button
                   onClick={() => {
-                    if (confirm(isSelf ? 'Leave this organization?' : `Remove ${m.displayName}?`))
+                    if (confirm(isSelf ? 'Leave this club?' : `Remove ${m.displayName}?`))
                       remove.mutate(m.userId);
                   }}
                   className="rounded-lg border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
@@ -446,7 +446,7 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">
-          Parts owned by this organisation are visible to all members in the parts panel.
+          Parts owned by this club are visible to all members in the parts panel.
         </p>
         <button
           onClick={() => setShowUpload(true)}
@@ -563,7 +563,7 @@ function OrgUploadPartDialog({ slug, onClose }: { slug: string; onClose: () => v
         onSubmit={submit}
         className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
-        <h3 className="text-lg font-semibold">Upload org custom part</h3>
+        <h3 className="text-lg font-semibold">Upload a club part</h3>
 
         <label className="block">
           <span className="mb-1 block text-muted">Part number</span>
@@ -641,7 +641,7 @@ function OrgModulesTab({ slug, orgId }: { slug: string; orgId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">
-          Modules owned by this organisation are shared with all members.
+          Modules owned by this club are shared with all members.
         </p>
         <button
           onClick={() => setShowCreate(true)}
@@ -715,7 +715,7 @@ function OrgNewModuleDialog({ slug, onClose }: { slug: string; onClose: () => vo
         onSubmit={submit}
         className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
-        <h3 className="text-lg font-semibold">New org module</h3>
+        <h3 className="text-lg font-semibold">New club module</h3>
         <label className="block">
           <span className="mb-1 block text-muted">Title</span>
           <input

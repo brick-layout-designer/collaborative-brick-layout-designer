@@ -104,20 +104,28 @@ function renderAt(ui: ReactNode, url = '/') {
   );
 }
 
+const CLUB = { id: 'org1', name: 'Train Club', slug: 'club', createdAt: 0, myRole: 'member' as const };
+
 describe('VenueList', () => {
-  it("lists only the org's venues, links Start layout to the new-layout dialog, and uploads to the org", async () => {
+  it("shows a club's rooms under its filter, links Start layout to the new-layout dialog, and uploads to the club", async () => {
     routes['POST /api/venues'] = () => ({ status: 201, body: { id: 'v-new', name: 'Grand Lobby' } });
-    renderAt(<VenueList org={{ id: 'org1', slug: 'club' }} canManage={false} />);
+    renderAt(<VenueList filter="club" myUserId="u1" orgs={[CLUB]} />);
 
     const row = (await screen.findByText('Grand Lobby')).closest('li')!;
     expect(screen.queryByText('Garage')).toBeNull();
+    expect(within(row).getByTestId('owner-chip').textContent).toBe('Train Club');
     expect(within(row).getByRole('link', { name: 'Start layout' }).getAttribute('href')).toBe('/?newLayoutVenue=v-club&owner=club');
     // Members can use the list; only admins rename or delete.
     expect(within(row).queryByRole('button', { name: 'Rename' })).toBeNull();
     expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull();
 
+    // Upload asks where it goes first, starting at the club being shown.
+    fireEvent.click(screen.getByRole('button', { name: 'Upload room…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Upload a room' });
+    expect((within(dialog).getByLabelText('Save to') as HTMLSelectElement).value).toBe('club');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Choose file…' }));
     const file = new File([JSON.stringify({ schema: 'bld-venue/1', ...HALL })], 'lobby.bld-venue');
-    fireEvent.change(screen.getByLabelText('Venue file'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Room file'), { target: { files: [file] } });
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/venues')).toBe(true));
     const post = calls.find((c) => c.method === 'POST')!.body as { name: string; orgSlug: string; data: Venue };
     expect(post.orgSlug).toBe('club');
@@ -125,20 +133,42 @@ describe('VenueList', () => {
     expect(post.data.obstacles).toEqual(HALL.obstacles);
   });
 
-  it('lets the owner of personal venues rename and delete them', async () => {
+  it('lets the owner of personal rooms rename and delete them', async () => {
     routes['PATCH /api/venues/v-mine'] = () => ({ body: { ok: true, id: 'v-mine', name: 'Shed' } });
     routes['DELETE /api/venues/v-mine'] = () => ({ body: { ok: true } });
     vi.stubGlobal('prompt', () => 'Shed');
     vi.stubGlobal('confirm', () => true);
-    renderAt(<VenueList canManage />);
+    renderAt(<VenueList filter="me" myUserId="u1" orgs={[]} />);
 
     const row = (await screen.findByText('Garage')).closest('li')!;
     expect(screen.queryByText('Grand Lobby')).toBeNull();
+    expect(within(row).getByTestId('owner-chip').textContent).toBe('Me');
     expect(within(row).getByRole('link', { name: 'Start layout' }).getAttribute('href')).toBe('/?newLayoutVenue=v-mine');
+    // Not in a club: nothing to move it to.
+    expect(within(row).queryByRole('button', { name: 'Move or copy…' })).toBeNull();
     fireEvent.click(within(row).getByRole('button', { name: 'Rename' }));
     fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path}`)).toEqual(['PATCH /api/venues/v-mine', 'DELETE /api/venues/v-mine']));
     expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({ name: 'Shed' });
+  });
+
+  it('shows mine and my clubs\' rooms together under All, and copies a club room to me', async () => {
+    routes['POST /api/venues/v-club/copy'] = () => ({ status: 201, body: { id: 'v-copy', name: 'Grand Lobby' } });
+    // In two clubs, so there is somewhere else to move it, but only a club admin may.
+    renderAt(<VenueList filter="all" myUserId="u1" orgs={[CLUB, { ...CLUB, id: 'org2', name: 'Other Club', slug: 'other' }]} />);
+    const club = (await screen.findByText('Grand Lobby')).closest('li')!;
+    const mine = screen.getByText('Garage').closest('li')!;
+    expect(within(club).getByTestId('owner-chip').textContent).toBe('Train Club');
+    expect(within(mine).getByTestId('owner-chip').textContent).toBe('Me');
+
+    fireEvent.click(within(club).getByRole('button', { name: 'Move or copy…' }));
+    const dialog = screen.getByRole('dialog');
+    // A member can't move the club's room; copying to Me is the way.
+    expect((within(dialog).getByRole('radio', { name: /Move to a club/ }) as HTMLInputElement).disabled).toBe(true);
+    expect((within(dialog).getByLabelText('Copy to') as HTMLSelectElement).value).toBe('');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/venues/v-club/copy')).toBe(true));
+    expect(calls.find((c) => c.path === '/api/venues/v-club/copy')!.body).toEqual({});
   });
 });
 
@@ -148,10 +178,11 @@ describe('New layout from a venue', () => {
     routes['POST /api/layouts'] = () => ({ status: 201, body: { id: 'lay1' } });
     renderAt(<LayoutsPage />, '/?newLayoutVenue=v-club&owner=club');
 
-    const select = (await screen.findByLabelText('Start from venue')) as HTMLSelectElement;
+    const select = (await screen.findByLabelText('Start from a room')) as HTMLSelectElement;
     await waitFor(() => expect(select.value).toBe('v-club'));
     // The owner's org venues come first.
-    expect([...select.options].map((o) => o.textContent)).toEqual(['No venue', 'Grand Lobby (Train Club)', 'Garage']);
+    expect([...select.options].map((o) => o.textContent)).toEqual(['No room', 'Grand Lobby (Train Club)', 'Garage']);
+    expect((screen.getByLabelText('Save to') as HTMLSelectElement).value).toBe('club');
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     await screen.findByText('editor open');

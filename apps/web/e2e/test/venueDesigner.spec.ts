@@ -62,7 +62,7 @@ test('designs a venue from typed sizes and saves it to the library', async ({ pa
   await expect(page.getByText('Grand Lobby test').first()).toBeVisible();
   await expect(page.getByText('Room 40′ 0″ × 20′ 0″')).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByRole('heading', { name: 'My rooms' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rooms', exact: true })).toBeVisible();
   await expect(page.getByText('Grand Lobby test')).toBeVisible();
 });
 
