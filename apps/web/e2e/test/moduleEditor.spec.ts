@@ -113,7 +113,20 @@ test.describe('module editor', () => {
     await page.mouse.click(400, 400);
     const libRow = page.locator('li[draggable="true"]', { hasText: 'Old crossing' });
     await expectLoadedPicture(libRow);
-    await expect(libRow.getByRole('link', { name: 'Open Old crossing' })).toHaveAttribute('href', `/modules/${id}`);
+    // A plain "Add to layout" button, and the rest in its ⋯ menu.
+    await expect(libRow.getByRole('button', { name: 'Add to layout' })).toBeVisible();
+    await libRow.getByRole('button', { name: 'More for Old crossing' }).click();
+    await expect(libRow.getByRole('menuitem', { name: 'Open to change it (new tab)' })).toHaveAttribute('href', `/modules/${id}`);
+    await page.keyboard.press('Escape');
+
+    // In the module editor, the module being edited is marked and can't go into itself.
+    await page.goto(`/modules/${id}`);
+    await expect(page.getByTestId('module-editor-title')).toHaveText('Editing module: Old crossing');
+    // The Module library panel is still open from before (panels are remembered).
+    const self = page.getByTestId('module-library-row').filter({ hasText: 'Old crossing' });
+    await expect(self.getByTestId('editing-now')).toBeVisible();
+    await expect(self.getByRole('button', { name: /Add to/ })).toHaveCount(0);
+    await expect(self.getByRole('button', { name: /^More for/ })).toHaveCount(0);
   });
 
   test('someone who can only view a module sees it without Save', async ({ page, browser }) => {

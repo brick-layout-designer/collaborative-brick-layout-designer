@@ -14,14 +14,17 @@ import { fetchModuleBatches } from './moduleSnapshot';
 
 import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { ModuleThumb } from '../modules/ModuleThumb';
+import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 export { MODULE_MIME };
 
 interface Props {
   doc: Y.Doc;
   isViewer: boolean;
+  /** In the module editor: the module being edited (it can't go into itself). */
+  editingModuleId?: string | null;
 }
 
-export function ModuleLibraryPanel({ doc, isViewer }: Props) {
+export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Props) {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ['modules'], queryFn: api.modules.list, staleTime: 30_000 });
   const [filter, setFilter] = useState('');
@@ -80,6 +83,8 @@ export function ModuleLibraryPanel({ doc, isViewer }: Props) {
               module={m}
               isViewer={isViewer}
               isInserting={inserting === m.id}
+              isEditingThis={m.id === editingModuleId}
+              insertLabel={editingModuleId ? 'Add to this module' : 'Add to layout'}
               onInsert={() => void insertModule(m.id)}
               onRename={(newTitle) =>
                 api.modules.rename(m.id, newTitle).then(() =>
@@ -104,6 +109,8 @@ function ModuleLibraryRow({
   module,
   isViewer,
   isInserting,
+  isEditingThis,
+  insertLabel,
   onInsert,
   onRename,
   onDelete,
@@ -111,6 +118,9 @@ function ModuleLibraryRow({
   module: ModuleSummary;
   isViewer: boolean;
   isInserting: boolean;
+  /** This is the module open in the editor right now. */
+  isEditingThis: boolean;
+  insertLabel: string;
   onInsert: () => void;
   onRename: (title: string) => Promise<unknown>;
   onDelete: () => void;
@@ -138,7 +148,7 @@ function ModuleLibraryRow({
 
   return (
     <li
-      draggable={!editing}
+      draggable={!editing && !isEditingThis}
       onDragStart={(e) => {
         if (!e.dataTransfer) return;
         e.dataTransfer.effectAllowed = 'copy';
@@ -151,10 +161,11 @@ function ModuleLibraryRow({
       onDragEnd={() => {
         activeModuleDrag.id = null;
       }}
-      className="group flex cursor-grab items-start justify-between gap-2 px-2 py-2 hover:bg-soft/60 active:cursor-grabbing"
+      className={`flex items-center justify-between gap-2 px-2 py-2 ${isEditingThis ? 'bg-soft/60' : 'cursor-grab hover:bg-soft/60 active:cursor-grabbing'}`}
+      data-testid="module-library-row"
     >
       <ModuleThumb module={module} size="sm" />
-      <div className="min-w-0 flex-1 leading-tight" onDoubleClick={isViewer ? undefined : onInsert}>
+      <div className="min-w-0 flex-1 leading-tight" onDoubleClick={isViewer || isEditingThis ? undefined : onInsert}>
         {editing ? (
           <input
             autoFocus
@@ -176,42 +187,36 @@ function ModuleLibraryRow({
           v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
         </p>
       </div>
-      {/* Shown on hover with a mouse; always shown on a touch screen, which has no hover. */}
-      {!isViewer && (
-        <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
-          <button
-            onClick={onInsert}
-            disabled={isInserting}
-            title="Insert into layout"
-            className="rounded-lg px-1.5 py-0.5 text-[10px] text-accent-text hover:bg-blue-900/40 disabled:opacity-40"
-          >
-            {isInserting ? '…' : '↓'}
-          </button>
-          <a
-            href={`/modules/${module.id}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Open the module to change it (in a new tab)"
-            aria-label={`Open ${module.title}`}
-            className="rounded-lg px-1.5 py-0.5 text-[10px] text-muted hover:bg-neutral-700"
-          >
-            ✎
-          </a>
-          <button
-            onClick={startRename}
-            title="Rename module"
-            className="rounded-lg px-1.5 py-0.5 text-[10px] text-muted hover:bg-neutral-700"
-          >
-            ⓘ
-          </button>
-          <button
-            onClick={onDelete}
-            title="Delete module"
-            className="rounded-lg px-1.5 py-0.5 text-[10px] text-danger hover:bg-red-900/40"
-          >
-            ✕
-          </button>
-        </div>
+      {isEditingThis ? (
+        <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-text" data-testid="editing-now">
+          Editing now
+        </span>
+      ) : (
+        !isViewer && (
+          <div className="flex shrink-0 items-center gap-1">
+            {/* The main thing to do with a module here: put it in what you're editing. */}
+            <button
+              type="button"
+              onClick={onInsert}
+              disabled={isInserting}
+              title={insertLabel}
+              className="min-h-8 rounded-control border border-line px-2 text-xs font-semibold text-ink hover:bg-soft disabled:opacity-40 pointer-coarse:min-h-11"
+            >
+              {isInserting ? 'Adding…' : insertLabel}
+            </button>
+            <MoreMenu label={`More for ${module.title}`}>
+              <a role="menuitem" href={`/modules/${module.id}`} target="_blank" rel="noreferrer" className={MORE_ITEM}>
+                Open to change it (new tab)
+              </a>
+              <button role="menuitem" type="button" onClick={startRename} className={MORE_ITEM}>
+                Rename…
+              </button>
+              <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
+                Delete…
+              </button>
+            </MoreMenu>
+          </div>
+        )
       )}
     </li>
   );
