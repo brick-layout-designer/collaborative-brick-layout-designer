@@ -324,7 +324,7 @@ function LayerRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { showAllLayers(doc); setCtxMenu(null); }}
           >
-            Show all layers
+            Show all sheets
           </button>
           <hr className="my-1 border-border" />
           <button

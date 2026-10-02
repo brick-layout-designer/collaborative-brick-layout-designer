@@ -76,7 +76,7 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
       >
         <h2 className="mb-1 text-sm font-semibold text-ink">Import .bbm as Module</h2>
         <p className="mb-4 text-xs text-muted">
-          Bricks keep their layers (matched by name, created when missing),
+          Parts keep their sheets (matched by name, created when missing),
           are centred at the map origin and become a module named after the file.
         </p>
 

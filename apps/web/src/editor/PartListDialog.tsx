@@ -122,11 +122,11 @@ export function PartListDialog({ map, parts, limits, layoutTitle, onClose }: Pro
         </fieldset>
         <label className="mt-3 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={split} onChange={(e) => { setSplit(e.target.checked); write('cld:partListSplitPerLayer', e.target.checked); }} />
-          Split by layer
+          Split by sheet
         </label>
         <label className="mt-2 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={hidden} onChange={(e) => { setHidden(e.target.checked); write('cld:partListIncludeHiddenLayers', e.target.checked); }} />
-          Include hidden layers
+          Include hidden sheets
         </label>
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft">Cancel</button>

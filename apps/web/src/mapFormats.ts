@@ -26,9 +26,9 @@ export const LAYOUT_ACCEPT = '.bld-layout,.bbm,.ldr,.mpd,.tdl,.ncp';
 
 /** The desktop's Save As warning for formats that can't hold a whole layout. */
 export const LOSSY_FORMAT_WARNING =
-  "This format can't store everything in the map: text, area and grid layers, " +
+  "This format can't store everything in the map: text, area and grid sheets, " +
   'module / label / venue data and parts the format has no equivalent for are lost, ' +
-  'and layer names may change. Keep a .bbm copy if you need them.';
+  'and sheet names may change. Keep a .bbm copy if you need them.';
 
 export function mapFormatOf(fileName: string): MapFormat | null {
   const m = MAP_FORMAT_FILE.exec(fileName);
