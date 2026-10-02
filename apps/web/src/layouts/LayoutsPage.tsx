@@ -471,9 +471,9 @@ function LayoutRow({
             role="menuitem"
             href={api.layouts.exportZipUrl(layout.id)}
             className={MORE_ITEM}
-            title={layout.hasSidecar ? 'Download .bbm + .bbm.bld sidecar as a .zip' : 'Download .bbm'}
+            title="A copy BlueBrick can open (.bbm in a .zip). To keep everything, open the layout and use Map › Download Layout."
           >
-            Export .zip
+            Download for BlueBrick (.zip)
           </a>
           <label role="menuitemcheckbox" aria-checked={isTemplate} data-keep-open className={MORE_ITEM} title="New layouts start as a copy of this one">
             <input
