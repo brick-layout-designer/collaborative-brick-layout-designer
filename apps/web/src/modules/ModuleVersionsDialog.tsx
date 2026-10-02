@@ -91,13 +91,13 @@ export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleS
             {versions.map((v, i) => {
               const thumb = moduleVersionThumbnailUrl(module.id, v);
               return (
-                <li key={v.version} data-testid="module-version" className="flex items-center gap-3 px-3 py-2">
+                <li key={v.version} data-testid="module-version" className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
                   {thumb ? (
                     <img src={thumb} alt="" loading="lazy" className="size-12 shrink-0 rounded-lg border border-line bg-soft object-contain" />
                   ) : (
                     <span aria-hidden className="size-12 shrink-0 rounded-lg border border-line bg-soft" />
                   )}
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-[9rem] flex-1">
                     <p className="font-medium">
                       Version {v.version}
                       {i === 0 && <span className="ml-2 rounded-full bg-ok-soft px-2 py-0.5 text-xs font-bold text-ok">Current</span>}
@@ -108,7 +108,7 @@ export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleS
                     </p>
                     {v.note && <p className="break-words text-xs">{v.note}</p>}
                   </div>
-                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                  <div className="flex basis-full flex-wrap justify-end gap-1 sm:basis-auto">
                     <button type="button" onClick={() => setPreview(v)} className="tap-target rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft">
                       Preview
                     </button>
