@@ -50,6 +50,7 @@ import { useElementSize } from './useElementSize';
 import { useTouchView } from './useTouchView';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
+import { SheetsSheet } from './TouchSheets';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, layoutSourceHere, type LayoutImage } from '../layoutFile';
@@ -230,6 +231,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   /** A tablet (full editor, touch screen): the bar for picked parts. */
   const touchTablet = !viewport.isMobile && !isViewer && coarsePointer();
   const [showAddPart, setShowAddPart] = useState(false);
+  const [showTouchSheets, setShowTouchSheets] = useState(false);
   // The canvas area's real size, after the header, the status bar and the
   // browser's own bars: the stage fills it and Fit uses it.
   // 0 until measured, so the first fit waits for the real size.
@@ -855,6 +857,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               delete: () => canvasActionsRef.current?.delete(),
             }}
             onAddPart={() => setShowAddPart(true)}
+            onSheets={() => setShowTouchSheets(true)}
           />
         )}
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
@@ -896,6 +899,9 @@ function Editor({ layoutId }: { layoutId: string }) {
           </FloatingPanel>
         );
       })}
+      {showTouchSheets && (touchEditing || touchTablet) && docMap && (
+        <SheetsSheet map={docMap} doc={doc} onClose={() => setShowTouchSheets(false)} />
+      )}
       {showAddPart && (touchEditing || touchTablet) && (
         <AddPartSheet
           onClose={() => setShowAddPart(false)}
