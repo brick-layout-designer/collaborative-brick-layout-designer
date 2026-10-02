@@ -318,6 +318,49 @@ test.describe('picking by touch with a box', () => {
   });
 });
 
+test.describe('sheets by touch', () => {
+  test.use(pixel7);
+
+  test('the Sheets button shows, hides, renames and reorders sheets, and the server keeps it', async ({ page }) => {
+    await newLayout(page, 'sheets');
+    await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
+    await bar(page).getByRole('button', { name: 'Sheets' }).tap();
+    const sheet = page.getByRole('dialog', { name: 'Sheets' });
+    await expect(sheet).toBeVisible();
+    const rows = sheet.getByRole('list', { name: 'Sheets, top first' }).getByRole('listitem');
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(1);
+    const top = (await rows.first().locator('.font-bold').textContent())!;
+    const second = (await rows.nth(1).locator('.font-bold').textContent())!;
+
+    await sheet.getByRole('button', { name: `Rename ${top}` }).tap();
+    await sheet.getByRole('textbox', { name: `New name for ${top}` }).fill('Main line');
+    await sheet.getByRole('button', { name: 'Save' }).tap();
+    await sheet.getByRole('button', { name: 'Hide Main line' }).tap();
+    await expect(sheet.getByRole('button', { name: 'Show Main line' })).toHaveAttribute('aria-pressed', 'false');
+    await sheet.getByRole('button', { name: 'Move Main line down' }).tap();
+    await expect(rows.nth(0).locator('.font-bold')).toHaveText(second);
+    await expect(rows.nth(1).locator('.font-bold')).toHaveText('Main line');
+    await shoot(page, 'phone-sheets');
+    // Finger-sized.
+    for (const b of await sheet.getByRole('button', { name: /^(Show|Hide|Rename|Move) / }).all()) {
+      const r = (await b.boundingBox())!;
+      expect(r.width).toBeGreaterThanOrEqual(44);
+      expect(r.height).toBeGreaterThanOrEqual(43.5);
+    }
+    await sheet.getByRole('button', { name: 'Close' }).last().tap();
+    await expect(sheet).toHaveCount(0);
+
+    // Back from the server.
+    await page.waitForTimeout(1500);
+    await page.reload();
+    await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
+    await bar(page).getByRole('button', { name: 'Sheets' }).tap();
+    await expect(rows.nth(1).locator('.font-bold')).toHaveText('Main line');
+    await expect(sheet.getByRole('button', { name: 'Show Main line' })).toBeVisible();
+  });
+});
+
 test.describe('the View / Edit choice', () => {
   test.use(pixel7);
 
