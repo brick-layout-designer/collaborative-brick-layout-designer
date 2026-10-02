@@ -252,6 +252,14 @@ describe('trusted clubs', () => {
     expect((await db.select().from(schema.catalogCollections).where(and(eq(schema.catalogCollections.id, id))).get())!.status).toBe('unpublished');
   });
 
+  it('shares are limited per person, not per address', async () => {
+    for (let n = 0; n < 10; n++) expect((await share(ada, await clubModule(`M${n}`))).statusCode).toBe(201);
+    expect((await share(ada, await clubModule('One too many'))).statusCode).toBe(429);
+    // Someone else on the same address still can.
+    const own = ((await req('POST', '/api/modules', out, { title: 'Mine' })).json() as { id: string }).id;
+    expect((await share(out, own)).statusCode).toBe(201);
+  });
+
   it('with site review off, nothing changes: shares publish at once', async () => {
     await settings({ catalogReview: 'none' });
     expect((await share(ada, await clubModule('A'))).json()).toMatchObject({ status: 'public' });

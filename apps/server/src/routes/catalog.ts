@@ -537,7 +537,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   }>(
     '/api/catalog/submissions',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
+    // Ten shares an hour per person (counted after sign-in is read), not per
+    // address: a whole club sharing from one venue's network isn't one person.
+    { config: { rateLimit: { max: 10, timeWindow: '1 hour', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } },
     async (req, reply) => {
       const user = requireUser(req);
       const b = req.body ?? {};
