@@ -2,7 +2,7 @@
 // editor, which has its own dense per-document toolbar).
 //
 // Top-left: app title (links to Layouts home).
-// Top-right: Clubs / About / [Admin if applicable] / Settings / display
+// Top-right: Home / Clubs / About / [Admin if applicable] / Settings / display
 //            name → Profile / Sign out, then the Help menu (tours).
 //            name → Profile / Sign out.
 //
@@ -11,7 +11,7 @@
 // then sends the user to /login.
 
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Me } from './api';
 import { HelpMenu } from './editor/EditorChrome';
@@ -42,7 +42,9 @@ export function AppHeader({ user }: Props) {
 
   // Phones: the links fold into a Menu button, and open as a list.
   const [menuOpen, setMenuOpen] = useState(false);
-  const link = 'tap-target flex items-center rounded-control px-3 py-2 font-semibold text-muted hover:bg-soft hover:text-ink';
+  const linkBase = 'tap-target flex items-center rounded-control px-3 py-2 font-semibold hover:bg-soft hover:text-ink';
+  // The page you're on is marked (aria-current="page" from NavLink).
+  const link = ({ isActive }: { isActive: boolean }) => `${linkBase} ${isActive ? 'bg-soft text-ink' : 'text-muted'}`;
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-section border border-line bg-panel px-4 py-3">
       <Link to="/" className="tap-target flex min-w-0 items-center gap-3">
@@ -75,7 +77,10 @@ export function AppHeader({ user }: Props) {
           if ((e.target as HTMLElement).closest('a')) setMenuOpen(false);
         }}
       >
-        <Link to="/orgs" data-tour="clubs.page" className={`${link} gap-2`}>
+        <NavLink to="/" end className={link}>
+          Home
+        </NavLink>
+        <NavLink to="/orgs" data-tour="clubs.page" className={(s) => `${link(s)} gap-2`}>
           Clubs
           {waitingCount > 0 && (
             <span
@@ -85,10 +90,10 @@ export function AppHeader({ user }: Props) {
               {waitingCount}
             </span>
           )}
-        </Link>
-        <Link to="/about" className={link}>
+        </NavLink>
+        <NavLink to="/about" className={link}>
           About
-        </Link>
+        </NavLink>
         {user.isGlobalAdmin && (
           <Link
             to="/admin"
@@ -98,9 +103,9 @@ export function AppHeader({ user }: Props) {
             Admin
           </Link>
         )}
-        <Link to="/settings" className={link}>
+        <NavLink to="/settings" className={link}>
           Settings
-        </Link>
+        </NavLink>
         <Link to="/profile" className="tap-target flex items-center gap-2 sm:ml-1 rounded-control px-2 py-1.5 font-semibold hover:bg-soft">
           {user.avatarUrl && (
             <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full" />

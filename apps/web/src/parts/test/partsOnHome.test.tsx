@@ -206,4 +206,27 @@ describe('elsewhere', () => {
     expect(within(nav).getByRole('link', { name: 'Clubs' })).toBeTruthy();
     expect(within(nav).queryByRole('link', { name: 'Library' })).toBeNull();
   });
+
+  it('has a Home tab first, marked as the page you are on', () => {
+    const qc = new QueryClient();
+    const at = (url: string) =>
+      render(
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={[url]}>
+            <AppHeader user={{ id: 'u1', email: 'me@x.com', displayName: 'Me' } as never} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    const home = at('/');
+    let nav = screen.getByRole('navigation', { name: 'Site' });
+    const links = within(nav).getAllByRole('link');
+    expect(links[0]!.textContent).toBe('Home');
+    expect(links[0]!.getAttribute('href')).toBe('/');
+    expect(links[0]!.getAttribute('aria-current')).toBe('page');
+    home.unmount();
+    at('/orgs');
+    nav = screen.getByRole('navigation', { name: 'Site' });
+    expect(within(nav).getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBeNull();
+    expect(within(nav).getByRole('link', { name: /^Clubs/ }).getAttribute('aria-current')).toBe('page');
+  });
 });

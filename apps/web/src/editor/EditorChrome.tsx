@@ -79,7 +79,7 @@ export function LayoutNameMenu({
       {open && (
         <div role="menu" className={MENU} onClick={() => setOpen(false)}>
           <Link role="menuitem" to="/" className={MENU_ITEM}>
-            All layouts
+            Home
           </Link>
           {onNew && (
             <button role="menuitem" type="button" title="New layout (Ctrl+N)" onClick={onNew} className={MENU_ITEM}>
@@ -321,7 +321,7 @@ export function SettingsButton({ onClick }: { onClick: () => void }) {
 /** The app mark, linking back to the layouts list. */
 export function AppMark() {
   return (
-    <Link to="/" title="All layouts" aria-label="All layouts" className="flex h-[34px] w-[34px] pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-[9px] bg-accent text-accent-ink">
+    <Link to="/" title="Home: all your layouts" aria-label="Home" className="flex h-[34px] w-[34px] pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-[9px] bg-accent text-accent-ink">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <rect x="3" y="9" width="18" height="11" rx="2" />
         <path d="M7 9V6h4v3M13 9V6h4v3" />
