@@ -20,7 +20,9 @@ export function WelcomeCard({ name, onLayout }: { name: string | undefined; onLa
     done();
     go();
   };
-  const first = name?.trim().split(/\s+/)[0];
+  // A new password account's name is its email until they change it; greet
+  // them without the address.
+  const first = name?.includes('@') ? undefined : name?.trim().split(/\s+/)[0];
   const tile =
     'tap-target flex flex-col gap-1 rounded-card border p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
   return (

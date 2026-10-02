@@ -38,9 +38,9 @@ export function LoginPage() {
                 Continue with {p.label}
               </a>
             ))}
-          {providers.data && providers.data.providers.every((p) => !p.enabled) && (
+          {providers.data && !providers.data.passwordEnabled && providers.data.providers.every((p) => !p.enabled) && (
             <p className="text-center text-sm text-muted">
-              No OAuth providers configured.
+              Signing in isn’t set up on this site yet. Ask the person who runs it.
             </p>
           )}
         </div>
