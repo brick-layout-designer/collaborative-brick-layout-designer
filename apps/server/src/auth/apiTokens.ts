@@ -15,7 +15,9 @@ import { notifyCredentialRevoked } from './revocation.js';
 export const TOKEN_PREFIX = 'bld_pat_';
 
 /**
- * - layouts:read / layouts:write: list, export and live-sync layouts (write edits them).
+ * - layouts:read / layouts:write: list, export and live-sync layouts (write edits them); list,
+ *   insert, save and republish modules; browse the catalog and its collections (write adds
+ *   from them); see and acknowledge your notices (warnings).
  * - layouts:create: publish a new layout (personal or to an org).
  * - parts:read / parts:write: download the parts catalog and custom parts (write uploads them).
  * - venues:read / venues:write: list and download saved venues (write saves, renames and deletes them).

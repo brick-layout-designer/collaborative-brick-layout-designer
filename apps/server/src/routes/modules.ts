@@ -25,6 +25,11 @@ import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from '.
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { clubModuleRole } from '../access/resolveResourceRole.js';
 
+// The desktop app (an API token) lists, inserts, saves and republishes
+// modules: reading needs layouts:read, changing one layouts:write.
+const TOKEN_READ = { apiToken: 'layouts:read' } as const;
+const TOKEN_WRITE = { apiToken: 'layouts:write' } as const;
+
 interface CreateModuleBody {
   title?: string;
   /** When set, the module is org-owned. Caller must be a member. */
@@ -49,7 +54,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   }
 
   // ---- list modules the user can see -------------------------------------
-  app.get<{ Querystring: { owner?: string } }>('/api/modules', async (req, reply) => {
+  app.get<{ Querystring: { owner?: string } }>('/api/modules', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     // ?owner=all|me|<club slug>: a club the caller isn't in is not found.
     const filter = await resolveOwnerFilter(user.id, req.query?.owner);
@@ -103,7 +108,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- get one module ---------------------------------------------------
-  app.get<{ Params: { id: string } }>('/api/modules/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/modules/:id', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -117,7 +122,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- create -----------------------------------------------------------
-  app.post<{ Body: CreateModuleBody }>('/api/modules', async (req, reply) => {
+  app.post<{ Body: CreateModuleBody }>('/api/modules', { config: TOKEN_WRITE }, async (req, reply) => {
     const user = requireUser(req);
     const body = req.body ?? {};
     const title = body.title?.trim() || 'Untitled Module';
@@ -164,6 +169,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   // club they're in (moving uses the transfer route).
   app.post<{ Params: { id: string }; Body: { orgSlug?: string; title?: string } }>(
     '/api/modules/:id/copy',
+    { config: TOKEN_WRITE }, 
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
@@ -206,6 +212,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   // ---- patch (rename) ---------------------------------------------------
   app.patch<{ Params: { id: string }; Body: { title?: string } }>(
     '/api/modules/:id',
+    { config: TOKEN_WRITE }, 
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
@@ -229,7 +236,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- delete -----------------------------------------------------------
-  app.delete<{ Params: { id: string } }>('/api/modules/:id', async (req, reply) => {
+  app.delete<{ Params: { id: string } }>('/api/modules/:id', { config: TOKEN_WRITE }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -248,7 +255,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- snapshot (read) --------------------------------------------------
-  app.get<{ Params: { id: string } }>('/api/modules/:id/snapshot', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/modules/:id/snapshot', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -264,7 +271,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- snapshot (write, editor+) ----------------------------------------
-  app.put<{ Params: { id: string }; Querystring: { note?: string } }>('/api/modules/:id/snapshot', async (req, reply) => {
+  app.put<{ Params: { id: string }; Querystring: { note?: string } }>('/api/modules/:id/snapshot', { config: TOKEN_WRITE }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -317,7 +324,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   // lets octet-stream through on the two snapshot routes.
   app.put<{ Params: { id: string }; Body: { mime?: unknown; data?: unknown } }>(
     '/api/modules/:id/thumbnail',
-    { bodyLimit: 1024 * 1024 },
+    { bodyLimit: 1024 * 1024, config: TOKEN_WRITE },
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
@@ -363,7 +370,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get<{ Params: { id: string } }>('/api/modules/:id/thumbnail', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/modules/:id/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -384,7 +391,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- versions -----------------------------------------------------------
-  app.get<{ Params: { id: string } }>('/api/modules/:id/versions', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/modules/:id/versions', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -414,14 +421,14 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/snapshot', async (req, reply) => {
+  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/snapshot', { config: TOKEN_READ }, async (req, reply) => {
     const found = await findVersion(req.user?.id, req.params.id, req.params.n);
     if (!found.ok) return reply.code(found.code).send({ error: found.error });
     reply.header('Content-Type', 'application/octet-stream');
     return reply.send(Buffer.from(found.row.docSnapshot as Uint8Array));
   });
 
-  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/thumbnail', async (req, reply) => {
+  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
     const found = await findVersion(req.user?.id, req.params.id, req.params.n);
     if (!found.ok) return reply.code(found.code).send({ error: found.error });
     if (!found.row.thumbnail || !found.row.thumbnailMime) return reply.code(404).send({ error: 'no_thumbnail' });

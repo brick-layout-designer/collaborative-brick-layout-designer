@@ -5,8 +5,8 @@ import { api, type ApiScope, type DeviceRequest } from '../api';
 
 /** What each scope lets the device do, in the user's terms. */
 export const SCOPE_LABELS: Record<ApiScope, string> = {
-  'layouts:read': 'See your layouts and download them',
-  'layouts:write': 'Edit your layouts (live sync)',
+  'layouts:read': 'See your layouts and modules, the catalog and your notices',
+  'layouts:write': 'Edit your layouts (live sync) and save modules',
   'layouts:create': 'Publish new layouts to your account or your clubs',
   'parts:read': 'Download the parts library and custom parts',
   'parts:write': 'Upload custom parts',
