@@ -565,7 +565,12 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
-    if (panelId === 'modlibrary') return <Suspense fallback={null}><ModuleLibraryPanel doc={doc} isViewer={isViewer} /></Suspense>;
+    if (panelId === 'modlibrary')
+      return (
+        <Suspense fallback={null}>
+          <ModuleLibraryPanel doc={doc} isViewer={isViewer} editingModuleId={moduleMode ? layoutId : null} />
+        </Suspense>
+      );
     if (panelId === 'views') return viewsPanel(false);
     if (panelId === 'venuelibrary') return <Suspense fallback={null}><VenueLibraryPanel doc={doc} isViewer={isViewer} /></Suspense>;
     return null;
