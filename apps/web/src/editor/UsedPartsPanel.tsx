@@ -4,6 +4,7 @@
 // matches part # or description; "over" shows only over-budget parts.
 // Double-click selects all bricks of that part.
 
+import { useOnScreen } from './menuPosition';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import type { BbmMap } from '@cld/model';
@@ -42,6 +43,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [ctxMenu, setCtxMenu] = useState<{ partNumber: string; x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useOnScreen(menuRef, ctxMenu);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -168,7 +170,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
       {ctxMenu && (
         <div
           ref={menuRef}
-          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
+          style={menuStyle}
           className="min-w-[160px] rounded-lg border border-border bg-panel py-1 shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
         >
