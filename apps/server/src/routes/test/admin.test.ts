@@ -642,6 +642,23 @@ describe('admin settings', () => {
     expect((get.json() as { requireEmailVerification: boolean }).requireEmailVerification).toBe(false);
   });
 
+  it('never sends or audits the saved SMTP password', async () => {
+    const adminCookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const secret = 'S3cret-never-shown-9x';
+    const patch = await app.inject({
+      method: 'PATCH', url: '/api/admin/settings', headers: { cookie: adminCookie },
+      payload: { smtpHost: 'smtp.example.com', smtpPort: 587, smtpPass: secret },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.body).not.toContain(secret);
+    const get = await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie: adminCookie } });
+    expect(get.body).not.toContain(secret);
+    expect((get.json() as { smtp: { passSet: boolean } }).smtp.passSet).toBe(true);
+    const audits = await app.inject({ method: 'GET', url: '/api/admin/audit?limit=50', headers: { cookie: adminCookie } });
+    expect(audits.body).not.toContain(secret);
+  });
+
   it('PATCH with an empty body returns 400 empty_patch', async () => {
     const adminCookie = await registerAndLogin(app, 'admin@example.com');
     await promoteToAdmin('admin@example.com');
