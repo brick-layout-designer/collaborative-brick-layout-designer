@@ -71,3 +71,13 @@ export function makeGlobalAdmin(email: string): void {
     db.close();
   }
 }
+
+/** Drop a module's picture, as if it was saved before modules had pictures. */
+export function clearModuleThumbnail(moduleId: string): void {
+  const db = new Database(dbPath());
+  try {
+    db.prepare(`UPDATE modules SET thumbnail = NULL, thumbnail_mime = NULL, thumbnail_at = NULL WHERE id = ?`).run(moduleId);
+  } finally {
+    db.close();
+  }
+}

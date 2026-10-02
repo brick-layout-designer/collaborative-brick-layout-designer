@@ -126,6 +126,14 @@ export function SavePill({ status }: { status: SaveStatus }) {
       tone = 'bg-red-950 text-danger';
       text = status.message;
       break;
+    case 'unsaved':
+      tone = 'bg-amber-950 text-amber-300';
+      text = 'Not saved yet';
+      title = 'Press Save to keep your changes';
+      break;
+    case 'saving':
+      text = 'Saving…';
+      break;
   }
   return (
     <span

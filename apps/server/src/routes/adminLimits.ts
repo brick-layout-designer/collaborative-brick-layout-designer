@@ -140,7 +140,7 @@ function collect(kind: 'user' | 'org', now: number): Map<string, Bucket> {
   }
   const mCol = isUser ? schema.modules.ownerUserId : schema.modules.ownerOrgId;
   for (const r of db
-    .select({ id: mCol, n: sql<number>`count(*)`.mapWith(Number), bytes: sql<number>`coalesce(sum(length(${schema.modules.docSnapshot}) + coalesce(length(${schema.modules.sidecarSnapshot}), 0)), 0)`.mapWith(Number) })
+    .select({ id: mCol, n: sql<number>`count(*)`.mapWith(Number), bytes: sql<number>`coalesce(sum(length(${schema.modules.docSnapshot}) + coalesce(length(${schema.modules.sidecarSnapshot}), 0) + coalesce(length(${schema.modules.thumbnail}), 0)), 0)`.mapWith(Number) })
     .from(schema.modules)
     .where(isNotNull(mCol))
     .groupBy(mCol)

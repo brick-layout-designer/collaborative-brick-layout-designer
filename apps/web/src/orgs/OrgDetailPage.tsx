@@ -1,6 +1,7 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Me, type OrgPartLibrary } from '../api';
+import { ModuleThumb } from '../modules/ModuleThumb';
 import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
 import { ClubPublicView } from './ClubDirectory';
@@ -142,6 +143,7 @@ function ClubThings({ org }: { org: { id: string; name: string; slug: string } }
     { label: 'Modules', n: count(modules.data?.modules) },
   ];
   const to = `/?owner=${encodeURIComponent(org.slug)}`;
+  const clubModules = (modules.data?.modules ?? []).filter((m) => m.ownerOrgId === org.id);
   return (
     <section aria-labelledby="club-things" className="space-y-3 rounded-section border border-line bg-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -165,6 +167,25 @@ function ClubThings({ org }: { org: { id: string; name: string; slug: string } }
           </li>
         ))}
       </ul>
+      {clubModules.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Modules</h3>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2" aria-label={`${org.name}’s modules`}>
+            {clubModules.slice(0, 12).map((m) => (
+              <li key={m.id}>
+                <Link
+                  to={`/modules/${m.id}`}
+                  aria-label={`Open ${m.title}`}
+                  className="tap-target flex flex-col items-center gap-1 rounded-lg border border-line bg-soft p-2 text-center text-xs hover:border-accent"
+                >
+                  <ModuleThumb module={m} size="lg" />
+                  <span className="line-clamp-2 break-words font-medium">{m.title}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="text-sm text-muted">
         They sit with your own things on the home page, marked “{org.name}”. To add one, choose {org.name} under “Save to”.
       </p>

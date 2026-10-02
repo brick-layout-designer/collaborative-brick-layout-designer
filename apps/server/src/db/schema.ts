@@ -537,6 +537,15 @@ export const modules = sqliteTable(
   docVersion: integer('doc_version').notNull().default(0),
   /** Optional sidecar (subset of layout sidecar — no venue, no rulers). */
   sidecarSnapshot: blob('sidecar_snapshot'),
+  /**
+   * A small picture of the module (about 256 px on its longest side), made
+   * by the editor when the module is saved. Null until the first save (or
+   * the first open, which backfills it).
+   */
+  thumbnail: blob('thumbnail'),
+  thumbnailMime: text('thumbnail_mime', { enum: ['image/png', 'image/webp'] }),
+  /** When the picture was last made: the cache key in its URL. */
+  thumbnailAt: integer('thumbnail_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },

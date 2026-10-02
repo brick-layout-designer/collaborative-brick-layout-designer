@@ -32,6 +32,7 @@ import './styles.css';
 // Heavy routes are code-split so the landing / auth pages don't download
 // the editor (Konva, Yjs, parts rendering) or the admin console.
 const EditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ default: m.EditorPage })));
+const ModuleEditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ default: m.ModuleEditorPage })));
 const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 const OrgAdminPage = lazy(() => import('./orgs/OrgAdminPage').then((m) => ({ default: m.OrgAdminPage })));
 const NewVenuePage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.NewVenuePage })));
@@ -157,6 +158,7 @@ createRoot(root).render(
           {/* The Library page's custom parts now live on the home page. */}
           <Route path="/library" element={<Navigate to={PARTS_SECTION} replace />} />
           <Route path="/editor/:id" element={<EditorPage />} />
+          <Route path="/modules/:id" element={<ModuleEditorPage />} />
           <Route path="/venues/new" element={<NewVenuePage />} />
           <Route path="/venues/:id/design" element={<VenueDesignPage />} />
           <Route path="/admin" element={<AdminPage />} />

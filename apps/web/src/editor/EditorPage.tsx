@@ -6,8 +6,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { api, spriteUrlFor, type PartWire } from '../api';
-import { useLayoutDoc } from './useLayoutDoc';
+import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
+import { useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
+import { useModuleDoc } from './useModuleDoc';
+import { makeModuleThumbnail } from './moduleThumbnail';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
 import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
@@ -173,11 +175,53 @@ export function EditorPage() {
   const params = useParams<{ id: string }>();
   if (!params.id) return <Navigate to="/" replace />;
 
-  return <Editor layoutId={params.id} />;
+  return <LayoutEditor key={params.id} layoutId={params.id} />;
 }
 
-function Editor({ layoutId }: { layoutId: string }) {
-  const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = useLayoutDoc(layoutId);
+/** /modules/:id: the same editor on a saved module (saved with Save, no venue or views). */
+export function ModuleEditorPage() {
+  const params = useParams<{ id: string }>();
+  if (!params.id) return <Navigate to="/" replace />;
+  return <ModuleEditor key={params.id} moduleId={params.id} />;
+}
+
+function LayoutEditor({ layoutId }: { layoutId: string }) {
+  const docState = useLayoutDoc(layoutId);
+  return <Editor layoutId={layoutId} docState={docState} moduleMode={false} />;
+}
+
+function ModuleEditor({ moduleId }: { moduleId: string }) {
+  const docState = useModuleDoc(moduleId);
+  return <Editor layoutId={moduleId} docState={docState} moduleMode />;
+}
+
+/** A module's details in the shape the editor reads a layout's. */
+async function moduleMeta(id: string): Promise<{ layout: LayoutSummary; role: 'owner' | 'editor' | 'viewer' }> {
+  const { module: m, role } = await api.modules.get(id);
+  return {
+    role,
+    layout: {
+      id: m.id,
+      title: m.title,
+      ownerUserId: m.ownerUserId,
+      ownerOrgId: m.ownerOrgId,
+      ownerOrgName: null,
+      ownerOrgSlug: null,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+      expiresAt: null,
+      docVersion: m.docVersion,
+      hasSidecar: m.hasSidecar,
+      publicShareToken: null,
+    },
+  };
+}
+
+/** Panels a module has no use for (it has no venue and no saved views). */
+const NOT_IN_MODULES = new Set(['views', 'venuelibrary', 'modules']);
+
+function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState: LayoutDocState; moduleMode: boolean }) {
+  const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = docState;
   // A layout is opening: the loading card counts its pictures afresh.
   useEffect(() => resetSpriteProgress(), [layoutId]);
   // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
@@ -187,8 +231,13 @@ function Editor({ layoutId }: { layoutId: string }) {
     if (doc && openWarnings?.length) useEditorStore.getState().showStatusMessage(`Opened with warnings: ${openWarnings.join('; ')}`, 10000);
   }, [doc, openWarnings]);
   const meta = useQuery({
-    queryKey: ['layout', layoutId],
-    queryFn: () => api.layouts.get(layoutId),
+    queryKey: [moduleMode ? 'module' : 'layout', layoutId],
+    queryFn: moduleMode ? () => moduleMeta(layoutId) : () => api.layouts.get(layoutId),
+  });
+  const moduleInfo = useQuery({
+    queryKey: ['module', layoutId, 'info'],
+    queryFn: () => api.modules.get(layoutId),
+    enabled: moduleMode,
   });
   // The parts catalog, for Save's offline download (declared further down).
   const partsRef = useRef<readonly PartWire[] | undefined>(undefined);
@@ -197,6 +246,10 @@ function Editor({ layoutId }: { layoutId: string }) {
   // nothing is lost (desktop's Save always leaves a file on disk).
   const saveNow = useCallback(async (): Promise<void> => {
     if (!doc) return;
+    if (moduleMode) {
+      await saveModule();
+      return;
+    }
     const result = await checkSaved();
     if (result === 'saved') {
       useEditorStore.getState().showStatusMessage('All changes saved to the server', 3000);
@@ -205,7 +258,10 @@ function Editor({ layoutId }: { layoutId: string }) {
     if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a copy of the current local version (.bld-layout) now?')) {
       void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', partsRef.current);
     }
-  }, [doc, layoutId, checkSaved, meta.data?.layout.title]);
+  }, [doc, layoutId, checkSaved, meta.data?.layout.title, moduleMode]);
+  // The module editor's Save: the module's contents, then its picture.
+  const saveModuleRef = useRef<() => Promise<void>>(async () => undefined);
+  const saveModule = () => saveModuleRef.current();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const undo = useUndoManager(doc);
@@ -310,7 +366,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // string from the beforeunload handler (works in all browsers except
   // Chrome 119+ where custom messages are suppressed, but the dialog
   // still blocks).
-  const isDirty = status.kind === 'reconnecting' || status.kind === 'error';
+  const isDirty = status.kind === 'reconnecting' || status.kind === 'error' || status.kind === 'unsaved' || status.kind === 'saving';
   useEffect(() => {
     if (!isDirty) return;
     function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -369,6 +425,56 @@ function Editor({ layoutId }: { layoutId: string }) {
     [doc, docMap],
   );
 
+  saveModuleRef.current = async () => {
+    if (!doc) return;
+    const { showNotice, showStatusMessage } = useEditorStore.getState();
+    try {
+      await checkSaved();
+    } catch (e) {
+      showNotice(`The module could not be saved: ${(e as Error).message}`, 'error', 10000);
+      return;
+    }
+    showStatusMessage('Module saved', 3000);
+    void qc.invalidateQueries({ queryKey: ['modules'] });
+  };
+  // Save makes the module's picture before it shows "Saved" (so leaving
+  // straight after doesn't cut the picture off).
+  docState.setAfterSave?.(() => uploadModuleThumbnail());
+  // The module's picture, for the lists that show modules. A failed
+  // picture never fails the save: the lists show a placeholder.
+  const uploadModuleThumbnail = async (): Promise<boolean> => {
+    try {
+      if (!doc) return false;
+      // Let the canvas draw the latest change first (Save can come right after an edit).
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // Read the doc now, not this render's copy, which may be a change behind.
+      const thumb = await makeModuleThumbnail(exportImageRef.current, projectDoc(doc), readSidecarFromDoc(doc));
+      if (!thumb) return false;
+      await api.modules.setThumbnail(layoutId, thumb);
+      return true;
+    } catch (e) {
+      console.warn('module picture not saved', e);
+      return false;
+    }
+  };
+  // A module saved before modules had pictures gets one the first time
+  // someone who can edit it opens it.
+  const backfilledRef = useRef(false);
+  const needsBackfill =
+    moduleMode && !!doc && !!docMap && moduleInfo.data?.module.thumbnailAt === null && moduleInfo.data.role !== 'viewer';
+  useEffect(() => {
+    if (!needsBackfill || backfilledRef.current) return;
+    backfilledRef.current = true;
+    // Once the canvas has drawn (its export handle is set on render).
+    const t = window.setTimeout(() => {
+      void uploadModuleThumbnail().then((ok) => {
+        if (ok) void qc.invalidateQueries({ queryKey: ['modules'] });
+      });
+    }, 800);
+    return () => window.clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsBackfill]);
+
   // The active layer defaults to the first brick layer in the doc, if any.
   // Without an active layer the place tool has nowhere to put bricks.
   const setActiveLayer = useEditorStore((s) => s.setActiveLayer);
@@ -383,7 +489,8 @@ function Editor({ layoutId }: { layoutId: string }) {
     setActiveLayer(null);
     useEditorStore.getState().setSelection([]);
     // Record the last-visited layout for "reopen last file" (general/reopenLastFile).
-    localStorage.setItem(LAST_LAYOUT_KEY, layoutId);
+    // (Not a module: that would reopen it as a layout.)
+    if (!moduleMode) localStorage.setItem(LAST_LAYOUT_KEY, layoutId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutId]);
 
@@ -416,10 +523,13 @@ function Editor({ layoutId }: { layoutId: string }) {
   // when loading flips false the hook count changes mid-tree and
   // React throws #310 ("rendered more hooks than during previous").
   const dock = useDockLayout(me.data?.user?.id ?? null);
-  const showLeft = !viewport.isMobile && !isViewer && dock.state.left.length > 0;
-  const showRight = !viewport.isMobile && !isViewer && dock.state.right.length > 0;
+  const panelsHere = (ids: readonly string[]) => (moduleMode ? ids.filter((id) => !NOT_IN_MODULES.has(id)) : [...ids]);
+  const leftPanels = panelsHere(dock.state.left);
+  const rightPanels = panelsHere(dock.state.right);
+  const showLeft = !viewport.isMobile && !isViewer && leftPanels.length > 0;
+  const showRight = !viewport.isMobile && !isViewer && rightPanels.length > 0;
 
-  if (loadError) return <ErrorScreen err={loadError} />;
+  if (loadError) return <ErrorScreen err={loadError} what={moduleMode ? 'module' : 'layout'} />;
   if (loading || !doc) return <OpeningLayoutScreen />;
 
   // Three fixed columns: left dock | canvas | right dock. Each dock
@@ -434,6 +544,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   // Returns just the inner content for a panel (shared by docked + floating).
   function panelBody(panelId: string): React.ReactNode {
     if (!doc) return null;
+    if (moduleMode && NOT_IN_MODULES.has(panelId)) return null;
     if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} canUploadPart={!!me.data?.user && !me.data.user.isDemoAccount} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
@@ -517,7 +628,7 @@ function Editor({ layoutId }: { layoutId: string }) {
   };
 
   const leaveLayout = () => {
-    if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error') {
+    if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error' || status.kind === 'unsaved' || status.kind === 'saving') {
       if (!confirm('Changes may not be saved. Leave anyway?')) return;
     }
     window.location.href = '/';
@@ -552,7 +663,40 @@ function Editor({ layoutId }: { layoutId: string }) {
       className="grid h-screen supports-[height:100dvh]:h-dvh grid-rows-[auto_auto_1fr_auto] bg-bg text-ink"
       style={{ gridTemplateColumns: viewport.isMobile ? '0px 0px 1fr 0px' : `${showRail ? '76px' : '0px'} ${cols}` }}
     >
-      {viewport.isMobile ? (
+      {moduleMode ? (
+        <header
+          data-testid="editor-header"
+          className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-3 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] sm:px-4"
+          style={{ gridColumn: '1 / -1' }}
+        >
+          <AppMark />
+          <button type="button" onClick={leaveLayout} className="tap-target shrink-0 rounded-lg px-2 py-1.5 text-sm font-semibold text-accent-text hover:bg-soft">
+            Home
+          </button>
+          <h1 data-testid="module-editor-title" className="min-w-0 flex-1 truncate font-display text-[17px] font-bold">
+            <span className="font-normal text-muted">Editing module: </span>
+            {meta.data?.layout.title ?? '…'}
+          </h1>
+          <SavePill status={status} />
+          {role === 'viewer' ? <ViewOnlyPill /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
+          <div className="ml-auto flex items-center gap-2">
+            {role !== 'viewer' && (
+              <button
+                type="button"
+                onClick={() => void saveNow()}
+                disabled={status.kind === 'saving'}
+                title="Save the module (Ctrl+S)"
+                className="h-[38px] shrink-0 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+              >
+                Save module
+              </button>
+            )}
+            <HelpButton helpKey="panel.moduleLibrary" />
+            <HelpMenu />
+            <SettingsButton onClick={() => setShowSettings(true)} />
+          </div>
+        </header>
+      ) : viewport.isMobile ? (
         <header
           // Phone: the name gets a row of its own (with View / Edit, or "View only"), and
           // the save state and the buttons share the second row, so the
@@ -725,6 +869,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           )}
           {!isViewer && (
             <MapMenu
+              moduleMode={moduleMode}
               onGeneralInfo={() => setShowGeneralInfo(true)}
               onBackgroundColor={() => setShowBackgroundColor(true)}
               onBackgroundImage={() => setShowBackgroundImage(true)}
@@ -807,7 +952,8 @@ function Editor({ layoutId }: { layoutId: string }) {
               Insert module
             </button>
           )}
-          {!isViewer && (
+          {/* (A module has Save module in its header.) */}
+          {!isViewer && !moduleMode && (
             <button
               onClick={() => void saveNow()}
               className="shrink-0 rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
@@ -819,7 +965,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       {showRail && (
         <aside aria-label="Tool rail" className="overflow-y-auto border-r border-line bg-panel py-3" style={{ gridColumn: '1', gridRow: '3' }}>
-          <Toolbar />
+          <Toolbar noVenue={moduleMode} />
           <div className="mt-2 flex justify-center">
             <HelpButton helpKey="tools.rail" target='nav[aria-label="Build tools"]' />
           </div>
@@ -827,7 +973,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       )}
       {showLeft && (
         <DockColumn
-          panels={dock.state.left}
+          panels={leftPanels}
           renderPanel={(id) => renderPanel(id, 'left')}
           gridColumn="2"
           panelHeights={dock.state.panelHeights}
@@ -884,7 +1030,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       </main>
       {showRight && (
         <DockColumn
-          panels={dock.state.right}
+          panels={rightPanels}
           renderPanel={(id) => renderPanel(id, 'right')}
           gridColumn="4"
           panelHeights={dock.state.panelHeights}
@@ -903,7 +1049,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         />
       )}
       {/* Floating panels — rendered via portal into document.body */}
-      {dock.state.float.map((id) => {
+      {panelsHere(dock.state.float).map((id) => {
         const pos = dock.state.floatPos[id];
         if (!pos) return null;
         return (
@@ -4093,6 +4239,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
  * Port of MainWindowMapMenu.cpp + MainWindowMenus.cpp View/File sections.
  */
 function MapMenu({
+  moduleMode = false,
   onGeneralInfo,
   onBackgroundColor,
   onBackgroundImage,
@@ -4150,6 +4297,8 @@ function MapMenu({
   onVenueExportFile: () => void;
   onVenueLoadFromFile: () => void;
   onBudget: () => void;
+  /** The module editor: no venue, budget or layout download. */
+  moduleMode?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<React.CSSProperties>({});
@@ -4177,7 +4326,7 @@ function MapMenu({
   const showBudgetNumbers = useEditorStore((s) => s.showBudgetNumbers);
   const setShowBudgetNumbers = useEditorStore((s) => s.setShowBudgetNumbers);
 
-  const items: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
+  const allItems: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
     { label: 'General info...', action: onGeneralInfo },
     { label: 'Background colour...', action: onBackgroundColor },
     { label: 'Background image...', action: onBackgroundImage },
@@ -4223,6 +4372,14 @@ function MapMenu({
     { label: 'Budget → Show Budget Numbers', action: () => setShowBudgetNumbers(!showBudgetNumbers), checked: showBudgetNumbers },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
+  const items = moduleMode
+    ? allItems.filter(
+        (it, i, all) =>
+          !/^(Venue|Budget)|^Download Layout/.test(it.label) &&
+          // No two separators in a row once the venue items are gone.
+          !(it.label === '—' && all.slice(0, i).reverse().find((p) => !/^(Venue|Budget)|^Download Layout/.test(p.label))?.label === '—'),
+      )
+    : allItems;
 
   return (
     <div className="relative">
@@ -4397,14 +4554,14 @@ function RotationPicker() {
 }
 
 
-function ErrorScreen({ err }: { err: Error }) {
+function ErrorScreen({ err, what }: { err: Error; what: 'layout' | 'module' }) {
   return (
     <div className="grid h-screen place-items-center">
       <div className="max-w-sm rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-        <p className="font-semibold text-danger">Couldn't load this layout.</p>
+        <p className="font-semibold text-danger">Couldn't load this {what}.</p>
         <p className="mt-2 text-neutral-300">{err.message}</p>
         <Link to="/" className="mt-4 inline-block text-accent-text hover:underline">
-          ← back to layouts
+          ← back to Home
         </Link>
       </div>
     </div>

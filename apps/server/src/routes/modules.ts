@@ -18,11 +18,11 @@ import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
-import { createLayoutDoc, encodeDoc } from '@cld/ydoc';
+import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
-import { clubThingRole } from '../access/clubRoles.js';
+import { clubModuleRole } from '../access/resolveResourceRole.js';
 
 interface CreateModuleBody {
   title?: string;
@@ -59,12 +59,13 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.modules)
       .where(eq(schema.modules.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ module: moduleListColumns, memberRole: schema.orgMembers.role })
+      .select({ module: moduleListColumns, memberRole: schema.orgMembers.role, membersCanCreate: schema.orgs.membersCanCreate })
       .from(schema.orgMembers)
       .innerJoin(
         schema.modules,
         eq(schema.modules.ownerOrgId, schema.orgMembers.orgId),
       )
+      .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
     const shared = await db
       .select({ module: moduleListColumns, role: schema.moduleCollaborators.role })
@@ -82,12 +83,15 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       seen.add(m.id);
       all.push({ ...toListItem(m), role: 'owner' });
     }
-    for (const { module, memberRole } of orgOwned) {
+    for (const { module, memberRole, membersCanCreate } of orgOwned) {
       if (seen.has(module.id)) continue;
       seen.add(module.id);
-      all.push({ ...toListItem(module), role: clubThingRole(memberRole) });
+      all.push({ ...toListItem(module), role: clubModuleRole(memberRole, membersCanCreate) });
     }
     for (const { module, role } of shared) {
+      const i = all.findIndex((m) => m.id === module.id);
+      // A share can give a club member more than the club does.
+      if (i >= 0 && hasAtLeast(role, all[i]!.role) && role !== all[i]!.role) all[i] = { ...all[i]!, role };
       if (seen.has(module.id)) continue;
       seen.add(module.id);
       all.push({ ...toListItem(module), role });
@@ -124,9 +128,9 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
 
     const id = randomUUID();
     const now = new Date();
-    // Seed an empty Y.Doc — same shape as a fresh layout. The editor's
-    // module-snapshot endpoint then accepts updates.
-    const doc = createLayoutDoc();
+    // Seed a fresh layout's doc (grid + one empty brick layer), so the
+    // module editor opens ready for parts. The snapshot PUT saves edits.
+    const doc = createDefaultLayoutDoc();
     const docBytes = encodeDoc(doc);
     const owner: Subject = ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id };
     const refusal = await checkGrowth({ actor: user, owner, add: { bytes: docBytes.length } });
@@ -302,6 +306,68 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, updatedAt: updatedAt.getTime() };
   });
 
+  // ---- thumbnail ----------------------------------------------------------
+  // The editor makes a small picture of the module when it's saved (or first
+  // opened) and sends it here as base64 in JSON: the site's firewall only
+  // lets octet-stream through on the two snapshot routes.
+  app.put<{ Params: { id: string }; Body: { mime?: unknown; data?: unknown } }>(
+    '/api/modules/:id/thumbnail',
+    { bodyLimit: 1024 * 1024 },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
+      if (role === null) return reply.code(404).send({ error: 'not_found' });
+      if (!hasAtLeast(role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
+      const mime = req.body?.mime;
+      const data = req.body?.data;
+      if ((mime !== 'image/png' && mime !== 'image/webp') || typeof data !== 'string' || !BASE64_RE.test(data)) {
+        return reply.code(400).send({ error: 'invalid_thumbnail' });
+      }
+      const bytes = Buffer.from(data, 'base64');
+      if (bytes.length === 0 || !looksLike(bytes, mime)) return reply.code(400).send({ error: 'invalid_thumbnail' });
+      if (bytes.length > MAX_THUMBNAIL_BYTES) return reply.code(413).send({ error: 'thumbnail_too_large' });
+      const current = await db
+        .select({
+          ownerUserId: schema.modules.ownerUserId,
+          ownerOrgId: schema.modules.ownerOrgId,
+          bytes: sql<number>`coalesce(length(${schema.modules.thumbnail}), 0)`.mapWith(Number),
+        })
+        .from(schema.modules)
+        .where(eq(schema.modules.id, req.params.id))
+        .get();
+      if (!current) return reply.code(404).send({ error: 'not_found' });
+      const owner: Subject = current.ownerOrgId ? { kind: 'org', id: current.ownerOrgId } : { kind: 'user', id: current.ownerUserId ?? user.id };
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: bytes.length - current.bytes }, uploadBytes: bytes.length });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
+      const thumbnailAt = new Date();
+      await db
+        .update(schema.modules)
+        .set({ thumbnail: bytes, thumbnailMime: mime, thumbnailAt })
+        .where(eq(schema.modules.id, req.params.id));
+      return { ok: true, thumbnailAt: thumbnailAt.getTime() };
+    },
+  );
+
+  app.get<{ Params: { id: string } }>('/api/modules/:id/thumbnail', async (req, reply) => {
+    const user = requireUser(req);
+    const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
+    if (role === null) return reply.code(404).send({ error: 'not_found' });
+    const row = await db
+      .select({ thumbnail: schema.modules.thumbnail, mime: schema.modules.thumbnailMime, at: schema.modules.thumbnailAt })
+      .from(schema.modules)
+      .where(eq(schema.modules.id, req.params.id))
+      .get();
+    if (!row?.thumbnail || !row.mime) return reply.code(404).send({ error: 'no_thumbnail' });
+    // The list links it as ?v=<thumbnailAt>, so a new picture is a new URL.
+    const etag = `"${row.at?.getTime() ?? 0}"`;
+    reply.header('Cache-Control', 'private, max-age=86400');
+    reply.header('ETag', etag);
+    if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+    reply.header('Content-Type', row.mime);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    return reply.send(Buffer.from(row.thumbnail as Uint8Array));
+  });
+
   // ---- collaborators ----------------------------------------------------
   app.get<{ Params: { id: string } }>(
     '/api/modules/:id/collaborators',
@@ -414,6 +480,16 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
+/** A module picture is small: about 256 px, a few tens of KB. */
+export const MAX_THUMBNAIL_BYTES = 512 * 1024;
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/** The file really is the picture type it says it is. */
+function looksLike(bytes: Buffer, mime: 'image/png' | 'image/webp'): boolean {
+  if (mime === 'image/png') return bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  return bytes.length > 12 && bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WEBP';
+}
+
 const moduleListColumns = {
   id: schema.modules.id,
   title: schema.modules.title,
@@ -421,6 +497,7 @@ const moduleListColumns = {
   ownerOrgId: schema.modules.ownerOrgId,
   docVersion: schema.modules.docVersion,
   hasSidecar: sql<number>`${schema.modules.sidecarSnapshot} IS NOT NULL`,
+  thumbnailAt: schema.modules.thumbnailAt,
   createdAt: schema.modules.createdAt,
   updatedAt: schema.modules.updatedAt,
 };
@@ -428,7 +505,7 @@ const moduleListColumns = {
 function toListItem(
   m: Pick<
     typeof schema.modules.$inferSelect,
-    'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'createdAt' | 'updatedAt'
+    'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'thumbnailAt' | 'createdAt' | 'updatedAt'
   > & { hasSidecar: number },
 ) {
   return {
@@ -438,6 +515,8 @@ function toListItem(
     ownerOrgId: m.ownerOrgId,
     docVersion: m.docVersion,
     hasSidecar: Boolean(m.hasSidecar),
+    /** When the picture was made (its cache key), or null: show a placeholder. */
+    thumbnailAt: m.thumbnailAt ? m.thumbnailAt.getTime() : null,
     createdAt: m.createdAt.getTime(),
     updatedAt: m.updatedAt.getTime(),
   };

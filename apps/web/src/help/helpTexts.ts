@@ -45,7 +45,7 @@ export const HELP_TEXTS = {
   'panel.moduleLibrary': {
     title: 'Module library',
     short: 'Modules saved to your account or your club, ready to drop in.',
-    more: 'Drag a module from here onto the map to add a copy of it. Your club’s modules are shared with everyone in the club.',
+    more: 'Drag a module from here onto the map to add a copy of it. Your club’s modules are shared with everyone in the club. To change a module, open it from Home: it opens on its own, and Save module keeps your changes.',
   },
   'panel.roomLibrary': {
     title: 'Venue library',
