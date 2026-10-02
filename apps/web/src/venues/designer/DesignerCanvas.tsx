@@ -3,6 +3,8 @@
 // the selection with its corner handles, and the shape being drawn with its
 // live length. Mouse events become world points (studs) for the reducer.
 // Wheel zooms at the pointer; middle or right drag (or Space + drag) pans.
+// By touch, one finger does what the left button does (with a wider reach
+// and bigger handles), and two fingers pinch and pan.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch } from 'react';
 import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
@@ -14,11 +16,29 @@ import { preview, venueOf, type Action, type DesignerState } from './designerSta
 import { bbox, type Pt } from './model';
 import { planOf, type FloorPlan } from './plan';
 import { formatAngle, formatLength, STUDS_PER_INCH } from './units';
+import { coarsePointer } from '../../editor/useViewportSize';
 
 const FT = 12 * STUDS_PER_INCH;
 const SELECT = '#2f6fed';
 /** How close the pointer must be to pick or snap, in screen px. */
 const HIT_PX = 8;
+/** The same for a finger, which covers far more than a mouse pointer. */
+export const TOUCH_HIT_PX = 22;
+/** Half the size of a corner handle, in screen px: big enough to see under a finger on touch screens. */
+export const HANDLE_PX = 5;
+export const TOUCH_HANDLE_PX = 11;
+
+/** The view after two fingers moved from `a0`, `b0` to `a`, `b`: zoomed by their spread, about their midpoint. */
+export function pinchDesignerView(start: View, a0: Pt, b0: Pt, a: Pt, b: Pt): View {
+  const d0 = Math.hypot(b0.x - a0.x, b0.y - a0.y) || 1;
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  const scale = Math.min(200, Math.max(0.02, (start.scale * d) / d0));
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
+  const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const wx = (m0.x - start.x) / start.scale;
+  const wy = (m0.y - start.y) / start.scale;
+  return { scale, x: m.x - wx * scale, y: m.y - wy * scale };
+}
 
 export interface View {
   scale: number; // screen px per stud
@@ -114,7 +134,11 @@ export function DesignerCanvas({
 
   const v = useMemo(() => view ?? { scale: 1, x: 0, y: 0 }, [view]);
   const toWorld = (sx: number, sy: number): Pt => ({ x: (sx - v.x) / v.scale, y: (sy - v.y) / v.scale });
+  // A touch screen (tablet, phone): a finger's reach and big handles.
+  const [coarse] = useState(coarsePointer);
   const tol = HIT_PX / v.scale;
+  const touchTol = TOUCH_HIT_PX / v.scale;
+  const fingers = useRef<{ kind: 'one' } | { kind: 'pinch'; a: Pt; b: Pt; view: View } | null>(null);
   const shown = useMemo(() => visibleVenue(venue, state.show), [venue, state.show]);
 
   const pointer = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -155,6 +179,62 @@ export function DesignerCanvas({
   const onUp = () => {
     if (pan.current) pan.current = null;
     else if (planDrag.current) planDrag.current = null;
+    else dispatch({ type: 'up' });
+  };
+  const local = (t: Touch): Pt => {
+    const r = host.current!.getBoundingClientRect();
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  };
+  const onTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    e.evt.preventDefault();
+    const ts = e.evt.touches;
+    if (ts.length >= 2) {
+      // A second finger: whatever the first was doing ends where it is, and the two move the view.
+      if (fingers.current?.kind === 'one') {
+        if (planDrag.current) planDrag.current = null;
+        else dispatch({ type: 'up' });
+      }
+      fingers.current = { kind: 'pinch', a: local(ts[0]!), b: local(ts[1]!), view: v };
+      return;
+    }
+    if (ts.length !== 1) return;
+    const p = local(ts[0]!);
+    const world = toWorld(p.x, p.y);
+    fingers.current = { kind: 'one' };
+    onCursor(world);
+    if (planMoving && plan) {
+      planDrag.current = { sx: p.x, sy: p.y, plan };
+      return;
+    }
+    dispatch({ type: 'move', at: world, tol: touchTol, free: false });
+    dispatch({ type: 'down', at: world, tol: touchTol, free: false });
+  };
+  const onTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    e.evt.preventDefault();
+    const f = fingers.current;
+    const ts = e.evt.touches;
+    if (!f) return;
+    if (f.kind === 'pinch') {
+      if (ts.length >= 2) setView(pinchDesignerView(f.view, f.a, f.b, local(ts[0]!), local(ts[1]!)));
+      return;
+    }
+    if (ts.length !== 1) return;
+    const p = local(ts[0]!);
+    const world = toWorld(p.x, p.y);
+    onCursor(world);
+    if (planDrag.current) {
+      const d = planDrag.current;
+      onPlanMoved({ ...d.plan, x: d.plan.x + (p.x - d.sx) / v.scale, y: d.plan.y + (p.y - d.sy) / v.scale });
+      return;
+    }
+    dispatch({ type: 'move', at: world, tol: touchTol, free: false });
+  };
+  const onTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const f = fingers.current;
+    if (e.evt.touches.length > 0) return; // the rest lift first
+    fingers.current = null;
+    if (f?.kind !== 'one') return;
+    if (planDrag.current) planDrag.current = null;
     else dispatch({ type: 'up' });
   };
   const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -204,7 +284,7 @@ export function DesignerCanvas({
     return null;
   })();
   const flat = (pts: Pt[]) => pts.flatMap((p) => [p.x, p.y]);
-  const hs = 5 / v.scale; // handle half-size, world
+  const hs = (coarse ? TOUCH_HANDLE_PX : HANDLE_PX) / v.scale; // handle half-size, world
   const bubble = (at: Pt, text: string) => {
     const w = text.length * 7 + 16;
     return (
@@ -226,10 +306,11 @@ export function DesignerCanvas({
   return (
     <div
       ref={host}
-      style={{ position: 'absolute', inset: 0, cursor: space || pan.current ? 'grab' : state.tool === 'select' ? 'default' : 'crosshair' }}
+      data-testid="venue-canvas"
+      style={{ position: 'absolute', inset: 0, touchAction: 'none', cursor: space || pan.current ? 'grab' : state.tool === 'select' ? 'default' : 'crosshair' }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <Stage width={size.w} height={size.h} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={() => onCursor(null)} onWheel={onWheel}>
+      <Stage width={size.w} height={size.h} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={() => onCursor(null)} onWheel={onWheel} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
         <Layer listening={false}>
           <Rect x={0} y={0} width={size.w} height={size.h} fill="#ffffff" />
           <Group x={v.x} y={v.y} scaleX={v.scale} scaleY={v.scale}>
@@ -253,9 +334,9 @@ export function DesignerCanvas({
             {sel?.kind === 'edge' && venue.edges[sel.index] && (
               <Line points={flat(venue.edges[sel.index]!.poly)} stroke={SELECT} strokeWidth={3} strokeScaleEnabled={false} opacity={0.6} />
             )}
-            {selPoint && <Circle x={selPoint.x} y={selPoint.y} radius={10 / v.scale} stroke={SELECT} strokeWidth={2} strokeScaleEnabled={false} />}
+            {selPoint && <Circle x={selPoint.x} y={selPoint.y} radius={(coarse ? 18 : 10) / v.scale} stroke={SELECT} strokeWidth={2} strokeScaleEnabled={false} />}
             {handles.map((h, i) => (
-              <Rect key={i} x={h.x - hs} y={h.y - hs} width={hs * 2} height={hs * 2} fill="#fff" stroke={SELECT} strokeWidth={1.5} strokeScaleEnabled={false} />
+              <Rect key={i} name="venue-handle" x={h.x - hs} y={h.y - hs} width={hs * 2} height={hs * 2} fill="#fff" stroke={SELECT} strokeWidth={coarse ? 2.5 : 1.5} strokeScaleEnabled={false} />
             ))}
             {state.tool === 'wall' && state.draft.length > 1 && (
               <Line points={flat(state.draft)} stroke={SELECT} strokeWidth={2} strokeScaleEnabled={false} opacity={0.5} />
