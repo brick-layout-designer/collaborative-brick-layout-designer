@@ -29,6 +29,8 @@ import { docHub } from '../ws/docHub.js';
 import { safeFetch } from '../utils/safeFetch.js';
 import { env } from '../env.js';
 import { backgroundJobs } from '../workers/jobs.js';
+import { DEMO_RESET_CHOICES, demoStatus, ensureDemoUser, isDemoUser, signOutDemo, type DemoResetEvery } from '../demo/demoAccount.js';
+import { demoItemCount, runDemoReset } from '../demo/reset.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
@@ -208,7 +210,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.patch<{ Params: { id: string }; Body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean; isModerator?: boolean } }>(
+  app.patch<{ Params: { id: string }; Body: { isGlobalAdmin?: boolean; isModerator?: boolean } }>(
     '/api/admin/users/:id',
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
@@ -229,12 +231,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         }
         patch.isGlobalAdmin = req.body.isGlobalAdmin;
       }
-      if (typeof req.body.isDemoAccount === 'boolean') {
-        patch.isDemoAccount = req.body.isDemoAccount;
-      }
       // Moderator: reviews the public catalogs, and nothing else.
       if (typeof req.body.isModerator === 'boolean') {
         patch.isModerator = req.body.isModerator;
+      }
+      // Anyone can sign in as the demo account: it never gets powers.
+      if (isDemoUser(target) && (patch.isGlobalAdmin || patch.isModerator)) {
+        return reply.code(400).send({ error: 'demo_account' });
       }
       if (Object.keys(patch).length === 0) {
         return reply.code(400).send({ error: 'empty_patch' });
@@ -1084,17 +1087,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // -----------------------------------------------------------------
   app.get('/api/admin/stats', async (req) => {
     requireGlobalAdmin(req);
-    const [usersRow, orgsRow, layoutsRow, partsRow, modulesRow, demoRow, adminRow, sessionsRow] = await Promise.all([
+    const [usersRow, orgsRow, layoutsRow, partsRow, modulesRow, adminRow, sessionsRow] = await Promise.all([
       db.select({ n: count() }).from(schema.users).get(),
       db.select({ n: count() }).from(schema.orgs).get(),
       db.select({ n: count() }).from(schema.layouts).get(),
       db.select({ n: count() }).from(schema.customParts).get(),
       db.select({ n: count() }).from(schema.modules).get(),
-      db
-        .select({ n: count() })
-        .from(schema.users)
-        .where(eq(schema.users.isDemoAccount, true))
-        .get(),
       db
         .select({ n: count() })
         .from(schema.users)
@@ -1108,7 +1106,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     ]);
     return {
       users: usersRow?.n ?? 0,
-      demoUsers: demoRow?.n ?? 0,
       globalAdmins: adminRow?.n ?? 0,
       orgs: orgsRow?.n ?? 0,
       layouts: layoutsRow?.n ?? 0,
@@ -1159,9 +1156,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         review: settings.catalogReview,
         anonymousBrowse: settings.catalogAnonymousBrowse,
       },
-      // Background jobs and the demo layout lifetime: switches here, unless
-      // the server's env var forces one (forcedBy names it).
+      // Background jobs: switches here, unless the server's env var
+      // forces one (forcedBy names it).
       jobs: await backgroundJobs(),
+      // The demo account: on or off, how often it resets, when it last
+      // did and how many things it has now.
+      demo: { ...demoStatus(settings), items: await demoItemCount() },
       // The server's own settings that can't be changed from this page,
       // with why: secrets, things read once at start, the deployment's own
       // paths and ports, and the first admin (needed before there is a DB).
@@ -1186,8 +1186,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       catalogAnonymousBrowse?: boolean;
       backupsEnabled?: boolean;
       dailyCompactionEnabled?: boolean;
-      demoTtlSweepEnabled?: boolean;
-      demoLayoutTtlDays?: number;
+      demoEnabled?: boolean;
+      demoResetEvery?: string;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1236,11 +1236,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (typeof body.catalogAnonymousBrowse === 'boolean') patch.catalogAnonymousBrowse = body.catalogAnonymousBrowse;
     if (typeof body.backupsEnabled === 'boolean') patch.backupsEnabled = body.backupsEnabled;
     if (typeof body.dailyCompactionEnabled === 'boolean') patch.dailyCompactionEnabled = body.dailyCompactionEnabled;
-    if (typeof body.demoTtlSweepEnabled === 'boolean') patch.demoTtlSweepEnabled = body.demoTtlSweepEnabled;
-    if ('demoLayoutTtlDays' in body) {
-      const d = body.demoLayoutTtlDays;
-      if (typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > 3650) return reply.code(400).send({ error: 'invalid_input' });
-      patch.demoLayoutTtlDays = d;
+    if (typeof body.demoEnabled === 'boolean') patch.demoEnabled = body.demoEnabled;
+    if ('demoResetEvery' in body) {
+      if (!DEMO_RESET_CHOICES.includes(body.demoResetEvery as DemoResetEvery)) return reply.code(400).send({ error: 'invalid_input' });
+      patch.demoResetEvery = body.demoResetEvery as DemoResetEvery;
     }
     if ('catalogReview' in body) {
       if (body.catalogReview !== 'moderators' && body.catalogReview !== 'none') return reply.code(400).send({ error: 'invalid_input' });
@@ -1251,7 +1250,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'empty_patch' });
     }
 
-    await getPlatformSettings(); // ensure the row exists before UPDATE
+    const before = await getPlatformSettings(); // ensure the row exists before UPDATE
     await db
       .update(schema.platformSettings)
       .set({ ...patch, updatedAt: new Date(), updatedBy: me.id })
@@ -1259,6 +1258,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     invalidateTransporter();
     resetDesktopPolicy();
     invalidateLimitCaches(); // the limits switch takes effect at once
+    // Turning the demo on makes (or re-enables) its account with fresh
+    // samples; turning it off signs every visitor out.
+    if (patch.demoEnabled === true && !before.demoEnabled) {
+      await ensureDemoUser();
+      await runDemoReset();
+    } else if (patch.demoEnabled === false && before.demoEnabled) {
+      await signOutDemo();
+    }
 
     await writeAuditEvent({
       resourceKind: 'platform_settings',
@@ -1269,6 +1276,24 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       payload: { patch: { ...patch, smtpPass: patch.smtpPass !== undefined ? '(redacted)' : undefined } },
     });
     return { ok: true };
+  });
+
+  // -----------------------------------------------------------------
+  // Demo account › "Reset now": wipe its things and put the samples
+  // back, the same as the timer does. JSON, no body (or `{}`).
+  // -----------------------------------------------------------------
+  app.post('/api/admin/demo/reset', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const me = requireGlobalAdmin(req);
+    if (!(await getPlatformSettings()).demoEnabled) return reply.code(409).send({ error: 'demo_off' });
+    const result = await runDemoReset();
+    await writeAuditEvent({
+      resourceKind: 'platform_settings',
+      resourceId: PLATFORM_SETTINGS_ID,
+      userId: me.id,
+      eventType: 'admin_demo_reset',
+      payload: result,
+    });
+    return { ok: true, ...result };
   });
 }
 
@@ -1478,7 +1503,6 @@ export function serverSetup(): ServerSetupRow[] {
     { name: 'Google sign-in', value: setUp(!!env.google), env: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET', why: 'secret' },
     { name: 'GitHub sign-in', value: setUp(!!env.github), env: 'GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET', why: 'secret' },
     { name: 'Single sign-on (OIDC)', value: setUp(!!env.oidc), env: 'OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET', why: 'secret' },
-    { name: 'Demo mode', value: onOff(env.demoMode), env: 'DEMO_MODE', why: 'restart' },
     { name: 'Site address', value: env.publicUrl, env: 'PUBLIC_URL', why: 'deploy' },
     { name: 'Secure cookies', value: onOff(env.cookieSecure), env: 'COOKIE_SECURE', why: 'deploy' },
     { name: 'Behind a proxy', value: env.trustProxy === false ? 'No' : env.trustProxy === true ? 'Yes' : String(env.trustProxy), env: 'TRUST_PROXY', why: 'deploy' },

@@ -21,6 +21,7 @@ import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { SiteVersionBar } from './SiteVersionBar';
+import { DemoBanner } from './demo/DemoBanner';
 import { HelpPage } from './help/HelpPage';
 import { SettingsPage } from './settings/SettingsPage';
 import { PrefsProvider } from './theme/PrefsProvider';
@@ -144,6 +145,7 @@ createRoot(root).render(
         <GlobalBbmDrop />
         <SiteVersionBar />
         <NoticeBanner />
+        <DemoBanner />
         <TourProvider>
         <Suspense fallback={null}>
         <Routes>

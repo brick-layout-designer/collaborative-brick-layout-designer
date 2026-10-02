@@ -7,6 +7,7 @@ import { oauthRoutes } from './auth/oauth.js';
 import { passwordRoutes } from './auth/password.js';
 import { sessionRoutes } from './auth/session.js';
 import { deviceRoutes } from './auth/device.js';
+import { demoAuthRoutes } from './auth/demo.js';
 import { tokenRoutes } from './tokens.js';
 import { versionRoutes } from './version.js';
 import { auditRoutes } from './audit.js';
@@ -39,6 +40,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(passwordRoutes);
   await app.register(sessionRoutes);
   await app.register(deviceRoutes);
+  await app.register(demoAuthRoutes);
   await app.register(tokenRoutes);
   await app.register(layoutRoutes);
   await app.register(partsRoutes);

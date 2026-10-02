@@ -3,15 +3,15 @@
 //   GET  /api/org-invites/:token    → preview (no side effects)
 //   POST /api/org-invites/:token    → accept (auth required, email-match)
 //
-// Mirrors the layout-invite endpoints in routes/invites.ts. Demo
-// accounts CAN accept org invites (the demo restriction is on creating
-// orgs, not joining them).
+// Mirrors the layout-invite endpoints in routes/invites.ts. The demo
+// account can't accept one: it never joins clubs.
 
 import type { FastifyInstance } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 
@@ -53,6 +53,7 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
     '/api/org-invites/:token',
     async (req, reply) => {
       const user = requireUser(req);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_join_clubs' });
       const invite = await db
         .select()
         .from(schema.orgInvites)

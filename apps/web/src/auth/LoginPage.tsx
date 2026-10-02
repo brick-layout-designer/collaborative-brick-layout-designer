@@ -38,7 +38,7 @@ export function LoginPage() {
                 Continue with {p.label}
               </a>
             ))}
-          {providers.data && !providers.data.passwordEnabled && providers.data.providers.every((p) => !p.enabled) && (
+          {providers.data && !providers.data.passwordEnabled && !providers.data.demoEnabled && providers.data.providers.every((p) => !p.enabled) && (
             <p className="text-center text-sm text-muted">
               Signing in isn’t set up on this site yet. Ask the person who runs it.
             </p>
@@ -46,7 +46,37 @@ export function LoginPage() {
         </div>
 
         {providers.data?.passwordEnabled && <PasswordForm next={next} />}
+        {providers.data?.demoEnabled && <TryDemo next={next} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Try the demo": signs in as the site's shared demo account, shown only
+ * while an admin has it switched on (Admin › Settings › Demo account).
+ */
+function TryDemo({ next }: { next: string }) {
+  const qc = useQueryClient();
+  const go = useMutation({
+    mutationFn: api.tryDemo,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      window.location.href = next;
+    },
+  });
+  return (
+    <div className="space-y-2 border-t border-line pt-4 text-center">
+      <button
+        type="button"
+        onClick={() => go.mutate()}
+        disabled={go.isPending}
+        className="w-full rounded-lg border border-border px-4 py-2 hover:bg-soft disabled:opacity-50"
+      >
+        {go.isPending ? 'Opening the demo…' : 'Try the demo'}
+      </button>
+      <p className="text-xs text-muted">No account needed. The demo is shared and resets itself, so don’t keep anything there.</p>
+      {go.error && <p className="text-sm text-danger">{go.error.message}</p>}
     </div>
   );
 }

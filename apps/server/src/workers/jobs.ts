@@ -1,4 +1,4 @@
-// Background jobs and the demo layout lifetime: switched in Admin ›
+// Background jobs: switched in Admin ›
 // Settings (platform_settings), unless the server's own env var forces
 // one (then the page says "Forced by the server setting X"). Read at each
 // use, so a change applies without a restart.
@@ -18,8 +18,6 @@ export interface JobSetting<T> {
 export interface BackgroundJobs {
   backups: JobSetting<boolean>;
   dailyCompaction: JobSetting<boolean>;
-  demoTtlSweep: JobSetting<boolean>;
-  demoLayoutTtlDays: JobSetting<number>;
 }
 
 function pick<T>(setting: T, forced: T | null, name: string): JobSetting<T> {
@@ -31,13 +29,5 @@ export async function backgroundJobs(): Promise<BackgroundJobs> {
   return {
     backups: pick(s.backupsEnabled, env.backupsEnabledForced, 'BACKUPS_ENABLED'),
     dailyCompaction: pick(s.dailyCompactionEnabled, env.dailyCompactionEnabledForced, 'DAILY_COMPACTION_ENABLED'),
-    demoTtlSweep: pick(s.demoTtlSweepEnabled, env.demoTtlSweepEnabledForced, 'DEMO_TTL_SWEEP_ENABLED'),
-    demoLayoutTtlDays: pick(s.demoLayoutTtlDays, env.demoLayoutTtlDaysForced, 'DEMO_LAYOUT_TTL_DAYS'),
   };
-}
-
-/** When a demo account's new layout is deleted. */
-export async function demoExpiry(now: Date): Promise<Date> {
-  const days = (await backgroundJobs()).demoLayoutTtlDays.value;
-  return new Date(now.getTime() + days * 86400_000);
 }

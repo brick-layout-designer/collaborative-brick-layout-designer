@@ -16,8 +16,8 @@
 //       performs the email-match check (same shape as invite acceptance)
 //       and flips ownership.
 //
-// On a successful transfer the audit log gets a `transfer` row and the
-// layout's `expires_at` is cleared if the new owner is non-demo.
+// On a successful transfer the audit log gets a `transfer` row. The demo
+// account can't start a transfer (demo/demoAccount.ts).
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
@@ -25,11 +25,11 @@ import { and, eq, isNull, ne } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
-import { demoExpiry } from '../workers/jobs.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
@@ -48,6 +48,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     '/api/layouts/:id/transfer',
     async (req, reply) => {
       const user = requireUser(req);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_share' });
       const { role } = await resolveResourceRole(user.id, 'layout', req.params.id);
       if (role === null) return reply.code(404).send({ error: 'not_found' });
       if (!hasAtLeast(role, 'owner')) {
@@ -105,8 +106,6 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           .set({
             ownerUserId: null,
             ownerOrgId: dest.id,
-            // Clear demo TTL — org-owned layouts persist indefinitely.
-            expiresAt: null,
             updatedAt: new Date(),
           })
           .where(eq(schema.layouts.id, req.params.id));
@@ -273,12 +272,6 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         .set({
           ownerUserId: user.id,
           ownerOrgId: null,
-          // Clear demo TTL: a non-demo recipient would not want their new
-          // layout deleted. Demo TTL is reapplied on next demo-only
-          // creation, not on transfer.
-          expiresAt: user.isDemoAccount
-            ? await demoExpiry(now)
-            : null,
           updatedAt: now,
         })
         .where(

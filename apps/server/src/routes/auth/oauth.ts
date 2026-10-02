@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { linkProvider, resolveOauthUser } from '../../auth/users.js';
 import { createSession } from '../../auth/session.js';
 import { requireUser, setSessionCookie } from '../../auth/cookie.js';
+import { isDemoUser } from '../../demo/demoAccount.js';
 import {
   consumePendingLink,
   createPendingLink,
@@ -98,6 +99,7 @@ export async function oauthRoutes(app: FastifyInstance) {
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.post('/api/auth/link', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const user = requireUser(req);
+    if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_link' });
     const token = req.cookies[PENDING_LINK_COOKIE];
     const link = peekPendingLink(token);
     if (!token || !link) return reply.code(404).send({ error: 'no_pending_link' });

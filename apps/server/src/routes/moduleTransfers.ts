@@ -10,6 +10,7 @@ import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
@@ -30,6 +31,7 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
     '/api/modules/:id/transfer',
     async (req, reply) => {
       const user = requireUser(req);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_share' });
       const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
       if (role === null) return reply.code(404).send({ error: 'not_found' });
       if (!hasAtLeast(role, 'owner')) {

@@ -9,6 +9,10 @@ export const users = sqliteTable('users', {
   displayName: text('display_name').notNull(),
   avatarUrl: text('avatar_url'),
   passwordHash: text('password_hash'),
+  /**
+   * True only for the one demo account (demo/demoAccount.ts), which an
+   * admin switches on in Admin › Settings. Nobody else has it.
+   */
   isDemoAccount: integer('is_demo_account', { mode: 'boolean' }).notNull().default(false),
   isGlobalAdmin: integer('is_global_admin', { mode: 'boolean' }).notNull().default(false),
   /**
@@ -202,13 +206,27 @@ export const platformSettings = sqliteTable('platform_settings', {
   limitsEnforced: integer('limits_enforced', { mode: 'boolean' }).notNull().default(true),
   /**
    * Admin › Settings › Background jobs. Each env var (BACKUPS_ENABLED,
-   * DAILY_COMPACTION_ENABLED, DEMO_TTL_SWEEP_ENABLED, DEMO_LAYOUT_TTL_DAYS),
-   * when set, overrides its switch.
+   * DAILY_COMPACTION_ENABLED), when set, overrides its switch.
    */
   backupsEnabled: integer('backups_enabled', { mode: 'boolean' }).notNull().default(true),
   dailyCompactionEnabled: integer('daily_compaction_enabled', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * No longer used: demo layouts don't expire any more (the one demo
+   * account resets instead). Left in place so no column is dropped.
+   */
   demoTtlSweepEnabled: integer('demo_ttl_sweep_enabled', { mode: 'boolean' }).notNull().default(true),
+  /** No longer used (see demoTtlSweepEnabled). */
   demoLayoutTtlDays: integer('demo_layout_ttl_days').notNull().default(30),
+  /**
+   * Admin › Settings › Demo account. Off by default; turning it on makes
+   * the one demo account (demo/demoAccount.ts) and shows "Try the demo"
+   * on the sign-in page.
+   */
+  demoEnabled: integer('demo_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** How often the demo account's things are wiped and the samples put back. */
+  demoResetEvery: text('demo_reset_every', { enum: ['1h', '6h', 'daily'] }).notNull().default('daily'),
+  /** When the demo account was last reset. Null until the first reset. */
+  demoLastResetAt: integer('demo_last_reset_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
@@ -317,7 +335,8 @@ export const layouts = sqliteTable(
       .references(() => users.id),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-    // For demo-owned layouts (see PLAN.md §3.4). Null otherwise.
+    // No longer used: demo layouts used to expire. Always null now; left in
+    // place so no column is dropped.
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
     // Yjs binary doc snapshot. In Phase 2, populated from a fresh seed (empty
     // Y.Doc) on create OR derived from the imported .bbm. Phase 4's WS server

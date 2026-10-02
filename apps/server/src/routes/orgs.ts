@@ -13,8 +13,8 @@
 //
 // The creator of an org becomes its first admin.
 //
-// Demo accounts are blocked from creating orgs (PLAN.md §3.4) but can
-// accept invites to existing orgs.
+// The demo account can't create, join or invite to clubs
+// (demo/demoAccount.ts).
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
@@ -22,6 +22,7 @@ import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
@@ -115,7 +116,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // ---- create org ---------------------------------------------------------
   app.post<{ Body: CreateOrgBody }>('/api/orgs', async (req, reply) => {
     const user = requireUser(req);
-    if (user.isDemoAccount) {
+    if (isDemoUser(user)) {
       return reply.code(403).send({ error: 'demo_account_cannot_create_org' });
     }
     const name = req.body.name?.trim();
@@ -409,7 +410,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (user.isDemoAccount) {
+      if (isDemoUser(user)) {
         return reply.code(403).send({ error: 'demo_account_cannot_invite' });
       }
       const org = await loadOrgBySlug(req.params.slug);

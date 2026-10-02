@@ -12,9 +12,9 @@ import { hashBbmBytes } from '@cld/bbm/hash';
 import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm, seedFromSidecar } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
-import { demoExpiry } from '../workers/jobs.js';
 import { docHub } from '../ws/docHub.js';
 import { rollup } from '../metrics/rollup.js';
 import { checkGrowth, declaredBytes, type Subject } from '../limits/limits.js';
@@ -33,8 +33,7 @@ interface CreateLayoutBody {
   /**
    * If provided, the new layout is org-owned. The caller must be a
    * member of the org. Mutually exclusive with personal ownership.
-   * Demo accounts cannot create org-owned layouts (they can't join orgs
-   * without being invited; if they ARE invited, they can still create).
+   * The demo account can't join clubs, so it only makes its own.
    */
   orgSlug?: string;
   /**
@@ -240,12 +239,6 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (body.bbm || background) recordUpload(user.id, owner, uploaded);
 
     const now = new Date();
-    // Demo TTL only applies to user-owned layouts; org layouts persist
-    // until an admin deletes them.
-    const expiresAt =
-      user.isDemoAccount && ownerUserId
-        ? await demoExpiry(now)
-        : null;
 
     await db.insert(schema.layouts).values({
       id,
@@ -255,7 +248,6 @@ export async function layoutRoutes(app: FastifyInstance) {
       createdBy: user.id,
       createdAt: now,
       updatedAt: now,
-      expiresAt,
       docSnapshot: Buffer.from(docSnapshot),
       docVersion: 0,
       sidecarSnapshot: sidecarSnapshot ? Buffer.from(sidecarSnapshot) : null,
@@ -352,7 +344,6 @@ export async function layoutRoutes(app: FastifyInstance) {
         createdBy: user.id,
         createdAt: now,
         updatedAt: now,
-        expiresAt: user.isDemoAccount && ownerUserId ? await demoExpiry(now) : null,
         docSnapshot: Buffer.from(encodeDoc(doc)),
         docVersion: 0,
         sidecarSnapshot: src.sidecarSnapshot,
@@ -604,6 +595,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // rotate the link on every click.
   app.post<{ Params: { id: string } }>('/api/layouts/:id/public-share', async (req, reply) => {
     const user = requireUser(req);
+    if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_share' });
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
     if (role.role === null) return reply.code(404).send({ error: 'not_found' });
     if (!hasAtLeast(role.role, 'owner')) return reply.code(403).send({ error: 'forbidden' });

@@ -20,6 +20,7 @@ import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
@@ -277,7 +278,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (user.isDemoAccount) return reply.code(403).send({ error: 'forbidden' });
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_submit' });
       const b = req.body ?? {};
       if (!isKind(b.kind) || typeof b.sourceId !== 'string') return reply.code(400).send({ error: 'invalid_input' });
       if (!(await catalogOn(b.kind))) return reply.code(404).send({ error: 'catalog_off' });

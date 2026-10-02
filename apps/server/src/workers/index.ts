@@ -1,23 +1,25 @@
 // Background workers (Phase 7).
 //
-// Three jobs share a single `setInterval` driver:
+// Two daily jobs share a single `setInterval` driver:
 //
-//   1. demoTtlSweep   — delete demo-owned layouts past their expires_at
-//                       Runs daily.
-//   2. dailyCompaction — full Yjs snapshot rewrite per active doc.
+//   1. dailyCompaction — full Yjs snapshot rewrite per active doc.
 //                       Runs daily; complements the per-active-doc
 //                       30s snapshot worker in docHub.ts (which only
 //                       runs while clients are connected).
-//   3. backupWorker    — `VACUUM INTO` snapshot of the SQLite file
+//   2. backupWorker    — `VACUUM INTO` snapshot of the SQLite file
 //                       to /backups, gzipped, with retention buckets:
 //                       last 7 days + 1/week × 3 weeks + 1/month × 12
 //                       months. Runs daily.
 //
-// Operators can disable any job individually via env vars
-// (BACKUPS_ENABLED, DEMO_TTL_SWEEP_ENABLED, DAILY_COMPACTION_ENABLED).
+// Operators can disable either one via env vars (BACKUPS_ENABLED,
+// DAILY_COMPACTION_ENABLED).
+//
+// The demo account (Admin › Settings › Demo account) has its own timer,
+// checked every few minutes: it resets the account when a reset is due.
+//
 // Tests skip the whole worker stack (NODE_ENV=test).
 
-import { lt, eq, isNotNull, and } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createGzip } from 'node:zlib';
@@ -32,14 +34,21 @@ import { backgroundJobs } from './jobs.js';
 import { docHub } from '../ws/docHub.js';
 import { sweepRollup } from '../metrics/rollup.js';
 import { sweepUsage } from '../metrics/usage.js';
+import { getPlatformSettings } from '../auth/platformSettings.js';
+import { demoResetDue } from '../demo/demoAccount.js';
+import { runDemoReset } from '../demo/reset.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
+let demoTimer: ReturnType<typeof setInterval> | null = null;
+/** How often the demo timer looks whether a reset is due. */
+const DEMO_CHECK_MS = 5 * 60 * 1000;
 
 export function startWorkers(): void {
   if (env.nodeEnv === 'test') return;
   if (timer) return;
+  demoTimer = setInterval(() => void safeRun('demoReset', async () => void (await demoTick())), DEMO_CHECK_MS);
   // Run on first tick after 60s (so a server crash-restart loop doesn't
   // hammer the DB) and every 24h thereafter.
   setTimeout(() => {
@@ -53,12 +62,22 @@ export function stopWorkers(): void {
     clearInterval(timer);
     timer = null;
   }
+  if (demoTimer) {
+    clearInterval(demoTimer);
+    demoTimer = null;
+  }
+}
+
+/** Reset the demo account when it's on and its reset is due. */
+export async function demoTick(now = new Date()): Promise<boolean> {
+  if (!demoResetDue(await getPlatformSettings(), now)) return false;
+  await runDemoReset(now);
+  return true;
 }
 
 async function tick(): Promise<void> {
   // Admin › Settings › Background jobs, read now so a change needs no restart.
   const jobs = await backgroundJobs();
-  if (jobs.demoTtlSweep.value) await safeRun('demoTtlSweep', demoTtlSweep);
   if (jobs.dailyCompaction.value) await safeRun('dailyCompaction', dailyCompaction);
   if (jobs.backups.value) await safeRun('backupWorker', backupWorker);
   // Admin dashboard rollup: keep ROLLUP_RETENTION_DAYS (about 13 months).
@@ -80,36 +99,7 @@ async function safeRun(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Demo TTL sweep
-// ---------------------------------------------------------------------------
-
-async function demoTtlSweep(): Promise<void> {
-  const now = new Date();
-  // Delete every layout whose expires_at is in the past. This is a
-  // hard delete; the .bbm export endpoint is the user's only path to
-  // recover the data, so we expect them to export before the TTL
-  // expires (the editor warns when expires_at is set).
-  const expired = await db
-    .select({ id: schema.layouts.id })
-    .from(schema.layouts)
-    .where(
-      and(
-        isNotNull(schema.layouts.expiresAt),
-        lt(schema.layouts.expiresAt, now),
-      ),
-    );
-  for (const { id } of expired) {
-    await db.delete(schema.layouts).where(eq(schema.layouts.id, id));
-    await docHub.close(id);
-  }
-  if (expired.length > 0) {
-     
-    console.log(`[demoTtlSweep] deleted ${expired.length} expired demo-owned layouts`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 2. Daily compaction
+// 1. Daily compaction
 // ---------------------------------------------------------------------------
 
 export async function dailyCompaction(): Promise<void> {
@@ -180,7 +170,7 @@ export async function dailyCompaction(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Backup worker
+// 2. Backup worker
 // ---------------------------------------------------------------------------
 
 async function backupWorker(): Promise<void> {

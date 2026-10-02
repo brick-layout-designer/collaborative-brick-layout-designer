@@ -73,22 +73,26 @@ export function ProfilePage() {
             ) : (
               <h1 className="flex items-center gap-2 text-xl font-semibold">
                 {user.displayName}
-                <button
-                  onClick={() => { setDraftName(user.displayName); setEditing(true); }}
-                  className="text-xs font-normal text-accent-text hover:underline"
-                >
-                  Edit
-                </button>
+                {!user.isDemoAccount && (
+                  <button
+                    onClick={() => { setDraftName(user.displayName); setEditing(true); }}
+                    className="text-xs font-normal text-accent-text hover:underline"
+                  >
+                    Edit
+                  </button>
+                )}
               </h1>
             )}
             {error && <p className="mt-1 text-sm text-danger">{error}</p>}
-            <p className="text-sm text-muted">{user.email}</p>
-            {user.isDemoAccount && (
-              <p className="text-xs text-amber-400">Demo account</p>
+            {user.isDemoAccount ? (
+              <p className="text-xs text-amber-400">The shared demo account: it resets itself, and its name, sign-in and desktop app can’t be changed.</p>
+            ) : (
+              <p className="text-sm text-muted">{user.email}</p>
             )}
           </div>
         </header>
 
+        {!user.isDemoAccount && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Linked sign-in methods
@@ -116,8 +120,9 @@ export function ProfilePage() {
             })}
           </ul>
         </section>
+        )}
 
-        <DevicesSection />
+        {!user.isDemoAccount && <DevicesSection />}
       </main>
     </div>
   );

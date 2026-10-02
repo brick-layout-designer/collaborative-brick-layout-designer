@@ -75,7 +75,6 @@ export async function passwordRoutes(app: FastifyInstance) {
         displayName: displayName ?? email,
         avatarUrl: null,
         passwordHash,
-        isDemoAccount: env.demoMode,
         isGlobalAdmin: false,
         emailVerified: !settings.requireEmailVerification,
         createdAt: new Date(),

@@ -17,6 +17,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
@@ -513,7 +514,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     '/api/modules/:id/invites',
     async (req, reply) => {
       const user = requireUser(req);
-      if (user.isDemoAccount) {
+      if (isDemoUser(user)) {
         return reply.code(403).send({ error: 'demo_account_cannot_invite' });
       }
       const { role } = await resolveResourceRole(user.id, 'module', req.params.id);

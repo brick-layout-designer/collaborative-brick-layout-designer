@@ -7,7 +7,7 @@ import { useState, type ReactNode } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarList, Card, CollectingNote, DataTable, LineChart, SERIES_STYLE, StatTile, type BarItem } from './charts';
 import { desktopVersionBars } from './desktopVersions';
-import { formatAgo, formatBytes, formatCompact, formatDate, formatDuration } from './format';
+import { demoText, formatAgo, formatBytes, formatCompact, formatDate, formatDuration } from './format';
 import { insightsApi, RANGES, type KeyValue, type RangeId } from './insightsApi';
 
 const RANGE_KEY = 'cld.admin.range';
@@ -279,6 +279,7 @@ export default function Dashboard() {
               <Stat term="Pending layout invites" value={formatCompact(p.pending.layoutInvites)} />
               <Stat term="Pending hand-overs" value={formatCompact(p.pending.transfers)} />
               <Stat term="Site admins" value={formatCompact(p.totals.admins)} />
+              <Stat term="Demo account" value={demoText(p.demo)} />
             </dl>
           ) : (
             <Loading />
@@ -465,3 +466,4 @@ function Placeholder({ title }: { title: string }) {
 function Loading() {
   return <p className="text-sm text-muted">Loading…</p>;
 }
+
