@@ -173,6 +173,7 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
                       type="number"
                       min="0"
                       placeholder="—"
+                      aria-label={`Budget for ${part}`}
                       value={limit >= 0 ? limit : ''}
                       onChange={(e) => setLimit(limitKey ?? part, e.target.value)}
                       className="w-20 rounded-lg border border-border bg-soft px-1 py-0.5 text-xs"

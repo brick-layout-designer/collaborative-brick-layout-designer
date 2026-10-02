@@ -169,7 +169,9 @@ export interface Sidecar {
 
 export function readSidecar(raw: string): Sidecar {
   const parsed = JSON.parse(raw) as Record<string, unknown>;
-  const schemaVersion = numberField(parsed, 'schemaVersion');
+  // Files the web wrote before 2026-10 could leave schemaVersion out (a
+  // sidecar the editor started from nothing); they are version 1.
+  const schemaVersion = parsed.schemaVersion === undefined ? 1 : numberField(parsed, 'schemaVersion');
   if (schemaVersion > CURRENT_SCHEMA_VERSION) {
     throw new Error(
       `unsupported sidecar schemaVersion ${schemaVersion} (expected ≤ ${CURRENT_SCHEMA_VERSION})`,
@@ -233,9 +235,12 @@ export interface WriteSidecarOptions {
 export function writeSidecar(sidecar: Sidecar, opts: WriteSidecarOptions = {}): string {
   const indent = opts.indent ?? 2;
 
+  // A sidecar the web editor started from nothing (its first label, view
+  // or venue) had no schemaVersion, and readSidecar refuses a file without
+  // one: write the current version so the file opens again.
   const out: Record<string, unknown> = {
-    schemaVersion: sidecar.schemaVersion,
-    bbmHashSha256: opts.bbmHashSha256 ?? sidecar.bbmHashSha256,
+    schemaVersion: Number.isFinite(sidecar.schemaVersion) ? sidecar.schemaVersion : CURRENT_SCHEMA_VERSION,
+    bbmHashSha256: opts.bbmHashSha256 ?? sidecar.bbmHashSha256 ?? '',
   };
   if (sidecar.anchoredLabels) out.anchoredLabels = sidecar.anchoredLabels;
   if (sidecar.modules) out.modules = sidecar.modules;
