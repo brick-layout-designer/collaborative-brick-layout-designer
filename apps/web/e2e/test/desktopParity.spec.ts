@@ -865,7 +865,7 @@ test.describe('unresolved parts', () => {
         type Node = { getClassName: () => string; stroke: () => string; fill: () => string; text: () => string };
         type Group = { getChildren: () => Node[] };
         const K = (window as unknown as { Konva: { stages: { find: (s: string) => Group[] }[] } }).Konva;
-        return K.stages.flatMap((st) => st.find('.brick-unresolved')).map((g) => {
+        return K.stages.flatMap((st) => st.find('.unresolved-part')).map((g) => {
           const kids = g.getChildren();
           const of = (c: string) => kids.filter((k) => k.getClassName() === c);
           return {

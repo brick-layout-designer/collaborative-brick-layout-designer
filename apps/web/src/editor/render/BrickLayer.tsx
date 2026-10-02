@@ -909,7 +909,8 @@ function UnknownPart({ partNumber, widthStuds, heightStuds }: { partNumber: stri
   const x = -look.width / 2;
   const y = -look.height / 2;
   return (
-    <Group name="brick-unresolved">
+    // Not "brick-…": that prefix names a brick's own group (hit tests, e2e look-ups).
+    <Group name="unresolved-part">
       {/* Clear, but it still takes clicks (Konva hit-tests the fill). */}
       <Rect x={x} y={y} width={look.width} height={look.height} fill="rgba(0,0,0,0)" perfectDrawEnabled={false} />
       <Line points={[x, y, -x, -y]} stroke="#ff0000" strokeWidth={look.penPx} listening={false} perfectDrawEnabled={false} />
