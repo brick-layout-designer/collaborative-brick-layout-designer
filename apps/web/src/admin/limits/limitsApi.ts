@@ -31,6 +31,8 @@ export interface AbuseRow {
   customParts: number;
   modules: number;
   rooms: number;
+  /** Public catalog submissions. */
+  submissions?: number;
   shareLinks: number;
   uploads1d: number;
   uploads7d: number;

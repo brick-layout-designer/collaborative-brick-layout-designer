@@ -18,6 +18,7 @@ const SORTS: { id: string; label: string; clubsOnly?: boolean }[] = [
   { id: 'customParts', label: 'Custom parts' },
   { id: 'modules', label: 'Modules' },
   { id: 'rooms', label: 'Venues' },
+  { id: 'submissions', label: 'Catalog submissions' },
   { id: 'uploads1d', label: 'Uploads today' },
   { id: 'uploads7d', label: 'Uploads, 7 days' },
   { id: 'requests1d', label: 'Requests today' },
@@ -132,6 +133,7 @@ function AbuseTable({ kind, onOpen }: { kind: 'users' | 'clubs'; onOpen: (id: st
                   <th scope="col" className="px-2 py-1.5 text-right">{head('customParts', 'Parts')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('modules', 'Modules')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('rooms', 'Venues')}</th>
+                  <th scope="col" className="px-2 py-1.5 text-right">{head('submissions', 'Shared')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('uploads7d', 'Uploads 7d')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('requests1d', 'Requests today')}</th>
                   <th scope="col" className="px-2 py-1.5 text-right">{head('refused7d', 'Refused 7d')}</th>
@@ -155,6 +157,7 @@ function AbuseTable({ kind, onOpen }: { kind: 'users' | 'clubs'; onOpen: (id: st
                     <Num>{r.customParts}</Num>
                     <Num>{r.modules}</Num>
                     <Num>{r.rooms}</Num>
+                    <Num>{r.submissions ?? 0}</Num>
                     <Num>
                       {r.uploads7d}
                       <Trend now={r.uploads7d} before={r.uploadsPrev7d} label="the week before" />
