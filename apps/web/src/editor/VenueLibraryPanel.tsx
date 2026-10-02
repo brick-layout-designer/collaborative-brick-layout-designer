@@ -163,7 +163,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
             void saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, venues, api.venues, (m) => confirm(m))
               .then((r) => {
                 if (r === 'cancelled') return;
-                useEditorStore.getState().showNotice('Venue saved to the library.');
+                useEditorStore.getState().showNotice('Venue saved to the Venue library.');
                 return refresh();
               })
               .catch((e) => alert(`Failed to save venue to library: ${(e as Error).message}`));

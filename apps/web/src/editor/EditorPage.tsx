@@ -1246,7 +1246,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                 const saved = (await qc.fetchQuery({ queryKey: ['venue-library'], queryFn: api.venues.list })).venues;
                 const r = await saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, saved, api.venues, (m) => confirm(m));
                 if (r === 'cancelled') return;
-                useEditorStore.getState().showStatusMessage('Venue saved to library.');
+                useEditorStore.getState().showStatusMessage('Venue saved to the Venue library.');
                 await qc.invalidateQueries({ queryKey: ['venue-library'] });
               })().catch((e) => alert(`Failed to save venue to library: ${(e as Error).message}`));
             }}
@@ -4377,12 +4377,12 @@ function MapMenu({
     { label: 'Venue → Draw Obstacle...', action: onVenueDrawObstacle },
     { label: 'Venue → Draw by Dimensions...', action: onVenueDimensions },
     { label: 'Venue → Edit Properties...', action: onVenueProps },
-    { label: 'Venue → Save to Library...', action: onVenueSaveToLibrary },
+    { label: 'Venue → Save to Venue library...', action: onVenueSaveToLibrary },
     { label: 'Venue → Export as File...', action: onVenueExportFile },
     { label: 'Venue → Load from File...', action: onVenueLoadFromFile },
     { label: 'Venue → Clear', action: onVenueClear },
     { label: '—', action: () => {} },
-    { label: 'Create Module from Selection...', action: onCreateModule },
+    { label: 'Group Selection as Module', action: onCreateModule },
     { label: 'Save Selection as Module...', action: onSaveModule },
     { label: 'Import .bbm as Module...', action: onImportBbm },
     { label: 'Save Selection as Set...', action: onSaveAsSet },
@@ -4406,9 +4406,9 @@ function MapMenu({
     { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
     { label: 'Show Status Bar', action: () => setShowStatusBar(!showStatusBar), checked: showStatusBar },
     { label: '—', action: () => {} },
-    { label: 'Budget...', action: onBudget },
-    { label: 'Budget → Use Budget Limitation', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
-    { label: 'Budget → Show Only Budgeted Parts', action: () => setShowOnlyBudgetedParts(!showOnlyBudgetedParts), checked: showOnlyBudgetedParts },
+    { label: 'Edit Budget...', action: onBudget },
+    { label: 'Budget → Stop at the Budget Limits', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
+    { label: 'Budget → Show Only Parts in the Budget', action: () => setShowOnlyBudgetedParts(!showOnlyBudgetedParts), checked: showOnlyBudgetedParts },
     { label: 'Budget → Show Budget Numbers', action: () => setShowBudgetNumbers(!showBudgetNumbers), checked: showBudgetNumbers },
     { label: 'Preferences...  Ctrl+,', action: onPreferences },
   ];
