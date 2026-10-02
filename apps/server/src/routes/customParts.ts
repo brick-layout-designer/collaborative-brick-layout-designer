@@ -24,6 +24,7 @@ import { env } from '../env.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
+import { clubThingRole } from '../access/clubRoles.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -92,7 +93,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     for (const { part, memberRole } of orgOwned) {
       if (seen.has(part.id)) continue;
       seen.add(part.id);
-      all.push({ ...toListItem(part), role: memberRole === 'admin' ? 'owner' : 'editor' });
+      all.push({ ...toListItem(part), role: clubThingRole(memberRole) });
     }
     for (const { part, role } of shared) {
       if (seen.has(part.id)) continue;

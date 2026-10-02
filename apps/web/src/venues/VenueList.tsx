@@ -14,12 +14,13 @@ import { downloadText } from './venueStart';
 import { defaultSaveTo, itemOrgSlug, matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
 import { MoveCopyDialog, OwnerChip, SaveToDialog } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
+import { atLeast } from '../orgs/clubRoles';
 
-/** May change it: the server says so; older servers: yours, or a club you admin. */
+/** May change it: the server says so; older servers: yours, or a club you manage. */
 export function canManageVenue(v: VenueSummary, orgs: readonly OrgSummary[] | undefined): boolean {
   if (v.canManage !== undefined) return v.canManage;
   if (!v.ownerOrgId) return true;
-  return orgs?.find((o) => o.id === v.ownerOrgId)?.myRole === 'admin';
+  return atLeast(orgs?.find((o) => o.id === v.ownerOrgId)?.myRole, 'manager');
 }
 
 export function VenueList({

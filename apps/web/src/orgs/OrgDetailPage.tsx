@@ -4,6 +4,7 @@ import { api, type Me, type OrgPartLibrary } from '../api';
 import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
 import { ClubPublicView } from './ClubDirectory';
+import { aRole, atLeast } from './clubRoles';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -29,7 +30,8 @@ function OrgDetail({ slug }: { slug: string }) {
   }
 
   const org = detail.data!;
-  const isAdmin = org.myRole === 'admin';
+  // Admins and managers both run the club from its Manage page.
+  const isAdmin = atLeast(org.myRole, 'manager');
   const myUserId = me.data.user.id;
 
   return (
@@ -41,7 +43,7 @@ function OrgDetail({ slug }: { slug: string }) {
             <h1 className="break-words text-2xl font-semibold">{org.name}</h1>
             <p className="text-sm text-muted">
               {org.memberCount !== undefined && `${org.memberCount} ${org.memberCount === 1 ? 'member' : 'members'} · `}
-              you are {isAdmin ? 'an admin' : 'a member'}
+              you are {aRole(org.myRole)}
             </p>
             {org.description && <p className="mt-2 whitespace-pre-line text-sm">{org.description}</p>}
           </div>
@@ -63,7 +65,7 @@ function OrgDetail({ slug }: { slug: string }) {
         {members.isLoading ? (
           <p className="text-sm text-muted">Loading…</p>
         ) : (
-          <MembersSection slug={slug} myUserId={myUserId} isAdmin={false} members={members.data?.members ?? []} />
+          <MembersSection slug={slug} myUserId={myUserId} myRole="member" members={members.data?.members ?? []} />
         )}
 
         <section className="space-y-2 rounded-section border border-line bg-panel p-4">

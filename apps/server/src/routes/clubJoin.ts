@@ -15,9 +15,9 @@
 //   GET    /api/orgs/:slug/summary           a club's public summary (members, or listed clubs)
 //   POST   /api/orgs/:slug/join              join an open club, or ask to join
 //   DELETE /api/orgs/:slug/join              take back your request
-//   GET    /api/orgs/:slug/join-requests     the requests waiting (admins)
-//   POST   /api/orgs/:slug/join-requests/:id/approve   (admins)
-//   POST   /api/orgs/:slug/join-requests/:id/decline   (admins)
+//   GET    /api/orgs/:slug/join-requests     the requests waiting (managers and admins)
+//   POST   /api/orgs/:slug/join-requests/:id/approve   (managers and admins)
+//   POST   /api/orgs/:slug/join-requests/:id/decline   (managers and admins)
 //   GET    /api/join-requests/count          requests waiting in the clubs you run
 
 import { randomUUID } from 'node:crypto';
@@ -29,6 +29,7 @@ import { checkGrowth } from '../limits/limits.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { escapeLike } from '../utils/validate.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
+import { atLeast, type ClubRole } from '../access/clubRoles.js';
 
 /** The longest note someone can send with a request. */
 export const JOIN_MESSAGE_MAX = 300;
@@ -54,7 +55,7 @@ async function myRequest(orgId: string, userId: string) {
 }
 
 /** What anyone signed in may see of a listed club. */
-function summary(org: Org, members: number, status: 'admin' | 'member' | 'requested' | null) {
+function summary(org: Org, members: number, status: ClubRole | 'requested' | null) {
   return {
     id: org.id,
     name: org.name,
@@ -63,7 +64,7 @@ function summary(org: Org, members: number, status: 'admin' | 'member' | 'reques
     memberCount: members,
     joinPolicy: org.joinPolicy,
     listed: org.listed,
-    /** You: 'admin' or 'member' when you're in it, 'requested' when you've asked. */
+    /** You: your role when you're in it, 'requested' when you've asked. */
     myStatus: status,
   };
 }
@@ -74,8 +75,8 @@ async function statusOf(orgId: string, userId: string) {
   return (await myRequest(orgId, userId)) ? ('requested' as const) : null;
 }
 
-/** The club, as an admin of it sees it; otherwise the reply has been sent. */
-async function asAdmin(slug: string, userId: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) {
+/** The club, as one of its managers or admins sees it; otherwise the reply has been sent. */
+async function asManager(slug: string, userId: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) {
   const org = await loadOrgBySlug(slug);
   if (!org) {
     reply.code(404).send({ error: 'not_found' });
@@ -86,7 +87,7 @@ async function asAdmin(slug: string, userId: string, reply: { code: (n: number) 
     reply.code(404).send({ error: 'not_found' });
     return null;
   }
-  if (mine.role !== 'admin') {
+  if (!atLeast(mine.role, 'manager')) {
     reply.code(403).send({ error: 'forbidden' });
     return null;
   }
@@ -151,7 +152,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const status = await statusOf(org.id, user.id);
       // Unlisted clubs stay hidden from everyone outside them.
-      if (!org.listed && status !== 'admin' && status !== 'member') return reply.code(404).send({ error: 'not_found' });
+      if (!org.listed && (status === null || status === 'requested')) return reply.code(404).send({ error: 'not_found' });
       return summary(org, await memberCount(org.id), status);
     },
   );
@@ -227,7 +228,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- requests waiting (admins) -----------------------------------------------
   app.get<{ Params: { slug: string } }>('/api/orgs/:slug/join-requests', async (req, reply) => {
     const user = requireUser(req);
-    const org = await asAdmin(req.params.slug, user.id, reply);
+    const org = await asManager(req.params.slug, user.id, reply);
     if (!org) return reply;
     const rows = await db
       .select({
@@ -260,7 +261,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      const org = await asAdmin(req.params.slug, user.id, reply);
+      const org = await asManager(req.params.slug, user.id, reply);
       if (!org) return reply;
       const request = await db
         .select()
@@ -294,7 +295,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      const org = await asAdmin(req.params.slug, user.id, reply);
+      const org = await asManager(req.params.slug, user.id, reply);
       if (!org) return reply;
       const request = await db
         .select()
@@ -325,7 +326,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
         schema.orgMembers,
         and(eq(schema.orgMembers.orgId, schema.orgJoinRequests.orgId), eq(schema.orgMembers.userId, user.id)),
       )
-      .where(eq(schema.orgMembers.role, 'admin'))
+      .where(inArray(schema.orgMembers.role, ['admin', 'manager']))
       .groupBy(schema.orgs.slug);
     return { count: rows.reduce((t, r) => t + r.n, 0), clubs: rows.map((r) => ({ slug: r.slug, count: r.n })) };
   });

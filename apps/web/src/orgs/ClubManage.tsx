@@ -17,6 +17,7 @@ import {
 } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
+import { aRole, atLeast, byRole, CLUB_ROLES, roleLabel, type ClubRole } from './clubRoles';
 
 const card = 'space-y-3 rounded-section border border-line bg-panel p-4';
 const btn = 'tap-target inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft disabled:opacity-50';
@@ -66,18 +67,23 @@ async function copy(text: string, done: (msg: string) => void) {
   }
 }
 
-/** Members with their role and when they joined; admins change roles and remove people. */
+/**
+ * Members with their role and when they joined. Admins change roles and
+ * remove anyone; managers remove members; members only look.
+ */
 export function MembersSection({
   slug,
   myUserId,
-  isAdmin,
+  myRole,
   members,
 }: {
   slug: string;
   myUserId: string;
-  isAdmin: boolean;
+  /** The viewer's role: what they may change here. */
+  myRole: ClubRole;
   members: OrgMemberSummary[];
 }) {
+  const isAdmin = myRole === 'admin';
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const refresh = () => {
@@ -85,7 +91,7 @@ export function MembersSection({
     void qc.invalidateQueries({ queryKey: ['org', slug] });
   };
   const change = useMutation({
-    mutationFn: (v: { userId: string; role: 'admin' | 'member' }) => api.orgs.changeMemberRole(slug, v.userId, v.role),
+    mutationFn: (v: { userId: string; role: ClubRole }) => api.orgs.changeMemberRole(slug, v.userId, v.role),
     onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
@@ -94,12 +100,21 @@ export function MembersSection({
     onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
-  const sorted = [...members].sort((a, b) => (a.role === b.role ? a.displayName.localeCompare(b.displayName) : a.role === 'admin' ? -1 : 1));
+  const sorted = [...members].sort((a, b) => byRole(a.role, b.role) || a.displayName.localeCompare(b.displayName));
   return (
-    <Section
-      title={`Members (${members.length})`}
-      hint={isAdmin ? 'Admins can change the club and its people. Members can use and add the club’s things.' : undefined}
-    >
+    <Section title={`Members (${members.length})`} help={atLeast(myRole, 'manager') ? 'club.roles' : undefined}>
+      {isAdmin && (
+        <ul className="space-y-1 text-sm text-muted" aria-label="What each role can do">
+          {CLUB_ROLES.map((r) => (
+            <li key={r.value}>
+              <span className="font-semibold text-ink">{r.label}:</span> {r.line}
+            </li>
+          ))}
+        </ul>
+      )}
+      {myRole === 'manager' && (
+        <p className="text-sm text-muted">As a manager you can remove members. Only admins change roles.</p>
+      )}
       {error && <p className="text-sm text-danger" role="alert">{error}</p>}
       <ul className="divide-y divide-line rounded-lg border border-line">
         {sorted.map((m) => {
@@ -131,20 +146,21 @@ export function MembersSection({
                       value={m.role}
                       onChange={(e) => {
                         setError(null);
-                        change.mutate({ userId: m.userId, role: e.target.value as 'admin' | 'member' });
+                        change.mutate({ userId: m.userId, role: e.target.value as ClubRole });
                       }}
                       className="min-h-11 rounded-lg border border-border bg-soft px-2 py-1 text-sm"
                     >
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
+                      {CLUB_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 ) : (
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.role === 'admin' ? 'bg-accent-soft text-accent-text' : 'bg-soft text-muted'}`}>
-                    {m.role === 'admin' ? 'Admin' : 'Member'}
-                  </span>
+                  <RoleBadge role={m.role} />
                 )}
-                {isAdmin && !self && (
+                {!self && (isAdmin || (myRole === 'manager' && m.role === 'member')) && (
                   <button
                     type="button"
                     className={danger}
@@ -165,12 +181,21 @@ export function MembersSection({
   );
 }
 
-/** Invite by email (or by picking an account), with an expiry; the link can be copied and sent by hand. */
-export function InviteSection({ slug }: { slug: string }) {
+/** A member's role, as a small badge. */
+export function RoleBadge({ role }: { role: ClubRole }) {
+  const tone = role === 'admin' ? 'bg-accent-soft text-accent-text' : role === 'manager' ? 'bg-ok-soft text-ok' : 'bg-soft text-muted';
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>{roleLabel(role)}</span>;
+}
+
+/**
+ * Invite by email (or by picking an account), with an expiry; the link can
+ * be copied and sent by hand. Managers invite members; admins pick the role.
+ */
+export function InviteSection({ slug, myRole = 'admin' }: { slug: string; myRole?: ClubRole }) {
   const qc = useQueryClient();
   const [email, setEmail] = useState('');
   const [pickedUserId, setPickedUserId] = useState<string | null>(null);
-  const [role, setRole] = useState<'admin' | 'member'>('member');
+  const [role, setRole] = useState<ClubRole>('member');
   const [days, setDays] = useState<number>(14);
   const [made, setMade] = useState<{ url: string; emailed: boolean } | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -258,13 +283,20 @@ export function InviteSection({ slug }: { slug: string }) {
           )}
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-muted">Joins as</span>
-            <select value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'member')} className={field}>
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
+          {myRole === 'admin' ? (
+            <label className="block">
+              <span className="mb-1 block text-muted">Joins as</span>
+              <select value={role} onChange={(e) => setRole(e.target.value as ClubRole)} className={field}>
+                {[...CLUB_ROLES].reverse().map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="self-end pb-2 text-muted">They join as a member.</p>
+          )}
           <label className="block">
             <span className="mb-1 block text-muted">Link works for</span>
             <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={field}>
@@ -298,7 +330,16 @@ export function InviteSection({ slug }: { slug: string }) {
 }
 
 /** Invites not yet accepted: copy the link, send again with a fresh expiry, or cancel. */
-export function PendingInvitesSection({ slug, invites }: { slug: string; invites: OrgInviteSummary[] }) {
+export function PendingInvitesSection({
+  slug,
+  invites,
+  myRole = 'admin',
+}: {
+  slug: string;
+  invites: OrgInviteSummary[];
+  /** Managers look after member invites; the others are the admins'. */
+  myRole?: ClubRole;
+}) {
   const qc = useQueryClient();
   const [note, setNote] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['org-members', slug] });
@@ -322,7 +363,7 @@ export function PendingInvitesSection({ slug, invites }: { slug: string; invites
               <div className="min-w-0">
                 <p className="break-all font-medium">{i.invitedEmail}</p>
                 <p className="text-xs text-muted">
-                  {i.role === 'admin' ? 'Admin' : 'Member'} · {daysLeft(i.expiresAt)}
+                  {roleLabel(i.role)} · {daysLeft(i.expiresAt)}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -331,18 +372,22 @@ export function PendingInvitesSection({ slug, invites }: { slug: string; invites
                     Copy link
                   </button>
                 )}
-                <button type="button" className={btn} disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
-                  Send again
-                </button>
-                <button
-                  type="button"
-                  className={danger}
-                  onClick={() => {
-                    if (confirm(`Cancel the invite for ${i.invitedEmail}? The link stops working.`)) cancel.mutate(i.id);
-                  }}
-                >
-                  Cancel invite
-                </button>
+                {(myRole === 'admin' || i.role === 'member') && (
+                  <>
+                    <button type="button" className={btn} disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
+                      Send again
+                    </button>
+                    <button
+                      type="button"
+                      className={danger}
+                      onClick={() => {
+                        if (confirm(`Cancel the invite for ${i.invitedEmail}? The link stops working.`)) cancel.mutate(i.id);
+                      }}
+                    >
+                      Cancel invite
+                    </button>
+                  </>
+                )}
               </div>
             </li>
           ))}
@@ -653,7 +698,7 @@ export function HandOverSection({ slug, myUserId, members }: { slug: string; myU
               {others.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.displayName}
-                  {m.role === 'admin' ? ' (already an admin)' : ''}
+                  {m.role === 'admin' ? ' (already an admin)' : m.role === 'manager' ? ' (a manager)' : ''}
                 </option>
               ))}
             </select>
@@ -759,7 +804,7 @@ export function describeEvent(e: AuditEventSummary, memberName: (id: string) => 
     case 'unshare':
       return p.selfRemoved ? `${who} left the club` : `${who} removed ${target}`;
     case 'role_change':
-      return `${who} made ${target} ${p.toRole === 'admin' ? 'an admin' : 'a member'}`;
+      return `${who} made ${target} ${p.toRole === 'admin' || p.toRole === 'manager' || p.toRole === 'member' ? aRole(p.toRole) : 'a member'}`;
     case 'hand_over':
       return `${who} handed the club to ${typeof p.toUserId === 'string' ? (memberName(p.toUserId) ?? 'a member') : 'a member'}`;
     case 'settings':

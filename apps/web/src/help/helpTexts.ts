@@ -328,6 +328,11 @@ export const HELP_TEXTS = {
     short: 'People who asked to join the club, waiting for an admin.',
     more: 'Approve to make them a member. Decline to say no; they aren’t told, and they can ask again later.',
   },
+  'club.roles': {
+    title: 'Roles in the club',
+    short: 'Admins run the club, managers run its day to day, members use it.',
+    more: 'Admins change the club’s settings and roles, and can hand over or delete the club. Managers invite people, answer requests to join, remove members and look after the club’s things. Members use and add the club’s layouts, venues, modules and parts.',
+  },
   'club.find': {
     title: 'Find a club',
     short: 'Clubs that chose to be listed here, for anyone to find.',

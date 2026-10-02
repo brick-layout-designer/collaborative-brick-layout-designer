@@ -21,6 +21,7 @@ import { recordUpload, usage } from '../metrics/usage.js';
 import { touchLayoutOpened } from '../metrics/activity.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
+import { clubThingRole } from '../access/clubRoles.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -123,7 +124,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     for (const { layout, orgName, orgSlug, memberRole } of orgOwned) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout, memberRole === 'admin' ? 'owner' : 'editor', orgName, orgSlug));
+      all.push(toListItem(layout, clubThingRole(memberRole), orgName, orgSlug));
     }
     for (const { layout, role } of shared) {
       if (seen.has(layout.id)) continue;

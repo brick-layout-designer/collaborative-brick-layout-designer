@@ -1,11 +1,15 @@
 // Organization endpoints (Phase 6).
 //
-// An org has members with two roles:
-//   - 'admin'  → can invite/remove members, change member roles, create
-//                org-owned layouts, transfer layouts in/out
-//   - 'member' → can read the org's metadata and access org-owned layouts
-//                as if they had editor role on each one (per
-//                resolveResourceRole)
+// An org has members with three roles (access/clubRoles.ts):
+//   - 'admin'   → everything: club settings, changing roles, handing the
+//                 club over, deleting it, plus all a manager does
+//   - 'manager' → day-to-day running: invite people (as members), resend or
+//                 cancel member invites, answer join requests, remove
+//                 members (not managers or admins), and own the club's
+//                 layouts, venues, modules and parts
+//   - 'member'  → can read the org's metadata and access org-owned layouts
+//                 as if they had editor role on each one (per
+//                 resolveResourceRole)
 //
 // The creator of an org becomes its first admin.
 //
@@ -23,6 +27,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { docHub } from '../ws/docHub.js';
 import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
 
 interface CreateOrgBody {
   name: string;
@@ -63,7 +68,7 @@ interface OrgMemberInviteBody {
    */
   email?: string;
   userId?: string;
-  role: 'admin' | 'member';
+  role: ClubRole;
   /** How long the invite lasts, 1 to 30 days (default 14). */
   expiresInDays?: number;
 }
@@ -207,7 +212,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       joinPolicy: org.joinPolicy,
       listed: org.listed,
       // Admins see how many people are waiting to be let in.
-      ...(myMembership.role === 'admin'
+      ...(atLeast(myMembership.role, 'manager')
         ? {
             pendingRequests: (
               await db.select({ id: schema.orgJoinRequests.id }).from(schema.orgJoinRequests).where(eq(schema.orgJoinRequests.orgId, org.id))
@@ -325,7 +330,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       const target = await getMembership(org.id, targetId);
       if (!target) return reply.code(404).send({ error: 'member_not_found' });
 
-      const setRole = (userId: string, role: 'admin' | 'member') =>
+      const setRole = (userId: string, role: ClubRole) =>
         db
           .update(schema.orgMembers)
           .set({ role })
@@ -366,10 +371,10 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         .innerJoin(schema.users, eq(schema.users.id, schema.orgMembers.userId))
         .where(eq(schema.orgMembers.orgId, org.id));
 
-      // Only admins can see pending invites (the email list is somewhat
-      // sensitive). Members get an empty array.
+      // Only admins and managers see pending invites (the email list is
+      // somewhat sensitive). Members get an empty array.
       const invites =
-        myMembership.role === 'admin'
+        atLeast(myMembership.role, 'manager')
           ? await db
               .select()
               .from(schema.orgInvites)
@@ -411,13 +416,17 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const myMembership = await getMembership(org.id, user.id);
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-      if (myMembership.role !== 'admin') {
+      if (!atLeast(myMembership.role, 'manager')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
 
       const { role } = req.body;
-      if (role !== 'admin' && role !== 'member') {
+      if (!isClubRole(role)) {
         return reply.code(400).send({ error: 'invalid_role' });
+      }
+      // Managers invite members; only admins invite managers and admins.
+      if (role !== 'member' && myMembership.role !== 'admin') {
+        return reply.code(403).send({ error: 'only_admins_set_roles' });
       }
       const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: org.id }, add: { members: 1 } });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
@@ -517,7 +526,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const myMembership = await getMembership(org.id, user.id);
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-      if (myMembership.role !== 'admin') {
+      if (!atLeast(myMembership.role, 'manager')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
 
@@ -568,8 +577,17 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const myMembership = await getMembership(org.id, user.id);
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-      if (myMembership.role !== 'admin') {
+      if (!atLeast(myMembership.role, 'manager')) {
         return reply.code(403).send({ error: 'forbidden' });
+      }
+      // Managers look after member invites; admin and manager invites are the admins'.
+      const target = await db
+        .select({ role: schema.orgInvites.role })
+        .from(schema.orgInvites)
+        .where(and(eq(schema.orgInvites.id, req.params.inviteId), eq(schema.orgInvites.orgId, org.id)))
+        .get();
+      if (target && target.role !== 'member' && myMembership.role !== 'admin') {
+        return reply.code(403).send({ error: 'only_admins_set_roles' });
       }
       await db
         .delete(schema.orgInvites)
@@ -594,13 +612,14 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const mine = await getMembership(org.id, user.id);
       if (!mine) return reply.code(404).send({ error: 'not_found' });
-      if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+      if (!atLeast(mine.role, 'manager')) return reply.code(403).send({ error: 'forbidden' });
       const invite = await db
         .select()
         .from(schema.orgInvites)
         .where(and(eq(schema.orgInvites.id, req.params.inviteId), eq(schema.orgInvites.orgId, org.id)))
         .get();
       if (!invite || invite.acceptedAt !== null) return reply.code(404).send({ error: 'not_found' });
+      if (invite.role !== 'member' && mine.role !== 'admin') return reply.code(403).send({ error: 'only_admins_set_roles' });
       const ttl = inviteTtlMs(req.body?.expiresInDays);
       if (ttl === null) return reply.code(400).send({ error: 'invalid_expiry' });
       const expiresAt = new Date(Date.now() + ttl);
@@ -619,7 +638,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // ---- change member role -------------------------------------------------
   app.patch<{
     Params: { slug: string; userId: string };
-    Body: { role: 'admin' | 'member' };
+    Body: { role: ClubRole };
   }>('/api/orgs/:slug/members/:userId', async (req, reply) => {
     const user = requireUser(req);
     const org = await loadOrgBySlug(req.params.slug);
@@ -634,7 +653,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (!targetMembership) return reply.code(404).send({ error: 'member_not_found' });
 
     const newRole = req.body.role;
-    if (newRole !== 'admin' && newRole !== 'member') {
+    if (!isClubRole(newRole)) {
       return reply.code(400).send({ error: 'invalid_role' });
     }
 
@@ -644,7 +663,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (
       myMembership.role === 'admin' &&
       req.params.userId === user.id &&
-      newRole === 'member'
+      newRole !== 'admin'
     ) {
       const adminCount = await countAdmins(org.id);
       if (adminCount <= 1) {
@@ -687,12 +706,15 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
 
       const isSelf = req.params.userId === user.id;
-      if (!isSelf && myMembership.role !== 'admin') {
+      const target = await getMembership(org.id, req.params.userId);
+      // Admins remove anyone; managers remove members only (not managers or admins).
+      const mayRemove =
+        isSelf || myMembership.role === 'admin' || (myMembership.role === 'manager' && target?.role === 'member');
+      if (!mayRemove) {
         return reply.code(403).send({ error: 'forbidden' });
       }
 
       // Last-admin guard same as above.
-      const target = await getMembership(org.id, req.params.userId);
       if (target?.role === 'admin') {
         const adminCount = await countAdmins(org.id);
         if (adminCount <= 1) {
@@ -923,7 +945,7 @@ export async function loadOrgBySlug(slug: string): Promise<typeof schema.orgs.$i
 export async function getMembership(
   orgId: string,
   userId: string,
-): Promise<{ role: 'admin' | 'member' } | null> {
+): Promise<{ role: ClubRole } | null> {
   const row = await db
     .select({ role: schema.orgMembers.role })
     .from(schema.orgMembers)

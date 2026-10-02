@@ -10,6 +10,7 @@
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { atLeast } from '../access/clubRoles.js';
 
 export interface OwnerInfo {
   kind: 'user' | 'org';
@@ -110,6 +111,6 @@ export async function destinationOrg(
     .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, userId)))
     .get();
   if (!mem) return { ok: false, code: 403, error: 'not_an_org_member' };
-  if (!org.membersCanCreate && mem.role !== 'admin') return { ok: false, code: 403, error: 'only_club_admins_can_add' };
+  if (!org.membersCanCreate && !atLeast(mem.role, 'manager')) return { ok: false, code: 403, error: 'only_club_admins_can_add' };
   return { ok: true, orgId: org.id };
 }

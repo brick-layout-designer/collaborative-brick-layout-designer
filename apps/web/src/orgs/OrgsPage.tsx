@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
 import { FindClubSection } from './ClubDirectory';
+import { aRole } from './clubRoles';
 
 /** /orgs landing: the clubs the user is in, a create button, and Find a club. */
 export function OrgsPage() {
@@ -47,7 +48,7 @@ export function OrgsPage() {
                     {o.name}
                   </Link>
                   <p className="text-xs text-muted">
-                    /{o.slug} · you are {o.myRole === 'admin' ? 'an admin' : 'a member'}
+                    /{o.slug} · you are {aRole(o.myRole)}
                   </p>
                   {waitingIn(o.slug) > 0 && (
                     <Link
