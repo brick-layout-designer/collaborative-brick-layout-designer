@@ -284,17 +284,15 @@ describe('admin insights — data', () => {
 
 describe('computeAlerts', () => {
   let backups: string;
-  const saved = { dir: env.backupsDir, enabled: env.backupsEnabled };
+  const saved = { dir: env.backupsDir };
   beforeEach(() => {
     resetDb();
     rollup.reset();
     backups = mkdtempSync(join(tmpdir(), 'cld-backups-'));
     env.backupsDir = backups;
-    env.backupsEnabled = true;
   });
   afterEach(() => {
     env.backupsDir = saved.dir;
-    env.backupsEnabled = saved.enabled;
     rmSync(backups, { recursive: true, force: true });
   });
 

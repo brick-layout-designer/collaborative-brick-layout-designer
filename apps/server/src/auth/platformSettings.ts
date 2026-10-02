@@ -43,6 +43,10 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     catalogReview: 'moderators',
     catalogAnonymousBrowse: true,
     limitsEnforced: true,
+    backupsEnabled: true,
+    dailyCompactionEnabled: true,
+    demoTtlSweepEnabled: true,
+    demoLayoutTtlDays: 30,
     updatedAt: new Date(),
     updatedBy: null,
   };

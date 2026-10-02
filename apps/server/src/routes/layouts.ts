@@ -14,6 +14,7 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { env } from '../env.js';
+import { demoExpiry } from '../workers/jobs.js';
 import { docHub } from '../ws/docHub.js';
 import { rollup } from '../metrics/rollup.js';
 import { checkGrowth, declaredBytes, type Subject } from '../limits/limits.js';
@@ -243,7 +244,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     // until an admin deletes them.
     const expiresAt =
       user.isDemoAccount && ownerUserId
-        ? new Date(now.getTime() + env.demoLayoutTtlDays * 86400_000)
+        ? await demoExpiry(now)
         : null;
 
     await db.insert(schema.layouts).values({
@@ -351,7 +352,7 @@ export async function layoutRoutes(app: FastifyInstance) {
         createdBy: user.id,
         createdAt: now,
         updatedAt: now,
-        expiresAt: user.isDemoAccount && ownerUserId ? new Date(now.getTime() + env.demoLayoutTtlDays * 86400_000) : null,
+        expiresAt: user.isDemoAccount && ownerUserId ? await demoExpiry(now) : null,
         docSnapshot: Buffer.from(encodeDoc(doc)),
         docVersion: 0,
         sidecarSnapshot: src.sidecarSnapshot,

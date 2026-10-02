@@ -3,6 +3,11 @@ function bool(value: string | undefined, fallback = false): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+/** An env switch that forces a setting when it is set, and leaves it alone when not. */
+function forcedBool(value: string | undefined): boolean | null {
+  return value === undefined || value.trim() === '' ? null : bool(value, true);
+}
+
 function int(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   const n = Number.parseInt(value, 10);
@@ -49,7 +54,8 @@ export const env = {
 
   enablePasswordAuth: bool(process.env.ENABLE_PASSWORD_AUTH, false),
   demoMode: bool(process.env.DEMO_MODE, false),
-  demoLayoutTtlDays: int(process.env.DEMO_LAYOUT_TTL_DAYS, 30),
+  // Set in Admin › Settings; when this env var is set it forces the value.
+  demoLayoutTtlDaysForced: process.env.DEMO_LAYOUT_TTL_DAYS === undefined ? null : int(process.env.DEMO_LAYOUT_TTL_DAYS, 30),
 
   bootstrapAdminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL ?? null,
   bootstrapAdminPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD ?? null,
@@ -60,11 +66,12 @@ export const env = {
 
   smtp: smtpEnv(),
 
-  // Phase 7 background workers — all on by default in production.
-  backupsEnabled: bool(process.env.BACKUPS_ENABLED, true),
+  // Background workers: switched in Admin › Settings (all on by default);
+  // each env var, when set, forces its switch (workers/jobs.ts).
+  backupsEnabledForced: forcedBool(process.env.BACKUPS_ENABLED),
   backupsDir: process.env.BACKUPS_DIR ?? '/backups',
-  demoTtlSweepEnabled: bool(process.env.DEMO_TTL_SWEEP_ENABLED, true),
-  dailyCompactionEnabled: bool(process.env.DAILY_COMPACTION_ENABLED, true),
+  demoTtlSweepEnabledForced: forcedBool(process.env.DEMO_TTL_SWEEP_ENABLED),
+  dailyCompactionEnabledForced: forcedBool(process.env.DAILY_COMPACTION_ENABLED),
 };
 
 function providerEnv(prefix: string): { clientId: string; clientSecret: string } | null {

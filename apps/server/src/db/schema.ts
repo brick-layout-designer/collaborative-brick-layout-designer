@@ -200,6 +200,15 @@ export const platformSettings = sqliteTable('platform_settings', {
    * with limits on). The LIMITS_ENFORCE env var, when set, overrides it.
    */
   limitsEnforced: integer('limits_enforced', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * Admin › Settings › Background jobs. Each env var (BACKUPS_ENABLED,
+   * DAILY_COMPACTION_ENABLED, DEMO_TTL_SWEEP_ENABLED, DEMO_LAYOUT_TTL_DAYS),
+   * when set, overrides its switch.
+   */
+  backupsEnabled: integer('backups_enabled', { mode: 'boolean' }).notNull().default(true),
+  dailyCompactionEnabled: integer('daily_compaction_enabled', { mode: 'boolean' }).notNull().default(true),
+  demoTtlSweepEnabled: integer('demo_ttl_sweep_enabled', { mode: 'boolean' }).notNull().default(true),
+  demoLayoutTtlDays: integer('demo_layout_ttl_days').notNull().default(30),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
