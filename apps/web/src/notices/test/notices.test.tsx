@@ -96,9 +96,9 @@ describe('NoticesPage', () => {
     show(<NoticesPage />);
     const rows = await screen.findAllByTestId('notice-row');
     expect(rows).toHaveLength(2);
-    expect((rows[0]).textContent).toContain('Warning · From the site team');
-    expect((rows[1]).textContent).toContain('Note');
-    expect((rows[1]).textContent).toContain('Read');
+    expect(rows[0]!.textContent).toContain('Warning · From the site team');
+    expect(rows[1]!.textContent).toContain('Note');
+    expect(rows[1]!.textContent).toContain('Read');
     expect(screen.getAllByRole('button', { name: 'I understand' })).toHaveLength(1);
   });
 });
