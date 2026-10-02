@@ -4,7 +4,8 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CatalogReview } from '../api';
+import { api, type CatalogReview, type WarningSubject } from '../api';
+import { WarnForm } from '../notices/Notices';
 
 export function ModerationTab() {
   const qc = useQueryClient();
@@ -68,6 +69,7 @@ export function ModerationTab() {
                     Decline…
                   </button>
                 </div>
+                {q.owner && <WarnOwner owner={q.owner} title={q.title} by={q.by} link="/catalog" />}
               </li>
             ))}
           </ul>
@@ -102,12 +104,36 @@ export function ModerationTab() {
                     Unpublish
                   </button>
                 )}
+                {i.owner && <WarnOwner owner={i.owner} title={i.title} by={i.by} link="/catalog" />}
               </li>
             ))}
           </ul>
         )}
       </section>
       {error && <p className="text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/** "Warn the owner…" under a catalog entry: a warning to whoever shared it, linked to it. */
+function WarnOwner({ owner, title, by, link }: { owner: WarningSubject; title: string; by: string; link: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="basis-full">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        aria-label={`Warn the owner of ${title}`}
+        className="text-xs text-muted hover:text-ink hover:underline"
+      >
+        Warn the owner ({by})…
+      </button>
+      {open && (
+        <div className="mt-2">
+          <WarnForm label={`Warn ${by}`} onSend={(input) => api.warnings.send(owner, { ...input, link: input.link ?? link })} onDone={() => setOpen(false)} />
+        </div>
+      )}
     </div>
   );
 }

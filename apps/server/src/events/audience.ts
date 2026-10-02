@@ -9,6 +9,7 @@
 //   - site-wide things (published catalog, global parts, site settings):
 //     everyone signed in
 //   - admin-only things (limits, admin lists): site admins
+//   - warnings: worked out per warning (routeHints.ts `warningHint`)
 //
 // Anyone else gets nothing.
 
@@ -62,7 +63,7 @@ async function collaboratorIds(kind: Hint['kind'], id: string): Promise<string[]
   return [];
 }
 
-async function staffIds(moderators: boolean): Promise<string[]> {
+export async function staffIds(moderators: boolean): Promise<string[]> {
   const cond = moderators
     ? or(eq(schema.users.isGlobalAdmin, true), eq(schema.users.isModerator, true))
     : eq(schema.users.isGlobalAdmin, true);
@@ -71,9 +72,9 @@ async function staffIds(moderators: boolean): Promise<string[]> {
 }
 
 /** Kinds the admin pages list, so admins hear about them. */
-const ADMIN_SEES = new Set<Hint['kind']>(['layout', 'module', 'club', 'admin', 'limits', 'warning']);
+const ADMIN_SEES = new Set<Hint['kind']>(['layout', 'module', 'club', 'admin', 'limits']);
 /** Kinds moderators hear about too. */
-const MODERATOR_SEES = new Set<Hint['kind']>(['catalog', 'warning']);
+const MODERATOR_SEES = new Set<Hint['kind']>(['catalog']);
 
 /**
  * The people who should get `hint`, among those `connected`. Returns

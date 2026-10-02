@@ -34,6 +34,11 @@ const MAX_TAGS = 8;
 const MAX_TAG = 24;
 const MAX_REASON = 300;
 
+/** A catalog item's owner, as a warning's subject. */
+function ownerRef(i: { ownerUserId: string | null; ownerOrgId: string | null }): { kind: 'user' | 'org'; id: string } | null {
+  return i.ownerOrgId ? { kind: 'org', id: i.ownerOrgId } : i.ownerUserId ? { kind: 'user', id: i.ownerUserId } : null;
+}
+
 export function canModerate(user: Pick<User, 'isGlobalAdmin' | 'isModerator'> | null | undefined): boolean {
   return !!user && (user.isGlobalAdmin || user.isModerator);
 }
@@ -640,8 +645,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         submitter: q.submitterName ? { name: q.submitterName, email: q.submitterEmail } : null,
         createdAt: q.createdAt.getTime(),
         previewUrl: `/api/catalog/items/${q.itemId}/preview?v=${q.version}`,
+        // Whom a moderator would warn about it.
+        owner: ownerRef(q),
       })),
-      items: items.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason })),
+      items: items.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason, owner: ownerRef(i) })),
     };
   });
 

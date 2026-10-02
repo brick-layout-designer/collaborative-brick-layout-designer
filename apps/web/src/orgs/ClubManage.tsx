@@ -18,6 +18,7 @@ import {
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
 import { aRole, atLeast, byRole, CLUB_ROLES, roleLabel, type ClubRole } from './clubRoles';
+import { WarnForm, WarningHistory } from '../notices/Notices';
 
 const card = 'space-y-3 rounded-section border border-line bg-panel p-4';
 const btn = 'tap-target inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft disabled:opacity-50';
@@ -100,6 +101,7 @@ export function MembersSection({
     onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
+  const [warning, setWarning] = useState<string | null>(null);
   const sorted = [...members].sort((a, b) => byRole(a.role, b.role) || a.displayName.localeCompare(b.displayName));
   return (
     <Section title={`Members (${members.length})`} help={atLeast(myRole, 'manager') ? 'club.roles' : undefined}>
@@ -120,7 +122,7 @@ export function MembersSection({
         {sorted.map((m) => {
           const self = m.userId === myUserId;
           return (
-            <li key={m.userId} className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <li key={m.userId} className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 {m.avatarUrl ? (
                   <img src={m.avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-full" />
@@ -172,11 +174,50 @@ export function MembersSection({
                     Remove
                   </button>
                 )}
+                {!self && mayWarn(myRole, m.role) && (
+                  <button
+                    type="button"
+                    aria-expanded={warning === m.userId}
+                    className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
+                    onClick={() => setWarning(warning === m.userId ? null : m.userId)}
+                  >
+                    Warn
+                  </button>
+                )}
               </div>
+              {warning === m.userId && (
+                <div className="basis-full sm:w-full">
+                  <WarnForm
+                    label={`Warn ${m.displayName}`}
+                    onSend={(input) => api.warnings.clubSend(slug, m.userId, input)}
+                    onDone={() => setWarning(null)}
+                  />
+                </div>
+              )}
             </li>
           );
         })}
       </ul>
+    </Section>
+  );
+}
+
+/** Managers warn members; admins warn members and managers; nobody warns an admin. */
+export function mayWarn(by: ClubRole, target: ClubRole): boolean {
+  if (target === 'admin') return false;
+  if (target === 'manager') return by === 'admin';
+  return atLeast(by, 'manager');
+}
+
+/** The warnings this club sent its members (admins and managers). */
+export function ClubWarningsSection({ slug }: { slug: string }) {
+  const list = useQuery({ queryKey: ['org-warnings', slug], queryFn: () => api.warnings.clubHistory(slug) });
+  return (
+    <Section title="Warnings sent">
+      <p className="text-sm text-muted">
+        Warnings the club's admins and managers sent to members, and whether they've read them. Site admins can see them too.
+      </p>
+      {list.isLoading ? <p className="text-sm text-muted">Loading…</p> : <WarningHistory warnings={list.data?.warnings ?? []} showTo />}
     </Section>
   );
 }

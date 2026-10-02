@@ -909,11 +909,26 @@ export const api = {
   },
 
   moderation: {
-    items: () => get<{ queue: ModerationEntry[]; items: (CatalogItem & { status: CatalogStatus; reason: string | null })[] }>('/api/moderation/items'),
+    items: () => get<{ queue: ModerationEntry[]; items: (CatalogItem & { status: CatalogStatus; reason: string | null; owner: WarningSubject | null })[] }>('/api/moderation/items'),
     approve: (versionId: string) => post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/approve`, {}),
     decline: (versionId: string, reason: string) =>
       post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/decline`, { reason }),
     unpublish: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/unpublish`, { reason }),
+  },
+
+  // Warnings: the ones I received (notices), and sending them.
+  warnings: {
+    notices: () => get<{ notices: WarningSummary[] }>('/api/notices'),
+    acknowledge: (id: string) => post<{ ok: true; acknowledgedAt: number }>(`/api/notices/${encodeURIComponent(id)}/acknowledge`, {}),
+    /** Site admins and moderators: a person's or club's history. */
+    history: (subject: WarningSubject) =>
+      get<{ warnings: WarningSummary[] }>(`/api/admin/warnings?subjectKind=${subject.kind}&subjectId=${encodeURIComponent(subject.id)}`),
+    send: (subject: WarningSubject, input: WarningInput) =>
+      post<{ id: string }>('/api/admin/warnings', { subjectKind: subject.kind, subjectId: subject.id, ...input }),
+    /** A club's admins and managers: what the club sent. */
+    clubHistory: (slug: string) => get<{ warnings: WarningSummary[] }>(`/api/orgs/${encodeURIComponent(slug)}/warnings`),
+    clubSend: (slug: string, userId: string, input: WarningInput) =>
+      post<{ id: string }>(`/api/orgs/${encodeURIComponent(slug)}/warnings`, { userId, ...input }),
   },
 
   // Per-org part library management (org admin only).
@@ -1031,6 +1046,33 @@ export interface ModerationEntry {
   submitter: { name: string; email: string } | null;
   createdAt: number;
   previewUrl: string;
+  /** Who it belongs to, for a warning. */
+  owner: WarningSubject | null;
+}
+
+export type WarningSubject = { kind: 'user' | 'org'; id: string };
+export type WarningSeverity = 'note' | 'warning' | 'final';
+
+/** A warning, as the notices list and the admin and club histories show it. */
+export interface WarningSummary {
+  id: string;
+  scope: 'site' | 'club';
+  severity: WarningSeverity;
+  reason: string;
+  link: string | null;
+  createdAt: number;
+  acknowledgedAt: number | null;
+  /** Who sent it: only in the admin and club histories. */
+  issuedBy: { id: string; name: string } | null;
+  /** Club warnings: the club it's from. */
+  club: { id: string; name: string; slug: string } | null;
+  to: { kind: 'user'; id: string; name: string } | { kind: 'org'; id: string; name: string; slug: string };
+}
+
+export interface WarningInput {
+  severity: WarningSeverity;
+  reason: string;
+  link?: string;
 }
 
 export interface AdminSettings {

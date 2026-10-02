@@ -31,6 +31,7 @@ import { partsManifestRoutes } from './partsManifest.js';
 import { transferRoutes } from './transfers.js';
 import { wsRoutes } from './ws.js';
 import { eventRoutes } from './events.js';
+import { warningRoutes } from './warnings.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(versionRoutes);
@@ -61,4 +62,5 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(adminLimitsRoutes);
   await app.register(wsRoutes);
   await app.register(eventRoutes);
+  await app.register(warningRoutes);
 }

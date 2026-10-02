@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveUpdates } from './live/LiveUpdates';
+import { NoticeBanner, NoticesPage } from './notices/Notices';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { PARTS_SECTION } from './parts/CustomPartsSection';
 import { TourProvider } from './tours/TourProvider';
@@ -142,6 +143,7 @@ createRoot(root).render(
       <BrowserRouter>
         <GlobalBbmDrop />
         <SiteVersionBar />
+        <NoticeBanner />
         <TourProvider>
         <Suspense fallback={null}>
         <Routes>
@@ -168,6 +170,7 @@ createRoot(root).render(
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notices" element={<NoticesPage />} />
           <Route path="/p/:token" element={<PublicLayoutPage />} />
         </Routes>
         </Suspense>

@@ -70,7 +70,13 @@ export type AuditEventType =
   | 'catalog_decline'
   | 'catalog_unpublish'
   | 'catalog_withdraw'
-  | 'catalog_add';
+  | 'catalog_add'
+  // Warnings: a site admin or moderator warned a person or club ('warn'),
+  // a club's admin or manager warned a member ('club_warn'), and the
+  // recipient said they read it ('warn_ack'). Subject is the person or club.
+  | 'warn'
+  | 'club_warn'
+  | 'warn_ack';
 
 export type AuditResourceKind =
   | 'layout'

@@ -23,6 +23,8 @@ interface Props {
 export function AppHeader({ user }: Props) {
   // The Catalog link shows only while a public catalog is on.
   const catalog = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
+  // Only shown once there's something in it (a warning or a note).
+  const notices = useQuery({ queryKey: ['notices'], queryFn: api.warnings.notices });
   const qc = useQueryClient();
   const navigate = useNavigate();
   const logout = useMutation({
@@ -118,6 +120,11 @@ export function AppHeader({ user }: Props) {
           >
             Admin
           </Link>
+        )}
+        {(notices.data?.notices?.length ?? 0) > 0 && (
+          <NavLink to="/notices" className={link}>
+            Notices
+          </NavLink>
         )}
         <NavLink to="/settings" className={link}>
           Settings
