@@ -4,7 +4,7 @@
 // surfaces HTTP errors correctly.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, spriteUrlFor, type PartWire } from '../api';
+import { api, FIREWALL_BLOCKED, spriteUrlFor, type PartWire } from '../api';
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -267,5 +267,22 @@ describe('limit messages', () => {
   it('ignores a message on other errors', async () => {
     stubFetch(okResponse({ error: 'forbidden', message: '<b>raw</b>' }, 403));
     await expect(api.layouts.create({ title: 'x' })).rejects.toThrow("You don't have permission to do that.");
+  });
+});
+
+describe('a 403 from the site\'s firewall', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('says the firewall blocked it (empty or non-JSON body) and logs the method and path', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    for (const body of ['', '<html>Request blocked</html>']) {
+      stubFetch(() => new Response(body, { status: 403 }));
+      await expect(api.layouts.create({ title: 'x' })).rejects.toThrow(FIREWALL_BLOCKED);
+    }
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('POST /api/layouts'));
+    warn.mockRestore();
+  });
+  it('still says "no permission" when the app itself refused (JSON body)', async () => {
+    stubFetch(() => new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }));
+    await expect(api.layouts.list()).rejects.toThrow("You don't have permission to do that.");
   });
 });

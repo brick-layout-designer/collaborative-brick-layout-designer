@@ -26,7 +26,7 @@ beforeEach(() => {
       return json(200, { orgs: [{ id: 'org1', name: 'ArkLUG', slug: 'arklug', createdAt: 0, myRole: 'admin' }] });
     if (method === 'POST' && input === '/api/modules') return json(201, { id: 'm1', title: 'Yard' });
     if (method === 'PUT' && input === '/api/modules/m1/snapshot')
-      return snapshotStatus === 200 ? json(200, { updatedAt: 1 }) : new Response('', { status: snapshotStatus });
+      return snapshotStatus === 200 ? json(200, { updatedAt: 1 }) : json(snapshotStatus, { error: 'forbidden' });
     if (method === 'DELETE' && input === '/api/modules/m1') return json(200, { ok: true });
     return json(404, { error: 'not_found' });
   });
