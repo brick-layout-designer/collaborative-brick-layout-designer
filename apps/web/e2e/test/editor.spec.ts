@@ -321,3 +321,14 @@ test.describe('editor — layers panel', () => {
     await expect(partsRow.locator('span.tabular-nums.text-\\[10px\\].text-muted')).toHaveText('0');
   });
 });
+
+test.describe('editor — saving', () => {
+  test('there is one Save button, and it saves', async ({ page }) => {
+    const id = await loginAndCreateLayout(page);
+    await openEditor(page, id);
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toHaveCount(1);
+    await save.click();
+    await expect(page.getByTestId('save-status')).toHaveText('Saved');
+  });
+});

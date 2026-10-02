@@ -991,15 +991,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               Insert module
             </button>
           )}
-          {/* (A module has Save module in its header.) */}
-          {!isViewer && !moduleMode && (
-            <button
-              onClick={() => void saveNow()}
-              className="shrink-0 rounded-lg bg-accent text-accent-ink px-3 py-1 text-sm hover:bg-accent-hover"
-            >
-              Save
-            </button>
-          )}
+          {/* Save is in the edit toolbar (Save, Ctrl+S); a module has Save module in its header. */}
       </div>
       )}
       {showRail && (
