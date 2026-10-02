@@ -162,11 +162,13 @@ describe('catalog collections', () => {
     expect((await req('POST', `/api/moderation/collections/${id}/approve`, mod, {})).statusCode).toBe(200);
     expect((await list(alice)).collections.map((c) => c.title)).toEqual(['Yard basics']);
 
-    // An edit waits; the public collection stays as it was meanwhile.
+    // A change to its text waits; the public text stays as it was meanwhile.
+    // Its items change at once: they're reviewed on their own.
     const e = await req('PATCH', `/api/catalog/collections/${id}`, bob, { title: 'Yard essentials', itemIds: [shed] });
     expect(e.json()).toMatchObject({ status: 'public', pending: true });
-    expect((await list(alice)).collections[0]).toMatchObject({ title: 'Yard basics', itemCount: 2 });
-    expect((await queue(mod))[0]).toMatchObject({ id, title: 'Yard essentials', isUpdate: true });
+    expect((await list(alice)).collections[0]).toMatchObject({ title: 'Yard basics', itemCount: 1 });
+    expect((await queue(mod))[0]).toMatchObject({ id, title: 'Yard essentials', isUpdate: true, old: { title: 'Yard basics' } });
+    await req('PATCH', `/api/catalog/collections/${id}`, bob, { itemIds: [yard, shed] });
     // Declined: still public as before, and Bob sees why.
     await req('POST', `/api/moderation/collections/${id}/decline`, mod, { reason: 'Keep the yard in it' });
     expect((await mine(bob))[0]).toMatchObject({ status: 'public', pending: false, reason: 'Keep the yard in it', title: 'Yard basics' });
@@ -207,7 +209,11 @@ describe('catalog collections', () => {
 
   it('only the curator edits; only public items go in', async () => {
     const id = ((await create(bob, { title: 'Mine', itemIds: [yard] })).json() as { id: string }).id;
+    // Still in review: others can't see it at all. Public: they're refused.
+    expect((await req('PATCH', `/api/catalog/collections/${id}`, alice, { title: 'Hijacked' })).statusCode).toBe(404);
+    await req('POST', `/api/moderation/collections/${id}/approve`, mod, {});
     expect((await req('PATCH', `/api/catalog/collections/${id}`, alice, { title: 'Hijacked' })).statusCode).toBe(403);
+    expect((await req('POST', `/api/catalog/collections/${id}/items`, alice, { itemId: shed })).statusCode).toBe(403);
     // A moderator can't rewrite someone's own collection either (only official ones).
     expect((await req('PATCH', `/api/catalog/collections/${id}`, mod, { title: 'Hijacked' })).statusCode).toBe(403);
     // An item still in review can't go in.
@@ -255,14 +261,22 @@ describe('catalog collections', () => {
     expect(removed).toHaveLength(3);
   });
 
-  it('an item that leaves is also taken out of a change waiting for review', async () => {
+  it('an item that leaves is also taken out of a change waiting from before items were reviewed alone', async () => {
     const id = ((await create(mod, { title: 'Official', itemIds: [yard] })).json() as { id: string }).id;
-    await req('PATCH', `/api/catalog/collections/${id}`, bob, { title: 'x' }); // not his: refused
-    await db.update(schema.catalogCollections).set({ ownerUserId: await userId('bob@example.com'), official: false }).where(eq(schema.catalogCollections.id, id));
-    await req('PATCH', `/api/catalog/collections/${id}`, bob, { itemIds: [yard, shed] });
+    // A change saved by the earlier version, with its items in it.
+    await db
+      .update(schema.catalogCollections)
+      .set({ ownerUserId: await userId('bob@example.com'), official: false, pending: JSON.stringify({ title: 'Both', description: '', coverItemId: shed, itemIds: [yard, shed] }) })
+      .where(eq(schema.catalogCollections.id, id));
     await req('POST', `/api/moderation/items/${shed}/unpublish`, mod, {});
     const row = await db.select().from(schema.catalogCollections).where(eq(schema.catalogCollections.id, id)).get();
-    expect(parseDraft(row!.pending)?.itemIds).toEqual([yard]);
+    expect(parseDraft(row!.pending)).toMatchObject({ itemIds: [yard], coverItemId: null });
+    // Approving it still applies its items.
+    await req('POST', `/api/catalog/collections/${id}/items`, bob, { itemId: signal });
+    await req('POST', `/api/moderation/collections/${id}/approve`, mod, {});
+    const d = (await req('GET', `/api/catalog/collections/${id}`, alice)).json() as { collection: { title: string }; items: { id: string }[] };
+    expect(d.collection.title).toBe('Both');
+    expect(d.items.map((i) => i.id)).toEqual([yard]);
   });
 
   it('collections follow the catalog switches', async () => {

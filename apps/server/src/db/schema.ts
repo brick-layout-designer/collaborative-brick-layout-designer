@@ -597,6 +597,12 @@ export const modules = sqliteTable(
   thumbnailAt: integer('thumbnail_at', { mode: 'timestamp_ms' }),
   /** The newest saved version's number (module_versions); 0 until the first save with versions. */
   latestVersion: integer('latest_version').notNull().default(0),
+  /**
+   * The module this one was copied from (no FK: the original may go), so
+   * "Add all" from a club collection can skip what you already copied.
+   * Null for modules made from scratch, and for copies made before 0021.
+   */
+  copiedFromId: text('copied_from_id'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -958,12 +964,29 @@ export const catalogCollections = sqliteTable(
     pendingAt: integer('pending_at', { mode: 'timestamp_ms' }),
     /** For the curator: items that left the catalog and were taken out. */
     curatorNote: text('curator_note'),
+    /**
+     * A club's collection: its admins and managers curate it, and every
+     * member sees it. Null for a person's own (or an official) collection.
+     */
+    orgId: text('org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    /**
+     * Who sees it: 'everyone' (the public catalog, under the person's or the
+     * club's name; its text is reviewed, and `status` follows that review)
+     * or 'private' (only its curator, or only the club's members; never
+     * reviewed, and `status` stays 'public', meaning live for them).
+     */
+    audience: text('audience', { enum: ['everyone', 'private'] }).notNull().default('everyone'),
+    /** A club collection its curators put at the top for the club's members. */
+    pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
+    /** A club collection's cover can be one of the club's own modules. */
+    coverModuleId: text('cover_module_id').references(() => modules.id, { onDelete: 'set null' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => ({
     statusIdx: index('catalog_collections_status_idx').on(t.status, t.featured),
     ownerIdx: index('catalog_collections_owner_idx').on(t.ownerUserId),
+    orgIdx: index('catalog_collections_org_idx').on(t.orgId),
   }),
 );
 
@@ -981,6 +1004,29 @@ export const catalogCollectionItems = sqliteTable(
   (t) => ({
     pk: primaryKey({ columns: [t.collectionId, t.itemId] }),
     itemIdx: index('catalog_collection_items_item_idx').on(t.itemId),
+  }),
+);
+
+/**
+ * A club collection's own library modules (not in the public catalog).
+ * `position` shares one order with catalog_collection_items. Only modules
+ * the collection's club owns show; one that's deleted or moved out of the
+ * club is taken out, and the curators get a note.
+ */
+export const catalogCollectionModules = sqliteTable(
+  'catalog_collection_modules',
+  {
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => catalogCollections.id, { onDelete: 'cascade' }),
+    moduleId: text('module_id')
+      .notNull()
+      .references(() => modules.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.collectionId, t.moduleId] }),
+    moduleIdx: index('catalog_collection_modules_module_idx').on(t.moduleId),
   }),
 );
 

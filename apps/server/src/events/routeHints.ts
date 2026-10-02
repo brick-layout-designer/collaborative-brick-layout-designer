@@ -197,33 +197,49 @@ const catalogAdd: HintSpec = {
   },
 };
 
-async function collectionState(id: string): Promise<{ status: string; owner?: HintOwner } | null> {
+interface CollectionState {
+  /** In the public catalog: everyone may see it. */
+  listed: boolean;
+  /** Its club (whose members see it), else its curator. */
+  owner?: HintOwner;
+}
+
+async function collectionState(id: string): Promise<CollectionState | null> {
   const row = await db
-    .select({ status: schema.catalogCollections.status, u: schema.catalogCollections.ownerUserId })
+    .select({
+      status: schema.catalogCollections.status,
+      audience: schema.catalogCollections.audience,
+      u: schema.catalogCollections.ownerUserId,
+      org: schema.catalogCollections.orgId,
+    })
     .from(schema.catalogCollections)
     .where(eq(schema.catalogCollections.id, id))
     .get();
-  return row ? { status: row.status, ...(row.u ? { owner: { kind: 'user' as const, id: row.u } } : {}) } : null;
+  if (!row) return null;
+  const owner: HintOwner | undefined = row.org ? { kind: 'org', id: row.org } : row.u ? { kind: 'user', id: row.u } : undefined;
+  return { listed: row.status === 'public' && row.audience === 'everyone', ...(owner ? { owner } : {}) };
 }
 
 /**
- * A catalog collection. Everyone hears when what's public changes (it was
- * or is public); otherwise only its curator, the person acting and
- * moderators (who hear every catalog hint).
+ * A catalog collection. Everyone hears when what's in the public catalog
+ * changes (it was or is listed); otherwise its club's members (or its
+ * curator), the person acting, and moderators (who hear every catalog
+ * hint). Read before the change too, so a deleted one still reaches them.
  */
 function collection(idFrom: { param?: string; reply?: string } = { param: 'id' }): HintSpec {
   return {
     before: async (ctx) => {
       const id = idFrom.param ? ctx.params[idFrom.param] : null;
-      ctx.before.status = id ? (await collectionState(id))?.status : undefined;
+      ctx.before.state = id ? await collectionState(id) : null;
     },
     after: async (ctx) => {
       const id = (idFrom.reply ? str(ctx.reply?.[idFrom.reply]) : null) ?? (idFrom.param ? (ctx.params[idFrom.param] ?? null) : null);
       if (!id) return [];
+      const was = ctx.before.state as CollectionState | null | undefined;
       const now = await collectionState(id);
-      const isPublic = ctx.before.status === 'public' || now?.status === 'public';
-      const hint: Hint = { kind: 'catalog', id, action: action(ctx.req), ...(now?.owner ? { owner: now.owner } : {}) };
-      return [{ hint, reach: isPublic ? { everyone: true } : { users: [ctx.userId] } }];
+      const owner = now?.owner ?? was?.owner;
+      const hint: Hint = { kind: 'catalog', id, action: action(ctx.req), ...(owner ? { owner } : {}) };
+      return [{ hint, reach: was?.listed || now?.listed ? { everyone: true } : { users: [ctx.userId] } }];
     },
   };
 }
@@ -244,7 +260,13 @@ const collectionAdd: HintSpec = {
       seen.add(key);
       out.push({ hint: { kind, owner: now.owner, id, action: 'create' } });
     }
-    if (added.length) out.push({ hint: { kind: 'catalog', id: ctx.params.id ?? '', action: 'add' }, reach: { everyone: true } });
+    if (added.length) {
+      const c = await collectionState(ctx.params.id ?? '');
+      out.push({
+        hint: { kind: 'catalog', id: ctx.params.id ?? '', action: 'add', ...(c?.owner ? { owner: c.owner } : {}) },
+        reach: c?.listed ? { everyone: true } : { users: [ctx.userId] },
+      });
+    }
     return out;
   },
 };
@@ -358,6 +380,9 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/catalog/collections/:id/withdraw': collection(),
   'POST /api/catalog/collections/:id/dismiss-note': collection(),
   'POST /api/catalog/collections/:id/add': collectionAdd,
+  'POST /api/catalog/collections/:id/items': collection(),
+  'DELETE /api/catalog/collections/:id': collection(),
+  'POST /api/moderation/collections/:id/remove': collection(),
   'POST /api/moderation/collections/:id/approve': collection(),
   'POST /api/moderation/collections/:id/decline': collection(),
   'POST /api/moderation/collections/:id/unpublish': collection(),
