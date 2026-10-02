@@ -83,13 +83,25 @@ export function cleanText(raw: unknown, max: number): string | null | undefined 
 }
 
 /** The club role the user has in `orgId`, if any. */
-async function clubRole(userId: string, orgId: string): Promise<ClubRole | null> {
+export async function clubRole(userId: string, orgId: string): Promise<ClubRole | null> {
   const m = await db
     .select({ role: schema.orgMembers.role })
     .from(schema.orgMembers)
     .where(and(eq(schema.orgMembers.orgId, orgId), eq(schema.orgMembers.userId, userId)))
     .get();
   return m?.role ?? null;
+}
+
+/** Which of these clubs are trusted (they review what's published under their name). */
+export async function trustedClubs(orgIds: readonly (string | null | undefined)[]): Promise<Set<string>> {
+  const ids = [...new Set(orgIds.filter((x): x is string => !!x))];
+  if (!ids.length) return new Set();
+  const rows = await db.select({ id: schema.orgs.id }).from(schema.orgs).where(and(inArray(schema.orgs.id, ids), eq(schema.orgs.trusted, true)));
+  return new Set(rows.map((r) => r.id));
+}
+
+export async function isTrustedClub(orgId: string | null | undefined): Promise<boolean> {
+  return !!orgId && (await trustedClubs([orgId])).has(orgId);
 }
 
 /** Whether `user` manages things owned by this person or club: the person themselves, or a club admin / manager. */
@@ -280,7 +292,12 @@ export async function submitToCatalog(
   if (!(await catalogOn(kind))) return fail(404, { error: 'catalog_off' });
   const src = await snapshotSource(kind, sourceId);
   if (!src) return fail(404, { error: 'not_found' });
-  if (!(await manages(user.id, src))) return fail(403, { error: 'forbidden' });
+  // A club's things: its admins and managers share them; in a trusted club,
+  // members may too (for the club's own review).
+  const role = src.ownerOrgId ? await clubRole(user.id, src.ownerOrgId) : null;
+  const trusted = await isTrustedClub(src.ownerOrgId);
+  const mayShare = src.ownerOrgId ? atLeast(role, 'manager') || (trusted && !!role) : src.ownerUserId === user.id;
+  if (!mayShare) return fail(403, { error: 'forbidden' });
   const title = cleanText(b.title ?? src.title, MAX_TITLE);
   const description = cleanText(b.description, MAX_DESCRIPTION);
   const note = cleanText(b.note, MAX_REASON);
@@ -321,7 +338,8 @@ export async function submitToCatalog(
     .where(eq(schema.catalogItemVersions.itemId, item.id))
     .get();
   const version = (last?.v ?? 0) + 1;
-  const straight = review === 'none';
+  // Review off, or a trusted club's admin or manager: public at once.
+  const straight = review === 'none' || (trusted && atLeast(role, 'manager'));
   await db.insert(schema.catalogItemVersions).values({
     id: randomUUID(),
     itemId: item.id,
@@ -364,9 +382,57 @@ export async function submitToCatalog(
     resourceId: item.id,
     userId: user.id,
     eventType: 'catalog_submit',
-    payload: { kind, sourceId, version, title, straight },
+    payload: { kind, sourceId, version, title, straight, ...(trusted ? { clubReview: !straight } : {}) },
   });
   return { ok: true, code: 201, body: { id: item.id, version, status: straight ? 'public' : 'in_review' } };
+}
+
+/**
+ * Approve or decline a waiting version: site moderators (any), or a trusted
+ * club's admins and managers (`clubId`: only the club's own items).
+ */
+export async function decideVersion(user: User, versionId: string, approve: boolean, rawReason: unknown, clubId: string | null = null) {
+  const v = await db.select().from(schema.catalogItemVersions).where(eq(schema.catalogItemVersions.id, versionId)).get();
+  if (!v || v.status !== 'in_review') return { code: 404 as const, body: { error: 'not_found' } };
+  const reason = cleanText(rawReason, MAX_REASON);
+  if (reason === undefined) return { code: 400 as const, body: { error: 'invalid_input' } };
+  const item = (await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, v.itemId)).get())!;
+  if (clubId && item.ownerOrgId !== clubId) return { code: 404 as const, body: { error: 'not_found' } };
+  const now = new Date();
+  await db
+    .update(schema.catalogItemVersions)
+    .set({ status: approve ? 'public' : 'declined', reason, decidedBy: user.id, decidedAt: now })
+    .where(eq(schema.catalogItemVersions.id, v.id));
+  if (approve) {
+    await db
+      .update(schema.catalogItems)
+      .set({ status: 'public', publicVersion: v.version, reason: null, updatedAt: now })
+      .where(eq(schema.catalogItems.id, item.id));
+  } else if (item.publicVersion === 0) {
+    // A first submission declined: the item says why. (A declined update
+    // leaves the public version as it is.)
+    await db.update(schema.catalogItems).set({ status: 'declined', reason, updatedAt: now }).where(eq(schema.catalogItems.id, item.id));
+  }
+  await writeAuditEvent({
+    resourceKind: 'catalog_item',
+    resourceId: item.id,
+    userId: user.id,
+    eventType: approve ? 'catalog_approve' : 'catalog_decline',
+    payload: { version: v.version, reason, ...(clubId ? { byClub: clubId } : {}) },
+  });
+  return { code: 200 as const, body: { ok: true } };
+}
+
+/** Take an item out of the catalog at once: a site moderator, or (`clubId`) a trusted club's admin or manager. */
+export async function unpublishItem(user: User, itemId: string, rawReason: unknown, clubId: string | null = null) {
+  const reason = cleanText(rawReason, MAX_REASON);
+  if (reason === undefined) return { code: 400, body: { error: 'invalid_input' } };
+  const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, itemId)).get();
+  if (!item || (clubId && item.ownerOrgId !== clubId)) return { code: 404, body: { error: 'not_found' } };
+  await db.update(schema.catalogItems).set({ status: 'unpublished', reason, updatedAt: new Date() }).where(eq(schema.catalogItems.id, item.id));
+  await writeAuditEvent({ resourceKind: 'catalog_item', resourceId: item.id, userId: user.id, eventType: 'catalog_unpublish', payload: { reason, ...(clubId ? { byClub: clubId } : {}) } });
+  await dropFromCollections(item, clubId ? 'unpublished by the club' : 'unpublished by a moderator', user.id);
+  return { code: 200, body: { ok: true } };
 }
 
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
@@ -411,7 +477,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .orderBy(req.query.sort === 'popular' ? desc(schema.catalogItems.uses) : desc(schema.catalogItems.updatedAt))
         .limit(200);
       const name = await ownerNames(rows);
-      return { items: rows.map((r) => itemOut(r, name(r))) };
+      const trusted = await trustedClubs(rows.map((r) => r.ownerOrgId));
+      return { items: rows.map((r) => ({ ...itemOut(r, name(r)), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId) })) };
     },
   );
 
@@ -434,7 +501,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(schema.catalogItemVersions.version));
     const name = await ownerNames([item]);
     return {
-      item: { ...itemOut(item, name(item)), status: item.status, reason: mine ? item.reason : null },
+      item: { ...itemOut(item, name(item)), status: item.status, reason: mine ? item.reason : null, trustedClub: await isTrustedClub(item.ownerOrgId) },
       versions: versions
         .filter((v) => mine || v.status === 'public')
         .map((v) => ({ ...v, reason: mine ? v.reason : null, createdAt: v.createdAt.getTime() })),
@@ -672,8 +739,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(schema.catalogItems.updatedAt))
       .limit(500);
     const name = await ownerNames([...queue, ...items]);
-    return {
-      queue: queue.map((q) => ({
+    // A trusted club reviews what's published under its name: those wait in
+    // its own queue (moderators can still see them, and act on them).
+    const trusted = await trustedClubs([...queue, ...items].map((q) => q.ownerOrgId));
+    const entry = (q: (typeof queue)[number]) => ({
         versionId: q.versionId,
         itemId: q.itemId,
         kind: q.kind,
@@ -689,45 +758,18 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         previewUrl: `/api/catalog/items/${q.itemId}/preview?v=${q.version}`,
         // Whom a moderator would warn about it.
         owner: ownerRef(q),
-      })),
-      items: items.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason, owner: ownerRef(i) })),
+        trustedClub: !!q.ownerOrgId && trusted.has(q.ownerOrgId),
+      });
+    return {
+      queue: queue.filter((q) => !(q.ownerOrgId && trusted.has(q.ownerOrgId))).map(entry),
+      /** Waiting in trusted clubs' own queues. */
+      trustedQueue: queue.filter((q) => q.ownerOrgId && trusted.has(q.ownerOrgId)).map(entry),
+      items: items.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason, owner: ownerRef(i), trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId) })),
     };
   });
 
-  const decide = async (
-    req: FastifyRequest<{ Params: { versionId: string }; Body: { reason?: unknown } }>,
-    approve: boolean,
-  ) => {
-    const user = requireModerator(req);
-    const v = await db.select().from(schema.catalogItemVersions).where(eq(schema.catalogItemVersions.id, req.params.versionId)).get();
-    if (!v || v.status !== 'in_review') return { code: 404 as const, body: { error: 'not_found' } };
-    const reason = cleanText(req.body?.reason, MAX_REASON);
-    if (reason === undefined) return { code: 400 as const, body: { error: 'invalid_input' } };
-    const item = (await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, v.itemId)).get())!;
-    const now = new Date();
-    await db
-      .update(schema.catalogItemVersions)
-      .set({ status: approve ? 'public' : 'declined', reason, decidedBy: user.id, decidedAt: now })
-      .where(eq(schema.catalogItemVersions.id, v.id));
-    if (approve) {
-      await db
-        .update(schema.catalogItems)
-        .set({ status: 'public', publicVersion: v.version, reason: null, updatedAt: now })
-        .where(eq(schema.catalogItems.id, item.id));
-    } else if (item.publicVersion === 0) {
-      // A first submission declined: the item says why. (A declined update
-      // leaves the public version as it is.)
-      await db.update(schema.catalogItems).set({ status: 'declined', reason, updatedAt: now }).where(eq(schema.catalogItems.id, item.id));
-    }
-    await writeAuditEvent({
-      resourceKind: 'catalog_item',
-      resourceId: item.id,
-      userId: user.id,
-      eventType: approve ? 'catalog_approve' : 'catalog_decline',
-      payload: { version: v.version, reason },
-    });
-    return { code: 200 as const, body: { ok: true } };
-  };
+  const decide = (req: FastifyRequest<{ Params: { versionId: string }; Body: { reason?: unknown } }>, approve: boolean) =>
+    decideVersion(requireModerator(req), req.params.versionId, approve, req.body?.reason);
   app.post<{ Params: { versionId: string }; Body: { reason?: unknown } }>('/api/moderation/versions/:versionId/approve', async (req, reply) => {
     const r = await decide(req, true);
     return reply.code(r.code).send(r.body);
@@ -740,14 +782,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // Take an item out of the catalog at once. Copies already in people's
   // layouts keep working: they're copies.
   app.post<{ Params: { id: string }; Body: { reason?: unknown } }>('/api/moderation/items/:id/unpublish', async (req, reply) => {
-    const user = requireModerator(req);
-    const reason = cleanText(req.body?.reason, MAX_REASON);
-    if (reason === undefined) return reply.code(400).send({ error: 'invalid_input' });
-    const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();
-    if (!item) return reply.code(404).send({ error: 'not_found' });
-    await db.update(schema.catalogItems).set({ status: 'unpublished', reason, updatedAt: new Date() }).where(eq(schema.catalogItems.id, item.id));
-    await writeAuditEvent({ resourceKind: 'catalog_item', resourceId: item.id, userId: user.id, eventType: 'catalog_unpublish', payload: { reason } });
-    await dropFromCollections(item, 'unpublished by a moderator', user.id);
-    return { ok: true };
+    const r = await unpublishItem(requireModerator(req), req.params.id, req.body?.reason);
+    return reply.code(r.code).send(r.body);
   });
 }

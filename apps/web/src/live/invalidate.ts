@@ -53,6 +53,8 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
     ['catalog-items'], ['catalog-mine'], ['catalog-copies'], ['moderation'], ['modules'], ['custom-parts'],
     // Collections: an item leaving the catalog changes them too.
     ...COLLECTIONS, ['moderation-collections'],
+    // A trusted club's own queue, and who's trusted.
+    ['club-review'], ['moderation-clubs'],
   ],
   club: (h) => [
     ['orgs'], ['org'], ['org-members'], ['org-join-requests'], ['join-request-count'], ['org-audit'],
@@ -61,6 +63,8 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
     ['layouts'], ['modules'], ['venues'], ['venue-library'], ['custom-parts'],
     // …and its collections.
     ...COLLECTIONS,
+    // …and whether it's trusted (its Review tab, its badge).
+    ['club-review'],
     // …and the parts its part libraries add.
     ...(MEMBERSHIP_CHANGE.test(h.action ?? '') ? [['parts-catalog']] : []),
     ...ADMIN_LISTS,

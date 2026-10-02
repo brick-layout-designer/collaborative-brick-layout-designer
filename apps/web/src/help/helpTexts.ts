@@ -357,6 +357,12 @@ export const HELP_TEXTS = {
     more: 'A club can keep a collection to itself, like its show standards, or share it with everyone in the catalog under the club’s name. Pinned ones come first.',
     learnMoreUrl: '/help#collections',
   },
+  'club.trusted': {
+    title: 'Trusted club',
+    short: 'A trusted club’s own admins and managers check what it shares, instead of the site’s moderators.',
+    more: 'What an admin or manager shares under the club’s name goes public at once; what a member shares waits in the club’s own review. The site’s moderators can still see and take down anything, and can stop trusting a club.',
+    learnMoreUrl: '/help#collections',
+  },
   'collection.audience': {
     title: 'Who can see this',
     short: 'Private is only you or your club’s members; Everyone puts it in the public catalog after a check.',

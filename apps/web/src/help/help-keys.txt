@@ -60,4 +60,5 @@ club.find
 catalog.collections
 catalog.yourCollections
 catalog.clubCollections
+club.trusted
 collection.audience

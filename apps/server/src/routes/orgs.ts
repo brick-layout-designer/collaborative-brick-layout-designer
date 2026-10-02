@@ -97,6 +97,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         slug: schema.orgs.slug,
         createdAt: schema.orgs.createdAt,
         myRole: schema.orgMembers.role,
+        trusted: schema.orgs.trusted,
       })
       .from(schema.orgMembers)
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
@@ -109,6 +110,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         slug: r.slug,
         createdAt: r.createdAt.getTime(),
         myRole: r.myRole,
+        trusted: r.trusted,
       })),
     };
   });
@@ -211,6 +213,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       memberCount: counts.length,
       adminCount: counts.filter((c) => c.role === 'admin').length,
       joinPolicy: org.joinPolicy,
+      trusted: org.trusted,
       listed: org.listed,
       // Admins see how many people are waiting to be let in.
       ...(atLeast(myMembership.role, 'manager')

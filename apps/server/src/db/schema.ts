@@ -256,6 +256,14 @@ export const orgs = sqliteTable('orgs', {
   joinPolicy: text('join_policy', { enum: ['invite', 'request', 'open'] }).notNull().default('invite'),
   /** Shown in the Clubs directory to everyone signed in. Off by default. */
   listed: integer('listed', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * A trusted club: its own admins and managers review what's published
+   * under its name (modules, parts and collections) instead of the site's
+   * moderators. Set by a site admin or moderator; off by default.
+   */
+  trusted: integer('trusted', { mode: 'boolean' }).notNull().default(false),
+  /** When it was last trusted (null: never, or not now). */
+  trustedAt: integer('trusted_at', { mode: 'timestamp_ms' }),
 });
 
 export const orgMembers = sqliteTable(

@@ -41,6 +41,9 @@ export function CustomPartsSection({
   const [uploading, setUploading] = useState(false);
   const [sharing, setSharing] = useState<CustomPartSummary | null>(null);
   const [toCollection, setToCollection] = useState<CustomPartSummary | null>(null);
+  // A member (not an admin or manager) of a trusted club shares its parts for the club's own review.
+  const trustedMember = (p: CustomPartSummary) =>
+    !canDeletePart(p, myUserId, orgs) && !!p.ownerOrgId && !!orgs?.find((o) => o.id === p.ownerOrgId && o.trusted);
   const catalog = useCatalogStatus();
   const withdraw = useMutation({
     mutationFn: api.catalog.withdraw,
@@ -113,7 +116,7 @@ export function CustomPartsSection({
                     Add to a collection…
                   </button>
                 )}
-                {catalog.enabled('part') && canDeletePart(p, myUserId, orgs) && (
+                {catalog.enabled('part') && (canDeletePart(p, myUserId, orgs) || trustedMember(p)) && (
                   <button role="menuitem" type="button" onClick={() => setSharing(p)} className={MORE_ITEM}>
                     {catalog.shared('part', p.id) ? 'Publish this update…' : 'Share to the public catalog…'}
                   </button>
@@ -160,6 +163,7 @@ export function CustomPartsSection({
           title={sharing.displayName || sharing.partNumber}
           existing={catalog.shared('part', sharing.id)}
           onClose={() => setSharing(null)}
+          clubReview={trustedMember(sharing) ? orgs?.find((o) => o.id === sharing.ownerOrgId)?.name : undefined}
         />
       )}
     </div>

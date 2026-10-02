@@ -10,6 +10,7 @@ import { api, type CatalogItem, type CatalogKind } from '../api';
 import { AppHeader } from '../AppHeader';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { CollectionsSection } from './Collections';
+import { TrustedBadge } from './TrustedBadge';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 
 export function CatalogPage() {
@@ -124,7 +125,8 @@ export function CatalogPage() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <h2 className="break-words font-semibold">{it.title}</h2>
                     <p className="text-xs text-muted">
-                      by {it.by} · version {it.version} · {it.uses} {it.uses === 1 ? 'use' : 'uses'}
+                      by {it.by}
+                      {it.trustedClub && <TrustedBadge />} · version {it.version} · {it.uses} {it.uses === 1 ? 'use' : 'uses'}
                     </p>
                     {it.description && <p className="line-clamp-3 text-sm">{it.description}</p>}
                     {it.tags.length > 0 && (

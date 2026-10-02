@@ -7,6 +7,7 @@ import { AppHeader } from '../AppHeader';
 import { ClubPublicView } from './ClubDirectory';
 import { aRole, atLeast } from './clubRoles';
 import { ClubCollectionsSection } from '../catalog/Collections';
+import { TrustedBadge } from '../catalog/TrustedBadge';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -42,7 +43,10 @@ function OrgDetail({ slug }: { slug: string }) {
       <main className="mx-auto mt-6 max-w-3xl space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="break-words text-2xl font-semibold">{org.name}</h1>
+            <h1 className="break-words text-2xl font-semibold">
+              {org.name}
+              {org.trusted && <TrustedBadge />}
+            </h1>
             <p className="text-sm text-muted">
               {org.memberCount !== undefined && `${org.memberCount} ${org.memberCount === 1 ? 'member' : 'members'} · `}
               you are {aRole(org.myRole)}
