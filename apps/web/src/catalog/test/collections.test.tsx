@@ -101,6 +101,8 @@ describe('moveItem', () => {
     expect(moveItem(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
     expect(moveItem(['a', 'b'], 0, -1)).toEqual(['a', 'b']);
     expect(moveItem(['a', 'b'], 1, 2)).toEqual(['a', 'b']);
+    expect(moveItem(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c']);
+    expect(moveItem(['a', 'b'], 5, 0)).toEqual(['a', 'b']);
   });
 });
 

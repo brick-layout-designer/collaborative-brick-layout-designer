@@ -125,10 +125,13 @@ describe('catalog collections', () => {
 
   it('featured collections come first', async () => {
     await settings({ catalogReview: 'none' });
-    const user = (await (await create(bob, { title: 'Bob’s picks', itemIds: [yard] })).json()) as { id: string };
-    const off = (await (await create(mod, { title: 'Official', itemIds: [shed] })).json()) as { id: string };
+    // The featured one is the oldest, and the user's the newest.
     const feat = (await (await create(mod, { title: 'Featured', itemIds: [shed] })).json()) as { id: string };
     await req('POST', `/api/moderation/collections/${feat.id}/feature`, mod, { featured: true });
+    await new Promise((r) => setTimeout(r, 5));
+    const off = (await (await create(mod, { title: 'Official', itemIds: [shed] })).json()) as { id: string };
+    await new Promise((r) => setTimeout(r, 5));
+    const user = (await (await create(bob, { title: 'Bob’s picks', itemIds: [yard] })).json()) as { id: string };
     expect((await list(bob)).collections.map((c) => c.id)).toEqual([feat.id, off.id, user.id]);
   });
 
