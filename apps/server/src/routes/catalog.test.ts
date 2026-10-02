@@ -140,7 +140,14 @@ describe('public catalogs', () => {
       expect(((await list(bob)).json() as { items: { uses: number }[] }).items[0]!.uses).toBe(1);
       // Alice changes her module and shares the update.
       await app.inject({ method: 'PUT', url: `/api/modules/${moduleId}/snapshot`, headers: { cookie: alice, 'content-type': 'application/octet-stream' }, payload: Buffer.from([9, 9]) });
-      expect((await share(alice, { note: 'Longer' })).json()).toMatchObject({ version: 2, status: 'in_review' });
+      expect(
+        (
+          await app.inject({ method: 'POST', url: '/api/catalog/submissions', headers: { cookie: alice }, payload: { kind: 'module', sourceId: moduleId, title: 'Freight yard', note: 'Longer' } })
+        ).json(),
+      ).toMatchObject({ version: 2, status: 'in_review' });
+      // The update kept the description and tags it wasn't given.
+      const shared = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, itemId)).get();
+      expect(shared).toMatchObject({ description: 'Six sidings', tags: JSON.stringify(['yard', 'freight']) });
       // Still version 1 in the catalog until approved.
       expect(((await list(bob)).json() as { items: { version: number }[] }).items[0]!.version).toBe(1);
       q = await queue(mod);

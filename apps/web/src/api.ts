@@ -10,6 +10,8 @@ export interface Me {
   avatarUrl: string | null;
   isDemoAccount: boolean;
   isGlobalAdmin: boolean;
+  /** Reviews the public catalogs (global admins can too). */
+  isModerator?: boolean;
   linkedProviders: ProviderId[];
 }
 
@@ -757,7 +759,7 @@ export const api = {
         `/api/admin/users?${listParams(q)}`,
       ),
     user: (id: string) => get<AdminUserDetail>(`/api/admin/users/${id}`),
-    patchUser: (id: string, body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean }) =>
+    patchUser: (id: string, body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean; isModerator?: boolean }) =>
       patch<{ ok: true }>(`/api/admin/users/${id}`, body),
     deleteUser: (id: string) => del(`/api/admin/users/${id}`),
     revokeUserSessions: (id: string) =>
@@ -824,7 +826,43 @@ export const api = {
       smtpPass?: string | null;
       smtpFrom?: string | null;
       minDesktopVersion?: string | null;
+      moduleCatalogEnabled?: boolean;
+      partsCatalogEnabled?: boolean;
+      catalogReview?: CatalogReview;
+      catalogAnonymousBrowse?: boolean;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
+  },
+
+  // Public module and parts catalogs.
+  catalog: {
+    settings: () => get<CatalogSettings>('/api/catalog/settings'),
+    items: (kind: CatalogKind, opts: { q?: string; tag?: string; sort?: 'newest' | 'popular' } = {}) => {
+      const p = new URLSearchParams({ kind });
+      if (opts.q) p.set('q', opts.q);
+      if (opts.tag) p.set('tag', opts.tag);
+      if (opts.sort) p.set('sort', opts.sort);
+      return get<{ items: CatalogItem[] }>(`/api/catalog/items?${p.toString()}`);
+    },
+    item: (id: string) =>
+      get<{ item: CatalogItem & { status: CatalogStatus; reason: string | null }; versions: CatalogVersion[] }>(
+        `/api/catalog/items/${encodeURIComponent(id)}`,
+      ),
+    share: (body: { kind: CatalogKind; sourceId: string; title: string; description?: string; tags?: string[]; note?: string }) =>
+      post<{ id: string; version: number; status: 'in_review' | 'public' }>('/api/catalog/submissions', body),
+    mine: () => get<{ items: MyCatalogItem[] }>('/api/catalog/mine'),
+    withdraw: (id: string) => post<{ ok: true }>(`/api/catalog/items/${encodeURIComponent(id)}/withdraw`, {}),
+    add: (id: string, orgSlug?: string) =>
+      post<{ kind: CatalogKind; id: string; version: number }>(`/api/catalog/items/${encodeURIComponent(id)}/add`, orgSlug ? { orgSlug } : {}),
+    copies: () => get<{ copies: CatalogCopy[] }>('/api/catalog/copies'),
+    updateCopy: (copyId: string) => post<{ ok: true; version: number }>(`/api/catalog/copies/${encodeURIComponent(copyId)}/update`, {}),
+  },
+
+  moderation: {
+    items: () => get<{ queue: ModerationEntry[]; items: (CatalogItem & { status: CatalogStatus; reason: string | null })[] }>('/api/moderation/items'),
+    approve: (versionId: string) => post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/approve`, {}),
+    decline: (versionId: string, reason: string) =>
+      post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/decline`, { reason }),
+    unpublish: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/unpublish`, { reason }),
   },
 
   // Per-org part library management (org admin only).
@@ -872,6 +910,78 @@ export interface AdminStats {
   activeSessions: number;
 }
 
+export type CatalogKind = 'module' | 'part';
+export type CatalogReview = 'moderators' | 'none';
+export type CatalogStatus = 'in_review' | 'public' | 'declined' | 'unpublished' | 'withdrawn';
+
+export interface CatalogSettings {
+  modules: boolean;
+  parts: boolean;
+  review: CatalogReview;
+  anonymousBrowse: boolean;
+  canModerate: boolean;
+}
+
+export interface CatalogItem {
+  id: string;
+  kind: CatalogKind;
+  title: string;
+  description: string;
+  tags: string[];
+  /** Who shared it: a person's or a club's name. */
+  by: string;
+  uses: number;
+  /** The public version. */
+  version: number;
+  updatedAt: number;
+  previewUrl: string;
+}
+
+export interface CatalogVersion {
+  version: number;
+  status: 'in_review' | 'public' | 'declined';
+  note: string | null;
+  reason: string | null;
+  createdAt: number;
+}
+
+/** One of your (or your clubs') shared items, for the status badges. */
+export interface MyCatalogItem {
+  id: string;
+  kind: CatalogKind;
+  sourceId: string;
+  title: string;
+  status: CatalogStatus;
+  reason: string | null;
+  version: number;
+  pendingVersion: number | null;
+}
+
+export interface CatalogCopy {
+  copyId: string;
+  itemId: string;
+  kind: CatalogKind;
+  version: number;
+  latest: number;
+  updateAvailable: boolean;
+}
+
+export interface ModerationEntry {
+  versionId: string;
+  itemId: string;
+  kind: CatalogKind;
+  title: string;
+  description: string;
+  tags: string[];
+  version: number;
+  isUpdate: boolean;
+  note: string | null;
+  by: string;
+  submitter: { name: string; email: string } | null;
+  createdAt: number;
+  previewUrl: string;
+}
+
 export interface AdminSettings {
   requireEmailVerification: boolean;
   smtp: {
@@ -892,6 +1002,8 @@ export interface AdminSettings {
     recommended: string;
     codeMinimum: string;
   };
+  /** Public catalogs: off until turned on. */
+  catalog?: { modules: boolean; parts: boolean; review: CatalogReview; anonymousBrowse: boolean };
   updatedAt: number;
 }
 
@@ -902,6 +1014,7 @@ export interface AdminUser {
   avatarUrl: string | null;
   isDemoAccount: boolean;
   isGlobalAdmin: boolean;
+  isModerator?: boolean;
   emailVerified: boolean;
   createdAt: number;
   layoutCount: number;

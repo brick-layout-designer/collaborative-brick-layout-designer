@@ -9,7 +9,7 @@
 // model those either.
 
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type * as Y from 'yjs';
 import { api } from '../api';
 import { ModuleThumb } from '../modules/ModuleThumb';
@@ -25,6 +25,28 @@ interface Props {
 export function InsertModuleDialog({ doc, onClose }: Props) {
   const list = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   const [error, setError] = useState<string | null>(null);
+  // Your modules, or the public catalog (when it's on).
+  const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
+  const [tab, setTab] = useState<'mine' | 'catalog'>('mine');
+  const [q, setQ] = useState('');
+  const catalog = useQuery({
+    queryKey: ['catalog-items', 'module', q, '', 'popular'],
+    queryFn: () => api.catalog.items('module', { q, sort: 'popular' }),
+    enabled: tab === 'catalog',
+  });
+  const qc = useQueryClient();
+  // From the catalog: a copy goes into your modules, then onto the map.
+  const fromCatalog = useMutation({
+    mutationFn: async (item: { id: string; title: string }) => {
+      const copy = await api.catalog.add(item.id);
+      void qc.invalidateQueries({ queryKey: ['modules'] });
+      const batches = await fetchModuleBatches(copy.id);
+      const res = importBricksAsModule(doc, batches, { name: item.title });
+      if (res) useEditorStore.getState().setSelection(res.ids);
+    },
+    onSuccess: () => onClose(),
+    onError: (e: Error) => setError(e.message),
+  });
 
   const insert = useMutation({
     mutationFn: async (moduleId: string) => {
@@ -59,13 +81,63 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
           </button>
         </div>
 
-        {list.isLoading && <p className="text-muted">Loading…</p>}
-        {list.data && list.data.modules.length === 0 && (
+        {settings.data?.modules && (
+          <div role="tablist" aria-label="Modules from" className="flex rounded-lg border border-line p-0.5">
+            {(['mine', 'catalog'] as const).map((t) => (
+              <button
+                key={t}
+                role="tab"
+                type="button"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-semibold ${tab === t ? 'bg-accent text-accent-ink' : 'hover:bg-soft'}`}
+              >
+                {t === 'mine' ? 'My modules' : 'Catalog'}
+              </button>
+            ))}
+          </div>
+        )}
+        {tab === 'catalog' && (
+          <>
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search the catalog"
+              aria-label="Search the catalog"
+              className="w-full rounded-lg border border-border bg-soft px-3 py-1.5"
+            />
+            {catalog.isLoading && <p className="text-muted">Loading…</p>}
+            {catalog.data && catalog.data.items.length === 0 && <p className="text-muted">Nothing in the catalog yet.</p>}
+            <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+              {catalog.data?.items.map((it) => (
+                <li key={it.id} className="flex items-center gap-3 px-3 py-2">
+                  <img src={it.previewUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words">{it.title}</p>
+                    <p className="text-xs text-muted">by {it.by} · {it.uses} uses</p>
+                  </div>
+                  <button
+                    onClick={() => fromCatalog.mutate({ id: it.id, title: it.title })}
+                    disabled={fromCatalog.isPending}
+                    aria-label={`Add and insert ${it.title}`}
+                    className="rounded-lg bg-accent px-3 py-1 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    Add and insert
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted">Adding copies it into your modules first.</p>
+          </>
+        )}
+        {tab === 'mine' && list.isLoading && <p className="text-muted">Loading…</p>}
+        {tab === 'mine' && list.data && list.data.modules.length === 0 && (
           <p className="rounded-lg border border-dashed border-line p-4 text-muted">
             No saved modules yet. Pick some parts and choose <em>Save Selection as Module</em> in the Map menu, or use <em>New module</em> on Home.
           </p>
         )}
-        {list.data && list.data.modules.length > 0 && (
+        {tab === 'mine' && list.data && list.data.modules.length > 0 && (
           <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {list.data.modules.map((m) => (
               <li

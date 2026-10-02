@@ -21,6 +21,7 @@ import { lastLayoutToReopen } from './reopenLast';
 import { useEditorStore } from '../editor/editorStore';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { ModuleVersionsDialog } from '../modules/ModuleVersionsDialog';
+import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -44,6 +45,12 @@ export function LayoutsPage() {
   }, [startVenue]);
   const [showNewModule, setShowNewModule] = useState(false);
   const [historyOf, setHistoryOf] = useState<ModuleSummary | null>(null);
+  const [sharing, setSharing] = useState<ModuleSummary | null>(null);
+  const catalog = useCatalogStatus();
+  const withdraw = useMutation({
+    mutationFn: api.catalog.withdraw,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog-mine'] }),
+  });
   const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
   const [moving, setMoving] = useState<{ kind: 'layout' | 'module'; item: LayoutSummary | ModuleSummary } | null>(null);
 
@@ -190,6 +197,8 @@ export function LayoutsPage() {
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="break-words font-medium">{m.title}</span>
                     <OwnerChip item={m} myUserId={myUserId} orgs={orgs} />
+                    {catalog.shared('module', m.id) && <CatalogBadge item={catalog.shared('module', m.id)!} />}
+                    <UpdateAvailable copyId={m.id} label={m.title} />
                   </p>
                   <p className="text-xs text-muted">
                     {m.latestVersion ? `version ${m.latestVersion} · ` : ''}updated {new Date(m.updatedAt).toLocaleString()}
@@ -206,6 +215,26 @@ export function LayoutsPage() {
                   <button role="menuitem" type="button" onClick={() => setHistoryOf(m)} className={MORE_ITEM}>
                     Version history…
                   </button>
+                  {catalog.enabled('module') && (m.role === undefined || m.role === 'owner') && (
+                    <button role="menuitem" type="button" onClick={() => setSharing(m)} className={MORE_ITEM}>
+                      {catalog.shared('module', m.id) ? 'Publish this update…' : 'Share to the public catalog…'}
+                    </button>
+                  )}
+                  {(m.role === undefined || m.role === 'owner') &&
+                    (catalog.shared('module', m.id)?.status === 'public' || catalog.shared('module', m.id)?.status === 'in_review') && (
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Take "${m.title}" out of the public catalog? Copies people already have keep working.`)) {
+                            withdraw.mutate(catalog.shared('module', m.id)!.id);
+                          }
+                        }}
+                        className={MORE_ITEM}
+                      >
+                        Withdraw from the catalog
+                      </button>
+                    )}
                   {hasClubs && (
                     <button role="menuitem" type="button" onClick={() => setMoving({ kind: 'module', item: m })} className={MORE_ITEM}>
                       Move or copy…
@@ -250,6 +279,15 @@ export function LayoutsPage() {
       )}
 
       {historyOf && <ModuleVersionsDialog module={historyOf} onClose={() => setHistoryOf(null)} />}
+      {sharing && (
+        <ShareToCatalogDialog
+          kind="module"
+          sourceId={sharing.id}
+          title={sharing.title}
+          existing={catalog.shared('module', sharing.id)}
+          onClose={() => setSharing(null)}
+        />
+      )}
 
       {moving && orgs && (
         <MoveCopyDialog

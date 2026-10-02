@@ -346,8 +346,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .update(schema.catalogItems)
         .set({
           title,
-          description: description ?? '',
-          tags: JSON.stringify(tags),
+          // An update without a new description or tags keeps the ones it has.
+          description: b.description === undefined ? item.description : (description ?? ''),
+          tags: b.tags === undefined ? item.tags : JSON.stringify(tags),
           // Straight away: this version is public now. In review: a public
           // item stays public (on its old version) while the update waits.
           status: straight || live ? 'public' : 'in_review',
