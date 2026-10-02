@@ -197,6 +197,58 @@ const catalogAdd: HintSpec = {
   },
 };
 
+async function collectionState(id: string): Promise<{ status: string; owner?: HintOwner } | null> {
+  const row = await db
+    .select({ status: schema.catalogCollections.status, u: schema.catalogCollections.ownerUserId })
+    .from(schema.catalogCollections)
+    .where(eq(schema.catalogCollections.id, id))
+    .get();
+  return row ? { status: row.status, ...(row.u ? { owner: { kind: 'user' as const, id: row.u } } : {}) } : null;
+}
+
+/**
+ * A catalog collection. Everyone hears when what's public changes (it was
+ * or is public); otherwise only its curator, the person acting and
+ * moderators (who hear every catalog hint).
+ */
+function collection(idFrom: { param?: string; reply?: string } = { param: 'id' }): HintSpec {
+  return {
+    before: async (ctx) => {
+      const id = idFrom.param ? ctx.params[idFrom.param] : null;
+      ctx.before.status = id ? (await collectionState(id))?.status : undefined;
+    },
+    after: async (ctx) => {
+      const id = (idFrom.reply ? str(ctx.reply?.[idFrom.reply]) : null) ?? (idFrom.param ? (ctx.params[idFrom.param] ?? null) : null);
+      if (!id) return [];
+      const now = await collectionState(id);
+      const isPublic = ctx.before.status === 'public' || now?.status === 'public';
+      const hint: Hint = { kind: 'catalog', id, action: action(ctx.req), ...(now?.owner ? { owner: now.owner } : {}) };
+      return [{ hint, reach: isPublic ? { everyone: true } : { users: [ctx.userId] } }];
+    },
+  };
+}
+
+/** "Add all" puts modules and parts in your things, or your club's; the items' use counts are public. */
+const collectionAdd: HintSpec = {
+  after: async (ctx) => {
+    const added = Array.isArray(ctx.reply?.added) ? (ctx.reply.added as { kind?: unknown; id?: unknown }[]) : [];
+    const out: Array<{ hint: Hint; reach?: Reach }> = [];
+    const seen = new Set<string>();
+    for (const a of added) {
+      const kind: ResourceKind = a.kind === 'part' ? 'custom-part' : 'module';
+      const id = str(a.id);
+      if (!id) continue;
+      const now = await ownerOfResource(kind, id);
+      const key = `${kind}:${now?.owner?.kind}:${now?.owner?.id}`;
+      if (!now?.owner || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ hint: { kind, owner: now.owner, id, action: 'create' } });
+    }
+    if (added.length) out.push({ hint: { kind: 'catalog', id: ctx.params.id ?? '', action: 'add' }, reach: { everyone: true } });
+    return out;
+  },
+};
+
 const param = (name: string) => (ctx: HintCtx) => ctx.params[name] ?? null;
 
 async function joinRequester(id: string): Promise<string | null> {
@@ -299,6 +351,17 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/moderation/versions/:versionId/approve': catalog(async (c) => itemOfVersion(c.params.versionId ?? ''), true),
   'POST /api/moderation/versions/:versionId/decline': catalog(async (c) => itemOfVersion(c.params.versionId ?? ''), false),
   'POST /api/moderation/items/:id/unpublish': catalog(async (c) => c.params.id ?? null, true),
+
+  // ---- catalog collections
+  'POST /api/catalog/collections': collection({ reply: 'id' }),
+  'PATCH /api/catalog/collections/:id': collection(),
+  'POST /api/catalog/collections/:id/withdraw': collection(),
+  'POST /api/catalog/collections/:id/dismiss-note': collection(),
+  'POST /api/catalog/collections/:id/add': collectionAdd,
+  'POST /api/moderation/collections/:id/approve': collection(),
+  'POST /api/moderation/collections/:id/decline': collection(),
+  'POST /api/moderation/collections/:id/unpublish': collection(),
+  'POST /api/moderation/collections/:id/feature': collection(),
 
   // ---- clubs
   'POST /api/orgs': club(async (c) => str(c.reply?.id)),

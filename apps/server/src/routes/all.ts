@@ -21,6 +21,7 @@ import { inviteRoutes } from './invites.js';
 import { layoutRoutes } from './layouts.js';
 import { moduleRoutes } from './modules.js';
 import { catalogRoutes } from './catalog.js';
+import { collectionRoutes } from './collections.js';
 import { moduleTransferRoutes } from './moduleTransfers.js';
 import { venueRoutes } from './venues.js';
 import { preferencesRoutes } from './preferences.js';
@@ -54,6 +55,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(customPartInviteRoutes);
   await app.register(moduleRoutes);
   await app.register(catalogRoutes);
+  await app.register(collectionRoutes);
   await app.register(moduleTransferRoutes);
   await app.register(venueRoutes);
   await app.register(preferencesRoutes);

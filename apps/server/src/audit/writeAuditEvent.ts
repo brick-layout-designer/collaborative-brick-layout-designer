@@ -72,6 +72,18 @@ export type AuditEventType =
   | 'catalog_unpublish'
   | 'catalog_withdraw'
   | 'catalog_add'
+  // Catalog collections: made or changed, reviewed, taken down, featured,
+  // an item that left the catalog taken out, and "Add all". Subject is the
+  // collection (`resourceKind: 'catalog_collection'`).
+  | 'collection_submit'
+  | 'collection_edit'
+  | 'collection_withdraw'
+  | 'collection_approve'
+  | 'collection_decline'
+  | 'collection_unpublish'
+  | 'collection_feature'
+  | 'collection_item_removed'
+  | 'collection_add'
   // Warnings: a site admin or moderator warned a person or club ('warn'),
   // a club's admin or manager warned a member ('club_warn'), and the
   // recipient said they read it ('warn_ack'). Subject is the person or club.
@@ -87,7 +99,8 @@ export type AuditResourceKind =
   | 'user'
   | 'part_library'
   | 'platform_settings'
-  | 'catalog_item';
+  | 'catalog_item'
+  | 'catalog_collection';
 
 interface CommonAuditFields {
   /** null for system-driven events (TTL sweep, transfer admin). */

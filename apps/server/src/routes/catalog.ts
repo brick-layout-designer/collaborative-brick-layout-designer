@@ -27,6 +27,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg } from './owners.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { recordVersion } from './modules.js';
+import { collectionCounts, dropFromCollections } from './collections.js';
 
 type Kind = 'module' | 'part';
 const MAX_TITLE = 80;
@@ -48,7 +49,7 @@ function isKind(v: unknown): v is Kind {
   return v === 'module' || v === 'part';
 }
 
-async function catalogOn(kind: Kind): Promise<boolean> {
+export async function catalogOn(kind: Kind): Promise<boolean> {
   const s = await getPlatformSettings();
   return kind === 'module' ? s.moduleCatalogEnabled : s.partsCatalogEnabled;
 }
@@ -68,7 +69,7 @@ export function cleanTags(raw: unknown): string[] | null {
   return out.length > MAX_TAGS ? null : out;
 }
 
-function cleanText(raw: unknown, max: number): string | null | undefined {
+export function cleanText(raw: unknown, max: number): string | null | undefined {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== 'string') return undefined;
   const t = raw.trim();
@@ -130,7 +131,7 @@ async function snapshotSource(kind: Kind, sourceId: string): Promise<SourceSnaps
 }
 
 /** Who shared it, for the catalog: the person's or the club's name. */
-async function ownerNames(items: readonly { ownerUserId: string | null; ownerOrgId: string | null }[]) {
+export async function ownerNames(items: readonly { ownerUserId: string | null; ownerOrgId: string | null }[]) {
   const userIds = [...new Set(items.map((i) => i.ownerUserId).filter((x): x is string => !!x))];
   const orgIds = [...new Set(items.map((i) => i.ownerOrgId).filter((x): x is string => !!x))];
   const users = userIds.length
@@ -154,7 +155,7 @@ function parseTags(json: string): string[] {
   }
 }
 
-function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string) {
+export function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string) {
   return {
     id: i.id,
     kind: i.kind,
@@ -170,9 +171,92 @@ function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string) {
 }
 
 /** Anyone may browse when the setting allows; otherwise only people signed in. */
-async function mayBrowse(req: FastifyRequest): Promise<boolean> {
+export async function mayBrowse(req: FastifyRequest): Promise<boolean> {
   if (req.user) return true;
   return (await getPlatformSettings()).catalogAnonymousBrowse;
+}
+
+type CopyResult = { ok: true; id: string; version: number } | { ok: false; code: number; body: unknown };
+
+/**
+ * Copy a public catalog item's public version to `user`, or to the club
+ * `orgId`, and count a use. The caller checked the item is public and the
+ * destination is one the user may add to.
+ */
+export async function copyItemTo(user: User, item: typeof schema.catalogItems.$inferSelect, orgId: string | null): Promise<CopyResult> {
+  const v = await db
+    .select()
+    .from(schema.catalogItemVersions)
+    .where(and(eq(schema.catalogItemVersions.itemId, item.id), eq(schema.catalogItemVersions.version, item.publicVersion)))
+    .get();
+  if (!v) return { ok: false, code: 404, body: { error: 'not_found' } };
+  const dest = { orgId };
+  const owner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
+  const now = new Date();
+  const id = randomUUID();
+  if (item.kind === 'module') {
+    const doc = Buffer.from(v.docSnapshot as Uint8Array);
+    const thumb = v.thumbnail ? Buffer.from(v.thumbnail as Uint8Array) : null;
+    const refusal = await checkGrowth({ actor: user, owner, add: { bytes: doc.length + (thumb?.length ?? 0) } });
+    if (refusal) return { ok: false, code: refusal.status, body: refusal.body };
+    await db.insert(schema.modules).values({
+      id,
+      title: item.title,
+      ownerUserId: dest.orgId ? null : user.id,
+      ownerOrgId: dest.orgId,
+      createdBy: user.id,
+      docSnapshot: doc,
+      docVersion: 0,
+      sidecarSnapshot: null,
+      thumbnail: thumb,
+      thumbnailMime: thumb ? (v.thumbnailMime as 'image/png' | 'image/webp') : null,
+      thumbnailAt: thumb ? now : null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await recordVersion(id, doc, user.id, `From the catalog (version ${v.version})`, thumb, thumb ? (v.thumbnailMime as 'image/png' | 'image/webp') : null);
+  } else {
+    const partNumber = v.partNumber ?? '';
+    const taken = await db
+      .select({ id: schema.customParts.id })
+      .from(schema.customParts)
+      .where(
+        and(
+          eq(schema.customParts.partNumber, partNumber),
+          dest.orgId ? eq(schema.customParts.ownerOrgId, dest.orgId) : eq(schema.customParts.ownerUserId, user.id),
+        ),
+      )
+      .get();
+    if (taken) return { ok: false, code: 409, body: { error: 'part_number_taken' } };
+    const xml = Buffer.from(v.xmlBlob as Uint8Array);
+    const sprite = Buffer.from(v.spriteBlob as Uint8Array);
+    const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: xml.length + sprite.length } });
+    if (refusal) return { ok: false, code: refusal.status, body: refusal.body };
+    await db.insert(schema.customParts).values({
+      id,
+      partNumber,
+      displayName: item.title,
+      category: v.category ?? 'Custom',
+      ownerUserId: dest.orgId ? null : user.id,
+      ownerOrgId: dest.orgId,
+      createdBy: user.id,
+      xmlBlob: xml,
+      spriteBlob: sprite,
+      spriteMime: (v.spriteMime ?? 'image/png') as 'image/gif' | 'image/png',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  await db.insert(schema.catalogCopies).values({ itemId: item.id, copyId: id, version: v.version, userId: user.id, createdAt: now });
+  await db.update(schema.catalogItems).set({ uses: sql`${schema.catalogItems.uses} + 1` }).where(eq(schema.catalogItems.id, item.id));
+  await writeAuditEvent({
+    resourceKind: 'catalog_item',
+    resourceId: item.id,
+    userId: user.id,
+    eventType: 'catalog_add',
+    payload: { copyId: id, version: v.version, owner },
+  });
+  return { ok: true, id, version: v.version };
 }
 
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
@@ -398,6 +482,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           .where(and(inArray(schema.catalogItemVersions.itemId, ids), eq(schema.catalogItemVersions.status, 'in_review')))
       : [];
     const waiting = new Map(pending.map((p) => [p.itemId, p.version]));
+    const inCollections = await collectionCounts(ids);
     return {
       items: rows.map((r) => ({
         id: r.id,
@@ -408,6 +493,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         reason: r.reason,
         version: r.publicVersion,
         pendingVersion: waiting.get(r.id) ?? null,
+        /** How many public collections it's in. */
+        collections: inCollections.get(r.id) ?? 0,
       })),
     };
   });
@@ -424,6 +511,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .set({ status: 'declined', reason: 'Withdrawn', decidedAt: now })
       .where(and(eq(schema.catalogItemVersions.itemId, item.id), eq(schema.catalogItemVersions.status, 'in_review')));
     await writeAuditEvent({ resourceKind: 'catalog_item', resourceId: item.id, userId: user.id, eventType: 'catalog_withdraw', payload: {} });
+    await dropFromCollections(item, 'withdrawn by its owner', user.id);
     return { ok: true };
   });
 
@@ -438,80 +526,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (!item || item.status !== 'public' || item.publicVersion === 0 || !(await catalogOn(item.kind))) {
         return reply.code(404).send({ error: 'not_found' });
       }
-      const v = await db
-        .select()
-        .from(schema.catalogItemVersions)
-        .where(and(eq(schema.catalogItemVersions.itemId, item.id), eq(schema.catalogItemVersions.version, item.publicVersion)))
-        .get();
-      if (!v) return reply.code(404).send({ error: 'not_found' });
       const dest = await destinationOrg(user.id, req.body?.orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
-      const owner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
-      const now = new Date();
-      const id = randomUUID();
-      if (item.kind === 'module') {
-        const doc = Buffer.from(v.docSnapshot as Uint8Array);
-        const thumb = v.thumbnail ? Buffer.from(v.thumbnail as Uint8Array) : null;
-        const refusal = await checkGrowth({ actor: user, owner, add: { bytes: doc.length + (thumb?.length ?? 0) } });
-        if (refusal) return reply.code(refusal.status).send(refusal.body);
-        await db.insert(schema.modules).values({
-          id,
-          title: item.title,
-          ownerUserId: dest.orgId ? null : user.id,
-          ownerOrgId: dest.orgId,
-          createdBy: user.id,
-          docSnapshot: doc,
-          docVersion: 0,
-          sidecarSnapshot: null,
-          thumbnail: thumb,
-          thumbnailMime: thumb ? (v.thumbnailMime as 'image/png' | 'image/webp') : null,
-          thumbnailAt: thumb ? now : null,
-          createdAt: now,
-          updatedAt: now,
-        });
-        await recordVersion(id, doc, user.id, `From the catalog (version ${v.version})`, thumb, thumb ? (v.thumbnailMime as 'image/png' | 'image/webp') : null);
-      } else {
-        const partNumber = v.partNumber ?? '';
-        const taken = await db
-          .select({ id: schema.customParts.id })
-          .from(schema.customParts)
-          .where(
-            and(
-              eq(schema.customParts.partNumber, partNumber),
-              dest.orgId ? eq(schema.customParts.ownerOrgId, dest.orgId) : eq(schema.customParts.ownerUserId, user.id),
-            ),
-          )
-          .get();
-        if (taken) return reply.code(409).send({ error: 'part_number_taken' });
-        const xml = Buffer.from(v.xmlBlob as Uint8Array);
-        const sprite = Buffer.from(v.spriteBlob as Uint8Array);
-        const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: xml.length + sprite.length } });
-        if (refusal) return reply.code(refusal.status).send(refusal.body);
-        await db.insert(schema.customParts).values({
-          id,
-          partNumber,
-          displayName: item.title,
-          category: v.category ?? 'Custom',
-          ownerUserId: dest.orgId ? null : user.id,
-          ownerOrgId: dest.orgId,
-          createdBy: user.id,
-          xmlBlob: xml,
-          spriteBlob: sprite,
-          spriteMime: (v.spriteMime ?? 'image/png') as 'image/gif' | 'image/png',
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-      await db.insert(schema.catalogCopies).values({ itemId: item.id, copyId: id, version: v.version, userId: user.id, createdAt: now });
-      await db.update(schema.catalogItems).set({ uses: sql`${schema.catalogItems.uses} + 1` }).where(eq(schema.catalogItems.id, item.id));
-      await writeAuditEvent({
-        resourceKind: 'catalog_item',
-        resourceId: item.id,
-        userId: user.id,
-        eventType: 'catalog_add',
-        payload: { copyId: id, version: v.version, owner },
-      });
-      return reply.code(201).send({ kind: item.kind, id, version: v.version });
+      const r = await copyItemTo(user, item, dest.orgId);
+      if (!r.ok) return reply.code(r.code).send(r.body);
+      return reply.code(201).send({ kind: item.kind, id: r.id, version: r.version });
     },
   );
 
@@ -706,6 +725,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     if (!item) return reply.code(404).send({ error: 'not_found' });
     await db.update(schema.catalogItems).set({ status: 'unpublished', reason, updatedAt: new Date() }).where(eq(schema.catalogItems.id, item.id));
     await writeAuditEvent({ resourceKind: 'catalog_item', resourceId: item.id, userId: user.id, eventType: 'catalog_unpublish', payload: { reason } });
+    await dropFromCollections(item, 'unpublished by a moderator', user.id);
     return { ok: true };
   });
 }

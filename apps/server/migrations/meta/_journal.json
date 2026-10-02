@@ -141,6 +141,13 @@
       "when": 1790968819259,
       "tag": "0019_demo_account",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790971459329,
+      "tag": "0020_catalog_collections",
+      "breakpoints": true
     }
   ]
 }

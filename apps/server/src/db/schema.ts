@@ -468,7 +468,7 @@ export const auditEvents = sqliteTable(
    * (resource_kind + resource_id) must be set; never both, never
    * neither. Enforced in the writer, not in the schema.
    */
-  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library', 'platform_settings', 'catalog_item'] }),
+  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library', 'platform_settings', 'catalog_item', 'catalog_collection'] }),
   resourceId: text('resource_id'),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   eventType: text('event_type').notNull(),
@@ -921,6 +921,66 @@ export const catalogCopies = sqliteTable(
   (t) => ({
     pk: primaryKey({ columns: [t.itemId, t.copyId] }),
     copyIdx: index('catalog_copies_copy_idx').on(t.copyId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Catalog collections: a named, ordered set of public catalog items
+// ("Starter town", "Train yard basics"). Moderators and admins make
+// official ones (which can be featured); anyone signed in can submit one,
+// reviewed like catalog items. An item that leaves the catalog drops out
+// of every collection (catalog_collection_items rows are deleted), and
+// its curator gets a note; a collection with no items left is hidden.
+// ---------------------------------------------------------------------------
+export const catalogCollections = sqliteTable(
+  'catalog_collections',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    /** The item whose picture is the cover; null means the first module's (or first item's). */
+    coverItemId: text('cover_item_id').references(() => catalogItems.id, { onDelete: 'set null' }),
+    /** Its curator. */
+    ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** Made by a moderator or site admin: published without review, and may be featured. */
+    official: integer('official', { mode: 'boolean' }).notNull().default(false),
+    featured: integer('featured', { mode: 'boolean' }).notNull().default(false),
+    /** As catalog_items.status: 'in_review' is a first submission waiting. */
+    status: text('status', { enum: ['in_review', 'public', 'declined', 'unpublished', 'withdrawn'] }).notNull(),
+    /** Why it (or its last change) was declined, or why it was unpublished. */
+    reason: text('reason'),
+    /**
+     * A change to a public collection waiting for review, as JSON
+     * {title, description, coverItemId, itemIds}; the public one stays as
+     * it is until it's approved.
+     */
+    pending: text('pending'),
+    pendingAt: integer('pending_at', { mode: 'timestamp_ms' }),
+    /** For the curator: items that left the catalog and were taken out. */
+    curatorNote: text('curator_note'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    statusIdx: index('catalog_collections_status_idx').on(t.status, t.featured),
+    ownerIdx: index('catalog_collections_owner_idx').on(t.ownerUserId),
+  }),
+);
+
+export const catalogCollectionItems = sqliteTable(
+  'catalog_collection_items',
+  {
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => catalogCollections.id, { onDelete: 'cascade' }),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => catalogItems.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.collectionId, t.itemId] }),
+    itemIdx: index('catalog_collection_items_item_idx').on(t.itemId),
   }),
 );
 
