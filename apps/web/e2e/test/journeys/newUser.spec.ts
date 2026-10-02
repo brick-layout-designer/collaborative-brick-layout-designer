@@ -64,8 +64,21 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   await page.getByRole('button', { name: /need an account/i }).click();
   await page.getByPlaceholder('Email').fill(EMAIL);
   await page.getByPlaceholder('Password').fill(PASS);
-  await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page.getByText(/check/i).first()).toBeVisible();
+  // Sign-up is rate-limited per address; on a busy test server, wait the
+  // minute the message asks for and press Create account again.
+  for (let attempt = 0; ; attempt++) {
+    await page.getByRole('button', { name: 'Create account' }).click();
+    const sent = page.getByText(/check/i).first();
+    const slowDown = page.getByText('Too many requests at once. Please wait a minute and try again.');
+    let outcome = '';
+    await expect
+      .poll(async () => (outcome = (await sent.isVisible()) ? 'sent' : (await slowDown.isVisible()) ? 'wait' : ''))
+      .not.toBe('');
+    if (outcome === 'sent') break;
+    expect(attempt, 'still rate-limited after waiting').toBeLessThan(2);
+    test.setTimeout(test.info().timeout + 65_000);
+    await page.waitForTimeout(61_000);
+  }
   await page.goto(`/verify-email/${await getVerificationToken(EMAIL)}`);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText('No OAuth providers configured.')).toHaveCount(0);
