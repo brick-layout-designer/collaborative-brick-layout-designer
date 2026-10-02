@@ -1,0 +1,126 @@
+name: Journeys
+
+# The whole app, driven in a real browser against a real server: the
+# journeys under apps/web/e2e/test/journeys/ (a club member's paths from end
+# to end) plus a core set of e2e specs on every PR, and every e2e spec at
+# night. Unit tests can all pass while a feature is useless (New module once
+# made a module nothing could open); this is the check that catches that.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 7 * * *'  # nightly, every e2e spec
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run every e2e spec, not only the journeys and the core set
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeys-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The same pinned BlueBrick parts library the desktop repo uses as its
+  # submodule (parts/BlueBrickParts), so the specs find real parts.
+  BLUEBRICK_PARTS_SHA: 85b41f50adea006686a3bf70e0727026a8f0971b
+
+jobs:
+  journeys:
+    name: Journeys (e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DB_PATH: ${{ github.workspace }}/.e2e/e2e.sqlite
+      PARTS_DIR: ${{ github.workspace }}/.e2e/BlueBrickParts
+      BACKUPS_DIR: ${{ github.workspace }}/.e2e/backups
+      ENABLE_PASSWORD_AUTH: 'true'
+      COOKIE_SECURE: 'false'
+      PUBLIC_URL: http://localhost:5173
+      # Test accounts are minutes old; without these the "one club in an
+      # account's first week" rule stops specs that make several clubs.
+      LIMIT_NEW_ACCOUNT_CLUBS: '1000'
+      LIMIT_CLUBS_PER_USER: '1000'
+      PLAYWRIGHT_HTML_OPEN: never
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out the BlueBrick parts library
+        uses: actions/checkout@v7
+        with:
+          repository: Lswbanban/BlueBrickParts
+          ref: ${{ env.BLUEBRICK_PARTS_SHA }}
+          path: .e2e/BlueBrickParts
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile=false
+
+      - name: Build the packages
+        run: pnpm -r --filter "./packages/*" build
+
+      - name: Install Chromium for Playwright
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the API server
+        working-directory: apps/server
+        run: |
+          mkdir -p "$BACKUPS_DIR"
+          npx tsx src/db/migrate.ts
+          nohup npx tsx src/index.ts > "$GITHUB_WORKSPACE/.e2e/server.log" 2>&1 &
+          for i in $(seq 60); do
+            curl -sf http://localhost:3000/api/health && exit 0
+            sleep 1
+          done
+          echo "::error::The API server did not start"; cat "$GITHUB_WORKSPACE/.e2e/server.log"; exit 1
+
+      # Playwright starts the Vite dev server itself (playwright.config.ts
+      # webServer), proxying /api, /ws and /parts to the server above.
+      - name: Journeys and the core specs
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)
+        working-directory: apps/web
+        run: >
+          npx playwright test
+          e2e/test/journeys/
+          e2e/test/auth.spec.ts
+          e2e/test/layouts.spec.ts
+          e2e/test/editor.spec.ts
+          e2e/test/layoutFile.spec.ts
+          e2e/test/savedViews.spec.ts
+          e2e/test/moduleEditor.spec.ts
+          e2e/test/moduleVersions.spec.ts
+          e2e/test/orgs.spec.ts
+          e2e/test/partsOnHome.spec.ts
+          e2e/test/publicShare.spec.ts
+          --workers=2 --retries=1 --reporter=list,html
+
+      # At night: every spec, one at a time, because several of them change
+      # site-wide settings (catalogs, limits) that the others would see.
+      - name: Every e2e spec
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)
+        working-directory: apps/web
+        run: npx playwright test --workers=1 --retries=1 --reporter=list,html
+
+      - name: Upload the Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+            .e2e/server.log
+          retention-days: 14
