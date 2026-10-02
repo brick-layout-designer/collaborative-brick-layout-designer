@@ -3,7 +3,7 @@
 // and useTouchView's taps, long presses and pan-or-drag choice.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import {
   besideTarget,
@@ -20,6 +20,8 @@ import {
   type View,
 } from '../touchGesture';
 import { useTouchView } from '../useTouchView';
+import { TouchActionBar } from '../TouchEdit';
+import { useEditorStore } from '../editorStore';
 
 describe('press rules', () => {
   it('a finger that stays within the slop is a tap, or a long press once held', () => {
@@ -94,10 +96,11 @@ interface Harness {
   taps: Pt[];
   longs: Pt[];
   pinches: number;
+  boxes: string[];
 }
 
-function setup(panFrom?: (p: Pt) => boolean): Harness {
-  const h: Harness = { el: null as unknown as HTMLDivElement, view: () => v, taps: [], longs: [], pinches: 0 };
+function setup(panFrom?: (p: Pt) => boolean, boxFrom?: (p: Pt) => boolean): Harness {
+  const h: Harness = { el: null as unknown as HTMLDivElement, view: () => v, taps: [], longs: [], pinches: 0, boxes: [] };
   let v: View = { zoom: 1, panX: 0, panY: 0 };
   function Probe() {
     const [el, setEl] = useState<HTMLDivElement | null>(null);
@@ -105,6 +108,8 @@ function setup(panFrom?: (p: Pt) => boolean): Harness {
       oneFingerPan: true,
       range: { min: 0.1, max: 10 },
       ...(panFrom ? { panFrom } : {}),
+      ...(boxFrom ? { boxFrom } : {}),
+      onBox: (phase, a, b) => h.boxes.push(`${phase} ${a.x},${a.y} ${b.x},${b.y}`),
       onTap: (p) => h.taps.push(p),
       onLongPress: (p) => h.longs.push(p),
       onPinchStart: () => { h.pinches++; },
@@ -186,6 +191,40 @@ describe('useTouchView for touch editing', () => {
     expect(h.longs).toEqual([]);
   });
 
+  it('"Select area": one finger draws a box, and the view stays put', () => {
+    const h = setup(undefined, () => true);
+    const start = touchEvent('touchstart', h.el, [{ x: 10, y: 10 }]);
+    expect(start.defaultPrevented).toBe(true);
+    touchEvent('touchmove', h.el, [{ x: 40, y: 20 }]);
+    touchEvent('touchmove', h.el, [{ x: 60, y: 50 }]);
+    touchEvent('touchend', h.el, []);
+    expect(h.boxes).toEqual(['move 10,10 40,20', 'move 10,10 60,50', 'end 10,10 60,50']);
+    expect(h.view()).toEqual({ zoom: 1, panX: 0, panY: 0 });
+    expect(h.taps).toEqual([]);
+  });
+
+  it('a second finger gives up the box and pinches instead', () => {
+    const h = setup(undefined, () => true);
+    touchEvent('touchstart', h.el, [{ x: 10, y: 10 }]);
+    touchEvent('touchmove', h.el, [{ x: 30, y: 10 }]);
+    touchEvent('touchstart', h.el, [{ x: 30, y: 10 }, { x: 70, y: 10 }]);
+    expect(h.boxes).toEqual(['move 10,10 30,10', 'cancel 10,10 30,10']);
+    touchEvent('touchmove', h.el, [{ x: 10, y: 10 }, { x: 90, y: 10 }]);
+    expect(h.view().zoom).toBeCloseTo(2, 6);
+    touchEvent('touchend', h.el, []);
+    expect(h.boxes).toHaveLength(2);
+  });
+
+  it('a finger on a picked part still drags the part with "Select area" on', () => {
+    // Not a box there, and not a pan either.
+    const h = setup(() => false, (p) => p.x > 50);
+    touchEvent('touchstart', h.el, [{ x: 10, y: 10 }]);
+    touchEvent('touchmove', h.el, [{ x: 40, y: 10 }]);
+    touchEvent('touchend', h.el, []);
+    expect(h.boxes).toEqual([]);
+    expect(h.view().panX).toBe(0);
+  });
+
   it('leaves the buttons over the map alone', () => {
     const h = setup();
     const bar = h.el.querySelector('button')!;
@@ -195,5 +234,28 @@ describe('useTouchView for touch editing', () => {
     vi.advanceTimersByTime(LONG_PRESS_MS * 2);
     expect(h.taps).toEqual([]);
     expect(h.longs).toEqual([]);
+  });
+});
+
+describe('the touch bar', () => {
+  afterEach(() => {
+    cleanup();
+    useEditorStore.setState({ selection: [], touchSelectMore: false, touchSelectArea: false });
+  });
+  const actions = { rotate: () => {}, duplicate: () => {}, delete: () => {} };
+
+  it('turns "Select area" on and off, with or without parts picked, and Done turns it off', () => {
+    render(<TouchActionBar actions={actions} onAddPart={() => {}} />);
+    const area = () => screen.getByRole('button', { name: 'Select area' });
+    expect(area().getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(area());
+    expect(useEditorStore.getState().touchSelectArea).toBe(true);
+    expect(area().getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('status').textContent).toMatch(/Drag a box/);
+    act(() => useEditorStore.setState({ selection: ['b1'] }));
+    expect(area().getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(useEditorStore.getState().touchSelectArea).toBe(false);
+    expect(useEditorStore.getState().selection).toEqual([]);
   });
 });

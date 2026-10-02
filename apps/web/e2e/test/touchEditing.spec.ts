@@ -267,6 +267,57 @@ for (const phone of [
   });
 }
 
+test.describe('picking by touch with a box', () => {
+  test.use(pixel7);
+
+  test('"Select area" draws a box that picks what it touches, and the map stays put', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+    await newLayout(page, 'select-area');
+    const finger = await Finger.on(page);
+    await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
+    // Two parts side by side, then nothing picked.
+    await page.getByTestId('add-part').tap();
+    const sheet = page.getByRole('dialog', { name: 'Add a part' });
+    await sheet.getByRole('searchbox', { name: 'Search parts' }).fill('narrow gauge track straight 4 x 16');
+    await sheet.locator(`[data-part-key="${PART}"]`).tap();
+    await expect.poll(() => bricks(page).then((b) => b.length)).toBe(1);
+    await bar(page).getByRole('button', { name: 'Duplicate' }).tap();
+    await expect.poll(() => bricks(page).then((b) => b.length)).toBe(2);
+    await bar(page).getByRole('button', { name: 'Done' }).tap();
+    await expect(page.getByTestId('add-part')).toBeVisible();
+
+    await bar(page).getByRole('button', { name: 'Select area' }).tap();
+    await expect(bar(page).getByRole('button', { name: 'Select area' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(bar(page).getByRole('status')).toContainText('Drag a box');
+    const all = await bricks(page);
+    const left = Math.min(...all.map((b) => b.sx)) - 90;
+    const right = Math.max(...all.map((b) => b.sx)) + 90;
+    const top = Math.min(...all.map((b) => b.sy)) - 40;
+    const bottom = Math.max(...all.map((b) => b.sy)) + 40;
+    const x0 = await stageX(page);
+    await finger.drag({ x: left, y: top }, { x: right, y: bottom });
+    await expect(bar(page)).toHaveAttribute('aria-label', '2 picked');
+    expect(await stageX(page)).toBeCloseTo(x0, 3);
+    const after = await bricks(page);
+    for (const b of all) expect(after.find((c) => c.id === b.id)!.x).toBeCloseTo(b.x, 6);
+    await shoot(page, 'phone-select-area');
+
+    // A box around one part only picks that one.
+    await bar(page).getByRole('button', { name: 'Done' }).tap();
+    await expect(bar(page).getByRole('button', { name: 'Select area' })).toHaveAttribute('aria-pressed', 'false');
+    await bar(page).getByRole('button', { name: 'Select area' }).tap();
+    const [first] = all.sort((p, q) => p.sx - q.sx);
+    await finger.drag({ x: first!.sx - 20, y: first!.sy - 20 }, { x: first!.sx + 20, y: first!.sy + 20 });
+    await expect(bar(page)).toHaveAttribute('aria-label', '1 picked');
+    // Off again: one finger pans as before.
+    await bar(page).getByRole('button', { name: 'Select area' }).tap();
+    const area = (await page.getByTestId('canvas-area').boundingBox())!;
+    const px = await stageX(page);
+    await finger.drag({ x: area.x + 30, y: area.y + 120 }, { x: area.x + 90, y: area.y + 120 });
+    expect((await stageX(page)) - px).toBeCloseTo(60, 0);
+  });
+});
+
 test.describe('the View / Edit choice', () => {
   test.use(pixel7);
 
@@ -321,8 +372,8 @@ test.describe('touch editing on a tablet', () => {
     const area = (await page.getByTestId('canvas-area').boundingBox())!;
     await finger.pinchOut({ x: area.x + area.width / 2, y: area.y + area.height / 2 });
     // Nothing picked: a finger on the part moves the view, not the part.
-    await finger.tap({ x: area.x + 20, y: area.y + area.height - 80 });
-    await expect(bar(page)).toHaveCount(0);
+    await finger.tap({ x: area.x + 20, y: area.y + 80 });
+    await expect(bar(page)).toHaveAttribute('aria-label', 'Touch editing');
     let [a] = await bricks(page);
     const x0 = await stageX(page);
     await finger.drag({ x: a!.sx, y: a!.sy }, { x: a!.sx + 50, y: a!.sy });
@@ -341,8 +392,19 @@ test.describe('touch editing on a tablet', () => {
     await bar(page).getByRole('button', { name: 'Rotate right' }).tap();
     await expect.poll(async () => (await bricks(page))[0]!.rot).not.toBe(a!.rot);
     await shoot(page, 'tablet-edit');
+    // With nothing picked, the bar offers the same Add part sheet as a phone.
+    await bar(page).getByRole('button', { name: 'Done' }).tap();
+    await page.getByTestId('add-part').tap();
+    const sheet = page.getByRole('dialog', { name: 'Add a part' });
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('searchbox', { name: 'Search parts' }).fill('narrow gauge track straight 4 x 16');
+    await shoot(page, 'tablet-add-part');
+    await sheet.locator(`[data-part-key="${PART}"]`).tap();
+    await expect(sheet).toHaveCount(0);
+    await expect.poll(() => bricks(page).then((b) => b.length)).toBe(2);
+    await expect(bar(page)).toHaveAttribute('aria-label', '1 picked');
     const saved = await serverBricks(page, id);
-    expect(saved).toHaveLength(1);
-    expect(saved[0]!.rot).not.toBe(0);
+    expect(saved).toHaveLength(2);
+    expect(saved.some((b) => b.rot !== 0)).toBe(true);
   });
 });

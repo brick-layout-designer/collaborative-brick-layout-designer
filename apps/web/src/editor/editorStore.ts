@@ -78,6 +78,8 @@ export interface EditorState {
   annoSelection: AnnoSelection;
   /** Touch editing: a tap adds a part to the selection (or takes it out) instead of replacing it. */
   touchSelectMore: boolean;
+  /** Touch editing: one finger on the map draws a box that picks what it touches, instead of moving the view. */
+  touchSelectArea: boolean;
   /** Layer id currently being edited. */
   activeLayerId: string | null;
   /** Part library key picked for the place tool. Empty when nothing chosen. */
@@ -271,6 +273,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   selection: [],
   annoSelection: EMPTY_ANNO,
   touchSelectMore: false,
+  touchSelectArea: false,
   activeLayerId: null,
   placePartKey: '',
   zoom: 1,
