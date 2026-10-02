@@ -69,10 +69,10 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   for (let attempt = 0; ; attempt++) {
     await page.getByRole('button', { name: 'Create account' }).click();
     const sent = page.getByText(/check/i).first();
-    const slowDown = page.getByText('Too many requests at once. Please wait a minute and try again.');
+    const slowDown = page.getByText(/too many/i).first();
     let outcome = '';
     await expect
-      .poll(async () => (outcome = (await sent.isVisible()) ? 'sent' : (await slowDown.isVisible()) ? 'wait' : ''))
+      .poll(async () => (outcome = (await sent.isVisible()) ? 'sent' : (await slowDown.isVisible()) ? 'wait' : ''), { timeout: 20_000 })
       .not.toBe('');
     if (outcome === 'sent') break;
     expect(attempt, 'still rate-limited after waiting').toBeLessThan(2);

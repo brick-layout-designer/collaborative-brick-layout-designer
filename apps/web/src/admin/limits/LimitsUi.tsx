@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, LineChart, SERIES_STYLE } from '../insights/charts';
 import { formatBytes, formatDate } from '../insights/format';
 import { describeEvent, formatLimit, limitsApi, toInput, toStored, type AbuseRow, type GlobalLimit, type LimitUnit, type SubjectLimit } from './limitsApi';
+import { api } from '../../api';
 
 // ---------------------------------------------------------------------------
 // Heavy use: top people and clubs
@@ -466,12 +467,11 @@ export function GlobalLimitsForm() {
           server’s default.
         </p>
       </div>
-      {data.data?.enforced === false && (
-        <p role="status" data-testid="limits-off" className="rounded-card border border-line bg-soft p-3 text-sm text-ink">
-          <b>Limits are off on this server.</b> Use is counted and shown on the Heavy use tab, but nothing is refused. To turn them
-          on, remove <code>LIMITS_ENFORCE=off</code> from the server’s settings and restart it.
-        </p>
-      )}
+      <EnforceSwitch
+        enforced={data.data?.enforced ?? true}
+        setting={data.data?.enforcedSetting ?? true}
+        source={data.data?.enforcementSource ?? 'setting'}
+      />
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {limits.map((l) => (
           <GlobalRow key={l.key} l={l} value={values[l.key] ?? ''} onChange={(v) => setDraft({ ...values, [l.key]: v })} />
@@ -516,3 +516,49 @@ function GlobalRow({ l, value, onChange }: { l: GlobalLimit; value: string; onCh
     </li>
   );
 }
+
+/**
+ * "Enforce usage limits": on refuses growth past a limit; off still counts
+ * use (Heavy use) but refuses nothing. Takes effect at once. The server's
+ * LIMITS_ENFORCE, when set, wins, and the switch says so.
+ */
+function EnforceSwitch({ enforced, setting, source }: { enforced: boolean; setting: boolean; source: 'setting' | 'forced-on' | 'forced-off' }) {
+  const qc = useQueryClient();
+  const forced = source !== 'setting';
+  const save = useMutation({
+    mutationFn: (on: boolean) => api.admin.patchSettings({ limitsEnforced: on }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-limits'] }),
+  });
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-card border border-line bg-soft p-3" data-testid="limits-switch">
+      <div className="min-w-0 text-sm">
+        <p className="font-semibold text-ink">Enforce usage limits</p>
+        <p className="text-muted" role="status" data-testid={enforced ? 'limits-on' : 'limits-off'}>
+          {enforced
+            ? 'On: growth past a limit is refused with a plain message. People can always open and delete their things.'
+            : 'Off: use is counted and shown on the Heavy use tab, but nothing is refused.'}
+        </p>
+        {forced && (
+          <p className="mt-1 text-muted" data-testid="limits-forced">
+            {source === 'forced-on' ? 'Forced on' : 'Forced off'} by the server setting <code>LIMITS_ENFORCE</code>. Remove it from the
+            server to control this here.
+          </p>
+        )}
+        {save.isError && <p className="mt-1 text-danger">{(save.error as Error).message}</p>}
+      </div>
+      <label className="inline-flex items-center gap-2 text-sm font-semibold">
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Enforce usage limits"
+          checked={forced ? enforced : setting}
+          disabled={forced || save.isPending}
+          onChange={(e) => save.mutate(e.target.checked)}
+          className="size-5 accent-accent"
+        />
+        {forced ? (enforced ? 'On' : 'Off') : setting ? 'On' : 'Off'}
+      </label>
+    </div>
+  );
+}
+

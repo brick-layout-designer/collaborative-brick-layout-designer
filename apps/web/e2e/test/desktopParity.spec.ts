@@ -436,7 +436,7 @@ test.describe('budget limits', () => {
     await openEditor(page, id);
     const openBudget = async (p: Page) => {
       await p.getByRole('button', { name: 'Map', exact: true }).click();
-      await p.getByRole('button', { name: 'Budget...' }).click();
+      await p.getByRole('button', { name: 'Edit Budget...' }).click();
     };
     // The Budget table's first row (the Parts filter also uses a '—' placeholder).
     const budgetRow = (p: Page) => p.locator('tbody tr').filter({ has: p.locator('input[placeholder="—"]') }).first();
@@ -641,14 +641,14 @@ test.describe('use budget limitation', () => {
 
     // Budget 3857.0 at exactly its 72 uses, and turn the limitation on.
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget...' }).click();
+    await page.getByRole('button', { name: 'Edit Budget...' }).click();
     const row = page.locator('tbody tr', { hasText: '3857.0' });
     await row.locator('input[placeholder="—"]').fill('72');
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Use Budget Limitation' }).click();
+    await page.getByRole('button', { name: 'Budget → Stop at the Budget Limits' }).click();
     // Close the Budget panel so it doesn't cover the Find panel.
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget...' }).click();
+    await page.getByRole('button', { name: 'Edit Budget...' }).click();
 
     // Select one 3857.0 through Find, then duplicate it.
     await page.keyboard.press('Control+f');
@@ -687,13 +687,13 @@ test.describe('budget in the parts panel', () => {
     const allTiles = await tiles.count();
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget...' }).click();
+    await page.getByRole('button', { name: 'Edit Budget...' }).click();
     await page.locator('tbody tr', { hasText: '3857.0' }).locator('input[placeholder="—"]').fill('10');
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget...' }).click(); // close the panel
+    await page.getByRole('button', { name: 'Edit Budget...' }).click(); // close the panel
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Show Only Budgeted Parts' }).click();
+    await page.getByRole('button', { name: 'Budget → Show Only Parts in the Budget' }).click();
     // Only parts with a limit above 0 remain: 3857.0.
     await expect(tiles).toHaveCount(1);
     await expect(tiles.first()).toHaveAttribute('title', /3857\.0/);
@@ -705,7 +705,7 @@ test.describe('budget in the parts panel', () => {
     await shot(page, 'parts-budget.png');
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Show Only Budgeted Parts' }).click();
+    await page.getByRole('button', { name: 'Budget → Show Only Parts in the Budget' }).click();
     await expect(tiles).toHaveCount(allTiles);
     // Unbudgeted parts read "used/?".
     await expect(page.getByTestId('budget-numbers').filter({ hasText: /\/\?$/ }).first()).toBeVisible();

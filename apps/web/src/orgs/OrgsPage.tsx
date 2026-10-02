@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
@@ -103,11 +103,14 @@ function CreateOrgDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   // Slug is server-side derived now; we only show a preview here.
   const slug = slugifyOrgName(name);
+  const navigate = useNavigate();
   const create = useMutation({
     mutationFn: () => api.orgs.create(name.trim()),
-    onSuccess: () => {
+    // Straight to the new club's page, where its admin sets it up.
+    onSuccess: (club) => {
       qc.invalidateQueries({ queryKey: ['orgs'] });
       onClose();
+      navigate(`/orgs/${club.slug}`);
     },
     onError: (e: Error) => setError(e.message),
   });

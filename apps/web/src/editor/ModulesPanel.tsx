@@ -5,6 +5,7 @@
 // Create / Save to Library / Import… are handled elsewhere (SaveModuleDialog,
 // ImportBbmDialog, InsertModuleDialog).
 
+import { useOnScreen } from './menuPosition';
 import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import type { SidecarModule } from '@cld/bbm';
@@ -39,9 +40,9 @@ export function ModulesPanel({ doc, isViewer }: Props) {
     <button
       onClick={() => createModuleFromSelection(doc)}
       className="rounded-lg border border-border px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-soft"
-      title="Register the selected bricks as a module"
+      title="Keep the selected parts together as a module in this layout"
     >
-      + From selection
+      + Group selection
     </button>
   );
 
@@ -92,6 +93,7 @@ function ModuleRow({
   const [saving, setSaving] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useOnScreen(menuRef, ctxMenu);
 
   const isMembersSelected =
     module.members.length > 0 &&
@@ -130,7 +132,7 @@ function ModuleRow({
   async function saveToLibrary() {
     setCtxMenu(null);
     if (module.members.length === 0) {
-      alert('This module has no brick members.');
+      alert('This module has no parts.');
       return;
     }
     setSaving(true);
@@ -165,8 +167,9 @@ function ModuleRow({
       const res = await api.modules.create({ title: module.name || 'Module' });
       await api.modules.saveSnapshot(res.id, bytes);
       patchSidecarModule(doc, module.id, { sourceFile: res.id });
+      useEditorStore.getState().showStatusMessage(`Saved “${module.name || 'Module'}” to your Module library`, 4000);
     } catch (e) {
-      alert(`Save to library failed: ${e instanceof Error ? e.message : String(e)}`);
+      alert(`Couldn’t save to the Module library: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -175,7 +178,7 @@ function ModuleRow({
   async function rescanFromSource() {
     setCtxMenu(null);
     if (!module.sourceFile) {
-      alert('This module has no source file (it was created from a selection, not saved to library).');
+      alert('Save this module to your Module library first.');
       return;
     }
     setRescanning(true);
@@ -237,8 +240,8 @@ function ModuleRow({
         <>
           <span className="font-medium text-ink">{module.name || '(untitled)'}</span>
           <span className="ml-2 text-neutral-600">
-            {module.members.length} brick{module.members.length !== 1 ? 's' : ''}
-            {module.sourceFile ? ` — ${module.sourceFile.split(/[\\/]/).pop()}` : ''}
+            {module.members.length} part{module.members.length !== 1 ? 's' : ''}
+            {module.sourceFile ? ` — ${/^[0-9a-f-]{36}$/.test(module.sourceFile) ? 'in your Module library' : module.sourceFile.split(/[\\/]/).pop()}` : ''}
           </span>
         </>
       )}
@@ -253,7 +256,7 @@ function ModuleRow({
       {ctxMenu && (
         <div
           ref={menuRef}
-          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
+          style={menuStyle}
           className="min-w-[170px] rounded-lg border border-border bg-panel py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
@@ -262,7 +265,7 @@ function ModuleRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={selectMembers}
           >
-            Select Members
+            Select its parts
           </button>
           <hr className="my-1 border-border" />
           <button
@@ -305,14 +308,14 @@ function ModuleRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); cloneModuleBricks(doc, module); }}
           >
-            Clone
+            Duplicate
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => void saveToLibrary()}
             disabled={saving}
           >
-            {saving ? 'Saving…' : 'Save to Library'}
+            {saving ? 'Saving…' : 'Save to Module library'}
           </button>
           <button
             className={
@@ -321,26 +324,26 @@ function ModuleRow({
             }
             onClick={() => void rescanFromSource()}
             disabled={rescanning || !module.sourceFile}
-            title={module.sourceFile ? undefined : 'No library source — save to library first'}
+            title={module.sourceFile ? undefined : 'Save it to your Module library first'}
           >
-            {rescanning ? 'Re-scanning…' : 'Re-scan from source'}
+            {rescanning ? 'Updating…' : 'Update from the Module library'}
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => {
               setCtxMenu(null);
-              if (!confirm(`Flatten module "${module.name}"? This removes it from the module list but leaves its bricks in place.`)) return;
+              if (!confirm(`Ungroup "${module.name}"? It leaves the module list; its parts stay where they are.`)) return;
               flattenSidecarModule(doc, module.id);
             }}
           >
-            Flatten
+            Ungroup (keep the parts)
           </button>
           <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
             onClick={() => {
               setCtxMenu(null);
-              if (!confirm(`Delete module "${module.name}"? Its bricks will remain.`)) return;
+              if (!confirm(`Delete module "${module.name}"? Its parts stay on the map.`)) return;
               deleteSidecarModule(doc, module.id);
             }}
           >

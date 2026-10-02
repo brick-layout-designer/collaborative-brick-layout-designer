@@ -26,6 +26,14 @@ export function parseTrustProxy(value: string | undefined): boolean | string {
   return v;
 }
 
+/** LIMITS_ENFORCE: 'on' / 'off' forces it; anything else (or unset) leaves it to the admin's switch. */
+export function parseForced(value: string | undefined): 'on' | 'off' | null {
+  const v = (value ?? '').trim().toLowerCase();
+  if (['on', 'true', '1', 'yes'].includes(v)) return 'on';
+  if (['off', 'false', '0', 'no'].includes(v)) return 'off';
+  return null;
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: int(process.env.HTTP_PORT ?? process.env.PORT, 3000),
@@ -34,10 +42,10 @@ export const env = {
   cookieSecure: bool(process.env.COOKIE_SECURE, process.env.NODE_ENV === 'production'),
   partsDir: process.env.PARTS_DIR ?? './data/parts',
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
-  // LIMITS_ENFORCE=off: usage limits are counted and shown to admins but
-  // nothing is refused (no limit_reached, no 429, no read-only suspension).
-  // For trying limits out on a live site before turning them on.
-  limitsEnforce: !['off', 'false', '0', 'no'].includes((process.env.LIMITS_ENFORCE ?? 'on').trim().toLowerCase()),
+  // Usage limits are switched on and off in Admin › Settings. LIMITS_ENFORCE
+  // (on/off) forces it either way from the server's own settings and wins
+  // over the admin's switch; unset leaves it to the switch.
+  limitsEnforceForced: parseForced(process.env.LIMITS_ENFORCE),
 
   enablePasswordAuth: bool(process.env.ENABLE_PASSWORD_AUTH, false),
   demoMode: bool(process.env.DEMO_MODE, false),

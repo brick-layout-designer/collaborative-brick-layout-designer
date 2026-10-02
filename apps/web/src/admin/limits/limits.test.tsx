@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describeEvent, formatLimit, toInput, toStored } from './limitsApi';
-import { HeavyUseTab } from './LimitsUi';
+import { GlobalLimitsForm, HeavyUseTab } from './LimitsUi';
 
 afterEach(cleanup);
 
@@ -47,3 +47,41 @@ describe('Heavy use tab', () => {
     expect(screen.getAllByText('1 flagged of 1').length).toBe(2);
   });
 });
+
+describe('Enforce usage limits switch', () => {
+  function serve(page: Record<string, unknown>) {
+    const patches: unknown[] = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        patches.push(JSON.parse(init.body as string));
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ limits: [], ...page }), { status: 200 });
+    }) as typeof fetch;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GlobalLimitsForm />
+      </QueryClientProvider>,
+    );
+    return patches;
+  }
+
+  it('turns limits off from Settings', async () => {
+    const patches = serve({ enforced: true, enforcedSetting: true, enforcementSource: 'setting' });
+    const sw = (await screen.findByRole('switch', { name: 'Enforce usage limits' })) as HTMLInputElement;
+    expect(sw.checked).toBe(true);
+    expect(sw.disabled).toBe(false);
+    fireEvent.click(sw);
+    await waitFor(() => expect(patches).toEqual([{ limitsEnforced: false }]));
+  });
+
+  it("says when the server's setting forces it, and can't be changed here", async () => {
+    serve({ enforced: false, enforcedSetting: true, enforcementSource: 'forced-off' });
+    const sw = (await screen.findByRole('switch', { name: 'Enforce usage limits' })) as HTMLInputElement;
+    expect(sw.disabled).toBe(true);
+    expect(sw.checked).toBe(false);
+    expect(screen.getByTestId('limits-forced').textContent).toMatch(/Forced off by the server setting/);
+    expect(screen.getByTestId('limits-off')).toBeTruthy();
+  });
+});
+

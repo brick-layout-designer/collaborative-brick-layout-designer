@@ -21,8 +21,10 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { getPlatformSettings, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
 import {
   cleanLimits,
+  enforcementSource,
   envDefaults,
   globalLimits,
+  limitsEnforced,
   invalidateLimitCaches,
   isLimitKey,
   LIMITS,
@@ -391,8 +393,11 @@ export async function adminLimitsRoutes(app: FastifyInstance): Promise<void> {
     const { stored, values } = await globalLimits();
     const defaults = envDefaults();
     return {
-      // False when LIMITS_ENFORCE=off: limits are shown but not applied.
-      enforced: env.limitsEnforce,
+      // Whether limits refuse anything now, the admin's switch, and whether
+      // the server's LIMITS_ENFORCE overrides that switch.
+      enforced: await limitsEnforced(),
+      enforcedSetting: (await getPlatformSettings()).limitsEnforced,
+      enforcementSource: enforcementSource(),
       limits: LIMITS.map((l) => ({
         key: l.key,
         label: l.label,

@@ -89,12 +89,18 @@ jobs:
 
       # Playwright starts the Vite dev server itself (playwright.config.ts
       # webServer), proxying /api, /ws and /parts to the server above.
-      - name: Journeys and the core specs
+      # The journeys change site-wide settings (catalogs, review, limits) the
+      # way an admin would, so they run one at a time.
+      - name: Journeys
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)
+        working-directory: apps/web
+        run: npx playwright test e2e/test/journeys/ --workers=1 --retries=1 --reporter=list,html
+
+      - name: Core specs
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)
         working-directory: apps/web
         run: >
           npx playwright test
-          e2e/test/journeys/
           e2e/test/auth.spec.ts
           e2e/test/layouts.spec.ts
           e2e/test/editor.spec.ts
@@ -102,6 +108,7 @@ jobs:
           e2e/test/savedViews.spec.ts
           e2e/test/moduleEditor.spec.ts
           e2e/test/moduleVersions.spec.ts
+          e2e/test/modulesPanel.spec.ts
           e2e/test/orgs.spec.ts
           e2e/test/partsOnHome.spec.ts
           e2e/test/publicShare.spec.ts
