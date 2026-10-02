@@ -62,7 +62,15 @@ export type AuditEventType =
   // API tokens (desktop sign-in). Subject is the token's owner
   // (`resourceKind: 'user'`); the payload names the token.
   | 'api_token_issue'
-  | 'api_token_revoke';
+  | 'api_token_revoke'
+  // Public catalogs: sharing, reviewing and taking items down. Subject is
+  // the catalog item (`resourceKind: 'catalog_item'`).
+  | 'catalog_submit'
+  | 'catalog_approve'
+  | 'catalog_decline'
+  | 'catalog_unpublish'
+  | 'catalog_withdraw'
+  | 'catalog_add';
 
 export type AuditResourceKind =
   | 'layout'
@@ -71,7 +79,8 @@ export type AuditResourceKind =
   | 'org'
   | 'user'
   | 'part_library'
-  | 'platform_settings';
+  | 'platform_settings'
+  | 'catalog_item';
 
 interface CommonAuditFields {
   /** null for system-driven events (TTL sweep, transfer admin). */

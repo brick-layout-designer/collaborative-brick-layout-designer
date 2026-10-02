@@ -20,8 +20,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
+import { CatalogSettingsSection, ModerationTab } from './Moderation';
 
-type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'audit' | 'settings';
+type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
+const ADMIN_TABS: Tab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'audit', 'settings'];
 
 /** Content size (doc snapshot + sidecar + unflushed Yjs updates) — see adminLayoutStats.ts. Not raw disk usage. */
 function formatBytes(bytes: number): string {
@@ -38,20 +40,24 @@ function formatBytes(bytes: number): string {
 
 export function AdminPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
-  const [tab, setTab] = useState<Tab>('dashboard');
+  const [chosen, setTab] = useState<Tab | null>(null);
   // Its tables become cards on a phone.
   const pageRef = useCardTables();
 
   if (me.isLoading) return <Loading />;
   if (!me.data?.user) return <Navigate to="/login" replace />;
-  if (!me.data.user.isGlobalAdmin) return <Forbidden />;
+  const isAdmin = me.data.user.isGlobalAdmin;
+  // Moderators see only Moderation; everything else stays the admins'.
+  if (!isAdmin && !me.data.user.isModerator) return <Forbidden />;
+  const tabs: Tab[] = isAdmin ? ADMIN_TABS : ['moderation'];
+  const tab: Tab = chosen && tabs.includes(chosen) ? chosen : tabs[0]!;
 
   return (
     <div ref={pageRef} className="cards-on-phone h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={me.data.user} />
       <div className="mt-6">
         <h1 className="text-base font-semibold">
-          Platform admin
+          {isAdmin ? 'Platform admin' : 'Moderation'}
           <span className="ml-2 rounded-lg bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
             Restricted
           </span>
@@ -59,7 +65,7 @@ export function AdminPage() {
       </div>
       {/* The tabs wrap onto a second line on a phone rather than hiding off the side. */}
       <nav className="mt-2 flex flex-wrap border-b border-line text-sm">
-        {(['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'audit', 'settings'] as Tab[]).map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -86,6 +92,7 @@ export function AdminPage() {
         {tab === 'layouts' && <LayoutsTab />}
         {tab === 'parts' && <GlobalPartsTab />}
         {tab === 'libraries' && <PartLibrariesTab />}
+        {tab === 'moderation' && <ModerationTab />}
         {tab === 'audit' && <AuditTab />}
         {tab === 'settings' && <SettingsTab />}
       </main>
@@ -127,8 +134,8 @@ function UsersTab({ selfId }: { selfId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });
   const patchDemo = useMutation({
-    mutationFn: ({ id, isDemoAccount }: { id: string; isDemoAccount: boolean }) =>
-      api.admin.patchUser(id, { isDemoAccount }),
+    mutationFn: ({ id, ...body }: { id: string; isDemoAccount?: boolean; isModerator?: boolean }) =>
+      api.admin.patchUser(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });
   const revokeSessions = useMutation({
@@ -172,6 +179,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                 <Th>Created</Th>
                 <Th>Demo</Th>
                 <Th>Admin</Th>
+                <Th>Moderator</Th>
                 <Th align="right">Actions</Th>
               </tr>
             </thead>
@@ -219,6 +227,16 @@ function UsersTab({ selfId }: { selfId: string }) {
                         onChange={(e) =>
                           patchAdmin.mutate({ id: u.id, isGlobalAdmin: e.target.checked })
                         }
+                      />
+                      </label>
+                    </Td>
+                    <Td>
+                      <label className="inline-flex items-center justify-center pointer-coarse:size-11">
+                      <input
+                        type="checkbox"
+                        aria-label={`Moderator: ${u.email}`}
+                        checked={!!u.isModerator}
+                        onChange={(e) => patchDemo.mutate({ id: u.id, isModerator: e.target.checked })}
                       />
                       </label>
                     </Td>
@@ -1573,6 +1591,7 @@ function SettingsTab() {
   return (
     <>
     <div className="max-w-xl space-y-8">
+      <CatalogSettingsSection />
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-neutral-300">Desktop app</h2>
         <label className="block space-y-1 text-xs text-muted">

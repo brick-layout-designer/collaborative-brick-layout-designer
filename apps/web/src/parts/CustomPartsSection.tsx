@@ -9,6 +9,7 @@ import { api, type CustomPartSummary, type OrgSummary } from '../api';
 import { matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
 import { OwnerChip } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
+import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { UploadPartDialog } from './UploadPartDialog';
 import { atLeast } from '../orgs/clubRoles';
 
@@ -37,6 +38,12 @@ export function CustomPartsSection({
   const qc = useQueryClient();
   const parts = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
   const [uploading, setUploading] = useState(false);
+  const [sharing, setSharing] = useState<CustomPartSummary | null>(null);
+  const catalog = useCatalogStatus();
+  const withdraw = useMutation({
+    mutationFn: api.catalog.withdraw,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog-mine'] }),
+  });
   const remove = useMutation({
     mutationFn: api.customParts.remove,
     onSuccess: () => {
@@ -86,6 +93,8 @@ export function CustomPartsSection({
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="break-words font-medium">{p.displayName || p.partNumber}</span>
                     <OwnerChip item={p} myUserId={myUserId} orgs={orgs} />
+                    {catalog.shared('part', p.id) && <CatalogBadge item={catalog.shared('part', p.id)!} />}
+                    <UpdateAvailable copyId={p.id} label={p.displayName || p.partNumber} />
                   </p>
                   <p className="break-all font-mono text-xs text-muted">{p.partNumber}</p>
                 </div>
@@ -97,6 +106,26 @@ export function CustomPartsSection({
                 <a role="menuitem" href={api.customParts.spriteUrl(p.id)} download className={MORE_ITEM}>
                   Download picture
                 </a>
+                {catalog.enabled('part') && canDeletePart(p, myUserId, orgs) && (
+                  <button role="menuitem" type="button" onClick={() => setSharing(p)} className={MORE_ITEM}>
+                    {catalog.shared('part', p.id) ? 'Publish this update…' : 'Share to the public catalog…'}
+                  </button>
+                )}
+                {canDeletePart(p, myUserId, orgs) &&
+                  (catalog.shared('part', p.id)?.status === 'public' || catalog.shared('part', p.id)?.status === 'in_review') && (
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Take "${p.partNumber}" out of the public catalog? Copies people already have keep working.`)) {
+                          withdraw.mutate(catalog.shared('part', p.id)!.id);
+                        }
+                      }}
+                      className={MORE_ITEM}
+                    >
+                      Withdraw from the catalog
+                    </button>
+                  )}
                 {canDeletePart(p, myUserId, orgs) && (
                   <button
                     role="menuitem"
@@ -116,6 +145,15 @@ export function CustomPartsSection({
       )}
       {/* It saves to the club being shown, like New layout. */}
       {uploading && <UploadPartDialog onClose={() => setUploading(false)} />}
+      {sharing && (
+        <ShareToCatalogDialog
+          kind="part"
+          sourceId={sharing.id}
+          title={sharing.displayName || sharing.partNumber}
+          existing={catalog.shared('part', sharing.id)}
+          onClose={() => setSharing(null)}
+        />
+      )}
     </div>
   );
 }

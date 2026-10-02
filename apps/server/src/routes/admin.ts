@@ -120,6 +120,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         avatarUrl: schema.users.avatarUrl,
         isDemoAccount: schema.users.isDemoAccount,
         isGlobalAdmin: schema.users.isGlobalAdmin,
+        isModerator: schema.users.isModerator,
         emailVerified: schema.users.emailVerified,
         createdAt: schema.users.createdAt,
       })
@@ -204,7 +205,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.patch<{ Params: { id: string }; Body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean } }>(
+  app.patch<{ Params: { id: string }; Body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean; isModerator?: boolean } }>(
     '/api/admin/users/:id',
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
@@ -227,6 +228,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       }
       if (typeof req.body.isDemoAccount === 'boolean') {
         patch.isDemoAccount = req.body.isDemoAccount;
+      }
+      // Moderator: reviews the public catalogs, and nothing else.
+      if (typeof req.body.isModerator === 'boolean') {
+        patch.isModerator = req.body.isModerator;
       }
       if (Object.keys(patch).length === 0) {
         return reply.code(400).send({ error: 'empty_patch' });
@@ -1144,6 +1149,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         ...resolvePolicy(settings.minDesktopVersion),
         codeMinimum: DESKTOP_MINIMUM,
       },
+      // Public catalogs (off until turned on) and their review step.
+      catalog: {
+        modules: settings.moduleCatalogEnabled,
+        parts: settings.partsCatalogEnabled,
+        review: settings.catalogReview,
+        anonymousBrowse: settings.catalogAnonymousBrowse,
+      },
       updatedAt: settings.updatedAt.getTime(),
     };
   });
@@ -1157,6 +1169,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       smtpPass?: string | null;
       smtpFrom?: string | null;
       minDesktopVersion?: string | null;
+      moduleCatalogEnabled?: boolean;
+      partsCatalogEnabled?: boolean;
+      catalogReview?: string;
+      catalogAnonymousBrowse?: boolean;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1198,6 +1214,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'invalid_desktop_version' });
       }
       patch.minDesktopVersion = v || null;
+    }
+    if (typeof body.moduleCatalogEnabled === 'boolean') patch.moduleCatalogEnabled = body.moduleCatalogEnabled;
+    if (typeof body.partsCatalogEnabled === 'boolean') patch.partsCatalogEnabled = body.partsCatalogEnabled;
+    if (typeof body.catalogAnonymousBrowse === 'boolean') patch.catalogAnonymousBrowse = body.catalogAnonymousBrowse;
+    if ('catalogReview' in body) {
+      if (body.catalogReview !== 'moderators' && body.catalogReview !== 'none') return reply.code(400).send({ error: 'invalid_input' });
+      patch.catalogReview = body.catalogReview;
     }
 
     if (Object.keys(patch).length === 0) {

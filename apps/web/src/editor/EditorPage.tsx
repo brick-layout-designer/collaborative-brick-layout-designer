@@ -9,6 +9,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
 import { useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
 import { useModuleDoc } from './useModuleDoc';
+import { ShareToCatalogDialog, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { makeModuleThumbnail, makeRegionThumbnail } from './moduleThumbnail';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
@@ -261,6 +262,9 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   }, [doc, layoutId, checkSaved, meta.data?.layout.title, moduleMode]);
   // The module editor's Save: the module's contents, then its picture.
   const saveModuleRef = useRef<() => Promise<void>>(async () => undefined);
+  // The module editor: share it to the public catalog (when that's on).
+  const catalogStatus = useCatalogStatus();
+  const [sharingModule, setSharingModule] = useState(false);
   // The module editor's "What changed" note for its next save.
   const [saveNote, setSaveNoteText] = useState('');
   const saveModule = () => saveModuleRef.current();
@@ -706,6 +710,25 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               >
                 Save module
               </button>
+            )}
+            {role === 'owner' && catalogStatus.enabled('module') && (
+              <button
+                type="button"
+                onClick={() => setSharingModule(true)}
+                title="Share to the public catalog"
+                className="h-[38px] shrink-0 rounded-control border border-line px-3 text-sm font-bold hover:bg-soft"
+              >
+                {catalogStatus.shared('module', layoutId) ? 'Publish update…' : 'Share…'}
+              </button>
+            )}
+            {sharingModule && (
+              <ShareToCatalogDialog
+                kind="module"
+                sourceId={layoutId}
+                title={meta.data?.layout.title ?? 'Module'}
+                existing={catalogStatus.shared('module', layoutId)}
+                onClose={() => setSharingModule(false)}
+              />
             )}
             <HelpButton helpKey="panel.moduleLibrary" />
             <HelpMenu />

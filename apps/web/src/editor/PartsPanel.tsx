@@ -7,6 +7,7 @@ import type { BbmMap } from '@cld/model';
 import { countUsage, effectiveLimit } from './budgetUsage';
 import { useEditorStore } from './editorStore';
 import { UploadPartDialog } from '../parts/UploadPartDialog';
+import { CatalogPartsDialog } from '../catalog/CatalogPartsDialog';
 
 interface PartContextMenu {
   part: PartWire;
@@ -45,6 +46,8 @@ export function PartsPanel({
   const hasBudget = (budgetLimits?.size ?? 0) > 0;
   const [selectedTile, setSelectedTile] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [fromCatalog, setFromCatalog] = useState(false);
+  const catalogSettings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
   const usage = useMemo(() => (hasBudget && showNumbers ? countUsage(map) : null), [hasBudget, showNumbers, map]);
   const [ctxMenu, setCtxMenu] = useState<PartContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -159,13 +162,20 @@ export function PartsPanel({
           className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
         {canUploadPart && (
-          <button
-            type="button"
-            onClick={() => setUploading(true)}
-            className="text-xs font-semibold text-accent-text hover:underline"
-          >
-            Upload part…
-          </button>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <button
+              type="button"
+              onClick={() => setUploading(true)}
+              className="text-xs font-semibold text-accent-text hover:underline"
+            >
+              Upload part…
+            </button>
+            {catalogSettings.data?.parts && (
+              <button type="button" onClick={() => setFromCatalog(true)} className="text-xs font-semibold text-accent-text hover:underline">
+                From the catalog…
+              </button>
+            )}
+          </div>
         )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -245,6 +255,7 @@ export function PartsPanel({
         </ul>
       </div>
       {uploading && <UploadPartDialog onClose={() => setUploading(false)} />}
+      {fromCatalog && <CatalogPartsDialog onClose={() => setFromCatalog(false)} />}
       {ctxMenu && (
         <PartContextMenuPopup
           ref={menuRef}

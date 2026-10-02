@@ -423,9 +423,24 @@ describe('abuse view', () => {
     expect(list.rows.find((r) => r.id === ids[1])!.flags).toEqual([]);
   });
 
+  it('shows catalog submissions, counted in space used', async () => {
+    const u = await loginAs(app, 'sharer@example.com');
+    const now = new Date();
+    db.insert(schema.catalogItems)
+      .values({ id: 'ci1', kind: 'module', sourceId: 'm1', ownerUserId: u.id, title: 'Yard', status: 'in_review', createdAt: now, updatedAt: now })
+      .run();
+    db.insert(schema.catalogItemVersions)
+      .values([1, 2].map((version) => ({ id: `cv${version}`, itemId: 'ci1', version, status: 'in_review' as const, docSnapshot: Buffer.alloc(500), createdAt: now })))
+      .run();
+    const res = await app.inject({ url: '/api/admin/abuse/users?sort=submissions', headers: { cookie: admin.cookie } });
+    const row = (res.json() as { rows: { id: string; submissions: number; storageBytes: number }[] }).rows.find((r) => r.id === u.id)!;
+    expect(row.submissions).toBe(2);
+    expect(row.storageBytes).toBeGreaterThanOrEqual(1000);
+  });
+
   it('works out a median and flags', () => {
     expect(median([0, 1, 2, 3, 100])).toBe(2.5);
-    const rows = [1, 1, 1, 1000].map((v) => ({ storageBytes: 0, layouts: 0, customParts: 0, modules: 0, rooms: 0, shareLinks: 0, uploads1d: 0, uploads7d: v, uploadsPrev7d: 0, requests1d: 0, requestsPrev1d: 0, refused7d: 0, shareViews7d: 0, live: 0, limits: {} }));
+    const rows = [1, 1, 1, 1000].map((v) => ({ storageBytes: 0, layouts: 0, customParts: 0, modules: 0, rooms: 0, submissions: 0, shareLinks: 0, uploads1d: 0, uploads7d: v, uploadsPrev7d: 0, requests1d: 0, requestsPrev1d: 0, refused7d: 0, shareViews7d: 0, live: 0, limits: {} }));
     expect(flagRows(rows).map((f) => f.length)).toEqual([0, 0, 0, 1]);
   });
 

@@ -73,6 +73,8 @@ export interface AbuseRow {
   customParts: number;
   modules: number;
   rooms: number;
+  /** Catalog submissions (each shared version), and they count in space used. */
+  submissions: number;
   shareLinks: number;
   members?: number;
   uploads1d: number;
@@ -90,7 +92,7 @@ type Bucket = Omit<AbuseRow, 'id' | 'name' | 'email' | 'createdAt' | 'suspended'
 
 function emptyBucket(): Bucket {
   return {
-    storageBytes: 0, layouts: 0, customParts: 0, modules: 0, rooms: 0, shareLinks: 0,
+    storageBytes: 0, layouts: 0, customParts: 0, modules: 0, rooms: 0, submissions: 0, shareLinks: 0,
     uploads1d: 0, uploads7d: 0, uploadsPrev7d: 0, requests1d: 0, requestsPrev1d: 0, refused7d: 0, shareViews7d: 0, live: 0,
   };
 }
@@ -160,6 +162,24 @@ function collect(kind: 'user' | 'org', now: number): Map<string, Bucket> {
     const b = get(r.id);
     if (!b) continue;
     b.rooms = r.n;
+    b.storageBytes += r.bytes;
+  }
+  // What they've shared to the public catalogs.
+  const cCol = isUser ? schema.catalogItems.ownerUserId : schema.catalogItems.ownerOrgId;
+  for (const r of db
+    .select({
+      id: cCol,
+      n: sql<number>`count(*)`.mapWith(Number),
+      bytes: sql<number>`coalesce(sum(coalesce(length(${schema.catalogItemVersions.docSnapshot}), 0) + coalesce(length(${schema.catalogItemVersions.xmlBlob}), 0) + coalesce(length(${schema.catalogItemVersions.spriteBlob}), 0) + coalesce(length(${schema.catalogItemVersions.thumbnail}), 0)), 0)`.mapWith(Number),
+    })
+    .from(schema.catalogItemVersions)
+    .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
+    .where(isNotNull(cCol))
+    .groupBy(cCol)
+    .all()) {
+    const b = get(r.id);
+    if (!b) continue;
+    b.submissions = r.n;
     b.storageBytes += r.bytes;
   }
   // Background pictures, by their layout's owner.

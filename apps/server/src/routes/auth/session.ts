@@ -21,6 +21,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         avatarUrl: req.user.avatarUrl,
         isDemoAccount: req.user.isDemoAccount,
         isGlobalAdmin: req.user.isGlobalAdmin,
+        isModerator: req.user.isModerator,
         linkedProviders: await listLinkedProviders(req.user.id),
       },
     };

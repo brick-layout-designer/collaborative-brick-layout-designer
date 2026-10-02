@@ -21,6 +21,8 @@ interface Props {
 }
 
 export function AppHeader({ user }: Props) {
+  // The Catalog link shows only while a public catalog is on.
+  const catalog = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
   const qc = useQueryClient();
   const navigate = useNavigate();
   const logout = useMutation({
@@ -91,9 +93,23 @@ export function AppHeader({ user }: Props) {
             </span>
           )}
         </NavLink>
+        {(catalog.data?.modules || catalog.data?.parts) && (
+          <NavLink to="/catalog" className={link}>
+            Catalog
+          </NavLink>
+        )}
         <NavLink to="/about" className={link}>
           About
         </NavLink>
+        {!user.isGlobalAdmin && user.isModerator && (
+          <Link
+            to="/admin"
+            className="tap-target flex items-center rounded-control bg-amber-900/40 px-3 py-2 font-semibold text-amber-300 hover:bg-amber-900/60"
+            title="Review the public catalogs"
+          >
+            Moderation
+          </Link>
+        )}
         {user.isGlobalAdmin && (
           <Link
             to="/admin"
