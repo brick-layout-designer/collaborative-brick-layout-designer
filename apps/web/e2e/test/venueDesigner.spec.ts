@@ -2,7 +2,7 @@
 // it, add a floor outlet and a note, save it to the library, reopen it,
 // then open the designer from a layout and save the venue there.
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, devices, type CDPSession, type Page } from '@playwright/test';
 import { ensureUser, signIn } from '../helpers';
 
 const EMAIL = `venue-designer-${Date.now()}@example.com`;
@@ -114,4 +114,85 @@ test("opens from a layout's Map menu and saves the venue into the layout", async
       return (((await r.json()) as { venue?: { edges: unknown[] } }).venue?.edges ?? []).length;
     })
     .toBe(4);
+});
+
+test.describe('by touch, on a tablet', () => {
+  const { defaultBrowserType: _d, ...iPad } = devices['iPad (gen 7)'];
+  test.use(iPad);
+
+  async function fingers(page: Page) {
+    const cdp: CDPSession = await page.context().newCDPSession(page);
+    const send = (type: string, pts: { x: number; y: number }[]) =>
+      cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, id) => ({ x: p.x, y: p.y, id })) });
+    return {
+      async tap(p: { x: number; y: number }) {
+        await send('touchStart', [p]);
+        await send('touchEnd', []);
+      },
+      async drag(from: { x: number; y: number }, to: { x: number; y: number }) {
+        await send('touchStart', [from]);
+        for (let i = 1; i <= 10; i++) await send('touchMove', [{ x: from.x + ((to.x - from.x) * i) / 10, y: from.y + ((to.y - from.y) * i) / 10 }]);
+        await send('touchEnd', []);
+      },
+      async pinchOut(c: { x: number; y: number }) {
+        await send('touchStart', [{ x: c.x - 30, y: c.y }, { x: c.x + 30, y: c.y }]);
+        for (let d = 40; d <= 90; d += 10) await send('touchMove', [{ x: c.x - d, y: c.y }, { x: c.x + d, y: c.y }]);
+        await send('touchEnd', []);
+      },
+    };
+  }
+  /** The corner handles on screen. */
+  const handles = (page: Page) =>
+    page.evaluate(() => {
+      type N = { getClientRect: () => { x: number; y: number; width: number; height: number } };
+      const st = (window as unknown as { Konva?: { stages: { container: () => HTMLElement; find: (s: string) => N[] }[] } }).Konva?.stages[0];
+      if (!st) return [];
+      const box = st.container().getBoundingClientRect();
+      return st.find('.venue-handle').map((n) => {
+        const r = n.getClientRect();
+        return { x: box.left + r.x + r.width / 2, y: box.top + r.y + r.height / 2, size: r.width };
+      });
+    });
+
+  test('a finger draws, picks a wall, drags its corner with big handles, and two fingers zoom', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+    await signIn(page, EMAIL);
+    await page.goto('/venues/new');
+    await expect(page.getByRole('navigation', { name: 'Tools', exact: true })).toBeVisible();
+    const f = await fingers(page);
+    const box = (await page.getByTestId('venue-canvas').boundingBox())!;
+    const A = { x: box.x + box.width * 0.3, y: box.y + box.height * 0.3 };
+    const B = { x: box.x + box.width * 0.6, y: box.y + box.height * 0.5 };
+
+    // Room: a finger on one corner, then the other.
+    await page.keyboard.press('r');
+    await f.tap(A);
+    await f.tap(B);
+    const size = page.getByText(/^Venue .+ × .+$/);
+    await expect(size).toBeVisible();
+    const before = (await size.textContent())!;
+
+    // Select, then a tap on the top wall picks it: its corners get finger-sized handles.
+    await page.keyboard.press('v');
+    await f.tap({ x: (A.x + B.x) / 2, y: A.y + 3 });
+    await expect.poll(async () => (await handles(page)).length).toBe(2);
+    for (const h of await handles(page)) expect(h.size).toBeGreaterThanOrEqual(20);
+
+    // A finger a little off the corner still takes it (beyond a mouse's reach), and drags it.
+    const right = (await handles(page)).sort((p, q) => q.x - p.x)[0]!;
+    await f.drag({ x: right.x - 12, y: right.y + 12 }, { x: right.x + 80, y: right.y });
+    await expect(size).not.toHaveText(before);
+    await expect.poll(async () => Math.round((await handles(page)).sort((p, q) => q.x - p.x)[0]!.x - right.x)).toBeGreaterThan(60);
+
+    // Two fingers zoom in: the corners spread apart on screen.
+    const spread = async () => {
+      const hs = await handles(page);
+      return Math.hypot(hs[0]!.x - hs[1]!.x, hs[0]!.y - hs[1]!.y);
+    };
+    const s0 = await spread();
+    await f.pinchOut({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    await expect.poll(spread).toBeGreaterThan(s0 * 1.5);
+    // Nothing on the page itself zoomed.
+    expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
+  });
 });
