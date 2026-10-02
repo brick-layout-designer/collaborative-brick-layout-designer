@@ -34,7 +34,7 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
         onSubmit={submit}
         className="w-80 space-y-4 rounded-lg border border-line bg-panel p-5 text-sm"
       >
-        <h3 className="font-semibold">Save Venue to Library</h3>
+        <h3 className="font-semibold">Save to Venue library</h3>
 
         <label className="block">
           <span className="mb-1 block text-xs text-muted">Name for this venue</span>

@@ -11,6 +11,7 @@
 // Bottom row: + (Add Grid / Parts / Area / Text / Ruler) and a "Show all" /
 // "Solo" pair.
 
+import { useOnScreen } from './menuPosition';
 import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import type { BbmMap, Layer } from '@cld/model';
@@ -167,6 +168,7 @@ function LayerRow({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useOnScreen(menuRef, ctxMenu);
   const itemCount = layerItemCount(layer);
 
   // Re-sync the draft when the layer's name changes externally (remote
@@ -303,7 +305,7 @@ function LayerRow({
       {ctxMenu && (
         <div
           ref={menuRef}
-          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
+          style={menuStyle}
           className="min-w-[170px] rounded-lg border border-border bg-panel py-1 text-xs shadow-lg"
           onContextMenu={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}

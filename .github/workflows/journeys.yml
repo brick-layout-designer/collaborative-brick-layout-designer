@@ -102,6 +102,7 @@ jobs:
           e2e/test/savedViews.spec.ts
           e2e/test/moduleEditor.spec.ts
           e2e/test/moduleVersions.spec.ts
+          e2e/test/modulesPanel.spec.ts
           e2e/test/orgs.spec.ts
           e2e/test/partsOnHome.spec.ts
           e2e/test/publicShare.spec.ts

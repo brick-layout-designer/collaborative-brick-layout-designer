@@ -14,10 +14,10 @@ export function createModuleFromSelection(doc: Y.Doc): void {
   const map = projectDoc(doc);
   const members = map ? [...bricksByLayer(map, selection).values()].flat() : [];
   if (members.length === 0) {
-    window.alert('Select one or more bricks first.');
+    window.alert('Select one or more parts first.');
     return;
   }
   const name = window.prompt('Module name:', 'New Module');
   if (name === null || name.trim() === '') return;
-  if (createSidecarModule(doc, name, members)) useEditorStore.getState().showNotice(`Module “${name}” created`);
+  if (createSidecarModule(doc, name, members)) useEditorStore.getState().showNotice(`Grouped “${name}” as a module`);
 }
