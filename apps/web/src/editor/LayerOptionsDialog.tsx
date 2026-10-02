@@ -156,7 +156,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
             <>
               {number('Paint cell size', form.areaCellSize, 1, 256, (v) => set('areaCellSize', v), 'studs')}
               <p className="py-1 text-[11px] leading-snug text-muted">
-                Changing cell size on a layer with painted cells leaves existing cells at their old
+                Changing cell size on a sheet with painted cells leaves existing cells at their old
                 indexing — paint over to clean up.
               </p>
             </>

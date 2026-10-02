@@ -70,7 +70,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
           <div>
             <h3 className="text-lg font-semibold">Insert module</h3>
             <p className="text-xs text-muted">
-              Pick a saved module to drop its bricks into the active layer.
+              Pick a saved module to drop its parts onto the active sheet.
             </p>
           </div>
           <button
