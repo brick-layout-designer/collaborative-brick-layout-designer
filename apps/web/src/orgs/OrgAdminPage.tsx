@@ -59,7 +59,8 @@ function OrgAdmin({ slug }: { slug: string }) {
 
   const org = detail.data!;
   if (!atLeast(org.myRole, 'manager')) return <Navigate to={`/orgs/${slug}`} replace />;
-  // Managers run the people and see the activity; settings and parts are the admins'.
+  // Managers run the people, the club's custom parts and see the activity;
+  // settings and the part-library switches are the admins'.
   const isClubAdmin = org.myRole === 'admin';
   const myUserId = me.data.user.id;
   const memberList = members.data?.members ?? [];
@@ -71,12 +72,8 @@ function OrgAdmin({ slug }: { slug: string }) {
   const waiting = requestList.length;
   const TABS: { id: Tab; label: string }[] = [
     { id: 'people', label: waiting > 0 ? `People (${waiting} waiting)` : 'People' },
-    ...(isClubAdmin
-      ? [
-          { id: 'settings' as const, label: 'Settings' },
-          { id: 'parts' as const, label: 'Parts' },
-        ]
-      : []),
+    ...(isClubAdmin ? [{ id: 'settings' as const, label: 'Settings' }] : []),
+    { id: 'parts', label: 'Parts' },
     { id: 'activity', label: 'Activity' },
   ];
 
@@ -135,11 +132,13 @@ function OrgAdmin({ slug }: { slug: string }) {
             <DeleteClubSection org={org} counts={things} />
           </div>
         )}
-        {tab === 'parts' && isClubAdmin && (
+        {tab === 'parts' && (
           <div className="space-y-5">
-            <Section title="Part libraries" hint="Which part libraries the club’s members see in the parts panel.">
-              <LibrariesTab slug={slug} />
-            </Section>
+            {isClubAdmin && (
+              <Section title="Part libraries" hint="Which part libraries the club’s members see in the parts panel.">
+                <LibrariesTab slug={slug} />
+              </Section>
+            )}
             <Section title="Club parts" hint="Custom parts the club has added, shared with everyone in the club.">
               <OrgCustomPartsTab slug={slug} orgId={org.id} />
             </Section>
