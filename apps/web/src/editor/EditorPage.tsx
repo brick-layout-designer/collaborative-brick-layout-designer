@@ -10,7 +10,8 @@ import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
 import { useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
 import { useModuleDoc } from './useModuleDoc';
 import { ShareToCatalogDialog, useCatalogStatus } from '../catalog/ShareToCatalog';
-import { makeModuleThumbnail, makeRegionThumbnail } from './moduleThumbnail';
+import { makeModuleThumbnail, makeRegionThumbnail, waitForPartPictures } from './moduleThumbnail';
+import { getSpriteProgress } from './render/spriteCache';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
 import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
@@ -449,11 +450,18 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   docState.setAfterSave?.(() => uploadModuleThumbnail());
   // The module's picture, for the lists that show modules. A failed
   // picture never fails the save: the lists show a placeholder.
+  // The parts list is in (until then parts draw as missing-part crosses).
+  const catalogReadyRef = useRef(false);
+  catalogReadyRef.current = catalog.isSuccess;
   const uploadModuleThumbnail = async (): Promise<boolean> => {
     try {
       if (!doc) return false;
-      // Let the canvas draw the latest change first (Save can come right after an edit).
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // Let the canvas draw the latest change, with the parts list and every
+      // part picture in, first: a picture taken earlier shows missing-part
+      // crosses (Save can come right after an edit; the backfill right after
+      // opening). If they don't all come in time, don't store a bad picture.
+      const ready = await waitForPartPictures(() => catalogReadyRef.current, getSpriteProgress);
+      if (!ready) return false;
       // Read the doc now, not this render's copy, which may be a change behind.
       const thumb = await makeModuleThumbnail(exportImageRef.current, projectDoc(doc), readSidecarFromDoc(doc));
       if (!thumb) return false;
@@ -464,11 +472,12 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       return false;
     }
   };
-  // A module saved before modules had pictures gets one the first time
-  // someone who can edit it opens it.
+  // Each time someone who can edit a module opens it, its picture is
+  // redrawn once everything has loaded. That gives older modules a picture
+  // and replaces any taken before the part pictures were in (which showed
+  // missing-part crosses).
   const backfilledRef = useRef(false);
-  const needsBackfill =
-    moduleMode && !!doc && !!docMap && moduleInfo.data?.module.thumbnailAt === null && moduleInfo.data.role !== 'viewer';
+  const needsBackfill = moduleMode && !!doc && !!docMap && !!moduleInfo.data && moduleInfo.data.role !== 'viewer';
   useEffect(() => {
     if (!needsBackfill || backfilledRef.current) return;
     backfilledRef.current = true;
