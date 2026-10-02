@@ -8,7 +8,7 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { api, onApiWrite } from '../api';
-import { focusKeys, hintsForWrite, isHintKind, keysFor, type Hint } from './invalidate';
+import { focusKeys, hintsForWrite, isHintKind, keysFor, refetchKey, type Hint } from './invalidate';
 
 /** Fired on window for every hint, for parts of the page that react to one (notices). */
 export const HINT_EVENT = 'cld-live-hint';
@@ -38,7 +38,7 @@ export function backoffMs(n: number, rand: number = Math.random()): number {
 }
 
 function invalidateKeys(qc: QueryClient, keys: Iterable<QueryKey>): void {
-  for (const queryKey of keys) void qc.invalidateQueries({ queryKey });
+  for (const queryKey of keys) void refetchKey(qc, queryKey);
 }
 
 function setStatus(s: 'open' | 'connecting' | 'off'): void {

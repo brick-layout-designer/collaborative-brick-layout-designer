@@ -139,6 +139,19 @@ export function noteWrite(method: string, path: string): void {
   }
 }
 
+/** How long the browser may keep /api/parts/catalog (its Cache-Control max-age). */
+const PARTS_CACHE_MS = 60_000;
+let partsChangedAt = 0;
+
+/**
+ * Parts were added or changed (here, or a live hint said so elsewhere):
+ * for the next minute, reading the catalog skips the browser's cached
+ * copy, so a refetch can't bring back the list from before the change.
+ */
+export function markPartsChanged(now: number = Date.now()): void {
+  partsChangedAt = now;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   return get<T>(path);
 }
@@ -447,7 +460,9 @@ export const api = {
   },
 
   parts: {
-    catalog: () => get<{ parts: PartWire[] }>('/api/parts/catalog'),
+    /** The catalog; for a minute after parts changed, past the browser's 60 s cache. */
+    catalog: () =>
+      Date.now() - partsChangedAt < PARTS_CACHE_MS ? api.parts.catalogFresh() : get<{ parts: PartWire[] }>('/api/parts/catalog'),
     /** The catalog past the browser's 60 s cache, after parts were added. */
     catalogFresh: async () => {
       const res = await fetch('/api/parts/catalog', { credentials: 'include', cache: 'no-cache' });

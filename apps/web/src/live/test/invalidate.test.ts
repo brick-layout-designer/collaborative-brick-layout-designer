@@ -4,7 +4,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { HINT_KINDS, focusKeys, hintsForWrite, invalidateFor, keysFor, type HintKind } from '../invalidate';
+import { HINT_KINDS, focusKeys, hintsForWrite, invalidateFor, keysFor, refetchKey, type HintKind } from '../invalidate';
+import { api, markPartsChanged } from '../../api';
 import { backoffMs, createBatcher, parseHint } from '../LiveUpdates';
 
 import serverHub from '../../../../server/src/events/hub.ts?raw';
@@ -114,6 +115,26 @@ describe('invalidateFor', () => {
     const spy = vi.spyOn(qc, 'invalidateQueries');
     await invalidateFor(qc, 'module');
     expect(spy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey[0])).toEqual(prefixes('module'));
+  });
+});
+
+describe('the parts catalog refetch', () => {
+  it('skips the browser cache for a minute after parts changed', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"parts":[]}', { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const cacheOf = () => ((fetchMock.mock.calls.at(-1) as unknown as [string, RequestInit])[1] ?? {}).cache;
+    try {
+      markPartsChanged(0);
+      await api.parts.catalog();
+      expect(cacheOf()).toBeUndefined();
+      // A change refetches the catalog: that read, and the next minute's, skip the cache.
+      await refetchKey(new QueryClient(), ['parts-catalog']);
+      await api.parts.catalog();
+      expect(cacheOf()).toBe('no-cache');
+    } finally {
+      markPartsChanged(0);
+      vi.unstubAllGlobals();
+    }
   });
 });
 

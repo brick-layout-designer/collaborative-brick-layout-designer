@@ -8,6 +8,7 @@
 // when they next show.
 
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import { markPartsChanged } from '../api';
 
 /** Keep in step with apps/server/src/events/hub.ts HINT_KINDS. */
 export const HINT_KINDS = [
@@ -78,7 +79,17 @@ export function keysFor(hint: Hint): QueryKey[] {
  * tab; other tabs and other people get the same through the live hints.
  */
 export function invalidateFor(qc: QueryClient, kind: HintKind, extra: Omit<Hint, 'kind'> = {}): Promise<void> {
-  return Promise.all(keysFor({ kind, ...extra }).map((queryKey) => qc.invalidateQueries({ queryKey }))).then(() => undefined);
+  return Promise.all(keysFor({ kind, ...extra }).map((queryKey) => refetchKey(qc, queryKey))).then(() => undefined);
+}
+
+/**
+ * Refetch one key (prefix). The parts catalog is cached by the browser
+ * for a minute, so a refetch of it first says parts changed (see
+ * markPartsChanged), or it would bring back the list from before.
+ */
+export function refetchKey(qc: QueryClient, queryKey: QueryKey): Promise<void> {
+  if (queryKey[0] === 'parts-catalog') markPartsChanged();
+  return qc.invalidateQueries({ queryKey });
 }
 
 /**
