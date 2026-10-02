@@ -11,6 +11,7 @@ import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
 import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
 import { takeLayoutParts, type PartChoice, type PartDifference } from '../layoutParts';
 import { PartDifferencesDialog } from './PartDifferencesDialog';
+import { originalHere, OriginalLayoutNotice, type OriginalLayout } from './originalLayout';
 import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
@@ -462,6 +463,8 @@ function CreateLayoutDialog({
   // Parts the picked layout defines differently from the server, asked about on Create.
   const [asking, setAsking] = useState<{ differing: PartDifference[]; answer: (c: PartChoice[] | null) => void } | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
+  // A picked .bld-layout saved from a layout on this server that you can open.
+  const [original, setOriginal] = useState<OriginalLayout | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
   const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
   // Start from a saved venue: its outline goes into the new layout's sidecar.
@@ -489,6 +492,7 @@ function CreateLayoutDialog({
     let warnings: string[] = [];
     setBackground(null);
     setLayoutParts(null);
+    setOriginal(null);
     if (LAYOUT_FILE.test(file.name)) {
       // The whole layout: labels, modules, venue and background come with it.
       try {
@@ -498,6 +502,7 @@ function CreateLayoutDialog({
         setSidecar(l.sidecar ?? null);
         setBackground(l.background ?? null);
         setLayoutParts(l.parts ?? null);
+        setOriginal(await originalHere(l.source));
       } catch (err) {
         setError(`Could not open ${file.name}: ${(err as Error).message}`);
         return;
@@ -598,6 +603,8 @@ function CreateLayoutDialog({
         className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-5 sm:p-6"
       >
         <h3 className="text-lg font-semibold">New layout</h3>
+
+        {original && <OriginalLayoutNotice original={original} onOpen={onClose} />}
 
         {template && !bbm && (
           <label className="flex items-center gap-2 text-sm">
