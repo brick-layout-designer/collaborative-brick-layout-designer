@@ -31,17 +31,17 @@ describe('dropTargetHint', () => {
   ];
 
   it('names the active brick layer', () => {
-    expect(dropTargetHint(layers, 'b1')).toBe('Drop onto: Tracks (active layer)');
-    expect(dropTargetHint(layers, 'b2')).toBe('Drop onto: unnamed (active layer)');
+    expect(dropTargetHint(layers, 'b1')).toBe('Drop onto: Tracks (active sheet)');
+    expect(dropTargetHint(layers, 'b2')).toBe('Drop onto: unnamed (active sheet)');
   });
 
   it('falls back to the first brick layer when the active one is not a brick layer', () => {
-    expect(dropTargetHint(layers, 'g')).toBe('Drop onto: Tracks (active layer is not a brick layer)');
-    expect(dropTargetHint(layers, null)).toBe('Drop onto: Tracks (active layer is not a brick layer)');
+    expect(dropTargetHint(layers, 'g')).toBe('Drop onto: Tracks (the active sheet is not a parts sheet)');
+    expect(dropTargetHint(layers, null)).toBe('Drop onto: Tracks (the active sheet is not a parts sheet)');
   });
 
   it('says when there is no brick layer', () => {
-    expect(dropTargetHint([layers[0]!], 'g')).toBe('No brick layer — dropping creates one');
+    expect(dropTargetHint([layers[0]!], 'g')).toBe('No parts sheet — dropping creates one');
   });
 });
 
@@ -73,11 +73,11 @@ describe('dropdownAnchor', () => {
 describe('dropTargetHint store field', () => {
   it('is set and cleared, and an identical hint keeps the state object', () => {
     const st = useEditorStore.getState();
-    st.setDropTargetHint('Drop onto: A (active layer)');
+    st.setDropTargetHint('Drop onto: A (active sheet)');
     const before = useEditorStore.getState();
-    st.setDropTargetHint('Drop onto: A (active layer)');
+    st.setDropTargetHint('Drop onto: A (active sheet)');
     expect(useEditorStore.getState()).toBe(before);
-    expect(useEditorStore.getState().dropTargetHint).toBe('Drop onto: A (active layer)');
+    expect(useEditorStore.getState().dropTargetHint).toBe('Drop onto: A (active sheet)');
     st.setDropTargetHint(null);
     expect(useEditorStore.getState().dropTargetHint).toBeNull();
   });

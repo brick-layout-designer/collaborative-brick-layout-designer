@@ -26,11 +26,11 @@ interface Props {
 }
 
 const KIND_TITLE: Record<Layer['type'], string> = {
-  grid: 'Grid layer',
-  brick: 'Parts layer',
-  text: 'Text layer',
-  area: 'Area layer',
-  ruler: 'Ruler layer',
+  grid: 'Grid sheet',
+  brick: 'Parts sheet',
+  text: 'Text sheet',
+  area: 'Area sheet',
+  ruler: 'Ruler sheet',
 };
 
 export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
@@ -97,7 +97,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Layer Options"
+      aria-label="Sheet options"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
       onKeyDown={(e) => {
@@ -110,7 +110,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-ink">Layer Options</h2>
+          <h2 className="text-sm font-semibold text-ink">Sheet options</h2>
           <HelpButton helpKey="dialog.sheetOptions" />
         </div>
 

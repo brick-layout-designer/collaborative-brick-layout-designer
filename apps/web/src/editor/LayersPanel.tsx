@@ -118,7 +118,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
               }}
               disabled={!activeLayerId}
               className="rounded-lg px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
-              title="Delete active layer"
+              title="Delete active sheet"
             >
               ✕
             </button>
@@ -331,7 +331,7 @@ function LayerRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); setShowOptions(true); }}
           >
-            Layer Options…  <span className="float-right text-muted">dbl-click</span>
+            Sheet options…  <span className="float-right text-muted">dbl-click</span>
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
@@ -360,7 +360,7 @@ function LayerRow({
               deleteLayer(doc, layer.id);
             }}
           >
-            Delete layer
+            Delete sheet
           </button>
           <hr className="my-1 border-border" />
           <button
