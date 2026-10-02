@@ -23,6 +23,7 @@ import { colorSpecToCss } from '../layerOptions';
 import { useEditorStore } from '../editorStore';
 import { textReadable } from '../textLegibility';
 import { TEXT_GLOW } from './selectionStyle';
+import { tapGuard } from '../touchGesture';
 
 /** A line's width in the bundled font, as Konva measures it. */
 let measureCtx: CanvasRenderingContext2D | null = null;
@@ -85,6 +86,7 @@ export function TextLayers({
             {layer.textCells.map((cell, i) => (
               <FittedTextCell
                 key={i}
+                cellKey={textKey(layer.id, i)}
                 cell={cell}
                 interactive={!isViewer && !!onEditText}
                 isSelected={!!selectedKeys && selectedKeys.has(textKey(layer.id, i))}
@@ -100,12 +102,15 @@ export function TextLayers({
 }
 
 function FittedTextCell({
+  cellKey,
   cell,
   interactive,
   isSelected,
   onDblClick,
   onClick,
 }: {
+  /** Its key in the selection (textKey), also the node's id, for touch hit tests. */
+  cellKey: string;
   cell: TextCell;
   interactive?: boolean;
   isSelected?: boolean;
@@ -134,6 +139,8 @@ function FittedTextCell({
 
   return (
     <KonvaText
+      id={cellKey}
+      name="text-cell"
       x={layout.centre.x}
       y={layout.centre.y}
       text={layout.lines.map((l) => l.text).join('\n')}
@@ -159,6 +166,12 @@ function FittedTextCell({
               if (e.evt.button !== 0) return;
               e.cancelBubble = true;
               onClick(e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey);
+            },
+            // A finger's tap picks it ("Select more" adds); not after a pan or long press.
+            onTap: (e: Konva.KonvaEventObject<TouchEvent>) => {
+              if (tapGuard.suppress) return;
+              e.cancelBubble = true;
+              onClick(useEditorStore.getState().touchSelectMore);
             },
           }
         : {})}

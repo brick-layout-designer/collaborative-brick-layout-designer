@@ -28,6 +28,7 @@ import type { AnnoDragHandlers } from './groupDragNodes';
 import type { PartWire } from '../../api';
 import { useEditorStore } from '../editorStore';
 import { textReadable } from '../textLegibility';
+import { tapGuard } from '../touchGesture';
 import { TEXT_GLOW } from './selectionStyle';
 
 interface Props {
@@ -96,6 +97,12 @@ export function AnchoredLabels({
                   // Pressing an already-selected label keeps the mixed
                   // selection so the drag moves all of it.
                   if (additive || !selectedIds?.has(label.id)) onSelect(label.id, additive);
+                },
+                // A finger's tap picks it ("Select more" adds); not after a pan or long press.
+                onTap: (e: KonvaEventObject<TouchEvent>) => {
+                  if (tapGuard.suppress) return;
+                  e.cancelBubble = true;
+                  onSelect(label.id, useEditorStore.getState().touchSelectMore);
                 },
               }
             : {}),
