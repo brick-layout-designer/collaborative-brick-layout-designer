@@ -55,7 +55,7 @@ export function SiteVersionBar() {
 
   if (!ready || hidden) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-4">
       <div
         data-testid="site-version-bar"
         className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-card border border-line bg-panel py-2 pl-4 pr-2 text-ink shadow-pop"

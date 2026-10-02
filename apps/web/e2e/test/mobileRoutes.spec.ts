@@ -55,7 +55,28 @@ interface RouteCase {
   ready?: (page: Page) => Promise<void>;
   /** A tab to open once the page is up (the admin pages keep their tabs out of the URL). */
   tab?: (page: Page) => Promise<void>;
+  /** Set up before the page loads (e.g. a stubbed API answer). */
+  before?: (page: Page) => Promise<void>;
 }
+
+// The server says it was updated after the page loaded: the "new version"
+// bar shows (SiteVersionBar asks again when the window gets the focus).
+const serverVersion = new WeakMap<Page, { v: string }>();
+const newVersion = async (page: Page) => {
+  const now = { v: '1.0.0' };
+  serverVersion.set(page, now);
+  await page.route('**/api/version', (r) => r.fulfill({ json: { version: now.v } }));
+};
+const versionBar = (ready?: (page: Page) => Promise<void>) => async (page: Page) => {
+  if (ready) await ready(page);
+  // The page has asked once (at 1.0.0); the server moves on.
+  await page.waitForLoadState('networkidle').catch(() => {});
+  serverVersion.get(page)!.v = '1.0.1';
+  await expect.poll(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    return page.getByTestId('site-version-bar').isVisible();
+  }).toBe(true);
+};
 
 const adminTab = (name: string) => async (page: Page) => {
   await page.getByRole('main').waitFor();
@@ -91,9 +112,11 @@ const ROUTES: RouteCase[] = [
   { name: 'venue-new', who: 'owner', path: () => '/venues/new' },
   { name: 'venue-design', who: 'owner', path: (s) => `/venues/${s.venueId}/design` },
   { name: 'admin', who: 'owner', path: () => '/admin', ready: (p) => expect(p.getByRole('heading', { name: 'Needs attention' })).toBeVisible() },
-  ...['users', 'clubs', 'layouts', 'parts', 'libraries', 'audit', 'settings'].map((t): RouteCase => ({
-    name: `admin-${t}`, who: 'owner', path: () => '/admin', tab: adminTab(t),
+  ...['heavy use', 'users', 'clubs', 'layouts', 'parts', 'libraries', 'audit', 'settings'].map((t): RouteCase => ({
+    name: `admin-${t.replace(' ', '-')}`, who: 'owner', path: () => '/admin', tab: adminTab(t),
   })),
+  { name: 'new-version-bar', who: 'owner', path: () => '/', before: newVersion, ready: versionBar() },
+  { name: 'new-version-bar-editor', who: 'owner', path: (s) => `/editor/${s.layoutId}`, before: newVersion, ready: versionBar(canvasReady) },
   ...['Settings', 'Parts', 'Activity'].map((t): RouteCase => ({
     name: `org-admin-${t.toLowerCase()}`, who: 'owner', path: (s) => `/orgs/${s.orgSlug}/admin`, tab: clubTab(t),
   })),
@@ -148,6 +171,7 @@ for (const phone of PHONES) {
         if (route.who === 'owner') await signIn(page, OWNER, 'Mobile Owner');
         if (route.who === 'member') await signIn(page, MEMBER, 'Mobile Member');
         if (route.who === 'viewer') await signIn(page, VIEWER, 'Mobile Viewer');
+        if (route.before) await route.before(page);
         await page.goto(route.path(seed));
         if (route.ready) await route.ready(page);
         if (route.tab) await route.tab(page);

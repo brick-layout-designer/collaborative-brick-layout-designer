@@ -100,7 +100,7 @@ function AbuseTable({ kind, onOpen }: { kind: 'users' | 'clubs'; onOpen: (id: st
       ) : (
         <>
           {/* Phone: cards. */}
-          <ul className="mt-3 space-y-2 md:hidden">
+          <ul className="mt-3 space-y-2 xl:hidden">
             {rows.map((r) => (
               <li key={r.id} className="rounded-lg border border-line p-3">
                 <button type="button" onClick={() => onOpen(r.id)} className="min-h-11 text-left font-medium text-accent-text hover:underline">
@@ -121,7 +121,7 @@ function AbuseTable({ kind, onOpen }: { kind: 'users' | 'clubs'; onOpen: (id: st
             ))}
           </ul>
           {/* Computer: a table. */}
-          <div className="mt-3 hidden overflow-x-auto md:block">
+          <div className="mt-3 hidden overflow-x-auto xl:block">
             <table className="w-full text-sm">
               <thead className="text-xs">
                 <tr className="text-left text-muted">
