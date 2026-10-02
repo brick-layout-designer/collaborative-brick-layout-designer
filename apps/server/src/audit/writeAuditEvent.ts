@@ -89,6 +89,11 @@ export type AuditEventType =
   | 'collection_delete'
   | 'collection_remove'
   | 'collection_pin'
+  // Trusted clubs: a site admin or moderator trusts a club (its own admins
+  // and managers then review what's published under its name) or stops.
+  // Subject is the club.
+  | 'club_trust'
+  | 'club_untrust'
   // Warnings: a site admin or moderator warned a person or club ('warn'),
   // a club's admin or manager warned a member ('club_warn'), and the
   // recipient said they read it ('warn_ack'). Subject is the person or club.

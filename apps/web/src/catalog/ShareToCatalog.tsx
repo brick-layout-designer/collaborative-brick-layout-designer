@@ -78,6 +78,7 @@ export function ShareToCatalogDialog({
   title: initialTitle,
   existing,
   onClose,
+  clubReview,
 }: {
   kind: CatalogKind;
   sourceId: string;
@@ -85,6 +86,8 @@ export function ShareToCatalogDialog({
   /** Already shared: this is an update. */
   existing?: MyCatalogItem | undefined;
   onClose: () => void;
+  /** A trusted club's name, when its own admins and managers review this. */
+  clubReview?: string | undefined;
 }) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
@@ -133,7 +136,9 @@ export function ShareToCatalogDialog({
             <p role="status">
               {share.data.status === 'public'
                 ? 'Shared: it’s in the public catalog now.'
-                : 'Sent for review. A moderator looks at it before it appears in the catalog.'}
+                : clubReview
+                  ? `Sent to ${clubReview}’s own review: its admins and managers check it before it appears in the catalog.`
+                  : 'Sent for review. A moderator looks at it before it appears in the catalog.'}
             </p>
             <div className="flex justify-end">
               <button type="button" onClick={onClose} className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink">

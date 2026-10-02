@@ -36,6 +36,7 @@ import { invalidateFor } from '../live/invalidate';
 import { HelpButton } from '../help/HelpButton';
 import { AddDialog, CatalogPreview } from './CatalogPage';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
+import { TrustedBadge } from './TrustedBadge';
 
 /** Who sees it, in a few words. */
 export function audienceLabel(audience: CollectionAudience | undefined, clubName?: string | null): string {
@@ -145,6 +146,7 @@ function CollectionCard({
         <span data-testid="collection-counts" className="text-xs text-muted">
           {c.featured ? 'Featured · ' : ''}
           {counts(c)} · by {c.by}
+          {c.trustedClub && <TrustedBadge />}
         </span>
         {c.description && <span className="line-clamp-2 text-sm">{c.description}</span>}
         {extra}
@@ -809,6 +811,7 @@ export function CollectionPage() {
                 <p className="text-sm text-muted">
                   {c.featured ? 'Featured · ' : ''}
                   {counts(c)} · by {c.clubInfo ? <Link to={`/orgs/${c.clubInfo.slug}`} className="hover:underline">{c.by}</Link> : c.by}
+                  {c.trustedClub && <TrustedBadge />}
                 </p>
                 <p data-testid="collection-audience" className="text-sm">
                   <span className="text-muted">Who can see this:</span> {c.audience === 'private' ? audienceLabel('private', clubName) : 'Everyone'}

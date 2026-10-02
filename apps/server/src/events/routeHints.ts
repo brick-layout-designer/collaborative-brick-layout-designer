@@ -271,6 +271,22 @@ const collectionAdd: HintSpec = {
   },
 };
 
+/**
+ * A club trusted or not: its members (its page and review queue), and
+ * everyone (the "Trusted club" badge on its public items, and where its
+ * waiting items are reviewed).
+ */
+const trust: HintSpec = {
+  after: async (ctx) => {
+    const orgId = await orgIdBySlug(ctx.params.slug ?? '');
+    if (!orgId) return [];
+    return [
+      { hint: { kind: 'club', owner: { kind: 'org', id: orgId }, id: orgId, action: 'update:trust' }, reach: { users: [ctx.userId] } },
+      { hint: { kind: 'catalog', action: 'update:trust' }, reach: { everyone: true } },
+    ];
+  },
+};
+
 const param = (name: string) => (ctx: HintCtx) => ctx.params[name] ?? null;
 
 async function joinRequester(id: string): Promise<string | null> {
@@ -383,6 +399,15 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/catalog/collections/:id/items': collection(),
   'DELETE /api/catalog/collections/:id': collection(),
   'POST /api/moderation/collections/:id/remove': collection(),
+
+  // ---- trusted clubs
+  'POST /api/moderation/clubs/:slug/trust': trust,
+  'POST /api/orgs/:slug/review/versions/:id/approve': catalog(async (c) => itemOfVersion(c.params.id ?? ''), true),
+  'POST /api/orgs/:slug/review/versions/:id/decline': catalog(async (c) => itemOfVersion(c.params.id ?? ''), false),
+  'POST /api/orgs/:slug/review/items/:id/unpublish': catalog(async (c) => c.params.id ?? null, true),
+  'POST /api/orgs/:slug/review/collections/:id/approve': collection(),
+  'POST /api/orgs/:slug/review/collections/:id/decline': collection(),
+  'POST /api/orgs/:slug/review/collections/:id/unpublish': collection(),
   'POST /api/moderation/collections/:id/approve': collection(),
   'POST /api/moderation/collections/:id/decline': collection(),
   'POST /api/moderation/collections/:id/unpublish': collection(),

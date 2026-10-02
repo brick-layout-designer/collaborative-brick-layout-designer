@@ -43,7 +43,7 @@ import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { destinationOrg } from './owners.js';
-import { canModerate, cleanText, copyItemTo, itemOut, mayBrowse, ownerNames, submitToCatalog } from './catalog.js';
+import { canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 
@@ -669,7 +669,8 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
 
   // Items are never reviewed with the collection.
   await applyEntries(c.id, entries);
-  const straight = canModerate(user) || (await getPlatformSettings()).catalogReview === 'none';
+  // A trusted club's curators (its admins and managers) publish its text at once.
+  const straight = canModerate(user) || (await getPlatformSettings()).catalogReview === 'none' || (await isTrustedClub(c.orgId));
   let status = c.status;
   let reviewed = false;
   if (audience === 'private') {
@@ -734,6 +735,124 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
   return { code: 200, body: { id: c.id, status, audience, pending, ...shared } };
 }
 
+const collectionOwnerRef = (c: Collection) =>
+  c.orgId ? { kind: 'org' as const, id: c.orgId } : c.ownerUserId ? { kind: 'user' as const, id: c.ownerUserId } : null;
+
+/**
+ * Collections' text waiting for review, as the queue shows it: the new text
+ * and (for a change) what's public now. Split into the site's queue and
+ * trusted clubs' own queues.
+ */
+export async function textQueue(queueRows: Collection[], shownAll: Map<string, Shown[]>, name: (c: Collection) => string) {
+  const ownerIds = [...new Set(queueRows.map((c) => c.ownerUserId).filter((x): x is string => !!x))];
+  const emails = ownerIds.length
+    ? new Map((await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, ownerIds))).map((u) => [u.id, u.email]))
+    : new Map<string, string>();
+  const ownerRef = collectionOwnerRef;
+  const trusted = await trustedClubs(queueRows.map((c) => c.orgId));
+  const all = queueRows.map((c) => {
+    const d = parseDraft(c.pending);
+    const all = shownAll.get(c.id) ?? [];
+    const current = { title: c.title, description: c.description, coverUrl: coverFrom(c, all) };
+    const proposed = d ? { title: d.title, description: d.description, coverUrl: coverFrom({ coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null }, all) } : current;
+    return {
+      id: c.id,
+      isUpdate: d !== null,
+      by: name(c),
+      email: c.ownerUserId ? (emails.get(c.ownerUserId) ?? null) : null,
+      createdAt: (c.pendingAt ?? c.updatedAt).getTime(),
+      owner: ownerRef(c),
+      ...proposed,
+      /** What's public now, for a change ("old vs new"). */
+      old: d ? current : null,
+      itemCount: all.length,
+      trustedClub: !!c.orgId && trusted.has(c.orgId),
+      club: c.orgId,
+    };
+  });
+  const inClub = (e: { club: string | null }) => !!e.club && trusted.has(e.club);
+  return { queue: all.filter((e) => !inClub(e)), trustedQueue: all.filter(inClub) };
+}
+
+/**
+ * Approve or decline a collection's text waiting for review: site
+ * moderators (any), or a trusted club's admins and managers (`clubId`).
+ */
+export async function decideCollection(user: User, id: string, approve: boolean, rawReason: unknown, clubId: string | null = null) {
+  const c = await getCollection(id);
+  const waiting = !!c && c.audience === 'everyone' && (c.status === 'in_review' || (c.status === 'public' && c.pending !== null));
+  if (!c || !waiting || (clubId && c.orgId !== clubId)) return { code: 404, body: { error: 'not_found' } };
+  const reason = cleanText(rawReason, MAX_REASON);
+  if (reason === undefined) return { code: 400, body: { error: 'invalid_input' } };
+  const now = new Date();
+  const d = parseDraft(c.pending);
+  if (approve) {
+    if (d) {
+      const entries = await entriesOf(c);
+      const has = (s: Entry['source'], id: string | null | undefined) => !!id && entries.some((e) => e.source === s && e.id === id);
+      await applyText(
+        c.id,
+        {
+          title: d.title,
+          description: d.description,
+          coverItemId: has('catalog', d.coverItemId) ? d.coverItemId : null,
+          coverModuleId: has('module', d.coverModuleId) ? (d.coverModuleId ?? null) : null,
+        },
+        now,
+      );
+      // A change from before items were reviewed on their own.
+      if (d.itemIds) {
+        const on = await kindsOn();
+        const still = d.itemIds.length ? await db.select().from(schema.catalogItems).where(inArray(schema.catalogItems.id, d.itemIds)) : [];
+        const ok = new Set(still.filter((i) => isPublicItem(i, on)).map((i) => i.id));
+        const mods = entries.filter((e) => e.source !== 'catalog');
+        await applyEntries(c.id, [...d.itemIds.filter((x) => ok.has(x)).map((id) => ({ source: 'catalog' as const, id })), ...mods]);
+      }
+    }
+    await db
+      .update(schema.catalogCollections)
+      .set({ status: 'public', reason: null, pending: null, pendingAt: null, updatedAt: now })
+      .where(eq(schema.catalogCollections.id, c.id));
+  } else if (d) {
+    // A declined change: the public collection stays as it was.
+    await db.update(schema.catalogCollections).set({ reason, pending: null, pendingAt: null, updatedAt: now }).where(eq(schema.catalogCollections.id, c.id));
+  } else {
+    await db.update(schema.catalogCollections).set({ status: 'declined', reason, updatedAt: now }).where(eq(schema.catalogCollections.id, c.id));
+  }
+  await writeAuditEvent({
+    resourceKind: 'catalog_collection',
+    resourceId: c.id,
+    userId: user.id,
+    eventType: approve ? 'collection_approve' : 'collection_decline',
+    payload: { isUpdate: !!d, reason, ...(clubId ? { byClub: clubId } : {}) },
+  });
+  return { code: 200, body: { ok: true } };
+}
+
+/** Take a public collection out of the catalog: a site moderator, or (`clubId`) a trusted club's admin or manager. */
+export async function unpublishCollection(user: User, id: string, rawReason: unknown, clubId: string | null = null) {
+  const reason = cleanText(rawReason, MAX_REASON);
+  if (reason === undefined) return { code: 400, body: { error: 'invalid_input' } };
+  const c = await getCollection(id);
+  if (!c || (clubId && c.orgId !== clubId)) return { code: 404, body: { error: 'not_found' } };
+  // A private collection isn't in the catalog: it can only be removed.
+  if (c.audience !== 'everyone') return { code: 409, body: { error: 'not_public' } };
+  await db
+    .update(schema.catalogCollections)
+    .set({ status: 'unpublished', featured: false, reason, pending: null, pendingAt: null, updatedAt: new Date() })
+    .where(eq(schema.catalogCollections.id, c.id));
+  await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_unpublish', payload: { reason, ...(clubId ? { byClub: clubId } : {}) } });
+  return { code: 200, body: { ok: true } };
+}
+
+/** Who each collection is by (its club's name, or its curator's). */
+export const collectionOwnerNames = (rows: readonly Collection[]) => byNames(rows);
+
+/** Every entry of these collections, as their curators see them (for review queues). */
+export async function shownForQueue(rows: readonly Collection[]): Promise<Map<string, Shown[]>> {
+  return shownOf(rows, await kindsOn(), () => true);
+}
+
 export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // ---- browse --------------------------------------------------------------
   // Public collections with at least one item showing, featured first.
@@ -749,10 +868,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       .limit(200);
     const shown = await shownOf(rows, on, () => false);
     const name = await byNames(rows);
+    const trusted = await trustedClubs(rows.map((c) => c.orgId));
     const out = [];
     for (const c of rows) {
       const s = shown.get(c.id) ?? [];
-      if (s.length) out.push(listOut(c, s, name(c)));
+      if (s.length) out.push({ ...listOut(c, s, name(c)), trustedClub: !!c.orgId && trusted.has(c.orgId) });
     }
     return { collections: out };
   });
@@ -858,6 +978,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         myRole: a.role,
         // A site moderator may take a club collection down (abuse).
         canRemove: !!user && canModerate(user) && !!c.orgId,
+        trustedClub: await isTrustedClub(c.orgId),
       },
       items: shown.map((s) =>
         s.source === 'catalog' && s.item
@@ -913,7 +1034,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       const text = readText(body, null, entries);
       if (isFail(text)) return reply.code(text.code).send({ error: text.error });
       const staff = canModerate(user);
-      const straight = audience === 'private' || staff || (await getPlatformSettings()).catalogReview === 'none';
+      const straight = audience === 'private' || staff || (await getPlatformSettings()).catalogReview === 'none' || (await isTrustedClub(orgId));
       const id = randomUUID();
       const now = new Date();
       const status = straight ? 'public' : 'in_review';
@@ -1134,87 +1255,19 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const shownAll = await shownOf([...new Map(all.map((c) => [c.id, c])).values()], on, () => true);
     const shownPublic = await shownOf([...new Map([...queueRows, ...listed].map((c) => [c.id, c])).values()], on, () => false);
     const name = await byNames(all);
-    const ownerIds = [...new Set(queueRows.map((c) => c.ownerUserId).filter((x): x is string => !!x))];
-    const emails = ownerIds.length
-      ? new Map((await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, ownerIds))).map((u) => [u.id, u.email]))
-      : new Map<string, string>();
-    const ownerRef = (c: Collection) => (c.orgId ? { kind: 'org' as const, id: c.orgId } : c.ownerUserId ? { kind: 'user' as const, id: c.ownerUserId } : null);
-    const queue = queueRows.map((c) => {
-      const d = parseDraft(c.pending);
-      const all = shownAll.get(c.id) ?? [];
-      const current = { title: c.title, description: c.description, coverUrl: coverFrom(c, all) };
-      const proposed = d ? { title: d.title, description: d.description, coverUrl: coverFrom({ coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null }, all) } : current;
-      return {
-        id: c.id,
-        isUpdate: d !== null,
-        by: name(c),
-        email: c.ownerUserId ? (emails.get(c.ownerUserId) ?? null) : null,
-        createdAt: (c.pendingAt ?? c.updatedAt).getTime(),
-        owner: ownerRef(c),
-        ...proposed,
-        /** What's public now, for a change ("old vs new"). */
-        old: d ? current : null,
-        itemCount: all.length,
-      };
-    });
+    const { queue, trustedQueue } = await textQueue(queueRows, shownAll, name);
+    const ownerRef = collectionOwnerRef;
     return {
       queue,
+      /** Waiting in trusted clubs' own queues (moderators can still act on them). */
+      trustedQueue,
       collections: listed.map((c) => ({ ...listOut(c, shownPublic.get(c.id) ?? [], name(c)), status: c.status, reason: c.reason, owner: ownerRef(c) })),
       clubCollections: clubRows.map((c) => ({ ...listOut(c, shownAll.get(c.id) ?? [], name(c)), owner: ownerRef(c) })),
     };
   });
 
-  const decide = async (req: FastifyRequest<{ Params: { id: string }; Body: { reason?: unknown } }>, approve: boolean) => {
-    const user = requireModerator(req);
-    const c = await getCollection(req.params.id);
-    const waiting = !!c && c.audience === 'everyone' && (c.status === 'in_review' || (c.status === 'public' && c.pending !== null));
-    if (!c || !waiting) return { code: 404, body: { error: 'not_found' } };
-    const reason = cleanText(req.body?.reason, MAX_REASON);
-    if (reason === undefined) return { code: 400, body: { error: 'invalid_input' } };
-    const now = new Date();
-    const d = parseDraft(c.pending);
-    if (approve) {
-      if (d) {
-        const entries = await entriesOf(c);
-        const has = (s: Entry['source'], id: string | null | undefined) => !!id && entries.some((e) => e.source === s && e.id === id);
-        await applyText(
-          c.id,
-          {
-            title: d.title,
-            description: d.description,
-            coverItemId: has('catalog', d.coverItemId) ? d.coverItemId : null,
-            coverModuleId: has('module', d.coverModuleId) ? (d.coverModuleId ?? null) : null,
-          },
-          now,
-        );
-        // A change from before items were reviewed on their own.
-        if (d.itemIds) {
-          const on = await kindsOn();
-          const still = d.itemIds.length ? await db.select().from(schema.catalogItems).where(inArray(schema.catalogItems.id, d.itemIds)) : [];
-          const ok = new Set(still.filter((i) => isPublicItem(i, on)).map((i) => i.id));
-          const mods = entries.filter((e) => e.source !== 'catalog');
-          await applyEntries(c.id, [...d.itemIds.filter((x) => ok.has(x)).map((id) => ({ source: 'catalog' as const, id })), ...mods]);
-        }
-      }
-      await db
-        .update(schema.catalogCollections)
-        .set({ status: 'public', reason: null, pending: null, pendingAt: null, updatedAt: now })
-        .where(eq(schema.catalogCollections.id, c.id));
-    } else if (d) {
-      // A declined change: the public collection stays as it was.
-      await db.update(schema.catalogCollections).set({ reason, pending: null, pendingAt: null, updatedAt: now }).where(eq(schema.catalogCollections.id, c.id));
-    } else {
-      await db.update(schema.catalogCollections).set({ status: 'declined', reason, updatedAt: now }).where(eq(schema.catalogCollections.id, c.id));
-    }
-    await writeAuditEvent({
-      resourceKind: 'catalog_collection',
-      resourceId: c.id,
-      userId: user.id,
-      eventType: approve ? 'collection_approve' : 'collection_decline',
-      payload: { isUpdate: !!d, reason },
-    });
-    return { code: 200, body: { ok: true } };
-  };
+  const decide = (req: FastifyRequest<{ Params: { id: string }; Body: { reason?: unknown } }>, approve: boolean) =>
+    decideCollection(requireModerator(req), req.params.id, approve, req.body?.reason);
   app.post<{ Params: { id: string }; Body: { reason?: unknown } }>('/api/moderation/collections/:id/approve', async (req, reply) => {
     const r = await decide(req, true);
     return reply.code(r.code).send(r.body);
@@ -1225,19 +1278,8 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post<{ Params: { id: string }; Body: { reason?: unknown } }>('/api/moderation/collections/:id/unpublish', async (req, reply) => {
-    const user = requireModerator(req);
-    const reason = cleanText(req.body?.reason, MAX_REASON);
-    if (reason === undefined) return reply.code(400).send({ error: 'invalid_input' });
-    const c = await getCollection(req.params.id);
-    if (!c) return reply.code(404).send({ error: 'not_found' });
-    // A private collection isn't in the catalog: it can only be removed.
-    if (c.audience !== 'everyone') return reply.code(409).send({ error: 'not_public' });
-    await db
-      .update(schema.catalogCollections)
-      .set({ status: 'unpublished', featured: false, reason, pending: null, pendingAt: null, updatedAt: new Date() })
-      .where(eq(schema.catalogCollections.id, c.id));
-    await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_unpublish', payload: { reason } });
-    return { ok: true };
+    const r = await unpublishCollection(requireModerator(req), req.params.id, req.body?.reason);
+    return reply.code(r.code).send(r.body);
   });
 
   // Remove a club collection for good (abuse handling). Audit-logged.

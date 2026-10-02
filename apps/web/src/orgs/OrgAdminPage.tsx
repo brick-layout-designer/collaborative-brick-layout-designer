@@ -19,6 +19,7 @@ import {
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
 import { aRole, atLeast } from './clubRoles';
+import { ClubReviewTab } from './ClubReview';
 
 export function OrgAdminPage() {
   const params = useParams<{ slug: string }>();
@@ -26,7 +27,7 @@ export function OrgAdminPage() {
   return <OrgAdmin slug={params.slug} />;
 }
 
-type Tab = 'people' | 'settings' | 'parts' | 'activity';
+type Tab = 'people' | 'settings' | 'parts' | 'review' | 'activity';
 
 function OrgAdmin({ slug }: { slug: string }) {
   const [tab, setTab] = useState<Tab>('people');
@@ -75,6 +76,7 @@ function OrgAdmin({ slug }: { slug: string }) {
     { id: 'people', label: waiting > 0 ? `People (${waiting} waiting)` : 'People' },
     ...(isClubAdmin ? [{ id: 'settings' as const, label: 'Settings' }] : []),
     { id: 'parts', label: 'Parts' },
+    ...(org.trusted ? [{ id: 'review' as const, label: 'Review' }] : []),
     { id: 'activity', label: 'Activity' },
   ];
 
@@ -146,6 +148,7 @@ function OrgAdmin({ slug }: { slug: string }) {
             </Section>
           </div>
         )}
+        {tab === 'review' && org.trusted && <ClubReviewTab slug={slug} name={org.name} />}
         {tab === 'activity' && <ActivitySection slug={slug} members={memberList} />}
       </main>
     </div>

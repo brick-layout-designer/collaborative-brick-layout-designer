@@ -540,6 +540,19 @@ export const api = {
       post<{ layoutId: string; role: 'viewer' | 'editor' }>(`/api/invites/${token}`),
   },
 
+  /** A trusted club's own review (its admins and managers). */
+  clubReview: {
+    get: (slug: string) => get<ClubReview>(`/api/orgs/${encodeURIComponent(slug)}/review`),
+    decideVersion: (slug: string, versionId: string, approve: boolean, reason = '') =>
+      post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/versions/${encodeURIComponent(versionId)}/${approve ? 'approve' : 'decline'}`, approve ? {} : { reason }),
+    unpublishItem: (slug: string, id: string, reason: string) =>
+      post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/items/${encodeURIComponent(id)}/unpublish`, { reason }),
+    decideCollection: (slug: string, id: string, approve: boolean, reason = '') =>
+      post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/collections/${encodeURIComponent(id)}/${approve ? 'approve' : 'decline'}`, approve ? {} : { reason }),
+    unpublishCollection: (slug: string, id: string, reason: string) =>
+      post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/collections/${encodeURIComponent(id)}/unpublish`, { reason }),
+  },
+
   orgs: {
     list: () => get<{ orgs: OrgSummary[] }>('/api/orgs'),
     /**
@@ -964,13 +977,24 @@ export const api = {
   },
 
   moderation: {
-    items: () => get<{ queue: ModerationEntry[]; items: (CatalogItem & { status: CatalogStatus; reason: string | null; owner: WarningSubject | null })[] }>('/api/moderation/items'),
+    items: () =>
+      get<{
+        queue: ModerationEntry[];
+        /** Waiting in trusted clubs' own queues (older servers leave it out). */
+        trustedQueue?: ModerationEntry[];
+        items: (CatalogItem & { status: CatalogStatus; reason: string | null; owner: WarningSubject | null })[];
+      }>('/api/moderation/items'),
+    /** Trusted clubs, or (with `q`) clubs to trust. */
+    clubs: (q?: string) => get<{ clubs: ModerationClub[] }>(`/api/moderation/clubs${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    trustClub: (slug: string, trusted: boolean) => post<{ ok: true; trusted: boolean }>(`/api/moderation/clubs/${encodeURIComponent(slug)}/trust`, { trusted }),
     approve: (versionId: string) => post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/approve`, {}),
     decline: (versionId: string, reason: string) =>
       post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/decline`, { reason }),
     unpublish: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/unpublish`, { reason }),
     collections: () =>
-      get<{ queue: CollectionReviewEntry[]; collections: ModeratedCollection[]; clubCollections?: ModeratedCollection[] }>('/api/moderation/collections'),
+      get<{ queue: CollectionReviewEntry[]; trustedQueue?: CollectionReviewEntry[]; collections: ModeratedCollection[]; clubCollections?: ModeratedCollection[] }>(
+        '/api/moderation/collections',
+      ),
     removeCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/remove`, { reason }),
     approveCollection: (id: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/approve`, {}),
     declineCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/decline`, { reason }),
@@ -1063,6 +1087,8 @@ export interface CatalogItem {
   version: number;
   updatedAt: number;
   previewUrl: string;
+  /** Shared by a trusted club (it reviews its own). */
+  trustedClub?: boolean;
 }
 
 export interface CatalogVersion {
@@ -1109,6 +1135,8 @@ export interface CollectionSummary {
   parts: number;
   coverUrl: string | null;
   updatedAt: number;
+  /** A trusted club's. */
+  trustedClub?: boolean;
 }
 
 /** A change to a public collection's text waiting for review (curators and moderators only). */
@@ -1251,6 +1279,8 @@ export interface ModerationEntry {
   previewUrl: string;
   /** Who it belongs to, for a warning. */
   owner: WarningSubject | null;
+  /** From a trusted club: its own admins and managers review it. */
+  trustedClub?: boolean;
 }
 
 export type WarningSubject = { kind: 'user' | 'org'; id: string };
@@ -1362,7 +1392,7 @@ export interface AdminOrg {
 }
 
 export interface AdminOrgDetail {
-  org: { id: string; name: string; slug: string; createdAt: number };
+  org: { id: string; name: string; slug: string; createdAt: number; trusted?: boolean; trustedAt?: number | null };
   stats: { members: number; layouts: number; layoutSizeBytes: number };
   members: { userId: string; email: string; displayName: string; role: ClubRole; joinedAt: number }[];
   layouts: { id: string; title: string; updatedAt: number; sizeBytes: number }[];
@@ -1490,6 +1520,36 @@ export interface OrgSummary {
   slug: string;
   createdAt: number;
   myRole: ClubRole;
+  /** A trusted club reviews what's published under its name (older servers leave it out). */
+  trusted?: boolean;
+}
+
+export interface ModerationClub {
+  id: string;
+  slug: string;
+  name: string;
+  trusted: boolean;
+  trustedAt: number | null;
+}
+
+/** A trusted club's own review queue. */
+export interface ClubReview {
+  items: {
+    versionId: string;
+    itemId: string;
+    kind: CatalogKind;
+    title: string;
+    description: string;
+    version: number;
+    isUpdate: boolean;
+    note: string | null;
+    submitter: string | null;
+    createdAt: number;
+    previewUrl: string;
+  }[];
+  collections: CollectionReviewEntry[];
+  published: (CatalogItem & { status: CatalogStatus; reason: string | null })[];
+  publicCollections: { id: string; title: string; status: CatalogStatus; reason: string | null }[];
 }
 
 export interface OrgDetail extends OrgSummary {

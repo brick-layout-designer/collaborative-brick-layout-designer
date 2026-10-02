@@ -402,7 +402,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const stats = layoutStats.get(org.id) ?? { layoutCount: 0, sizeBytes: 0 };
 
     return {
-      org: { id: org.id, name: org.name, slug: org.slug, createdAt: org.createdAt },
+      org: { id: org.id, name: org.name, slug: org.slug, createdAt: org.createdAt, trusted: org.trusted, trustedAt: org.trustedAt?.getTime() ?? null },
       stats: { members: members.length, layouts: stats.layoutCount, layoutSizeBytes: stats.sizeBytes },
       members,
       layouts: layouts.map((l) => ({ ...l, sizeBytes: sizeByLayout.get(l.id) ?? 0 })),

@@ -48,6 +48,8 @@ export function LayoutsPage() {
   const [showNewModule, setShowNewModule] = useState(false);
   const [historyOf, setHistoryOf] = useState<ModuleSummary | null>(null);
   const [toCollection, setToCollection] = useState<ModuleSummary | null>(null);
+  // A member (not an admin or manager) of a trusted club shares its modules for the club's own review.
+  const trustedMember = (m: ModuleSummary) => m.role === 'editor' && !!m.ownerOrgId && !!orgs?.find((o) => o.id === m.ownerOrgId && o.trusted);
   const [sharing, setSharing] = useState<ModuleSummary | null>(null);
   const catalog = useCatalogStatus();
   const withdraw = useMutation({
@@ -236,7 +238,7 @@ export function LayoutsPage() {
                       Add to a collection…
                     </button>
                   )}
-                  {catalog.enabled('module') && (m.role === undefined || m.role === 'owner') && (
+                  {catalog.enabled('module') && (m.role === undefined || m.role === 'owner' || trustedMember(m)) && (
                     <button role="menuitem" type="button" onClick={() => setSharing(m)} className={MORE_ITEM}>
                       {catalog.shared('module', m.id) ? 'Publish this update…' : 'Share to the public catalog…'}
                     </button>
@@ -310,6 +312,7 @@ export function LayoutsPage() {
           title={sharing.title}
           existing={catalog.shared('module', sharing.id)}
           onClose={() => setSharing(null)}
+          clubReview={trustedMember(sharing) ? orgs?.find((o) => o.id === sharing.ownerOrgId)?.name : undefined}
         />
       )}
 

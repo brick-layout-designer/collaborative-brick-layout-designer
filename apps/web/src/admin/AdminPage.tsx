@@ -24,6 +24,7 @@ import { CatalogSettingsSection, ModerationTab } from './Moderation';
 import { SubjectWarnings } from './SubjectWarnings';
 import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 import { DemoAccountSection } from './DemoAccount';
+import { HelpButton } from '../help/HelpButton';
 
 type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
 const ADMIN_TABS: Tab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'audit', 'settings'];
@@ -452,6 +453,40 @@ function OrgsTab() {
   );
 }
 
+/** Trusted club: its own admins and managers review what's published under its name. */
+function TrustToggle({ slug, name, trusted }: { slug: string; name: string; trusted: boolean }) {
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const set = useMutation({
+    mutationFn: (t: boolean) => api.moderation.trustClub(slug, t),
+    onSuccess: () => {
+      setError(null);
+      void qc.invalidateQueries({ queryKey: ['admin-org-detail'] });
+      void qc.invalidateQueries({ queryKey: ['moderation-clubs'] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+  return (
+    <div className="space-y-1 rounded-lg border border-line bg-panel p-3 text-sm">
+      <label className="flex min-h-11 items-center gap-2 font-semibold">
+        <input
+          type="checkbox"
+          checked={trusted}
+          disabled={set.isPending}
+          onChange={(e) => {
+            if (!e.target.checked && !confirm(`Stop trusting ${name}? What's public stays public; what's waiting in its queue moves to the site's.`)) return;
+            set.mutate(e.target.checked);
+          }}
+        />
+        Trusted club
+        <HelpButton helpKey="club.trusted" />
+      </label>
+      <p className="text-xs text-muted">Its admins and managers review what’s published under its name, instead of the site’s moderators. It’s logged.</p>
+      {error && <p className="text-danger">{error}</p>}
+    </div>
+  );
+}
+
 function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
   const detail = useQuery({ queryKey: ['admin-org-detail', id], queryFn: () => api.admin.org(id) });
 
@@ -467,6 +502,7 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
             <h2 className="text-base font-semibold">{detail.data.org.name}</h2>
             <p className="text-sm text-muted">/{detail.data.org.slug}</p>
           </div>
+          <TrustToggle slug={detail.data.org.slug} name={detail.data.org.name} trusted={!!detail.data.org.trusted} />
 
           <div className="grid grid-cols-3 gap-3 sm:max-w-md">
             {[
