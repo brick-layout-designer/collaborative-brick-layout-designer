@@ -31,6 +31,22 @@ const TOPICS: { id: string; title: string; body: string[] }[] = [
     ],
   },
   {
+    id: 'catalog',
+    title: 'Sharing to the catalog',
+    body: [
+      'The catalog holds modules and parts people shared for everyone. To share one of yours, open its ⋯ menu on Home and choose Share to the public catalog. A moderator checks it first, unless the site lets things in straight away.',
+      'Anyone can add a catalog item to their own modules or parts. It’s a copy: change it as you like.',
+    ],
+  },
+  {
+    id: 'collections',
+    title: 'Collections',
+    body: [
+      'A collection is a set of modules and parts that go well together, like “Starter town” or a club’s show standards. Add one item, or Add all to copy everything at once; what you already have is skipped.',
+      'Make one with New collection, or use “Add to a collection…” on any module or part. Private collections are only for you, or only for your club’s members, and are never checked. A public one is in the catalog: a moderator checks its title, description and cover first, and each of your own modules and parts in it is checked on its own before it shows.',
+    ],
+  },
+  {
     id: 'files',
     title: 'Saving a copy',
     body: [

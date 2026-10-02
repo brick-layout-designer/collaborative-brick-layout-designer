@@ -1008,10 +1008,11 @@ export const catalogCollectionItems = sqliteTable(
 );
 
 /**
- * A club collection's own library modules (not in the public catalog).
- * `position` shares one order with catalog_collection_items. Only modules
- * the collection's club owns show; one that's deleted or moved out of the
- * club is taken out, and the curators get a note.
+ * A collection's own library modules: the curator's, or the club's (not
+ * necessarily in the public catalog). `position` shares one order with
+ * catalog_collection_items and catalog_collection_parts. Only modules the
+ * collection's owner owns show; one that's deleted or moves away is taken
+ * out, and the curators get a note.
  */
 export const catalogCollectionModules = sqliteTable(
   'catalog_collection_modules',
@@ -1027,6 +1028,24 @@ export const catalogCollectionModules = sqliteTable(
   (t) => ({
     pk: primaryKey({ columns: [t.collectionId, t.moduleId] }),
     moduleIdx: index('catalog_collection_modules_module_idx').on(t.moduleId),
+  }),
+);
+
+/** The same for a collection's own custom parts (the curator's, or the club's). */
+export const catalogCollectionParts = sqliteTable(
+  'catalog_collection_parts',
+  {
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => catalogCollections.id, { onDelete: 'cascade' }),
+    partId: text('part_id')
+      .notNull()
+      .references(() => customParts.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.collectionId, t.partId] }),
+    partIdx: index('catalog_collection_parts_part_idx').on(t.partId),
   }),
 );
 

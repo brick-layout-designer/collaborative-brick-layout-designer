@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fb7031a7-141c-4b67-a137-dea316ff5dbd",
+  "id": "83dab9b0-05f8-47ac-bc81-8bdafdc2fc34",
   "prevId": "1364d57e-28fa-4be6-a775-a9561f207585",
   "tables": {
     "api_tokens": {
@@ -368,6 +368,80 @@
             "module_id"
           ],
           "name": "catalog_collection_modules_collection_id_module_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "catalog_collection_parts": {
+      "name": "catalog_collection_parts",
+      "columns": {
+        "collection_id": {
+          "name": "collection_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "part_id": {
+          "name": "part_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "catalog_collection_parts_part_idx": {
+          "name": "catalog_collection_parts_part_idx",
+          "columns": [
+            "part_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "catalog_collection_parts_collection_id_catalog_collections_id_fk": {
+          "name": "catalog_collection_parts_collection_id_catalog_collections_id_fk",
+          "tableFrom": "catalog_collection_parts",
+          "tableTo": "catalog_collections",
+          "columnsFrom": [
+            "collection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "catalog_collection_parts_part_id_custom_parts_id_fk": {
+          "name": "catalog_collection_parts_part_id_custom_parts_id_fk",
+          "tableFrom": "catalog_collection_parts",
+          "tableTo": "custom_parts",
+          "columnsFrom": [
+            "part_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "catalog_collection_parts_collection_id_part_id_pk": {
+          "columns": [
+            "collection_id",
+            "part_id"
+          ],
+          "name": "catalog_collection_parts_collection_id_part_id_pk"
         }
       },
       "uniqueConstraints": {},

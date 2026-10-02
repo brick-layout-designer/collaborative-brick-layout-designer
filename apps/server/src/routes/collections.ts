@@ -45,12 +45,14 @@ import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { destinationOrg } from './owners.js';
 import { canModerate, cleanText, copyItemTo, itemOut, mayBrowse, ownerNames, submitToCatalog } from './catalog.js';
 import { copyModuleTo } from './modules.js';
+import { checkGrowth, type Subject } from '../limits/limits.js';
 
 type Kind = 'module' | 'part';
 type Audience = 'everyone' | 'private';
 type Collection = typeof schema.catalogCollections.$inferSelect;
 type Item = typeof schema.catalogItems.$inferSelect;
 type ModuleRow = Pick<typeof schema.modules.$inferSelect, 'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'thumbnailAt' | 'latestVersion' | 'updatedAt'>;
+type PartRow = Pick<typeof schema.customParts.$inferSelect, 'id' | 'displayName' | 'partNumber' | 'ownerUserId' | 'ownerOrgId' | 'isGlobal' | 'updatedAt'>;
 
 export const MAX_COLLECTION_ITEMS = 60;
 const MAX_TITLE = 80;
@@ -60,9 +62,13 @@ const MAX_NOTE = 1500;
 // The desktop app (an API token) browses collections and adds them.
 const TOKEN_READ = { apiToken: 'layouts:read' } as const;
 
-/** An entry: a public catalog item, or one of the curator's (or the club's) own modules. */
+/**
+ * An entry: a public catalog item, or one of the curator's (or the club's)
+ * own modules or custom parts. Requests spell the last two
+ * `{ source: 'library', kind: 'module' | 'part', id }`.
+ */
 export interface Entry {
-  source: 'catalog' | 'library';
+  source: 'catalog' | 'module' | 'part';
   id: string;
 }
 
@@ -144,34 +150,63 @@ async function moduleRows(collectionIds: string[]): Promise<Map<string, { pos: n
   return out;
 }
 
-/** A module belongs with the collection: the club's own for a club collection, else the curator's own. */
-const ownsModule = (c: Pick<Collection, 'orgId' | 'ownerUserId'>, m: Pick<ModuleRow, 'ownerUserId' | 'ownerOrgId'>) =>
-  c.orgId ? m.ownerOrgId === c.orgId : !!c.ownerUserId && m.ownerUserId === c.ownerUserId && !m.ownerOrgId;
+const partCols = {
+  id: schema.customParts.id,
+  displayName: schema.customParts.displayName,
+  partNumber: schema.customParts.partNumber,
+  ownerUserId: schema.customParts.ownerUserId,
+  ownerOrgId: schema.customParts.ownerOrgId,
+  isGlobal: schema.customParts.isGlobal,
+  updatedAt: schema.customParts.updatedAt,
+};
+
+async function partRows(collectionIds: string[]): Promise<Map<string, { pos: number; part: PartRow }[]>> {
+  const out = new Map<string, { pos: number; part: PartRow }[]>(collectionIds.map((id) => [id, []]));
+  if (!collectionIds.length) return out;
+  const rows = await db
+    .select({ cid: schema.catalogCollectionParts.collectionId, pos: schema.catalogCollectionParts.position, part: partCols })
+    .from(schema.catalogCollectionParts)
+    .innerJoin(schema.customParts, eq(schema.customParts.id, schema.catalogCollectionParts.partId))
+    .where(inArray(schema.catalogCollectionParts.collectionId, collectionIds))
+    .orderBy(asc(schema.catalogCollectionParts.position));
+  for (const r of rows) out.get(r.cid)?.push({ pos: r.pos, part: r.part });
+  return out;
+}
+
+/**
+ * A module or part belongs with the collection: the club's own for a club
+ * collection, else the curator's own (never a site-wide part).
+ */
+const owns = (c: Pick<Collection, 'orgId' | 'ownerUserId'>, m: { ownerUserId: string | null; ownerOrgId: string | null; isGlobal?: boolean }) =>
+  !m.isGlobal && (c.orgId ? m.ownerOrgId === c.orgId : !!c.ownerUserId && m.ownerUserId === c.ownerUserId && !m.ownerOrgId);
 
 /** One entry as a viewer sees it. */
 export interface Shown {
   source: 'catalog' | 'library';
-  /** The catalog item's id, or the module's. */
+  /** The catalog item's id, or the module's or part's. */
   id: string;
   kind: Kind;
   title: string;
   previewUrl: string;
   item?: Item;
   module?: ModuleRow;
-  /** A library module's catalog item, if it was ever shared. */
+  part?: PartRow;
+  /** A library module's or part's catalog item, if it was ever shared. */
   catalog?: Item | null;
 }
 
 const itemPreview = (i: Pick<Item, 'id' | 'publicVersion'>) => `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`;
 const modulePreview = (m: Pick<ModuleRow, 'id' | 'thumbnailAt'>) => `/api/modules/${m.id}/thumbnail?v=${m.thumbnailAt?.getTime() ?? 0}`;
 
-/** The catalog item shared from each of these modules, if any. */
-async function catalogItemsFor(moduleIds: string[]): Promise<Map<string, Item>> {
-  if (!moduleIds.length) return new Map();
+const partPreview = (p: Pick<PartRow, 'id' | 'updatedAt'>) => `/api/custom-parts/${p.id}/sprite?v=${p.updatedAt.getTime()}`;
+
+/** The catalog item shared from each of these modules (or parts), if any. */
+async function catalogItemsFor(kind: Kind, sourceIds: string[]): Promise<Map<string, Item>> {
+  if (!sourceIds.length) return new Map();
   const rows = await db
     .select()
     .from(schema.catalogItems)
-    .where(and(eq(schema.catalogItems.kind, 'module'), inArray(schema.catalogItems.sourceId, moduleIds)));
+    .where(and(eq(schema.catalogItems.kind, kind), inArray(schema.catalogItems.sourceId, sourceIds)));
   return new Map(rows.map((r) => [r.sourceId, r]));
 }
 
@@ -184,8 +219,9 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
   const ids = cs.map((c) => c.id);
   const items = await itemRows(ids);
   const mods = await moduleRows(ids);
-  const allMods = [...mods.values()].flat().map((r) => r.module.id);
-  const shared = await catalogItemsFor(allMods);
+  const parts = await partRows(ids);
+  const shared = await catalogItemsFor('module', [...mods.values()].flat().map((r) => r.module.id));
+  const sharedParts = await catalogItemsFor('part', [...parts.values()].flat().map((r) => r.part.id));
   const out = new Map<string, Shown[]>();
   for (const c of cs) {
     const inside = insider(c);
@@ -195,12 +231,21 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
       rows.push({ pos: r.pos, s: { source: 'catalog', id: r.item.id, kind: r.item.kind, title: r.item.title, previewUrl: itemPreview(r.item), item: r.item } });
     }
     for (const r of mods.get(c.id) ?? []) {
-      if (!ownsModule(c, r.module)) continue;
+      if (!owns(c, r.module)) continue;
       const item = shared.get(r.module.id) ?? null;
       if (inside) {
         rows.push({ pos: r.pos, s: { source: 'library', id: r.module.id, kind: 'module', title: r.module.title, previewUrl: modulePreview(r.module), module: r.module, catalog: item } });
       } else if (item && isPublicItem(item, on)) {
         rows.push({ pos: r.pos, s: { source: 'catalog', id: item.id, kind: 'module', title: item.title, previewUrl: itemPreview(item), item } });
+      }
+    }
+    for (const r of parts.get(c.id) ?? []) {
+      if (!owns(c, r.part)) continue;
+      const item = sharedParts.get(r.part.id) ?? null;
+      if (inside) {
+        rows.push({ pos: r.pos, s: { source: 'library', id: r.part.id, kind: 'part', title: r.part.displayName, previewUrl: partPreview(r.part), part: r.part, catalog: item } });
+      } else if (item && isPublicItem(item, on)) {
+        rows.push({ pos: r.pos, s: { source: 'catalog', id: item.id, kind: 'part', title: item.title, previewUrl: itemPreview(item), item } });
       }
     }
     rows.sort((a, b) => a.pos - b.pos);
@@ -220,7 +265,7 @@ export function coverFrom(t: Pick<Text, 'coverItemId' | 'coverModuleId'>, shown:
   const chosen = shown.find(
     (s) =>
       (t.coverItemId && s.source === 'catalog' && s.id === t.coverItemId) ||
-      (t.coverModuleId && ((s.source === 'library' && s.id === t.coverModuleId) || (s.source === 'catalog' && s.item?.sourceId === t.coverModuleId))),
+      (t.coverModuleId && ((s.source === 'library' && s.kind === 'module' && s.id === t.coverModuleId) || (s.source === 'catalog' && s.item?.sourceId === t.coverModuleId))),
   );
   const it = chosen ?? shown.find((s) => s.kind === 'module') ?? shown[0];
   return it ? it.previewUrl : null;
@@ -251,9 +296,11 @@ const sameText = (a: Text, b: Text) =>
 async function entriesOf(c: Collection): Promise<Entry[]> {
   const items = (await itemRows([c.id])).get(c.id) ?? [];
   const mods = (await moduleRows([c.id])).get(c.id) ?? [];
+  const parts = (await partRows([c.id])).get(c.id) ?? [];
   return [
     ...items.map((r) => ({ pos: r.pos, e: { source: 'catalog' as const, id: r.item.id } })),
-    ...mods.filter((r) => ownsModule(c, r.module)).map((r) => ({ pos: r.pos, e: { source: 'library' as const, id: r.module.id } })),
+    ...mods.filter((r) => owns(c, r.module)).map((r) => ({ pos: r.pos, e: { source: 'module' as const, id: r.module.id } })),
+    ...parts.filter((r) => owns(c, r.part)).map((r) => ({ pos: r.pos, e: { source: 'part' as const, id: r.part.id } })),
   ]
     .sort((a, b) => a.pos - b.pos)
     .map((r) => r.e);
@@ -271,10 +318,15 @@ function readEntries(body: Record<string, unknown>, base: Entry[]): Entry[] | nu
     const out: Entry[] = [];
     const seen = new Set<string>();
     for (const e of body.entries as unknown[]) {
-      const x = e as { source?: unknown; id?: unknown } | null;
-      if (!x || (x.source !== 'catalog' && x.source !== 'library') || typeof x.id !== 'string') return null;
-      const key = `${x.source}:${x.id}`;
-      if (!seen.has(key)) out.push({ source: x.source, id: x.id });
+      const x = e as { source?: unknown; kind?: unknown; id?: unknown } | null;
+      if (!x || typeof x.id !== 'string' || !x.id) return null;
+      let source: Entry['source'];
+      if (x.source === 'catalog') source = 'catalog';
+      else if (x.source === 'library' && (x.kind === undefined || x.kind === 'module')) source = 'module';
+      else if (x.source === 'library' && x.kind === 'part') source = 'part';
+      else return null;
+      const key = `${source}:${x.id}`;
+      if (!seen.has(key)) out.push({ source, id: x.id });
       seen.add(key);
     }
     return out;
@@ -295,7 +347,8 @@ async function checkEntries(entries: Entry[], c: Pick<Collection, 'orgId' | 'own
   if (entries.length === 0) return { ok: false, code: 400, error: 'collection_empty' };
   if (entries.length > MAX_COLLECTION_ITEMS) return { ok: false, code: 400, error: 'collection_too_big' };
   const itemIds = entries.filter((e) => e.source === 'catalog').map((e) => e.id);
-  const moduleIds = entries.filter((e) => e.source === 'library').map((e) => e.id);
+  const moduleIds = entries.filter((e) => e.source === 'module').map((e) => e.id);
+  const partIds = entries.filter((e) => e.source === 'part').map((e) => e.id);
   const kept = new Set(had.filter((e) => e.source === 'catalog').map((e) => e.id));
   const items = itemIds.length ? await db.select().from(schema.catalogItems).where(inArray(schema.catalogItems.id, itemIds)) : [];
   const byId = new Map(items.map((i) => [i.id, i]));
@@ -307,7 +360,13 @@ async function checkEntries(entries: Entry[], c: Pick<Collection, 'orgId' | 'own
   const modById = new Map(mods.map((m) => [m.id, m]));
   for (const id of moduleIds) {
     const m = modById.get(id);
-    if (!m || !ownsModule(c, m)) return { ok: false, code: 400, error: c.orgId ? 'module_not_in_club' : 'module_not_yours', itemId: id };
+    if (!m || !owns(c, m)) return { ok: false, code: 400, error: c.orgId ? 'module_not_in_club' : 'module_not_yours', itemId: id };
+  }
+  const parts = partIds.length ? await db.select(partCols).from(schema.customParts).where(inArray(schema.customParts.id, partIds)) : [];
+  const partById = new Map(parts.map((p) => [p.id, p]));
+  for (const id of partIds) {
+    const p = partById.get(id);
+    if (!p || !owns(c, p)) return { ok: false, code: 400, error: c.orgId ? 'part_not_in_club' : 'part_not_yours', itemId: id };
   }
   return null;
 }
@@ -320,7 +379,7 @@ function readText(body: Record<string, unknown>, base: Text | null, entries: Ent
   if (description === undefined) return { ok: false, code: 400, error: 'invalid_input' };
   const has = (source: Entry['source'], id: string) => entries.some((e) => e.source === source && e.id === id);
   let coverItemId = base?.coverItemId && has('catalog', base.coverItemId) ? base.coverItemId : null;
-  let coverModuleId = base?.coverModuleId && has('library', base.coverModuleId) ? base.coverModuleId : null;
+  let coverModuleId = base?.coverModuleId && has('module', base.coverModuleId) ? base.coverModuleId : null;
   if (body.coverItemId !== undefined || body.coverModuleId !== undefined) {
     coverItemId = null;
     coverModuleId = null;
@@ -328,7 +387,7 @@ function readText(body: Record<string, unknown>, base: Text | null, entries: Ent
       if (!has('catalog', body.coverItemId)) return { ok: false, code: 400, error: 'invalid_input' };
       coverItemId = body.coverItemId;
     } else if (typeof body.coverModuleId === 'string' && body.coverModuleId) {
-      if (!has('library', body.coverModuleId)) return { ok: false, code: 400, error: 'invalid_input' };
+      if (!has('module', body.coverModuleId)) return { ok: false, code: 400, error: 'invalid_input' };
       coverModuleId = body.coverModuleId;
     } else if (![undefined, null, ''].includes(body.coverItemId as string) || ![undefined, null, ''].includes(body.coverModuleId as string)) {
       return { ok: false, code: 400, error: 'invalid_input' };
@@ -336,6 +395,9 @@ function readText(body: Record<string, unknown>, base: Text | null, entries: Ent
   }
   return { title, description: description ?? '', coverItemId, coverModuleId };
 }
+
+/** An entry as requests spell it. */
+const entryOut = (e: Entry) => (e.source === 'catalog' ? { source: 'catalog', id: e.id } : { source: 'library', kind: e.source, id: e.id });
 
 const isFail = (x: unknown): x is Fail => !!x && typeof x === 'object' && (x as Fail).ok === false;
 
@@ -356,29 +418,35 @@ async function applyText(id: string, t: Text, now: Date): Promise<void> {
 async function applyEntries(id: string, entries: Entry[]): Promise<void> {
   await db.delete(schema.catalogCollectionItems).where(eq(schema.catalogCollectionItems.collectionId, id));
   await db.delete(schema.catalogCollectionModules).where(eq(schema.catalogCollectionModules.collectionId, id));
-  const items = entries.map((e, position) => ({ ...e, position })).filter((e) => e.source === 'catalog');
-  const mods = entries.map((e, position) => ({ ...e, position })).filter((e) => e.source === 'library');
+  await db.delete(schema.catalogCollectionParts).where(eq(schema.catalogCollectionParts.collectionId, id));
+  const placed = entries.map((e, position) => ({ ...e, position }));
+  const items = placed.filter((e) => e.source === 'catalog');
+  const mods = placed.filter((e) => e.source === 'module');
+  const parts = placed.filter((e) => e.source === 'part');
   if (items.length) await db.insert(schema.catalogCollectionItems).values(items.map((e) => ({ collectionId: id, itemId: e.id, position: e.position })));
   if (mods.length) await db.insert(schema.catalogCollectionModules).values(mods.map((e) => ({ collectionId: id, moduleId: e.id, position: e.position })));
+  if (parts.length) await db.insert(schema.catalogCollectionParts).values(parts.map((e) => ({ collectionId: id, partId: e.id, position: e.position })));
 }
 
 /**
- * A public collection's modules that aren't in the catalog yet are shared,
- * each for its own review. Ones that were declined or unpublished are left
- * for their owner to share again.
+ * A public collection's own modules and parts that aren't in the catalog
+ * yet are shared, each for its own review. Ones that were declined or
+ * unpublished are left for their owner to share again.
  */
-async function shareModules(user: User, c: Pick<Collection, 'title'>, entries: Entry[]): Promise<{ submitted: string[]; notShared: { moduleId: string; error: string }[] }> {
-  const ids = entries.filter((e) => e.source === 'library').map((e) => e.id);
+async function shareModules(user: User, c: Pick<Collection, 'title'>, entries: Entry[]): Promise<{ submitted: string[]; notShared: { id: string; error: string }[] }> {
   const submitted: string[] = [];
-  const notShared: { moduleId: string; error: string }[] = [];
-  if (!ids.length) return { submitted, notShared };
-  const shared = await catalogItemsFor(ids);
-  for (const id of ids) {
-    const it = shared.get(id);
-    if (it && it.status !== 'withdrawn') continue;
-    const r = await submitToCatalog(user, 'module', id, { note: `Part of the collection “${c.title}”` });
-    if (r.ok) submitted.push(id);
-    else notShared.push({ moduleId: id, error: (r.body as { error?: string })?.error ?? 'failed' });
+  const notShared: { id: string; error: string }[] = [];
+  for (const kind of ['module', 'part'] as const) {
+    const ids = entries.filter((e) => e.source === kind).map((e) => e.id);
+    if (!ids.length) continue;
+    const shared = await catalogItemsFor(kind, ids);
+    for (const id of ids) {
+      const it = shared.get(id);
+      if (it && it.status !== 'withdrawn') continue;
+      const r = await submitToCatalog(user, kind, id, { note: `Part of the collection “${c.title}”` });
+      if (r.ok) submitted.push(id);
+      else notShared.push({ id, error: (r.body as { error?: string })?.error ?? 'failed' });
+    }
   }
   return { submitted, notShared };
 }
@@ -433,12 +501,12 @@ function listOut(c: Collection, shown: Shown[], by: string) {
   };
 }
 
-/** How a library module stands in the catalog, for its curators (in a public collection). */
+/** How a library module or part stands in the catalog, for its curators (in a public collection). */
 function reviewOf(s: Shown, on: Set<Kind>): { state: 'public' | 'in_review' | 'declined' | 'unpublished' | 'not_shared' | 'catalog_off'; reason: string | null } | null {
   if (s.source !== 'library') return null;
   const it = s.catalog;
   if (it && isPublicItem(it, on)) return { state: 'public', reason: null };
-  if (!on.has('module')) return { state: 'catalog_off', reason: null };
+  if (!on.has(s.kind)) return { state: 'catalog_off', reason: null };
   if (!it || it.status === 'withdrawn') return { state: 'not_shared', reason: null };
   if (it.status === 'public' || it.status === 'in_review') return { state: 'in_review', reason: null };
   return { state: it.status === 'declined' ? 'declined' : 'unpublished', reason: it.reason };
@@ -493,37 +561,39 @@ export async function dropFromCollections(item: Pick<Item, 'id' | 'title'>, why:
 }
 
 /**
- * A module that was deleted, or moved away from its club or person, leaves
- * the collections it no longer belongs in (all of them when `stillOrgId` is
- * null and it's being deleted), and their curators get a note. Returns the
+ * A module (or custom part) that was deleted, or moved away from its club,
+ * leaves the collections it no longer belongs in (all of them when
+ * `stillOrgId` is null), and their curators get a note. Returns the
  * collections it left.
  */
 export async function dropModuleFromCollections(
-  m: Pick<ModuleRow, 'id' | 'title'>,
+  m: { id: string; title: string },
   why: string,
   stillOrgId: string | null,
   actorId: string | null,
+  kind: Kind = 'module',
 ): Promise<{ id: string; orgId: string | null; ownerUserId: string | null }[]> {
+  const table = kind === 'module' ? schema.catalogCollectionModules : schema.catalogCollectionParts;
+  const col = kind === 'module' ? schema.catalogCollectionModules.moduleId : schema.catalogCollectionParts.partId;
   const rows = await db
     .select({ c: schema.catalogCollections })
-    .from(schema.catalogCollectionModules)
-    .innerJoin(schema.catalogCollections, eq(schema.catalogCollections.id, schema.catalogCollectionModules.collectionId))
-    .where(eq(schema.catalogCollectionModules.moduleId, m.id));
+    .from(table)
+    .innerJoin(schema.catalogCollections, eq(schema.catalogCollections.id, table.collectionId))
+    .where(eq(col, m.id));
   const leaving = rows.map((r) => r.c).filter((c) => !stillOrgId || c.orgId !== stillOrgId);
   if (!leaving.length) return [];
   const now = new Date();
   const line = `“${m.title}” was ${why}, so it was taken out of this collection.`;
   for (const c of leaving) {
-    await db
-      .delete(schema.catalogCollectionModules)
-      .where(and(eq(schema.catalogCollectionModules.collectionId, c.id), eq(schema.catalogCollectionModules.moduleId, m.id)));
+    await db.delete(table).where(and(eq(table.collectionId, c.id), eq(col, m.id)));
     const d = parseDraft(c.pending);
+    const wasCover = kind === 'module' && c.coverModuleId === m.id;
     await db
       .update(schema.catalogCollections)
       .set({
         curatorNote: (c.curatorNote ? `${c.curatorNote}\n${line}` : line).slice(-MAX_NOTE),
-        coverModuleId: c.coverModuleId === m.id ? null : c.coverModuleId,
-        ...(d && d.coverModuleId === m.id ? { pending: JSON.stringify({ ...d, coverModuleId: null }) } : {}),
+        coverModuleId: wasCover ? null : c.coverModuleId,
+        ...(kind === 'module' && d && d.coverModuleId === m.id ? { pending: JSON.stringify({ ...d, coverModuleId: null }) } : {}),
         updatedAt: now,
       })
       .where(eq(schema.catalogCollections.id, c.id));
@@ -532,7 +602,7 @@ export async function dropModuleFromCollections(
       resourceId: c.id,
       userId: actorId,
       eventType: 'collection_item_removed',
-      payload: { moduleId: m.id, title: m.title, why },
+      payload: { [kind === 'module' ? 'moduleId' : 'partId']: m.id, title: m.title, why },
     });
   }
   return leaving.map((c) => ({ id: c.id, orgId: c.orgId, ownerUserId: c.ownerUserId }));
@@ -784,7 +854,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         curatorNote: a.curator ? c.curatorNote : null,
         canEdit: a.curator,
         pinned: c.pinned,
-        clubInfo: club ? { slug: club.slug, name: club.name } : null,
+        clubInfo: club ? { id: club.id, slug: club.slug, name: club.name } : null,
         myRole: a.role,
         // A site moderator may take a club collection down (abuse).
         canRemove: !!user && canModerate(user) && !!c.orgId,
@@ -794,7 +864,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
           ? { ...itemOut(s.item, itemBy(s.item)), source: 'catalog' as const }
           : {
               id: s.id,
-              kind: 'module' as const,
+              kind: s.kind,
               source: 'library' as const,
               title: s.title,
               description: '',
@@ -802,7 +872,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
               by: club?.name ?? by,
               uses: 0,
               version: s.module?.latestVersion ?? 0,
-              updatedAt: s.module?.updatedAt.getTime() ?? 0,
+              updatedAt: (s.module ?? s.part)?.updatedAt.getTime() ?? 0,
               previewUrl: s.previewUrl,
               ...(showReview ? { review: reviewOf(s, on) } : {}),
             },
@@ -888,8 +958,12 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // "Add to a collection…": one more catalog item at the end. Never reviewed.
-  app.post<{ Params: { id: string }; Body: { itemId?: unknown } }>(
+  // "Add to a collection…": one more item at the end: a catalog item
+  // (`itemId`), or the curator's (or club's) own module or part
+  // (`source: 'library'`, `kind`, `id`). The collection is never reviewed
+  // for it; a module or part going into a public collection is shared for
+  // its own review.
+  app.post<{ Params: { id: string }; Body: { itemId?: unknown; source?: unknown; kind?: unknown; id?: unknown } }>(
     '/api/catalog/collections/:id/items',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
     { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } },
@@ -897,13 +971,14 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);
       if (!c) return reply.code(404).send({ error: 'not_found' });
-      const itemId = req.body?.itemId;
-      if (typeof itemId !== 'string' || !itemId) return reply.code(400).send({ error: 'invalid_input' });
+      const b = req.body ?? {};
+      const one = typeof b.itemId === 'string' ? readEntries({ entries: [{ source: 'catalog', id: b.itemId }] }, [])?.[0] : readEntries({ entries: [b] }, [])?.[0];
+      if (!one) return reply.code(400).send({ error: 'invalid_input' });
       const refused = await refuseEdit(user, c);
       if (refused) return reply.code(refused.code).send(refused.body);
       const had = await entriesOf(c);
-      if (had.some((e) => e.source === 'catalog' && e.id === itemId)) return reply.code(409).send({ error: 'already_in_collection' });
-      const r = await editCollection(user, c, { entries: [...had, { source: 'catalog', id: itemId }] });
+      if (had.some((e) => e.source === one.source && e.id === one.id)) return reply.code(409).send({ error: 'already_in_collection' });
+      const r = await editCollection(user, c, { entries: [...had, one].map(entryOut) });
       return reply.code(r.code).send(r.body);
     },
   );
@@ -1006,6 +1081,12 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
           const r = await copyModuleTo(user, src, dest.orgId, src.title);
           if (r.ok) added.push({ itemId: s.id, kind: 'module', id: r.id });
           else failed.push({ itemId: s.id, error: (r.body as { error?: string })?.error ?? 'failed' });
+        } else if (s.part) {
+          const r = await copyPartTo(user, s.part.id, dest.orgId);
+          if (r.ok) added.push({ itemId: s.id, kind: 'part', id: r.id });
+          // A part with that number is already there: they have it.
+          else if (r.status === 409) skipped.push(s.id);
+          else failed.push({ itemId: s.id, error: (r.body as { error?: string })?.error ?? 'failed' });
         }
       }
       await writeAuditEvent({
@@ -1102,7 +1183,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
             title: d.title,
             description: d.description,
             coverItemId: has('catalog', d.coverItemId) ? d.coverItemId : null,
-            coverModuleId: has('library', d.coverModuleId) ? (d.coverModuleId ?? null) : null,
+            coverModuleId: has('module', d.coverModuleId) ? (d.coverModuleId ?? null) : null,
           },
           now,
         );
@@ -1111,7 +1192,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
           const on = await kindsOn();
           const still = d.itemIds.length ? await db.select().from(schema.catalogItems).where(inArray(schema.catalogItems.id, d.itemIds)) : [];
           const ok = new Set(still.filter((i) => isPublicItem(i, on)).map((i) => i.id));
-          const mods = entries.filter((e) => e.source === 'library');
+          const mods = entries.filter((e) => e.source !== 'catalog');
           await applyEntries(c.id, [...d.itemIds.filter((x) => ok.has(x)).map((id) => ({ source: 'catalog' as const, id })), ...mods]);
         }
       }
@@ -1238,6 +1319,44 @@ async function alreadyHaveModules(mods: readonly Pick<ModuleRow, 'id' | 'ownerUs
       ),
     );
   return new Set([...own, ...copies.map((c) => c.from).filter((x): x is string => !!x)]);
+}
+
+/**
+ * Copy one of a collection's own custom parts to `user` or the club
+ * `destOrgId`. A part with the same number there already: 409 (they have it).
+ */
+async function copyPartTo(user: User, partId: string, destOrgId: string | null): Promise<{ ok: true; id: string } | { ok: false; status: number; body: unknown }> {
+  const src = await db.select().from(schema.customParts).where(eq(schema.customParts.id, partId)).get();
+  if (!src) return { ok: false, status: 404, body: { error: 'not_found' } };
+  const taken = await db
+    .select({ id: schema.customParts.id })
+    .from(schema.customParts)
+    .where(and(eq(schema.customParts.partNumber, src.partNumber), destOrgId ? eq(schema.customParts.ownerOrgId, destOrgId) : eq(schema.customParts.ownerUserId, user.id)))
+    .get();
+  if (taken) return { ok: false, status: 409, body: { error: 'part_number_taken' } };
+  const xml = Buffer.from(src.xmlBlob as Uint8Array);
+  const sprite = Buffer.from(src.spriteBlob as Uint8Array);
+  const owner: Subject = destOrgId ? { kind: 'org', id: destOrgId } : { kind: 'user', id: user.id };
+  const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: xml.length + sprite.length } });
+  if (refusal) return { ok: false, status: refusal.status, body: refusal.body };
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(schema.customParts).values({
+    id,
+    partNumber: src.partNumber,
+    displayName: src.displayName,
+    category: src.category,
+    ownerUserId: destOrgId ? null : user.id,
+    ownerOrgId: destOrgId,
+    createdBy: user.id,
+    xmlBlob: xml,
+    spriteBlob: sprite,
+    spriteMime: src.spriteMime,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await writeAuditEvent({ resourceKind: 'custom_part', resourceId: id, userId: user.id, eventType: 'create', payload: { copiedFrom: src.id, owner } });
+  return { ok: true, id };
 }
 
 /** How many public collections each item is in (for its owner's badge). */

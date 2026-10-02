@@ -26,6 +26,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clubThingRole } from '../access/clubRoles.js';
+import { dropModuleFromCollections } from './collections.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -348,6 +349,9 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       if (!hasAtLeast(role, 'owner')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
+      // Collections it's in lose it; their curators get a note.
+      const gone = await db.select({ id: schema.customParts.id, title: schema.customParts.displayName }).from(schema.customParts).where(eq(schema.customParts.id, req.params.id)).get();
+      if (gone) await dropModuleFromCollections(gone, 'deleted', null, user.id, 'part');
       await db.delete(schema.customParts).where(eq(schema.customParts.id, req.params.id));
       await writeAuditEvent({
         resourceKind: 'custom_part',

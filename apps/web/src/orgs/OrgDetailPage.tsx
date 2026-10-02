@@ -6,6 +6,7 @@ import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
 import { ClubPublicView } from './ClubDirectory';
 import { aRole, atLeast } from './clubRoles';
+import { ClubCollectionsSection } from '../catalog/Collections';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -62,6 +63,8 @@ function OrgDetail({ slug }: { slug: string }) {
         </div>
 
         <ClubThings org={org} />
+
+        <ClubCollectionsSection club={slug} />
 
         {members.isLoading ? (
           <p className="text-sm text-muted">Loading…</p>

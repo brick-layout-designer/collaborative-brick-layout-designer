@@ -13,6 +13,7 @@ import { sessionRoutes } from '../auth/session.js';
 import { orgRoutes } from '../orgs.js';
 import { moduleRoutes } from '../modules.js';
 import { moduleTransferRoutes } from '../moduleTransfers.js';
+import { customPartRoutes } from '../customParts.js';
 import { catalogRoutes } from '../catalog.js';
 import { collectionRoutes } from '../collections.js';
 import { getPlatformSettings, PLATFORM_SETTINGS_ID } from '../../auth/platformSettings.js';
@@ -27,6 +28,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(orgRoutes);
   await app.register(moduleRoutes);
   await app.register(moduleTransferRoutes);
+  await app.register(customPartRoutes);
   await app.register(catalogRoutes);
   await app.register(collectionRoutes);
   return app;
@@ -243,6 +245,12 @@ describe('club and private collections', () => {
     expect(d.collection.curatorNote).toContain('“Second” was moved to another club');
     // Members don't see the note.
     expect((await detail(mel, id)).collection.curatorNote).toBeNull();
+    // A module that's no longer the club's, however it left, isn't shown.
+    const third = ((await req('POST', '/api/modules', ada, { title: 'Third', orgSlug: 'arklug' })).json() as { id: string }).id;
+    await req('PATCH', `/api/catalog/collections/${id}`, ada, { entries: [{ source: 'catalog', id: yard }, { source: 'library', id: third }] });
+    expect((await detail(mel, id)).items.map((i) => i.id)).toEqual([yard, third]);
+    await db.update(schema.modules).set({ ownerOrgId: null, ownerUserId: await userId('ada@example.com') }).where(eq(schema.modules.id, third));
+    expect((await detail(mel, id)).items.map((i) => i.id)).toEqual([yard]);
   });
 
   it('site moderators see and remove club collections (audit-logged), but can’t unpublish or feature a private one', async () => {
@@ -256,6 +264,9 @@ describe('club and private collections', () => {
     expect((await req('POST', `/api/moderation/collections/${id}/unpublish`, mod, { reason: 'x' })).statusCode).toBe(409);
     expect((await req('POST', `/api/moderation/collections/${id}/feature`, mod, { featured: true })).statusCode).toBe(409);
     expect((await req('PATCH', `/api/catalog/collections/${id}`, mod, { title: 'Moderated' })).statusCode).toBe(403);
+    // Only club collections are removed this way (others are unpublished).
+    const own = ((await create(mel, { title: 'Mel’s', audience: 'private', entries: [{ source: 'catalog', id: yard }] })).json() as { id: string }).id;
+    expect((await req('POST', `/api/moderation/collections/${own}/remove`, mod, { reason: 'x' })).statusCode).toBe(404);
     expect((await req('POST', `/api/moderation/collections/${id}/remove`, mod, { reason: 'Abuse' })).statusCode).toBe(200);
     expect(await db.select().from(schema.catalogCollections).where(eq(schema.catalogCollections.id, id)).get()).toBeUndefined();
     const audit = await db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.resourceId, id), eq(schema.auditEvents.eventType, 'collection_remove'))).get();
@@ -293,6 +304,16 @@ describe('club and private collections', () => {
     expect((await req('GET', `/api/catalog/collections/${id}`, out)).statusCode).toBe(404);
     // Public again: back through review.
     expect((await req('PATCH', `/api/catalog/collections/${id}`, max, { audience: 'everyone' })).json()).toMatchObject({ status: 'in_review', submitted: [] });
+  });
+
+  it('a module a moderator declined isn’t shared again when the collection goes public; its curators see why', async () => {
+    const r = (await req('POST', '/api/catalog/submissions', ada, { kind: 'module', sourceId: clubMod })).json() as { id: string };
+    const q = (await itemQueue()).find((x) => x.itemId === r.id)!;
+    await req('POST', `/api/moderation/versions/${q.versionId}/decline`, mod, { reason: 'Too blurry' });
+    const id = await newClubCollection();
+    expect((await req('PATCH', `/api/catalog/collections/${id}`, ada, { audience: 'everyone' })).json()).toMatchObject({ submitted: [] });
+    expect(await itemQueue()).toEqual([]);
+    expect((await detail(max, id)).items[1]!.review).toEqual({ state: 'declined', reason: 'Too blurry' });
   });
 
   it('in a public collection, adding or reordering items never re-reviews it; changing its text does', async () => {
@@ -342,6 +363,52 @@ describe('club and private collections', () => {
     // Club collections aren't in "mine".
     await newClubCollection();
     expect(((await req('GET', '/api/catalog/collections/mine', ada)).json() as { collections: unknown[] }).collections).toEqual([]);
+  });
+
+  it('a club’s own custom parts go in too: private, no review; public, each shared for its own review', async () => {
+    const now = new Date();
+    await db.insert(schema.customParts).values({
+      id: 'club-part',
+      partNumber: 'ARK.1',
+      displayName: 'Show sign',
+      ownerOrgId: orgId,
+      createdBy: await userId('ada@example.com'),
+      xmlBlob: Buffer.from('<part/>'),
+      spriteBlob: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]),
+      spriteMime: 'image/png',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const id = await newClubCollection();
+    // "Add to a collection…" with the club's part: no review, it's private.
+    const added = await req('POST', `/api/catalog/collections/${id}/items`, max, { source: 'library', kind: 'part', id: 'club-part' });
+    expect(added.statusCode).toBe(200);
+    expect(added.json()).toMatchObject({ audience: 'private', submitted: [] });
+    expect((await req('POST', `/api/catalog/collections/${id}/items`, max, { source: 'library', kind: 'part', id: 'club-part' })).statusCode).toBe(409);
+    expect(await itemQueue()).toEqual([]);
+    const d = await detail(mel, id);
+    expect(d.items.map((i) => [i.source, i.kind, i.id])).toEqual([
+      ['catalog', 'module', yard],
+      ['library', 'module', clubMod],
+      ['library', 'part', 'club-part'],
+    ]);
+    // Mel adds them all: the part comes too, once.
+    const first = (await req('POST', `/api/catalog/collections/${id}/add`, mel, {})).json() as { added: { itemId: string; kind: string }[] };
+    expect(first.added.map((a) => a.kind).sort()).toEqual(['module', 'module', 'part']);
+    const again = (await req('POST', `/api/catalog/collections/${id}/add`, mel, {})).json() as { added: unknown[]; skipped: string[] };
+    expect(again.added).toEqual([]);
+    expect(again.skipped).toContain('club-part');
+    // Someone else's part can't go in.
+    expect((await req('POST', `/api/catalog/collections/${id}/items`, max, { source: 'library', kind: 'part', id: 'nope' })).json()).toMatchObject({ error: 'part_not_in_club' });
+    // Made public: the module and the part each go for their own review.
+    const pub = (await req('PATCH', `/api/catalog/collections/${id}`, ada, { audience: 'everyone' })).json() as { submitted: string[] };
+    expect(pub.submitted.sort()).toEqual([clubMod, 'club-part'].sort());
+    expect((await itemQueue()).map((q) => q.title).sort()).toEqual(['Show corner', 'Show sign']);
+    // Deleting the part takes it out, with a note.
+    expect((await req('DELETE', '/api/custom-parts/club-part', ada)).statusCode).toBe(200);
+    const after = await detail(max, id);
+    expect(after.items.map((i) => i.id)).toEqual([yard, clubMod]);
+    expect(after.collection.curatorNote).toContain('“Show sign” was deleted');
   });
 
   it('deleting a club deletes its collections; a curator can delete one', async () => {

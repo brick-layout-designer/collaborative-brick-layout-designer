@@ -22,6 +22,7 @@ import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { SiteVersionBar } from './SiteVersionBar';
 import { DemoBanner } from './demo/DemoBanner';
+import { CollectionToastHost } from './catalog/collectionToast';
 import { HelpPage } from './help/HelpPage';
 import { SettingsPage } from './settings/SettingsPage';
 import { PrefsProvider } from './theme/PrefsProvider';
@@ -147,6 +148,7 @@ createRoot(root).render(
         <SiteVersionBar />
         <NoticeBanner />
         <DemoBanner />
+        <CollectionToastHost />
         <TourProvider>
         <Suspense fallback={null}>
         <Routes>

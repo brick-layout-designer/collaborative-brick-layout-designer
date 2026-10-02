@@ -1,29 +1,57 @@
-// Catalog collections: named, ordered sets of public modules and parts
-// ("Starter town", "Train yard basics"). The Catalog page lists them
-// (featured first) and the caller's own with how they stand; a collection's
-// page shows its items with "Add all" and per-item Add. Anyone signed in
-// can make one: moderators' are published at once, other people's are
-// reviewed like catalog items (and so is every change).
+// Catalog collections: named, ordered sets of modules and parts ("Starter
+// town", "ArkLUG show standards").
+//
+// A collection is a person's or a club's. Private ones are only for their
+// curator, or only for the club's members, and are never checked. Public
+// ones are in the catalog: a moderator checks their title, description and
+// cover first. Items are checked on their own: the curator's (or club's)
+// own modules and parts in a public collection are shared to the catalog
+// for their own review, and show publicly once approved.
+//
+// The Catalog page lists public collections (featured first), your clubs'
+// and your own; a collection's page shows its items with Add all and a
+// per-item Add.
 
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
-  type CatalogItem,
   type CatalogKind,
+  type ClubCollection,
+  type ClubCollections,
   type CollectionAddResult,
+  type CollectionAudience,
   type CollectionDetail,
+  type CollectionEntry,
+  type CollectionItem,
+  type CollectionSaved,
   type CollectionSummary,
+  type EntryReview,
   type MyCollection,
 } from '../api';
 import { AppHeader } from '../AppHeader';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { invalidateFor } from '../live/invalidate';
+import { HelpButton } from '../help/HelpButton';
 import { AddDialog, CatalogPreview } from './CatalogPage';
+import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 
-/** How one of my collections stands, in a few words. */
-export function collectionStatus(c: Pick<MyCollection, 'status' | 'reason' | 'pending' | 'itemCount'>): { label: string; tone: 'ok' | 'wait' | 'bad' } {
+/** Who sees it, in a few words. */
+export function audienceLabel(audience: CollectionAudience | undefined, clubName?: string | null): string {
+  if (audience === 'private') return clubName ? `Only ${clubName} members` : 'Only you';
+  return 'Everyone';
+}
+
+/** How one of my (or my club's) collections stands, in a few words. */
+export function collectionStatus(
+  c: Pick<MyCollection, 'status' | 'reason' | 'pending' | 'itemCount'> & { audience?: CollectionAudience },
+  clubName?: string | null,
+): { label: string; tone: 'ok' | 'wait' | 'bad' } {
+  if (c.audience === 'private') {
+    if (c.itemCount === 0) return { label: 'Empty: no items left', tone: 'bad' };
+    return { label: `Private · ${audienceLabel('private', clubName).toLowerCase()}`, tone: 'ok' };
+  }
   if (c.status === 'in_review') return { label: 'In review', tone: 'wait' };
   if (c.status === 'declined') return { label: c.reason ? `Declined: ${c.reason}` : 'Declined', tone: 'bad' };
   if (c.status === 'unpublished') return { label: c.reason ? `Unpublished: ${c.reason}` : 'Unpublished', tone: 'bad' };
@@ -32,6 +60,16 @@ export function collectionStatus(c: Pick<MyCollection, 'status' | 'reason' | 'pe
   if (c.itemCount === 0) return { label: 'Hidden: no items left', tone: 'bad' };
   if (c.reason) return { label: `Public · your change was declined: ${c.reason}`, tone: 'bad' };
   return { label: 'Public', tone: 'ok' };
+}
+
+/** How a collection's own module or part stands in the catalog, for its curators. */
+export function reviewLabel(r: EntryReview | null | undefined): string | null {
+  if (!r || r.state === 'public') return null;
+  if (r.state === 'in_review') return 'Waiting for review';
+  if (r.state === 'declined') return r.reason ? `Declined: ${r.reason}` : 'Declined';
+  if (r.state === 'unpublished') return r.reason ? `Unpublished: ${r.reason}` : 'Unpublished';
+  if (r.state === 'catalog_off') return 'Not shown: the catalog is off';
+  return 'Not shared yet: shared when you save';
 }
 
 /** "Added 2 · you already had 1 · 1 couldn't be added". */
@@ -43,6 +81,18 @@ export function addAllSummary(r: CollectionAddResult): string {
   return parts.join(' · ') + '.';
 }
 
+/** What happened when a collection was saved, in plain words. */
+export function savedSummary(r: CollectionSaved, audience: CollectionAudience, clubName?: string | null): string {
+  const out: string[] = [];
+  if (audience === 'private') out.push(`Saved. ${audienceLabel('private', clubName)} can see it.`);
+  else if (r.status === 'in_review' || r.pending) out.push('Sent for review. A moderator checks its title, description and cover before everyone sees it.');
+  else out.push('It’s in the catalog now for everyone.');
+  const n = r.submitted?.length ?? 0;
+  if (n) out.push(`${n === 1 ? 'One of your own items was' : `${n} of your own items were`} shared to the catalog for review; each shows publicly once it’s approved.`);
+  if (r.notShared?.length) out.push(`${r.notShared.length} couldn’t be shared to the catalog, so only you see ${r.notShared.length === 1 ? 'it' : 'them'} in it.`);
+  return out.join(' ');
+}
+
 /** Move the entry at `from` to `to`, leaving the list as it was if either is out of range. */
 export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   if (from < 0 || from >= list.length || to < 0 || to >= list.length) return [...list];
@@ -50,6 +100,14 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   const [x] = out.splice(from, 1);
   out.splice(to, 0, x as T);
   return out;
+}
+
+/** "3 modules · 5 parts". */
+export function counts(c: Pick<CollectionSummary, 'modules' | 'parts'>): string {
+  const out: string[] = [];
+  if (c.modules) out.push(`${c.modules} ${c.modules === 1 ? 'module' : 'modules'}`);
+  if (c.parts) out.push(`${c.parts} ${c.parts === 1 ? 'part' : 'parts'}`);
+  return out.join(' · ') || 'empty';
 }
 
 function Cover({ url, className = '' }: { url: string | null; className?: string }) {
@@ -61,53 +119,139 @@ function Cover({ url, className = '' }: { url: string | null; className?: string
   );
 }
 
-function counts(c: Pick<CollectionSummary, 'modules' | 'parts'>): string {
-  const out: string[] = [];
-  if (c.modules) out.push(`${c.modules} ${c.modules === 1 ? 'module' : 'modules'}`);
-  if (c.parts) out.push(`${c.parts} ${c.parts === 1 ? 'part' : 'parts'}`);
-  return out.join(', ') || 'empty';
-}
+const chip = 'rounded-full px-2 py-0.5 text-xs font-semibold';
 
-/** The Catalog page's Collections: featured ones first (the server orders them). */
-export function CollectionsSection() {
-  const list = useQuery({ queryKey: ['catalog-collections'], queryFn: api.catalog.collections });
-  const rows = list.data?.collections ?? [];
-  if (!rows.length) return null;
-  const featured = rows.filter((c) => c.featured);
-  const rest = rows.filter((c) => !c.featured);
+function CollectionCard({
+  c,
+  testId = 'collection-card',
+  extra,
+}: {
+  c: CollectionSummary & { pinned?: boolean };
+  testId?: string;
+  extra?: React.ReactNode;
+}) {
   return (
-    <section aria-labelledby="collections-heading" className="space-y-3">
-      <h2 id="collections-heading" className="text-lg font-semibold">Collections</h2>
-      {featured.length > 0 && <CollectionGrid rows={featured} label="Featured collections" />}
-      {rest.length > 0 && <CollectionGrid rows={rest} label="More collections" />}
-    </section>
+    <li data-testid={testId}>
+      <Link
+        to={`/catalog/collections/${c.id}`}
+        className={`flex h-full flex-col gap-2 rounded-section border bg-panel p-3 hover:bg-soft ${c.featured ? 'border-accent' : 'border-line'}`}
+      >
+        <Cover url={c.coverUrl} className="aspect-[4/3] w-full" />
+        <span className="flex flex-wrap items-center gap-1.5 font-semibold">
+          {c.title}
+          {c.pinned && <span className={`${chip} bg-accent/15 text-accent-text`}>Pinned</span>}
+          {c.audience === 'private' && <span className={`${chip} bg-soft text-muted`}>Private</span>}
+        </span>
+        <span data-testid="collection-counts" className="text-xs text-muted">
+          {c.featured ? 'Featured · ' : ''}
+          {counts(c)} · by {c.by}
+        </span>
+        {c.description && <span className="line-clamp-2 text-sm">{c.description}</span>}
+        {extra}
+      </Link>
+    </li>
   );
 }
 
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3';
+
 function CollectionGrid({ rows, label }: { rows: CollectionSummary[]; label: string }) {
   return (
-    <ul aria-label={label} className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3">
+    <ul aria-label={label} className={GRID}>
       {rows.map((c) => (
-        <li key={c.id} data-testid="collection-card">
-          <Link
-            to={`/catalog/collections/${c.id}`}
-            className={`flex h-full flex-col gap-2 rounded-section border bg-panel p-3 hover:bg-soft ${c.featured ? 'border-accent' : 'border-line'}`}
-          >
-            <Cover url={c.coverUrl} className="aspect-[4/3] w-full" />
-            <span className="font-semibold">{c.title}</span>
-            <span className="text-xs text-muted">
-              {c.featured ? 'Featured · ' : ''}
-              {counts(c)} · by {c.by}
-            </span>
-            {c.description && <span className="line-clamp-2 text-sm">{c.description}</span>}
-          </Link>
-        </li>
+        <CollectionCard key={c.id} c={c} />
       ))}
     </ul>
   );
 }
 
-/** "Mine": the caller's collections, how each stands, and a way to make one. */
+/** The Catalog page's Collections: public ones (featured first), your clubs' and your own. */
+export function CollectionsSection({ signedIn }: { signedIn: boolean }) {
+  const list = useQuery({ queryKey: ['catalog-collections'], queryFn: api.catalog.collections });
+  const rows = list.data?.collections ?? [];
+  const featured = rows.filter((c) => c.featured);
+  const rest = rows.filter((c) => !c.featured);
+  return (
+    <section aria-labelledby="collections-heading" className="space-y-4" data-tour="catalog.collections">
+      <h2 id="collections-heading" className="flex items-center gap-2 text-lg font-semibold">
+        Collections
+        <HelpButton helpKey="catalog.collections" />
+      </h2>
+      {featured.length > 0 && <CollectionGrid rows={featured} label="Featured collections" />}
+      {rest.length > 0 && <CollectionGrid rows={rest} label="More collections" />}
+      {list.isSuccess && rows.length === 0 && (
+        <p className="text-sm text-muted">No public collections yet.{signedIn ? ' Make the first one under Your collections.' : ''}</p>
+      )}
+      {signedIn && <ClubCollectionsSection />}
+      {signedIn && <MyCollections />}
+    </section>
+  );
+}
+
+/**
+ * Your clubs' collections, or one club's (`club`, its slug). Every member
+ * sees them; admins and managers get New collection.
+ */
+export function ClubCollectionsSection({ club }: { club?: string }) {
+  const q = useQuery({ queryKey: ['club-collections', club ?? ''], queryFn: () => api.catalog.clubCollections(club) });
+  const [editing, setEditing] = useState<{ club: ClubCollections } | null>(null);
+  const clubs = (q.data?.clubs ?? []).filter((c) => c.canCurate || c.collections.length > 0);
+  if (!clubs.length && !club) return null;
+  return (
+    <section aria-labelledby={`club-collections-${club ?? 'all'}`} className="space-y-3 rounded-section border border-line bg-panel p-4">
+      <h2 id={`club-collections-${club ?? 'all'}`} className="flex items-center gap-2 text-lg font-semibold">
+        {club ? 'Collections' : 'Your clubs'}
+        <HelpButton helpKey="catalog.clubCollections" />
+      </h2>
+      {q.isLoading && <p className="text-sm text-muted">Loading…</p>}
+      {club && q.isSuccess && clubs.length === 0 && <p className="text-sm text-muted">No collections yet.</p>}
+      {clubs.map((cl) => (
+        <div key={cl.id} data-testid="club-collections" className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {!club && (
+              <Link to={`/orgs/${cl.slug}`} className="tap-target inline-flex items-center font-semibold hover:underline">
+                {cl.name}
+              </Link>
+            )}
+            {cl.canCurate && (
+              <button
+                type="button"
+                onClick={() => setEditing({ club: cl })}
+                aria-label={`New collection for ${cl.name}`}
+                className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+              >
+                New collection
+              </button>
+            )}
+          </div>
+          {cl.collections.length === 0 ? (
+            <p className="text-sm text-muted">No collections yet. Make one for your members, like your show standards.</p>
+          ) : (
+            <ul aria-label={`${cl.name}’s collections`} className={GRID}>
+              {cl.collections.map((c) => (
+                <CollectionCard
+                  key={c.id}
+                  c={c}
+                  testId="club-collection-card"
+                  extra={
+                    cl.canCurate && (
+                      <span data-testid="collection-status" className="text-xs text-muted">
+                        {collectionStatus(c, cl.name).label}
+                      </span>
+                    )
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+      {editing && <CollectionEditor id={null} club={editing.club} onClose={() => setEditing(null)} />}
+    </section>
+  );
+}
+
+/** Your collections: how each stands, and a way to make one. */
 export function MyCollections() {
   const qc = useQueryClient();
   const mine = useQuery({ queryKey: ['catalog-collections-mine'], queryFn: api.catalog.myCollections });
@@ -121,8 +265,11 @@ export function MyCollections() {
     <section aria-labelledby="mine-heading" className="space-y-3 rounded-section border border-line bg-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 id="mine-heading" className="text-lg font-semibold">Mine</h2>
-          <p className="text-sm text-muted">Put catalog items together for others, like “Starter town”.</p>
+          <h2 id="mine-heading" className="flex items-center gap-2 text-lg font-semibold">
+            Your collections
+            <HelpButton helpKey="catalog.yourCollections" />
+          </h2>
+          <p className="text-sm text-muted">Put modules and parts together, like “Starter town”: just for you, or for everyone.</p>
         </div>
         <button
           type="button"
@@ -132,6 +279,9 @@ export function MyCollections() {
           New collection
         </button>
       </div>
+      {mine.isSuccess && rows.length === 0 && (
+        <p className="text-sm text-muted">None yet. Make one here, or use “Add to a collection…” on any module or part.</p>
+      )}
       {rows.length > 0 && (
         <ul className="divide-y divide-line">
           {rows.map((c) => {
@@ -155,9 +305,7 @@ export function MyCollections() {
                 </div>
                 <span
                   data-testid="collection-status"
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    st.tone === 'ok' ? 'bg-accent/15 text-accent-text' : st.tone === 'wait' ? 'bg-soft text-ink' : 'bg-danger/15 text-danger'
-                  }`}
+                  className={`${chip} ${st.tone === 'ok' ? 'bg-accent/15 text-accent-text' : st.tone === 'wait' ? 'bg-soft text-ink' : 'bg-danger/15 text-danger'}`}
                 >
                   {st.label}
                 </span>
@@ -181,80 +329,158 @@ export function MyCollections() {
   );
 }
 
-interface Picked {
-  id: string;
+/** One item in the editor's list. */
+export interface Picked {
+  source: 'catalog' | 'library';
   kind: CatalogKind;
+  id: string;
   title: string;
   previewUrl: string;
 }
 
-/** Make or change a collection: title, description, items in order, and the cover. */
-export function CollectionEditor({ id, onClose }: { id: string | null; onClose: () => void }) {
+export const pickedEntry = (p: Picked): CollectionEntry => (p.source === 'catalog' ? { source: 'catalog', id: p.id } : { source: 'library', kind: p.kind, id: p.id });
+const pickedKey = (p: Pick<Picked, 'source' | 'kind' | 'id'>) => `${p.source}:${p.kind}:${p.id}`;
+
+type KindFilter = 'all' | CatalogKind;
+
+/** Search results: catalog items, then the curator's (or club's) own modules and parts. */
+export function filterLibrary<T extends { title: string; kind: CatalogKind }>(rows: readonly T[], q: string, kind: KindFilter): T[] {
+  const needle = q.trim().toLowerCase();
+  return rows.filter((r) => (kind === 'all' || r.kind === kind) && (!needle || r.title.toLowerCase().includes(needle)));
+}
+
+/**
+ * Make or change a collection: title, description, who can see it, items in
+ * order, and the cover. `club` makes it that club's; `initial` puts items
+ * in a new one ("New collection with this").
+ */
+export function CollectionEditor({
+  id,
+  club,
+  initial,
+  onClose,
+}: {
+  id: string | null;
+  club?: { id: string; slug: string; name: string } | null;
+  initial?: Picked[];
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
   const existing = useQuery({ queryKey: ['catalog-collection', id], queryFn: () => api.catalog.collection(id!), enabled: !!id });
+  const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
+  const parts = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
   const [loadedFrom, setLoadedFrom] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [items, setItems] = useState<Picked[]>([]);
+  const [items, setItems] = useState<Picked[]>(initial ?? []);
   const [cover, setCover] = useState<string | null>(null);
+  const [audience, setAudience] = useState<CollectionAudience>('private');
   const [q, setQ] = useState('');
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [error, setError] = useState<string | null>(null);
 
-  // Start from the change waiting for review, if any, else what's public.
+  // Start from the change waiting for review, if any, else what's there.
   const d = existing.data;
+  const owner = club ?? d?.collection.clubInfo ?? null;
   if (id && d && loadedFrom !== id) {
-    const base = d.collection.pending ?? {
-      title: d.collection.title,
-      description: d.collection.description,
-      coverItemId: d.collection.coverItemId,
-      items: d.items.map((i) => ({ id: i.id, kind: i.kind, title: i.title, previewUrl: i.previewUrl })),
-    };
+    const c = d.collection;
+    const text = c.pending ?? c;
     setLoadedFrom(id);
-    setTitle(base.title);
-    setDescription(base.description);
-    setItems(base.items);
-    setCover(base.coverItemId);
+    setTitle(text.title);
+    setDescription(text.description);
+    setItems(d.items.map((i) => ({ source: i.source ?? 'catalog', kind: i.kind, id: i.id, title: i.title, previewUrl: i.previewUrl })));
+    const coverItem = text.coverItemId ? `catalog:${d.items.find((i) => i.id === text.coverItemId)?.kind ?? 'module'}:${text.coverItemId}` : null;
+    setCover(text.coverModuleId ? `library:module:${text.coverModuleId}` : coverItem);
+    setAudience(c.audience ?? 'everyone');
   }
 
-  const kinds: CatalogKind[] = [...(settings.data?.modules ? (['module'] as const) : []), ...(settings.data?.parts ? (['part'] as const) : [])];
+  const on: CatalogKind[] = [...(settings.data?.modules ? (['module'] as const) : []), ...(settings.data?.parts ? (['part'] as const) : [])];
+  const kinds = on.filter((k) => kindFilter === 'all' || kindFilter === k);
   const found = useQuery({
     queryKey: ['catalog-items', 'picker', kinds.join(','), q],
     queryFn: async () => (await Promise.all(kinds.map((k) => api.catalog.items(k, { q })))).flatMap((r) => r.items),
     enabled: kinds.length > 0,
   });
+  // The curator's own (or the club's) modules and parts.
+  const myId = me.data?.user?.id;
+  const ownsIt = (o: { ownerUserId: string | null; ownerOrgId: string | null }) => (owner ? o.ownerOrgId === owner.id : !!myId && o.ownerUserId === myId && !o.ownerOrgId);
+  const library: Picked[] = [
+    ...(modules.data?.modules ?? [])
+      .filter(ownsIt)
+      .map((m) => ({ source: 'library' as const, kind: 'module' as const, id: m.id, title: m.title, previewUrl: m.thumbnailAt ? `/api/modules/${m.id}/thumbnail?v=${m.thumbnailAt}` : '' })),
+    ...(parts.data?.parts ?? [])
+      .filter(ownsIt)
+      .map((p) => ({ source: 'library' as const, kind: 'part' as const, id: p.id, title: p.displayName || p.partNumber, previewUrl: api.customParts.spriteUrl(p.id) })),
+  ];
+  const libraryFound = filterLibrary(library, q, kindFilter);
+  const catalogFound = found.data ?? [];
 
   const save = useMutation({
-    mutationFn: () => {
-      const body = { title: title.trim(), description: description.trim(), itemIds: items.map((i) => i.id), coverItemId: cover };
-      // Either way: is it waiting for a moderator now?
-      return id
-        ? api.catalog.updateCollection(id, body).then((r) => ({ inReview: r.pending || r.status === 'in_review' }))
-        : api.catalog.createCollection(body).then((r) => ({ inReview: r.status === 'in_review' }));
+    mutationFn: async () => {
+      const coverPicked = items.find((i) => pickedKey(i) === cover);
+      const body = {
+        title: title.trim(),
+        description: description.trim(),
+        entries: items.map(pickedEntry),
+        coverItemId: coverPicked?.source === 'catalog' ? coverPicked.id : null,
+        coverModuleId: coverPicked?.source === 'library' && coverPicked.kind === 'module' ? coverPicked.id : null,
+        audience,
+      };
+      return id ? api.catalog.updateCollection(id, body) : api.catalog.createCollection({ ...body, ...(owner ? { clubSlug: owner.slug } : {}) });
     },
     onSuccess: () => invalidateFor(qc, 'catalog'),
     onError: (e: Error) => setError(e.message),
   });
 
-  const has = new Set(items.map((i) => i.id));
+  const has = new Set(items.map(pickedKey));
   const result = save.data;
+  const nothingFound = (found.isSuccess || kinds.length === 0) && catalogFound.length === 0 && libraryFound.length === 0;
+  const put = (p: Picked) => setItems([...items, p]);
+  const resultRow = (p: Picked, by?: string) => (
+    <li key={pickedKey(p)} className="flex items-center gap-2 px-2 py-1.5">
+      <span className="flex-1">
+        {p.title}{' '}
+        <span className="text-xs text-muted">
+          ({p.kind}
+          {by ? `, by ${by}` : ''})
+        </span>
+      </span>
+      <button
+        type="button"
+        disabled={has.has(pickedKey(p))}
+        aria-label={`Put ${p.title} in the collection`}
+        onClick={() => put(p)}
+        className="rounded-lg border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
+      >
+        {has.has(pickedKey(p)) ? 'In it' : 'Add'}
+      </button>
+    </li>
+  );
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={id ? 'Edit collection' : 'New collection'}
-        className="w-full max-w-2xl space-y-4 rounded-section border border-line bg-panel p-5 text-sm"
+        className="w-full max-w-2xl space-y-4 rounded-section border border-line bg-panel p-4 text-sm sm:p-5"
       >
-        <h3 className="text-lg font-semibold">{id ? 'Edit collection' : 'New collection'}</h3>
+        <h3 className="text-lg font-semibold">
+          {id ? 'Edit collection' : 'New collection'}
+          {owner ? <span className="font-normal text-muted"> · {owner.name}</span> : null}
+        </h3>
         {result ? (
           <>
-            <p role="status">
-              {result.inReview
-                ? 'Sent for review. A moderator looks at it before everyone sees it; you can follow it under Mine.'
-                : 'It’s in the catalog now for everyone.'}
-            </p>
-            <div className="flex justify-end">
+            <p role="status">{savedSummary(result, audience, owner?.name)}</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Link
+                to={`/catalog/collections/${result.id}`}
+                onClick={onClose}
+                className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover"
+              >
+                Open collection
+              </Link>
               <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
                 Done
               </button>
@@ -276,20 +502,50 @@ export function CollectionEditor({ id, onClose }: { id: string | null; onClose: 
                 className="w-full rounded-lg border border-border bg-soft px-3 py-2"
               />
             </label>
+            <fieldset className="space-y-1">
+              <legend className="mb-1 flex items-center gap-2 text-muted">
+                Who can see this
+                <HelpButton helpKey="collection.audience" />
+              </legend>
+              <label className="flex min-h-9 items-center gap-2">
+                <input type="radio" name="audience" checked={audience === 'private'} onChange={() => setAudience('private')} />
+                {audienceLabel('private', owner?.name)}
+              </label>
+              <label className="flex min-h-9 items-center gap-2">
+                <input type="radio" name="audience" checked={audience === 'everyone'} onChange={() => setAudience('everyone')} disabled={on.length === 0} />
+                Everyone (reviewed first)
+              </label>
+              {audience === 'everyone' && items.some((i) => i.source === 'library') && (
+                <p className="text-xs text-muted">
+                  {owner ? `${owner.name}’s` : 'Your'} own modules and parts in it are shared to the catalog, each for its own review, and show publicly once
+                  approved.
+                </p>
+              )}
+            </fieldset>
             <div className="space-y-2">
               <p className="text-muted">In this collection ({items.length}), in this order</p>
               {items.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line p-3 text-muted">Nothing yet. Find items below and add them.</p>
+                <p className="rounded-lg border border-dashed border-line p-3 text-muted">Nothing yet. Find modules and parts below and add them.</p>
               ) : (
                 <ol aria-label="Items in the collection" className="divide-y divide-line rounded-lg border border-line">
                   {items.map((it, n) => (
-                    <li key={it.id} className="flex flex-wrap items-center gap-2 px-2 py-1.5">
-                      <Cover url={it.previewUrl} className="size-10 shrink-0" />
-                      <span className="min-w-[8rem] flex-1">{it.title}</span>
-                      <label className="flex items-center gap-1 text-xs">
-                        <input type="radio" name="cover" checked={cover === it.id} onChange={() => setCover(it.id)} aria-label={`Use ${it.title} as the cover`} />
-                        Cover
-                      </label>
+                    <li key={pickedKey(it)} className="flex flex-wrap items-center gap-2 px-2 py-1.5">
+                      <Cover url={it.previewUrl || null} className="size-10 shrink-0" />
+                      <span className="min-w-[8rem] flex-1">
+                        {it.title} <span className="text-xs text-muted">({it.kind})</span>
+                      </span>
+                      {!(it.source === 'library' && it.kind === 'part') && (
+                        <label className="flex items-center gap-1 text-xs">
+                          <input
+                            type="radio"
+                            name="cover"
+                            checked={cover === pickedKey(it)}
+                            onChange={() => setCover(pickedKey(it))}
+                            aria-label={`Use ${it.title} as the cover`}
+                          />
+                          Cover
+                        </label>
+                      )}
                       <button type="button" aria-label={`Move ${it.title} up`} disabled={n === 0} onClick={() => setItems(moveItem(items, n, n - 1))} className="rounded px-2 hover:bg-soft disabled:opacity-40">
                         ↑
                       </button>
@@ -306,8 +562,8 @@ export function CollectionEditor({ id, onClose }: { id: string | null; onClose: 
                         type="button"
                         aria-label={`Take ${it.title} out`}
                         onClick={() => {
-                          setItems(items.filter((x) => x.id !== it.id));
-                          if (cover === it.id) setCover(null);
+                          setItems(items.filter((x) => pickedKey(x) !== pickedKey(it)));
+                          if (cover === pickedKey(it)) setCover(null);
                         }}
                         className="rounded px-2 text-danger hover:bg-soft"
                       >
@@ -320,32 +576,45 @@ export function CollectionEditor({ id, onClose }: { id: string | null; onClose: 
               <p className="text-xs text-muted">Without a chosen cover, the first module’s picture is used.</p>
             </div>
             <div className="space-y-2">
-              <input
-                type="search"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Find catalog items"
-                aria-label="Find catalog items"
-                className="min-h-10 w-full rounded-lg border border-border bg-soft px-3"
-              />
-              <ul aria-label="Catalog items to add" className="max-h-56 divide-y divide-line overflow-y-auto rounded-lg border border-line">
-                {(found.data ?? []).map((it) => (
-                  <li key={it.id} className="flex items-center gap-2 px-2 py-1.5">
-                    <span className="flex-1">
-                      {it.title} <span className="text-xs text-muted">({it.kind === 'module' ? 'module' : 'part'}, by {it.by})</span>
-                    </span>
-                    <button
-                      type="button"
-                      disabled={has.has(it.id)}
-                      aria-label={`Put ${it.title} in the collection`}
-                      onClick={() => setItems([...items, { id: it.id, kind: it.kind, title: it.title, previewUrl: it.previewUrl }])}
-                      className="rounded-lg border border-border px-2 py-1 hover:bg-soft disabled:opacity-40"
-                    >
-                      {has.has(it.id) ? 'In it' : 'Add'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="search"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Find modules and parts"
+                  aria-label="Find modules and parts"
+                  className="min-h-10 min-w-0 flex-1 rounded-lg border border-border bg-soft px-3"
+                />
+                <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as KindFilter)} aria-label="Show modules or parts" className="min-h-10 rounded-lg border border-border bg-soft px-2">
+                  <option value="all">Modules and parts</option>
+                  <option value="module">Modules</option>
+                  <option value="part">Parts</option>
+                </select>
+              </div>
+              {nothingFound ? (
+                <p data-testid="picker-empty" className="rounded-lg border border-dashed border-line p-3 text-muted">
+                  {q ? 'Nothing matches.' : 'Nothing to add yet.'} A collection holds modules and parts from the public catalog, and{' '}
+                  {owner ? `${owner.name}’s` : 'your'} own. To put someone else’s in, it has to be shared to the catalog first.{' '}
+                  <Link to="/help#catalog" className="font-semibold text-accent-text hover:underline">
+                    How to share a module or part
+                  </Link>
+                </p>
+              ) : (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {libraryFound.length > 0 && (
+                    <ul aria-label={owner ? `${owner.name}’s modules and parts` : 'Your modules and parts'} className="divide-y divide-line rounded-lg border border-line">
+                      <li className="bg-soft px-2 py-1 text-xs font-semibold text-muted">{owner ? `${owner.name}’s modules and parts` : 'Your modules and parts'}</li>
+                      {libraryFound.map((p) => resultRow(p))}
+                    </ul>
+                  )}
+                  {catalogFound.length > 0 && (
+                    <ul aria-label="Catalog items to add" className="divide-y divide-line rounded-lg border border-line">
+                      <li className="bg-soft px-2 py-1 text-xs font-semibold text-muted">From the catalog</li>
+                      {catalogFound.map((it) => resultRow({ source: 'catalog', kind: it.kind, id: it.id, title: it.title, previewUrl: it.previewUrl }, it.by))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
             {error && <p className="text-danger">{error}</p>}
             <div className="flex justify-end gap-2">
@@ -361,7 +630,7 @@ export function CollectionEditor({ id, onClose }: { id: string | null; onClose: 
                 }}
                 className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
               >
-                {id ? 'Save changes' : 'Submit'}
+                {audience === 'everyone' && !id ? 'Submit' : id ? 'Save changes' : 'Save'}
               </button>
             </div>
           </>
@@ -401,7 +670,7 @@ function AddAllDialog({ c, onClose }: { c: CollectionDetail; onClose: () => void
         ) : (
           <>
             <p>
-              A copy of each of the {c.itemCount} items in “{c.title}” goes to the place below. Ones already there are skipped.
+              A copy of each of the {c.itemCount} items in “{c.title}” ({counts(c)}) goes to the place below. Ones already there are skipped.
             </p>
             <SaveToPicker value={owner} onChange={setOwner} orgs={orgs.data?.orgs} />
             {error && <p className="text-danger">{error}</p>}
@@ -428,6 +697,61 @@ function AddAllDialog({ c, onClose }: { c: CollectionDetail; onClose: () => void
   );
 }
 
+/** One of the collection's own modules or parts, copied to you or a club. */
+function AddLibraryDialog({ item, onClose }: { item: CollectionItem; onClose: () => void }) {
+  const qc = useQueryClient();
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
+  const [owner, setOwner] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const add = useMutation({
+    mutationFn: () => api.modules.copy(item.id, owner || undefined),
+    onSuccess: () => invalidateFor(qc, 'module'),
+    onError: (e: Error) => setError(e.message),
+  });
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
+      <div role="dialog" aria-modal="true" aria-label={`Add ${item.title}`} className="w-full max-w-md space-y-4 rounded-section border border-line bg-panel p-5 text-sm">
+        <h3 className="text-lg font-semibold">Add to my modules</h3>
+        {add.data ? (
+          <>
+            <p role="status">“{item.title}” is now in your modules. It’s your own copy: change it as you like.</p>
+            <div className="flex justify-end gap-2">
+              <Link to={`/modules/${add.data.id}`} className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
+                Open it
+              </Link>
+              <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>A copy of “{item.title}” goes to:</p>
+            <SaveToPicker value={owner} onChange={setOwner} orgs={orgs.data?.orgs} />
+            {error && <p className="text-danger">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={add.isPending}
+                onClick={() => {
+                  setError(null);
+                  add.mutate();
+                }}
+                className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** /catalog/collections/:id */
 export function CollectionPage() {
   const { id = '' } = useParams();
@@ -435,19 +759,29 @@ export function CollectionPage() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const data = useQuery({ queryKey: ['catalog-collection', id], queryFn: () => api.catalog.collection(id), retry: false });
-  const [adding, setAdding] = useState<CatalogItem | null>(null);
+  const [adding, setAdding] = useState<CollectionItem | null>(null);
+  const [toCollection, setToCollection] = useState<CollectionTarget | null>(null);
   const [addAll, setAddAll] = useState(false);
   const [editing, setEditing] = useState(false);
-  const withdraw = useMutation({
-    mutationFn: () => api.catalog.withdrawCollection(id),
-    onSuccess: () => {
-      void invalidateFor(qc, 'catalog');
-      navigate('/catalog');
-    },
+  const gone = () => {
+    void invalidateFor(qc, 'catalog');
+    const club = data.data?.collection.clubInfo;
+    navigate(club ? `/orgs/${club.slug}` : '/catalog');
+  };
+  const withdraw = useMutation({ mutationFn: () => api.catalog.withdrawCollection(id), onSuccess: gone });
+  const remove = useMutation({ mutationFn: () => api.catalog.deleteCollection(id), onSuccess: gone });
+  const modRemove = useMutation({ mutationFn: (reason: string) => api.moderation.removeCollection(id, reason), onSuccess: gone });
+  const pin = useMutation({
+    mutationFn: (pinned: boolean) => api.catalog.updateCollection(id, { pinned }),
+    onSuccess: () => invalidateFor(qc, 'catalog'),
   });
   const user = me.data?.user ?? null;
-  const c = data.data?.collection;
-  const items = data.data?.items ?? [];
+  // Gone (deleted, or you left its club) after it was shown: say so, don't keep showing it.
+  const c = data.isError ? undefined : data.data?.collection;
+  const items = (data.isError ? undefined : data.data?.items) ?? [];
+  const clubName = c?.clubInfo?.name ?? null;
+  // Members of its club (or its curator) can add its own modules; anyone signed in adds catalog items.
+  const member = !!c && (c.canEdit || !!c.myRole);
   return (
     <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       {user ? (
@@ -465,28 +799,31 @@ export function CollectionPage() {
         {data.isLoading ? (
           <p className="text-muted">Loading…</p>
         ) : !c ? (
-          <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">This collection isn’t in the catalog.</p>
+          <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">This collection isn’t in the catalog, or you can’t see it.</p>
         ) : (
           <>
             <div className="flex flex-wrap items-start gap-4">
-              <Cover url={c.coverUrl} className="aspect-[4/3] w-48" />
+              <Cover url={c.coverUrl} className="aspect-[4/3] w-full max-w-48" />
               <div className="min-w-[14rem] flex-1 space-y-1">
                 <h1 className="text-2xl font-bold">{c.title}</h1>
                 <p className="text-sm text-muted">
                   {c.featured ? 'Featured · ' : ''}
-                  {counts(c)} · by {c.by}
+                  {counts(c)} · by {c.clubInfo ? <Link to={`/orgs/${c.clubInfo.slug}`} className="hover:underline">{c.by}</Link> : c.by}
+                </p>
+                <p data-testid="collection-audience" className="text-sm">
+                  <span className="text-muted">Who can see this:</span> {c.audience === 'private' ? audienceLabel('private', clubName) : 'Everyone'}
                 </p>
                 {c.description && <p>{c.description}</p>}
                 {c.canEdit && (
                   <p data-testid="collection-status" className="text-sm font-semibold">
-                    {collectionStatus({ ...c, pending: !!c.pending }).label}
+                    {collectionStatus({ ...c, pending: !!c.pending }, clubName).label}
                   </p>
                 )}
                 {c.curatorNote && <p className="whitespace-pre-line rounded-md bg-soft px-2 py-1 text-xs">{c.curatorNote}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
                 {user ? (
-                  c.status === 'public' &&
+                  (member || c.status === 'public') &&
                   items.length > 0 && (
                     <button
                       type="button"
@@ -502,53 +839,171 @@ export function CollectionPage() {
                   </Link>
                 )}
                 {c.canEdit && c.status !== 'withdrawn' && (
-                  <>
-                    <button type="button" onClick={() => setEditing(true)} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm(`Take “${c.title}” out of the catalog? Copies people already added keep working.`)) withdraw.mutate();
-                      }}
-                      className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
-                    >
-                      Withdraw
-                    </button>
-                  </>
+                  <button type="button" onClick={() => setEditing(true)} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
+                    Edit
+                  </button>
+                )}
+                {c.canEdit && c.clubInfo && (
+                  <button
+                    type="button"
+                    aria-pressed={!!c.pinned}
+                    onClick={() => pin.mutate(!c.pinned)}
+                    className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft"
+                  >
+                    {c.pinned ? 'Unpin' : 'Pin to the top'}
+                  </button>
+                )}
+                {c.canEdit && c.audience !== 'private' && c.status !== 'withdrawn' && !c.clubInfo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Take “${c.title}” out of the catalog? Copies people already added keep working.`)) withdraw.mutate();
+                    }}
+                    className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
+                  >
+                    Withdraw
+                  </button>
+                )}
+                {c.canEdit && (c.clubInfo || c.audience === 'private' || c.status === 'withdrawn') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Delete “${c.title}”? Copies people already added keep working.`)) remove.mutate();
+                    }}
+                    className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
+                  >
+                    Delete
+                  </button>
+                )}
+                {c.canRemove && !c.canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const reason = prompt(`Remove “${c.title}” from ${clubName ?? 'the club'}? Say why (the club's admins can ask).`);
+                      if (reason !== null) modRemove.mutate(reason);
+                    }}
+                    className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
+                  >
+                    Remove (moderator)
+                  </button>
                 )}
               </div>
             </div>
-            <ul aria-label="Items in this collection" className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3">
-              {items.map((it) => (
-                <li key={it.id} data-testid="collection-item" className="flex flex-col gap-2 rounded-section border border-line bg-panel p-3">
-                  <CatalogPreview item={it} />
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <h2 className="break-words font-semibold">{it.title}</h2>
-                    <p className="text-xs text-muted">
-                      {it.kind === 'module' ? 'Module' : 'Part'} by {it.by} · version {it.version}
-                    </p>
-                    {it.description && <p className="line-clamp-3 text-sm">{it.description}</p>}
-                  </div>
-                  {user && (
-                    <button
-                      type="button"
-                      onClick={() => setAdding(it)}
-                      aria-label={`Add ${it.title}`}
-                      className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
-                    >
-                      Add
-                    </button>
-                  )}
-                </li>
-              ))}
+            {items.length === 0 && <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">Nothing in it to show yet.</p>}
+            <ul aria-label="Items in this collection" className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
+              {items.map((it) => {
+                const waiting = reviewLabel(it.review);
+                return (
+                  <li key={`${it.source ?? 'catalog'}:${it.id}`} data-testid="collection-item" className="flex flex-col gap-2 rounded-section border border-line bg-panel p-3">
+                    <CatalogPreview item={it} />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <h2 className="break-words font-semibold">{it.title}</h2>
+                      <p className="text-xs text-muted">
+                        {it.kind === 'module' ? 'Module' : 'Part'} by {it.by}
+                        {it.source === 'library' ? '' : ` · version ${it.version}`}
+                      </p>
+                      {waiting && (
+                        <p data-testid="item-review" className={`${chip} inline-block bg-soft text-ink`}>
+                          {waiting}
+                        </p>
+                      )}
+                      {it.description && <p className="line-clamp-3 text-sm">{it.description}</p>}
+                    </div>
+                    {user && (
+                      <div className="flex flex-wrap gap-2">
+                        {(it.source !== 'library' || it.kind === 'module') && (
+                          <button
+                            type="button"
+                            onClick={() => setAdding(it)}
+                            aria-label={`Add ${it.title}`}
+                            className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+                          >
+                            Add
+                          </button>
+                        )}
+                        {it.source !== 'library' && (
+                          <button
+                            type="button"
+                            onClick={() => setToCollection({ kind: 'catalog', item: it })}
+                            aria-label={`${it.title}: add to a collection`}
+                            className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
+                          >
+                            Add to a collection…
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             {addAll && <AddAllDialog c={c} onClose={() => setAddAll(false)} />}
-            {editing && <CollectionEditor id={c.id} onClose={() => setEditing(false)} />}
+            {editing && <CollectionEditor id={c.id} club={c.clubInfo ?? null} onClose={() => setEditing(false)} />}
           </>
         )}
       </main>
-      {adding && <AddDialog item={adding} onClose={() => setAdding(null)} />}
+      {adding && (adding.source === 'library' ? <AddLibraryDialog item={adding} onClose={() => setAdding(null)} /> : <AddDialog item={adding} onClose={() => setAdding(null)} />)}
+      {toCollection && <AddToCollectionDialog target={toCollection} onClose={() => setToCollection(null)} />}
     </div>
+  );
+}
+
+/** The Home page's collections: featured ones, your clubs', your own; hidden while the catalogs are off. */
+export function HomeCollections() {
+  const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
+  const on = !!settings.data && (settings.data.modules || settings.data.parts);
+  const pub = useQuery({ queryKey: ['catalog-collections'], queryFn: api.catalog.collections, enabled: on });
+  const clubs = useQuery({ queryKey: ['club-collections', ''], queryFn: () => api.catalog.clubCollections(), enabled: on });
+  const mine = useQuery({ queryKey: ['catalog-collections-mine'], queryFn: api.catalog.myCollections, enabled: on });
+  const [creating, setCreating] = useState(false);
+  if (!on) return null;
+  const featured = (pub.data?.collections ?? []).filter((c) => c.featured).slice(0, 4);
+  const clubRows: ClubCollection[] = (clubs.data?.clubs ?? []).flatMap((cl) => cl.collections.filter((c) => c.itemCount > 0)).slice(0, 8);
+  const mineRows = (mine.data?.collections ?? []).filter((c) => c.status !== 'withdrawn').slice(0, 8);
+  const empty = !featured.length && !clubRows.length && !mineRows.length;
+  const row = (label: string, rows: CollectionSummary[], testId: string) =>
+    rows.length > 0 && (
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">{label}</h3>
+        <ul aria-label={label} className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] sm:gap-3">
+          {rows.map((c) => (
+            <CollectionCard key={c.id} c={c} testId={testId} />
+          ))}
+        </ul>
+      </div>
+    );
+  return (
+    <section aria-labelledby="home-collections" className="space-y-3" data-testid="home-collections">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="home-collections" className="flex items-center gap-2 text-2xl font-bold">
+          Collections
+          <HelpButton helpKey="catalog.collections" />
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/catalog" className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft">
+            Browse all
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+          >
+            New collection
+          </button>
+        </div>
+      </div>
+      {empty ? (
+        <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
+          Collections are sets of modules and parts that go well together. Browse the catalog’s, or make your own.
+        </p>
+      ) : (
+        <>
+          {row('Featured', featured, 'home-featured-collection')}
+          {row('Your clubs’', clubRows, 'home-club-collection')}
+          {row('Yours', mineRows, 'home-my-collection')}
+        </>
+      )}
+      {creating && <CollectionEditor id={null} onClose={() => setCreating(false)} />}
+    </section>
   );
 }

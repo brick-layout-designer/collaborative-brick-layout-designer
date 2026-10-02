@@ -2,7 +2,8 @@
 //
 //   1. Two modules are in the public catalog (shared and approved).
 //   2. Cora, an ordinary member, builds a collection of both from the
-//      Catalog page (Mine › New collection) and submits it: In review.
+//      Catalog page (Your collections › New collection), for Everyone, and
+//      submits it: In review.
 //   3. Vic has the Catalog open. A moderator approves the collection; it
 //      shows up on Vic's page without a reload.
 //   4. Vic opens it, adds one item by itself, then "Add all": only the
@@ -61,9 +62,10 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
 
     // Vic has the Catalog open: no collections yet.
     await vic.page.goto('/catalog');
-    await expect(vic.page.getByTestId('catalog-item')).toHaveCount(2);
+    // (Other journeys may have left catalog items and collections behind.)
+    await expect(vic.page.getByTestId('catalog-item').filter({ hasText: String(ts) })).toHaveCount(2);
     await streamOpen(vic.page);
-    await expect(vic.page.getByTestId('collection-card')).toHaveCount(0);
+    await expect(vic.page.getByTestId('collection-card').filter({ hasText: TITLE })).toHaveCount(0);
 
     // Cora builds a collection from the Catalog page and submits it.
     await cora.page.goto('/catalog');
@@ -71,6 +73,7 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
     const editor = cora.page.getByRole('dialog', { name: 'New collection' });
     await editor.getByLabel('Title').fill(TITLE);
     await editor.getByLabel('Description (optional)').fill('Everything a small goods yard needs.');
+    await editor.getByLabel('Everyone (reviewed first)').check();
     await editor.getByRole('button', { name: `Put Freight yard ${ts} in the collection` }).click();
     await editor.getByRole('button', { name: `Put Engine shed ${ts} in the collection` }).click();
     await editor.getByRole('button', { name: 'Submit' }).click();
@@ -84,7 +87,9 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
     await mod.page.getByRole('link', { name: 'Moderation' }).click();
     const entry = mod.page.getByTestId('moderation-collection').filter({ hasText: TITLE });
     await expect(entry).toContainText(CORA);
-    await expect(entry).toContainText(`Freight yard ${ts}, Engine shed ${ts}`);
+    // The review covers its text; each item is reviewed on its own.
+    await expect(entry.getByTestId('review-new')).toContainText('Everything a small goods yard needs.');
+    await expect(entry).toContainText('2 items');
     await entry.getByRole('button', { name: `Approve collection ${TITLE}` }).click();
     await expect(entry).toHaveCount(0);
 
