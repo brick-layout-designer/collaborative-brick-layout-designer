@@ -4206,7 +4206,7 @@ function PanelsMenu({
     <div className="relative">
       <button
         onClick={(e) => {
-          setAnchor(dropdownAnchor(e.currentTarget));
+          setAnchor(dropdownAnchor(e.currentTarget, window.innerWidth, 168));
           setOpen((v) => !v);
         }}
         className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft"

@@ -57,6 +57,17 @@ describe('dropdownAnchor', () => {
   it('keeps a 4 px margin when the button is scrolled past the right edge', () => {
     expect(dropdownAnchor(button(1100, 1150, 40), 1024)).toEqual({ top: 44, right: 4 });
   });
+
+  it('starts at the button instead when right-aligning would cross the left edge', () => {
+    // The Map button at 1024 px: right-aligned, a 208 px menu would start at -34.
+    expect(dropdownAnchor(button(132, 174, 118), 1024)).toEqual({ top: 122, left: 132 });
+    // A narrower menu still fits right-aligned (it starts at 6 px).
+    expect(dropdownAnchor(button(132, 174, 118), 1024, 168)).toEqual({ top: 122, right: 850 });
+  });
+
+  it('keeps a button-aligned menu inside the right edge on a narrow screen', () => {
+    expect(dropdownAnchor(button(-20, 30, 40), 200)).toEqual({ top: 44, left: 4 });
+  });
 });
 
 describe('dropTargetHint store field', () => {
