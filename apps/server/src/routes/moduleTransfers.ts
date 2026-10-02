@@ -16,6 +16,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
+import { atLeast } from '../access/clubRoles.js';
 
 interface InitiateTransferBody {
   recipientEmail?: string;
@@ -63,7 +64,7 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
           return reply.code(403).send({ error: 'not_a_member_of_recipient_org' });
         }
         // A club that lets only admins add things takes them only from an admin.
-        if (!dest.membersCanCreate && myDestMembership.role !== 'admin') {
+        if (!dest.membersCanCreate && !atLeast(myDestMembership.role, 'manager')) {
           return reply.code(403).send({ error: 'only_club_admins_can_add' });
         }
 

@@ -1,4 +1,5 @@
 import type { FourDBrixRemap, LDrawRemap, TrackDesignerRemap } from '@cld/parts-catalog/browser';
+import type { ClubRole } from './orgs/clubRoles';
 
 export type ProviderId = 'google' | 'github' | 'oidc';
 
@@ -463,7 +464,7 @@ export const api = {
     invite: (
       slug: string,
       target: { email: string } | { userId: string },
-      role: 'admin' | 'member',
+      role: ClubRole,
       /** 1 to 30; the server's default is 14. */
       expiresInDays?: number,
     ) =>
@@ -529,7 +530,7 @@ export const api = {
       post<{ ok: true }>(`/api/orgs/${slug}/join-requests/${encodeURIComponent(id)}/decline`, {}),
     /** Requests waiting in the clubs you run, for the badge on Clubs. */
     joinRequestCount: () => get<{ count: number; clubs: { slug: string; count: number }[] }>('/api/join-requests/count'),
-    changeMemberRole: (slug: string, userId: string, role: 'admin' | 'member') =>
+    changeMemberRole: (slug: string, userId: string, role: ClubRole) =>
       patch<{ ok: true }>(`/api/orgs/${slug}/members/${userId}`, { role }),
     removeMember: (slug: string, userId: string) =>
       del(`/api/orgs/${slug}/members/${userId}`),
@@ -541,14 +542,14 @@ export const api = {
     preview: (token: string) =>
       get<{
         invitedEmail: string;
-        role: 'admin' | 'member';
+        role: ClubRole;
         orgId: string;
         orgName: string;
         orgSlug: string;
         expiresAt: number;
       }>(`/api/org-invites/${token}`),
     accept: (token: string) =>
-      post<{ orgId: string; role: 'admin' | 'member' }>(`/api/org-invites/${token}`),
+      post<{ orgId: string; role: ClubRole }>(`/api/org-invites/${token}`),
   },
 
   transfers: {
@@ -880,7 +881,7 @@ export interface AdminUserStats {
 export interface AdminUserDetail {
   user: AdminUser;
   stats: AdminUserStats;
-  orgMemberships: { orgId: string; name: string; slug: string; role: 'admin' | 'member' }[];
+  orgMemberships: { orgId: string; name: string; slug: string; role: ClubRole }[];
   layouts: { id: string; title: string; updatedAt: number; sizeBytes: number }[];
 }
 
@@ -897,7 +898,7 @@ export interface AdminOrg {
 export interface AdminOrgDetail {
   org: { id: string; name: string; slug: string; createdAt: number };
   stats: { members: number; layouts: number; layoutSizeBytes: number };
-  members: { userId: string; email: string; displayName: string; role: 'admin' | 'member'; joinedAt: number }[];
+  members: { userId: string; email: string; displayName: string; role: ClubRole; joinedAt: number }[];
   layouts: { id: string; title: string; updatedAt: number; sizeBytes: number }[];
 }
 
@@ -984,7 +985,7 @@ export interface OrgSummary {
   name: string;
   slug: string;
   createdAt: number;
-  myRole: 'admin' | 'member';
+  myRole: ClubRole;
 }
 
 export interface OrgDetail extends OrgSummary {
@@ -1013,7 +1014,7 @@ export interface ClubSummary {
   memberCount: number;
   joinPolicy: JoinPolicy;
   listed: boolean;
-  myStatus: 'admin' | 'member' | 'requested' | null;
+  myStatus: ClubRole | 'requested' | null;
 }
 
 export interface JoinRequestSummary {
@@ -1027,7 +1028,7 @@ export interface JoinRequestSummary {
 
 export interface OrgMemberSummary {
   userId: string;
-  role: 'admin' | 'member';
+  role: ClubRole;
   joinedAt: number;
   email: string;
   displayName: string;
@@ -1037,7 +1038,7 @@ export interface OrgMemberSummary {
 export interface OrgInviteSummary {
   id: string;
   invitedEmail: string;
-  role: 'admin' | 'member';
+  role: ClubRole;
   expiresAt: number;
   /** The invite's link, for the admin to send themselves. */
   inviteUrl?: string;

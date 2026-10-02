@@ -77,7 +77,8 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // The invite carries its inviter's authority. If they have since
-      // been demoted or removed from the org, the invite is void —
+      // been demoted (below what the invite grants) or removed from the
+      // org, the invite is void —
       // otherwise a removed admin's outstanding invites (possibly for
       // role 'admin') would still let people in.
       const inviter = await db
@@ -90,7 +91,9 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
           ),
         )
         .get();
-      if (inviter?.role !== 'admin') {
+      // Admins may invite anyone as anything; managers, members only.
+      const stillAllowed = inviter?.role === 'admin' || (inviter?.role === 'manager' && invite.role === 'member');
+      if (!stillAllowed) {
         await db.delete(schema.orgInvites).where(eq(schema.orgInvites.id, invite.id));
         return reply.code(409).send({ error: 'invite_revoked' });
       }

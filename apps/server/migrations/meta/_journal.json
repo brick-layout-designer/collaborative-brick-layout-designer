@@ -85,6 +85,13 @@
       "when": 1790903490171,
       "tag": "0011_club_join",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790905863099,
+      "tag": "0012_club_manager_role",
+      "breakpoints": true
     }
   ]
 }

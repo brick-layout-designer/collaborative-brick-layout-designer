@@ -10,6 +10,7 @@ import { matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
 import { OwnerChip } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { UploadPartDialog } from './UploadPartDialog';
+import { atLeast } from '../orgs/clubRoles';
 
 /** Where the old Library page (/library) now lands: the home page's parts section. */
 export const PARTS_SECTION = { pathname: '/', hash: '#parts' } as const;
@@ -17,7 +18,7 @@ export const PARTS_SECTION = { pathname: '/', hash: '#parts' } as const;
 /** May delete it: the server says so; older servers: your own, or a club you admin. */
 export function canDeletePart(p: CustomPartSummary, myUserId: string | undefined, orgs: readonly OrgSummary[] | undefined): boolean {
   if (p.role !== undefined) return p.role === 'owner';
-  if (p.ownerOrgId) return orgs?.find((o) => o.id === p.ownerOrgId)?.myRole === 'admin';
+  if (p.ownerOrgId) return atLeast(orgs?.find((o) => o.id === p.ownerOrgId)?.myRole, 'manager');
   return p.ownerUserId === myUserId;
 }
 

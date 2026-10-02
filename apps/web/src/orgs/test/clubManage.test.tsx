@@ -120,7 +120,7 @@ describe('club management', () => {
   });
 
   it('admins change roles and remove people; members only see the list', async () => {
-    show(<MembersSection slug="arklug" myUserId="u1" isAdmin members={MEMBERS} />);
+    show(<MembersSection slug="arklug" myUserId="u1" myRole="admin" members={MEMBERS} />);
     expect(screen.getAllByText(/joined/)).toHaveLength(2);
     fireEvent.change(screen.getByLabelText('Role for Kim'), { target: { value: 'admin' } });
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
@@ -131,7 +131,7 @@ describe('club management', () => {
     // You can't demote or remove yourself here (that's Hand over / Leave).
     expect(screen.queryByLabelText('Role for Sam')).toBeNull();
     cleanup();
-    show(<MembersSection slug="arklug" myUserId="u2" isAdmin={false} members={MEMBERS} />);
+    show(<MembersSection slug="arklug" myUserId="u2" myRole="member" members={MEMBERS} />);
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
     expect(screen.queryByRole('combobox')).toBeNull();
   });

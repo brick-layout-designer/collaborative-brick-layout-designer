@@ -9,6 +9,7 @@ import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
+import { atLeast } from '../access/clubRoles.js';
 
 // The desktop app reaches these with an API token too: venues:read to list
 // and download, venues:write to save, rename and delete.
@@ -46,8 +47,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     for (const { venue, memberRole } of orgOwned) {
       if (seen.has(venue.id)) continue;
       seen.add(venue.id);
-      // Same rights as PATCH / DELETE: a club's rooms are its admins' to change.
-      all.push({ ...venue, canManage: memberRole === 'admin' });
+      // Same rights as PATCH / DELETE: a club's rooms are its managers' and admins' to change.
+      all.push({ ...venue, canManage: atLeast(memberRole, 'manager') });
     }
     const shown = all.filter((v) => matchesOwner(v, filter, user.id));
     const ownerOf = await ownerLookup(shown);
@@ -297,7 +298,7 @@ async function canManage(
         and(eq(schema.orgMembers.orgId, row.ownerOrgId), eq(schema.orgMembers.userId, userId)),
       )
       .get();
-    if (!mem || mem.role !== 'admin') return false;
+    if (!mem || !atLeast(mem.role, 'manager')) return false;
   }
   return true;
 }

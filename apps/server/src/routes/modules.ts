@@ -22,6 +22,7 @@ import { createLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { clubThingRole } from '../access/clubRoles.js';
 
 interface CreateModuleBody {
   title?: string;
@@ -84,7 +85,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     for (const { module, memberRole } of orgOwned) {
       if (seen.has(module.id)) continue;
       seen.add(module.id);
-      all.push({ ...toListItem(module), role: memberRole === 'admin' ? 'owner' : 'editor' });
+      all.push({ ...toListItem(module), role: clubThingRole(memberRole) });
     }
     for (const { module, role } of shared) {
       if (seen.has(module.id)) continue;

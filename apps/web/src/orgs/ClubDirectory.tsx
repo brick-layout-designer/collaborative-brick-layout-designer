@@ -46,7 +46,7 @@ export function JoinControls({ club }: { club: ClubSummary }) {
   });
 
   let controls;
-  if (club.myStatus === 'admin' || club.myStatus === 'member') {
+  if (club.myStatus !== null && club.myStatus !== 'requested') {
     controls = (
       <Link to={`/orgs/${club.slug}`} className={btn}>
         Open

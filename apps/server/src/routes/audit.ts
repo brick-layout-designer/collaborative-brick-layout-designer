@@ -16,6 +16,7 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type ResourceKind } from '../access/resolveResourceRole.js';
 import type { AuditResourceKind } from '../audit/writeAuditEvent.js';
+import { atLeast } from '../access/clubRoles.js';
 
 /** Batch-load display names for a set of userIds. Returns a map userId→name. */
 async function loadUserNames(userIds: (string | null)[]): Promise<Map<string, string>> {
@@ -79,7 +80,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         .from(schema.orgMembers)
         .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, user.id)))
         .get();
-      if (!membership || membership.role !== 'admin') {
+      if (!membership || !atLeast(membership.role, 'manager')) {
         return reply.code(403).send({ error: 'forbidden' });
       }
       const limit = clampLimit(req.query.limit);

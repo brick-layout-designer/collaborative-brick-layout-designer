@@ -219,7 +219,7 @@ export const orgMembers = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    role: text('role', { enum: ['admin', 'member'] }).notNull(),
+    role: text('role', { enum: ['admin', 'manager', 'member'] }).notNull(),
     joinedAt: integer('joined_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => ({
@@ -240,7 +240,7 @@ export const orgInvites = sqliteTable('org_invites', {
   invitedBy: text('invited_by')
     .notNull()
     .references(() => users.id),
-  role: text('role', { enum: ['admin', 'member'] }).notNull(),
+  role: text('role', { enum: ['admin', 'manager', 'member'] }).notNull(),
   token: text('token').notNull().unique(),
   expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),

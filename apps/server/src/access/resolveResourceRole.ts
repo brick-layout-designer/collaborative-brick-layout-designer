@@ -18,6 +18,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { clubThingRole } from './clubRoles.js';
 
 export type Role = 'owner' | 'editor' | 'viewer';
 export type ResourceKind = 'layout' | 'custom_part' | 'module' | 'org';
@@ -147,6 +148,7 @@ export async function resolveResourceRole(
       )
       .get();
     if (!membership) return { role: null };
+    // The club itself (its settings) is the admins'; managers run its things, not it.
     return { role: membership.role === 'admin' ? 'owner' : 'editor' };
   }
 
@@ -182,7 +184,7 @@ export async function resolveResourceRole(
       )
       .get();
     if (membership) {
-      role = strongerOf(role, membership.role === 'admin' ? 'owner' : 'editor');
+      role = strongerOf(role, clubThingRole(membership.role));
     }
   }
 
