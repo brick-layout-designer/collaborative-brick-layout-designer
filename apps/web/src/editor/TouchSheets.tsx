@@ -167,3 +167,49 @@ export function SheetsSheet({ map, doc, onClose }: { map: BbmMap; doc: Y.Doc; on
     </BottomSheet>
   );
 }
+
+/** Edit a label's or a text's words by touch: a big text box and Save. */
+export function TextEditSheet({ title, initial, onSave, onClose }: {
+  title: string;
+  initial: string;
+  onSave: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  const empty = text.trim().length === 0;
+  return (
+    <BottomSheet
+      title={title}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="min-h-11 rounded-control px-4 text-sm font-bold hover:bg-soft">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={empty}
+            onClick={() => {
+              if (text !== initial) onSave(text);
+              onClose();
+            }}
+            className="min-h-11 rounded-control bg-accent px-5 text-sm font-bold text-accent-ink hover:bg-accent-hover disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+      }
+    >
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        aria-label="Text"
+        rows={4}
+        // 16 px, so iOS doesn't zoom in on the field.
+        className="w-full rounded-control border border-line bg-bg p-3 text-base"
+      />
+      {empty && <p className="mt-1 text-sm text-muted">Type some words, or use Delete to remove it.</p>}
+    </BottomSheet>
+  );
+}

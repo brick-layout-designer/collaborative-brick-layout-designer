@@ -361,6 +361,74 @@ test.describe('sheets by touch', () => {
   });
 });
 
+test.describe('labels by touch', () => {
+  test.use(pixel7);
+
+  test('a tap picks a label, a finger drags it, and Edit text changes its words', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+    await signIn(page, `touch-labels-${ts}-${seq++}@example.com`, 'Touch Editor');
+    const label = {
+      id: 'lbl-station', text: 'Station', font: { family: 'Microsoft Sans Serif', size: 36, style: 'Bold' },
+      color: { known: true, argb: -16777216, name: 'Black' }, kind: 0, targetId: '', offset: { x: 20, y: 20 }, rot: 0, minZoom: 0,
+    };
+    const res = await page.request.post('/api/layouts', {
+      data: { title: 'Labels', sidecar: JSON.stringify({ schemaVersion: 1, bbmHashSha256: '', anchoredLabels: [label] }) },
+    });
+    expect(res.ok(), await res.text()).toBe(true);
+    const { id } = (await res.json()) as { id: string };
+    await page.goto(`/editor/${id}`);
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
+    const finger = await Finger.on(page);
+
+    const where = () =>
+      page.evaluate(() => {
+        type N = { getClientRect: () => { x: number; y: number; width: number; height: number }; findOne: (s: string) => { text: () => string; x: () => number } };
+        const st = (window as unknown as { Konva?: { stages: { container: () => HTMLElement; findOne: (s: string) => N | undefined }[] } }).Konva?.stages[0];
+        const g = st?.findOne('.label-lbl-station');
+        if (!st || !g) return null;
+        const r = g.getClientRect();
+        const box = st.container().getBoundingClientRect();
+        const t = g.findOne('Text');
+        return { x: box.left + r.x + r.width / 2, y: box.top + r.y + r.height / 2, text: t.text(), worldX: t.x() };
+      });
+    await expect.poll(async () => (await where())?.text).toBe('Station');
+    const at = (await where())!;
+
+    // A tap picks it: the bar offers Edit text, and nothing for parts.
+    await finger.tap({ x: at.x, y: at.y });
+    await expect(bar(page)).toHaveAttribute('aria-label', '1 picked');
+    await expect(bar(page).getByRole('button', { name: 'Edit text' })).toBeVisible();
+    await expect(bar(page).getByRole('button', { name: 'Rotate left' })).toHaveCount(0);
+
+    // A finger on the picked label drags it; the map stays put.
+    const x0 = await stageX(page);
+    await finger.drag({ x: at.x, y: at.y }, { x: at.x + 60, y: at.y + 40 });
+    await expect.poll(async () => Math.round((await where())!.x - at.x)).toBeGreaterThan(40);
+    expect(await stageX(page)).toBeCloseTo(x0, 3);
+    await expect(bar(page)).toHaveAttribute('aria-label', '1 picked');
+
+    // Edit text, in a sheet from the bottom.
+    await bar(page).getByRole('button', { name: 'Edit text' }).tap();
+    const sheet = page.getByRole('dialog', { name: 'Edit label' });
+    await expect(sheet.getByRole('textbox', { name: 'Text' })).toHaveValue('Station');
+    await sheet.getByRole('textbox', { name: 'Text' }).fill('Main station');
+    await shoot(page, 'phone-edit-label');
+    await sheet.getByRole('button', { name: 'Save' }).tap();
+    await expect(sheet).toHaveCount(0);
+    await expect.poll(async () => (await where())?.text).toBe('Main station');
+    const moved = (await where())!;
+
+    // The server has both.
+    await page.waitForTimeout(1500);
+    await page.reload();
+    await expect.poll(async () => (await where())?.text, { timeout: 15000 }).toBe('Main station');
+    // Moved in the layout (not just on screen), and kept: 20 studs = 160 px before the drag.
+    expect(moved.worldX).toBeGreaterThan(160 + 1);
+    expect((await where())!.worldX).toBeCloseTo(moved.worldX, 3);
+  });
+});
+
 test.describe('the View / Edit choice', () => {
   test.use(pixel7);
 

@@ -50,7 +50,9 @@ import { useElementSize } from './useElementSize';
 import { useTouchView } from './useTouchView';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
-import { SheetsSheet } from './TouchSheets';
+import { SheetsSheet, TextEditSheet } from './TouchSheets';
+import { editAnchoredLabel, editTextCell } from './mutations';
+import { parseTextKey } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, layoutSourceHere, type LayoutImage } from '../layoutFile';
@@ -232,6 +234,23 @@ function Editor({ layoutId }: { layoutId: string }) {
   const touchTablet = !viewport.isMobile && !isViewer && coarsePointer();
   const [showAddPart, setShowAddPart] = useState(false);
   const [showTouchSheets, setShowTouchSheets] = useState(false);
+  /** The one picked label or text, open in the touch text editor. */
+  const [touchText, setTouchText] = useState<{ title: string; text: string; save: (t: string) => void } | null>(null);
+  const openTouchText = () => {
+    const { annoSelection: a } = useEditorStore.getState();
+    const d = doc;
+    if (!d) return;
+    if (a.labels.length === 1) {
+      const id = a.labels[0]!;
+      const label = readSidecarFromDoc(d)?.anchoredLabels?.find((l) => l.id === id);
+      if (label) setTouchText({ title: 'Edit label', text: label.text, save: (t) => editAnchoredLabel(d, id, { text: t }) });
+    } else if (a.texts.length === 1) {
+      const ref = parseTextKey(a.texts[0]!);
+      const layer = ref ? docMap?.layers.find((l) => l.id === ref.layerId) : undefined;
+      const cell = ref && layer?.type === 'text' ? layer.textCells[ref.cellIndex] : undefined;
+      if (ref && cell) setTouchText({ title: 'Edit text', text: cell.text, save: (t) => editTextCell(d, ref.layerId, ref.cellIndex, t) });
+    }
+  };
   // The canvas area's real size, after the header, the status bar and the
   // browser's own bars: the stage fills it and Fit uses it.
   // 0 until measured, so the first fit waits for the real size.
@@ -858,6 +877,7 @@ function Editor({ layoutId }: { layoutId: string }) {
             }}
             onAddPart={() => setShowAddPart(true)}
             onSheets={() => setShowTouchSheets(true)}
+            onEditText={openTouchText}
           />
         )}
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
@@ -899,6 +919,9 @@ function Editor({ layoutId }: { layoutId: string }) {
           </FloatingPanel>
         );
       })}
+      {touchText && (
+        <TextEditSheet title={touchText.title} initial={touchText.text} onSave={touchText.save} onClose={() => setTouchText(null)} />
+      )}
       {showTouchSheets && (touchEditing || touchTablet) && docMap && (
         <SheetsSheet map={docMap} doc={doc} onClose={() => setShowTouchSheets(false)} />
       )}
@@ -1147,15 +1170,31 @@ function Canvas({
   // press picks more.
   /** The part under a point of the canvas area, from Konva's own hit test. */
   const brickAt = (p: Pt): { id: string; node: Konva.Node } | null => {
+    const hit = itemAt(p);
+    return hit?.kind === 'brick' ? hit : null;
+  };
+  /** The part, anchored label or text cell under a point of the canvas area. */
+  const itemAt = (p: Pt): { kind: 'brick' | 'labels' | 'texts'; id: string; node: Konva.Node } | null => {
     const stage = stageRef.current;
     if (!stage || !touchEl) return null;
     const area = touchEl.getBoundingClientRect();
     const box = stage.container().getBoundingClientRect();
     const shape = stage.getIntersection({ x: p.x + area.left - box.left, y: p.y + area.top - box.top });
-    const g = shape?.findAncestor((n: Konva.Node) => n.getClassName() === 'Group' && n.name().startsWith('brick-'));
-    return g ? { id: g.name().slice('brick-'.length), node: g } : null;
+    if (!shape) return null;
+    if (shape.name() === 'text-cell') return { kind: 'texts', id: shape.id(), node: shape };
+    const g = shape.findAncestor((n: Konva.Node) => n.getClassName() === 'Group' && /^(brick|label)-/.test(n.name()));
+    if (!g) return null;
+    return g.name().startsWith('brick-')
+      ? { kind: 'brick', id: g.name().slice('brick-'.length), node: g }
+      : { kind: 'labels', id: g.name().slice('label-'.length), node: g };
   };
   const isPicked = (id: string) => useEditorStore.getState().selection.includes(id);
+  /** Picked, so a finger on it drags it: a part or an anchored label (text cells don't drag). */
+  const dragsPicked = (hit: ReturnType<typeof itemAt>) => {
+    if (!hit) return false;
+    if (hit.kind === 'brick') return isPicked(hit.id);
+    return hit.kind === 'labels' && useEditorStore.getState().annoSelection.labels.includes(hit.id);
+  };
   /** A point of the canvas area in studs. */
   const areaStuds = (p: Pt): Pt | null => {
     const stage = stageRef.current;
@@ -1180,16 +1219,14 @@ function Canvas({
       range: { min: MIN_ZOOM, max: MAX_ZOOM },
       panFrom: (p) => {
         if (isViewer || useEditorStore.getState().tool !== 'select') return true;
-        const hit = brickAt(p);
-        return !(hit && isPicked(hit.id));
+        return !dragsPicked(itemAt(p));
       },
       // "Select area": one finger draws a box, except on a picked part,
       // which it still drags.
       boxFrom: (p) => {
         const st = useEditorStore.getState();
         if (isViewer || st.tool !== 'select' || !st.touchSelectArea) return false;
-        const hit = brickAt(p);
-        return !(hit && isPicked(hit.id));
+        return !dragsPicked(itemAt(p));
       },
       onBox: (phase, from, to) => {
         const a = areaStuds(from);
@@ -1221,8 +1258,8 @@ function Canvas({
         if (isViewer) return;
         const st = useEditorStore.getState();
         if (st.tool !== 'select' || st.touchSelectMore) return;
-        // A part handles its own tap; empty map clears the pick.
-        if (!brickAt(p)) st.setSelection([]);
+        // A part, label or text handles its own tap; empty map clears the pick.
+        if (!itemAt(p)) st.setSelection([]);
       },
       onLongPress: (p) => {
         if (isViewer || useEditorStore.getState().tool !== 'select') return;
@@ -1257,8 +1294,8 @@ function Canvas({
       if (e.touches.length !== 1 || held || (e.target as Element | null)?.closest?.('[data-no-gesture]')) return;
       const t = e.touches[0]!;
       const area = touchEl.getBoundingClientRect();
-      const hit = brickAt({ x: t.clientX - area.left, y: t.clientY - area.top });
-      if (hit && !isPicked(hit.id) && hit.node.draggable()) {
+      const hit = itemAt({ x: t.clientX - area.left, y: t.clientY - area.top });
+      if (hit && hit.kind !== 'texts' && !dragsPicked(hit) && hit.node.draggable()) {
         hit.node.draggable(false);
         held = hit.node;
       }

@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import * as Y from 'yjs';
 import { docToBbm } from '@cld/ydoc';
 import { ensureBrickLayer, ensureRulerLayer, ensureTextLayer, renameLayer } from '../mutations';
-import { SheetsSheet } from '../TouchSheets';
+import { SheetsSheet, TextEditSheet } from '../TouchSheets';
 import { useEditorStore } from '../editorStore';
 
 function setup() {
@@ -82,5 +82,28 @@ describe('the touch Sheets list', () => {
     view();
     fireEvent.click(screen.getByText('Tracks'));
     expect(useEditorStore.getState().activeLayerId).toBe(parts);
+  });
+});
+
+describe('the touch text editor', () => {
+  it('saves new words, saves nothing when they are the same, and refuses empty text', () => {
+    const saved: string[] = [];
+    let closed = 0;
+    const show = () =>
+      render(<TextEditSheet title="Edit label" initial="Station" onSave={(t) => saved.push(t)} onClose={() => closed++} />);
+    show();
+    const box = screen.getByRole('textbox', { name: 'Text' }) as HTMLTextAreaElement;
+    expect(box.value).toBe('Station');
+    fireEvent.change(box, { target: { value: '   ' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
+    fireEvent.change(box, { target: { value: 'Main station' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saved).toEqual(['Main station']);
+    expect(closed).toBe(1);
+    cleanup();
+    show();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saved).toEqual(['Main station']);
+    expect(closed).toBe(2);
   });
 });
