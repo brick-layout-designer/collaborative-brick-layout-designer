@@ -346,4 +346,93 @@ describe('modules', () => {
     await db.update(schema.orgMembers).set({ role: 'manager' }).where(eq(schema.orgMembers.userId, bob!.id));
     expect(((await app.inject({ method: 'GET', url: `/api/modules/${id}`, headers: { cookie: bobCookie } })).json() as { role: string }).role).toBe('owner');
   });
+
+  describe('versions', () => {
+    async function setup() {
+      const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+      const create = await app.inject({ method: 'POST', url: '/api/modules', headers: { cookie: aliceCookie }, payload: { title: 'Yard' } });
+      return { aliceCookie, id: (create.json() as { id: string }).id };
+    }
+    const save = (cookie: string, id: string, bytes: Buffer, note?: string) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/modules/${id}/snapshot${note === undefined ? '' : `?note=${encodeURIComponent(note)}`}`,
+        headers: { cookie, 'content-type': 'application/octet-stream' },
+        payload: bytes,
+      });
+    const versions = async (cookie: string, id: string) =>
+      ((await app.inject({ method: 'GET', url: `/api/modules/${id}/versions`, headers: { cookie } })).json() as {
+        versions: { version: number; note: string | null; author: string | null }[];
+      }).versions;
+
+    it('each save is a numbered version with its note and author; the list shows the newest', async () => {
+      const { aliceCookie, id } = await setup();
+      expect(await versions(aliceCookie, id)).toEqual([]);
+      expect((await save(aliceCookie, id, Buffer.from([1, 1]), 'First go')).json()).toMatchObject({ version: 1 });
+      expect((await save(aliceCookie, id, Buffer.from([2, 2]))).json()).toMatchObject({ version: 2 });
+      const v = await versions(aliceCookie, id);
+      expect(v.map((x) => x.version)).toEqual([2, 1]);
+      expect(v[1]).toMatchObject({ note: 'First go', author: 'alice@example.com' });
+      expect(v[0]!.note).toBeNull();
+      const list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: aliceCookie } })).json() as { modules: { latestVersion: number }[] };
+      expect(list.modules[0]!.latestVersion).toBe(2);
+      const one = await app.inject({ method: 'GET', url: `/api/modules/${id}/versions/1/snapshot`, headers: { cookie: aliceCookie } });
+      expect(one.statusCode).toBe(200);
+      expect([...one.rawPayload]).toEqual([1, 1]);
+      expect((await save(aliceCookie, id, Buffer.from([3]), 'x'.repeat(301))).statusCode).toBe(400);
+    });
+
+    it('restoring makes the old contents current as a new version', async () => {
+      const { aliceCookie, id } = await setup();
+      await save(aliceCookie, id, Buffer.from([1, 1]));
+      await save(aliceCookie, id, Buffer.from([2, 2]));
+      const r = await app.inject({ method: 'POST', url: `/api/modules/${id}/versions/1/restore`, headers: { cookie: aliceCookie }, payload: {} });
+      expect(r.json()).toMatchObject({ ok: true, version: 3 });
+      const snap = await app.inject({ method: 'GET', url: `/api/modules/${id}/snapshot`, headers: { cookie: aliceCookie } });
+      expect([...snap.rawPayload]).toEqual([1, 1]);
+      expect((await versions(aliceCookie, id))[0]).toMatchObject({ version: 3, note: 'Restored version 1' });
+    });
+
+    it('keeps only the newest versions', async () => {
+      const { aliceCookie, id } = await setup();
+      const { MODULE_VERSIONS_KEPT } = await import('./modules.js');
+      for (let i = 0; i < MODULE_VERSIONS_KEPT + 3; i++) await save(aliceCookie, id, Buffer.from([i + 1]));
+      const v = await versions(aliceCookie, id);
+      expect(v).toHaveLength(MODULE_VERSIONS_KEPT);
+      expect(v.at(-1)!.version).toBe(4);
+    });
+
+    it('viewers see the history but cannot restore; strangers see nothing', async () => {
+      const { aliceCookie, id } = await setup();
+      await save(aliceCookie, id, Buffer.from([1]));
+      const bobCookie = await registerAndLogin(app, 'bob@example.com');
+      expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/versions`, headers: { cookie: bobCookie } })).statusCode).toBe(404);
+      expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/versions/1/snapshot`, headers: { cookie: bobCookie } })).statusCode).toBe(404);
+      await app.inject({ method: 'POST', url: `/api/modules/${id}/invites`, headers: { cookie: aliceCookie }, payload: { email: 'bob@example.com', role: 'viewer' } });
+      expect(await versions(bobCookie, id)).toHaveLength(1);
+      const r = await app.inject({ method: 'POST', url: `/api/modules/${id}/versions/1/restore`, headers: { cookie: bobCookie }, payload: {} });
+      expect(r.statusCode).toBe(403);
+    });
+
+    it('versions count in storage', async () => {
+      const { aliceCookie, id } = await setup();
+      const { usageOf } = await import('../limits/limits.js');
+      const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+      await save(aliceCookie, id, Buffer.alloc(1000, 1));
+      const before = usageOf({ kind: 'user', id: alice!.id }).storageBytes;
+      // Same-size contents again: the module's size stays, the new version adds its copy.
+      await save(aliceCookie, id, Buffer.alloc(1000, 2));
+      expect(usageOf({ kind: 'user', id: alice!.id }).storageBytes - before).toBe(1000);
+    });
+
+    it('the newest version gets the picture that is uploaded after the save', async () => {
+      const { aliceCookie, id } = await setup();
+      await save(aliceCookie, id, Buffer.from([1]));
+      const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(20, 3)]);
+      await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
+      const pic = await app.inject({ method: 'GET', url: `/api/modules/${id}/versions/1/thumbnail`, headers: { cookie: aliceCookie } });
+      expect(pic.statusCode).toBe(200);
+      expect(pic.headers['content-type']).toBe('image/png');
+    });
+  });
 });

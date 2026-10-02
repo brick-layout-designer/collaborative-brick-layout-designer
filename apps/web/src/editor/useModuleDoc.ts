@@ -28,6 +28,10 @@ export function useModuleDoc(moduleId: string): LayoutDocState {
   /** Bumped on every edit, so an edit made while saving still counts as unsaved. */
   const editsRef = useRef(0);
   const afterSaveRef = useRef<(() => Promise<unknown>) | null>(null);
+  const noteRef = useRef('');
+  const setSaveNote = useCallback((note: string) => {
+    noteRef.current = note;
+  }, []);
   const setAfterSave = useCallback((fn: (() => Promise<unknown>) | null) => {
     afterSaveRef.current = fn;
   }, []);
@@ -91,7 +95,8 @@ export function useModuleDoc(moduleId: string): LayoutDocState {
     const before = editsRef.current;
     setStatus({ kind: 'saving' });
     try {
-      await api.modules.saveSnapshot(moduleId, Y.encodeStateAsUpdate(d));
+      await api.modules.saveSnapshot(moduleId, Y.encodeStateAsUpdate(d), noteRef.current);
+      noteRef.current = '';
     } catch (e) {
       setStatus({ kind: 'unsaved' });
       throw e;
@@ -103,7 +108,7 @@ export function useModuleDoc(moduleId: string): LayoutDocState {
   }, [moduleId]);
 
   return useMemo(
-    () => ({ doc, awareness, status, saveNow, setAfterSave, loadError, loading }),
-    [doc, awareness, status, saveNow, setAfterSave, loadError, loading],
+    () => ({ doc, awareness, status, saveNow, setAfterSave, setSaveNote, loadError, loading }),
+    [doc, awareness, status, saveNow, setAfterSave, setSaveNote, loadError, loading],
   );
 }

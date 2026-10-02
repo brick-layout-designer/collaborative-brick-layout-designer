@@ -20,6 +20,7 @@ import { WelcomeCard } from '../tours/WelcomeCard';
 import { lastLayoutToReopen } from './reopenLast';
 import { useEditorStore } from '../editor/editorStore';
 import { ModuleThumb } from '../modules/ModuleThumb';
+import { ModuleVersionsDialog } from '../modules/ModuleVersionsDialog';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -42,6 +43,7 @@ export function LayoutsPage() {
     if (startVenue !== null) setShowCreate(true);
   }, [startVenue]);
   const [showNewModule, setShowNewModule] = useState(false);
+  const [historyOf, setHistoryOf] = useState<ModuleSummary | null>(null);
   const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
   const [moving, setMoving] = useState<{ kind: 'layout' | 'module'; item: LayoutSummary | ModuleSummary } | null>(null);
 
@@ -189,7 +191,9 @@ export function LayoutsPage() {
                     <span className="break-words font-medium">{m.title}</span>
                     <OwnerChip item={m} myUserId={myUserId} orgs={orgs} />
                   </p>
-                  <p className="text-xs text-muted">updated {new Date(m.updatedAt).toLocaleString()}</p>
+                  <p className="text-xs text-muted">
+                    {m.latestVersion ? `version ${m.latestVersion} · ` : ''}updated {new Date(m.updatedAt).toLocaleString()}
+                  </p>
                 </div>
                 <Link
                   to={`/modules/${m.id}`}
@@ -198,27 +202,28 @@ export function LayoutsPage() {
                 >
                   Open
                 </Link>
-                {(hasClubs || m.role === undefined || m.role === 'owner') && (
-                  <MoreMenu label={`More for ${m.title}`}>
-                    {hasClubs && (
-                      <button role="menuitem" type="button" onClick={() => setMoving({ kind: 'module', item: m })} className={MORE_ITEM}>
-                        Move or copy…
-                      </button>
-                    )}
-                    {(m.role === undefined || m.role === 'owner') && (
-                      <button
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Delete "${m.title}"?`)) removeModule.mutate(m.id);
-                        }}
-                        className={`${MORE_ITEM} text-danger`}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </MoreMenu>
-                )}
+                <MoreMenu label={`More for ${m.title}`}>
+                  <button role="menuitem" type="button" onClick={() => setHistoryOf(m)} className={MORE_ITEM}>
+                    Version history…
+                  </button>
+                  {hasClubs && (
+                    <button role="menuitem" type="button" onClick={() => setMoving({ kind: 'module', item: m })} className={MORE_ITEM}>
+                      Move or copy…
+                    </button>
+                  )}
+                  {(m.role === undefined || m.role === 'owner') && (
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Delete "${m.title}"?`)) removeModule.mutate(m.id);
+                      }}
+                      className={`${MORE_ITEM} text-danger`}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </MoreMenu>
               </li>
             ))}
           </ul>
@@ -243,6 +248,8 @@ export function LayoutsPage() {
           onCreated={(id) => navigate(`/modules/${id}`)}
         />
       )}
+
+      {historyOf && <ModuleVersionsDialog module={historyOf} onClose={() => setHistoryOf(null)} />}
 
       {moving && orgs && (
         <MoveCopyDialog

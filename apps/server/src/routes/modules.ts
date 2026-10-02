@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
@@ -263,7 +263,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- snapshot (write, editor+) ----------------------------------------
-  app.put<{ Params: { id: string } }>('/api/modules/:id/snapshot', async (req, reply) => {
+  app.put<{ Params: { id: string }; Querystring: { note?: string } }>('/api/modules/:id/snapshot', async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -292,9 +292,12 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       .get();
     if (current) {
       const owner: Subject = current.ownerOrgId ? { kind: 'org', id: current.ownerOrgId } : { kind: 'user', id: current.ownerUserId ?? user.id };
-      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: bytes.length - current.bytes }, uploadBytes: bytes.length });
+      // The module's new contents, plus the version's own copy of them.
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: 2 * bytes.length - current.bytes }, uploadBytes: bytes.length });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
     }
+    const note = cleanNote(req.query?.note);
+    if (note === undefined) return reply.code(400).send({ error: 'note_too_long' });
     await db
       .update(schema.modules)
       .set({
@@ -303,7 +306,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         updatedAt,
       })
       .where(eq(schema.modules.id, req.params.id));
-    return { ok: true, updatedAt: updatedAt.getTime() };
+    const version = await recordVersion(req.params.id, bytes, user.id, note);
+    return { ok: true, updatedAt: updatedAt.getTime(), version };
   });
 
   // ---- thumbnail ----------------------------------------------------------
@@ -344,6 +348,16 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         .update(schema.modules)
         .set({ thumbnail: bytes, thumbnailMime: mime, thumbnailAt })
         .where(eq(schema.modules.id, req.params.id));
+      // The newest version's picture too (the history shows it).
+      await db
+        .update(schema.moduleVersions)
+        .set({ thumbnail: bytes, thumbnailMime: mime })
+        .where(
+          and(
+            eq(schema.moduleVersions.moduleId, req.params.id),
+            eq(schema.moduleVersions.version, sql`(SELECT latest_version FROM modules WHERE id = ${req.params.id})`),
+          ),
+        );
       return { ok: true, thumbnailAt: thumbnailAt.getTime() };
     },
   );
@@ -366,6 +380,101 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     reply.header('Content-Type', row.mime);
     reply.header('X-Content-Type-Options', 'nosniff');
     return reply.send(Buffer.from(row.thumbnail as Uint8Array));
+  });
+
+  // ---- versions -----------------------------------------------------------
+  app.get<{ Params: { id: string } }>('/api/modules/:id/versions', async (req, reply) => {
+    const user = requireUser(req);
+    const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
+    if (role === null) return reply.code(404).send({ error: 'not_found' });
+    const rows = await db
+      .select({
+        version: schema.moduleVersions.version,
+        note: schema.moduleVersions.note,
+        createdAt: schema.moduleVersions.createdAt,
+        authorName: schema.users.displayName,
+        hasThumbnail: sql<number>`${schema.moduleVersions.thumbnail} IS NOT NULL`,
+        bytes: sql<number>`length(${schema.moduleVersions.docSnapshot})`.mapWith(Number),
+      })
+      .from(schema.moduleVersions)
+      .leftJoin(schema.users, eq(schema.users.id, schema.moduleVersions.authorId))
+      .where(eq(schema.moduleVersions.moduleId, req.params.id))
+      .orderBy(desc(schema.moduleVersions.version));
+    return {
+      role,
+      versions: rows.map((v) => ({
+        version: v.version,
+        note: v.note,
+        createdAt: v.createdAt.getTime(),
+        author: v.authorName ?? null,
+        hasThumbnail: Boolean(v.hasThumbnail),
+        bytes: v.bytes,
+      })),
+    };
+  });
+
+  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/snapshot', async (req, reply) => {
+    const found = await findVersion(req.user?.id, req.params.id, req.params.n);
+    if (!found.ok) return reply.code(found.code).send({ error: found.error });
+    reply.header('Content-Type', 'application/octet-stream');
+    return reply.send(Buffer.from(found.row.docSnapshot as Uint8Array));
+  });
+
+  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/thumbnail', async (req, reply) => {
+    const found = await findVersion(req.user?.id, req.params.id, req.params.n);
+    if (!found.ok) return reply.code(found.code).send({ error: found.error });
+    if (!found.row.thumbnail || !found.row.thumbnailMime) return reply.code(404).send({ error: 'no_thumbnail' });
+    // A version never changes, so its picture can be kept a long time.
+    reply.header('Cache-Control', 'private, max-age=31536000, immutable');
+    reply.header('Content-Type', found.row.thumbnailMime);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    return reply.send(Buffer.from(found.row.thumbnail as Uint8Array));
+  });
+
+  // Restore: the old version becomes the module's contents again, as a new
+  // version (nothing in the history is lost).
+  app.post<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/restore', async (req, reply) => {
+    const user = requireUser(req);
+    const found = await findVersion(user.id, req.params.id, req.params.n);
+    if (!found.ok) return reply.code(found.code).send({ error: found.error });
+    if (!hasAtLeast(found.role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
+    const bytes = Buffer.from(found.row.docSnapshot as Uint8Array);
+    const current = await db
+      .select({
+        ownerUserId: schema.modules.ownerUserId,
+        ownerOrgId: schema.modules.ownerOrgId,
+        docVersion: schema.modules.docVersion,
+        bytes: sql<number>`length(${schema.modules.docSnapshot})`.mapWith(Number),
+      })
+      .from(schema.modules)
+      .where(eq(schema.modules.id, req.params.id))
+      .get();
+    if (!current) return reply.code(404).send({ error: 'not_found' });
+    const owner: Subject = current.ownerOrgId ? { kind: 'org', id: current.ownerOrgId } : { kind: 'user', id: current.ownerUserId ?? user.id };
+    const refusal = await checkGrowth({ actor: user, owner, add: { bytes: 2 * bytes.length - current.bytes } });
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
+    const now = new Date();
+    const thumb = found.row.thumbnail ? Buffer.from(found.row.thumbnail as Uint8Array) : null;
+    await db
+      .update(schema.modules)
+      .set({
+        docSnapshot: bytes,
+        docVersion: current.docVersion + 1,
+        updatedAt: now,
+        thumbnail: thumb,
+        thumbnailMime: thumb ? found.row.thumbnailMime : null,
+        thumbnailAt: thumb ? now : null,
+      })
+      .where(eq(schema.modules.id, req.params.id));
+    const version = await recordVersion(req.params.id, bytes, user.id, `Restored version ${found.row.version}`, thumb, found.row.thumbnailMime);
+    await writeAuditEvent({
+      resourceKind: 'module',
+      resourceId: req.params.id,
+      userId: user.id,
+      eventType: 'restore_version',
+      payload: { from: found.row.version, version },
+    });
+    return { ok: true, version };
   });
 
   // ---- collaborators ----------------------------------------------------
@@ -480,6 +589,79 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
+/** How many versions of each module are kept (the oldest go first). */
+export const MODULE_VERSIONS_KEPT = 20;
+const MAX_NOTE = 300;
+
+/** The "What changed" note: trimmed, null when empty, undefined when too long. */
+function cleanNote(raw: unknown): string | null | undefined {
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim();
+  if (!t) return null;
+  return t.length > MAX_NOTE ? undefined : t;
+}
+
+/** Keep `bytes` as the module's next version; drop the oldest past MODULE_VERSIONS_KEPT. Returns its number. */
+async function recordVersion(
+  moduleId: string,
+  bytes: Buffer,
+  authorId: string,
+  note: string | null,
+  thumbnail: Buffer | null = null,
+  thumbnailMime: 'image/png' | 'image/webp' | null = null,
+): Promise<number> {
+  const row = await db
+    .select({ latest: schema.modules.latestVersion })
+    .from(schema.modules)
+    .where(eq(schema.modules.id, moduleId))
+    .get();
+  const version = (row?.latest ?? 0) + 1;
+  await db.insert(schema.moduleVersions).values({
+    id: randomUUID(),
+    moduleId,
+    version,
+    docSnapshot: bytes,
+    thumbnail,
+    thumbnailMime,
+    note,
+    authorId,
+    createdAt: new Date(),
+  });
+  await db.update(schema.modules).set({ latestVersion: version }).where(eq(schema.modules.id, moduleId));
+  const old = await db
+    .select({ id: schema.moduleVersions.id })
+    .from(schema.moduleVersions)
+    .where(eq(schema.moduleVersions.moduleId, moduleId))
+    .orderBy(desc(schema.moduleVersions.version))
+    .offset(MODULE_VERSIONS_KEPT)
+    .limit(1000);
+  if (old.length > 0) await db.delete(schema.moduleVersions).where(inArray(schema.moduleVersions.id, old.map((o) => o.id)));
+  return version;
+}
+
+/** One version of a module the caller can open. */
+async function findVersion(
+  userId: string | undefined,
+  moduleId: string,
+  n: string,
+): Promise<
+  | { ok: true; role: Role; row: typeof schema.moduleVersions.$inferSelect }
+  | { ok: false; code: 401 | 404; error: string }
+> {
+  if (!userId) return { ok: false, code: 401, error: 'unauthorized' };
+  const { role } = await resolveResourceRole(userId, 'module', moduleId);
+  if (role === null) return { ok: false, code: 404, error: 'not_found' };
+  const version = Number(n);
+  if (!Number.isInteger(version) || version < 1) return { ok: false, code: 404, error: 'not_found' };
+  const row = await db
+    .select()
+    .from(schema.moduleVersions)
+    .where(and(eq(schema.moduleVersions.moduleId, moduleId), eq(schema.moduleVersions.version, version)))
+    .get();
+  if (!row) return { ok: false, code: 404, error: 'not_found' };
+  return { ok: true, role, row };
+}
+
 /** A module picture is small: about 256 px, a few tens of KB. */
 export const MAX_THUMBNAIL_BYTES = 512 * 1024;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -498,6 +680,7 @@ const moduleListColumns = {
   docVersion: schema.modules.docVersion,
   hasSidecar: sql<number>`${schema.modules.sidecarSnapshot} IS NOT NULL`,
   thumbnailAt: schema.modules.thumbnailAt,
+  latestVersion: schema.modules.latestVersion,
   createdAt: schema.modules.createdAt,
   updatedAt: schema.modules.updatedAt,
 };
@@ -505,7 +688,7 @@ const moduleListColumns = {
 function toListItem(
   m: Pick<
     typeof schema.modules.$inferSelect,
-    'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'thumbnailAt' | 'createdAt' | 'updatedAt'
+    'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'thumbnailAt' | 'latestVersion' | 'createdAt' | 'updatedAt'
   > & { hasSidecar: number },
 ) {
   return {
@@ -517,6 +700,8 @@ function toListItem(
     hasSidecar: Boolean(m.hasSidecar),
     /** When the picture was made (its cache key), or null: show a placeholder. */
     thumbnailAt: m.thumbnailAt ? m.thumbnailAt.getTime() : null,
+    /** The newest version's number; 0 when it has no history yet. */
+    latestVersion: m.latestVersion,
     createdAt: m.createdAt.getTime(),
     updatedAt: m.updatedAt.getTime(),
   };
