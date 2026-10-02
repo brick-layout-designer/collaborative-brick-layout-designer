@@ -35,16 +35,23 @@ export function dropTargetHint(layers: readonly Pick<Layer, 'id' | 'type' | 'nam
 }
 
 /**
- * Viewport position for a header dropdown: right-aligned under `button`.
- * Menus use `position: fixed` so the horizontally scrolling header row
- * can't clip them.
+ * Viewport position for a header dropdown: right-aligned under `button`,
+ * unless a menu `menuWidth` wide would then hang off the left edge (the
+ * button sits near the left, as the editor's second toolbar row does at
+ * narrow widths); then it starts at the button's left instead, kept 4 px
+ * inside the viewport. Menus use `position: fixed` so the horizontally
+ * scrolling header row can't clip them.
  */
 export function dropdownAnchor(
   button: Pick<HTMLElement, 'getBoundingClientRect'>,
   viewportWidth: number = window.innerWidth,
-): { top: number; right: number } {
+  menuWidth = 208,
+): { top: number; right: number } | { top: number; left: number } {
   const r = button.getBoundingClientRect();
-  return { top: r.bottom + 4, right: Math.max(4, viewportWidth - r.right) };
+  const top = r.bottom + 4;
+  const right = Math.max(4, viewportWidth - r.right);
+  if (viewportWidth - right - menuWidth >= 4) return { top, right };
+  return { top, left: Math.max(4, Math.min(r.left, viewportWidth - menuWidth - 4)) };
 }
 
 /**
