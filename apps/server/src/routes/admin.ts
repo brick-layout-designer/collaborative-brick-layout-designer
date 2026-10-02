@@ -21,6 +21,7 @@ import { DESKTOP_MINIMUM, compareVersions, resetDesktopPolicy, resolvePolicy } f
 import { parsePartXml } from '@cld/parts-catalog';
 import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
+import { invalidateLimitCaches } from '../limits/limits.js';
 import { invalidateTransporter } from '../email/transporter.js';
 import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLayoutId } from './adminLayoutStats.js';
 import { escapeLike } from '../utils/validate.js';
@@ -1170,6 +1171,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       smtpFrom?: string | null;
       minDesktopVersion?: string | null;
       moduleCatalogEnabled?: boolean;
+      limitsEnforced?: boolean;
       partsCatalogEnabled?: boolean;
       catalogReview?: string;
       catalogAnonymousBrowse?: boolean;
@@ -1216,6 +1218,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       patch.minDesktopVersion = v || null;
     }
     if (typeof body.moduleCatalogEnabled === 'boolean') patch.moduleCatalogEnabled = body.moduleCatalogEnabled;
+    if (typeof body.limitsEnforced === 'boolean') patch.limitsEnforced = body.limitsEnforced;
     if (typeof body.partsCatalogEnabled === 'boolean') patch.partsCatalogEnabled = body.partsCatalogEnabled;
     if (typeof body.catalogAnonymousBrowse === 'boolean') patch.catalogAnonymousBrowse = body.catalogAnonymousBrowse;
     if ('catalogReview' in body) {
@@ -1234,6 +1237,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.platformSettings.id, PLATFORM_SETTINGS_ID));
     invalidateTransporter();
     resetDesktopPolicy();
+    invalidateLimitCaches(); // the limits switch takes effect at once
 
     await writeAuditEvent({
       resourceKind: 'platform_settings',

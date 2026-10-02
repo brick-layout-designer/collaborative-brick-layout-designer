@@ -62,7 +62,7 @@ describe('club join settings', () => {
     await db.insert(schema.orgMembers).values({ orgId, userId: member.id, role: 'member', joinedAt: new Date() });
   });
   afterEach(async () => {
-    env.limitsEnforce = true;
+    env.limitsEnforceForced = null;
     await app.close();
   });
 
@@ -269,7 +269,7 @@ describe('club join settings', () => {
     it('is counted but not applied when LIMITS_ENFORCE is off', async () => {
       await settings(admin, { listed: true, joinPolicy: 'open' });
       await setMembersLimit(2);
-      env.limitsEnforce = false;
+      env.limitsEnforceForced = 'off';
       expect((await call(outsider, 'POST', '/api/orgs/arklug/join')).statusCode).toBe(200);
       expect(await isMember(outsider.id)).toBe(true);
     });

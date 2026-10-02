@@ -42,6 +42,7 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     partsCatalogEnabled: false,
     catalogReview: 'moderators',
     catalogAnonymousBrowse: true,
+    limitsEnforced: true,
     updatedAt: new Date(),
     updatedBy: null,
   };

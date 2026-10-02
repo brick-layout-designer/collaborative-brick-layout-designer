@@ -34,7 +34,7 @@ import { hasScope } from '../auth/apiTokens.js';
 import { blockedDesktopMinimum } from '../compat.js';
 import { env } from '../env.js';
 import { rollup } from '../metrics/rollup.js';
-import { globalLimits, isSuspended, overrideFor } from '../limits/limits.js';
+import { globalLimits, isSuspended, limitsEnforced, overrideFor } from '../limits/limits.js';
 import { touchLayoutOpened } from '../metrics/activity.js';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
@@ -172,15 +172,16 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(schema.layouts.id, layoutId))
           .get();
         const { values } = await globalLimits();
+        const enforce = await limitsEnforced();
         const ownerOv = owner?.ownerOrgId ? overrideFor('org', owner.ownerOrgId) : owner?.ownerUserId ? overrideFor('user', owner.ownerUserId) : null;
         const maxLive = ownerOv?.limits.liveEditorsPerLayout ?? values.liveEditorsPerLayout;
-        if (env.limitsEnforce && connectionsTo(layoutId) >= maxLive) {
+        if (enforce && connectionsTo(layoutId) >= maxLive) {
           ws.close(4429, 'limit_reached');
           return;
         }
         // A suspended person, or a suspended club's layout, opens read-only.
         const suspended =
-          env.limitsEnforce &&
+          enforce &&
           (isSuspended('user', userId) ||
             (owner?.ownerOrgId ? isSuspended('org', owner.ownerOrgId) : owner?.ownerUserId ? isSuspended('user', owner.ownerUserId) : false));
         const current = userConnections.get(userId) ?? 0;

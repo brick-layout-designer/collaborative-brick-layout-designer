@@ -118,7 +118,7 @@ function parseJson(text: string | null | undefined): unknown {
 // ---------------------------------------------------------------------------
 
 const CACHE_MS = 30_000;
-let globalCache: { at: number; stored: Partial<LimitValues>; values: LimitValues } | null = null;
+let globalCache: { at: number; stored: Partial<LimitValues>; values: LimitValues; enforced: boolean } | null = null;
 let overrideCache: { at: number; rows: Map<string, { limits: Partial<LimitValues>; suspended: boolean; reason: string | null }> } | null = null;
 
 export function invalidateLimitCaches(): void {
@@ -131,8 +131,28 @@ export async function globalLimits(now: number = Date.now()): Promise<{ stored: 
   if (globalCache && now - globalCache.at < CACHE_MS) return globalCache;
   const settings = await getPlatformSettings();
   const stored = cleanLimits(parseJson(settings.limits));
-  globalCache = { at: now, stored, values: { ...envDefaults(), ...stored } };
+  globalCache = { at: now, stored, values: { ...envDefaults(), ...stored }, enforced: settings.limitsEnforced };
   return globalCache;
+}
+
+/** Where "are limits enforced?" comes from: the admin's switch, or the server's LIMITS_ENFORCE forcing it. */
+export type EnforcementSource = 'setting' | 'forced-on' | 'forced-off';
+
+export function enforcementSource(): EnforcementSource {
+  return env.limitsEnforceForced === 'on' ? 'forced-on' : env.limitsEnforceForced === 'off' ? 'forced-off' : 'setting';
+}
+
+/**
+ * Whether usage limits refuse anything right now. Off means use is still
+ * counted and shown, but nothing is refused (no limit_reached, no 429, no
+ * read-only suspension). Read live: the admin's switch takes effect at
+ * once (its change clears the cache), no restart.
+ */
+export async function limitsEnforced(now: number = Date.now()): Promise<boolean> {
+  const source = enforcementSource();
+  if (source !== 'setting') return source === 'forced-on';
+  if (!globalCache || now - globalCache.at >= CACHE_MS) await globalLimits(now);
+  return globalCache!.enforced;
 }
 
 /** Synchronous view of the global limits for hot paths (falls back to env defaults before the first load). */
@@ -376,7 +396,7 @@ export async function checkGrowth(opts: {
   /** Size of a single uploaded file or body. */
   uploadBytes?: number;
 }): Promise<Refusal | null> {
-  if (!env.limitsEnforce) return null; // counted and shown, never refused
+  if (!(await limitsEnforced())) return null; // counted and shown, never refused
   const { actor, owner } = opts;
   const add = opts.add ?? {};
   const actorOv = overrideFor('user', actor.id);

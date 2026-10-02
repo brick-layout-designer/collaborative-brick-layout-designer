@@ -830,6 +830,7 @@ export const api = {
       partsCatalogEnabled?: boolean;
       catalogReview?: CatalogReview;
       catalogAnonymousBrowse?: boolean;
+      limitsEnforced?: boolean;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
   },
 

@@ -22,6 +22,7 @@ import { moduleRoutes } from '../modules.js';
 import { venueRoutes } from '../venues.js';
 import { transferRoutes } from '../transfers.js';
 import { adminLimitsRoutes, flagRows, median } from '../adminLimits.js';
+import { adminRoutes } from '../admin.js';
 import { registerLimitHooks, resetRateWindows } from '../../limits/hooks.js';
 import { checkGrowth, envDefaults, invalidateLimitCaches, orgLimits, usageOf } from '../../limits/limits.js';
 import { usage } from '../../metrics/usage.js';
@@ -39,7 +40,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(cookie);
   app.addHook('preHandler', attachUser);
   registerLimitHooks(app);
-  for (const r of [passwordRoutes, sessionRoutes, deviceRoutes, layoutRoutes, orgRoutes, orgInviteRoutes, customPartRoutes, moduleRoutes, venueRoutes, transferRoutes, adminLimitsRoutes]) {
+  for (const r of [passwordRoutes, sessionRoutes, deviceRoutes, layoutRoutes, orgRoutes, orgInviteRoutes, customPartRoutes, moduleRoutes, venueRoutes, transferRoutes, adminLimitsRoutes, adminRoutes]) {
     await app.register(r);
   }
   return app;
@@ -466,10 +467,10 @@ describe('abuse view', () => {
 
 describe('LIMITS_ENFORCE=off', () => {
   beforeEach(() => {
-    env.limitsEnforce = false;
+    env.limitsEnforceForced = 'off';
   });
   afterEach(() => {
-    env.limitsEnforce = true;
+    env.limitsEnforceForced = null;
   });
 
   it('counts and shows use but refuses nothing: no limit, no rate cap, no read-only', async () => {
@@ -491,3 +492,34 @@ describe('LIMITS_ENFORCE=off', () => {
     expect(await checkGrowth({ actor: { id: u.id } as User, owner: { kind: 'user', id: u.id }, add: { layouts: 1 } })).toBeNull();
   });
 });
+
+describe('the "Enforce usage limits" switch in Admin › Settings', () => {
+  afterEach(() => {
+    env.limitsEnforceForced = null;
+  });
+
+  it('takes effect at once, with no restart, and says where it comes from', async () => {
+    const u = await loginAs(app, 'switch@example.com');
+    await setGlobal({ layoutsPerUser: 1 });
+    expect((await newLayout(u.cookie)).statusCode).toBe(201);
+    expect((await newLayout(u.cookie)).statusCode).toBe(403); // on by default
+
+    const off = await app.inject({ method: 'PATCH', url: '/api/admin/settings', headers: { cookie: admin.cookie }, payload: { limitsEnforced: false } });
+    expect(off.statusCode).toBe(200);
+    expect((await newLayout(u.cookie)).statusCode).toBe(201); // same process, straight away
+    let page = (await app.inject({ url: '/api/admin/limits', headers: { cookie: admin.cookie } })).json() as {
+      enforced: boolean; enforcedSetting: boolean; enforcementSource: string;
+    };
+    expect(page).toMatchObject({ enforced: false, enforcedSetting: false, enforcementSource: 'setting' });
+
+    // The server's LIMITS_ENFORCE wins over the switch, and the page says so.
+    env.limitsEnforceForced = 'on';
+    expect((await newLayout(u.cookie)).statusCode).toBe(403);
+    page = (await app.inject({ url: '/api/admin/limits', headers: { cookie: admin.cookie } })).json() as typeof page;
+    expect(page).toMatchObject({ enforced: true, enforcedSetting: false, enforcementSource: 'forced-on' });
+
+    const audit = db.select().from(schema.auditEvents).where(eq(schema.auditEvents.eventType, 'admin_settings_patch')).all();
+    expect(audit.some((e) => JSON.stringify(e.payload).includes('limitsEnforced'))).toBe(true);
+  });
+});
+

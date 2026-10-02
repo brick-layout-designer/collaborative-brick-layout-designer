@@ -67,7 +67,7 @@ describe('live editing limits', () => {
       .values({ subjectKind: 'user', subjectId: u.id, limits: JSON.stringify({ liveEditorsPerLayout: 1 }), updatedAt: new Date() })
       .run();
     invalidateLimitCaches();
-    env.limitsEnforce = false;
+    env.limitsEnforceForced = 'off';
     try {
       const a = await open(port, id, u.cookie);
       const b = await open(port, id, u.cookie);
@@ -78,7 +78,7 @@ describe('live editing limits', () => {
       await a.closed;
       await b.closed;
     } finally {
-      env.limitsEnforce = true;
+      env.limitsEnforceForced = null;
     }
     await docHub.close(id);
   });
