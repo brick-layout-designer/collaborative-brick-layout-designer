@@ -28,6 +28,7 @@ import * as Y from 'yjs';
 import { db, schema, sqlite } from '../db/index.js';
 import { env } from '../env.js';
 import { classifyBackups } from './retention.js';
+import { backgroundJobs } from './jobs.js';
 import { docHub } from '../ws/docHub.js';
 import { sweepRollup } from '../metrics/rollup.js';
 import { sweepUsage } from '../metrics/usage.js';
@@ -55,9 +56,11 @@ export function stopWorkers(): void {
 }
 
 async function tick(): Promise<void> {
-  if (env.demoTtlSweepEnabled) await safeRun('demoTtlSweep', demoTtlSweep);
-  if (env.dailyCompactionEnabled) await safeRun('dailyCompaction', dailyCompaction);
-  if (env.backupsEnabled) await safeRun('backupWorker', backupWorker);
+  // Admin › Settings › Background jobs, read now so a change needs no restart.
+  const jobs = await backgroundJobs();
+  if (jobs.demoTtlSweep.value) await safeRun('demoTtlSweep', demoTtlSweep);
+  if (jobs.dailyCompaction.value) await safeRun('dailyCompaction', dailyCompaction);
+  if (jobs.backups.value) await safeRun('backupWorker', backupWorker);
   // Admin dashboard rollup: keep ROLLUP_RETENTION_DAYS (about 13 months).
   await safeRun('rollupRetention', async () => {
     sweepRollup();

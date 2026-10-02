@@ -21,6 +21,7 @@ import { api, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
 import { CatalogSettingsSection, ModerationTab } from './Moderation';
+import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 
 type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
 const ADMIN_TABS: Tab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'audit', 'settings'];
@@ -1592,6 +1593,8 @@ function SettingsTab() {
     <>
     <div className="max-w-xl space-y-8">
       <CatalogSettingsSection />
+      <BackgroundJobsSection />
+      <ServerSetupSection />
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-neutral-300">Desktop app</h2>
         <label className="block space-y-1 text-xs text-muted">

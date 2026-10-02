@@ -831,6 +831,10 @@ export const api = {
       catalogReview?: CatalogReview;
       catalogAnonymousBrowse?: boolean;
       limitsEnforced?: boolean;
+      backupsEnabled?: boolean;
+      dailyCompactionEnabled?: boolean;
+      demoTtlSweepEnabled?: boolean;
+      demoLayoutTtlDays?: number;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
   },
 
@@ -1005,8 +1009,25 @@ export interface AdminSettings {
   };
   /** Public catalogs: off until turned on. */
   catalog?: { modules: boolean; parts: boolean; review: CatalogReview; anonymousBrowse: boolean };
+  /** Background jobs: the switch, what applies, and the env var forcing it if any. */
+  jobs?: {
+    backups: AdminJobSetting<boolean>;
+    dailyCompaction: AdminJobSetting<boolean>;
+    demoTtlSweep: AdminJobSetting<boolean>;
+    demoLayoutTtlDays: AdminJobSetting<number>;
+  };
+  /** The server's env-only settings, read only (never a secret's value). */
+  serverSetup?: { name: string; value: string; env: string; why: ServerSetupWhy }[];
   updatedAt: number;
 }
+
+export interface AdminJobSetting<T> {
+  value: T;
+  setting: T;
+  forcedBy: string | null;
+}
+
+export type ServerSetupWhy = 'secret' | 'restart' | 'deploy' | 'bootstrap';
 
 export interface AdminUser {
   id: string;

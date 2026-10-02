@@ -22,6 +22,7 @@ import { dirname, join, resolve } from 'node:path';
 import * as Y from 'yjs';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
+import { backgroundJobs } from '../workers/jobs.js';
 import { requireGlobalAdmin } from '../auth/cookie.js';
 import { dayKey, databaseBytes, flushRollup, rollup, startOfDay } from '../metrics/rollup.js';
 import { liveStats } from './ws.js';
@@ -350,9 +351,9 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export function computeAlerts(now: number = Date.now(), policy: DesktopPolicy = resolvePolicy(null)): Alert[] {
+export function computeAlerts(now: number = Date.now(), policy: DesktopPolicy = resolvePolicy(null), backupsOn = true): Alert[] {
   const alerts: Alert[] = [];
-  if (env.backupsEnabled) {
+  if (backupsOn) {
     const last = listBackups()[0];
     if (!last) alerts.push({ level: 'warn', id: 'backup-none', text: 'No backups found in the backups folder.' });
     else if (now - last.at > 2 * DAY_MS) {
@@ -717,7 +718,7 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
         customParts: countWhere(schema.customParts),
       },
       backups: {
-        enabled: env.backupsEnabled,
+        enabled: (await backgroundJobs()).backups.value,
         lastAt: backups[0]?.at ?? null,
         files: backups.slice(0, 30),
       },
@@ -728,7 +729,7 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/admin/insights/alerts', async (req) => {
     requireGlobalAdmin(req);
     flushRollup();
-    return { alerts: computeAlerts(Date.now(), await desktopPolicy()) };
+    return { alerts: computeAlerts(Date.now(), await desktopPolicy(), (await backgroundJobs()).backups.value) };
   });
 
   // Signed-in web clients say once per load whether they run as an

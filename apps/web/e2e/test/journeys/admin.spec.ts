@@ -77,6 +77,21 @@ test('an admin turns limits on, helps a heavy user, and names a moderator', asyn
     await expect(page.getByText('Oldest desktop allowed')).toBeVisible();
     await expect(page.getByLabel('Public module catalog')).toBeVisible();
     await expect(page.getByLabel('Enforce usage limits')).toBeChecked();
+
+    // ── Background jobs are switches here; they stick. The server's own
+    //    setup is listed, each with why it is set elsewhere. ──
+    const backups = page.getByLabel('Nightly backups');
+    await expect(backups).toBeChecked();
+    await backups.click();
+    await expect(backups).not.toBeChecked();
+    await page.reload();
+    await page.getByRole('button', { name: 'settings' }).click();
+    await expect(page.getByLabel('Nightly backups')).not.toBeChecked();
+    await page.getByLabel('Nightly backups').click();
+    await expect(page.getByLabel('Nightly backups')).toBeChecked();
+    const setup = page.getByRole('region', { name: 'Server setup' });
+    await expect(setup.getByText('Parts folder')).toBeVisible();
+    await expect(setup.getByText('Google sign-in')).toBeVisible();
   } finally {
     // Shared test server: the site-wide value back, limits as they were.
     await page.request.patch('/api/admin/limits', { data: { layoutsPerUser: null } });

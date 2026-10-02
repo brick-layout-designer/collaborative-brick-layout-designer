@@ -29,6 +29,7 @@ import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.j
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
+import { demoExpiry } from '../workers/jobs.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
@@ -276,7 +277,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           // layout deleted. Demo TTL is reapplied on next demo-only
           // creation, not on transfer.
           expiresAt: user.isDemoAccount
-            ? new Date(now.getTime() + env.demoLayoutTtlDays * 86400_000)
+            ? await demoExpiry(now)
             : null,
           updatedAt: now,
         })

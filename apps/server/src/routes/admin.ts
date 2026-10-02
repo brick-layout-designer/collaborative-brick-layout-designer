@@ -27,6 +27,8 @@ import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLa
 import { escapeLike } from '../utils/validate.js';
 import { docHub } from '../ws/docHub.js';
 import { safeFetch } from '../utils/safeFetch.js';
+import { env } from '../env.js';
+import { backgroundJobs } from '../workers/jobs.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
@@ -1157,6 +1159,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         review: settings.catalogReview,
         anonymousBrowse: settings.catalogAnonymousBrowse,
       },
+      // Background jobs and the demo layout lifetime: switches here, unless
+      // the server's env var forces one (forcedBy names it).
+      jobs: await backgroundJobs(),
+      // The server's own settings that can't be changed from this page,
+      // with why: secrets, things read once at start, the deployment's own
+      // paths and ports, and the first admin (needed before there is a DB).
+      serverSetup: serverSetup(),
       updatedAt: settings.updatedAt.getTime(),
     };
   });
@@ -1175,6 +1184,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       partsCatalogEnabled?: boolean;
       catalogReview?: string;
       catalogAnonymousBrowse?: boolean;
+      backupsEnabled?: boolean;
+      dailyCompactionEnabled?: boolean;
+      demoTtlSweepEnabled?: boolean;
+      demoLayoutTtlDays?: number;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1221,6 +1234,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (typeof body.limitsEnforced === 'boolean') patch.limitsEnforced = body.limitsEnforced;
     if (typeof body.partsCatalogEnabled === 'boolean') patch.partsCatalogEnabled = body.partsCatalogEnabled;
     if (typeof body.catalogAnonymousBrowse === 'boolean') patch.catalogAnonymousBrowse = body.catalogAnonymousBrowse;
+    if (typeof body.backupsEnabled === 'boolean') patch.backupsEnabled = body.backupsEnabled;
+    if (typeof body.dailyCompactionEnabled === 'boolean') patch.dailyCompactionEnabled = body.dailyCompactionEnabled;
+    if (typeof body.demoTtlSweepEnabled === 'boolean') patch.demoTtlSweepEnabled = body.demoTtlSweepEnabled;
+    if ('demoLayoutTtlDays' in body) {
+      const d = body.demoLayoutTtlDays;
+      if (typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > 3650) return reply.code(400).send({ error: 'invalid_input' });
+      patch.demoLayoutTtlDays = d;
+    }
     if ('catalogReview' in body) {
       if (body.catalogReview !== 'moderators' && body.catalogReview !== 'none') return reply.code(400).send({ error: 'invalid_input' });
       patch.catalogReview = body.catalogReview;
@@ -1435,4 +1456,36 @@ export async function syncLibrariesFromDisk(partsDir: string, logger?: { info: (
     });
     logger?.info(`auto-registered library from disk: ${slug} (${partCount} parts)`);
   }
+}
+
+/** Why a server setting can't be changed from Admin › Settings. */
+type SetupWhy = 'secret' | 'restart' | 'deploy' | 'bootstrap';
+
+export interface ServerSetupRow {
+  name: string;
+  value: string;
+  /** The env var(s) to change it with. */
+  env: string;
+  why: SetupWhy;
+}
+
+/** The server's env-only settings, as Admin › Settings shows them (never a secret's value). */
+export function serverSetup(): ServerSetupRow[] {
+  const onOff = (b: boolean) => (b ? 'On' : 'Off');
+  const setUp = (b: boolean) => (b ? 'Set up' : 'Not set up');
+  return [
+    { name: 'Password sign-in', value: onOff(env.enablePasswordAuth), env: 'ENABLE_PASSWORD_AUTH', why: 'restart' },
+    { name: 'Google sign-in', value: setUp(!!env.google), env: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET', why: 'secret' },
+    { name: 'GitHub sign-in', value: setUp(!!env.github), env: 'GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET', why: 'secret' },
+    { name: 'Single sign-on (OIDC)', value: setUp(!!env.oidc), env: 'OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET', why: 'secret' },
+    { name: 'Demo mode', value: onOff(env.demoMode), env: 'DEMO_MODE', why: 'restart' },
+    { name: 'Site address', value: env.publicUrl, env: 'PUBLIC_URL', why: 'deploy' },
+    { name: 'Secure cookies', value: onOff(env.cookieSecure), env: 'COOKIE_SECURE', why: 'deploy' },
+    { name: 'Behind a proxy', value: env.trustProxy === false ? 'No' : env.trustProxy === true ? 'Yes' : String(env.trustProxy), env: 'TRUST_PROXY', why: 'deploy' },
+    { name: 'Parts folder', value: env.partsDir, env: 'PARTS_DIR', why: 'deploy' },
+    { name: 'Backups folder', value: env.backupsDir, env: 'BACKUPS_DIR', why: 'deploy' },
+    { name: 'Database file', value: env.dbPath, env: 'DB_PATH', why: 'deploy' },
+    { name: 'Port', value: String(env.port), env: 'HTTP_PORT', why: 'deploy' },
+    { name: 'First admin', value: setUp(!!env.bootstrapAdminEmail), env: 'BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD', why: 'bootstrap' },
+  ];
 }
