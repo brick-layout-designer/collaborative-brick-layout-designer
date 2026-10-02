@@ -1711,7 +1711,10 @@ function seedDefaultMeta(meta: Y.Map<unknown>): void {
 function readSidecarCache(doc: Y.Doc): Record<string, unknown> {
   const meta = doc.getMap('meta');
   const cache = meta.get('cache');
-  return (cache && typeof cache === 'object' ? cache : {}) as Record<string, unknown>;
+  // A layout's first label, view or venue starts the sidecar: give it the
+  // fields every sidecar file has, or the downloaded file won't open again.
+  const base = (cache && typeof cache === 'object' ? cache : {}) as Record<string, unknown>;
+  return { schemaVersion: 1, bbmHashSha256: '', ...base };
 }
 
 function writeSidecarCache(doc: Y.Doc, cache: Record<string, unknown>): void {

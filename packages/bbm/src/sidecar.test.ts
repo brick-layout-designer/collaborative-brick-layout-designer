@@ -182,3 +182,21 @@ describe('views', () => {
     expect(readView({ id: 'a', fit: false })!.fit).toBe(true);
   });
 });
+
+describe('a sidecar started without a schemaVersion', () => {
+  it('is written with the current one, so it reads back', () => {
+    const started = { views: [{ id: 'v', name: 'Overview', fit: true, rect: null, sheets: null, grid: false, labels: true }] };
+    const text = writeSidecar(started as unknown as Sidecar);
+    const back = readSidecar(text);
+    expect(back.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(back.bbmHashSha256).toBe('');
+    expect(back.views?.map((v) => v.name)).toEqual(['Overview']);
+  });
+});
+
+describe('a sidecar file written without a schemaVersion', () => {
+  it('reads as version 1, and a wrong one is still refused', () => {
+    expect(readSidecar('{"views":[]}').schemaVersion).toBe(1);
+    expect(() => readSidecar('{"schemaVersion":"one"}')).toThrow(/schemaVersion/);
+  });
+});
