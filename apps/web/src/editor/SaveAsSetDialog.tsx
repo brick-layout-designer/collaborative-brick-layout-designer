@@ -49,6 +49,8 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
     })));
 
     // Sanitise filename — mirror desktop's rules.
+    // Control characters are what we're stripping out here.
+    // eslint-disable-next-line no-control-regex
     let safe = trimmed.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
     safe = safe.replace(/^[. ]+|[. ]+$/g, '') || 'Set';
     if (!safe.toLowerCase().endsWith('.set')) safe += '.set';

@@ -56,7 +56,7 @@ jobs:
       - run: pnpm install --frozen-lockfile=false
 
       - run: pnpm typecheck
-      - run: pnpm lint || true  # lint config lands in a follow-up; don't block PRs yet
+      - run: pnpm lint
       - run: pnpm build  # must precede `test`: @cld/ydoc's tests import @cld/bbm's built dist/
       - run: pnpm test
 

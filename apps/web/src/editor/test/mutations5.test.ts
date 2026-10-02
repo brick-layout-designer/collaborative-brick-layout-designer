@@ -19,7 +19,6 @@ import {
   editRulerItem,
   cloneModuleBricks,
   rescanModuleFromBricks,
-  setSidecarModuleMembers,
   addSidecarModule,
   readBudgetLimits,
   setBudgetLimits,

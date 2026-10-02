@@ -17,7 +17,6 @@ import { imageSize, parsePartXml, scanCatalog } from '@cld/parts-catalog';
 import type { FourDBrixRemap, LDrawRemap, PartMetadata, TrackDesignerRemap } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
-import { requireUser } from '../auth/cookie.js';
 
 interface ConnectionPointWire {
   type: string;

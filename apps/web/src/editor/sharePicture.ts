@@ -54,7 +54,7 @@ export type ShareOutcome = 'shared' | 'downloaded' | 'cancelled';
 export async function shareOrDownload(blob: Blob, filename: string, title: string, preferShare: boolean): Promise<ShareOutcome> {
   if (preferShare) {
     const file = new File([blob], filename, { type: 'image/png' });
-    let shareable = false;
+    let shareable: boolean;
     try {
       shareable = typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
     } catch {

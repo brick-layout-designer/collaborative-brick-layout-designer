@@ -164,7 +164,6 @@ export async function layoutRoutes(app: FastifyInstance) {
     const body = req.body ?? {};
 
     let title = body.title?.trim() || 'Untitled Layout';
-    let docSnapshot: Uint8Array;
     let sidecarSnapshot: Uint8Array | null = null;
     const id = randomUUID();
 
@@ -223,7 +222,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     // The editor reads (and edits) the sidecar from the main doc's
     // `meta.cache`, so an imported sidecar goes there too.
     if (sidecar) doc.getMap('meta').set('cache', sidecar as unknown as Record<string, unknown>);
-    docSnapshot = encodeDoc(doc);
+    const docSnapshot = encodeDoc(doc);
 
     // Resolve owner — personal by default, or a club if `orgSlug` provided
     // (a member, and an admin when the club lets only admins add things).
@@ -1017,6 +1016,7 @@ function crc32Buffer(buf: Buffer): number {
 function sanitizeFilename(s: string): string {
   // Strip path-traversal characters and trim. Falls back if the entire
   // name is non-printable.
+  // eslint-disable-next-line no-control-regex -- control characters are what this strips
   const cleaned = s.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_').trim();
   return cleaned.length > 0 ? cleaned.slice(0, 80) : 'layout';
 }

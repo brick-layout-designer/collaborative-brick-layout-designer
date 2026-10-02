@@ -72,7 +72,7 @@ function GlobalBbmDrop() {
       );
       if (!files.some((f) => /\.(bld-layout|bbm|zip)$/i.test(f.name) || MAP_FORMAT_FILE.test(f.name))) return;
       e.preventDefault();
-      let layouts: DroppedLayout[] = [];
+      let layouts: DroppedLayout[];
       try {
         const convert = catalogMapConverter(
           async () => (await queryClient.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 })).parts,

@@ -58,7 +58,6 @@ describe('Text and ruler dialogs keep alpha and named colours', () => {
   });
 
   it('ruler dialog writes an edited alpha and leaves untouched colours as they were', async () => {
-    const Y = await import('yjs');
     const { EditRulerDialog } = await import('../EditRulerDialog');
     const { addLinearRuler, ensureRulerLayer } = await import('../mutations');
     const { createDefaultLayoutDoc, docToBbm } = await import('@cld/ydoc');
@@ -68,7 +67,7 @@ describe('Text and ruler dialogs keep alpha and named colours', () => {
     const ruler = () => docToBbm(doc).layers.flatMap((l) => (l.type === 'ruler' ? l.rulerItems : []))[0]!;
     // A known guideline colour must survive an edit of another field.
     doc.transact(() => {
-      const items = (doc.getMap('layerData').get(layerId) as InstanceType<typeof Y.Map>).get('rulerItems') as InstanceType<typeof Y.Array<Record<string, unknown>>>;
+      const items = (doc.getMap('layerData').get(layerId) as import('yjs').Map<unknown>).get('rulerItems') as import('yjs').Array<Record<string, unknown>>;
       const r = items.get(0);
       items.delete(0, 1);
       items.insert(0, [{ ...r, guidelineColor: { kind: 'known', name: 'Gray' } }]);

@@ -96,8 +96,8 @@ export function snapToAnchorBrick(
   anchorBrick: import('@cld/model').Brick,
   anchorMeta: PartWire,
   newPart: PartWire,
-  newWidth: number,
-  newHeight: number,
+  _newWidth: number,
+  _newHeight: number,
 ): AnchorSnapResult | null {
   if (newPart.connections.length === 0) return null;
 

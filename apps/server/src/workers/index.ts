@@ -18,7 +18,7 @@
 // Tests skip the whole worker stack (NODE_ENV=test).
 
 import { lt, eq, isNotNull, and } from 'drizzle-orm';
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createGzip } from 'node:zlib';
 import { createWriteStream } from 'node:fs';
@@ -71,7 +71,7 @@ async function safeRun(name: string, fn: () => Promise<void>): Promise<void> {
   } catch (err) {
     // Workers must never crash the process. Log and move on; the next
     // tick will retry.
-    // eslint-disable-next-line no-console
+     
     console.error(`[workers] ${name} failed:`, err);
   }
 }
@@ -100,7 +100,7 @@ async function demoTtlSweep(): Promise<void> {
     await docHub.close(id);
   }
   if (expired.length > 0) {
-    // eslint-disable-next-line no-console
+     
     console.log(`[demoTtlSweep] deleted ${expired.length} expired demo-owned layouts`);
   }
 }
@@ -171,7 +171,7 @@ export async function dailyCompaction(): Promise<void> {
     compacted += 1;
   }
   if (compacted > 0) {
-    // eslint-disable-next-line no-console
+     
     console.log(`[dailyCompaction] compacted ${compacted} layouts`);
   }
 }

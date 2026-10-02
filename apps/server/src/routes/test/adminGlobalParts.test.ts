@@ -390,7 +390,6 @@ describe('admin part-libraries', () => {
     await promoteToAdmin('admin@example.com');
 
     // Insert a dummy row so the route thinks it's already installed.
-    const adminId = (await db.select().from(schema.users).where(eq(schema.users.email, 'admin@example.com')).get())!.id;
     const now = new Date();
     await db.insert(schema.partLibraries).values({
       id: 'base-lib-id',

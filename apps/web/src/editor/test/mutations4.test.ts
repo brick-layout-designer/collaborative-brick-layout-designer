@@ -213,7 +213,7 @@ describe('translateBricks', () => {
 
   it('is a no-op when brickIds is empty', () => {
     const { doc, layerId } = docWithBrickLayer();
-    const id = placeBrick(doc, layerId, { partNumber: 'p', x: 5, y: 5, width: 2, height: 2 });
+    placeBrick(doc, layerId, { partNumber: 'p', x: 5, y: 5, width: 2, height: 2 });
     translateBricks(doc, layerId, [], 10, 10);
     const area = bricksInLayer(doc, layerId)[0]?.get('displayArea') as { x: number; y: number };
     expect(area.x).toBe(5);
@@ -341,7 +341,7 @@ describe('insertBricks', () => {
 describe('rotateBricks', () => {
   it('is a no-op when brickIds is empty', () => {
     const { doc, layerId } = docWithBrickLayer();
-    const id = placeBrick(doc, layerId, { partNumber: 'p', x: 0, y: 0, width: 2, height: 2, orientation: 0 });
+    placeBrick(doc, layerId, { partNumber: 'p', x: 0, y: 0, width: 2, height: 2, orientation: 0 });
     rotateBricks(doc, layerId, [], 90);
     expect(bricksInLayer(doc, layerId)[0]?.get('orientation')).toBe(0);
   });

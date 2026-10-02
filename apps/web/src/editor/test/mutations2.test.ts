@@ -94,7 +94,7 @@ describe('moveLayer', () => {
 
   it('is a no-op when already at the top', () => {
     const doc = blankDoc();
-    const a = ensureBrickLayer(doc);
+    ensureBrickLayer(doc);
     const b = ensureRulerLayer(doc);
     const before = doc.getArray<string>('layers').toArray().slice();
     moveLayer(doc, b, 'up'); // already at top

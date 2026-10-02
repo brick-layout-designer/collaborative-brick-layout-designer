@@ -194,7 +194,7 @@ export function flushRollup(now: number = Date.now()): void {
     rollup.flush(now);
     usage.flush();
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error('[metrics] rollup flush failed:', err);
   }
 }

@@ -6,7 +6,7 @@
 // can apply tighter rate limits / IP allowlists per deployment.
 
 import type { FastifyInstance } from 'fastify';
-import { and, count, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { mkdir, rm, readdir } from 'node:fs/promises';
@@ -808,7 +808,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       let m: RegExpExecArray | null;
       while ((m = rx.exec(html)) !== null) {
         const fileName = m[1]!;
-        let stem = fileName.slice(0, -4); // strip ".zip"
+        const stem = fileName.slice(0, -4); // strip ".zip"
         let name = stem;
         let version = '';
         const dot = stem.indexOf('.');
@@ -1316,7 +1316,7 @@ export async function extractZip(buf: Buffer, destDir: string): Promise<void> {
         data = new Uint8Array(inflateRawSync(new Uint8Array(compData), { maxOutputLength: limit }));
       } catch (e) {
         if (e instanceof RangeError) {
-          throw new Error(`zip bomb: ${entry.name} inflates beyond its declared size`);
+          throw new Error(`zip bomb: ${entry.name} inflates beyond its declared size`, { cause: e });
         }
         throw e;
       }
@@ -1385,7 +1385,7 @@ export async function syncLibrariesFromDisk(partsDir: string, logger?: { info: (
     if (registeredSlugs.has(slug)) continue;
 
     const libDir = join(libsDir, slug);
-    let partCount = 0;
+    let partCount: number;
     try {
       partCount = await countXmls(libDir);
     } catch {

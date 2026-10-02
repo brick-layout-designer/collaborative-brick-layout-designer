@@ -19,7 +19,6 @@ describe('isValidEmail', () => {
   });
 
   it('returns false for a string longer than 254 characters', () => {
-    const long = 'a'.repeat(246) + '@b.com'; // 246+1+1+1+3=252... make it >254
     expect(isValidEmail('a'.repeat(250) + '@b.com')).toBe(false);
   });
 

@@ -101,7 +101,7 @@ import {
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
 import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
-import { pxToStud, studToPx } from './render/coords';
+import { pxToStud } from './render/coords';
 import { ensureSprite, getSpriteSync, resetSpriteProgress, wantSprites } from './render/spriteCache';
 import { layoutSpriteUrls } from './render/layoutSprites';
 import { MapLoadingCard, OpeningLayoutScreen } from './LoadingCard';
@@ -1230,6 +1230,7 @@ function Canvas({
       touchEl.removeEventListener('touchcancel', release);
     };
     // brickAt reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touchEl, isViewer]);
   /** When a finger last came down: a long press also fires contextmenu, which isn't a right-click. */
   const lastTouchAtRef = useRef(0);
@@ -3393,7 +3394,7 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
  * and receive keyboard focus for accessibility.
  */
 function CanvasContextMenu({
-  x, y, studX, studY, onBrick, selection, map, doc, activeLayerId, undo,
+  x, y, onBrick, selection, map, undo,
   textCellRef, onEditText, rulerRef, brickIdUnderCursor, selectedRulerId, onAttachRuler,
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
   onRotateCCW, onRotateCW, onBringToFront, onSendToBack,

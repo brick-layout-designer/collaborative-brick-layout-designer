@@ -58,7 +58,7 @@ export function UsedPartsPanel({ doc, budgetLimits = new Map() }: { doc: Y.Doc; 
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
-      let cmp = 0;
+      let cmp: number;
       if (sortKey === 'count') cmp = a.count - b.count;
       else if (sortKey === 'partNumber') cmp = a.partNumber.localeCompare(b.partNumber);
       else if (sortKey === 'budget') {

@@ -23,7 +23,7 @@ export async function fetchModuleBatches(moduleId: string): Promise<ModuleBatch[
     return batches;
   } catch (e) {
     if (e instanceof Error && e.message === 'module has no bricks') throw e;
-    throw new Error('module snapshot is empty or invalid');
+    throw new Error('module snapshot is empty or invalid', { cause: e });
   } finally {
     moduleDoc.destroy();
   }
