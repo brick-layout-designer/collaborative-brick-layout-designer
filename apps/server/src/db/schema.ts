@@ -1,4 +1,4 @@
-import { blob, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // All timestamps are unix-millis (Drizzle "timestamp_ms" mode). Kept portable to
 // Postgres `timestamptz` later by treating columns as opaque time-ordered ints.
@@ -200,6 +200,14 @@ export const orgs = sqliteTable('orgs', {
    * Null for clubs made before this column existed (they don't count).
    */
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Who can join: 'invite' (only with an admin's invite, the default),
+   * 'request' (people ask and an admin approves), or 'open' (anyone
+   * signed in joins with one click, as a member).
+   */
+  joinPolicy: text('join_policy', { enum: ['invite', 'request', 'open'] }).notNull().default('invite'),
+  /** Shown in the Clubs directory to everyone signed in. Off by default. */
+  listed: integer('listed', { mode: 'boolean' }).notNull().default(false),
 });
 
 export const orgMembers = sqliteTable(
@@ -237,6 +245,28 @@ export const orgInvites = sqliteTable('org_invites', {
   expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
 });
+
+// Asks to join a club whose admins approve newcomers. One per person per
+// club; approving or declining deletes it (the audit log keeps the record).
+export const orgJoinRequests = sqliteTable(
+  'org_join_requests',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** An optional short note to the admins. */
+    message: text('message'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    orgUser: uniqueIndex('org_join_requests_org_user_idx').on(t.orgId, t.userId),
+    userIdx: index('org_join_requests_user_id_idx').on(t.userId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Layouts (Phase 2)

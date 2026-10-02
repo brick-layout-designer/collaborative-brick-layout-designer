@@ -39,6 +39,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   slug_taken: 'Another club already uses that address.',
   invalid_slug: 'Use lowercase letters, numbers and dashes for the address.',
   already_member: 'That person is already in the club.',
+  invite_only: 'This club takes new members by invite only. Ask one of its admins.',
+  too_many_requests: 'You’re waiting to hear from a lot of clubs already. Take some requests back, or wait for an answer.',
+  message_too_long: 'Please keep the note to 300 characters.',
+  invalid_join_policy: 'Pick who can join: Invite only, Ask to join or Open.',
   invalid_expiry: 'Pick between 1 and 30 days.',
   org_owned_rooms_can_only_move_to_orgs: "A club's venue stays with the club. Make a copy for yourself instead.",
   org_owned_layouts_can_only_transfer_to_orgs: "A club's layout stays with the club. Make a copy for yourself instead.",
@@ -479,7 +483,14 @@ export const api = {
     /** Club settings (admins): name, address, description, who may add things. */
     update: (
       slug: string,
-      body: { name?: string; slug?: string; description?: string; membersCanCreate?: boolean },
+      body: {
+        name?: string;
+        slug?: string;
+        description?: string;
+        membersCanCreate?: boolean;
+        joinPolicy?: JoinPolicy;
+        listed?: boolean;
+      },
     ) => patch<{ ok: true; slug: string; name: string }>(`/api/orgs/${slug}`, body),
     /** Delete the club and everything it owns; `confirm` is its name, typed out. */
     remove: async (slug: string, confirm: string) => {
@@ -500,6 +511,24 @@ export const api = {
       get<{ users: { id: string; displayName: string; avatarUrl: string | null; alreadyMember: boolean }[] }>(
         `/api/orgs/${slug}/user-search?q=${encodeURIComponent(q)}`,
       ),
+    /** Listed clubs, for Find a club; `q` searches names and descriptions. */
+    directory: (q = '') =>
+      get<{ clubs: ClubSummary[] }>(`/api/club-directory${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
+    /** What anyone may see of a listed club (or of a club you're in). */
+    summary: (slug: string) => get<ClubSummary>(`/api/orgs/${slug}/summary`),
+    /** Join an open club, or ask to join one whose admins approve newcomers. */
+    join: (slug: string, message?: string) =>
+      post<{ status: 'member' | 'requested'; slug: string }>(`/api/orgs/${slug}/join`, message ? { message } : {}),
+    /** Take back your request to join. */
+    cancelJoin: (slug: string) => del(`/api/orgs/${slug}/join`),
+    /** Requests waiting for an answer (admins). */
+    joinRequests: (slug: string) => get<{ requests: JoinRequestSummary[] }>(`/api/orgs/${slug}/join-requests`),
+    approveJoin: (slug: string, id: string) =>
+      post<{ ok: true }>(`/api/orgs/${slug}/join-requests/${encodeURIComponent(id)}/approve`, {}),
+    declineJoin: (slug: string, id: string) =>
+      post<{ ok: true }>(`/api/orgs/${slug}/join-requests/${encodeURIComponent(id)}/decline`, {}),
+    /** Requests waiting in the clubs you run, for the badge on Clubs. */
+    joinRequestCount: () => get<{ count: number; clubs: { slug: string; count: number }[] }>('/api/join-requests/count'),
     changeMemberRole: (slug: string, userId: string, role: 'admin' | 'member') =>
       patch<{ ok: true }>(`/api/orgs/${slug}/members/${userId}`, { role }),
     removeMember: (slug: string, userId: string) =>
@@ -964,6 +993,36 @@ export interface OrgDetail extends OrgSummary {
   membersCanCreate?: boolean;
   memberCount?: number;
   adminCount?: number;
+  /** Who can join; older servers leave it out (invite only). */
+  joinPolicy?: JoinPolicy;
+  /** Shown in the Clubs directory. */
+  listed?: boolean;
+  /** Requests waiting (admins only). */
+  pendingRequests?: number;
+}
+
+/** Who can join a club: only by invite, by asking, or anyone signed in. */
+export type JoinPolicy = 'invite' | 'request' | 'open';
+
+/** A club as people outside it see it in the directory. */
+export interface ClubSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  memberCount: number;
+  joinPolicy: JoinPolicy;
+  listed: boolean;
+  myStatus: 'admin' | 'member' | 'requested' | null;
+}
+
+export interface JoinRequestSummary {
+  id: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  message: string;
+  createdAt: number;
 }
 
 export interface OrgMemberSummary {

@@ -311,6 +311,28 @@ export const HELP_TEXTS = {
     short: 'Show everything you can use, only your own, or one club’s.',
     more: 'Your own things and your clubs’ things sit in one list, each marked with who owns it. Pick a club to see just its things; new things are saved there too unless you choose otherwise.',
   },
+
+  // Joining a club
+  'club.whoCanJoin': {
+    title: 'Who can join',
+    short: 'Choose how new people get into the club.',
+    more: 'Invite only: people join with an invite from an admin. Ask to join: people send a request and an admin says yes or no. Open: anyone signed in can join straight away, as a member.',
+  },
+  'club.listed': {
+    title: 'Show in the club list',
+    short: 'Let people find the club under Find a club.',
+    more: 'Everyone signed in sees its name, its description and how many members it has. Leave it off to keep the club hidden, so only people you invite know about it.',
+  },
+  'club.requests': {
+    title: 'Requests to join',
+    short: 'People who asked to join the club, waiting for an admin.',
+    more: 'Approve to make them a member. Decline to say no; they aren’t told, and they can ask again later.',
+  },
+  'club.find': {
+    title: 'Find a club',
+    short: 'Clubs that chose to be listed here, for anyone to find.',
+    more: 'Join an open club straight away, or ask to join and wait for an admin to say yes. Some clubs take new members by invite only.',
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_TEXTS;

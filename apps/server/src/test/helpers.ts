@@ -43,6 +43,7 @@ export function resetDb(): void {
     DELETE FROM layouts;
     DELETE FROM oauth_accounts;
     DELETE FROM org_invites;
+    DELETE FROM org_join_requests;
     DELETE FROM org_members;
     DELETE FROM orgs;
     DELETE FROM sessions;

@@ -3,12 +3,15 @@ import { Link, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
+import { FindClubSection } from './ClubDirectory';
 
-/** /orgs landing: the clubs the user is in, plus a create button. */
+/** /orgs landing: the clubs the user is in, a create button, and Find a club. */
 export function OrgsPage() {
   const list = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const [showCreate, setShowCreate] = useState(false);
+  const waiting = useQuery({ queryKey: ['join-request-count'], queryFn: api.orgs.joinRequestCount, enabled: Boolean(me.data?.user) });
+  const waitingIn = (slug: string) => waiting.data?.clubs.find((c) => c.slug === slug)?.count ?? 0;
 
   if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
   if (!me.data?.user) return <Navigate to="/login" replace />;
@@ -29,10 +32,11 @@ export function OrgsPage() {
           )}
         </div>
 
+        <h2 className="text-lg font-semibold">Your clubs</h2>
         {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && (list.data.orgs.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
-            You’re not in a club yet. Make one, or ask a club’s admin to invite you.
+            You’re not in a club yet. Find one below, make one, or ask a club’s admin to invite you.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line">
@@ -45,6 +49,14 @@ export function OrgsPage() {
                   <p className="text-xs text-muted">
                     /{o.slug} · you are {o.myRole === 'admin' ? 'an admin' : 'a member'}
                   </p>
+                  {waitingIn(o.slug) > 0 && (
+                    <Link
+                      to={`/orgs/${o.slug}/admin`}
+                      className="mt-1 inline-flex rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent-text hover:underline"
+                    >
+                      {waitingIn(o.slug) === 1 ? '1 request to join' : `${waitingIn(o.slug)} requests to join`}
+                    </Link>
+                  )}
                 </div>
                 <Link
                   to={`/orgs/${o.slug}`}
@@ -56,6 +68,10 @@ export function OrgsPage() {
             ))}
           </ul>
         ))}
+
+        <div className="pt-4">
+          <FindClubSection />
+        </div>
 
         {showCreate && <CreateOrgDialog onClose={() => setShowCreate(false)} />}
       </main>
