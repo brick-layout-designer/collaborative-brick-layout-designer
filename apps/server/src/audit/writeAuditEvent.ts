@@ -84,6 +84,11 @@ export type AuditEventType =
   | 'collection_feature'
   | 'collection_item_removed'
   | 'collection_add'
+  // Club collections: deleted by a curator, removed by a site moderator
+  // (abuse), and pinned or unpinned for the club.
+  | 'collection_delete'
+  | 'collection_remove'
+  | 'collection_pin'
   // Warnings: a site admin or moderator warned a person or club ('warn'),
   // a club's admin or manager warned a member ('club_warn'), and the
   // recipient said they read it ('warn_ack'). Subject is the person or club.

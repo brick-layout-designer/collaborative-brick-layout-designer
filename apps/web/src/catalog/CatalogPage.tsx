@@ -9,7 +9,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CatalogItem, type CatalogKind } from '../api';
 import { AppHeader } from '../AppHeader';
 import { SaveToPicker } from '../owners/OwnerControls';
-import { CollectionsSection, MyCollections } from './Collections';
+import { CollectionsSection } from './Collections';
+import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 
 export function CatalogPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -29,6 +30,7 @@ export function CatalogPage() {
     enabled: kinds.length > 0 && (!!user || !!s?.anonymousBrowse),
   });
   const [adding, setAdding] = useState<CatalogItem | null>(null);
+  const [toCollection, setToCollection] = useState<CollectionTarget | null>(null);
 
   return (
     <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
@@ -64,8 +66,7 @@ export function CatalogPage() {
           </p>
         ) : (
           <>
-            <CollectionsSection />
-            {user && <MyCollections />}
+            <CollectionsSection signedIn={!!user} />
             <div className="flex flex-wrap items-center gap-2">
               {kinds.length > 1 && (
                 <div role="tablist" aria-label="Catalog" className="flex rounded-lg border border-line p-0.5">
@@ -89,7 +90,7 @@ export function CatalogPage() {
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={kind === 'module' ? 'Search modules' : 'Search parts'}
                 aria-label="Search the catalog"
-                className="min-h-10 min-w-0 flex-1 rounded-lg border border-border bg-soft px-3"
+                className="min-h-11 min-w-[12rem] flex-1 basis-full rounded-lg border border-border bg-soft px-3 sm:basis-auto"
               />
               <select
                 value={sort}
@@ -142,14 +143,24 @@ export function CatalogPage() {
                     )}
                   </div>
                   {user ? (
-                    <button
-                      type="button"
-                      onClick={() => setAdding(it)}
-                      aria-label={`Add ${it.title}`}
-                      className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
-                    >
-                      {kind === 'module' ? 'Add to my modules' : 'Add to my parts'}
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAdding(it)}
+                        aria-label={`Add ${it.title}`}
+                        className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+                      >
+                        {kind === 'module' ? 'Add to my modules' : 'Add to my parts'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setToCollection({ kind: 'catalog', item: it })}
+                        aria-label={`${it.title}: add to a collection`}
+                        className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
+                      >
+                        Add to a collection…
+                      </button>
+                    </div>
                   ) : (
                     <Link to="/login" className="tap-target rounded-lg border border-border px-3 py-1.5 text-center text-sm font-semibold hover:bg-soft">
                       Sign in to add
@@ -162,6 +173,7 @@ export function CatalogPage() {
         )}
       </main>
       {adding && <AddDialog item={adding} onClose={() => setAdding(null)} />}
+      {toCollection && <AddToCollectionDialog target={toCollection} onClose={() => setToCollection(null)} />}
     </div>
   );
 }

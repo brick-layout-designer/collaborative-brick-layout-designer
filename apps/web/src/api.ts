@@ -85,6 +85,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   collection_too_big: 'A collection can hold up to 60 items.',
   item_not_public: 'One of the items isn’t in the public catalog any more. Take it out and try again.',
   not_featurable: 'Only collections made by moderators can be featured.',
+  already_in_collection: 'It’s in that collection already.',
+  module_not_in_club: 'Only the club’s own modules can go in a club collection.',
+  module_not_yours: 'Only your own modules can go in your collection.',
+  part_not_in_club: 'Only the club’s own parts can go in a club collection.',
+  part_not_yours: 'Only your own parts can go in your collection.',
+  only_club_admins_can_curate: 'Only the club’s admins and managers make its collections.',
+  not_public: 'This collection isn’t in the public catalog.',
   demo_account_cannot_change_profile: 'The demo’s name can’t be changed.',
   demo_account_cannot_use_desktop: 'The desktop app can’t sign in to the demo. Sign up to use it.',
   demo_account_cannot_link: 'The demo can’t be linked to another sign-in.',
@@ -936,13 +943,20 @@ export const api = {
       post<{ kind: CatalogKind; id: string; version: number }>(`/api/catalog/items/${encodeURIComponent(id)}/add`, orgSlug ? { orgSlug } : {}),
     copies: () => get<{ copies: CatalogCopy[] }>('/api/catalog/copies'),
     updateCopy: (copyId: string) => post<{ ok: true; version: number }>(`/api/catalog/copies/${encodeURIComponent(copyId)}/update`, {}),
-    // Collections: named, ordered sets of public items.
+    // Collections: named, ordered sets of modules and parts.
     collections: () => get<{ collections: CollectionSummary[] }>('/api/catalog/collections'),
-    collection: (id: string) => get<{ collection: CollectionDetail; items: CatalogItem[] }>(`/api/catalog/collections/${encodeURIComponent(id)}`),
+    collection: (id: string) => get<{ collection: CollectionDetail; items: CollectionItem[] }>(`/api/catalog/collections/${encodeURIComponent(id)}`),
     myCollections: () => get<{ collections: MyCollection[] }>('/api/catalog/collections/mine'),
-    createCollection: (body: CollectionInput) => post<{ id: string; status: 'in_review' | 'public' }>('/api/catalog/collections', body),
-    updateCollection: (id: string, body: Partial<CollectionInput>) =>
-      patch<{ id: string; status: CatalogStatus; pending: boolean }>(`/api/catalog/collections/${encodeURIComponent(id)}`, body),
+    /** The collections of my clubs (or of one club). */
+    clubCollections: (club?: string) =>
+      get<{ clubs: ClubCollections[] }>(`/api/catalog/collections/clubs${club ? `?club=${encodeURIComponent(club)}` : ''}`),
+    createCollection: (body: CollectionInput) => post<CollectionSaved>('/api/catalog/collections', body),
+    updateCollection: (id: string, body: Partial<CollectionInput> & { pinned?: boolean }) =>
+      patch<CollectionSaved>(`/api/catalog/collections/${encodeURIComponent(id)}`, body),
+    /** "Add to a collection…": one more item at the end. */
+    addToCollection: (id: string, entry: CollectionEntry) =>
+      post<CollectionSaved>(`/api/catalog/collections/${encodeURIComponent(id)}/items`, entry.source === 'catalog' ? { itemId: entry.id } : entry),
+    deleteCollection: (id: string) => del(`/api/catalog/collections/${encodeURIComponent(id)}`),
     withdrawCollection: (id: string) => post<{ ok: true }>(`/api/catalog/collections/${encodeURIComponent(id)}/withdraw`, {}),
     dismissCollectionNote: (id: string) => post<{ ok: true }>(`/api/catalog/collections/${encodeURIComponent(id)}/dismiss-note`, {}),
     addCollection: (id: string, orgSlug?: string) =>
@@ -955,7 +969,9 @@ export const api = {
     decline: (versionId: string, reason: string) =>
       post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/decline`, { reason }),
     unpublish: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/unpublish`, { reason }),
-    collections: () => get<{ queue: CollectionReviewEntry[]; collections: ModeratedCollection[] }>('/api/moderation/collections'),
+    collections: () =>
+      get<{ queue: CollectionReviewEntry[]; collections: ModeratedCollection[]; clubCollections?: ModeratedCollection[] }>('/api/moderation/collections'),
+    removeCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/remove`, { reason }),
     approveCollection: (id: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/approve`, {}),
     declineCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/decline`, { reason }),
     unpublishCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/unpublish`, { reason }),
@@ -1071,7 +1087,10 @@ export interface MyCatalogItem {
   collections?: number;
 }
 
-/** A public collection, as the Catalog lists it. */
+/** Who sees a collection: everyone (its text reviewed first), or only its curator or club. */
+export type CollectionAudience = 'everyone' | 'private';
+
+/** A collection, as the lists show it. */
 export interface CollectionSummary {
   id: string;
   title: string;
@@ -1079,7 +1098,12 @@ export interface CollectionSummary {
   featured: boolean;
   /** Made by a moderator or site admin. */
   official: boolean;
+  /** The curator's name, or the club's. */
   by: string;
+  /** Older servers leave it out: everyone. */
+  audience?: CollectionAudience;
+  /** A club's collection. */
+  club?: boolean;
   itemCount: number;
   modules: number;
   parts: number;
@@ -1087,22 +1111,42 @@ export interface CollectionSummary {
   updatedAt: number;
 }
 
-/** A change waiting for review (curator and moderators only). */
+/** A change to a public collection's text waiting for review (curators and moderators only). */
 export interface CollectionDraft {
   title: string;
   description: string;
   coverItemId: string | null;
+  coverModuleId?: string | null;
   coverUrl: string | null;
-  items: { id: string; kind: CatalogKind; title: string; previewUrl: string }[];
 }
 
 export interface CollectionDetail extends CollectionSummary {
   coverItemId: string | null;
+  coverModuleId?: string | null;
   status: CatalogStatus;
   reason: string | null;
   pending: CollectionDraft | null;
   curatorNote: string | null;
   canEdit: boolean;
+  pinned?: boolean;
+  /** The club it belongs to. */
+  clubInfo?: { id: string; slug: string; name: string } | null;
+  /** My role in that club. */
+  myRole?: ClubRole | null;
+  /** A site moderator may remove it (a club's collection). */
+  canRemove?: boolean;
+}
+
+/** How a collection's own module or part stands in the catalog (its curators, public collections). */
+export interface EntryReview {
+  state: 'public' | 'in_review' | 'declined' | 'unpublished' | 'not_shared' | 'catalog_off';
+  reason: string | null;
+}
+
+/** An item in a collection: a catalog item, or the curator's (or club's) own module or part. */
+export interface CollectionItem extends CatalogItem {
+  source?: 'catalog' | 'library';
+  review?: EntryReview | null;
 }
 
 export interface MyCollection extends CollectionSummary {
@@ -1114,11 +1158,44 @@ export interface MyCollection extends CollectionSummary {
   curatorNote: string | null;
 }
 
+export interface ClubCollection extends MyCollection {
+  pinned: boolean;
+  /** Who made it. */
+  curator: string;
+}
+
+export interface ClubCollections {
+  id: string;
+  slug: string;
+  name: string;
+  myRole: ClubRole;
+  /** An admin or manager: makes and changes the club's collections. */
+  canCurate: boolean;
+  collections: ClubCollection[];
+}
+
+/** One item, as requests spell it. */
+export type CollectionEntry = { source: 'catalog'; id: string } | { source: 'library'; kind: CatalogKind; id: string };
+
 export interface CollectionInput {
   title: string;
   description: string;
-  itemIds: string[];
+  entries: CollectionEntry[];
   coverItemId: string | null;
+  coverModuleId?: string | null;
+  audience: CollectionAudience;
+  /** Make it the club's (its admins and managers). */
+  clubSlug?: string;
+}
+
+export interface CollectionSaved {
+  id: string;
+  status: CatalogStatus;
+  audience?: CollectionAudience;
+  pending?: boolean;
+  /** Own modules and parts shared to the catalog for their own review. */
+  submitted?: string[];
+  notShared?: { id: string; error: string }[];
 }
 
 export interface CollectionAddResult {
@@ -1128,18 +1205,24 @@ export interface CollectionAddResult {
   failed: { itemId: string; error: string }[];
 }
 
-export interface CollectionReviewEntry extends CollectionDraft {
+/** A collection's text waiting for review: new, and (for a change) what's public now. */
+export interface CollectionReviewEntry {
   id: string;
   isUpdate: boolean;
   by: string;
   email: string | null;
   createdAt: number;
   owner: WarningSubject | null;
+  title: string;
+  description: string;
+  coverUrl: string | null;
+  old: { title: string; description: string; coverUrl: string | null } | null;
+  itemCount: number;
 }
 
 export interface ModeratedCollection extends CollectionSummary {
-  status: CatalogStatus;
-  reason: string | null;
+  status?: CatalogStatus;
+  reason?: string | null;
   owner: WarningSubject | null;
 }
 

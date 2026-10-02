@@ -11,6 +11,7 @@ import { OwnerChip } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { UploadPartDialog } from './UploadPartDialog';
+import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { atLeast } from '../orgs/clubRoles';
 
 /** Where the old Library page (/library) now lands: the home page's parts section. */
@@ -39,6 +40,7 @@ export function CustomPartsSection({
   const parts = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list });
   const [uploading, setUploading] = useState(false);
   const [sharing, setSharing] = useState<CustomPartSummary | null>(null);
+  const [toCollection, setToCollection] = useState<CustomPartSummary | null>(null);
   const catalog = useCatalogStatus();
   const withdraw = useMutation({
     mutationFn: api.catalog.withdraw,
@@ -106,6 +108,11 @@ export function CustomPartsSection({
                 <a role="menuitem" href={api.customParts.spriteUrl(p.id)} download className={MORE_ITEM}>
                   Download picture
                 </a>
+                {(catalog.enabled('part') || catalog.enabled('module')) && canDeletePart(p, myUserId, orgs) && (
+                  <button role="menuitem" type="button" onClick={() => setToCollection(p)} className={MORE_ITEM}>
+                    Add to a collection…
+                  </button>
+                )}
                 {catalog.enabled('part') && canDeletePart(p, myUserId, orgs) && (
                   <button role="menuitem" type="button" onClick={() => setSharing(p)} className={MORE_ITEM}>
                     {catalog.shared('part', p.id) ? 'Publish this update…' : 'Share to the public catalog…'}
@@ -145,6 +152,7 @@ export function CustomPartsSection({
       )}
       {/* It saves to the club being shown, like New layout. */}
       {uploading && <UploadPartDialog onClose={() => setUploading(false)} />}
+      {toCollection && <AddToCollectionDialog target={{ kind: 'part', part: toCollection }} onClose={() => setToCollection(null)} />}
       {sharing && (
         <ShareToCatalogDialog
           kind="part"

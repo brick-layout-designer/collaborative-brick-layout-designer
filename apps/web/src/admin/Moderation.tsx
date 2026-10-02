@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CatalogReview, type WarningSubject } from '../api';
+import { api, type CatalogReview, type CollectionReviewEntry, type WarningSubject } from '../api';
 import { WarnForm } from '../notices/Notices';
 import { invalidateFor } from '../live/invalidate';
 
@@ -117,6 +117,42 @@ export function ModerationTab() {
   );
 }
 
+/** A collection's text for review: the new one, and (for a change) what's public now beside it. */
+export function TextReview({ q }: { q: CollectionReviewEntry }) {
+  const side = (label: string, t: { title: string; description: string; coverUrl: string | null }, testId: string) => (
+    <div data-testid={testId} className="min-w-[10rem] flex-1 space-y-1">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+      {t.coverUrl ? (
+        <img src={t.coverUrl} alt={`${label} cover`} className="aspect-[4/3] w-full max-w-40 rounded-lg border border-line bg-soft object-contain" />
+      ) : (
+        <span aria-hidden className="block aspect-[4/3] w-full max-w-40 rounded-lg border border-line bg-soft" />
+      )}
+      <p className="font-semibold">{t.title}</p>
+      {t.description && <p className="whitespace-pre-line">{t.description}</p>}
+    </div>
+  );
+  const changed = (a: string | null, b: string | null) => a !== b;
+  return (
+    <div className="flex flex-wrap gap-3">
+      {q.old && side('Now', q.old, 'review-old')}
+      {side(q.old ? 'Proposed' : 'Submitted', q, 'review-new')}
+      {q.old && (
+        <p className="basis-full text-xs text-muted">
+          Changed:{' '}
+          {[
+            changed(q.old.title, q.title) && 'title',
+            changed(q.old.description, q.description) && 'description',
+            changed(q.old.coverUrl, q.coverUrl) && 'cover',
+          ]
+            .filter(Boolean)
+            .join(', ') || 'nothing visible'}
+          . Items are checked on their own, in the queue above.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Collections: submissions and changes to review, and the ones in the catalog. */
 function CollectionModeration() {
   const qc = useQueryClient();
@@ -133,8 +169,10 @@ function CollectionModeration() {
   const decline = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.declineCollection(a.id, a.reason), ...opts });
   const unpublish = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.unpublishCollection(a.id, a.reason), ...opts });
   const feature = useMutation({ mutationFn: (a: { id: string; featured: boolean }) => api.moderation.featureCollection(a.id, a.featured), ...opts });
+  const remove = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.removeCollection(a.id, a.reason), ...opts });
   if (!data.data) return null;
   const { queue, collections } = data.data;
+  const clubCollections = data.data.clubCollections ?? [];
   return (
     <>
       <section className="space-y-3" aria-labelledby="mod-coll-queue">
@@ -145,21 +183,18 @@ function CollectionModeration() {
           <ul className="space-y-2">
             {queue.map((q) => (
               <li key={q.id} data-testid="moderation-collection" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
-                {q.coverUrl ? (
-                  <img src={q.coverUrl} alt="" className="size-24 shrink-0 rounded-lg border border-line bg-soft object-contain" />
-                ) : (
-                  <span aria-hidden className="size-24 shrink-0 rounded-lg border border-line bg-soft" />
-                )}
-                <div className="min-w-[12rem] flex-1 space-y-1">
+                <div className="min-w-[12rem] flex-1 space-y-2">
                   <p className="font-semibold">
-                    {q.title} <span className="font-normal text-muted">(collection, {q.isUpdate ? 'a change' : 'new'})</span>
+                    {q.title} <span className="font-normal text-muted">(collection {q.isUpdate ? 'text, a change' : 'text, new'})</span>
                   </p>
                   <p className="text-xs text-muted">
                     From {q.by}
-                    {q.email ? ` (${q.email})` : ''} · {new Date(q.createdAt).toLocaleString()}
+                    {q.email ? ` (${q.email})` : ''} · {new Date(q.createdAt).toLocaleString()} ·{' '}
+                    <a href={`/catalog/collections/${q.id}`} target="_blank" rel="noreferrer" className="hover:underline">
+                      {q.itemCount} {q.itemCount === 1 ? 'item' : 'items'}
+                    </a>
                   </p>
-                  {q.description && <p>{q.description}</p>}
-                  <p className="text-xs">Items: {q.items.map((i) => i.title).join(', ') || 'none'}</p>
+                  <TextReview q={q} />
                 </div>
                 <div className="flex basis-full flex-wrap justify-end gap-2 sm:basis-auto sm:flex-col">
                   <button
@@ -191,7 +226,7 @@ function CollectionModeration() {
       <section className="space-y-3" aria-labelledby="mod-colls">
         <h2 id="mod-colls" className="text-sm font-semibold">Collections in the catalog</h2>
         {collections.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">Nothing yet. Make one from the Catalog page (Mine › New collection).</p>
+          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">Nothing yet. Make one from the Catalog page (Your collections › New collection).</p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
             {collections.map((c) => (
@@ -223,6 +258,38 @@ function CollectionModeration() {
                   </button>
                 )}
                 {c.owner && !c.official && <WarnOwner owner={c.owner} title={c.title} by={c.by} link={`/catalog/collections/${c.id}`} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="space-y-3" aria-labelledby="mod-club-colls">
+        <h2 id="mod-club-colls" className="text-sm font-semibold">Clubs’ private collections ({clubCollections.length})</h2>
+        <p className="text-xs text-muted">Only each club’s members see these, and they’re never reviewed. Remove one only for abuse; it’s logged.</p>
+        {clubCollections.length > 0 && (
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
+            {clubCollections.map((c) => (
+              <li key={c.id} data-testid="moderated-club-collection" className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+                <div className="min-w-[10rem] flex-1">
+                  <a href={`/catalog/collections/${c.id}`} className="font-medium hover:underline">
+                    {c.title}
+                  </a>
+                  <p className="text-xs text-muted">
+                    {c.by} · {c.itemCount} items
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const reason = prompt(`Remove "${c.title}" from ${c.by}? It's deleted for good. Reason (logged):`);
+                    if (reason !== null) remove.mutate({ id: c.id, reason });
+                  }}
+                  aria-label={`Remove collection ${c.title}`}
+                  className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"
+                >
+                  Remove
+                </button>
+                {c.owner && <WarnOwner owner={c.owner} title={c.title} by={c.by} link={`/catalog/collections/${c.id}`} />}
               </li>
             ))}
           </ul>

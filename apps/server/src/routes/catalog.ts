@@ -264,6 +264,111 @@ export async function copyItemTo(user: User, item: typeof schema.catalogItems.$i
   return { ok: true, id, version: v.version };
 }
 
+/**
+ * Share a module or custom part to the catalog (or a new version of one
+ * already there): the share route, and a module going into a public
+ * collection. The caller must manage the thing.
+ */
+export async function submitToCatalog(
+  user: User,
+  kind: Kind,
+  sourceId: string,
+  b: { title?: unknown; description?: unknown; tags?: unknown; note?: unknown },
+): Promise<{ ok: boolean; code: number; body: unknown }> {
+  const fail = (code: number, body: unknown) => ({ ok: false, code, body });
+  if (isDemoUser(user)) return fail(403, { error: 'demo_account_cannot_submit' });
+  if (!(await catalogOn(kind))) return fail(404, { error: 'catalog_off' });
+  const src = await snapshotSource(kind, sourceId);
+  if (!src) return fail(404, { error: 'not_found' });
+  if (!(await manages(user.id, src))) return fail(403, { error: 'forbidden' });
+  const title = cleanText(b.title ?? src.title, MAX_TITLE);
+  const description = cleanText(b.description, MAX_DESCRIPTION);
+  const note = cleanText(b.note, MAX_REASON);
+  const tags = cleanTags(b.tags);
+  if (!title || description === undefined || note === undefined || !tags) return fail(400, { error: 'invalid_input' });
+  const owner: Subject = src.ownerOrgId ? { kind: 'org', id: src.ownerOrgId } : { kind: 'user', id: src.ownerUserId ?? user.id };
+  const refusal = await checkGrowth({ actor: user, owner, add: { bytes: src.bytes }, uploadBytes: src.bytes });
+  if (refusal) return fail(refusal.status, refusal.body);
+
+  const review = (await getPlatformSettings()).catalogReview;
+  const now = new Date();
+  // An item already shared from this source by the same owner gets a new version.
+  let item = await db
+    .select()
+    .from(schema.catalogItems)
+    .where(and(eq(schema.catalogItems.kind, kind), eq(schema.catalogItems.sourceId, sourceId)))
+    .get();
+  if (!item) {
+    const id = randomUUID();
+    await db.insert(schema.catalogItems).values({
+      id,
+      kind: kind,
+      sourceId: sourceId,
+      ownerUserId: src.ownerUserId,
+      ownerOrgId: src.ownerOrgId,
+      title,
+      description: description ?? '',
+      tags: JSON.stringify(tags),
+      status: 'in_review',
+      createdAt: now,
+      updatedAt: now,
+    });
+    item = (await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, id)).get())!;
+  }
+  const last = await db
+    .select({ v: sql<number>`coalesce(max(${schema.catalogItemVersions.version}), 0)`.mapWith(Number) })
+    .from(schema.catalogItemVersions)
+    .where(eq(schema.catalogItemVersions.itemId, item.id))
+    .get();
+  const version = (last?.v ?? 0) + 1;
+  const straight = review === 'none';
+  await db.insert(schema.catalogItemVersions).values({
+    id: randomUUID(),
+    itemId: item.id,
+    version,
+    status: straight ? 'public' : 'in_review',
+    submittedBy: user.id,
+    note,
+    createdAt: now,
+    ...src.values,
+  });
+  // Earlier versions still waiting are replaced by this one.
+  await db
+    .update(schema.catalogItemVersions)
+    .set({ status: 'declined', reason: 'Replaced by a newer submission', decidedAt: now })
+    .where(
+      and(
+        eq(schema.catalogItemVersions.itemId, item.id),
+        eq(schema.catalogItemVersions.status, 'in_review'),
+        sql`${schema.catalogItemVersions.version} < ${version}`,
+      ),
+    );
+  const live = item.status === 'public' && item.publicVersion > 0;
+  await db
+    .update(schema.catalogItems)
+    .set({
+      title,
+      // An update without a new description or tags keeps the ones it has.
+      description: b.description === undefined ? item.description : (description ?? ''),
+      tags: b.tags === undefined ? item.tags : JSON.stringify(tags),
+      // Straight away: this version is public now. In review: a public
+      // item stays public (on its old version) while the update waits.
+      status: straight || live ? 'public' : 'in_review',
+      publicVersion: straight ? version : item.publicVersion,
+      reason: null,
+      updatedAt: now,
+    })
+    .where(eq(schema.catalogItems.id, item.id));
+  await writeAuditEvent({
+    resourceKind: 'catalog_item',
+    resourceId: item.id,
+    userId: user.id,
+    eventType: 'catalog_submit',
+    payload: { kind, sourceId, version, title, straight },
+  });
+  return { ok: true, code: 201, body: { id: item.id, version, status: straight ? 'public' : 'in_review' } };
+}
+
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---- what's on (no sign-in needed) --------------------------------------
   app.get('/api/catalog/settings', { config: TOKEN_READ }, async (req) => {
@@ -368,99 +473,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_submit' });
       const b = req.body ?? {};
       if (!isKind(b.kind) || typeof b.sourceId !== 'string') return reply.code(400).send({ error: 'invalid_input' });
-      if (!(await catalogOn(b.kind))) return reply.code(404).send({ error: 'catalog_off' });
-      const src = await snapshotSource(b.kind, b.sourceId);
-      if (!src) return reply.code(404).send({ error: 'not_found' });
-      if (!(await manages(user.id, src))) return reply.code(403).send({ error: 'forbidden' });
-      const title = cleanText(b.title ?? src.title, MAX_TITLE);
-      const description = cleanText(b.description, MAX_DESCRIPTION);
-      const note = cleanText(b.note, MAX_REASON);
-      const tags = cleanTags(b.tags);
-      if (!title || description === undefined || note === undefined || !tags) return reply.code(400).send({ error: 'invalid_input' });
-      const owner: Subject = src.ownerOrgId ? { kind: 'org', id: src.ownerOrgId } : { kind: 'user', id: src.ownerUserId ?? user.id };
-      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: src.bytes }, uploadBytes: src.bytes });
-      if (refusal) return reply.code(refusal.status).send(refusal.body);
-
-      const review = (await getPlatformSettings()).catalogReview;
-      const now = new Date();
-      // An item already shared from this source by the same owner gets a new version.
-      let item = await db
-        .select()
-        .from(schema.catalogItems)
-        .where(and(eq(schema.catalogItems.kind, b.kind), eq(schema.catalogItems.sourceId, b.sourceId)))
-        .get();
-      if (!item) {
-        const id = randomUUID();
-        await db.insert(schema.catalogItems).values({
-          id,
-          kind: b.kind,
-          sourceId: b.sourceId,
-          ownerUserId: src.ownerUserId,
-          ownerOrgId: src.ownerOrgId,
-          title,
-          description: description ?? '',
-          tags: JSON.stringify(tags),
-          status: 'in_review',
-          createdAt: now,
-          updatedAt: now,
-        });
-        item = (await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, id)).get())!;
-      }
-      const last = await db
-        .select({ v: sql<number>`coalesce(max(${schema.catalogItemVersions.version}), 0)`.mapWith(Number) })
-        .from(schema.catalogItemVersions)
-        .where(eq(schema.catalogItemVersions.itemId, item.id))
-        .get();
-      const version = (last?.v ?? 0) + 1;
-      const straight = review === 'none';
-      await db.insert(schema.catalogItemVersions).values({
-        id: randomUUID(),
-        itemId: item.id,
-        version,
-        status: straight ? 'public' : 'in_review',
-        submittedBy: user.id,
-        note,
-        createdAt: now,
-        ...src.values,
-      });
-      // Earlier versions still waiting are replaced by this one.
-      await db
-        .update(schema.catalogItemVersions)
-        .set({ status: 'declined', reason: 'Replaced by a newer submission', decidedAt: now })
-        .where(
-          and(
-            eq(schema.catalogItemVersions.itemId, item.id),
-            eq(schema.catalogItemVersions.status, 'in_review'),
-            sql`${schema.catalogItemVersions.version} < ${version}`,
-          ),
-        );
-      const live = item.status === 'public' && item.publicVersion > 0;
-      await db
-        .update(schema.catalogItems)
-        .set({
-          title,
-          // An update without a new description or tags keeps the ones it has.
-          description: b.description === undefined ? item.description : (description ?? ''),
-          tags: b.tags === undefined ? item.tags : JSON.stringify(tags),
-          // Straight away: this version is public now. In review: a public
-          // item stays public (on its old version) while the update waits.
-          status: straight || live ? 'public' : 'in_review',
-          publicVersion: straight ? version : item.publicVersion,
-          reason: null,
-          updatedAt: now,
-        })
-        .where(eq(schema.catalogItems.id, item.id));
-      await writeAuditEvent({
-        resourceKind: 'catalog_item',
-        resourceId: item.id,
-        userId: user.id,
-        eventType: 'catalog_submit',
-        payload: { kind: b.kind, sourceId: b.sourceId, version, title, straight },
-      });
-      return reply.code(201).send({ id: item.id, version, status: straight ? 'public' : 'in_review' });
+      const r = await submitToCatalog(user, b.kind, b.sourceId, b);
+      return reply.code(r.code).send(r.body);
     },
   );
 

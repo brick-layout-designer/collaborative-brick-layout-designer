@@ -15,6 +15,7 @@ import { fetchModuleBatches } from './moduleSnapshot';
 import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
+import { AddToCollectionDialog } from '../catalog/AddToCollection';
 export { MODULE_MIME };
 
 interface Props {
@@ -30,6 +31,9 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
   const [filter, setFilter] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [inserting, setInserting] = useState<string | null>(null);
+  const [toCollection, setToCollection] = useState<ModuleSummary | null>(null);
+  const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
+  const collectionsOn = !!settings.data && (settings.data.modules || settings.data.parts);
 
   const modules = (list.data?.modules ?? []).filter((m) =>
     !filter.trim() || m.title.toLowerCase().includes(filter.trim().toLowerCase()),
@@ -91,6 +95,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
                   qc.invalidateQueries({ queryKey: ['modules'] }),
                 )
               }
+              onAddToCollection={collectionsOn && (m.role === undefined || m.role === 'owner') ? () => setToCollection(m) : undefined}
               onDelete={() => {
                 if (!confirm(`Delete module "${m.title}"?`)) return;
                 void api.modules.remove(m.id).then(() =>
@@ -101,6 +106,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
           ))}
         </ul>
       </div>
+      {toCollection && <AddToCollectionDialog target={{ kind: 'module', module: toCollection }} onClose={() => setToCollection(null)} />}
     </aside>
   );
 }
@@ -114,6 +120,7 @@ function ModuleLibraryRow({
   onInsert,
   onRename,
   onDelete,
+  onAddToCollection,
 }: {
   module: ModuleSummary;
   isViewer: boolean;
@@ -124,6 +131,8 @@ function ModuleLibraryRow({
   onInsert: () => void;
   onRename: (title: string) => Promise<unknown>;
   onDelete: () => void;
+  /** "Add to a collection…" (your own modules, and your club's when you run it). */
+  onAddToCollection?: (() => void) | undefined;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -211,6 +220,11 @@ function ModuleLibraryRow({
               <button role="menuitem" type="button" onClick={startRename} className={MORE_ITEM}>
                 Rename…
               </button>
+              {onAddToCollection && (
+                <button role="menuitem" type="button" onClick={onAddToCollection} className={MORE_ITEM}>
+                  Add to a collection…
+                </button>
+              )}
               <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
                 Delete…
               </button>

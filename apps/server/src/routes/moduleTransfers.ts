@@ -18,6 +18,7 @@ import { env } from '../env.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
+import { dropModuleFromCollections } from './collections.js';
 
 interface InitiateTransferBody {
   recipientEmail?: string;
@@ -92,6 +93,10 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         // Ownership changed: pending user->user transfers issued by the
         // previous owner must not be redeemable any more.
         await deletePendingModuleTransfers(req.params.id);
+        // Moved out of a club: that club's collections lose it.
+        if (module.ownerOrgId && module.ownerOrgId !== dest.id) {
+          await dropModuleFromCollections(module, 'moved to another club', dest.id, user.id);
+        }
 
         await writeAuditEvent({
           resourceKind: 'module',

@@ -338,6 +338,31 @@ export const HELP_TEXTS = {
     short: 'Clubs that chose to be listed here, for anyone to find.',
     more: 'Join an open club straight away, or ask to join and wait for an admin to say yes. Some clubs take new members by invite only.',
   },
+  // Catalog collections
+  'catalog.collections': {
+    title: 'Collections',
+    short: 'Sets of modules and parts that go well together, like “Starter town”.',
+    more: 'Open one to see what’s in it, then add one item or Add all to copy everything to you or your club. Anyone signed in can make a collection.',
+    learnMoreUrl: '/help#collections',
+  },
+  'catalog.yourCollections': {
+    title: 'Your collections',
+    short: 'Collections you made: private ones only you see, public ones are in the catalog.',
+    more: 'Make one with New collection, or use “Add to a collection…” on any module or part. A public collection’s title, description and cover are checked by a moderator first; each item is checked on its own.',
+    learnMoreUrl: '/help#collections',
+  },
+  'catalog.clubCollections': {
+    title: 'Your clubs’ collections',
+    short: 'Collections your clubs made: every member sees them, and admins and managers change them.',
+    more: 'A club can keep a collection to itself, like its show standards, or share it with everyone in the catalog under the club’s name. Pinned ones come first.',
+    learnMoreUrl: '/help#collections',
+  },
+  'collection.audience': {
+    title: 'Who can see this',
+    short: 'Private is only you or your club’s members; Everyone puts it in the public catalog after a check.',
+    more: 'A moderator checks a public collection’s title, description and cover first. Adding or moving items never needs a check, but your own modules and parts are each checked before they show publicly.',
+    learnMoreUrl: '/help#collections',
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_TEXTS;

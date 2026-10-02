@@ -25,6 +25,50 @@ import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from '.
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { clubModuleRole } from '../access/resolveResourceRole.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
+import { dropModuleFromCollections } from './collections.js';
+import type { User } from '../db/schema.js';
+
+type ModuleRow = typeof schema.modules.$inferSelect;
+
+/**
+ * Copy module `src` to `user`, or to the club `destOrgId`, remembering what
+ * it was copied from. The caller checked the user may open `src` and add to
+ * the destination.
+ */
+export async function copyModuleTo(
+  user: User,
+  src: ModuleRow,
+  destOrgId: string | null,
+  title: string,
+): Promise<{ ok: true; id: string } | { ok: false; status: number; body: unknown }> {
+  const copyOwner: Subject = destOrgId ? { kind: 'org', id: destOrgId } : { kind: 'user', id: user.id };
+  const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
+  const refusal = await checkGrowth({ actor: user, owner: copyOwner, add: { bytes: copyBytes } });
+  if (refusal) return { ok: false, status: refusal.status, body: refusal.body };
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(schema.modules).values({
+    id,
+    title,
+    ownerUserId: destOrgId ? null : user.id,
+    ownerOrgId: destOrgId,
+    createdBy: user.id,
+    docSnapshot: src.docSnapshot,
+    docVersion: 0,
+    sidecarSnapshot: src.sidecarSnapshot,
+    copiedFromId: src.id,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await writeAuditEvent({
+    resourceKind: 'module',
+    resourceId: id,
+    userId: user.id,
+    eventType: 'create',
+    payload: { title, copiedFrom: src.id, owner: destOrgId ? { kind: 'org', id: destOrgId } : { kind: 'user', id: user.id } },
+  });
+  return { ok: true, id };
+}
 
 // The desktop app (an API token) lists, inserts, saves and republishes
 // modules: reading needs layouts:read, changing one layouts:write.
@@ -181,31 +225,9 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
       const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
-      const copyOwner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
-      const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
-      const refusal = await checkGrowth({ actor: user, owner: copyOwner, add: { bytes: copyBytes } });
-      if (refusal) return reply.code(refusal.status).send(refusal.body);
-      const id = randomUUID();
-      const now = new Date();
-      await db.insert(schema.modules).values({
-        id,
-        title,
-        ownerUserId: dest.orgId ? null : user.id,
-        ownerOrgId: dest.orgId,
-        createdBy: user.id,
-        docSnapshot: src.docSnapshot,
-        docVersion: 0,
-        sidecarSnapshot: src.sidecarSnapshot,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await writeAuditEvent({
-        resourceKind: 'module',
-        resourceId: id,
-        userId: user.id,
-        eventType: 'create',
-        payload: { title, copiedFrom: src.id, owner: dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id } },
-      });
+      const r = await copyModuleTo(user, src, dest.orgId, title);
+      if (!r.ok) return reply.code(r.status).send(r.body);
+      const id = r.id;
       return reply.code(201).send({ id, title });
     },
   );
@@ -244,6 +266,9 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     if (!hasAtLeast(role, 'owner')) {
       return reply.code(403).send({ error: 'forbidden' });
     }
+    // Club collections it's in lose it; their curators get a note.
+    const gone = await db.select({ id: schema.modules.id, title: schema.modules.title }).from(schema.modules).where(eq(schema.modules.id, req.params.id)).get();
+    if (gone) await dropModuleFromCollections(gone, 'deleted', null, user.id);
     await db.delete(schema.modules).where(eq(schema.modules.id, req.params.id));
     await writeAuditEvent({
       resourceKind: 'module',

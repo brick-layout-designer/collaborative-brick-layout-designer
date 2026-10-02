@@ -41,21 +41,26 @@ const ADMIN_LISTS: QueryKey[] = [['admin-users'], ['admin-user-detail'], ['admin
 /** Club changes that change whose parts libraries you see. */
 const MEMBERSHIP_CHANGE = /part-libraries|members|join|approve|org-invites|^delete$/;
 
+/** Collections hold modules and parts: one that's deleted or moves away drops out of them. */
+const COLLECTIONS: QueryKey[] = [['catalog-collections'], ['catalog-collection'], ['catalog-collections-mine'], ['club-collections']];
+
 const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   layout: () => [['layouts'], ['layout'], ['collaborators'], ['audit'], ['club-summary'], ['transfer-preview'], ...ADMIN_LISTS],
-  module: () => [['modules'], ['module'], ['module-versions'], ['catalog-copies'], ['club-summary'], ...ADMIN_LISTS],
+  module: () => [['modules'], ['module'], ['module-versions'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS, ...ADMIN_LISTS],
   venue: () => [['venues'], ['venue'], ['venue-library'], ['club-summary']],
-  'custom-part': () => [['custom-parts'], ['parts-catalog'], ['catalog-copies'], ['club-summary']],
+  'custom-part': () => [['custom-parts'], ['parts-catalog'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS],
   catalog: () => [
     ['catalog-items'], ['catalog-mine'], ['catalog-copies'], ['moderation'], ['modules'], ['custom-parts'],
     // Collections: an item leaving the catalog changes them too.
-    ['catalog-collections'], ['catalog-collection'], ['catalog-collections-mine'], ['moderation-collections'],
+    ...COLLECTIONS, ['moderation-collections'],
   ],
   club: (h) => [
     ['orgs'], ['org'], ['org-members'], ['org-join-requests'], ['join-request-count'], ['org-audit'],
     ['org-part-libraries'], ['org-user-search'], ['club-summary'], ['club-directory'],
     // Joining or leaving a club changes which layouts, modules, rooms and parts you see.
     ['layouts'], ['modules'], ['venues'], ['venue-library'], ['custom-parts'],
+    // …and its collections.
+    ...COLLECTIONS,
     // …and the parts its part libraries add.
     ...(MEMBERSHIP_CHANGE.test(h.action ?? '') ? [['parts-catalog']] : []),
     ...ADMIN_LISTS,

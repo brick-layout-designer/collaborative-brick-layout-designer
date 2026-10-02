@@ -16,6 +16,8 @@ import type { Venue } from '@cld/bbm';
 import { VenueList } from '../venues/VenueList';
 import { orderVenuesForOwner, sidecarWithVenue } from '../venues/venueStart';
 import { CustomPartsSection } from '../parts/CustomPartsSection';
+import { AddToCollectionDialog } from '../catalog/AddToCollection';
+import { HomeCollections } from '../catalog/Collections';
 import { WelcomeCard } from '../tours/WelcomeCard';
 import { lastLayoutToReopen } from './reopenLast';
 import { useEditorStore } from '../editor/editorStore';
@@ -45,6 +47,7 @@ export function LayoutsPage() {
   }, [startVenue]);
   const [showNewModule, setShowNewModule] = useState(false);
   const [historyOf, setHistoryOf] = useState<ModuleSummary | null>(null);
+  const [toCollection, setToCollection] = useState<ModuleSummary | null>(null);
   const [sharing, setSharing] = useState<ModuleSummary | null>(null);
   const catalog = useCatalogStatus();
   const withdraw = useMutation({
@@ -228,6 +231,11 @@ export function LayoutsPage() {
                       Refresh picture
                     </Link>
                   )}
+                  {(catalog.enabled('module') || catalog.enabled('part')) && (m.role === undefined || m.role === 'owner') && (
+                    <button role="menuitem" type="button" onClick={() => setToCollection(m)} className={MORE_ITEM}>
+                      Add to a collection…
+                    </button>
+                  )}
                   {catalog.enabled('module') && (m.role === undefined || m.role === 'owner') && (
                     <button role="menuitem" type="button" onClick={() => setSharing(m)} className={MORE_ITEM}>
                       {catalog.shared('module', m.id) ? 'Publish this update…' : 'Share to the public catalog…'}
@@ -272,6 +280,8 @@ export function LayoutsPage() {
         )}
       </div>
 
+      <HomeCollections />
+
       <section id="parts" className="scroll-mt-4">
         <CustomPartsSection
           filter={filter}
@@ -292,6 +302,7 @@ export function LayoutsPage() {
       )}
 
       {historyOf && <ModuleVersionsDialog module={historyOf} onClose={() => setHistoryOf(null)} />}
+      {toCollection && <AddToCollectionDialog target={{ kind: 'module', module: toCollection }} onClose={() => setToCollection(null)} />}
       {sharing && (
         <ShareToCatalogDialog
           kind="module"
