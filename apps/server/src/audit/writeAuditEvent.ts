@@ -53,6 +53,7 @@ export type AuditEventType =
   | 'admin_part_library_delete'
   | 'org_part_library_toggle'
   | 'admin_settings_patch'
+  | 'admin_demo_reset'
   // Usage limits: global values, a person's or club's override, and
   // suspending or lifting it (subject = the person or club).
   | 'admin_limits_patch'

@@ -47,6 +47,9 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     dailyCompactionEnabled: true,
     demoTtlSweepEnabled: true,
     demoLayoutTtlDays: 30,
+    demoEnabled: false,
+    demoResetEvery: 'daily',
+    demoLastResetAt: null,
     updatedAt: new Date(),
     updatedBy: null,
   };

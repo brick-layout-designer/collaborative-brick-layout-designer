@@ -22,6 +22,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { and, eq, lt } from 'drizzle-orm';
 import { db, schema } from '../../db/index.js';
 import { requireUser } from '../../auth/cookie.js';
+import { isDemoUser } from '../../demo/demoAccount.js';
 import { createApiToken, parseScopes, scopesOf, TOKEN_TTL_MS } from '../../auth/apiTokens.js';
 import { writeAuditEvent } from '../../audit/writeAuditEvent.js';
 import { env } from '../../env.js';
@@ -253,6 +254,8 @@ export async function deviceRoutes(app: FastifyInstance) {
       { config: confirmLimit },
       async (req, reply) => {
         const user = requireUser(req);
+        // No desktop tokens for the demo account (denying is fine).
+        if (status === 'approved' && isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_use_desktop' });
         const row = await findPendingByUserCode(req.body?.user_code);
         if (!row) return reply.code(404).send({ error: 'invalid_code' });
         const res = await db

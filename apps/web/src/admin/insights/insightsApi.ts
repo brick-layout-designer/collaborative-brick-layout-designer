@@ -98,7 +98,9 @@ export interface ContentResponse {
 }
 
 export interface PeopleResponse {
-  totals: { users: number; clubs: number; unverified: number; dormant6m: number; admins: number; demo: number };
+  totals: { users: number; clubs: number; unverified: number; dormant6m: number; admins: number };
+  /** The demo account (Admin › Settings): on or off, last reset, and what it has now. */
+  demo: { enabled: boolean; lastResetAt: number | null; items: number };
   signInMethods: { method: string; users: number }[];
   pending: { clubInvites: number; layoutInvites: number; transfers: number };
   clubs: {

@@ -1,5 +1,4 @@
-// Admin › Settings: the background jobs and the demo layout lifetime are
-// switches there (an env var, when set, forces one and the page names it),
+// Admin › Settings: the background jobs are switches there (an env var, when set, forces one and the page names it),
 // and the server's env-only settings are listed read-only, never showing a
 // secret's value.
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -11,12 +10,12 @@ import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { sessionRoutes } from '../auth/session.js';
 import { adminRoutes } from '../admin.js';
-import { backgroundJobs, demoExpiry } from '../../workers/jobs.js';
+import { backgroundJobs } from '../../workers/jobs.js';
 import { env } from '../../env.js';
 
 let app: FastifyInstance;
 let admin: { cookie: string; id: string };
-const saved = { backups: env.backupsEnabledForced, days: env.demoLayoutTtlDaysForced, google: env.google };
+const saved = { backups: env.backupsEnabledForced, google: env.google };
 
 beforeEach(async () => {
   resetDb();
@@ -27,11 +26,9 @@ beforeEach(async () => {
   admin = await loginAs(app, 'jobs-admin@example.com');
   db.update(schema.users).set({ isGlobalAdmin: true }).where(eq(schema.users.id, admin.id)).run();
   env.backupsEnabledForced = null;
-  env.demoLayoutTtlDaysForced = null;
 });
 afterEach(async () => {
   env.backupsEnabledForced = saved.backups;
-  env.demoLayoutTtlDaysForced = saved.days;
   env.google = saved.google;
   await app.close();
 });
@@ -45,27 +42,25 @@ const page = async () =>
   };
 
 describe('background jobs in Admin › Settings', () => {
-  it('are on by default, switch off at once, and the demo lifetime is used for new demo layouts', async () => {
+  it('are on by default, switch off at once, and the change is audited', async () => {
     expect((await page()).jobs.backups).toEqual({ value: true, setting: true, forcedBy: null });
-    expect((await patch({ backupsEnabled: false, demoLayoutTtlDays: 7 })).statusCode).toBe(200);
+    expect((await patch({ backupsEnabled: false })).statusCode).toBe(200);
     expect((await backgroundJobs()).backups.value).toBe(false);
-    const now = new Date('2026-10-01T00:00:00Z');
-    expect((await demoExpiry(now)).toISOString()).toBe('2026-10-08T00:00:00.000Z');
     const audit = db.select().from(schema.auditEvents).where(eq(schema.auditEvents.eventType, 'admin_settings_patch')).all();
-    expect(audit.some((e) => JSON.stringify(e.payload).includes('demoLayoutTtlDays'))).toBe(true);
+    expect(audit.some((e) => JSON.stringify(e.payload).includes('backupsEnabled'))).toBe(true);
+  });
+
+  it('no longer has a demo layout lifetime or expiry sweep', async () => {
+    expect(Object.keys((await page()).jobs).sort()).toEqual(['backups', 'dailyCompaction']);
+    expect((await patch({ demoLayoutTtlDays: 7 })).statusCode).toBe(400);
+    expect((await patch({ demoTtlSweepEnabled: false })).statusCode).toBe(400);
   });
 
   it('a set env var wins, and the page says which one', async () => {
     await patch({ backupsEnabled: false });
     env.backupsEnabledForced = true;
-    env.demoLayoutTtlDaysForced = 3;
     const { jobs } = await page();
     expect(jobs.backups).toEqual({ value: true, setting: false, forcedBy: 'BACKUPS_ENABLED' });
-    expect(jobs.demoLayoutTtlDays).toMatchObject({ value: 3, forcedBy: 'DEMO_LAYOUT_TTL_DAYS' });
-  });
-
-  it('refuses a demo lifetime that is not a whole number of days', async () => {
-    for (const bad of [0, -1, 1.5, 'ten', 99999]) expect((await patch({ demoLayoutTtlDays: bad })).statusCode).toBe(400);
   });
 });
 
@@ -78,6 +73,8 @@ describe('the server setup list', () => {
     expect(rows.find((r) => r.name === 'Google sign-in')).toMatchObject({ value: 'Set up', why: 'secret' });
     expect(rows.find((r) => r.env === 'PARTS_DIR')?.why).toBe('deploy');
     expect(rows.find((r) => r.env.startsWith('BOOTSTRAP_ADMIN'))?.why).toBe('bootstrap');
+    // Demo mode is gone: the demo account is a switch on this page now.
+    expect(rows.some((r) => r.env.startsWith('DEMO'))).toBe(false);
   });
 
   it('is for site admins only', async () => {

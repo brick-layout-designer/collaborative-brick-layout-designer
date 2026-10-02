@@ -1,5 +1,6 @@
 // Pure helpers for the admin dashboard: number and date text, a plain
 // sentence that sums up a graph (its accessible summary), and CSV.
+import type { PeopleResponse } from './insightsApi';
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -111,4 +112,11 @@ export function niceTicks(max: number, count = 4): number[] {
   for (let i = 0; i * step <= max + step * 0.001; i++) ticks.push(Math.round(i * step * 1000) / 1000);
   if (ticks[ticks.length - 1]! < max) ticks.push(ticks[ticks.length - 1]! + step);
   return ticks;
+}
+
+/** "Off", or "On · reset 2 Oct, 14:00 · 3 things". */
+export function demoText(d: PeopleResponse['demo']): string {
+  if (!d.enabled) return 'Off';
+  const when = d.lastResetAt ? `reset ${new Date(d.lastResetAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : 'not reset yet';
+  return `On · ${when} · ${d.items} ${d.items === 1 ? 'thing' : 'things'}`;
 }

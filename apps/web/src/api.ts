@@ -8,11 +8,23 @@ export interface Me {
   email: string;
   displayName: string;
   avatarUrl: string | null;
+  /** The shared demo account (Admin › Settings › Demo account). */
   isDemoAccount: boolean;
   isGlobalAdmin: boolean;
   /** Reviews the public catalogs (global admins can too). */
   isModerator?: boolean;
   linkedProviders: ProviderId[];
+  /** Only on the demo account: how often it resets, and when next. */
+  demo?: DemoStatus;
+}
+
+export type DemoResetEvery = '1h' | '6h' | 'daily';
+
+export interface DemoStatus {
+  enabled: boolean;
+  resetEvery: DemoResetEvery;
+  lastResetAt: number | null;
+  nextResetAt: number | null;
 }
 
 export interface ProviderInfo {
@@ -62,6 +74,16 @@ const ERROR_MESSAGES: Record<string, string> = {
   suspended: 'This account is read-only for now. Ask the site admin why.',
   rate_limited: 'Too many requests at once. Please wait a minute and try again.',
   verify_email_first: 'Please confirm your email address first.',
+  demo_off: 'The demo isn’t available right now.',
+  demo_account_cannot_invite: 'The demo can’t invite people. Sign up to share with others.',
+  demo_account_cannot_share: 'The demo can’t share or hand things over. Sign up to share with others.',
+  demo_account_cannot_create_org: 'The demo can’t make clubs. Sign up to start one.',
+  demo_account_cannot_join_clubs: 'The demo can’t join clubs. Sign up to join one.',
+  demo_account_cannot_upload_parts: 'The demo can’t upload parts. Sign up to add your own.',
+  demo_account_cannot_submit: 'The demo can’t add to the public catalog.',
+  demo_account_cannot_change_profile: 'The demo’s name can’t be changed.',
+  demo_account_cannot_use_desktop: 'The desktop app can’t sign in to the demo. Sign up to use it.',
+  demo_account_cannot_link: 'The demo can’t be linked to another sign-in.',
 };
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
@@ -390,8 +412,10 @@ export const api = {
   updateDisplayName: (displayName: string) =>
     patch<{ ok: true; displayName: string }>('/api/auth/me', { displayName }),
   providers: () =>
-    get<{ providers: ProviderInfo[]; passwordEnabled: boolean }>('/api/auth/providers'),
+    get<{ providers: ProviderInfo[]; passwordEnabled: boolean; demoEnabled?: boolean }>('/api/auth/providers'),
   logout: () => post<{ ok: true }>('/api/auth/logout'),
+  /** "Try the demo": sign in as the shared demo account (JSON, empty object body). */
+  tryDemo: () => post<{ ok: true }>('/api/auth/demo', {}),
   passwordLogin: (email: string, password: string) =>
     post<{ ok: true }>('/api/auth/password/login', { email, password }),
   passwordRegister: (email: string, password: string, displayName?: string) =>
@@ -805,7 +829,7 @@ export const api = {
         `/api/admin/users?${listParams(q)}`,
       ),
     user: (id: string) => get<AdminUserDetail>(`/api/admin/users/${id}`),
-    patchUser: (id: string, body: { isGlobalAdmin?: boolean; isDemoAccount?: boolean; isModerator?: boolean }) =>
+    patchUser: (id: string, body: { isGlobalAdmin?: boolean; isModerator?: boolean }) =>
       patch<{ ok: true }>(`/api/admin/users/${id}`, body),
     deleteUser: (id: string) => del(`/api/admin/users/${id}`),
     revokeUserSessions: (id: string) =>
@@ -879,9 +903,11 @@ export const api = {
       limitsEnforced?: boolean;
       backupsEnabled?: boolean;
       dailyCompactionEnabled?: boolean;
-      demoTtlSweepEnabled?: boolean;
-      demoLayoutTtlDays?: number;
+      demoEnabled?: boolean;
+      demoResetEvery?: DemoResetEvery;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
+    /** Demo account › Reset now (JSON, empty object body). */
+    resetDemo: () => post<{ ok: true; lastResetAt: number; items: number }>('/api/admin/demo/reset', {}),
   },
 
   // Public module and parts catalogs.
@@ -967,7 +993,6 @@ function listParams(p: AdminListParams): string {
 
 export interface AdminStats {
   users: number;
-  demoUsers: number;
   globalAdmins: number;
   orgs: number;
   layouts: number;
@@ -1101,9 +1126,9 @@ export interface AdminSettings {
   jobs?: {
     backups: AdminJobSetting<boolean>;
     dailyCompaction: AdminJobSetting<boolean>;
-    demoTtlSweep: AdminJobSetting<boolean>;
-    demoLayoutTtlDays: AdminJobSetting<number>;
   };
+  /** The demo account: on or off, how often it resets, and what it has now. */
+  demo?: DemoStatus & { items: number };
   /** The server's env-only settings, read only (never a secret's value). */
   serverSetup?: { name: string; value: string; env: string; why: ServerSetupWhy }[];
   updatedAt: number;

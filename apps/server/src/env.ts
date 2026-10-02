@@ -53,9 +53,6 @@ export const env = {
   limitsEnforceForced: parseForced(process.env.LIMITS_ENFORCE),
 
   enablePasswordAuth: bool(process.env.ENABLE_PASSWORD_AUTH, false),
-  demoMode: bool(process.env.DEMO_MODE, false),
-  // Set in Admin › Settings; when this env var is set it forces the value.
-  demoLayoutTtlDaysForced: process.env.DEMO_LAYOUT_TTL_DAYS === undefined ? null : int(process.env.DEMO_LAYOUT_TTL_DAYS, 30),
 
   bootstrapAdminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL ?? null,
   bootstrapAdminPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD ?? null,
@@ -70,7 +67,6 @@ export const env = {
   // each env var, when set, forces its switch (workers/jobs.ts).
   backupsEnabledForced: forcedBool(process.env.BACKUPS_ENABLED),
   backupsDir: process.env.BACKUPS_DIR ?? '/backups',
-  demoTtlSweepEnabledForced: forcedBool(process.env.DEMO_TTL_SWEEP_ENABLED),
   dailyCompactionEnabledForced: forcedBool(process.env.DAILY_COMPACTION_ENABLED),
 };
 

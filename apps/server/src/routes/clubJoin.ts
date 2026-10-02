@@ -25,6 +25,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { checkGrowth } from '../limits/limits.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { escapeLike } from '../utils/validate.js';
@@ -163,6 +164,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_join_clubs' });
       const org = await loadOrgBySlug(req.params.slug);
       if (!org) return reply.code(404).send({ error: 'not_found' });
       if (await getMembership(org.id, user.id)) return reply.code(409).send({ error: 'already_member' });

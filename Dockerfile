@@ -76,6 +76,10 @@ COPY --from=builder /app/packages/model/dist        ./packages/model/dist
 COPY --from=builder /app/packages/bbm/dist          ./packages/bbm/dist
 COPY --from=builder /app/packages/ydoc/dist         ./packages/ydoc/dist
 COPY --from=builder /app/packages/parts-catalog/dist ./packages/parts-catalog/dist
+# The demo account's samples (Admin › Settings › Demo account; apps/server/src/demo/reset.ts).
+COPY --from=builder /app/packages/bbm/tests/fixtures/tight-corner.bbm \
+                    /app/packages/bbm/tests/fixtures/grand-lobby.bld-venue ./packages/bbm/tests/fixtures/
+COPY --from=builder /app/packages/bbm/tests/fixtures/oracle/flex-a.bbm ./packages/bbm/tests/fixtures/oracle/
 
 EXPOSE 3000
 WORKDIR /app/apps/server

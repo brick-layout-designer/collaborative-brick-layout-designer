@@ -93,7 +93,7 @@ describe('admin stats', () => {
     const res = await app.inject({ method: 'GET', url: '/api/admin/stats', headers: { cookie } });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      users: number; demoUsers: number; globalAdmins: number;
+      users: number; globalAdmins: number;
       orgs: number; layouts: number; customParts: number; modules: number; activeSessions: number;
     };
     // The admin themselves is a user.
@@ -101,6 +101,8 @@ describe('admin stats', () => {
     expect(body.globalAdmins).toBe(1);
     expect(body.orgs).toBe(0);
     expect(body.layouts).toBe(0);
+    // No per-person demo count any more.
+    expect(body).not.toHaveProperty('demoUsers');
   });
 
   it('reflects newly created resources', async () => {
@@ -217,19 +219,20 @@ describe('admin users — get / patch / delete', () => {
     expect(alice!.isGlobalAdmin).toBe(true);
   });
 
-  it('PATCH marks a user as demo account', async () => {
+  it('PATCH can no longer make someone a demo account', async () => {
     const adminCookie = await registerAndLogin(app, 'admin@example.com');
     await promoteToAdmin('admin@example.com');
     await registerAndLogin(app, 'alice@example.com');
     const aliceId = await getUserId('alice@example.com');
 
-    await app.inject({
+    const res = await app.inject({
       method: 'PATCH', url: `/api/admin/users/${aliceId}`,
       headers: { cookie: adminCookie },
       payload: { isDemoAccount: true },
     });
+    expect(res.statusCode).toBe(400);
     const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
-    expect(alice!.isDemoAccount).toBe(true);
+    expect(alice!.isDemoAccount).toBe(false);
   });
 
   it('PATCH cannot demote self', async () => {

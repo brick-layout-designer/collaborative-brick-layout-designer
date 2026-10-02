@@ -7,7 +7,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
 import { db, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
@@ -209,13 +208,6 @@ describe('owner-tagged lists', () => {
       expect((res.json() as { title: string }).title).toBe('Bob layouts (copy)');
       const v = await call(bob, 'POST', `/api/venues/${ids['venues:bob']}/copy`, {});
       expect((v.json() as { name: string }).name).toBe('Bob venues (copy)');
-    });
-
-    it('a demo account\'s personal copy expires like its other layouts', async () => {
-      await db.update(schema.users).set({ isDemoAccount: true }).where(eq(schema.users.id, bob.id));
-      const res = await call(bob, 'POST', `/api/layouts/${ids['layouts:club']}/copy`, {});
-      const row = await db.select().from(schema.layouts).where(eq(schema.layouts.id, (res.json() as { id: string }).id)).get();
-      expect(row!.expiresAt).not.toBeNull();
     });
   });
 

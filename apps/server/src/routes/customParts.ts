@@ -18,6 +18,7 @@ import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { recordUpload } from '../metrics/usage.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
@@ -169,6 +170,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   // ---- create -------------------------------------------------------------
   app.post<{ Body: CreatePartBody }>('/api/custom-parts', { config: { apiToken: 'parts:write' } }, async (req, reply) => {
     const user = requireUser(req);
+    if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_upload_parts' });
     const body = req.body ?? ({} as CreatePartBody);
 
     const parsed = parsePartBody(body);
@@ -266,6 +268,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     { config: { apiToken: 'parts:write' } },
     async (req, reply) => {
       const user = requireUser(req);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_upload_parts' });
       const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
       if (role === null) return reply.code(404).send({ error: 'not_found' });
       if (!hasAtLeast(role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
@@ -394,7 +397,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     '/api/custom-parts/:id/invites',
     async (req, reply) => {
       const user = requireUser(req);
-      if (user.isDemoAccount) {
+      if (isDemoUser(user)) {
         return reply.code(403).send({ error: 'demo_account_cannot_invite' });
       }
       const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);

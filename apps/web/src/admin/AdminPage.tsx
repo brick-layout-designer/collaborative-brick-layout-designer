@@ -23,6 +23,7 @@ import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/Limi
 import { CatalogSettingsSection, ModerationTab } from './Moderation';
 import { SubjectWarnings } from './SubjectWarnings';
 import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
+import { DemoAccountSection } from './DemoAccount';
 
 type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
 const ADMIN_TABS: Tab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'audit', 'settings'];
@@ -135,9 +136,9 @@ function UsersTab({ selfId }: { selfId: string }) {
       api.admin.patchUser(id, { isGlobalAdmin }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });
-  const patchDemo = useMutation({
-    mutationFn: ({ id, ...body }: { id: string; isDemoAccount?: boolean; isModerator?: boolean }) =>
-      api.admin.patchUser(id, body),
+  const patchModerator = useMutation({
+    mutationFn: ({ id, isModerator }: { id: string; isModerator: boolean }) =>
+      api.admin.patchUser(id, { isModerator }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });
   const revokeSessions = useMutation({
@@ -179,7 +180,6 @@ function UsersTab({ selfId }: { selfId: string }) {
                 <Th align="right">Layouts</Th>
                 <Th align="right">Size</Th>
                 <Th>Created</Th>
-                <Th>Demo</Th>
                 <Th>Admin</Th>
                 <Th>Moderator</Th>
                 <Th align="right">Actions</Th>
@@ -195,7 +195,10 @@ function UsersTab({ selfId }: { selfId: string }) {
                         {u.email}
                       </button>
                     </Td>
-                    <Td>{u.displayName}</Td>
+                    <Td>
+                      {u.displayName}
+                      {u.isDemoAccount && <span className="ml-2 rounded bg-soft px-1.5 py-0.5 text-xs text-muted">Demo</span>}
+                    </Td>
                     <Td>
                       {u.emailVerified ? (
                         <span className="text-emerald-400" title="Email verified">✓</span>
@@ -210,22 +213,10 @@ function UsersTab({ selfId }: { selfId: string }) {
                       <label className="inline-flex items-center justify-center pointer-coarse:size-11">
                       <input
                         type="checkbox"
-                        aria-label={`Demo account: ${u.email}`}
-                        checked={u.isDemoAccount}
-                        onChange={(e) =>
-                          patchDemo.mutate({ id: u.id, isDemoAccount: e.target.checked })
-                        }
-                      />
-                      </label>
-                    </Td>
-                    <Td>
-                      <label className="inline-flex items-center justify-center pointer-coarse:size-11">
-                      <input
-                        type="checkbox"
                         aria-label={`Site admin: ${u.email}`}
                         checked={u.isGlobalAdmin}
-                        disabled={isSelf}
-                        title={isSelf ? "You can't demote yourself" : ''}
+                        disabled={isSelf || u.isDemoAccount}
+                        title={isSelf ? "You can't demote yourself" : u.isDemoAccount ? 'The demo account can’t be an admin' : ''}
                         onChange={(e) =>
                           patchAdmin.mutate({ id: u.id, isGlobalAdmin: e.target.checked })
                         }
@@ -238,7 +229,8 @@ function UsersTab({ selfId }: { selfId: string }) {
                         type="checkbox"
                         aria-label={`Moderator: ${u.email}`}
                         checked={!!u.isModerator}
-                        onChange={(e) => patchDemo.mutate({ id: u.id, isModerator: e.target.checked })}
+                        disabled={u.isDemoAccount}
+                        onChange={(e) => patchModerator.mutate({ id: u.id, isModerator: e.target.checked })}
                       />
                       </label>
                     </Td>
@@ -1601,6 +1593,7 @@ function SettingsTab() {
   return (
     <>
     <div className="max-w-xl space-y-8">
+      <DemoAccountSection />
       <CatalogSettingsSection />
       <BackgroundJobsSection />
       <ServerSetupSection />

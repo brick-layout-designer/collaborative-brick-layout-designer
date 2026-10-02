@@ -64,7 +64,7 @@ describe('layout transfer', () => {
     await app.close();
   });
 
-  it('user → org commits immediately and clears expires_at', async () => {
+  it('user → org commits immediately', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     await app.inject({
       method: 'POST',
@@ -73,12 +73,6 @@ describe('layout transfer', () => {
       payload: { name: 'Acme', slug: 'acme' },
     });
     const layoutId = await createPersonalLayout(app, aliceCookie);
-    // Force the layout to look "demo-owned" with an expires_at; transfer
-    // to org should clear it.
-    await db
-      .update(schema.layouts)
-      .set({ expiresAt: new Date(Date.now() + 86400_000) })
-      .where(eq(schema.layouts.id, layoutId));
 
     const res = await app.inject({
       method: 'POST',
@@ -96,7 +90,6 @@ describe('layout transfer', () => {
       .get();
     expect(layout!.ownerUserId).toBeNull();
     expect(layout!.ownerOrgId).toBeTruthy();
-    expect(layout!.expiresAt).toBeNull();
 
     const audit = await db
       .select()

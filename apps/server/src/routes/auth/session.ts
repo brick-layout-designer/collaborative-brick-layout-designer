@@ -6,6 +6,8 @@ import { listLinkedProviders } from '../../auth/users.js';
 import { listProviders } from '../../auth/providers.js';
 import { db, schema } from '../../db/index.js';
 import { env } from '../../env.js';
+import { getPlatformSettings } from '../../auth/platformSettings.js';
+import { demoStatus, isDemoUser } from '../../demo/demoAccount.js';
 
 const DISPLAY_NAME_MIN = 1;
 const DISPLAY_NAME_MAX = 60;
@@ -23,6 +25,8 @@ export async function sessionRoutes(app: FastifyInstance) {
         isGlobalAdmin: req.user.isGlobalAdmin,
         isModerator: req.user.isModerator,
         linkedProviders: await listLinkedProviders(req.user.id),
+        // The demo banner: how often it resets and when next.
+        ...(isDemoUser(req.user) ? { demo: demoStatus(await getPlatformSettings()) } : {}),
       },
     };
   });
@@ -38,6 +42,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const user = requireUser(req);
+    if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_change_profile' });
     const raw = req.body?.displayName;
     if (typeof raw !== 'string') return reply.code(400).send({ error: 'invalid_input' });
     const displayName = raw.trim();
@@ -51,6 +56,8 @@ export async function sessionRoutes(app: FastifyInstance) {
   app.get('/api/auth/providers', async () => ({
     providers: listProviders(),
     passwordEnabled: env.enablePasswordAuth,
+    // "Try the demo" shows only while an admin has the demo on.
+    demoEnabled: (await getPlatformSettings()).demoEnabled,
   }));
 
   app.post('/api/auth/logout', async (req, reply) => {

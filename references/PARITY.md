@@ -445,7 +445,7 @@ mix of: server-side (per-user, sync across devices) and `localStorage`
 - [x] Layout sharing (collaborator + invite + roles)
 - [x] Organisations + layout/module ownership transfer
 - [x] Audit log
-- [x] Demo accounts with TTL
+- [x] Demo account: one shared account an admin switches on, which resets itself (replaced per-person demo accounts with TTL)
 - [x] Per-resource backup worker
 - [x] Custom-parts upload (per-user / per-org)
 - [x] Saved-modules upload (per-user / per-org)

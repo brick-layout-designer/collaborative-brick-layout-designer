@@ -193,8 +193,6 @@ full list. Notable ones:
 | `COOKIE_SECURE`           | `false`                 | Set `true` behind TLS                              |
 | `TRUST_PROXY`             | `false`                 | Trust `X-Forwarded-*` behind a reverse proxy: `true` or proxy IPs/CIDRs (e.g. `10.0.0.0/8`) |
 | `ENABLE_PASSWORD_AUTH`    | `false`                 | Enable email/password registration (requires verifying email — see SMTP) |
-| `DEMO_MODE`               | `false`                 | New accounts become demo accounts                  |
-| `DEMO_LAYOUT_TTL_DAYS`    | `30`                    | Auto-expire demo-owned layouts after N days        |
 | `BOOTSTRAP_ADMIN_EMAIL`   | —                       | Created on first start if absent                   |
 | `BOOTSTRAP_ADMIN_PASSWORD`| —                       | Pair with the above; min 12 chars                  |
 | `GOOGLE_CLIENT_ID/SECRET` | —                       | Enables Google OAuth when both set                 |
@@ -203,7 +201,6 @@ full list. Notable ones:
 | `SMTP_HOST/PORT/...`      | —                       | If set, invites + signup verification are emailed; else copy-paste links / server-log link |
 | `BACKUPS_ENABLED`         | `true`                  | Daily backup worker                                |
 | `BACKUPS_DIR`             | `/backups`              | Where backups land                                 |
-| `DEMO_TTL_SWEEP_ENABLED`  | `true`                  | Daily sweep of expired demo layouts                |
 | `DAILY_COMPACTION_ENABLED`| `true`                  | Daily Yjs compaction worker                        |
 | `APP_VERSION`             | server package version  | Reported by `GET /api/version`                     |
 
@@ -278,7 +275,8 @@ apps/
     src/
       routes/       HTTP route modules
       ws/           y-websocket handler
-      workers/      Backup, compaction, demo-TTL workers
+      workers/      Backup, compaction and demo-reset workers
+      demo/         The one demo account (Admin › Settings › Demo account)
       db/           Drizzle schema + migrations
   web/              React + Vite SPA
     src/

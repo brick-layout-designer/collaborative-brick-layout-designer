@@ -371,6 +371,8 @@ export const NO_HINT: Record<string, string> = {
   'POST /api/auth/password/resend-verification': 'sends an email only',
   'POST /api/auth/password/verify-email/:token': 'signs in; the new page loads fresh',
   'POST /api/auth/password/login': 'signs in; the new page loads fresh',
+  'POST /api/auth/demo': 'signs in as the demo account; the new page loads fresh',
+  'POST /api/admin/demo/reset': 'the reset sends its own hints to the demo account and admins (demo/reset.ts)',
   'POST /api/auth/logout': 'signs out',
   'POST /api/auth/device/code': 'starts a device sign-in; nothing to show yet',
   'POST /api/auth/device/token': 'the desktop polling for its token',

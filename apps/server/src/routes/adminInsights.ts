@@ -23,6 +23,8 @@ import * as Y from 'yjs';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 import { backgroundJobs } from '../workers/jobs.js';
+import { getPlatformSettings } from '../auth/platformSettings.js';
+import { demoItemCount } from '../demo/reset.js';
 import { requireGlobalAdmin } from '../auth/cookie.js';
 import { dayKey, databaseBytes, flushRollup, rollup, startOfDay } from '../metrics/rollup.js';
 import { liveStats } from './ws.js';
@@ -423,6 +425,11 @@ interface RangeQuery {
   refresh?: string;
 }
 
+async function demoInsight(): Promise<{ enabled: boolean; lastResetAt: number | null; items: number }> {
+  const s = await getPlatformSettings();
+  return { enabled: s.demoEnabled, lastResetAt: s.demoLastResetAt?.getTime() ?? null, items: await demoItemCount() };
+}
+
 export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: RangeQuery }>('/api/admin/stats/series', async (req) => {
     requireGlobalAdmin(req);
@@ -659,8 +666,10 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
         unverified: countWhere(schema.users, eq(schema.users.emailVerified, false)),
         dormant6m: dormant,
         admins: countWhere(schema.users, eq(schema.users.isGlobalAdmin, true)),
-        demo: countWhere(schema.users, eq(schema.users.isDemoAccount, true)),
       },
+      // The demo account (Admin › Settings): on or off, last reset, and
+      // how many things it has now.
+      demo: await demoInsight(),
       signInMethods: [
         ...providers.map((p) => ({ method: p.provider, users: p.n })),
         { method: 'password', users: password },

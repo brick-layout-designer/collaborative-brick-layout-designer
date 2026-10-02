@@ -371,6 +371,13 @@ has no stored procs.)
 
 ### 3.4 Demo-account restrictions
 
+> **Superseded (2026-10).** Per-person demo accounts, `DEMO_MODE` and the
+> layout TTL sweep are gone. There is now one shared demo account that an
+> admin switches on in Admin › Settings › Demo account; "Try the demo" on
+> the sign-in page signs in to it, and it resets itself (every hour, 6 hours
+> or day) to sample content. See apps/server/src/demo/. The text below is the
+> original plan.
+
 A user with `is_demo_account = true` has these limits enforced in REST handlers
 and the WS access check:
 

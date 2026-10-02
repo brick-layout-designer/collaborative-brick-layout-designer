@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
+import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
@@ -98,7 +99,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const user = requireUser(req);
-      if (user.isDemoAccount) {
+      if (isDemoUser(user)) {
         return reply.code(403).send({ error: 'demo_account_cannot_invite' });
       }
       const { role } = await resolveResourceRole(user.id, 'layout', req.params.id);
