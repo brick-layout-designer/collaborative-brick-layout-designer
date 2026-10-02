@@ -51,6 +51,11 @@ export function CatalogPage() {
         ) : kinds.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
             The public catalog isn’t open on this site.
+            {user?.isGlobalAdmin && (
+              <>
+                {' '}You can open it in <Link to="/admin" className="font-semibold text-accent-text hover:underline">Admin › Settings</Link>.
+              </>
+            )}
           </p>
         ) : !user && !s?.anonymousBrowse ? (
           <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
