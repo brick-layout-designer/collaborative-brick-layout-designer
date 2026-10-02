@@ -73,7 +73,15 @@ export interface SubjectUsage {
 }
 
 export const limitsApi = {
-  global: () => apiGet<{ enforced?: boolean; limits: GlobalLimit[] }>('/api/admin/limits'),
+  global: () =>
+    apiGet<{
+      enforced?: boolean;
+      /** The admin's switch in Settings. */
+      enforcedSetting?: boolean;
+      /** 'setting', or the server's LIMITS_ENFORCE forcing it on or off. */
+      enforcementSource?: 'setting' | 'forced-on' | 'forced-off';
+      limits: GlobalLimit[];
+    }>('/api/admin/limits'),
   patchGlobal: (patch: Record<string, number | null>) => apiSend<{ ok: true }>('PATCH', '/api/admin/limits', patch),
   abuse: (kind: 'users' | 'clubs', sort: string) => apiGet<AbuseList>(`/api/admin/abuse/${kind}?sort=${encodeURIComponent(sort)}`),
   usage: (kind: 'user' | 'org', id: string) => apiGet<SubjectUsage>(`/api/admin/${kind === 'user' ? 'users' : 'orgs'}/${id}/usage`),

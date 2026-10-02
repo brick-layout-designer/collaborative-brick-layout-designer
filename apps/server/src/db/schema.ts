@@ -195,6 +195,11 @@ export const platformSettings = sqliteTable('platform_settings', {
   catalogReview: text('catalog_review', { enum: ['moderators', 'none'] }).notNull().default('moderators'),
   /** Whether people who aren't signed in may browse the catalogs (adding always needs an account). */
   catalogAnonymousBrowse: integer('catalog_anonymous_browse', { mode: 'boolean' }).notNull().default(true),
+  /**
+   * Admin › Settings › "Enforce usage limits". On by default (collab runs
+   * with limits on). The LIMITS_ENFORCE env var, when set, overrides it.
+   */
+  limitsEnforced: integer('limits_enforced', { mode: 'boolean' }).notNull().default(true),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
