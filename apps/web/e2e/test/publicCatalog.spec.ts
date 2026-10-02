@@ -62,6 +62,10 @@ test('off by default: no Catalog link, no Share item, and /catalog says it is cl
   await expect(page.getByRole('menuitem', { name: /public catalog/ })).toHaveCount(0);
   await page.goto('/catalog');
   await expect(page.getByText('The public catalog isn’t open on this site.')).toBeVisible();
+  // A site admin is told where to open it.
+  await as(page, ADMIN, 'Site Admin');
+  await page.goto('/catalog');
+  await expect(page.getByRole('link', { name: 'Admin › Settings' })).toHaveAttribute('href', '/admin');
 });
 
 test('share, review, find, add, update and unpublish a module', async ({ page }) => {
