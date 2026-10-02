@@ -986,6 +986,7 @@ function Editor({ layoutId }: { layoutId: string }) {
         <SaveModuleDialog
           map={docMap}
           selection={useEditorStore.getState().selection}
+          layoutOwnerOrgId={meta.data?.layout.ownerOrgId ?? null}
           onClose={() => setShowSaveModule(false)}
           onSaved={(_id, title) => {
             setShowSaveModule(false);
