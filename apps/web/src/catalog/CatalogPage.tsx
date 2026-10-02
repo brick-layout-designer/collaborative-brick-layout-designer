@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CatalogItem, type CatalogKind } from '../api';
 import { AppHeader } from '../AppHeader';
 import { SaveToPicker } from '../owners/OwnerControls';
+import { CollectionsSection, MyCollections } from './Collections';
 
 export function CatalogPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -63,6 +64,8 @@ export function CatalogPage() {
           </p>
         ) : (
           <>
+            <CollectionsSection />
+            {user && <MyCollections />}
             <div className="flex flex-wrap items-center gap-2">
               {kinds.length > 1 && (
                 <div role="tablist" aria-label="Catalog" className="flex rounded-lg border border-line p-0.5">

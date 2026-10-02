@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CatalogReview, type WarningSubject } from '../api';
 import { WarnForm } from '../notices/Notices';
+import { invalidateFor } from '../live/invalidate';
 
 export function ModerationTab() {
   const qc = useQueryClient();
@@ -111,7 +112,124 @@ export function ModerationTab() {
         )}
       </section>
       {error && <p className="text-danger">{error}</p>}
+      <CollectionModeration />
     </div>
+  );
+}
+
+/** Collections: submissions and changes to review, and the ones in the catalog. */
+function CollectionModeration() {
+  const qc = useQueryClient();
+  const data = useQuery({ queryKey: ['moderation-collections'], queryFn: api.moderation.collections });
+  const [error, setError] = useState<string | null>(null);
+  const opts = {
+    onSuccess: () => {
+      setError(null);
+      void invalidateFor(qc, 'catalog');
+    },
+    onError: (e: Error) => setError(e.message),
+  };
+  const approve = useMutation({ mutationFn: api.moderation.approveCollection, ...opts });
+  const decline = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.declineCollection(a.id, a.reason), ...opts });
+  const unpublish = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.unpublishCollection(a.id, a.reason), ...opts });
+  const feature = useMutation({ mutationFn: (a: { id: string; featured: boolean }) => api.moderation.featureCollection(a.id, a.featured), ...opts });
+  if (!data.data) return null;
+  const { queue, collections } = data.data;
+  return (
+    <>
+      <section className="space-y-3" aria-labelledby="mod-coll-queue">
+        <h2 id="mod-coll-queue" className="text-sm font-semibold">Collections waiting for review ({queue.length})</h2>
+        {queue.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">Nothing waiting.</p>
+        ) : (
+          <ul className="space-y-2">
+            {queue.map((q) => (
+              <li key={q.id} data-testid="moderation-collection" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
+                {q.coverUrl ? (
+                  <img src={q.coverUrl} alt="" className="size-24 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+                ) : (
+                  <span aria-hidden className="size-24 shrink-0 rounded-lg border border-line bg-soft" />
+                )}
+                <div className="min-w-[12rem] flex-1 space-y-1">
+                  <p className="font-semibold">
+                    {q.title} <span className="font-normal text-muted">(collection, {q.isUpdate ? 'a change' : 'new'})</span>
+                  </p>
+                  <p className="text-xs text-muted">
+                    From {q.by}
+                    {q.email ? ` (${q.email})` : ''} · {new Date(q.createdAt).toLocaleString()}
+                  </p>
+                  {q.description && <p>{q.description}</p>}
+                  <p className="text-xs">Items: {q.items.map((i) => i.title).join(', ') || 'none'}</p>
+                </div>
+                <div className="flex basis-full flex-wrap justify-end gap-2 sm:basis-auto sm:flex-col">
+                  <button
+                    type="button"
+                    onClick={() => approve.mutate(q.id)}
+                    aria-label={`Approve collection ${q.title}`}
+                    className="tap-target rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-ink hover:bg-accent-hover"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const reason = prompt(`Why is "${q.title}" declined? (optional; the curator sees this)`);
+                      if (reason !== null) decline.mutate({ id: q.id, reason });
+                    }}
+                    aria-label={`Decline collection ${q.title}`}
+                    className="tap-target rounded-lg border border-border px-3 py-1.5 hover:bg-soft"
+                  >
+                    Decline…
+                  </button>
+                </div>
+                {q.owner && <WarnOwner owner={q.owner} title={q.title} by={q.by} link={`/catalog/collections/${q.id}`} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="space-y-3" aria-labelledby="mod-colls">
+        <h2 id="mod-colls" className="text-sm font-semibold">Collections in the catalog</h2>
+        {collections.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">Nothing yet. Make one from the Catalog page (Mine › New collection).</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
+            {collections.map((c) => (
+              <li key={c.id} data-testid="moderated-collection" className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+                <div className="min-w-[10rem] flex-1">
+                  <p className="font-medium">{c.title}</p>
+                  <p className="text-xs text-muted">
+                    {c.official ? 'Official' : `By ${c.by}`} · {c.itemCount} items ·{' '}
+                    {c.status === 'public' ? (c.featured ? 'Featured' : 'Public') : `Unpublished${c.reason ? `: ${c.reason}` : ''}`}
+                  </p>
+                </div>
+                {c.status === 'public' && c.official && (
+                  <label className="flex items-center gap-1 text-xs">
+                    <input type="checkbox" checked={c.featured} onChange={(e) => feature.mutate({ id: c.id, featured: e.target.checked })} aria-label={`Feature ${c.title}`} />
+                    Featured
+                  </label>
+                )}
+                {c.status === 'public' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const reason = prompt(`Unpublish "${c.title}"? Reason (optional; the curator sees this):`);
+                      if (reason !== null) unpublish.mutate({ id: c.id, reason });
+                    }}
+                    aria-label={`Unpublish collection ${c.title}`}
+                    className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"
+                  >
+                    Unpublish
+                  </button>
+                )}
+                {c.owner && !c.official && <WarnOwner owner={c.owner} title={c.title} by={c.by} link={`/catalog/collections/${c.id}`} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {error && <p className="text-danger">{error}</p>}
+    </>
   );
 }
 

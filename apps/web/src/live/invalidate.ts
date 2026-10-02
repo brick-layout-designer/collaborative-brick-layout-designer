@@ -46,7 +46,11 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   module: () => [['modules'], ['module'], ['module-versions'], ['catalog-copies'], ['club-summary'], ...ADMIN_LISTS],
   venue: () => [['venues'], ['venue'], ['venue-library'], ['club-summary']],
   'custom-part': () => [['custom-parts'], ['parts-catalog'], ['catalog-copies'], ['club-summary']],
-  catalog: () => [['catalog-items'], ['catalog-mine'], ['catalog-copies'], ['moderation'], ['modules'], ['custom-parts']],
+  catalog: () => [
+    ['catalog-items'], ['catalog-mine'], ['catalog-copies'], ['moderation'], ['modules'], ['custom-parts'],
+    // Collections: an item leaving the catalog changes them too.
+    ['catalog-collections'], ['catalog-collection'], ['catalog-collections-mine'], ['moderation-collections'],
+  ],
   club: (h) => [
     ['orgs'], ['org'], ['org-members'], ['org-join-requests'], ['join-request-count'], ['org-audit'],
     ['org-part-libraries'], ['org-user-search'], ['club-summary'], ['club-directory'],
@@ -129,7 +133,7 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/venues\b/, ['venue']],
   [/^\/api\/(custom-parts|custom-part-invites)\b/, ['custom-part']],
   // Adding or updating a catalog item puts a module or a part in your things.
-  [/^\/api\/catalog\/(items\/[^/]+\/add|copies)\b/, ['catalog', 'module', 'custom-part']],
+  [/^\/api\/catalog\/((items|collections)\/[^/]+\/add|copies)\b/, ['catalog', 'module', 'custom-part']],
   [/^\/api\/(catalog|moderation)\b/, ['catalog']],
   [/^\/api\/(orgs|org-invites)\b/, ['club']],
   [/^\/api\/admin\/(users|orgs)\/[^/]+\/limits$/, ['limits', 'admin']],
