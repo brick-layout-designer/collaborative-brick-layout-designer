@@ -27,6 +27,7 @@ export function bufConcat(list: readonly Buffer[]): Buffer {
 export function resetDb(): void {
   sqlite.exec(`
     DELETE FROM audit_events;
+    DELETE FROM warnings;
     DELETE FROM daily_stats;
     DELETE FROM usage_daily;
     DELETE FROM limit_overrides;

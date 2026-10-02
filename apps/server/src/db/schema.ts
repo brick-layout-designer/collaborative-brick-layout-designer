@@ -904,3 +904,42 @@ export const catalogCopies = sqliteTable(
     copyIdx: index('catalog_copies_copy_idx').on(t.copyId),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Warnings (moderation). A formal warning to a person or a whole club.
+//
+//   - scope 'site': from a site admin or moderator, to a person or a club
+//     (the club's admins and managers see and acknowledge it).
+//   - scope 'club': from a club's admin or manager, to one of its members,
+//     about what they do in that club (`clubOrgId`). Seen by that member,
+//     the club's admins and managers, and site admins.
+//
+// The recipient sees it as a notice to acknowledge. Nothing is deleted
+// when acknowledged: the history stays on the admin pages.
+// ---------------------------------------------------------------------------
+export const warnings = sqliteTable(
+  'warnings',
+  {
+    id: text('id').primaryKey(),
+    scope: text('scope', { enum: ['site', 'club'] }).notNull(),
+    /** Club warnings: the club it's from. */
+    clubOrgId: text('club_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    /** Exactly one of these: the person, or the club, it's to. */
+    subjectUserId: text('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    subjectOrgId: text('subject_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    severity: text('severity', { enum: ['note', 'warning', 'final'] }).notNull(),
+    reason: text('reason').notNull(),
+    /** Optional link to the thing it's about (a layout, module, part or catalog item), a site path. */
+    link: text('link'),
+    issuedBy: text('issued_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    acknowledgedAt: integer('acknowledged_at', { mode: 'timestamp_ms' }),
+    acknowledgedBy: text('acknowledged_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    userIdx: index('warnings_subject_user_idx').on(t.subjectUserId, t.createdAt),
+    orgIdx: index('warnings_subject_org_idx').on(t.subjectOrgId, t.createdAt),
+    clubIdx: index('warnings_club_idx').on(t.clubOrgId, t.createdAt),
+  }),
+);
+export type Warning = typeof warnings.$inferSelect;

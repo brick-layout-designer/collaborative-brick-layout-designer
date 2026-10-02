@@ -21,6 +21,7 @@ import { api, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
 import { CatalogSettingsSection, ModerationTab } from './Moderation';
+import { SubjectWarnings } from './SubjectWarnings';
 import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 
 type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
@@ -358,6 +359,10 @@ function UserDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
             )}
           </div>
           <div>
+            <h3 className="mb-2 text-sm font-semibold text-neutral-300">Warnings</h3>
+            <SubjectWarnings subject={{ kind: 'user', id }} name={detail.data.user.displayName} />
+          </div>
+          <div>
             <h3 className="mb-2 text-sm font-semibold text-neutral-300">Use, limits and read-only</h3>
             <SubjectLimitsPanel kind="user" id={id} />
           </div>
@@ -518,6 +523,10 @@ function OrgDetailPanel({ id, onBack }: { id: string; onBack: () => void }) {
                 </tbody>
               </table>
             )}
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-neutral-300">Warnings</h3>
+            <SubjectWarnings subject={{ kind: 'org', id }} name={detail.data.org.name} />
           </div>
           <div>
             <h3 className="mb-2 text-sm font-semibold text-neutral-300">Use, limits and read-only</h3>

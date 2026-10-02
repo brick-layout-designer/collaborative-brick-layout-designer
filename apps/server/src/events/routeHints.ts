@@ -13,7 +13,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { Hint, HintOwner } from './hub.js';
-import { orgIdBySlug, ownerOfResource, publish, type Reach } from './audience.js';
+import { orgIdBySlug, ownerOfResource, publish, staffIds, type Reach } from './audience.js';
+import { clubRunners, recipientsOf } from '../routes/warnings.js';
 
 type ResourceKind = 'layout' | 'module' | 'venue' | 'custom-part';
 
@@ -203,6 +204,28 @@ async function joinRequester(id: string): Promise<string | null> {
   return row?.u ?? null;
 }
 
+/**
+ * A warning: to whoever received it, and whoever may see it. Site
+ * warnings: site admins and moderators. Club warnings: the club's admins
+ * and managers, and site admins (not moderators).
+ */
+function warningHint(idFrom: (ctx: HintCtx) => string | null): HintSpec {
+  return {
+    after: async (ctx) => {
+      const id = idFrom(ctx);
+      if (!id) return [];
+      const w = await db.select().from(schema.warnings).where(eq(schema.warnings.id, id)).get();
+      if (!w) return [];
+      const users = [
+        ...(await recipientsOf(w)),
+        ...(w.clubOrgId ? await clubRunners(w.clubOrgId) : []),
+        ...(await staffIds(w.scope === 'site')),
+      ];
+      return [{ hint: { kind: 'warning', id: w.id, action: action(ctx.req) }, reach: { ownerless: true, users } }];
+    },
+  };
+}
+
 export const ROUTE_HINTS: Record<string, HintSpec> = {
   // ---- account (other tabs and the desktop app of the same person)
   'PATCH /api/auth/me': me,
@@ -306,6 +329,11 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
     },
     after: (c) => club(bySlug, () => [c.before.requester as string | null]).after(c),
   },
+
+  // ---- warnings
+  'POST /api/admin/warnings': warningHint((c) => str(c.reply?.id)),
+  'POST /api/orgs/:slug/warnings': warningHint((c) => str(c.reply?.id)),
+  'POST /api/notices/:id/acknowledge': warningHint((c) => c.params.id ?? null),
 
   // ---- site admin
   'PATCH /api/admin/users/:id': adminOnly('admin', param('id')),

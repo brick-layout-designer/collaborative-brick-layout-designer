@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type OrgPartLibrary } from '../api';
 import {
   ActivitySection,
+  ClubWarningsSection,
   DeleteClubSection,
   HandOverSection,
   InviteSection,
@@ -119,6 +120,7 @@ function OrgAdmin({ slug }: { slug: string }) {
             )}
             <InviteSection slug={slug} myRole={org.myRole} />
             <PendingInvitesSection slug={slug} myRole={org.myRole} invites={members.data?.invites ?? []} />
+            <ClubWarningsSection slug={slug} />
           </div>
         )}
         {tab === 'settings' && isClubAdmin && (
