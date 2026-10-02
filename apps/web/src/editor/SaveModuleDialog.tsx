@@ -8,7 +8,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { seedFromBbm, encodeDoc } from '@cld/ydoc';
 import type { BbmMap, Brick } from '@cld/model';
 import { api } from '../api';
-import { defaultSaveTo, readOwnerFilter, validOwnerFilter } from '../owners/owners';
 import { SaveToPicker } from '../owners/OwnerControls';
 
 interface Props {
@@ -16,16 +15,20 @@ interface Props {
   selection: string[];
   onClose: () => void;
   onSaved: (moduleId: string, title: string) => void;
+  /** The club that owns the layout being edited, if any: the default "Save to". */
+  layoutOwnerOrgId?: string | null;
 }
 
-export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
+export function SaveModuleDialog({ map, selection, onClose, onSaved, layoutOwnerOrgId = null }: Props) {
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
-  // Where it's saved: picked, else the club the home page shows, else Me.
+  // Where it's saved: picked, else whoever owns this layout (its club, if
+  // you're in it), else Me.
   const [picked, setPicked] = useState<string | null>(null);
-  const ownerSlug = picked ?? defaultSaveTo(validOwnerFilter(readOwnerFilter(), orgs.data?.orgs ?? []));
+  const layoutClub = orgs.data?.orgs.find((o) => o.id === layoutOwnerOrgId)?.slug ?? '';
+  const ownerSlug = picked ?? layoutClub;
 
   const save = useMutation({
     mutationFn: async (name: string) => {
@@ -89,7 +92,13 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved }: Props) {
       doc.destroy();
 
       const created = await api.modules.create(ownerSlug ? { title: name, orgSlug: ownerSlug } : { title: name });
-      await api.modules.saveSnapshot(created.id, bytes);
+      try {
+        await api.modules.saveSnapshot(created.id, bytes);
+      } catch (e) {
+        // Don't leave an empty module behind when its contents didn't arrive.
+        await api.modules.remove(created.id).catch(() => undefined);
+        throw e;
+      }
       return { id: created.id, title: created.title };
     },
     onSuccess: (result) => {
