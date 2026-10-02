@@ -10,7 +10,8 @@ import { RESET_EVERY_TEXT, timeUntil } from './demoText';
 
 export function DemoBanner() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
-  const demo = me.data?.user?.isDemoAccount ? me.data.user.demo : undefined;
+  // Only the demo account's /me carries `demo`.
+  const demo = me.data?.user?.demo;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!demo) return;

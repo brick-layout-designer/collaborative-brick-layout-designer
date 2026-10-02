@@ -62,7 +62,8 @@ export function demoStatus(s: PlatformSettings): {
     enabled: s.demoEnabled,
     resetEvery: s.demoResetEvery,
     lastResetAt: s.demoLastResetAt?.getTime() ?? null,
-    nextResetAt: s.demoEnabled ? (nextDemoReset(s)?.getTime() ?? null) : null,
+    // nextDemoReset is null while the demo is off.
+    nextResetAt: nextDemoReset(s)?.getTime() ?? null,
   };
 }
 

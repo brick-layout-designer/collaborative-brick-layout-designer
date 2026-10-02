@@ -137,6 +137,9 @@ describe('Admin › Settings › Demo account', () => {
     expect(screen.getByTestId('demo-last-reset').textContent).toContain('· next in 23 h · 1 thing in it now');
     fireEvent.click(screen.getByLabelText('1 hour'));
     await waitFor(() => expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ demoResetEvery: '1h' }));
+    // Turning it off sends demoEnabled: false.
+    fireEvent.click(screen.getByLabelText('Enable the demo account'));
+    await waitFor(() => expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toContainEqual({ demoEnabled: false }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset now' }));
     await waitFor(() => expect(calls.find((c) => c.path === '/api/admin/demo/reset')).toMatchObject({ method: 'POST', body: {}, type: 'application/json' }));
   });

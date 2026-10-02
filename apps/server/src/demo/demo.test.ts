@@ -128,6 +128,24 @@ describe('turning it on', () => {
     expect(list.layouts.map((l) => l.title)).toEqual([DEMO_SAMPLES.layout.title]);
   });
 
+  it('the first Try the demo puts the samples in if no reset has run yet', async () => {
+    await getPlatformSettings();
+    db.update(schema.platformSettings).set({ demoEnabled: true }).run();
+    await tryDemo();
+    expect(titles(DEMO_USER_ID)).toEqual([DEMO_SAMPLES.layout.title]);
+    expect((await getPlatformSettings()).demoLastResetAt).not.toBeNull();
+  });
+
+  it('shows on the admin dashboard instead of a demo-user count', async () => {
+    const people = async () => (await call({ url: '/api/admin/insights/people', cookie: admin.cookie })).json() as { totals: object; demo: object };
+    expect((await people()).demo).toEqual({ enabled: false, lastResetAt: null, items: 0 });
+    await setDemo({ demoEnabled: true });
+    const on = await people();
+    expect(on.demo).toMatchObject({ enabled: true, items: 3 });
+    expect((on.demo as { lastResetAt: number }).lastResetAt).toBeGreaterThan(0);
+    expect(on.totals).not.toHaveProperty('demo');
+  });
+
   it('re-enables an account an admin changed, without giving it powers', async () => {
     await setDemo({ demoEnabled: true });
     db.update(schema.users).set({ displayName: 'Hacked', isModerator: true }).where(eq(schema.users.id, DEMO_USER_ID)).run();
