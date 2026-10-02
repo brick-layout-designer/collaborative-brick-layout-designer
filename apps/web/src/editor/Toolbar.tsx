@@ -20,7 +20,8 @@ const TOOLS: { id: Tool; label: string; hint: string; shortcut: string | null; i
   { id: 'delete', label: 'Delete', hint: 'Click pieces to remove them', shortcut: null, icon: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /> },
 ];
 
-export function Toolbar() {
+/** `noVenue`: the module editor (a module has no venue). */
+export function Toolbar({ noVenue = false }: { noVenue?: boolean } = {}) {
   const tool = useEditorStore((s) => s.tool);
   const setTool = useEditorStore((s) => s.setTool);
 
@@ -45,7 +46,7 @@ export function Toolbar() {
   // A labelled rail down the left edge (the mockup's tool rail).
   return (
     <nav aria-label="Build tools" className="flex flex-col items-center gap-1">
-      {TOOLS.map((t) => {
+      {TOOLS.filter((t) => !noVenue || !t.id.startsWith('venue')).map((t) => {
         const on = tool === t.id;
         return (
           <button

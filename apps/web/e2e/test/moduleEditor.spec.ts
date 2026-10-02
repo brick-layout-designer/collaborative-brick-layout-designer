@@ -1,0 +1,173 @@
+// Modules you can open, change and see: New module opens the module
+// editor, Save module keeps the parts and makes the module's picture, and
+// the picture shows wherever modules are listed. People who can only view
+// a module see it without the Save button.
+
+import { test, expect, type Page } from '@playwright/test';
+import { ensureUser, signIn } from '../helpers';
+import { clearModuleThumbnail } from '../dbHelpers';
+
+const ts = Date.now();
+let seq = 0;
+const PART = 'ts_narrowgauge_straight.8';
+
+/** The parts drawn on the canvas. */
+function brickCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    type N = { name: () => string; getClassName: () => string };
+    const st = (window as unknown as { Konva?: { stages: { find: (f: (n: N) => boolean) => N[] }[] } }).Konva?.stages[0];
+    return st ? st.find((n) => n.getClassName() === 'Group' && n.name().startsWith('brick-')).length : 0;
+  });
+}
+
+async function placePart(page: Page): Promise<void> {
+  await page.getByPlaceholder(/fuzzy filter/i).first().fill('narrow gauge track straight 4 x 16');
+  await page.locator(`[title*="(${PART})"]`).first().dblclick();
+}
+
+/** A picture that really loaded (not a broken image). */
+async function expectLoadedPicture(row: ReturnType<Page['locator']>): Promise<void> {
+  const img = row.getByTestId('module-thumb');
+  await expect(img).toBeVisible({ timeout: 15000 });
+  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 10000 }).toBeGreaterThan(0);
+}
+
+/** New module → build it → Save module; returns its id. */
+async function buildModule(page: Page, title: string): Promise<string> {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New module' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New module' });
+  await dialog.getByLabel('Title').fill(title);
+  await dialog.getByRole('button', { name: 'Create and open' }).click();
+  await expect(page).toHaveURL(/\/modules\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId('module-editor-title')).toHaveText(`Editing module: ${title}`);
+  await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+  await placePart(page);
+  await expect.poll(() => brickCount(page)).toBe(1);
+  await expect(page.getByTestId('save-status')).toHaveText('Not saved yet');
+  await page.getByRole('button', { name: 'Save module' }).click();
+  await expect(page.getByTestId('save-status')).toHaveText('Saved');
+  return /\/modules\/([0-9a-f-]{36})$/.exec(page.url())![1]!;
+}
+
+test.describe('module editor', () => {
+  test('New module opens the editor; build, save, and it shows on Home with its picture', async ({ page }) => {
+    await signIn(page, `mod-build-${ts}-${seq++}@example.com`, 'Module Builder');
+    const id = await buildModule(page, 'Station siding');
+    // Only what a module needs: no venue, views or layout sharing.
+    await expect(page.getByRole('button', { name: 'Share', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(page.getByText(/^Venue/)).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Build tools' }).getByRole('button', { name: 'Select' })).toBeVisible();
+    await expect(page.getByText('Find...  Ctrl+F')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Home: the module, with its picture and Open.
+    await page.getByRole('button', { name: 'Home' }).click();
+    await expect(page).toHaveURL(/\/$/);
+    const row = page.getByTestId('module-row').filter({ hasText: 'Station siding' });
+    await expectLoadedPicture(row);
+    const pic = await page.request.get(`/api/modules/${id}/thumbnail`);
+    expect(pic.headers()['content-type']).toBe('image/png');
+
+    // Open it again: the part is still there; change it and save again.
+    await row.getByRole('link', { name: 'Open Station siding' }).click();
+    await expect(page).toHaveURL(new RegExp(`/modules/${id}$`));
+    await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(1);
+    await placePart(page);
+    await expect.poll(() => brickCount(page)).toBe(2);
+    await page.keyboard.press('Control+s');
+    await expect(page.getByTestId('save-status')).toHaveText('Saved');
+    await page.reload();
+    await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(2);
+  });
+
+  test('a module without a picture gets one when opened, and pictures show when inserting into a layout', async ({ page }) => {
+    await signIn(page, `mod-pic-${ts}-${seq++}@example.com`, 'Module Pictures');
+    const id = await buildModule(page, 'Old crossing');
+    clearModuleThumbnail(id);
+    await page.goto('/');
+    const row = page.getByTestId('module-row').filter({ hasText: 'Old crossing' });
+    await expect(row.getByTestId('module-thumb-placeholder')).toBeVisible();
+    // Opening it makes the picture.
+    await row.getByRole('link', { name: 'Open Old crossing' }).click();
+    await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(1);
+    await expect
+      .poll(async () => (await page.request.get(`/api/modules/${id}/thumbnail`)).status(), { timeout: 15000 })
+      .toBe(200);
+    await page.goto('/');
+    await expectLoadedPicture(page.getByTestId('module-row').filter({ hasText: 'Old crossing' }));
+
+    // A layout's Insert module dialog and Module library show it too.
+    const res = await page.request.post('/api/layouts', { data: { title: 'Host layout' } });
+    const { id: layoutId } = (await res.json()) as { id: string };
+    await page.goto(`/editor/${layoutId}`);
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Insert module' }).click();
+    const insertRow = page.locator('li', { hasText: 'Old crossing' }).filter({ has: page.getByRole('button', { name: 'Insert' }) });
+    await expectLoadedPicture(insertRow);
+    await insertRow.getByRole('button', { name: 'Insert' }).click();
+    await expect.poll(() => brickCount(page)).toBe(1);
+    await page.getByRole('button', { name: 'Panels', exact: true }).click();
+    await page.getByLabel('Module library').check();
+    await page.mouse.click(400, 400);
+    const libRow = page.locator('li[draggable="true"]', { hasText: 'Old crossing' });
+    await expectLoadedPicture(libRow);
+    await expect(libRow.getByRole('link', { name: 'Open Old crossing' })).toHaveAttribute('href', `/modules/${id}`);
+  });
+
+  test('someone who can only view a module sees it without Save', async ({ page, browser }) => {
+    const viewerEmail = `mod-viewer-${ts}-${seq++}@example.com`;
+    await ensureUser(viewerEmail, 'Module Viewer');
+    await signIn(page, `mod-owner-${ts}-${seq++}@example.com`, 'Module Owner');
+    const id = await buildModule(page, 'Shared turntable');
+    expect((await page.request.post(`/api/modules/${id}/invites`, { data: { email: viewerEmail, role: 'viewer' } })).ok()).toBe(true);
+
+    const ctx = await browser.newContext();
+    const vp = await ctx.newPage();
+    await signIn(vp, viewerEmail, 'Module Viewer');
+    await vp.goto('/');
+    const row = vp.getByTestId('module-row').filter({ hasText: 'Shared turntable' });
+    await expectLoadedPicture(row);
+    await row.getByRole('link', { name: 'Open Shared turntable' }).click();
+    await expect(vp.getByTestId('module-editor-title')).toHaveText('Editing module: Shared turntable');
+    await expect.poll(() => brickCount(vp), { timeout: 15000 }).toBe(1);
+    await expect(vp.getByTestId('view-only')).toBeVisible();
+    await expect(vp.getByRole('button', { name: 'Save module' })).toHaveCount(0);
+    await ctx.close();
+
+    // A stranger can't open it at all.
+    const ctx2 = await browser.newContext();
+    const sp = await ctx2.newPage();
+    await signIn(sp, `mod-stranger-${ts}-${seq++}@example.com`, 'Stranger');
+    await sp.goto(`/modules/${id}`);
+    await expect(sp.getByTestId('module-editor-title')).toHaveCount(0);
+    await expect(sp.getByText(/could not be found|not found/i).first()).toBeVisible({ timeout: 15000 });
+    await ctx2.close();
+  });
+
+  test('the club page shows the club’s modules with their pictures, and opens them', async ({ page }) => {
+    await signIn(page, `mod-club-${ts}-${seq++}@example.com`, 'Club Modules');
+    const slug = `modclub-${ts}-${seq++}`;
+    expect((await page.request.post('/api/orgs', { data: { name: 'Module Club', slug } })).ok()).toBe(true);
+    await page.goto(`/?owner=${slug}`);
+    await page.getByRole('button', { name: 'New module' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New module' });
+    await dialog.getByLabel('Title').fill('Club yard');
+    await dialog.getByRole('button', { name: 'Create and open' }).click();
+    await expect(page.getByTestId('module-editor-title')).toHaveText('Editing module: Club yard');
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await placePart(page);
+    await expect.poll(() => brickCount(page)).toBe(1);
+    await page.getByRole('button', { name: 'Save module' }).click();
+    await expect(page.getByTestId('save-status')).toHaveText('Saved');
+    const id = /\/modules\/([0-9a-f-]{36})$/.exec(page.url())![1]!;
+
+    await page.goto(`/orgs/${slug}`);
+    const tile = page.getByRole('list', { name: 'Module Club’s modules' }).getByRole('link', { name: 'Open Club yard' });
+    await expectLoadedPicture(tile);
+    await tile.click();
+    await expect(page).toHaveURL(new RegExp(`/modules/${id}$`));
+    await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(1);
+  });
+});

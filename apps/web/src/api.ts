@@ -627,6 +627,15 @@ export const api = {
       post<{ id: string; title: string }>('/api/modules', body),
     saveSnapshot: (id: string, bytes: Uint8Array) =>
       putBytes(`/api/modules/${id}/snapshot`, bytes),
+    /** The module's Y.Doc bytes (for the module editor). */
+    snapshot: async (id: string): Promise<Uint8Array> => {
+      const res = await fetch(`/api/modules/${encodeURIComponent(id)}/snapshot`, { credentials: 'include' });
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+      return new Uint8Array(await res.arrayBuffer());
+    },
+    /** The module's picture, as base64 in JSON (never octet-stream: the site's firewall). */
+    setThumbnail: (id: string, thumb: { mime: 'image/png' | 'image/webp'; data: string }) =>
+      put<{ ok: true; thumbnailAt: number }>(`/api/modules/${encodeURIComponent(id)}/thumbnail`, thumb),
     rename: (id: string, title: string) =>
       patch<{ ok: true }>(`/api/modules/${id}`, { title }),
     remove: (id: string) => del(`/api/modules/${id}`),
@@ -976,8 +985,15 @@ export interface ModuleSummary {
   ownerOrgId: string | null;
   docVersion: number;
   hasSidecar: boolean;
+  /** When its picture was made (the picture URL's cache key); null or missing: none yet. */
+  thumbnailAt?: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/** A module's picture, or null when it has none yet (show a placeholder). */
+export function moduleThumbnailUrl(m: Pick<ModuleSummary, 'id' | 'thumbnailAt'>): string | null {
+  return m.thumbnailAt ? `/api/modules/${encodeURIComponent(m.id)}/thumbnail?v=${m.thumbnailAt}` : null;
 }
 
 export interface OrgSummary {

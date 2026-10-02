@@ -3,6 +3,7 @@ import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as Y from 'yjs';
+import { exportBbmFromDoc } from '@cld/ydoc';
 import { db, resetDb, schema } from '../test/helpers.js';
 import { attachUser } from '../auth/cookie.js';
 import { passwordRoutes } from './auth/password.js';
@@ -248,5 +249,101 @@ describe('modules', () => {
       headers: { cookie: bobCookie },
     });
     expect((bobGet.json() as { role: string }).role).toBe('editor');
+  });
+
+  it('a new module opens ready for parts: it has a brick layer', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const create = await app.inject({ method: 'POST', url: '/api/modules', headers: { cookie: aliceCookie }, payload: { title: 'Fresh' } });
+    const id = (create.json() as { id: string }).id;
+    const snap = await app.inject({ method: 'GET', url: `/api/modules/${id}/snapshot`, headers: { cookie: aliceCookie } });
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, new Uint8Array(snap.rawPayload));
+    expect(exportBbmFromDoc(doc)?.layers.map((l) => l.type)).toContain('brick');
+  });
+
+  describe('thumbnails', () => {
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 7)]);
+    async function setup() {
+      const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+      const create = await app.inject({ method: 'POST', url: '/api/modules', headers: { cookie: aliceCookie }, payload: { title: 'Pic' } });
+      return { aliceCookie, id: (create.json() as { id: string }).id };
+    }
+
+    it('lists no picture until one is uploaded, then serves it with caching', async () => {
+      const { aliceCookie, id } = await setup();
+      let list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: aliceCookie } })).json() as { modules: { id: string; thumbnailAt: number | null }[] };
+      expect(list.modules[0]!.thumbnailAt).toBeNull();
+      expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie } })).statusCode).toBe(404);
+
+      const put = await app.inject({
+        method: 'PUT',
+        url: `/api/modules/${id}/thumbnail`,
+        headers: { cookie: aliceCookie },
+        payload: { mime: 'image/png', data: PNG.toString('base64') },
+      });
+      expect(put.statusCode).toBe(200);
+      list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: aliceCookie } })).json() as typeof list;
+      expect(list.modules[0]!.thumbnailAt).toBe((put.json() as { thumbnailAt: number }).thumbnailAt);
+
+      const got = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie } });
+      expect(got.statusCode).toBe(200);
+      expect(got.headers['content-type']).toBe('image/png');
+      expect(got.headers['cache-control']).toContain('max-age');
+      expect(Buffer.compare(got.rawPayload, PNG)).toBe(0);
+      const again = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie, 'if-none-match': got.headers.etag as string } });
+      expect(again.statusCode).toBe(304);
+    });
+
+    it('refuses a file that is not the picture it claims to be, and octet-stream', async () => {
+      const { aliceCookie, id } = await setup();
+      const bad = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: Buffer.from('<svg/>').toString('base64') } });
+      expect(bad.statusCode).toBe(400);
+      const wrongType = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/svg+xml', data: PNG.toString('base64') } });
+      expect(wrongType.statusCode).toBe(400);
+      const big = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: Buffer.concat([PNG, Buffer.alloc(600 * 1024)]).toString('base64') } });
+      expect(big.statusCode).toBe(413);
+      const raw = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie, 'content-type': 'application/octet-stream' }, payload: PNG });
+      expect(raw.statusCode).toBe(400);
+    });
+
+    it('only editors can set the picture; strangers cannot see it', async () => {
+      const { aliceCookie, id } = await setup();
+      const bobCookie = await registerAndLogin(app, 'bob@example.com');
+      const stranger = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: bobCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
+      expect(stranger.statusCode).toBe(404);
+      await app.inject({ method: 'POST', url: `/api/modules/${id}/invites`, headers: { cookie: aliceCookie }, payload: { email: 'bob@example.com', role: 'viewer' } });
+      const viewer = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: bobCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
+      expect(viewer.statusCode).toBe(403);
+    });
+
+    it('counts the picture in storage', async () => {
+      const { aliceCookie, id } = await setup();
+      const { usageOf } = await import('../limits/limits.js');
+      const alice = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get();
+      const before = usageOf({ kind: "user", id: alice!.id }).storageBytes;
+      await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
+      const after = usageOf({ kind: "user", id: alice!.id }).storageBytes;
+      expect(after - before).toBe(PNG.length);
+    });
+  });
+
+  it('club members only view club modules when the club keeps adding to admins', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: aliceCookie }, payload: { name: 'Acme', slug: 'acme' } });
+    const id = ((await app.inject({ method: 'POST', url: '/api/modules', headers: { cookie: aliceCookie }, payload: { title: 'OrgMod', orgSlug: 'acme' } })).json() as { id: string }).id;
+    const bobCookie = await registerAndLogin(app, 'bob@example.com');
+    const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get();
+    const acme = await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'acme')).get();
+    await db.insert(schema.orgMembers).values({ orgId: acme!.id, userId: bob!.id, role: 'member', joinedAt: new Date() });
+    await db.update(schema.orgs).set({ membersCanCreate: false }).where(eq(schema.orgs.id, acme!.id));
+    const get = (await app.inject({ method: 'GET', url: `/api/modules/${id}`, headers: { cookie: bobCookie } })).json() as { role: string };
+    expect(get.role).toBe('viewer');
+    const list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: bobCookie } })).json() as { modules: { id: string; role: string }[] };
+    expect(list.modules.find((m) => m.id === id)?.role).toBe('viewer');
+    const put = await app.inject({ method: 'PUT', url: `/api/modules/${id}/snapshot`, headers: { cookie: bobCookie, 'content-type': 'application/octet-stream' }, payload: Buffer.from([0, 0]) });
+    expect(put.statusCode).toBe(403);
+    // A manager still owns them.
+    await db.update(schema.orgMembers).set({ role: 'manager' }).where(eq(schema.orgMembers.userId, bob!.id));
+    expect(((await app.inject({ method: 'GET', url: `/api/modules/${id}`, headers: { cookie: bobCookie } })).json() as { role: string }).role).toBe('owner');
   });
 });

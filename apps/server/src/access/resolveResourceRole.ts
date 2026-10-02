@@ -18,7 +18,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { clubThingRole } from './clubRoles.js';
+import { atLeast, clubThingRole, type ClubRole } from './clubRoles.js';
 
 export type Role = 'owner' | 'editor' | 'viewer';
 export type ResourceKind = 'layout' | 'custom_part' | 'module' | 'org';
@@ -32,6 +32,16 @@ function strongerOf(a: Role | null, b: Role | null): Role | null {
   if (a === null) return b;
   if (b === null) return a;
   return ROLE_RANK[a] >= ROLE_RANK[b] ? a : b;
+}
+
+/**
+ * A club member's role on one of the club's modules. Managers and admins own
+ * them; members edit them when the club lets members add things, and
+ * otherwise only view them.
+ */
+export function clubModuleRole(role: ClubRole, membersCanCreate: boolean): Role {
+  if (atLeast(role, 'manager')) return 'owner';
+  return membersCanCreate ? 'editor' : 'viewer';
 }
 
 interface ResourceTables {
@@ -174,8 +184,9 @@ export async function resolveResourceRole(
 
   if (res.ownerOrgId) {
     const membership = await db
-      .select({ role: schema.orgMembers.role })
+      .select({ role: schema.orgMembers.role, membersCanCreate: schema.orgs.membersCanCreate })
       .from(schema.orgMembers)
+      .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(
         and(
           eq(schema.orgMembers.orgId, res.ownerOrgId),
@@ -184,7 +195,10 @@ export async function resolveResourceRole(
       )
       .get();
     if (membership) {
-      role = strongerOf(role, clubThingRole(membership.role));
+      role = strongerOf(
+        role,
+        kind === 'module' ? clubModuleRole(membership.role, membership.membersCanCreate) : clubThingRole(membership.role),
+      );
     }
   }
 

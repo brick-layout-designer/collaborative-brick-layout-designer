@@ -281,7 +281,7 @@ export function usageOf(subject: Subject): Usage {
     .where(eq(pCol, subject.id))
     .get();
   const mods = db
-    .select({ n: count(), bytes: sql<number>`coalesce(sum(length(${schema.modules.docSnapshot}) + coalesce(length(${schema.modules.sidecarSnapshot}), 0)), 0)`.mapWith(Number) })
+    .select({ n: count(), bytes: sql<number>`coalesce(sum(length(${schema.modules.docSnapshot}) + coalesce(length(${schema.modules.sidecarSnapshot}), 0) + coalesce(length(${schema.modules.thumbnail}), 0)), 0)`.mapWith(Number) })
     .from(schema.modules)
     .where(eq(mCol, subject.id))
     .get();

@@ -19,6 +19,7 @@ import { CustomPartsSection } from '../parts/CustomPartsSection';
 import { WelcomeCard } from '../tours/WelcomeCard';
 import { lastLayoutToReopen } from './reopenLast';
 import { useEditorStore } from '../editor/editorStore';
+import { ModuleThumb } from '../modules/ModuleThumb';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
@@ -176,19 +177,27 @@ export function LayoutsPage() {
           <p className="text-sm text-muted">Loading…</p>
         ) : moduleList.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-            {where} no saved modules yet. Pick some parts in a layout and use <em>Save as module</em>.
+            {where} no saved modules yet. Click <em>New module</em> to build one from parts, or select parts in a layout and choose <em>Save as module</em>.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
             {moduleList.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                <div className="min-w-0">
+              <li key={m.id} data-testid="module-row" className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <ModuleThumb module={m} />
+                <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="break-words font-medium">{m.title}</span>
                     <OwnerChip item={m} myUserId={myUserId} orgs={orgs} />
                   </p>
                   <p className="text-xs text-muted">updated {new Date(m.updatedAt).toLocaleString()}</p>
                 </div>
+                <Link
+                  to={`/modules/${m.id}`}
+                  aria-label={`Open ${m.title}`}
+                  className="tap-target inline-flex min-h-9 shrink-0 items-center rounded-lg bg-accent px-4 font-semibold text-accent-ink hover:bg-accent-hover"
+                >
+                  Open
+                </Link>
                 {(hasClubs || m.role === undefined || m.role === 'owner') && (
                   <MoreMenu label={`More for ${m.title}`}>
                     {hasClubs && (
@@ -226,7 +235,13 @@ export function LayoutsPage() {
       </section>
 
       {showNewModule && (
-        <NewModuleDialog initialOwnerSlug={defaultSaveTo(filter)} orgs={orgs} onClose={() => setShowNewModule(false)} />
+        <NewModuleDialog
+          initialOwnerSlug={defaultSaveTo(filter)}
+          orgs={orgs}
+          onClose={() => setShowNewModule(false)}
+          // Open it straight away, to build it from parts.
+          onCreated={(id) => navigate(`/modules/${id}`)}
+        />
       )}
 
       {moving && orgs && (
@@ -255,10 +270,12 @@ function NewModuleDialog({
   initialOwnerSlug,
   orgs,
   onClose,
+  onCreated,
 }: {
   initialOwnerSlug: string;
   orgs: readonly OrgSummary[] | undefined;
   onClose: () => void;
+  onCreated: (id: string) => void;
 }) {
   const qc = useQueryClient();
   const [title, setTitle] = useState('');
@@ -266,9 +283,10 @@ function NewModuleDialog({
   const [error, setError] = useState<string | null>(null);
   const create = useMutation({
     mutationFn: api.modules.create,
-    onSuccess: () => {
+    onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ['modules'] });
       onClose();
+      onCreated(created.id);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -309,7 +327,7 @@ function NewModuleDialog({
             disabled={create.isPending}
             className="tap-target rounded-lg bg-accent px-4 py-2 text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
-            Create
+            Create and open
           </button>
         </div>
       </form>

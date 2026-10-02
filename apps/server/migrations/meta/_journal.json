@@ -92,6 +92,13 @@
       "when": 1790905863099,
       "tag": "0012_club_manager_role",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790922791285,
+      "tag": "0013_module_thumbnails",
+      "breakpoints": true
     }
   ]
 }

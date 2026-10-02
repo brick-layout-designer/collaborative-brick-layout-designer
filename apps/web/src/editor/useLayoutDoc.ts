@@ -27,7 +27,10 @@ export type SaveStatus =
   | { kind: 'synced' }
   | { kind: 'reconnecting'; lastSyncedAt: number | null }
   | { kind: 'offline'; lastSyncedAt: number | null }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string }
+  /** The module editor: changes not saved yet (Save sends them). */
+  | { kind: 'unsaved' }
+  | { kind: 'saving' };
 
 export interface LayoutDocState {
   doc: Y.Doc | null;
@@ -40,6 +43,11 @@ export interface LayoutDocState {
    * each update), 'offline' otherwise.
    */
   saveNow: () => Promise<SaveResult>;
+  /**
+   * The module editor: work to finish before a save counts as done (its
+   * picture), so "Saved" only shows once everything has arrived.
+   */
+  setAfterSave?: (fn: (() => Promise<unknown>) | null) => void;
   /** Surfaced to the UI for "couldn't connect" cases (auth, 404, etc). */
   loadError: Error | null;
   loading: boolean;

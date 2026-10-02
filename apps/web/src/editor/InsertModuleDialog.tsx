@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type * as Y from 'yjs';
 import { api } from '../api';
+import { ModuleThumb } from '../modules/ModuleThumb';
 import { useEditorStore } from './editorStore';
 import { importBricksAsModule } from './mutations';
 import { fetchModuleBatches } from './moduleSnapshot';
@@ -61,7 +62,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && list.data.modules.length === 0 && (
           <p className="rounded-lg border border-dashed border-line p-4 text-muted">
-            No saved modules yet. Create one from the Library page.
+            No saved modules yet. Pick some parts and choose <em>Save Selection as Module</em> in the Map menu, or use <em>New module</em> on Home.
           </p>
         )}
         {list.data && list.data.modules.length > 0 && (
@@ -71,8 +72,9 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
                 key={m.id}
                 className="flex items-center justify-between px-3 py-2"
               >
-                <div>
-                  <p>{m.title}</p>
+                <ModuleThumb module={m} size="md" />
+                <div className="min-w-0 flex-1 px-3">
+                  <p className="break-words">{m.title}</p>
                   <p className="text-xs text-muted">
                     v{m.docVersion} · updated {new Date(m.updatedAt).toLocaleString()}
                   </p>
