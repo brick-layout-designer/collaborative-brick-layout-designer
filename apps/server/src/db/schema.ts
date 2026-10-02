@@ -12,6 +12,11 @@ export const users = sqliteTable('users', {
   isDemoAccount: integer('is_demo_account', { mode: 'boolean' }).notNull().default(false),
   isGlobalAdmin: integer('is_global_admin', { mode: 'boolean' }).notNull().default(false),
   /**
+   * Site moderator: reviews and unpublishes public catalog items, and
+   * nothing else an admin can do. Global admins can moderate too.
+   */
+  isModerator: integer('is_moderator', { mode: 'boolean' }).notNull().default(false),
+  /**
    * Password-auth accounts start unverified and must confirm via the
    * emailed link (see email_verifications below) before they can log in.
    * OAuth/OIDC accounts are always created verified — the provider has
@@ -179,6 +184,17 @@ export const platformSettings = sqliteTable('platform_settings', {
    * is ignored, since those apps don't work with this server anyway.
    */
   minDesktopVersion: text('min_desktop_version'),
+  /** The public module catalog. Off until an admin turns it on. */
+  moduleCatalogEnabled: integer('module_catalog_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** The public parts catalog. Off until an admin turns it on. */
+  partsCatalogEnabled: integer('parts_catalog_enabled', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Review before publishing: 'moderators' (a moderator approves each
+   * submission) or 'none' (published straight away).
+   */
+  catalogReview: text('catalog_review', { enum: ['moderators', 'none'] }).notNull().default('moderators'),
+  /** Whether people who aren't signed in may browse the catalogs (adding always needs an account). */
+  catalogAnonymousBrowse: integer('catalog_anonymous_browse', { mode: 'boolean' }).notNull().default(true),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
@@ -419,7 +435,7 @@ export const auditEvents = sqliteTable(
    * (resource_kind + resource_id) must be set; never both, never
    * neither. Enforced in the writer, not in the schema.
    */
-  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library', 'platform_settings'] }),
+  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library', 'platform_settings', 'catalog_item'] }),
   resourceId: text('resource_id'),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   eventType: text('event_type').notNull(),
@@ -778,5 +794,99 @@ export const usageDaily = sqliteTable(
     pk: primaryKey({ columns: [t.day, t.subjectKind, t.subjectId, t.metric] }),
     kindMetricDayIdx: index('usage_daily_kind_metric_day_idx').on(t.subjectKind, t.metric, t.day),
     subjectIdx: index('usage_daily_subject_idx').on(t.subjectKind, t.subjectId, t.day),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Public catalogs (modules and parts)
+//
+// Sharing makes a COPY: a catalog item holds snapshots of what was shared
+// (catalog_item_versions), never a link to the original, so later edits
+// change nothing until the owner shares an update. People who add an item
+// get their own copy too (catalog_copies remembers which version, for the
+// "Update available" badge).
+// ---------------------------------------------------------------------------
+export const catalogItems = sqliteTable(
+  'catalog_items',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind', { enum: ['module', 'part'] }).notNull(),
+    /** The module or custom part it was shared from (no FK: the original may go). */
+    sourceId: text('source_id').notNull(),
+    /** Who the item belongs to: a person, or a club (whose admins and managers manage it). */
+    ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
+    ownerOrgId: text('owner_org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    /** JSON array of lower-case tags. */
+    tags: text('tags').notNull().default('[]'),
+    /**
+     * 'in_review' (first submission waiting), 'public', 'declined',
+     * 'unpublished' (by a moderator) or 'withdrawn' (by its owner).
+     */
+    status: text('status', { enum: ['in_review', 'public', 'declined', 'unpublished', 'withdrawn'] }).notNull(),
+    /** Why it was declined or unpublished, when a moderator said. */
+    reason: text('reason'),
+    /** The version people get; 0 until one is approved. */
+    publicVersion: integer('public_version').notNull().default(0),
+    /** How many times it was added to someone's modules or parts. */
+    uses: integer('uses').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    sourceIdx: index('catalog_items_source_idx').on(t.sourceId),
+    statusIdx: index('catalog_items_status_idx').on(t.kind, t.status),
+  }),
+);
+
+export const catalogItemVersions = sqliteTable(
+  'catalog_item_versions',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => catalogItems.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    /** 'in_review', 'public' (approved: it was or is the public one) or 'declined'. */
+    status: text('status', { enum: ['in_review', 'public', 'declined'] }).notNull(),
+    submittedBy: text('submitted_by').references(() => users.id, { onDelete: 'set null' }),
+    note: text('note'),
+    reason: text('reason'),
+    decidedBy: text('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decidedAt: integer('decided_at', { mode: 'timestamp_ms' }),
+    /** A module: its Y.Doc. */
+    docSnapshot: blob('doc_snapshot'),
+    /** A part: its XML, sprite and number. */
+    partNumber: text('part_number'),
+    category: text('category'),
+    xmlBlob: blob('xml_blob'),
+    spriteBlob: blob('sprite_blob'),
+    spriteMime: text('sprite_mime'),
+    /** The preview picture (a module's thumbnail; a part's sprite is its own). */
+    thumbnail: blob('thumbnail'),
+    thumbnailMime: text('thumbnail_mime'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    itemVersionIdx: uniqueIndex('catalog_item_versions_item_version_idx').on(t.itemId, t.version),
+  }),
+);
+
+/** Someone's copy of a catalog item (a module or custom part), and which version it came from. */
+export const catalogCopies = sqliteTable(
+  'catalog_copies',
+  {
+    itemId: text('item_id')
+      .notNull()
+      .references(() => catalogItems.id, { onDelete: 'cascade' }),
+    copyId: text('copy_id').notNull(),
+    version: integer('version').notNull(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.itemId, t.copyId] }),
+    copyIdx: index('catalog_copies_copy_idx').on(t.copyId),
   }),
 );

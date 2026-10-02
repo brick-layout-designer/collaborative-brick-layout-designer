@@ -285,6 +285,16 @@ export function usageOf(subject: Subject): Usage {
     .from(schema.modules)
     .where(eq(mCol, subject.id))
     .get();
+  // What they've shared to the public catalogs (each version is a copy).
+  const cCol = isUser ? schema.catalogItems.ownerUserId : schema.catalogItems.ownerOrgId;
+  const shared = db
+    .select({
+      bytes: sql<number>`coalesce(sum(coalesce(length(${schema.catalogItemVersions.docSnapshot}), 0) + coalesce(length(${schema.catalogItemVersions.xmlBlob}), 0) + coalesce(length(${schema.catalogItemVersions.spriteBlob}), 0) + coalesce(length(${schema.catalogItemVersions.thumbnail}), 0)), 0)`.mapWith(Number),
+    })
+    .from(schema.catalogItemVersions)
+    .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
+    .where(eq(cCol, subject.id))
+    .get();
   const rooms = db
     .select({ n: count(), bytes: sql<number>`coalesce(sum(length(${schema.venueLibrary.data})), 0)`.mapWith(Number) })
     .from(schema.venueLibrary)
@@ -305,7 +315,7 @@ export function usageOf(subject: Subject): Usage {
     members,
     clubsCreated,
     storageBytes:
-      layouts.reduce((a, l) => a + l.bytes, 0) + pending + (parts?.bytes ?? 0) + (mods?.bytes ?? 0) + (rooms?.bytes ?? 0) + bgImageBytes(ids),
+      layouts.reduce((a, l) => a + l.bytes, 0) + pending + (parts?.bytes ?? 0) + (mods?.bytes ?? 0) + (shared?.bytes ?? 0) + (rooms?.bytes ?? 0) + bgImageBytes(ids),
   };
 }
 

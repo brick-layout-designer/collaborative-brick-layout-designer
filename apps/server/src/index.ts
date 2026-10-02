@@ -33,6 +33,7 @@ import { customPartInviteRoutes } from './routes/customPartInvites.js';
 import { inviteRoutes } from './routes/invites.js';
 import { layoutRoutes } from './routes/layouts.js';
 import { moduleRoutes } from './routes/modules.js';
+import { catalogRoutes } from './routes/catalog.js';
 import { moduleTransferRoutes } from './routes/moduleTransfers.js';
 import { venueRoutes } from './routes/venues.js';
 import { preferencesRoutes } from './routes/preferences.js';
@@ -121,6 +122,7 @@ async function main() {
   await app.register(customPartRoutes);
   await app.register(customPartInviteRoutes);
   await app.register(moduleRoutes);
+  await app.register(catalogRoutes);
   await app.register(moduleTransferRoutes);
   await app.register(venueRoutes);
   await app.register(preferencesRoutes);

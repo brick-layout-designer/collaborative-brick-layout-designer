@@ -602,7 +602,7 @@ function cleanNote(raw: unknown): string | null | undefined {
 }
 
 /** Keep `bytes` as the module's next version; drop the oldest past MODULE_VERSIONS_KEPT. Returns its number. */
-async function recordVersion(
+export async function recordVersion(
   moduleId: string,
   bytes: Buffer,
   authorId: string,

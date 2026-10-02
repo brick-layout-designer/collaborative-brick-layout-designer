@@ -74,6 +74,7 @@ export async function resolveOauthUser(
     passwordHash: null,
     isDemoAccount: false,
     isGlobalAdmin: false,
+    isModerator: false,
     // OAuth/OIDC providers have already proven control of this email.
     emailVerified: true,
     createdAt: new Date(),

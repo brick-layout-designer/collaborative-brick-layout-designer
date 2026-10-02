@@ -38,6 +38,10 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     smtpFrom: null,
     limits: null,
     minDesktopVersion: null,
+    moduleCatalogEnabled: false,
+    partsCatalogEnabled: false,
+    catalogReview: 'moderators',
+    catalogAnonymousBrowse: true,
     updatedAt: new Date(),
     updatedBy: null,
   };
