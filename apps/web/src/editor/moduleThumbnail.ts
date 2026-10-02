@@ -8,6 +8,7 @@ import type { Sidecar } from '@cld/bbm';
 import type { ExportHandle } from './ExportImageDialog';
 import { newView, pictureSize, viewPicture } from './savedViews';
 import { canvasToPng } from './sharePicture';
+import type { SpriteProgress } from './render/spriteCache';
 
 /** Longest side of a module picture, in pixels. */
 export const THUMBNAIL_SIDE = 256;
@@ -23,6 +24,33 @@ export function toBase64(bytes: Uint8Array): string {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
+}
+
+/**
+ * Wait until the map can be drawn properly: the parts list has arrived
+ * (until then every part draws as a "missing part" cross) and every part
+ * picture asked for has loaded or failed, then let the canvas paint twice.
+ * Gives up after `timeoutMs` so a save never hangs.
+ */
+export async function waitForPartPictures(
+  catalogReady: () => boolean,
+  progress: () => SpriteProgress,
+  timeoutMs = 15_000,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  frame: () => Promise<void> = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+): Promise<boolean> {
+  const start = Date.now();
+  for (;;) {
+    const p = progress();
+    if (catalogReady() && p.loaded + p.failed >= p.wanted) {
+      await frame();
+      // Drawing may have asked for more pictures; settle again if so.
+      const q = progress();
+      if (q.loaded + q.failed >= q.wanted) return true;
+    }
+    if (Date.now() - start >= timeoutMs) return false;
+    await sleep(100);
+  }
 }
 
 /** The module's picture as a PNG, or null when there's nothing to draw. */
