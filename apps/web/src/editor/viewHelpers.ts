@@ -27,11 +27,11 @@ export function viewCentreStuds(
 export function dropTargetHint(layers: readonly Pick<Layer, 'id' | 'type' | 'name'>[], activeLayerId: string | null): string {
   const active = layers.find((l) => l.id === activeLayerId && l.type === 'brick');
   const target = active ?? layers.find((l) => l.type === 'brick');
-  if (!target) return 'No brick layer — dropping creates one';
+  if (!target) return 'No parts sheet — dropping creates one';
   const name = target.name || 'unnamed';
   return active
-    ? `Drop onto: ${name} (active layer)`
-    : `Drop onto: ${name} (active layer is not a brick layer)`;
+    ? `Drop onto: ${name} (active sheet)`
+    : `Drop onto: ${name} (the active sheet is not a parts sheet)`;
 }
 
 /**
