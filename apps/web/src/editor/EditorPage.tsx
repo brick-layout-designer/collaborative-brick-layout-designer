@@ -228,7 +228,10 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   useEffect(() => resetSpriteProgress(), [layoutId]);
   // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
   // shows it in the status bar after the open).
-  const openWarnings = (useLocation().state as OpenedMapState | null)?.openWarnings;
+  const location = useLocation();
+  const openWarnings = (location.state as OpenedMapState | null)?.openWarnings;
+  // Opened from ⋯ › Refresh picture: say when the new picture is in.
+  const refreshingPicture = new URLSearchParams(location.search).get('refresh') === 'picture';
   useEffect(() => {
     if (doc && openWarnings?.length) useEditorStore.getState().showStatusMessage(`Opened with warnings: ${openWarnings.join('; ')}`, 10000);
   }, [doc, openWarnings]);
@@ -485,6 +488,11 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     const t = window.setTimeout(() => {
       void uploadModuleThumbnail().then((ok) => {
         if (ok) void qc.invalidateQueries({ queryKey: ['modules'] });
+        if (refreshingPicture) {
+          const { showStatusMessage, showNotice } = useEditorStore.getState();
+          if (ok) showStatusMessage('Picture refreshed', 5000);
+          else showNotice('The picture couldn’t be made. Try again once the module has loaded.', 'error', 8000);
+        }
       });
     }, 800);
     return () => window.clearTimeout(t);

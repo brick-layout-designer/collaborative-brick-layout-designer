@@ -24,6 +24,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { clubModuleRole } from '../access/resolveResourceRole.js';
+import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 
 // The desktop app (an API token) lists, inserts, saves and republishes
 // modules: reading needs layouts:read, changing one layouts:write.
@@ -319,12 +320,13 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- thumbnail ----------------------------------------------------------
-  // The editor makes a small picture of the module when it's saved (or first
-  // opened) and sends it here as base64 in JSON: the site's firewall only
-  // lets octet-stream through on the two snapshot routes.
+  // The editor makes a picture of the module (up to 1024 px) when it's saved
+  // or opened, and sends it here as base64 in JSON: the site's firewall only
+  // lets octet-stream through on the two snapshot routes. It's re-encoded as
+  // WebP without metadata (images/thumbnails.ts) before it's stored.
   app.put<{ Params: { id: string }; Body: { mime?: unknown; data?: unknown } }>(
     '/api/modules/:id/thumbnail',
-    { bodyLimit: 1024 * 1024, config: TOKEN_WRITE },
+    { bodyLimit: THUMBNAIL_BODY_LIMIT, config: TOKEN_WRITE },
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
@@ -338,6 +340,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       const bytes = Buffer.from(data, 'base64');
       if (bytes.length === 0 || !looksLike(bytes, mime)) return reply.code(400).send({ error: 'invalid_thumbnail' });
       if (bytes.length > MAX_THUMBNAIL_BYTES) return reply.code(413).send({ error: 'thumbnail_too_large' });
+      const stored = await reencode(bytes);
+      if (!stored) return reply.code(400).send({ error: 'invalid_thumbnail' });
       const current = await db
         .select({
           ownerUserId: schema.modules.ownerUserId,
@@ -349,17 +353,17 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         .get();
       if (!current) return reply.code(404).send({ error: 'not_found' });
       const owner: Subject = current.ownerOrgId ? { kind: 'org', id: current.ownerOrgId } : { kind: 'user', id: current.ownerUserId ?? user.id };
-      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: bytes.length - current.bytes }, uploadBytes: bytes.length });
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: stored.length - current.bytes }, uploadBytes: bytes.length });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
       const thumbnailAt = new Date();
       await db
         .update(schema.modules)
-        .set({ thumbnail: bytes, thumbnailMime: mime, thumbnailAt })
+        .set({ thumbnail: stored, thumbnailMime: 'image/webp', thumbnailAt })
         .where(eq(schema.modules.id, req.params.id));
       // The newest version's picture too (the history shows it).
       await db
         .update(schema.moduleVersions)
-        .set({ thumbnail: bytes, thumbnailMime: mime })
+        .set({ thumbnail: stored, thumbnailMime: 'image/webp' })
         .where(
           and(
             eq(schema.moduleVersions.moduleId, req.params.id),
@@ -370,7 +374,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get<{ Params: { id: string } }>('/api/modules/:id/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
+  // `?size=small`: a 256 px copy for lists (made once, kept in memory).
+  app.get<{ Params: { id: string }; Querystring: { size?: string } }>('/api/modules/:id/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
     if (role === null) return reply.code(404).send({ error: 'not_found' });
@@ -381,13 +386,16 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       .get();
     if (!row?.thumbnail || !row.mime) return reply.code(404).send({ error: 'no_thumbnail' });
     // The list links it as ?v=<thumbnailAt>, so a new picture is a new URL.
-    const etag = `"${row.at?.getTime() ?? 0}"`;
+    const small = req.query?.size === 'small';
+    const etag = `"${row.at?.getTime() ?? 0}${small ? '-s' : ''}"`;
     reply.header('Cache-Control', 'private, max-age=86400');
     reply.header('ETag', etag);
     if (req.headers['if-none-match'] === etag) return reply.code(304).send();
-    reply.header('Content-Type', row.mime);
+    const full = Buffer.from(row.thumbnail as Uint8Array);
+    const pic = small ? await smallCopy(full, row.mime) : { bytes: full, mime: row.mime };
+    reply.header('Content-Type', pic.mime);
     reply.header('X-Content-Type-Options', 'nosniff');
-    return reply.send(Buffer.from(row.thumbnail as Uint8Array));
+    return reply.send(pic.bytes);
   });
 
   // ---- versions -----------------------------------------------------------
@@ -428,15 +436,17 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(Buffer.from(found.row.docSnapshot as Uint8Array));
   });
 
-  app.get<{ Params: { id: string; n: string } }>('/api/modules/:id/versions/:n/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
+  app.get<{ Params: { id: string; n: string }; Querystring: { size?: string } }>('/api/modules/:id/versions/:n/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
     const found = await findVersion(req.user?.id, req.params.id, req.params.n);
     if (!found.ok) return reply.code(found.code).send({ error: found.error });
     if (!found.row.thumbnail || !found.row.thumbnailMime) return reply.code(404).send({ error: 'no_thumbnail' });
     // A version never changes, so its picture can be kept a long time.
     reply.header('Cache-Control', 'private, max-age=31536000, immutable');
-    reply.header('Content-Type', found.row.thumbnailMime);
+    const full = Buffer.from(found.row.thumbnail as Uint8Array);
+    const pic = req.query?.size === 'small' ? await smallCopy(full, found.row.thumbnailMime) : { bytes: full, mime: found.row.thumbnailMime };
+    reply.header('Content-Type', pic.mime);
     reply.header('X-Content-Type-Options', 'nosniff');
-    return reply.send(Buffer.from(found.row.thumbnail as Uint8Array));
+    return reply.send(pic.bytes);
   });
 
   // Restore: the old version becomes the module's contents again, as a new
@@ -670,8 +680,6 @@ async function findVersion(
   return { ok: true, role, row };
 }
 
-/** A module picture is small: about 256 px, a few tens of KB. */
-export const MAX_THUMBNAIL_BYTES = 512 * 1024;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /** The file really is the picture type it says it is. */
@@ -688,6 +696,8 @@ const moduleListColumns = {
   docVersion: schema.modules.docVersion,
   hasSidecar: sql<number>`${schema.modules.sidecarSnapshot} IS NOT NULL`,
   thumbnailAt: schema.modules.thumbnailAt,
+  /** The picture's first bytes, for its size (imageSide), not the picture. */
+  thumbnailHead: sql<Buffer | null>`substr(${schema.modules.thumbnail}, 1, ${HEAD_BYTES})`,
   latestVersion: schema.modules.latestVersion,
   createdAt: schema.modules.createdAt,
   updatedAt: schema.modules.updatedAt,
@@ -697,7 +707,7 @@ function toListItem(
   m: Pick<
     typeof schema.modules.$inferSelect,
     'id' | 'title' | 'ownerUserId' | 'ownerOrgId' | 'docVersion' | 'thumbnailAt' | 'latestVersion' | 'createdAt' | 'updatedAt'
-  > & { hasSidecar: number },
+  > & { hasSidecar: number; thumbnailHead?: Buffer | Uint8Array | null },
 ) {
   return {
     id: m.id,
@@ -708,6 +718,8 @@ function toListItem(
     hasSidecar: Boolean(m.hasSidecar),
     /** When the picture was made (its cache key), or null: show a placeholder. */
     thumbnailAt: m.thumbnailAt ? m.thumbnailAt.getTime() : null,
+    /** The picture's longest side in pixels; under 512 is an old, low-resolution one. */
+    thumbnailSide: m.thumbnailAt ? imageSide(m.thumbnailHead ?? null) : null,
     /** The newest version's number; 0 when it has no history yet. */
     latestVersion: m.latestVersion,
     createdAt: m.createdAt.getTime(),

@@ -1361,6 +1361,8 @@ export interface ModuleSummary {
   hasSidecar: boolean;
   /** When its picture was made (the picture URL's cache key); null or missing: none yet. */
   thumbnailAt?: number | null;
+  /** The picture's longest side in pixels (older servers leave it out). */
+  thumbnailSide?: number | null;
   /** The newest saved version's number; 0 or missing: no history yet. */
   latestVersion?: number;
   createdAt: number;
@@ -1379,13 +1381,24 @@ export interface ModuleVersion {
 }
 
 /** A version's picture, or null when it has none. */
-export function moduleVersionThumbnailUrl(moduleId: string, v: Pick<ModuleVersion, 'version' | 'hasThumbnail'>): string | null {
-  return v.hasThumbnail ? `/api/modules/${encodeURIComponent(moduleId)}/versions/${v.version}/thumbnail` : null;
+export function moduleVersionThumbnailUrl(moduleId: string, v: Pick<ModuleVersion, 'version' | 'hasThumbnail'>, size?: 'small'): string | null {
+  return v.hasThumbnail ? `/api/modules/${encodeURIComponent(moduleId)}/versions/${v.version}/thumbnail${size ? `?size=${size}` : ''}` : null;
 }
 
-/** A module's picture, or null when it has none yet (show a placeholder). */
-export function moduleThumbnailUrl(m: Pick<ModuleSummary, 'id' | 'thumbnailAt'>): string | null {
-  return m.thumbnailAt ? `/api/modules/${encodeURIComponent(m.id)}/thumbnail?v=${m.thumbnailAt}` : null;
+/**
+ * A module's picture, or null when it has none yet (show a placeholder).
+ * `small` is a 256 px copy for list rows; without it, the full 1024 px one.
+ */
+export function moduleThumbnailUrl(m: Pick<ModuleSummary, 'id' | 'thumbnailAt'>, size?: 'small'): string | null {
+  return m.thumbnailAt ? `/api/modules/${encodeURIComponent(m.id)}/thumbnail?v=${m.thumbnailAt}${size ? `&size=${size}` : ''}` : null;
+}
+
+/** Pictures made before they were 1024 px are 256: sharp in lists, soft on cards. */
+export const LOW_RES_THUMBNAIL = 512;
+
+/** An old, small picture its editors could redraw (open the module, or ⋯ › Refresh picture). */
+export function lowResThumbnail(m: Pick<ModuleSummary, 'thumbnailAt' | 'thumbnailSide'>): boolean {
+  return !!m.thumbnailAt && typeof m.thumbnailSide === 'number' && m.thumbnailSide < LOW_RES_THUMBNAIL;
 }
 
 export interface OrgSummary {

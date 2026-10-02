@@ -30,3 +30,6 @@ allowBuilds:
   esbuild: true
   lefthook: true
   '@node-rs/argon2': true
+  # sharp ships prebuilt libvips binaries as optional packages; its own
+  # install script only builds from source when those are missing.
+  sharp: false

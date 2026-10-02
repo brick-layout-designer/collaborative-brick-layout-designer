@@ -89,7 +89,7 @@ export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleS
         {versions.length > 0 && (
           <ul className="max-h-96 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {versions.map((v, i) => {
-              const thumb = moduleVersionThumbnailUrl(module.id, v);
+              const thumb = moduleVersionThumbnailUrl(module.id, v, 'small');
               return (
                 <li key={v.version} data-testid="module-version" className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
                   {thumb ? (

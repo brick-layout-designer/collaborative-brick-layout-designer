@@ -5,7 +5,7 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { ensureUser, signIn } from '../helpers';
-import { clearModuleThumbnail } from '../dbHelpers';
+import { clearModuleThumbnail, setOldModuleThumbnail } from '../dbHelpers';
 
 const ts = Date.now();
 let seq = 0;
@@ -68,7 +68,13 @@ test.describe('module editor', () => {
     const row = page.getByTestId('module-row').filter({ hasText: 'Station siding' });
     await expectLoadedPicture(row);
     const pic = await page.request.get(`/api/modules/${id}/thumbnail`);
-    expect(pic.headers()['content-type']).toBe('image/png');
+    expect(pic.headers()['content-type']).toBe('image/webp');
+    // 1024 px on its longest side; the list shows the 256 px copy.
+    const listed = (await (await page.request.get('/api/modules')).json()) as { modules: { id: string; thumbnailSide: number }[] };
+    expect(listed.modules.find((m) => m.id === id)?.thumbnailSide).toBe(1024);
+    await expect(row.getByTestId('module-thumb')).toHaveAttribute('src', /size=small/);
+    expect(await row.getByTestId('module-thumb').evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeLessThanOrEqual(256);
+    await expect(row.getByTestId('low-res-picture')).toHaveCount(0);
 
     // Open it again: the part is still there; change it and save again.
     await row.getByRole('link', { name: 'Open Station siding' }).click();
@@ -80,6 +86,42 @@ test.describe('module editor', () => {
     await expect(page.getByTestId('save-status')).toHaveText('Saved');
     await page.reload();
     await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(2);
+  });
+
+  test('an old, low-resolution picture says so to its editors, and Refresh picture redraws it at 1024 px', async ({ page }) => {
+    await signIn(page, `mod-lowres-${ts}-${seq++}@example.com`, 'Module Pictures');
+    // How big the picture's request is (for the site's firewall).
+    const sizes: number[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'PUT' && /\/api\/modules\/[^/]+\/thumbnail$/.test(r.url())) sizes.push(r.postDataBuffer()?.length ?? 0);
+    });
+    const id = await buildModule(page, 'Old bridge');
+    await expect.poll(() => sizes.length, { timeout: 15000 }).toBeGreaterThan(0);
+    test.info().annotations.push({ type: 'thumbnail PUT body bytes', description: sizes.join(', ') });
+    // An old 256 px PNG.
+    const old = await page.evaluate(async () => {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 128;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#c33';
+      g.fillRect(0, 0, 256, 128);
+      const b = await new Promise<Blob>((r) => c.toBlob((x) => r(x!), 'image/png'));
+      return Array.from(new Uint8Array(await b.arrayBuffer()));
+    });
+    setOldModuleThumbnail(id, Buffer.from(old));
+    await page.goto('/');
+    const row = page.getByTestId('module-row').filter({ hasText: 'Old bridge' });
+    await expect(row.getByTestId('low-res-picture')).toContainText('Picture is low resolution.');
+    // ⋯ › Refresh picture opens it, redraws the picture and says so.
+    await row.getByRole('button', { name: 'More for Old bridge' }).click();
+    await page.getByRole('menuitem', { name: 'Refresh picture' }).click();
+    await expect(page).toHaveURL(new RegExp(`/modules/${id}\\?refresh=picture$`));
+    await expect(page.getByText('Picture refreshed')).toBeVisible({ timeout: 20000 });
+    await page.goto('/');
+    await expect(page.getByTestId('module-row').filter({ hasText: 'Old bridge' }).getByTestId('low-res-picture')).toHaveCount(0);
+    const listed = (await (await page.request.get('/api/modules')).json()) as { modules: { id: string; thumbnailSide: number }[] };
+    expect(listed.modules.find((m) => m.id === id)?.thumbnailSide).toBe(1024);
   });
 
   test('a module without a picture gets one when opened, and pictures show when inserting into a layout', async ({ page }) => {
