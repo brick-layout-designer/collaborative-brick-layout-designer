@@ -52,7 +52,7 @@ import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type P
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
-import { layoutFileDownload, type LayoutImage } from '../layoutFile';
+import { layoutFileDownload, layoutSourceHere, type LayoutImage } from '../layoutFile';
 import { layoutPartFiles } from '../layoutParts';
 import { backgroundImageRectPx } from './background';
 import { mapFontsReady } from './render/mapText';
@@ -200,9 +200,9 @@ function Editor({ layoutId }: { layoutId: string }) {
       return;
     }
     if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a copy of the current local version (.bld-layout) now?')) {
-      void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout', partsRef.current);
+      void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', partsRef.current);
     }
-  }, [doc, checkSaved, meta.data?.layout.title]);
+  }, [doc, layoutId, checkSaved, meta.data?.layout.title]);
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const undo = useUndoManager(doc);
@@ -719,7 +719,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               onZoomIn={() => canvasActionsRef.current?.zoom(ZOOM_STEP)}
               onZoomOut={() => canvasActionsRef.current?.zoom(1 / ZOOM_STEP)}
               onFit={() => canvasActionsRef.current?.fit()}
-              onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout', catalog.data?.parts)}
+              onDownloadLayout={() => void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', catalog.data?.parts)}
               onDownloadAs={() => setShowDownloadAs(true)}
               onPreferences={() => setShowPreferences(true)}
               onVenueProps={() => setShowVenueProps(true)}
@@ -1068,7 +1068,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           map={docMap}
           parts={catalog.data?.parts ?? []}
           title={meta.data?.layout.title ?? 'layout'}
-          onDownloadLayout={() => void downloadLocalLayout(doc, meta.data?.layout.title ?? 'layout', catalog.data?.parts)}
+          onDownloadLayout={() => void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', catalog.data?.parts)}
           onDownloadBbm={() => void downloadLocalBbm(doc, meta.data?.layout.title ?? 'layout')}
           blueBrickLeavesOut={blueBrickLeavesOut(readSidecarFromDoc(doc))}
           onClose={() => setShowDownloadAs(false)}
@@ -4452,7 +4452,7 @@ function saveFile(file: { filename: string; type: string; data: Uint8Array }): v
  * and download it: the whole layout in one file, background image
  * included.
  */
-async function downloadLocalLayout(doc: Y.Doc, title: string, parts: readonly PartWire[] | undefined): Promise<void> {
+async function downloadLocalLayout(doc: Y.Doc, layoutId: string, title: string, parts: readonly PartWire[] | undefined): Promise<void> {
   try {
     const { writeBbm, writeSidecar } = await import('@cld/bbm');
     const map = docToBbm(doc);
@@ -4473,6 +4473,8 @@ async function downloadLocalLayout(doc: Y.Doc, title: string, parts: readonly Pa
         sidecar: sidecar ? writeSidecar(sidecar) : null,
         ...(background ? { background } : {}),
         parts: partFiles,
+        // Every web layout is on this server: the file says which one.
+        source: layoutSourceHere(layoutId, title),
       }),
     );
   } catch (e) {
