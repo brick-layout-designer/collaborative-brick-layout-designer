@@ -92,6 +92,7 @@ const Trash = () => (<svg {...svg}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><p
 const Check = () => (<svg {...svg}><path d="M5 12l5 5L20 7" /></svg>);
 const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
 const More = () => (<svg {...svg}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M17.5 14v7M14 17.5h7" /></svg>);
+const Area = () => (<svg {...svg}><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><path d="M9 9h6v6H9z" /></svg>);
 const UndoIcon = () => (<svg {...svg}><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>);
 const RedoIcon = () => (<svg {...svg}><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" /></svg>);
 
@@ -116,14 +117,19 @@ export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo
 
 /**
  * The bar along the bottom of the map while editing by touch. With parts
- * picked: Rotate left / right, Duplicate, Delete, Select more and Done.
- * With nothing picked (phones): Add part and Select more.
+ * picked: Rotate left / right, Duplicate, Delete, Select more, Select area
+ * and Done. With nothing picked: Add part, Select more and Select area.
  */
 export function TouchActionBar({ actions, onAddPart }: { actions: Actions; onAddPart?: (() => void) | undefined }) {
   const count = useEditorStore((s) => s.selection.length);
   const more = useEditorStore((s) => s.touchSelectMore);
+  const area = useEditorStore((s) => s.touchSelectArea);
   if (count === 0 && !onAddPart) return null;
   const toggleMore = () => useEditorStore.setState({ touchSelectMore: !more });
+  const toggleArea = () => useEditorStore.setState({ touchSelectArea: !area });
+  const areaButton = (
+    <BarButton label="Select area" pressed={area} onClick={toggleArea} testId="select-area"><Area /></BarButton>
+  );
   return (
     <div
       role="toolbar"
@@ -135,6 +141,11 @@ export function TouchActionBar({ actions, onAddPart }: { actions: Actions; onAdd
       // A tap here is a button press, never a gesture on the map below.
       data-no-gesture
     >
+      {area && (
+        <p role="status" className="px-2 pb-1 text-center text-xs font-semibold text-muted">
+          Drag a box around the parts to pick. Two fingers move the map.
+        </p>
+      )}
       {count > 0 ? (
         <div className="flex items-stretch gap-1">
           <BarButton label="Rotate left" onClick={() => actions.rotate(false)}><RotLeft /></BarButton>
@@ -142,11 +153,12 @@ export function TouchActionBar({ actions, onAddPart }: { actions: Actions; onAdd
           <BarButton label="Duplicate" onClick={() => actions.duplicate(true)}><Copy /></BarButton>
           <BarButton label="Delete" danger onClick={() => actions.delete()}><Trash /></BarButton>
           <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
+          {areaButton}
           <BarButton
             label="Done"
             onClick={() => {
               useEditorStore.getState().setSelection([]);
-              useEditorStore.setState({ touchSelectMore: false });
+              useEditorStore.setState({ touchSelectMore: false, touchSelectArea: false });
             }}
           >
             <Check />
@@ -164,6 +176,7 @@ export function TouchActionBar({ actions, onAddPart }: { actions: Actions; onAdd
             Add part
           </button>
           <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
+          {areaButton}
         </div>
       )}
     </div>

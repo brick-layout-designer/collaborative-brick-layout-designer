@@ -219,7 +219,7 @@ function Editor({ layoutId }: { layoutId: string }) {
       setPhoneEditState(edit);
       if (!edit) {
         useEditorStore.getState().setSelection([]);
-        useEditorStore.setState({ touchSelectMore: false });
+        useEditorStore.setState({ touchSelectMore: false, touchSelectArea: false });
       }
     },
     [layoutId],
@@ -854,7 +854,7 @@ function Editor({ layoutId }: { layoutId: string }) {
               duplicate: (beside) => canvasActionsRef.current?.duplicate(beside),
               delete: () => canvasActionsRef.current?.delete(),
             }}
-            onAddPart={touchEditing ? () => setShowAddPart(true) : undefined}
+            onAddPart={() => setShowAddPart(true)}
           />
         )}
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
@@ -896,7 +896,7 @@ function Editor({ layoutId }: { layoutId: string }) {
           </FloatingPanel>
         );
       })}
-      {showAddPart && touchEditing && (
+      {showAddPart && (touchEditing || touchTablet) && (
         <AddPartSheet
           onClose={() => setShowAddPart(false)}
           onPick={(part) => {
@@ -1150,6 +1150,18 @@ function Canvas({
     return g ? { id: g.name().slice('brick-'.length), node: g } : null;
   };
   const isPicked = (id: string) => useEditorStore.getState().selection.includes(id);
+  /** A point of the canvas area in studs. */
+  const areaStuds = (p: Pt): Pt | null => {
+    const stage = stageRef.current;
+    if (!stage || !touchEl) return null;
+    const area = touchEl.getBoundingClientRect();
+    const box = stage.container().getBoundingClientRect();
+    const st = useEditorStore.getState();
+    return {
+      x: pxToStud((p.x + area.left - box.left - st.panX) / st.zoom),
+      y: pxToStud((p.y + area.top - box.top - st.panY) / st.zoom),
+    };
+  };
   useTouchView(
     touchEl,
     () => {
@@ -1164,6 +1176,31 @@ function Canvas({
         if (isViewer || useEditorStore.getState().tool !== 'select') return true;
         const hit = brickAt(p);
         return !(hit && isPicked(hit.id));
+      },
+      // "Select area": one finger draws a box, except on a picked part,
+      // which it still drags.
+      boxFrom: (p) => {
+        const st = useEditorStore.getState();
+        if (isViewer || st.tool !== 'select' || !st.touchSelectArea) return false;
+        const hit = brickAt(p);
+        return !(hit && isPicked(hit.id));
+      },
+      onBox: (phase, from, to) => {
+        const a = areaStuds(from);
+        const b = areaStuds(to);
+        if (phase === 'cancel' || !a || !b) {
+          setMarquee(null);
+          return;
+        }
+        const band = { x0: a.x, y0: a.y, x1: b.x, y1: b.y };
+        if (phase === 'move') {
+          setMarquee(band);
+          return;
+        }
+        setMarquee(null);
+        // A box with no size is a tap, handled as one.
+        if (Math.hypot(to.x - from.x, to.y - from.y) < 8) return;
+        commitMarquee(band, useEditorStore.getState().touchSelectMore);
       },
       onPinchStart: () => {
         // A part being dragged by the first finger stays where it is.
@@ -2370,7 +2407,13 @@ function Canvas({
     }
 
     if (!marquee) return;
-    const finalMarquee = pendingStuds ? { ...marquee, x1: pendingStuds.x, y1: pendingStuds.y } : marquee;
+    commitMarquee(pendingStuds ? { ...marquee, x1: pendingStuds.x, y1: pendingStuds.y } : marquee, marqueeAdditiveRef.current);
+    marqueeAdditiveRef.current = false;
+    setMarquee(null);
+  }
+
+  /** Pick what a finished rubber band touches (mouse or touch); `additive` keeps what was picked. */
+  function commitMarquee(finalMarquee: import('./render/MarqueeOverlay').Marquee, additive: boolean) {
     // Commit selection across EVERY visible brick layer — matches the
     // desktop's `MapView::mouseReleaseEvent` rubber-band, which calls
     // `QGraphicsView::mouseReleaseEvent` and lets Qt's scene selection
@@ -2392,15 +2435,13 @@ function Canvas({
       const sc = readSidecarFromDoc(doc);
       let anno = annotationsInMarquee(finalMarquee, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], zoom, partsByKey);
       let bricks = ids;
-      if (marqueeAdditiveRef.current) {
+      if (additive) {
         const st = useEditorStore.getState();
         bricks = [...new Set([...st.selection, ...ids])];
         anno = mergeAnno(st.annoSelection, anno);
       }
       useEditorStore.getState().setMixedSelection(bricks, anno);
     }
-    marqueeAdditiveRef.current = false;
-    setMarquee(null);
   }
 
   // ---------------------------------------------------------------------
