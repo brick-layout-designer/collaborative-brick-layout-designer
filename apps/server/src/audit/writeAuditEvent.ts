@@ -30,6 +30,11 @@ export type AuditEventType =
   | 'settings'
   // A club's admin handed the club to another member (they swap roles).
   | 'hand_over'
+  // Joining a club without an invite: an open club's one-click join, and
+  // an admin approving or declining someone's request to join.
+  | 'join'
+  | 'join_approve'
+  | 'join_decline'
   // Platform-admin actions. Subject is the resource being modified
   // (`resourceKind: 'user' | 'org' | 'layout' | ...`); the userId
   // field on the event is the admin who performed the action.

@@ -204,15 +204,26 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       membersCanCreate: org.membersCanCreate,
       memberCount: counts.length,
       adminCount: counts.filter((c) => c.role === 'admin').length,
+      joinPolicy: org.joinPolicy,
+      listed: org.listed,
+      // Admins see how many people are waiting to be let in.
+      ...(myMembership.role === 'admin'
+        ? {
+            pendingRequests: (
+              await db.select({ id: schema.orgJoinRequests.id }).from(schema.orgJoinRequests).where(eq(schema.orgJoinRequests.orgId, org.id))
+            ).length,
+          }
+        : {}),
     };
   });
 
   // ---- club settings (admins) ---------------------------------------------
-  // Name, address (slug), description, and whether members may add
-  // layouts, rooms and modules to the club.
+  // Name, address (slug), description, whether members may add layouts,
+  // rooms and modules to the club, who can join, and whether it is listed
+  // in the Clubs directory.
   app.patch<{
     Params: { slug: string };
-    Body: { name?: unknown; slug?: unknown; description?: unknown; membersCanCreate?: unknown };
+    Body: { name?: unknown; slug?: unknown; description?: unknown; membersCanCreate?: unknown; joinPolicy?: unknown; listed?: unknown };
   }>('/api/orgs/:slug', async (req, reply) => {
     const user = requireUser(req);
     const org = await loadOrgBySlug(req.params.slug);
@@ -246,6 +257,16 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (body.membersCanCreate !== undefined) {
       if (typeof body.membersCanCreate !== 'boolean') return reply.code(400).send({ error: 'invalid_input' });
       updates.membersCanCreate = body.membersCanCreate;
+    }
+    if (body.joinPolicy !== undefined) {
+      if (body.joinPolicy !== 'invite' && body.joinPolicy !== 'request' && body.joinPolicy !== 'open') {
+        return reply.code(400).send({ error: 'invalid_join_policy' });
+      }
+      updates.joinPolicy = body.joinPolicy;
+    }
+    if (body.listed !== undefined) {
+      if (typeof body.listed !== 'boolean') return reply.code(400).send({ error: 'invalid_input' });
+      updates.listed = body.listed;
     }
     if (Object.keys(updates).length === 0) return reply.code(400).send({ error: 'no_updates' });
 
@@ -890,7 +911,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function loadOrgBySlug(slug: string): Promise<typeof schema.orgs.$inferSelect | null> {
+export async function loadOrgBySlug(slug: string): Promise<typeof schema.orgs.$inferSelect | null> {
   const row = await db
     .select()
     .from(schema.orgs)
@@ -899,7 +920,7 @@ async function loadOrgBySlug(slug: string): Promise<typeof schema.orgs.$inferSel
   return row ?? null;
 }
 
-async function getMembership(
+export async function getMembership(
   orgId: string,
   userId: string,
 ): Promise<{ role: 'admin' | 'member' } | null> {

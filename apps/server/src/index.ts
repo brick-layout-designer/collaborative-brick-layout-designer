@@ -38,6 +38,7 @@ import { venueRoutes } from './routes/venues.js';
 import { preferencesRoutes } from './routes/preferences.js';
 import { orgRoutes } from './routes/orgs.js';
 import { orgInviteRoutes } from './routes/orgInvites.js';
+import { clubJoinRoutes } from './routes/clubJoin.js';
 import { partsRoutes } from './routes/parts.js';
 import { partsManifestRoutes } from './routes/partsManifest.js';
 import { transferRoutes } from './routes/transfers.js';
@@ -115,6 +116,7 @@ async function main() {
   await app.register(inviteRoutes);
   await app.register(orgRoutes);
   await app.register(orgInviteRoutes);
+  await app.register(clubJoinRoutes);
   await app.register(transferRoutes);
   await app.register(customPartRoutes);
   await app.register(customPartInviteRoutes);

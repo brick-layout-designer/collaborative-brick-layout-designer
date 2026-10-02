@@ -115,6 +115,10 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
           joinedAt: now,
         })
         .onConflictDoNothing();
+      // Any request to join is answered now.
+      await db
+        .delete(schema.orgJoinRequests)
+        .where(and(eq(schema.orgJoinRequests.orgId, invite.orgId), eq(schema.orgJoinRequests.userId, user.id)));
       await db
         .update(schema.orgInvites)
         .set({ acceptedAt: now })

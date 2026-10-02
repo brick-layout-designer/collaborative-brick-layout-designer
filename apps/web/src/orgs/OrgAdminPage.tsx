@@ -7,6 +7,8 @@ import {
   DeleteClubSection,
   HandOverSection,
   InviteSection,
+  JoinRequestsSection,
+  JoinSettingsSection,
   LeaveClubButton,
   MembersSection,
   PendingInvitesSection,
@@ -29,6 +31,12 @@ function OrgAdmin({ slug }: { slug: string }) {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const detail = useQuery({ queryKey: ['org', slug], queryFn: () => api.orgs.get(slug) });
   const members = useQuery({ queryKey: ['org-members', slug], queryFn: () => api.orgs.members(slug) });
+  const isAdmin = detail.data?.myRole === 'admin';
+  const requests = useQuery({
+    queryKey: ['org-join-requests', slug],
+    queryFn: () => api.orgs.joinRequests(slug),
+    enabled: isAdmin,
+  });
   const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
   const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
@@ -56,8 +64,10 @@ function OrgAdmin({ slug }: { slug: string }) {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const things = `its ${plural(count(layouts.data?.layouts), 'layout')}, ${plural(count(venues.data?.venues), 'venue')}, ${plural(count(modules.data?.modules), 'module')} and custom parts`;
 
+  const requestList = requests.data?.requests ?? [];
+  const waiting = requestList.length;
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'people', label: 'People' },
+    { id: 'people', label: waiting > 0 ? `People (${waiting} waiting)` : 'People' },
     { id: 'settings', label: 'Settings' },
     { id: 'parts', label: 'Parts' },
     { id: 'activity', label: 'Activity' },
@@ -95,6 +105,9 @@ function OrgAdmin({ slug }: { slug: string }) {
 
         {tab === 'people' && (
           <div className="space-y-5">
+            {(waiting > 0 || (org.joinPolicy ?? 'invite') === 'request') && (
+              <JoinRequestsSection slug={slug} requests={requestList} />
+            )}
             {members.isLoading ? (
               <p className="text-sm text-muted">Loading…</p>
             ) : (
@@ -107,6 +120,7 @@ function OrgAdmin({ slug }: { slug: string }) {
         {tab === 'settings' && (
           <div className="space-y-5">
             <SettingsSection key={`${org.slug}:${org.name}`} org={org} />
+            <JoinSettingsSection key={`join:${org.slug}`} org={org} />
             <HandOverSection slug={slug} myUserId={myUserId} members={memberList} />
             <Section title="Leave the club">
               <LeaveClubButton org={org} myUserId={myUserId} />

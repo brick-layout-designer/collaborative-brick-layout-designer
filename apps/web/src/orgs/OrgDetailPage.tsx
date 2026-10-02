@@ -1,8 +1,9 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, type OrgPartLibrary } from '../api';
+import { api, type Me, type OrgPartLibrary } from '../api';
 import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
+import { ClubPublicView } from './ClubDirectory';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -23,14 +24,8 @@ function OrgDetail({ slug }: { slug: string }) {
   }
   if (!me.data?.user) return <Navigate to="/login" replace />;
   if (detail.isError) {
-    return (
-      <div className="grid h-screen place-items-center">
-        <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-danger">Club not found.</p>
-          <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
-        </div>
-      </div>
-    );
+    // Not a member: a listed club shows what anyone may see, and the join button.
+    return <OutsideView slug={slug} user={me.data.user} />;
   }
 
   const org = detail.data!;
@@ -56,6 +51,9 @@ function OrgDetail({ slug }: { slug: string }) {
               className="tap-target inline-flex shrink-0 items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
             >
               Manage the club
+              {(org.pendingRequests ?? 0) > 0 && (
+                <span className="ml-2 rounded-full bg-accent-ink px-1.5 text-xs text-accent">{org.pendingRequests}</span>
+              )}
             </Link>
           )}
         </div>
@@ -169,5 +167,30 @@ function ClubThings({ org }: { org: { id: string; name: string; slug: string } }
         They sit with your own things on the home page, marked “{org.name}”. To add one, choose {org.name} under “Save to”.
       </p>
     </section>
+  );
+}
+
+/** Someone outside the club: a listed club's summary and join button, else "not found". */
+function OutsideView({ slug, user }: { slug: string; user: Me }) {
+  const summary = useQuery({ queryKey: ['club-summary', slug], queryFn: () => api.orgs.summary(slug), retry: false });
+  return (
+    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
+      <AppHeader user={user} />
+      <main className="mx-auto mt-6 max-w-3xl space-y-5">
+        <p className="text-sm">
+          <Link to="/orgs" className="tap-target inline-flex items-center text-accent-text hover:underline">
+            ← Clubs
+          </Link>
+        </p>
+        {summary.isLoading && <p className="text-muted">Loading…</p>}
+        {summary.isError && (
+          <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
+            <p className="font-semibold text-danger">Club not found.</p>
+            <p className="mt-1 text-muted">It may be private. Ask one of its admins for an invite.</p>
+          </div>
+        )}
+        {summary.data && <ClubPublicView club={summary.data} />}
+      </main>
+    </div>
   );
 }

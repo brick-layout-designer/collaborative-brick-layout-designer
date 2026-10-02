@@ -6,7 +6,17 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type AuditEventSummary, type OrgDetail, type OrgInviteSummary, type OrgMemberSummary } from '../api';
+import {
+  api,
+  type AuditEventSummary,
+  type JoinPolicy,
+  type JoinRequestSummary,
+  type OrgDetail,
+  type OrgInviteSummary,
+  type OrgMemberSummary,
+} from '../api';
+import { HelpButton } from '../help/HelpButton';
+import type { HelpKey } from '../help/helpTexts';
 
 const card = 'space-y-3 rounded-section border border-line bg-panel p-4';
 const btn = 'tap-target inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft disabled:opacity-50';
@@ -16,11 +26,24 @@ const field = 'min-h-11 w-full rounded-lg border border-border bg-soft px-3 py-2
 
 export const EXPIRY_CHOICES = [1, 7, 14, 30] as const;
 
-export function Section({ title, children, hint }: { title: string; hint?: string | undefined; children: ReactNode }) {
+export function Section({
+  title,
+  children,
+  hint,
+  help,
+}: {
+  title: string;
+  hint?: string | undefined;
+  help?: HelpKey | undefined;
+  children: ReactNode;
+}) {
   return (
     <section className={card} aria-label={title}>
       <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          {title}
+          {help && <HelpButton helpKey={help} />}
+        </h2>
         {hint && <p className="text-sm text-muted">{hint}</p>}
       </div>
       {children}
@@ -428,6 +451,169 @@ export function SettingsSection({ org }: { org: OrgDetail }) {
   );
 }
 
+export const JOIN_CHOICES: { value: JoinPolicy; label: string; hint: string }[] = [
+  { value: 'invite', label: 'Invite only', hint: 'People join with an invite from an admin.' },
+  { value: 'request', label: 'Ask to join', hint: 'People send a request, and an admin approves or declines it.' },
+  { value: 'open', label: 'Open', hint: 'Anyone signed in can join straight away, as a member.' },
+];
+
+/** Who can join, and whether the club shows in Find a club. */
+export function JoinSettingsSection({ org }: { org: OrgDetail }) {
+  const qc = useQueryClient();
+  const startPolicy = org.joinPolicy ?? 'invite';
+  const startListed = org.listed ?? false;
+  const [policy, setPolicy] = useState<JoinPolicy>(startPolicy);
+  const [listed, setListed] = useState(startListed);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const save = useMutation({
+    mutationFn: () =>
+      api.orgs.update(org.slug, {
+        ...(policy !== startPolicy ? { joinPolicy: policy } : {}),
+        ...(listed !== startListed ? { listed } : {}),
+      }),
+    onSuccess: async () => {
+      setMsg({ ok: true, text: 'Saved.' });
+      await qc.invalidateQueries({ queryKey: ['org', org.slug] });
+    },
+    onError: (e: Error) => setMsg({ ok: false, text: e.message }),
+  });
+  const changed = policy !== startPolicy || listed !== startListed;
+  return (
+    <Section title="Who can join" help="club.whoCanJoin">
+      <form
+        className="space-y-4 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setMsg(null);
+          save.mutate();
+        }}
+      >
+        <fieldset className="space-y-2">
+          <legend className="sr-only">Who can join</legend>
+          {JOIN_CHOICES.map((c) => (
+            <label
+              key={c.value}
+              className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+                policy === c.value ? 'border-accent bg-accent-soft' : 'border-line'
+              }`}
+            >
+              <input
+                type="radio"
+                name="join-policy"
+                value={c.value}
+                checked={policy === c.value}
+                onChange={() => setPolicy(c.value)}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-semibold">{c.label}</span>
+                <span className="block text-xs text-muted">{c.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <div className="flex items-start gap-2">
+          <label className="flex min-h-11 flex-1 items-start gap-3 rounded-lg border border-line p-3">
+            <input type="checkbox" checked={listed} onChange={(e) => setListed(e.target.checked)} className="mt-1" />
+            <span>
+              <span className="font-semibold">Show in the club list</span>
+              <span className="block text-xs text-muted">
+                People can find the club under Find a club, with its name, description and number of members.
+              </span>
+            </span>
+          </label>
+          <HelpButton helpKey="club.listed" className="mt-3" />
+        </div>
+        {policy !== 'invite' && !listed && (
+          <p className="rounded-lg border border-line bg-soft p-3 text-muted" role="note">
+            While the club isn’t in the club list, nobody outside it can find it, so people still need an invite to join.
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" disabled={!changed || save.isPending} className={primary}>
+            Save
+          </button>
+          {msg && (
+            <p className={msg.ok ? 'text-ok' : 'text-danger'} role={msg.ok ? 'status' : 'alert'}>
+              {msg.text}
+            </p>
+          )}
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+/** People who asked to join: approve makes them a member, decline quietly says no. */
+export function JoinRequestsSection({ slug, requests }: { slug: string; requests: JoinRequestSummary[] }) {
+  const qc = useQueryClient();
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['org-join-requests', slug] });
+    void qc.invalidateQueries({ queryKey: ['org-members', slug] });
+    void qc.invalidateQueries({ queryKey: ['org', slug] });
+    void qc.invalidateQueries({ queryKey: ['join-request-count'] });
+  };
+  const approve = useMutation({
+    mutationFn: (r: JoinRequestSummary) => api.orgs.approveJoin(slug, r.id),
+    onSuccess: (_res, r) => {
+      setNote({ ok: true, text: `${r.displayName} is now a member.` });
+      refresh();
+    },
+    onError: (e: Error) => setNote({ ok: false, text: e.message }),
+  });
+  const decline = useMutation({
+    mutationFn: (r: JoinRequestSummary) => api.orgs.declineJoin(slug, r.id),
+    onSuccess: (_res, r) => {
+      setNote({ ok: true, text: `Declined ${r.displayName}’s request.` });
+      refresh();
+    },
+    onError: (e: Error) => setNote({ ok: false, text: e.message }),
+  });
+  const busy = approve.isPending || decline.isPending;
+  return (
+    <Section title={`Requests to join (${requests.length})`} help="club.requests">
+      {requests.length === 0 ? (
+        <p className="text-sm text-muted">Nobody is waiting.</p>
+      ) : (
+        <ul className="divide-y divide-line rounded-lg border border-line">
+          {requests.map((r) => (
+            <li key={r.id} className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                {r.avatarUrl ? (
+                  <img src={r.avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-full" />
+                ) : (
+                  <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-soft font-semibold text-muted">
+                    {r.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="break-words font-medium">{r.displayName}</p>
+                  <p className="text-xs text-muted">asked {new Date(r.createdAt).toLocaleDateString()}</p>
+                  {r.message && <p className="mt-1 whitespace-pre-line break-words">“{r.message}”</p>}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={primary} disabled={busy} onClick={() => approve.mutate(r)}>
+                  Approve
+                </button>
+                <button type="button" className={btn} disabled={busy} onClick={() => decline.mutate(r)}>
+                  Decline
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {note && (
+        <p className={`text-sm ${note.ok ? 'text-ok' : 'text-danger'}`} role={note.ok ? 'status' : 'alert'}>
+          {note.text}
+        </p>
+      )}
+    </Section>
+  );
+}
+
 /** Make another member an admin and step down, so the club is never left without one. */
 export function HandOverSection({ slug, myUserId, members }: { slug: string; myUserId: string; members: OrgMemberSummary[] }) {
   const qc = useQueryClient();
@@ -578,6 +764,12 @@ export function describeEvent(e: AuditEventSummary, memberName: (id: string) => 
       return `${who} handed the club to ${typeof p.toUserId === 'string' ? (memberName(p.toUserId) ?? 'a member') : 'a member'}`;
     case 'settings':
       return `${who} changed the club’s settings`;
+    case 'join':
+      return `${who} joined the club`;
+    case 'join_approve':
+      return `${who} let ${target} join`;
+    case 'join_decline':
+      return `${who} declined a request to join`;
     case 'transfer':
       return `${who} moved a layout into the club`;
     case 'rename':

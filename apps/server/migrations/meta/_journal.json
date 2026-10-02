@@ -78,6 +78,13 @@
       "when": 1790872230265,
       "tag": "0010_desktop_minimum",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790903490171,
+      "tag": "0011_club_join",
+      "breakpoints": true
     }
   ]
 }

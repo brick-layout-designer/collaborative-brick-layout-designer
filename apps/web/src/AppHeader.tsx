@@ -12,7 +12,7 @@
 
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Me } from './api';
 import { HelpMenu } from './editor/EditorChrome';
 
@@ -30,6 +30,15 @@ export function AppHeader({ user }: Props) {
       navigate('/login', { replace: true });
     },
   });
+
+  // Club admins see how many people are waiting to join their clubs.
+  const waiting = useQuery({
+    queryKey: ['join-request-count'],
+    queryFn: api.orgs.joinRequestCount,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const waitingCount = waiting.data?.count ?? 0;
 
   // Phones: the links fold into a Menu button, and open as a list.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -49,9 +58,14 @@ export function AppHeader({ user }: Props) {
         aria-expanded={menuOpen}
         aria-controls="site-nav"
         onClick={() => setMenuOpen((v) => !v)}
-        className="h-11 rounded-control border border-border px-3 text-sm font-semibold text-ink hover:bg-soft sm:hidden"
+        className="inline-flex h-11 items-center gap-2 rounded-control border border-border px-3 text-sm font-semibold text-ink hover:bg-soft sm:hidden"
       >
         Menu
+        {waitingCount > 0 && !menuOpen && (
+          <span aria-hidden className="rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink">
+            {waitingCount}
+          </span>
+        )}
       </button>
       <nav
         id="site-nav"
@@ -61,8 +75,16 @@ export function AppHeader({ user }: Props) {
           if ((e.target as HTMLElement).closest('a')) setMenuOpen(false);
         }}
       >
-        <Link to="/orgs" data-tour="clubs.page" className={link}>
+        <Link to="/orgs" data-tour="clubs.page" className={`${link} gap-2`}>
           Clubs
+          {waitingCount > 0 && (
+            <span
+              className="rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink"
+              aria-label={`${waitingCount} ${waitingCount === 1 ? 'request' : 'requests'} to join`}
+            >
+              {waitingCount}
+            </span>
+          )}
         </Link>
         <Link to="/about" className={link}>
           About
