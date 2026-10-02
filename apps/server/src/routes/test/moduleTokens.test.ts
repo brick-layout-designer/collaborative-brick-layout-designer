@@ -33,7 +33,8 @@ async function buildApp(): Promise<FastifyInstance> {
   return app;
 }
 
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString('base64');
+// A real 1×1 PNG: the server re-encodes pictures (as WebP), so it must decode.
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 describe('modules, catalog and notices with API tokens', () => {
   let app: FastifyInstance;
@@ -75,7 +76,7 @@ describe('modules, catalog and notices with API tokens', () => {
     ]);
     const snap = await app.inject({ method: 'GET', url: `/api/modules/${id}/snapshot`, headers: bearer(reader) });
     expect([...snap.rawPayload]).toEqual([1, 2, 3]);
-    expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: bearer(reader) })).headers['content-type']).toBe('image/png');
+    expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: bearer(reader) })).headers['content-type']).toBe('image/webp');
     const versions = await app.inject({ method: 'GET', url: `/api/modules/${id}/versions`, headers: bearer(reader) });
     expect((versions.json() as { versions: { note: string }[] }).versions.map((v) => v.note)).toEqual(['Longer siding', 'First']);
 
