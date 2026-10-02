@@ -39,6 +39,8 @@ export interface PrefsWriter {
   /** Send whatever is queued now (page hide, sign-out). */
   flush(): Promise<void>;
   cancel(): void;
+  /** True while changes are queued or being sent (a refetch would be older). */
+  hasPending(): boolean;
 }
 
 export function createPrefsWriter(opts: {
@@ -54,6 +56,7 @@ export function createPrefsWriter(opts: {
   };
   let pending: Partial<Preferences> | null = null;
   let handle: unknown = null;
+  let sending = 0;
 
   async function flush(): Promise<void> {
     if (handle !== null) {
@@ -63,10 +66,13 @@ export function createPrefsWriter(opts: {
     if (!pending) return;
     const changes = pending;
     pending = null;
+    sending++;
     try {
       await opts.save(changes);
     } catch (err) {
       opts.onError?.(err);
+    } finally {
+      sending--;
     }
   }
 
@@ -85,5 +91,6 @@ export function createPrefsWriter(opts: {
       handle = null;
       pending = null;
     },
+    hasPending: () => pending !== null || sending > 0,
   };
 }

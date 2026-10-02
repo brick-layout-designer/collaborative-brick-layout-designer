@@ -12,39 +12,17 @@ import { db } from './db/index.js';
 import { env } from './env.js';
 import { attachUser } from './auth/cookie.js';
 import { ensureBootstrapAdmin } from './auth/bootstrap.js';
-import { oauthRoutes } from './routes/auth/oauth.js';
-import { passwordRoutes } from './routes/auth/password.js';
-import { sessionRoutes } from './routes/auth/session.js';
-import { deviceRoutes } from './routes/auth/device.js';
-import { tokenRoutes } from './routes/tokens.js';
-import { versionRoutes } from './routes/version.js';
 import { registerDesktopGate } from './compat.js';
-import { auditRoutes } from './routes/audit.js';
-import { adminRoutes, syncLibrariesFromDisk } from './routes/admin.js';
-import { adminInsightsRoutes } from './routes/adminInsights.js';
-import { adminLimitsRoutes } from './routes/adminLimits.js';
+import { syncLibrariesFromDisk } from './routes/admin.js';
 import { registerLimitHooks } from './limits/hooks.js';
 import { registerRequestMetrics } from './metrics/activity.js';
 import { startRollup, stopRollup } from './metrics/rollup.js';
-import { collaboratorRoutes } from './routes/collaborators.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
-import { customPartRoutes } from './routes/customParts.js';
-import { customPartInviteRoutes } from './routes/customPartInvites.js';
-import { inviteRoutes } from './routes/invites.js';
-import { layoutRoutes } from './routes/layouts.js';
-import { moduleRoutes } from './routes/modules.js';
-import { catalogRoutes } from './routes/catalog.js';
-import { moduleTransferRoutes } from './routes/moduleTransfers.js';
-import { venueRoutes } from './routes/venues.js';
-import { preferencesRoutes } from './routes/preferences.js';
-import { orgRoutes } from './routes/orgs.js';
-import { orgInviteRoutes } from './routes/orgInvites.js';
-import { clubJoinRoutes } from './routes/clubJoin.js';
-import { partsRoutes } from './routes/parts.js';
-import { partsManifestRoutes } from './routes/partsManifest.js';
-import { transferRoutes } from './routes/transfers.js';
-import { wsRoutes } from './routes/ws.js';
 import { registerSecurityHeaders } from './utils/securityHeaders.js';
+import { registerApiRoutes } from './routes/all.js';
+import { registerChangeHints } from './events/routeHints.js';
+import { setHintErrorLogger } from './events/audience.js';
+import { stopEvents } from './routes/events.js';
 
 async function main() {
   // Run pending migrations on boot. Idempotent.
@@ -105,33 +83,10 @@ async function main() {
     }
   });
 
-  await app.register(versionRoutes);
-  await app.register(oauthRoutes);
-  await app.register(passwordRoutes);
-  await app.register(sessionRoutes);
-  await app.register(deviceRoutes);
-  await app.register(tokenRoutes);
-  await app.register(layoutRoutes);
-  await app.register(partsRoutes);
-  await app.register(collaboratorRoutes);
-  await app.register(inviteRoutes);
-  await app.register(orgRoutes);
-  await app.register(orgInviteRoutes);
-  await app.register(clubJoinRoutes);
-  await app.register(transferRoutes);
-  await app.register(customPartRoutes);
-  await app.register(customPartInviteRoutes);
-  await app.register(moduleRoutes);
-  await app.register(catalogRoutes);
-  await app.register(moduleTransferRoutes);
-  await app.register(venueRoutes);
-  await app.register(preferencesRoutes);
-  await app.register(partsManifestRoutes);
-  await app.register(auditRoutes);
-  await app.register(adminRoutes);
-  await app.register(adminInsightsRoutes);
-  await app.register(adminLimitsRoutes);
-  await app.register(wsRoutes);
+  // Live change hints for GET /api/events (events/routeHints.ts).
+  registerChangeHints(app);
+  setHintErrorLogger((err) => app.log.warn({ err }, 'live hint failed'));
+  await registerApiRoutes(app);
 
   // Serve the BlueBrickParts base library at /parts/*.
   // The submodule organises files under PARTS_DIR/parts/ so we point there.
@@ -209,6 +164,9 @@ async function main() {
 
   startWorkers();
   startRollup();
+  app.addHook('preClose', async () => {
+    stopEvents();
+  });
   app.addHook('onClose', async () => {
     stopWorkers();
     stopRollup();

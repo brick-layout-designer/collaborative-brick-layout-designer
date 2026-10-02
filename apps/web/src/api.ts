@@ -115,6 +115,43 @@ async function friendlyErrorMessage(res: Response, method = 'GET', path = res.ur
   return 'Something went wrong. Please try again.';
 }
 
+/**
+ * Every successful change this tab makes (POST / PUT / PATCH / DELETE)
+ * is reported here, so the lists that show what changed refetch (see
+ * live/invalidate.ts). Writes made outside these helpers call
+ * `noteWrite` themselves.
+ */
+type WriteListener = (method: string, path: string) => void;
+const writeListeners = new Set<WriteListener>();
+
+export function onApiWrite(fn: WriteListener): () => void {
+  writeListeners.add(fn);
+  return () => writeListeners.delete(fn);
+}
+
+export function noteWrite(method: string, path: string): void {
+  for (const fn of writeListeners) {
+    try {
+      fn(method, path);
+    } catch {
+      // A listener's trouble never fails the write.
+    }
+  }
+}
+
+/** How long the browser may keep /api/parts/catalog (its Cache-Control max-age). */
+const PARTS_CACHE_MS = 60_000;
+let partsChangedAt = 0;
+
+/**
+ * Parts were added or changed (here, or a live hint said so elsewhere):
+ * for the next minute, reading the catalog skips the browser's cached
+ * copy, so a refetch can't bring back the list from before the change.
+ */
+export function markPartsChanged(now: number = Date.now()): void {
+  partsChangedAt = now;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   return get<T>(path);
 }
@@ -128,6 +165,7 @@ export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST', path: string,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, method, path));
+  noteWrite(method, path);
   return res.json() as Promise<T>;
 }
 
@@ -145,6 +183,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   }
   const res = await fetch(path, init);
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'POST', path));
+  noteWrite('POST', path);
   return res.json() as Promise<T>;
 }
 
@@ -211,12 +250,14 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PATCH', path));
+  noteWrite('PATCH', path);
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
+  noteWrite('DELETE', path);
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
@@ -227,6 +268,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PUT', path));
+  noteWrite('PUT', path);
   return res.json() as Promise<T>;
 }
 
@@ -309,6 +351,7 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
     body: bytes as Uint8Array<ArrayBuffer>,
   });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PUT', path));
+  noteWrite('PUT', path);
   return res.json() as Promise<{ updatedAt: number }>;
 }
 
@@ -417,7 +460,9 @@ export const api = {
   },
 
   parts: {
-    catalog: () => get<{ parts: PartWire[] }>('/api/parts/catalog'),
+    /** The catalog; for a minute after parts changed, past the browser's 60 s cache. */
+    catalog: () =>
+      Date.now() - partsChangedAt < PARTS_CACHE_MS ? api.parts.catalogFresh() : get<{ parts: PartWire[] }>('/api/parts/catalog'),
     /** The catalog past the browser's 60 s cache, after parts were added. */
     catalogFresh: async () => {
       const res = await fetch('/api/parts/catalog', { credentials: 'include', cache: 'no-cache' });
@@ -519,6 +564,7 @@ export const api = {
         body: JSON.stringify({ confirm }),
       });
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', `/api/orgs/${slug}`));
+      noteWrite('DELETE', `/api/orgs/${slug}`);
     },
     /** Make `userId` an admin and step down to member, in one go. */
     handOver: (slug: string, userId: string) => post<{ ok: true }>(`/api/orgs/${slug}/hand-over`, { userId }),

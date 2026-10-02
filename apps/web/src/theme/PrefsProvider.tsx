@@ -79,6 +79,9 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
       if (!sameAsDefaults(local)) writerRef.current?.queue(local);
       return;
     }
+    // A change made here and not yet saved is newer than what loaded
+    // (another tab's change refetches this, see live/LiveUpdates.tsx).
+    if (writerRef.current?.hasPending()) return;
     setPrefsState(remote.data.prefs);
     setUpdatedAt(remote.data.updatedAt);
     writeCachedPreferences(remote.data.prefs);
