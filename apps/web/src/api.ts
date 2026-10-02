@@ -62,6 +62,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   verify_email_first: 'Please confirm your email address first.',
 };
 
+/** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
+export const FIREWALL_BLOCKED =
+  "The site's firewall blocked this request. Please tell the site admin (what you were doing, and the time).";
+
 /** `some_error_code` -> "Some error code." */
 function humanizeErrorCode(code: string): string {
   const words = code.replace(/_/g, ' ');
@@ -74,9 +78,22 @@ function humanizeErrorCode(code: string): string {
  * `path → status`, which used to leak straight into forms (e.g. a
  * failed login showing "/api/auth/password/login → 401").
  */
-async function friendlyErrorMessage(res: Response): Promise<string> {
+async function friendlyErrorMessage(res: Response, method = 'GET', path = res.url): Promise<string> {
+  type ErrorBody = { error?: unknown; message?: unknown };
+  let body: ErrorBody | null = null;
   try {
-    const body = (await res.clone().json()) as { error?: unknown; message?: unknown };
+    const parsed: unknown = await res.clone().json();
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed as ErrorBody;
+  } catch {
+    // Not JSON.
+  }
+  // A 403 the app never saw: the site's firewall (WAF) answered it with an
+  // empty or non-JSON body. That isn't a permissions problem.
+  if (res.status === 403 && !body) {
+    console.warn(`The site's firewall blocked ${method} ${path} (${new Date().toISOString()})`);
+    return FIREWALL_BLOCKED;
+  }
+  if (body) {
     // Limits, suspension and rate limits come with a ready-made sentence
     // that names the limit ("Your club has used its 10 GB. …").
     if (
@@ -89,8 +106,6 @@ async function friendlyErrorMessage(res: Response): Promise<string> {
     if (typeof body.error === 'string' && body.error) {
       return ERROR_MESSAGES[body.error] ?? humanizeErrorCode(body.error);
     }
-  } catch {
-    // Response wasn't JSON, or had no `error` field — fall through.
   }
   if (res.status === 401) return 'You need to sign in to do that.';
   if (res.status === 403) return "You don't have permission to do that.";
@@ -110,13 +125,13 @@ export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST', path: string,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, method, path));
   return res.json() as Promise<T>;
 }
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: 'include' });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
   return res.json() as Promise<T>;
 }
 
@@ -127,7 +142,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     init.body = JSON.stringify(body);
   }
   const res = await fetch(path, init);
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'POST', path));
   return res.json() as Promise<T>;
 }
 
@@ -193,13 +208,13 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PATCH', path));
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
@@ -209,7 +224,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PUT', path));
   return res.json() as Promise<T>;
 }
 
@@ -272,7 +287,7 @@ export function spriteUrlFor(part: PartWire): string {
 
 async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: number }> {
   const res = await fetch(path, { credentials: 'include' });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
   const buf = await res.arrayBuffer();
   return {
     bytes: new Uint8Array(buf),
@@ -291,7 +306,7 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
     // though nothing in this codebase ever produces one here).
     body: bytes as Uint8Array<ArrayBuffer>,
   });
-  if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+  if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PUT', path));
   return res.json() as Promise<{ updatedAt: number }>;
 }
 
@@ -404,7 +419,7 @@ export const api = {
     /** The catalog past the browser's 60 s cache, after parts were added. */
     catalogFresh: async () => {
       const res = await fetch('/api/parts/catalog', { credentials: 'include', cache: 'no-cache' });
-      if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', '/api/parts/catalog'));
       return (await res.json()) as { parts: PartWire[] };
     },
   },
@@ -501,7 +516,7 @@ export const api = {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ confirm }),
       });
-      if (!res.ok) throw new Error(await friendlyErrorMessage(res));
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', `/api/orgs/${slug}`));
     },
     /** Make `userId` an admin and step down to member, in one go. */
     handOver: (slug: string, userId: string) => post<{ ok: true }>(`/api/orgs/${slug}/hand-over`, { userId }),
