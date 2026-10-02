@@ -6,6 +6,7 @@ import type * as Y from 'yjs';
 import type { BackgroundImage } from '@cld/bbm';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { setBackgroundImage, clearBackgroundImage } from './mutations';
+import { noteWrite } from '../api';
 
 interface Props {
   layoutId: string;
@@ -38,6 +39,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
           credentials: 'include',
         });
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+        noteWrite('POST', `/api/layouts/${layoutId}/background-image`);
         const data = (await res.json()) as { url: string };
         url = data.url;
       }
@@ -62,6 +64,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
         method: 'DELETE',
         credentials: 'include',
       });
+      noteWrite('DELETE', `/api/layouts/${layoutId}/background-image`);
       clearBackgroundImage(doc);
       onClose();
     } catch {
