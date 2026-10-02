@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   this base image, and a plain install collides with them (EEXIST).
 RUN npm install -g --force corepack@0.34.7 && corepack enable && corepack prepare pnpm@10 --activate
 
-COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY pnpm-workspace.yaml .pnpmfile.cjs package.json tsconfig.base.json ./
 COPY apps/server/package.json apps/server/tsconfig.json apps/server/tsconfig.build.json apps/server/drizzle.config.ts ./apps/server/
 COPY apps/web/package.json apps/web/tsconfig.json apps/web/vite.config.ts apps/web/index.html ./apps/web/
 COPY packages/model/package.json packages/model/tsconfig.json ./packages/model/

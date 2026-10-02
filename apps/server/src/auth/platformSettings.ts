@@ -9,7 +9,6 @@
 //      overrides it from the UI, and the settings page can show which
 //      source is actually active.
 
-import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';

@@ -6,7 +6,6 @@ import { useState, type FormEvent } from 'react';
 import type * as Y from 'yjs';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { setVenue } from './mutations';
-import type { VenueEdge } from '@cld/bbm';
 import { venueAfterDraw } from './venueValidator';
 
 const STUDS_PER_FOOT = 38.09814081;

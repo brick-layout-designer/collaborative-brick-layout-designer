@@ -5,7 +5,6 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as Y from 'yjs';
 import { seedFromBbm, encodeDoc } from '@cld/ydoc';
 import type { BbmMap, Brick } from '@cld/model';
 import { api } from '../api';

@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import * as Y from 'yjs';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ModuleSummary } from '../api';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';

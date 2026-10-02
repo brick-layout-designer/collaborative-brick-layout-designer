@@ -22,7 +22,12 @@
     "e2e": "pnpm --filter @cld/web test:e2e"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
     "lefthook": "2.1.14",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "typescript-eslint": "^8.71.0"
   }
 }

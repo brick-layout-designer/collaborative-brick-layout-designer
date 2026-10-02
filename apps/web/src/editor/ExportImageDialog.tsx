@@ -435,7 +435,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
 }
 
 function safeTitle(title: string): string {
-  return title.replace(/[^a-z0-9_\-]/gi, '_') || 'layout';
+  return title.replace(/[^a-z0-9_-]/gi, '_') || 'layout';
 }
 
 /** Print window: one physical-size page per tile. */
@@ -463,7 +463,7 @@ function printHtml(
 </head>
 <body>
 ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
-<script>window.onload = () => { setTimeout(() => window.print(), 400); }<\/script>
+<script>window.onload = () => { setTimeout(() => window.print(), 400); }</script>
 </body>
 </html>`;
 }

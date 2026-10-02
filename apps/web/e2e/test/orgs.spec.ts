@@ -43,21 +43,6 @@ async function createOrg(
   return res.json() as Promise<{ id: string; slug: string }>;
 }
 
-async function inviteMember(
-  page: Page,
-  slug: string,
-  email: string,
-  role: 'admin' | 'member' = 'member',
-): Promise<string> {
-  const res = await page.request.post(`/api/orgs/${slug}/invites`, {
-    data: { email, role },
-  });
-  expect(res.ok()).toBe(true);
-  const body = (await res.json()) as { token?: string; inviteId?: string };
-  // The server returns the token directly for non-email environments.
-  return (body.token ?? body.inviteId) as string;
-}
-
 /** Returns a new page context logged in as the given user. */
 async function newUserContext(
   browser: import('@playwright/test').Browser,
@@ -350,7 +335,7 @@ test.describe('orgs — remove member', () => {
     const acceptRes = await memberPage.request.post(
       `/api/org-invites/${token}`,
     );
-    const { orgId } = (await acceptRes.json()) as { orgId: string };
+    await acceptRes.json();
 
     // Get the member's userId from the member list.
     const membersRes = await page.request.get(

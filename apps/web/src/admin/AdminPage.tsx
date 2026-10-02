@@ -17,7 +17,7 @@ import { useCardTables } from '../ui/cardTables';
 import { Link, Navigate } from 'react-router-dom';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type AdminGlobalPart, type AdminAuditEvent, type AdminSettings, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
+import { api, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
 
@@ -936,7 +936,8 @@ function PartLibrariesTab() {
   function toggleSource(id: SourceId) {
     setSelectedSources((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }

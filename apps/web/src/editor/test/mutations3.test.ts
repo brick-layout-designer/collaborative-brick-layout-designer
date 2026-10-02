@@ -230,7 +230,7 @@ describe('moveModuleBricks', () => {
 
   it('scans all layers for member bricks', () => {
     const doc = blankDoc();
-    const l1 = ensureBrickLayer(doc);
+    ensureBrickLayer(doc);
     // Add a second brick layer manually.
     const l2 = 'layer-2';
     doc.getArray<string>('layers').push([l2]);

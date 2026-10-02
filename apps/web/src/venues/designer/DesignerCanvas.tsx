@@ -112,7 +112,7 @@ export function DesignerCanvas({
     };
   }, []);
 
-  const v = view ?? { scale: 1, x: 0, y: 0 };
+  const v = useMemo(() => view ?? { scale: 1, x: 0, y: 0 }, [view]);
   const toWorld = (sx: number, sy: number): Pt => ({ x: (sx - v.x) / v.scale, y: (sy - v.y) / v.scale });
   const tol = HIT_PX / v.scale;
   const shown = useMemo(() => visibleVenue(venue, state.show), [venue, state.show]);

@@ -9,7 +9,7 @@
 // model those either.
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type * as Y from 'yjs';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';
