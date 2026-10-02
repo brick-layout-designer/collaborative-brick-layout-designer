@@ -69,7 +69,7 @@ export async function loginAs(
   await app.inject({
     method: 'POST',
     url: '/api/auth/password/register',
-    payload: { email, password: 'correct horse battery', displayName: email },
+    payload: { email, password: 'correct horse battery', displayName: email.split('@')[0] },
   });
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   if (!user) throw new Error(`loginAs: registration failed for ${email}`);

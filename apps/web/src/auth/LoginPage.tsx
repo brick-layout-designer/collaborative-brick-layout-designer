@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
+import { HelpButton } from '../help/HelpButton';
 
 /**
  * `?next=` target to return to after signing in (e.g. /device, /invite/…).
@@ -86,6 +87,7 @@ function PasswordForm({ next }: { next: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   // Set after a successful registration — password signups no longer log
   // straight in; the account needs to click the emailed link first.
@@ -95,7 +97,7 @@ function PasswordForm({ next }: { next: string }) {
     mutationFn: () =>
       mode === 'login'
         ? api.passwordLogin(email, password)
-        : api.passwordRegister(email, password),
+        : api.passwordRegister(email, password, name.trim()),
     onSuccess: () => {
       if (mode === 'register') {
         setAwaitingVerification(email);
@@ -135,10 +137,33 @@ function PasswordForm({ next }: { next: string }) {
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
+        if (mode === 'register' && name.includes('@')) {
+          setError('Other people see your name, so it can’t be an email address. Try your first name or a nickname.');
+          return;
+        }
         mutation.mutate();
       }}
       className="space-y-3 border-t border-line pt-4"
     >
+      {mode === 'register' && (
+        <div>
+          <div className="mb-1 flex items-center gap-1 text-sm text-muted">
+            <label htmlFor="signup-name">Your name (shown to others)</label>
+            <HelpButton helpKey="account.publicName" target="#signup-name" />
+          </div>
+          <input
+            id="signup-name"
+            type="text"
+            placeholder="e.g. Sam, or Sam from ArkLUG"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            maxLength={60}
+            autoComplete="nickname"
+            className="w-full rounded-lg border border-border bg-soft px-3 py-2"
+          />
+        </div>
+      )}
       <input
         type="email"
         placeholder="Email"

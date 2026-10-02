@@ -17,16 +17,19 @@ import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type ResourceKind } from '../access/resolveResourceRole.js';
 import type { AuditResourceKind } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
+import { nameFor, publicName } from '../utils/publicName.js';
 
 /** Batch-load display names for a set of userIds. Returns a map userId→name. */
-async function loadUserNames(userIds: (string | null)[]): Promise<Map<string, string>> {
+async function loadUserNames(viewer: { id: string; isGlobalAdmin: boolean }, userIds: (string | null)[]): Promise<Map<string, string>> {
   const ids = [...new Set(userIds.filter((id): id is string => id !== null))];
   if (ids.length === 0) return new Map();
   const rows = await db
     .select({ id: schema.users.id, displayName: schema.users.displayName, email: schema.users.email })
     .from(schema.users)
     .where(inArray(schema.users.id, ids));
-  return new Map(rows.map((r) => [r.id, r.displayName || r.email]));
+  // Site admins (and the person themselves) see the stored name, falling
+  // back to the email; everyone else never sees an address.
+  return new Map(rows.map((r) => [r.id, nameFor(viewer, r.id, r.displayName) || (viewer.isGlobalAdmin ? r.email : publicName(r.id, ''))]));
 }
 
 interface AuditQuery {
@@ -55,7 +58,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.auditEvents.layoutId, req.params.id))
         .orderBy(desc(schema.auditEvents.createdAt))
         .limit(limit);
-      const names = await loadUserNames(rows.map((r) => r.userId));
+      const names = await loadUserNames(user, rows.map((r) => r.userId));
       return {
         events: rows.map((r) => toWire(r, names)),
       };
@@ -107,7 +110,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         .orderBy(desc(schema.auditEvents.createdAt))
         .limit(limit)
         .offset(offset);
-      const names = await loadUserNames(rows.map((r) => r.userId));
+      const names = await loadUserNames(user, rows.map((r) => r.userId));
       return { events: rows.map((r) => toWire(r, names)), limit, offset };
     },
   );
@@ -148,7 +151,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
           )
           .orderBy(desc(schema.auditEvents.createdAt))
           .limit(limit));
-    const names = await loadUserNames(rows.map((r) => r.userId));
+    const names = await loadUserNames(user, rows.map((r) => r.userId));
     return { events: rows.map((r) => toWire(r, names)) };
   });
 }

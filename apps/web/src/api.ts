@@ -7,6 +7,12 @@ export interface Me {
   id: string;
   email: string;
   displayName: string;
+  /** The name other people see (never an email address). */
+  publicName?: string;
+  /** No name yet, or it looks like an email: ask "What should we call you?". */
+  needsName?: boolean;
+  /** A starting point for that prompt: the part of the email before '@'. */
+  suggestedName?: string;
   avatarUrl: string | null;
   /** The shared demo account (Admin › Settings › Demo account). */
   isDemoAccount: boolean;
@@ -69,6 +75,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   verification_not_found: 'That verification link is invalid.',
   verification_expired: 'That verification link has expired. Request a new one below.',
   invalid_display_name: 'Display name must be between 1 and 60 characters.',
+  name_looks_like_email: 'Other people see your name, so it can’t be an email address. Try your first name or a nickname.',
   invalid_code: 'That code is invalid or has expired. Check the code shown in the app.',
   limit_reached: 'You’ve reached a limit on this site. Ask the site admin for more room.',
   suspended: 'This account is read-only for now. Ask the site admin why.',

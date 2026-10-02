@@ -480,7 +480,7 @@ describe('PATCH /api/auth/me — self-service display name', () => {
     });
 
     const frank = await db.select().from(schema.users).where(eq(schema.users.email, 'frank2@example.com')).get();
-    expect(frank?.displayName).toBe('frank2@example.com'); // unchanged — register defaults to email
+    expect(frank?.displayName).toBe(''); // unchanged — register never stores the email as a name
     const eve = await db.select().from(schema.users).where(eq(schema.users.email, 'eve2@example.com')).get();
     expect(eve?.displayName).toBe('Renamed By Eve');
   });

@@ -32,7 +32,8 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   await db.insert(schema.users).values({
     id: randomUUID(),
     email,
-    displayName: email,
+    // Never the email (names are shown to others); they're asked for a name on first sign-in.
+    displayName: '',
     avatarUrl: null,
     passwordHash,
     isDemoAccount: false,

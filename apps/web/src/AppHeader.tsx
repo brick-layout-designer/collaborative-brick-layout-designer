@@ -15,6 +15,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Me } from './api';
 import { HelpMenu } from './editor/EditorChrome';
+import { forgetNamePromptSkip } from './auth/NamePrompt';
 
 interface Props {
   user: Me;
@@ -31,6 +32,8 @@ export function AppHeader({ user }: Props) {
     mutationFn: api.logout,
     onSuccess: () => {
       qc.clear();
+      // The next sign-in asks "What should we call you?" again, if it's still needed.
+      forgetNamePromptSkip();
       navigate('/login', { replace: true });
     },
   });
@@ -133,7 +136,7 @@ export function AppHeader({ user }: Props) {
           {user.avatarUrl && (
             <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
           )}
-          <span>{user.displayName}</span>
+          <span>{user.displayName || user.publicName || 'Profile'}</span>
         </Link>
         <button
           onClick={() => logout.mutate()}

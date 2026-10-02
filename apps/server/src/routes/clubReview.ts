@@ -23,6 +23,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
 import { canModerate, decideVersion, itemOut, ownerNames, unpublishItem } from './catalog.js';
 import { decideCollection, textQueue, unpublishCollection, collectionOwnerNames, shownForQueue } from './collections.js';
+import { publicName } from '../utils/publicName.js';
 
 type Org = typeof schema.orgs.$inferSelect;
 type Outcome = { code: number; body: unknown };
@@ -95,6 +96,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
         createdAt: schema.catalogItemVersions.createdAt,
         item: schema.catalogItems,
         submitter: schema.users.displayName,
+        submitterId: schema.users.id,
       })
       .from(schema.catalogItemVersions)
       .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
@@ -135,7 +137,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
         version: w.version,
         isUpdate: w.item.publicVersion > 0,
         note: w.note,
-        submitter: w.submitter,
+        submitter: w.submitterId ? publicName(w.submitterId, w.submitter) : null,
         createdAt: w.createdAt.getTime(),
         previewUrl: `/api/catalog/items/${w.item.id}/preview?v=${w.version}`,
       })),

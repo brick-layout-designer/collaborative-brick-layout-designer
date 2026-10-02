@@ -136,7 +136,7 @@ export function MembersSection({
                     {m.displayName} {self && <span className="text-xs text-muted">(you)</span>}
                   </p>
                   <p className="break-all text-xs text-muted">
-                    {m.email} · joined {new Date(m.joinedAt).toLocaleDateString()}
+                    {m.email ? `${m.email} · ` : ''}joined {new Date(m.joinedAt).toLocaleDateString()}
                   </p>
                 </div>
               </div>

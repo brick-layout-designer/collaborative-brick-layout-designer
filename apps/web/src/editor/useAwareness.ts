@@ -120,7 +120,8 @@ export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts)
     baseRef.current = {
       user: {
         id: me.id,
-        displayName: me.displayName,
+        // Others see this next to your cursor: never an email address.
+        displayName: me.publicName ?? me.displayName,
         avatarUrl: me.avatarUrl,
         color: deterministicColor(me.id, layoutId),
       },

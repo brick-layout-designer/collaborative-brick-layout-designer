@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
 import { DevicesSection } from './DevicesSection';
+import { HelpButton } from '../help/HelpButton';
 
 export function ProfilePage() {
   const qc = useQueryClient();
@@ -44,12 +45,17 @@ export function ProfilePage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const trimmed = draftName.trim();
+                  if (trimmed.includes('@')) {
+                    setError('Other people see your name, so it can’t be an email address. Try your first name or a nickname.');
+                    return;
+                  }
                   if (trimmed) saveName.mutate(trimmed);
                 }}
                 className="flex items-center gap-2"
               >
                 <input
                   autoFocus
+                  aria-label="Your name (shown to others)"
                   value={draftName}
                   onChange={(e) => setDraftName(e.target.value)}
                   maxLength={60}
@@ -71,8 +77,9 @@ export function ProfilePage() {
                 </button>
               </form>
             ) : (
-              <h1 className="flex items-center gap-2 text-xl font-semibold">
-                {user.displayName}
+              <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold">
+                {user.displayName || <span className="text-muted">No name yet</span>}
+                <HelpButton helpKey="account.publicName" />
                 {!user.isDemoAccount && (
                   <button
                     onClick={() => { setDraftName(user.displayName); setEditing(true); }}

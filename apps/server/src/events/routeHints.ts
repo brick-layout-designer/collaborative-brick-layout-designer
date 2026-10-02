@@ -10,7 +10,7 @@
 // after the reply is sent and never fail a request.
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { Hint, HintOwner } from './hub.js';
 import { orgIdBySlug, ownerOfResource, publish, staffIds, type Reach } from './audience.js';
@@ -133,6 +133,44 @@ const bySlug = (ctx: HintCtx) => orgIdBySlug(ctx.params.slug ?? '');
 /** Something only the signed-in person sees (their account, settings, devices). */
 const me: HintSpec = {
   after: async (ctx) => (ctx.userId ? [{ hint: { kind: 'me', owner: { kind: 'user', id: ctx.userId }, action: action(ctx.req) } }] : []),
+};
+
+/**
+ * A new name: it shows wherever other people see this person (club member
+ * lists, the catalog's "by" lines, share lists, version history), so
+ * those refetch too, not just the person's own tabs.
+ */
+const rename: HintSpec = {
+  after: async (ctx) => {
+    const uid = ctx.userId;
+    if (!uid) return [];
+    const out: Array<{ hint: Hint; reach?: Reach }> = [{ hint: { kind: 'me', owner: { kind: 'user', id: uid }, action: 'update:name' } }];
+    const clubs = await db.select({ orgId: schema.orgMembers.orgId }).from(schema.orgMembers).where(eq(schema.orgMembers.userId, uid)).all();
+    for (const c of clubs) out.push({ hint: { kind: 'club', owner: { kind: 'org', id: c.orgId }, id: c.orgId, action: 'update:name' } });
+    out.push({ hint: { kind: 'catalog', action: 'update:name' }, reach: { everyone: true } });
+    // Everyone sharing a layout or module with them sees them in its share list.
+    const L = schema.layoutCollaborators;
+    const layoutIds = [
+      ...(await db.select({ id: schema.layouts.id }).from(schema.layouts).where(eq(schema.layouts.ownerUserId, uid)).all()).map((r) => r.id),
+      ...(await db.select({ id: L.layoutId }).from(L).where(eq(L.userId, uid)).all()).map((r) => r.id),
+    ];
+    const M = schema.moduleCollaborators;
+    const moduleIds = [
+      ...(await db.select({ id: schema.modules.id }).from(schema.modules).where(eq(schema.modules.ownerUserId, uid)).all()).map((r) => r.id),
+      ...(await db.select({ id: M.moduleId }).from(M).where(eq(M.userId, uid)).all()).map((r) => r.id),
+    ];
+    if (layoutIds.length) {
+      const users = (await db.select({ u: L.userId }).from(L).where(inArray(L.layoutId, layoutIds)).all()).map((r) => r.u);
+      const owners = (await db.select({ u: schema.layouts.ownerUserId }).from(schema.layouts).where(inArray(schema.layouts.id, layoutIds)).all()).map((r) => r.u);
+      out.push({ hint: { kind: 'layout', action: 'update:name' }, reach: { ownerless: true, users: [...users, ...owners] } });
+    }
+    if (moduleIds.length) {
+      const users = (await db.select({ u: M.userId }).from(M).where(inArray(M.moduleId, moduleIds)).all()).map((r) => r.u);
+      const owners = (await db.select({ u: schema.modules.ownerUserId }).from(schema.modules).where(inArray(schema.modules.id, moduleIds)).all()).map((r) => r.u);
+      out.push({ hint: { kind: 'module', action: 'update:name' }, reach: { ownerless: true, users: [...users, ...owners] } });
+    }
+    return out;
+  },
 };
 
 /** Site-wide data everyone sees (global parts, site settings). */
@@ -318,7 +356,7 @@ function warningHint(idFrom: (ctx: HintCtx) => string | null): HintSpec {
 
 export const ROUTE_HINTS: Record<string, HintSpec> = {
   // ---- account (other tabs and the desktop app of the same person)
-  'PATCH /api/auth/me': me,
+  'PATCH /api/auth/me': rename,
   'POST /api/auth/link': me,
   'DELETE /api/auth/link': me,
   'POST /api/auth/device/approve': me,

@@ -155,7 +155,7 @@ describe('club join settings', () => {
     await call(outsider, 'POST', '/api/orgs/arklug/join', { message: 'again' });
     const list = (await call(admin, 'GET', '/api/orgs/arklug/join-requests')).json() as { requests: Record<string, unknown>[] };
     expect(list.requests).toHaveLength(1);
-    expect(list.requests[0]).toMatchObject({ userId: outsider.id, message: 'I build trains', displayName: 'outsider@example.com' });
+    expect(list.requests[0]).toMatchObject({ userId: outsider.id, message: 'I build trains', displayName: 'outsider' });
     expect((await call(outsider, 'GET', '/api/orgs/arklug/summary')).json()).toMatchObject({ myStatus: 'requested' });
     expect((await call(admin, 'GET', '/api/orgs/arklug')).json()).toMatchObject({ pendingRequests: 1 });
     expect((await call(admin, 'GET', '/api/join-requests/count')).json()).toEqual({ count: 1, clubs: [{ slug: 'arklug', count: 1 }] });

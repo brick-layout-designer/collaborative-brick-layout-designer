@@ -35,7 +35,7 @@ async function registerAndLogin(app: FastifyInstance, email: string): Promise<st
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/password/register',
-    payload: { email, password: 'correct horse battery', displayName: email },
+    payload: { email, password: 'correct horse battery', displayName: email.split('@')[0] },
   });
   expect(res.statusCode).toBe(200);
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
@@ -474,7 +474,7 @@ describe('modules', () => {
       expect((await save(aliceCookie, id, Buffer.from([2, 2]))).json()).toMatchObject({ version: 2 });
       const v = await versions(aliceCookie, id);
       expect(v.map((x) => x.version)).toEqual([2, 1]);
-      expect(v[1]).toMatchObject({ note: 'First go', author: 'alice@example.com' });
+      expect(v[1]).toMatchObject({ note: 'First go', author: 'alice' });
       expect(v[0]!.note).toBeNull();
       const list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: aliceCookie } })).json() as { modules: { latestVersion: number }[] };
       expect(list.modules[0]!.latestVersion).toBe(2);

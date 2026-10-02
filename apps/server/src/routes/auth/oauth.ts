@@ -15,6 +15,7 @@ import {
 } from '../../auth/pendingLinks.js';
 import { db, schema } from '../../db/index.js';
 import { env } from '../../env.js';
+import { looksLikeEmail } from '../../utils/publicName.js';
 
 const STATE_COOKIE = 'cld_oauth_state';
 const VERIFIER_COOKIE = 'cld_oauth_verifier';
@@ -214,7 +215,8 @@ export async function fetchGoogleProfile(accessToken: string): Promise<Normalise
   return {
     providerUserId: data.sub,
     email: data.email,
-    displayName: data.name ?? data.email,
+    // Not the email when Google has no name: the person is asked for one after signing in.
+    displayName: data.name && !looksLikeEmail(data.name) ? data.name : '',
     avatarUrl: data.picture ?? null,
   };
 }
@@ -245,7 +247,7 @@ async function fetchGithubProfile(accessToken: string): Promise<NormalisedProfil
   return {
     providerUserId: String(user.id),
     email,
-    displayName: user.name ?? user.login,
+    displayName: user.name && !looksLikeEmail(user.name) ? user.name : user.login,
     avatarUrl: user.avatar_url,
   };
 }

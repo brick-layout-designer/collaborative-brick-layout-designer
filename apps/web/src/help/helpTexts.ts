@@ -369,6 +369,11 @@ export const HELP_TEXTS = {
     more: 'A moderator checks a public collection’s title, description and cover first. Adding or moving items never needs a check, but your own modules and parts are each checked before they show publicly.',
     learnMoreUrl: '/help#collections',
   },
+  'account.publicName': {
+    title: 'Your name',
+    short: 'Other people see this name, so pick one you are happy to share; your email stays private.',
+    more: 'It shows in club member lists, next to your cursor when you edit with others, and on things you share in the public catalog. You can change it any time on your Profile page.',
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_TEXTS;

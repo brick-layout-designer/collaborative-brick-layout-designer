@@ -26,6 +26,7 @@ import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { canModerate } from './catalog.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { sendWarningEmail } from '../email/sendWarning.js';
+import { publicName } from '../utils/publicName.js';
 
 export const SEVERITIES = ['note', 'warning', 'final'] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -98,7 +99,7 @@ async function describe(rows: schema.Warning[], withIssuer: boolean): Promise<Wa
   const userIds = [...new Set(rows.flatMap((r) => [r.subjectUserId, withIssuer ? r.issuedBy : null]).filter((x): x is string => !!x))];
   const orgIds = [...new Set(rows.flatMap((r) => [r.subjectOrgId, r.clubOrgId]).filter((x): x is string => !!x))];
   const users = userIds.length
-    ? new Map((await db.select({ id: schema.users.id, n: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)).all()).map((u) => [u.id, u.n]))
+    ? new Map((await db.select({ id: schema.users.id, n: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)).all()).map((u) => [u.id, publicName(u.id, u.n)]))
     : new Map<string, string>();
   const orgs = orgIds.length
     ? new Map((await db.select({ id: schema.orgs.id, n: schema.orgs.name, s: schema.orgs.slug }).from(schema.orgs).where(inArray(schema.orgs.id, orgIds)).all()).map((o) => [o.id, o]))

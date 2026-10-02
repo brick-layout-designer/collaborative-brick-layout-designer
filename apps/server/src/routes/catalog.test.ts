@@ -26,7 +26,7 @@ async function buildApp(): Promise<FastifyInstance> {
 }
 
 async function login(app: FastifyInstance, email: string): Promise<string> {
-  await app.inject({ method: 'POST', url: '/api/auth/password/register', payload: { email, password: 'correct horse battery', displayName: email } });
+  await app.inject({ method: 'POST', url: '/api/auth/password/register', payload: { email, password: 'correct horse battery', displayName: email.split('@')[0] } });
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   const v = await db.select().from(schema.emailVerifications).where(eq(schema.emailVerifications.userId, user!.id)).get();
   const res = await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${v!.token}` });
@@ -100,7 +100,7 @@ describe('public catalogs', () => {
       expect(ok.statusCode).toBe(200);
       const items = (await list(alice)).json() as { items: { title: string; tags: string[]; by: string }[] };
       expect(items.items).toHaveLength(1);
-      expect(items.items[0]).toMatchObject({ title: 'Freight yard', tags: ['yard', 'freight'], by: 'alice@example.com' });
+      expect(items.items[0]).toMatchObject({ title: 'Freight yard', tags: ['yard', 'freight'], by: 'alice' });
       const audit = await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.eventType, 'catalog_approve')).all();
       expect(audit).toHaveLength(1);
     });

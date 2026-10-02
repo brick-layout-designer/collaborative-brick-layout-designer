@@ -22,6 +22,7 @@ import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
 import { SiteVersionBar } from './SiteVersionBar';
 import { DemoBanner } from './demo/DemoBanner';
+import { NamePrompt } from './auth/NamePrompt';
 import { CollectionToastHost } from './catalog/collectionToast';
 import { HelpPage } from './help/HelpPage';
 import { SettingsPage } from './settings/SettingsPage';
@@ -148,6 +149,7 @@ createRoot(root).render(
         <SiteVersionBar />
         <NoticeBanner />
         <DemoBanner />
+        <NamePrompt />
         <CollectionToastHost />
         <TourProvider>
         <Suspense fallback={null}>
