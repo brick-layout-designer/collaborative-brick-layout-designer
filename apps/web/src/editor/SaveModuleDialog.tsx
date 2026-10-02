@@ -11,7 +11,7 @@ import { api } from '../api';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { ModuleThumb } from '../modules/ModuleThumb';
 
-type Thumb = { mime: 'image/png'; data: string };
+type Thumb = { mime: 'image/png' | 'image/webp'; data: string };
 
 interface Props {
   map: BbmMap;

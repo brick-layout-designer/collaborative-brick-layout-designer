@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import sharp from 'sharp';
 import { eq } from 'drizzle-orm';
 import * as Y from 'yjs';
 import { exportBbmFromDoc } from '@cld/ydoc';
@@ -10,6 +11,14 @@ import { passwordRoutes } from './auth/password.js';
 import { sessionRoutes } from './auth/session.js';
 import { orgRoutes } from './orgs.js';
 import { moduleRoutes } from './modules.js';
+import { MAX_THUMBNAIL_BYTES, smallCacheSize } from '../images/thumbnails.js';
+
+/** A real PNG, `w` × `h`, with some detail so it doesn't compress to nothing. */
+async function picture(w: number, h: number): Promise<Buffer> {
+  const raw = Buffer.alloc(w * h * 3);
+  for (let i = 0; i < raw.length; i++) raw[i] = (i * 7 + (i % w) * 13) & 0xff;
+  return sharp(raw, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+}
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 10 * 1024 * 1024 });
@@ -262,7 +271,10 @@ describe('modules', () => {
   });
 
   describe('thumbnails', () => {
-    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 7)]);
+    let PNG: Buffer;
+    beforeAll(async () => {
+      PNG = await picture(64, 48);
+    });
     async function setup() {
       const aliceCookie = await registerAndLogin(app, 'alice@example.com');
       const create = await app.inject({ method: 'POST', url: '/api/modules', headers: { cookie: aliceCookie }, payload: { title: 'Pic' } });
@@ -287,9 +299,10 @@ describe('modules', () => {
 
       const got = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie } });
       expect(got.statusCode).toBe(200);
-      expect(got.headers['content-type']).toBe('image/png');
+      // Stored and served as WebP, whatever came in.
+      expect(got.headers['content-type']).toBe('image/webp');
       expect(got.headers['cache-control']).toContain('max-age');
-      expect(Buffer.compare(got.rawPayload, PNG)).toBe(0);
+      expect(await sharp(got.rawPayload).metadata()).toMatchObject({ format: 'webp', width: 64, height: 48 });
       const again = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie, 'if-none-match': got.headers.etag as string } });
       expect(again.statusCode).toBe(304);
     });
@@ -300,8 +313,21 @@ describe('modules', () => {
       expect(bad.statusCode).toBe(400);
       const wrongType = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/svg+xml', data: PNG.toString('base64') } });
       expect(wrongType.statusCode).toBe(400);
-      const big = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: Buffer.concat([PNG, Buffer.alloc(600 * 1024)]).toString('base64') } });
+      const big = await app.inject({
+        method: 'PUT',
+        url: `/api/modules/${id}/thumbnail`,
+        headers: { cookie: aliceCookie },
+        payload: { mime: 'image/png', data: Buffer.concat([PNG, Buffer.alloc(MAX_THUMBNAIL_BYTES)]).toString('base64') },
+      });
       expect(big.statusCode).toBe(413);
+      // The right header on bytes that aren't a picture.
+      const broken = await app.inject({
+        method: 'PUT',
+        url: `/api/modules/${id}/thumbnail`,
+        headers: { cookie: aliceCookie },
+        payload: { mime: 'image/png', data: Buffer.concat([PNG.subarray(0, 8), Buffer.alloc(40, 7)]).toString('base64') },
+      });
+      expect(broken.statusCode).toBe(400);
       const raw = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie, 'content-type': 'application/octet-stream' }, payload: PNG });
       expect(raw.statusCode).toBe(400);
     });
@@ -323,7 +349,83 @@ describe('modules', () => {
       const before = usageOf({ kind: "user", id: alice!.id }).storageBytes;
       await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
       const after = usageOf({ kind: "user", id: alice!.id }).storageBytes;
-      expect(after - before).toBe(PNG.length);
+      const stored = (await db.select().from(schema.modules).where(eq(schema.modules.id, id)).get())!.thumbnail as Buffer;
+      expect(after - before).toBe(stored.length);
+    });
+
+    it('counts what is stored (the re-encoded picture), not what was sent, against the space left', async () => {
+      const { aliceCookie, id } = await setup();
+      const { usageOf, invalidateLimitCaches } = await import('../limits/limits.js');
+      const alice = (await db.select().from(schema.users).where(eq(schema.users.email, 'alice@example.com')).get())!;
+      // A smooth picture with a little grain: big as PNG, small as WebP.
+      const w = 900;
+      const h = 700;
+      const raw = Buffer.alloc(w * h * 3);
+      let seed = 1;
+      for (let i = 0; i < raw.length; i++) {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        raw[i] = (((i / 3) % w) / w) * 200 + (seed % 5);
+      }
+      const sent = await sharp(raw, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+      const put = () => app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: sent.toString('base64') } });
+      expect((await put()).statusCode).toBe(200);
+      const stored = ((await db.select().from(schema.modules).where(eq(schema.modules.id, id)).get())!.thumbnail as Buffer).length;
+      expect(stored).toBeLessThan(sent.length / 2);
+      await db.update(schema.modules).set({ thumbnail: null, thumbnailMime: null, thumbnailAt: null }).where(eq(schema.modules.id, id));
+      // Room for the stored picture, not for the PNG that was sent.
+      const room = usageOf({ kind: 'user', id: alice.id }).storageBytes + stored + 16;
+      await db.insert(schema.limitOverrides).values({ subjectKind: 'user', subjectId: alice.id, limits: JSON.stringify({ storagePerUser: room }), updatedAt: new Date() });
+      invalidateLimitCaches();
+      expect((await put()).statusCode).toBe(200);
+    });
+
+    it('takes a 1024 px picture, shrinks a bigger one, strips its metadata, and says how big it is', async () => {
+      const { aliceCookie, id } = await setup();
+      const huge = await sharp({ create: { width: 2000, height: 1000, channels: 3, background: '#3a7' } })
+        .withMetadata({ exif: { IFD0: { Copyright: 'secret-camera' } } })
+        .jpeg()
+        .toBuffer();
+      const asPng = await sharp(huge).withMetadata().png().toBuffer();
+      expect(asPng.toString('latin1')).toContain('secret-camera');
+      const put = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: asPng.toString('base64') } });
+      expect(put.statusCode).toBe(200);
+      const got = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie } });
+      const meta = await sharp(got.rawPayload).metadata();
+      expect(meta).toMatchObject({ format: 'webp', width: 1024, height: 512 });
+      expect(meta.exif).toBeUndefined();
+      expect(got.rawPayload.toString('latin1')).not.toContain('secret-camera');
+      const list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: aliceCookie } })).json() as { modules: { thumbnailSide: number | null }[] };
+      expect(list.modules[0]!.thumbnailSide).toBe(1024);
+      // A 1024 px WebP from the editor is kept at 1024.
+      const webp = await sharp({ create: { width: 1024, height: 700, channels: 4, background: '#fff' } }).webp().toBuffer();
+      await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/webp', data: webp.toString('base64') } });
+      const again = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie } });
+      expect(await sharp(again.rawPayload).metadata()).toMatchObject({ width: 1024, height: 700 });
+    });
+
+    it('lists get a small copy, made once; an old small picture is its own small copy', async () => {
+      const { aliceCookie, id } = await setup();
+      const big = await picture(1024, 768);
+      await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: big.toString('base64') } });
+      const before = smallCacheSize();
+      const small = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail?size=small`, headers: { cookie: aliceCookie } });
+      expect(small.statusCode).toBe(200);
+      expect(small.headers['content-type']).toBe('image/webp');
+      expect(await sharp(small.rawPayload).metadata()).toMatchObject({ width: 256, height: 192 });
+      expect(small.headers.etag).toMatch(/-s"$/);
+      expect(smallCacheSize()).toBe(before + 1);
+      const second = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail?size=small`, headers: { cookie: aliceCookie } });
+      expect(Buffer.compare(second.rawPayload, small.rawPayload)).toBe(0);
+      expect(smallCacheSize()).toBe(before + 1);
+      const full = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie } });
+      expect(full.headers.etag).not.toBe(small.headers.etag);
+      expect((await sharp(full.rawPayload).metadata()).width).toBe(1024);
+      // A picture from before (256 px) is served as it is.
+      await db.update(schema.modules).set({ thumbnail: PNG, thumbnailMime: 'image/png' }).where(eq(schema.modules.id, id));
+      const old = await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail?size=small`, headers: { cookie: aliceCookie } });
+      expect(Buffer.compare(old.rawPayload, PNG)).toBe(0);
+      const list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: aliceCookie } })).json() as { modules: { thumbnailSide: number | null }[] };
+      expect(list.modules[0]!.thumbnailSide).toBe(64);
     });
   });
 
@@ -428,11 +530,13 @@ describe('modules', () => {
     it('the newest version gets the picture that is uploaded after the save', async () => {
       const { aliceCookie, id } = await setup();
       await save(aliceCookie, id, Buffer.from([1]));
-      const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(20, 3)]);
+      const PNG = await picture(600, 300);
       await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: aliceCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
       const pic = await app.inject({ method: 'GET', url: `/api/modules/${id}/versions/1/thumbnail`, headers: { cookie: aliceCookie } });
       expect(pic.statusCode).toBe(200);
-      expect(pic.headers['content-type']).toBe('image/png');
+      expect(pic.headers['content-type']).toBe('image/webp');
+      const small = await app.inject({ method: 'GET', url: `/api/modules/${id}/versions/1/thumbnail?size=small`, headers: { cookie: aliceCookie } });
+      expect(await sharp(small.rawPayload).metadata()).toMatchObject({ width: 256, height: 128 });
     });
   });
 });

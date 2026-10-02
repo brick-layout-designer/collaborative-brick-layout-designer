@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
+import { api, lowResThumbnail, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
 import { defaultSaveTo, matchesOwnerFilter, useOwnerFilter, type OwnedItem } from '../owners/owners';
 import { MoveCopyDialog, OwnerChip, OwnerFilterBar, SaveToPicker } from '../owners/OwnerControls';
 import { HelpButton } from '../help/HelpButton';
@@ -203,6 +203,14 @@ export function LayoutsPage() {
                   <p className="text-xs text-muted">
                     {m.latestVersion ? `version ${m.latestVersion} · ` : ''}updated {new Date(m.updatedAt).toLocaleString()}
                   </p>
+                  {m.role !== 'viewer' && lowResThumbnail(m) && (
+                    <p data-testid="low-res-picture" className="text-xs text-muted">
+                      Picture is low resolution.{' '}
+                      <Link to={`/modules/${m.id}?refresh=picture`} className="font-semibold text-accent-text hover:underline">
+                        Refresh it
+                      </Link>
+                    </p>
+                  )}
                 </div>
                 <Link
                   to={`/modules/${m.id}`}
@@ -215,6 +223,11 @@ export function LayoutsPage() {
                   <button role="menuitem" type="button" onClick={() => setHistoryOf(m)} className={MORE_ITEM}>
                     Version history…
                   </button>
+                  {m.role !== 'viewer' && m.thumbnailAt && (
+                    <Link role="menuitem" to={`/modules/${m.id}?refresh=picture`} className={MORE_ITEM}>
+                      Refresh picture
+                    </Link>
+                  )}
                   {catalog.enabled('module') && (m.role === undefined || m.role === 'owner') && (
                     <button role="menuitem" type="button" onClick={() => setSharing(m)} className={MORE_ITEM}>
                       {catalog.shared('module', m.id) ? 'Publish this update…' : 'Share to the public catalog…'}

@@ -73,6 +73,16 @@ export function makeGlobalAdmin(email: string): void {
 }
 
 /** Drop a module's picture, as if it was saved before modules had pictures. */
+/** Give a module an old-style picture (a 256 px PNG), as made before pictures were 1024 px. */
+export function setOldModuleThumbnail(moduleId: string, png: Buffer): void {
+  const db = new Database(dbPath());
+  try {
+    db.prepare(`UPDATE modules SET thumbnail = ?, thumbnail_mime = 'image/png', thumbnail_at = ? WHERE id = ?`).run(png, Date.now(), moduleId);
+  } finally {
+    db.close();
+  }
+}
+
 export function clearModuleThumbnail(moduleId: string): void {
   const db = new Database(dbPath());
   try {

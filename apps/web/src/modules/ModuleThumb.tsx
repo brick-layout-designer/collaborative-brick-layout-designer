@@ -13,7 +13,8 @@ export function ModuleThumb({
   module: Pick<ModuleSummary, 'id' | 'title' | 'thumbnailAt'>;
   size?: keyof typeof SIZES;
 }) {
-  const url = moduleThumbnailUrl(module);
+  // Lists show it at 40–96 px: the small copy is plenty.
+  const url = moduleThumbnailUrl(module, 'small');
   // The picture didn't load (removed, or offline): the placeholder.
   const [failed, setFailed] = useState<string | null>(null);
   const box = `${SIZES[size]} shrink-0 overflow-hidden rounded-lg border border-line bg-soft`;
