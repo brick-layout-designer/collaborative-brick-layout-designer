@@ -33,6 +33,9 @@ const MAX_REASON = 2000;
 const MAX_LINK = 500;
 /** Warnings one person may send in a minute (both kinds together). */
 const RATE = { max: 20, timeWindow: '1 minute' } as const;
+// The desktop app (an API token, any layouts scope) shows your warnings and
+// lets you acknowledge them, as the web's banner does.
+const TOKEN_NOTICES = { apiToken: 'layouts:read' } as const;
 
 type Input = { severity: Severity; reason: string; link: string | null };
 
@@ -246,7 +249,7 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- what I received ----------------------------------------------------
-  app.get('/api/notices', async (req) => {
+  app.get('/api/notices', { config: TOKEN_NOTICES }, async (req) => {
     const user = requireUser(req);
     const run = await db
       .select({ o: schema.orgMembers.orgId })
@@ -270,7 +273,7 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
     return { notices: await describe(rows, false) };
   });
 
-  app.post<{ Params: { id: string } }>('/api/notices/:id/acknowledge', async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/notices/:id/acknowledge', { config: TOKEN_NOTICES }, async (req, reply) => {
     const user = requireUser(req);
     const row = await db.select().from(schema.warnings).where(eq(schema.warnings.id, req.params.id)).get();
     if (!row || !(await recipientsOf(row)).includes(user.id)) return reply.code(404).send({ error: 'not_found' });

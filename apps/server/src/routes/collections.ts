@@ -37,6 +37,8 @@ const MAX_TITLE = 80;
 const MAX_DESCRIPTION = 1000;
 const MAX_REASON = 300;
 const MAX_NOTE = 1500;
+// The desktop app (an API token) browses collections and adds them.
+const TOKEN_READ = { apiToken: 'layouts:read' } as const;
 
 /** What a collection is made of: what's public, or a change waiting for review. */
 export interface Draft {
@@ -239,7 +241,7 @@ const getCollection = (id: string) => db.select().from(schema.catalogCollections
 export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // ---- browse --------------------------------------------------------------
   // Public collections with at least one item showing, featured first.
-  app.get('/api/catalog/collections', async (req, reply) => {
+  app.get('/api/catalog/collections', { config: TOKEN_READ }, async (req, reply) => {
     const on = await kindsOn();
     if (!on.size) return reply.code(404).send({ error: 'catalog_off' });
     if (!(await mayBrowse(req))) return reply.code(401).send({ error: 'unauthorized' });
@@ -283,7 +285,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get<{ Params: { id: string } }>('/api/catalog/collections/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/catalog/collections/:id', { config: TOKEN_READ }, async (req, reply) => {
     const on = await kindsOn();
     if (!on.size) return reply.code(404).send({ error: 'catalog_off' });
     const c = await getCollection(req.params.id);
@@ -443,7 +445,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { orgSlug?: unknown } }>(
     '/api/catalog/collections/:id/add',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, apiToken: ['layouts:write', 'parts:write'] as const } },
     async (req, reply) => {
       const user = requireUser(req);
       const on = await kindsOn();

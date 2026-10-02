@@ -30,6 +30,11 @@ import { recordVersion } from './modules.js';
 import { collectionCounts, dropFromCollections } from './collections.js';
 
 type Kind = 'module' | 'part';
+// The desktop app (an API token) browses the catalog and adds from it:
+// browsing needs layouts:read; adding a copy, layouts:write (a module) or
+// parts:write (a part).
+const TOKEN_READ = { apiToken: 'layouts:read' } as const;
+const TOKEN_ADD = ['layouts:write', 'parts:write'] as const;
 const MAX_TITLE = 80;
 const MAX_DESCRIPTION = 1000;
 const MAX_TAGS = 8;
@@ -261,7 +266,7 @@ export async function copyItemTo(user: User, item: typeof schema.catalogItems.$i
 
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---- what's on (no sign-in needed) --------------------------------------
-  app.get('/api/catalog/settings', async (req) => {
+  app.get('/api/catalog/settings', { config: TOKEN_READ }, async (req) => {
     const s = await getPlatformSettings();
     return {
       modules: s.moduleCatalogEnabled,
@@ -275,6 +280,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---- browse --------------------------------------------------------------
   app.get<{ Querystring: { kind?: string; q?: string; tag?: string; sort?: string } }>(
     '/api/catalog/items',
+    { config: TOKEN_READ },
     async (req, reply) => {
       const kind = req.query.kind ?? 'module';
       if (!isKind(kind) || !(await catalogOn(kind))) return reply.code(404).send({ error: 'catalog_off' });
@@ -304,7 +310,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get<{ Params: { id: string } }>('/api/catalog/items/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/catalog/items/:id', { config: TOKEN_READ }, async (req, reply) => {
     const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();
     if (!item || !(await catalogOn(item.kind))) return reply.code(404).send({ error: 'not_found' });
     const mine = req.user ? (await manages(req.user.id, item)) || canModerate(req.user) : false;
@@ -331,7 +337,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // A version's picture: a module's thumbnail, or a part's sprite.
-  app.get<{ Params: { id: string }; Querystring: { v?: string } }>('/api/catalog/items/:id/preview', async (req, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { v?: string } }>('/api/catalog/items/:id/preview', { config: TOKEN_READ }, async (req, reply) => {
     const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();
     if (!item || !(await catalogOn(item.kind))) return reply.code(404).send({ error: 'not_found' });
     const n = req.query.v ? Number(req.query.v) : item.publicVersion;
@@ -519,7 +525,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { orgSlug?: unknown } }>(
     '/api/catalog/items/:id/add',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' }, apiToken: TOKEN_ADD } },
     async (req, reply) => {
       const user = requireUser(req);
       const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();
@@ -535,7 +541,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // The caller's copies with a newer public version ("Update available").
-  app.get('/api/catalog/copies', async (req) => {
+  app.get('/api/catalog/copies', { config: TOKEN_READ }, async (req) => {
     const user = requireUser(req);
     const rows = await db
       .select({
