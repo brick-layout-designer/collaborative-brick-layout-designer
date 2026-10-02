@@ -9,6 +9,12 @@ permissions:
   contents: write
   packages: write
 
+# One nightly at a time: a newer push to main cancels an older run still in
+# progress, so an older commit can't finish last and overwrite :nightly.
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   image:
     name: Build & push image
@@ -30,7 +36,13 @@ jobs:
         id: repo
         run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Build & push
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      # Every build gets immutable per-commit tags; only the build of the
+      # commit that is still the tip of main also moves :nightly.
+      - name: Build & push (per-commit tags)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -38,12 +50,32 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ steps.repo.outputs.name }}:nightly
             ghcr.io/${{ steps.repo.outputs.name }}:sha-${{ github.sha }}
+            ghcr.io/${{ steps.repo.outputs.name }}:nightly-${{ steps.sha.outputs.short }}
           build-args: |
             APP_VERSION=nightly-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Is this still the tip of main?
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip=$(gh api "repos/${{ github.repository }}/branches/main" --jq .commit.sha)
+          echo "tip=$tip"
+          if [ "$tip" = "${{ github.sha }}" ]; then echo "latest=true" >> "$GITHUB_OUTPUT"; else echo "latest=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Move :nightly to this build
+        if: steps.tip.outputs.latest == 'true'
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ steps.repo.outputs.name }}:nightly \
+            ghcr.io/${{ steps.repo.outputs.name }}:sha-${{ github.sha }}
+
+      - name: Main has moved on
+        if: steps.tip.outputs.latest != 'true'
+        run: echo "::notice::main has a newer commit; leaving :nightly to its build. This one is sha-${{ github.sha }} / nightly-${{ steps.sha.outputs.short }}."
 
   scan-image:
     name: Trivy image scan
