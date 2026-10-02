@@ -41,3 +41,16 @@ export async function makeModuleThumbnail(
   const blob = await canvasToPng(canvas);
   return { mime: 'image/png', data: toBase64(new Uint8Array(await blob.arrayBuffer())) };
 }
+
+/** A picture of one area of the map (studs), e.g. the parts picked for Save as module. */
+export async function makeRegionThumbnail(
+  handle: ExportHandle | null,
+  region: { x: number; y: number; width: number; height: number },
+): Promise<{ mime: 'image/png'; data: string } | null> {
+  if (!handle?.renderPicture || !(region.width > 0 && region.height > 0)) return null;
+  const scale = thumbnailScale(region.width * 8, region.height * 8);
+  const canvas = await handle.renderPicture({ region, sheets: null, grid: false, labels: false }, pictureSize(region, scale));
+  if (!canvas) return null;
+  const blob = await canvasToPng(canvas);
+  return { mime: 'image/png', data: toBase64(new Uint8Array(await blob.arrayBuffer())) };
+}

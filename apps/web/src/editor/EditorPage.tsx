@@ -9,7 +9,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
 import { useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
 import { useModuleDoc } from './useModuleDoc';
-import { makeModuleThumbnail } from './moduleThumbnail';
+import { makeModuleThumbnail, makeRegionThumbnail } from './moduleThumbnail';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
 import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
@@ -261,6 +261,8 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   }, [doc, layoutId, checkSaved, meta.data?.layout.title, moduleMode]);
   // The module editor's Save: the module's contents, then its picture.
   const saveModuleRef = useRef<() => Promise<void>>(async () => undefined);
+  // The module editor's "What changed" note for its next save.
+  const [saveNote, setSaveNoteText] = useState('');
   const saveModule = () => saveModuleRef.current();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
@@ -435,6 +437,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       return;
     }
     showStatusMessage('Module saved', 3000);
+    setSaveNoteText('');
     void qc.invalidateQueries({ queryKey: ['modules'] });
   };
   // Save makes the module's picture before it shows "Saved" (so leaving
@@ -680,6 +683,19 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           <SavePill status={status} />
           {role === 'viewer' ? <ViewOnlyPill /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           <div className="ml-auto flex items-center gap-2">
+            {role !== 'viewer' && !viewport.isMobile && (
+              <input
+                value={saveNote}
+                onChange={(e) => {
+                  setSaveNoteText(e.target.value);
+                  docState.setSaveNote?.(e.target.value);
+                }}
+                maxLength={300}
+                placeholder="What changed? (optional)"
+                aria-label="What changed (optional)"
+                className="h-[38px] w-56 rounded-control border border-line bg-soft px-3 text-sm"
+              />
+            )}
             {role !== 'viewer' && (
               <button
                 type="button"
@@ -1134,9 +1150,10 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           selection={useEditorStore.getState().selection}
           layoutOwnerOrgId={meta.data?.layout.ownerOrgId ?? null}
           onClose={() => setShowSaveModule(false)}
-          onSaved={(_id, title) => {
+          makeThumbnail={(region) => makeRegionThumbnail(exportImageRef.current, region)}
+          onSaved={(_id, title, version) => {
             setShowSaveModule(false);
-            alert(`Module "${title}" saved.`);
+            alert(version ? `Module "${title}" updated: this is version ${version}.` : `Module "${title}" saved.`);
           }}
         />
       )}

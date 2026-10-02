@@ -35,6 +35,8 @@ export type AuditEventType =
   | 'join'
   | 'join_approve'
   | 'join_decline'
+  // A module went back to an earlier version (as a new version).
+  | 'restore_version'
   // Platform-admin actions. Subject is the resource being modified
   // (`resourceKind: 'user' | 'org' | 'layout' | ...`); the userId
   // field on the event is the admin who performed the action.

@@ -640,8 +640,24 @@ export const api = {
       ),
     create: (body: { title?: string; orgSlug?: string }) =>
       post<{ id: string; title: string }>('/api/modules', body),
-    saveSnapshot: (id: string, bytes: Uint8Array) =>
-      putBytes(`/api/modules/${id}/snapshot`, bytes),
+    /** Save the module's contents; each save is a new version, with an optional "What changed" note. */
+    saveSnapshot: (id: string, bytes: Uint8Array, note?: string) =>
+      putBytes(`/api/modules/${id}/snapshot${note?.trim() ? `?note=${encodeURIComponent(note.trim())}` : ''}`, bytes) as Promise<{
+        updatedAt: number;
+        version?: number;
+      }>,
+    versions: (id: string) =>
+      get<{ role: 'owner' | 'editor' | 'viewer'; versions: ModuleVersion[] }>(`/api/modules/${encodeURIComponent(id)}/versions`),
+    /** One version's Y.Doc bytes. */
+    versionSnapshot: async (id: string, version: number): Promise<Uint8Array> => {
+      const path = `/api/modules/${encodeURIComponent(id)}/versions/${version}/snapshot`;
+      const res = await fetch(path, { credentials: 'include' });
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
+      return new Uint8Array(await res.arrayBuffer());
+    },
+    /** Make an old version current again (as a new version). */
+    restoreVersion: (id: string, version: number) =>
+      post<{ ok: true; version: number }>(`/api/modules/${encodeURIComponent(id)}/versions/${version}/restore`, {}),
     /** The module's Y.Doc bytes (for the module editor). */
     snapshot: async (id: string): Promise<Uint8Array> => {
       const res = await fetch(`/api/modules/${encodeURIComponent(id)}/snapshot`, { credentials: 'include' });
@@ -1002,8 +1018,26 @@ export interface ModuleSummary {
   hasSidecar: boolean;
   /** When its picture was made (the picture URL's cache key); null or missing: none yet. */
   thumbnailAt?: number | null;
+  /** The newest saved version's number; 0 or missing: no history yet. */
+  latestVersion?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+/** One saved version of a module. */
+export interface ModuleVersion {
+  version: number;
+  note: string | null;
+  createdAt: number;
+  /** Who saved it (null when that account is gone). */
+  author: string | null;
+  hasThumbnail: boolean;
+  bytes: number;
+}
+
+/** A version's picture, or null when it has none. */
+export function moduleVersionThumbnailUrl(moduleId: string, v: Pick<ModuleVersion, 'version' | 'hasThumbnail'>): string | null {
+  return v.hasThumbnail ? `/api/modules/${encodeURIComponent(moduleId)}/versions/${v.version}/thumbnail` : null;
 }
 
 /** A module's picture, or null when it has none yet (show a placeholder). */

@@ -48,6 +48,8 @@ export interface LayoutDocState {
    * picture), so "Saved" only shows once everything has arrived.
    */
   setAfterSave?: (fn: (() => Promise<unknown>) | null) => void;
+  /** The module editor: the next save's "What changed" note. */
+  setSaveNote?: (note: string) => void;
   /** Surfaced to the UI for "couldn't connect" cases (auth, 404, etc). */
   loadError: Error | null;
   loading: boolean;

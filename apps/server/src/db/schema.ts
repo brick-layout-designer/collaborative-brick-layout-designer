@@ -546,6 +546,8 @@ export const modules = sqliteTable(
   thumbnailMime: text('thumbnail_mime', { enum: ['image/png', 'image/webp'] }),
   /** When the picture was last made: the cache key in its URL. */
   thumbnailAt: integer('thumbnail_at', { mode: 'timestamp_ms' }),
+  /** The newest saved version's number (module_versions); 0 until the first save with versions. */
+  latestVersion: integer('latest_version').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -553,6 +555,29 @@ export const modules = sqliteTable(
     createdIdx: index('modules_created_at_idx').on(t.createdAt),
     ownerUserIdx: index('modules_owner_user_id_idx').on(t.ownerUserId),
     ownerOrgIdx: index('modules_owner_org_id_idx').on(t.ownerOrgId),
+  }),
+);
+
+// Each save of a module is a version: its contents, picture and an optional
+// "What changed" note. The newest few are kept (MODULE_VERSIONS_KEPT).
+export const moduleVersions = sqliteTable(
+  'module_versions',
+  {
+    id: text('id').primaryKey(),
+    moduleId: text('module_id')
+      .notNull()
+      .references(() => modules.id, { onDelete: 'cascade' }),
+    /** 1, 2, 3… per module. */
+    version: integer('version').notNull(),
+    docSnapshot: blob('doc_snapshot').notNull(),
+    thumbnail: blob('thumbnail'),
+    thumbnailMime: text('thumbnail_mime', { enum: ['image/png', 'image/webp'] }),
+    note: text('note'),
+    authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    moduleVersionIdx: uniqueIndex('module_versions_module_version_idx').on(t.moduleId, t.version),
   }),
 );
 

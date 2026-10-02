@@ -813,6 +813,8 @@ export function describeEvent(e: AuditEventSummary, memberName: (id: string) => 
       return `${who} joined the club`;
     case 'join_approve':
       return `${who} let ${target} join`;
+    case 'restore_version':
+      return `${who} went back to version ${typeof p.from === 'number' ? p.from : 'an earlier version'} of a module`;
     case 'join_decline':
       return `${who} declined a request to join`;
     case 'transfer':
