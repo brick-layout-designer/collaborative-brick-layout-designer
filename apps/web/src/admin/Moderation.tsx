@@ -472,7 +472,7 @@ const MB = 1024 * 1024;
 function CoverMaxSetting({ cover, save }: { cover: AdminJobSetting<number>; save: (bytes: number) => void }) {
   const [mb, setMb] = useState(String(Math.round((cover.setting / MB) * 10) / 10));
   const n = Math.round(Number(mb) * MB);
-  const ok = Number.isFinite(n) && n >= 100 * 1024 && n <= 20 * MB;
+  const ok = Number.isFinite(n) && n >= 100 * 1024 && n <= 7 * MB;
   return (
     <div className="space-y-1">
       <label className="flex flex-wrap items-center gap-2 text-sm">
@@ -481,7 +481,7 @@ function CoverMaxSetting({ cover, save }: { cover: AdminJobSetting<number>; save
           type="number"
           inputMode="decimal"
           min={0.1}
-          max={20}
+          max={7}
           step={0.5}
           value={mb}
           disabled={!!cover.forcedBy}
@@ -492,8 +492,8 @@ function CoverMaxSetting({ cover, save }: { cover: AdminJobSetting<number>; save
         />
         MB
       </label>
-      <p className="text-xs text-muted">Curators can upload their own photo as a collection’s cover. It’s made smaller before it’s kept. Between 0.1 and 20 MB.</p>
-      {!ok && <p className="text-xs text-danger">Enter a size between 0.1 and 20 MB.</p>}
+      <p className="text-xs text-muted">Curators can upload their own photo as a collection’s cover. It’s made smaller before it’s kept. Between 0.1 and 7 MB.</p>
+      {!ok && <p className="text-xs text-danger">Enter a size between 0.1 and 7 MB.</p>}
       {cover.forcedBy && (
         <p className="text-xs text-muted">
           Forced by the server setting <code>{cover.forcedBy}</code> ({Math.round((cover.value / MB) * 10) / 10} MB). Remove it from the server’s settings to use this.
