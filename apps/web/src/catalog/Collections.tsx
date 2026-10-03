@@ -494,7 +494,7 @@ export function CollectionEditor({
       // The collection is saved; a picture that fails says so without losing it.
       try {
         if (coverMode === 'upload' && upload) saved = { ...saved, ...(await api.catalog.uploadCollectionCover(saved.id, { mime: upload.mime, data: upload.data })) };
-        else if (hadUpload && (coverMode === 'item' || !upload)) saved = { ...saved, ...(await api.catalog.removeCollectionCover(saved.id)) };
+        else if (hadUpload && coverMode === 'item') saved = { ...saved, ...(await api.catalog.removeCollectionCover(saved.id)) };
       } catch (e) {
         setCoverError(`Saved, but the cover picture wasn’t: ${(e as Error).message}`);
       }
