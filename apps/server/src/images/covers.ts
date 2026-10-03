@@ -13,7 +13,11 @@ export const COVER_SMALL_WIDTH = 480;
 const MB = 1024 * 1024;
 /** What an admin may set the biggest upload to. */
 export const COVER_MAX_FLOOR = 100 * 1024;
-export const COVER_MAX_CEILING = 20 * MB;
+/**
+ * Kept under what common WAFs accept: CrowdSec AppSec refuses JSON bodies past
+ * about 10 MiB, and base64 adds a third, so 7 MB of picture is the safe top.
+ */
+export const COVER_MAX_CEILING = 7 * MB;
 /** The JSON body at the ceiling: base64 is 4/3 the size, plus a little for the rest. */
 export const COVER_BODY_LIMIT = Math.ceil((COVER_MAX_CEILING * 4) / 3) + 64 * 1024;
 /** A 48 MP phone photo is 8000 × 6000; refuse "decompression bombs" past this. */

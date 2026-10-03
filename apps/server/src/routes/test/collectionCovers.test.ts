@@ -19,6 +19,7 @@ import { collectionRoutes } from '../collections.js';
 import { clubReviewRoutes } from '../clubReview.js';
 import { getPlatformSettings, PLATFORM_SETTINGS_ID } from '../../auth/platformSettings.js';
 import { usageOf } from '../../limits/limits.js';
+import { COVER_BODY_LIMIT, COVER_MAX_CEILING } from '../../images/covers.js';
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 1024 * 1024 });
@@ -60,6 +61,14 @@ const photo = () =>
 const png = (w = 300, h = 200) => sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 90, b: 200, alpha: 1 } } }).png().toBuffer();
 
 type Detail = { collection: { coverUrl: string | null; coverImageId: string | null; pending: { coverImageId: string | null; coverUrl: string | null } | null; status: string } };
+
+describe('cover size ceiling', () => {
+  it('keeps the biggest allowed upload under a 10 MiB WAF body limit', () => {
+    // CrowdSec AppSec refuses bodies past about 10 MiB before the app sees them.
+    expect(COVER_BODY_LIMIT).toBeLessThan(10 * 1024 * 1024);
+    expect(COVER_MAX_CEILING).toBeGreaterThanOrEqual(5 * 1024 * 1024);
+  });
+});
 
 describe('collection covers', () => {
   let app: FastifyInstance;
