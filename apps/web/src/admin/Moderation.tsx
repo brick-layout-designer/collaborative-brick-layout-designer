@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CatalogReview, type CollectionReviewEntry, type ModerationClub, type WarningSubject } from '../api';
+import { api, type AdminJobSetting, type CatalogReview, type CollectionReviewEntry, type ModerationClub, type WarningSubject } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import { WarnForm } from '../notices/Notices';
 import { invalidateFor } from '../live/invalidate';
@@ -461,6 +461,44 @@ export function CatalogSettingsSection() {
         <input type="checkbox" checked={c.anonymousBrowse} onChange={(e) => save.mutate({ catalogAnonymousBrowse: e.target.checked })} />
         People who aren’t signed in can browse (adding always needs an account)
       </label>
+      {c.coverMaxBytes && <CoverMaxSetting key={c.coverMaxBytes.setting} cover={c.coverMaxBytes} save={(n) => save.mutate({ collectionCoverMaxBytes: n })} />}
     </section>
+  );
+}
+
+const MB = 1024 * 1024;
+
+/** The biggest collection cover upload, in MB (an env var may force it). */
+function CoverMaxSetting({ cover, save }: { cover: AdminJobSetting<number>; save: (bytes: number) => void }) {
+  const [mb, setMb] = useState(String(Math.round((cover.setting / MB) * 10) / 10));
+  const n = Math.round(Number(mb) * MB);
+  const ok = Number.isFinite(n) && n >= 100 * 1024 && n <= 20 * MB;
+  return (
+    <div className="space-y-1">
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        Biggest collection cover picture
+        <input
+          type="number"
+          inputMode="decimal"
+          min={0.1}
+          max={20}
+          step={0.5}
+          value={mb}
+          disabled={!!cover.forcedBy}
+          onChange={(e) => setMb(e.target.value)}
+          onBlur={() => ok && n !== cover.setting && save(n)}
+          aria-label="Biggest collection cover picture, in MB"
+          className="min-h-9 w-24 rounded-lg border border-border bg-soft px-2"
+        />
+        MB
+      </label>
+      <p className="text-xs text-muted">Curators can upload their own photo as a collection’s cover. It’s made smaller before it’s kept. Between 0.1 and 20 MB.</p>
+      {!ok && <p className="text-xs text-danger">Enter a size between 0.1 and 20 MB.</p>}
+      {cover.forcedBy && (
+        <p className="text-xs text-muted">
+          Forced by the server setting <code>{cover.forcedBy}</code> ({Math.round((cover.value / MB) * 10) / 10} MB). Remove it from the server’s settings to use this.
+        </p>
+      )}
+    </div>
   );
 }

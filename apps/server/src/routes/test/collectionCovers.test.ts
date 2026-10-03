@@ -208,6 +208,11 @@ describe('collection covers', () => {
     expect(await covers(pub)).toHaveLength(2);
     await req('POST', `/api/moderation/collections/${pub}/decline`, mod, { reason: 'Blurry' });
     expect((await covers(pub)).map((c) => c.id)).toEqual([live]);
+    // Withdrawn while one waits: that one goes too.
+    await put(pub, ada, await png(320, 240));
+    expect(await covers(pub)).toHaveLength(2);
+    expect((await req('POST', `/api/catalog/collections/${pub}/withdraw`, ada, {})).statusCode).toBe(200);
+    expect((await covers(pub)).map((c) => c.id)).toEqual([live]);
     expect((await req('DELETE', `/api/catalog/collections/${pub}`, ada)).statusCode).toBe(200);
     expect(await db.select().from(schema.catalogCollectionCovers)).toHaveLength(0);
 
@@ -239,6 +244,9 @@ describe('collection covers', () => {
     const pub = await makePublic();
     const img = await png();
     expect((await put(priv, out, img)).statusCode).toBe(404);
+    // Refused before the picture is even looked at.
+    expect((await put(priv, out, Buffer.from('nope'))).statusCode).toBe(404);
+    expect((await put(club, mel, Buffer.from('nope'))).statusCode).toBe(403);
     expect((await req('DELETE', `/api/catalog/collections/${priv}/cover`, out)).statusCode).toBe(404);
     expect((await put(club, mel, img)).statusCode).toBe(403);
     expect((await req('DELETE', `/api/catalog/collections/${club}/cover`, mel)).statusCode).toBe(403);

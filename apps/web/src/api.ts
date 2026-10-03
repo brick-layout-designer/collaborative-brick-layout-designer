@@ -89,6 +89,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   demo_account_cannot_upload_parts: 'The demo can’t upload parts. Sign up to add your own.',
   demo_account_cannot_submit: 'The demo can’t add to the public catalog.',
   collection_empty: 'Pick at least one item for the collection.',
+  invalid_cover: 'That picture can’t be used. Choose a PNG, JPEG or WebP photo.',
+  cover_too_large: 'That picture is too big. Choose a smaller one.',
   collection_too_big: 'A collection can hold up to 60 items.',
   item_not_public: 'One of the items isn’t in the public catalog any more. Take it out and try again.',
   not_featurable: 'Only collections made by moderators can be featured.',
@@ -936,6 +938,7 @@ export const api = {
       dailyCompactionEnabled?: boolean;
       demoEnabled?: boolean;
       demoResetEvery?: DemoResetEvery;
+      collectionCoverMaxBytes?: number;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
     /** Demo account › Reset now (JSON, empty object body). */
     resetDemo: () => post<{ ok: true; lastResetAt: number; items: number }>('/api/admin/demo/reset', {}),
@@ -978,6 +981,16 @@ export const api = {
       post<CollectionSaved>(`/api/catalog/collections/${encodeURIComponent(id)}/items`, entry.source === 'catalog' ? { itemId: entry.id } : entry),
     deleteCollection: (id: string) => del(`/api/catalog/collections/${encodeURIComponent(id)}`),
     withdrawCollection: (id: string) => post<{ ok: true }>(`/api/catalog/collections/${encodeURIComponent(id)}/withdraw`, {}),
+    /** Upload your own cover: JSON {mime, data} (base64), never an octet-stream body. */
+    uploadCollectionCover: (id: string, body: { mime: string; data: string }) =>
+      put<CollectionSaved & { coverImageId: string }>(`/api/catalog/collections/${encodeURIComponent(id)}/cover`, body),
+    removeCollectionCover: async (id: string): Promise<CollectionSaved> => {
+      const path = `/api/catalog/collections/${encodeURIComponent(id)}/cover`;
+      const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
+      noteWrite('DELETE', path);
+      return res.json() as Promise<CollectionSaved>;
+    },
     dismissCollectionNote: (id: string) => post<{ ok: true }>(`/api/catalog/collections/${encodeURIComponent(id)}/dismiss-note`, {}),
     addCollection: (id: string, orgSlug?: string) =>
       post<CollectionAddResult>(`/api/catalog/collections/${encodeURIComponent(id)}/add`, orgSlug ? { orgSlug } : {}),
@@ -1079,6 +1092,8 @@ export interface CatalogSettings {
   review: CatalogReview;
   anonymousBrowse: boolean;
   canModerate: boolean;
+  /** The biggest picture a curator can upload as a collection's cover. */
+  coverMaxBytes?: number;
 }
 
 export interface CatalogItem {
@@ -1152,12 +1167,16 @@ export interface CollectionDraft {
   description: string;
   coverItemId: string | null;
   coverModuleId?: string | null;
+  /** An uploaded cover waiting for review. */
+  coverImageId?: string | null;
   coverUrl: string | null;
 }
 
 export interface CollectionDetail extends CollectionSummary {
   coverItemId: string | null;
   coverModuleId?: string | null;
+  /** The uploaded cover showing, if any. */
+  coverImageId?: string | null;
   status: CatalogStatus;
   reason: string | null;
   pending: CollectionDraft | null;
@@ -1336,7 +1355,7 @@ export interface AdminSettings {
     codeMinimum: string;
   };
   /** Public catalogs: off until turned on. */
-  catalog?: { modules: boolean; parts: boolean; review: CatalogReview; anonymousBrowse: boolean };
+  catalog?: { modules: boolean; parts: boolean; review: CatalogReview; anonymousBrowse: boolean; coverMaxBytes?: AdminJobSetting<number> };
   /** Background jobs: the switch, what applies, and the env var forcing it if any. */
   jobs?: {
     backups: AdminJobSetting<boolean>;
