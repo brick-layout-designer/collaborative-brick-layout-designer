@@ -431,6 +431,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   // ---- catalog collections
   'POST /api/catalog/collections': collection({ reply: 'id' }),
   'PATCH /api/catalog/collections/:id': collection(),
+  'PUT /api/catalog/collections/:id/cover': collection(),
+  'DELETE /api/catalog/collections/:id/cover': collection(),
   'POST /api/catalog/collections/:id/withdraw': collection(),
   'POST /api/catalog/collections/:id/dismiss-note': collection(),
   'POST /api/catalog/collections/:id/add': collectionAdd,

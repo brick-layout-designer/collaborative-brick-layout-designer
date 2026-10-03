@@ -8,6 +8,13 @@ function forcedBool(value: string | undefined): boolean | null {
   return value === undefined || value.trim() === '' ? null : bool(value, true);
 }
 
+/** A positive whole number that forces a setting when set, and leaves it alone when not. */
+function forcedInt(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === '') return null;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function int(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   const n = Number.parseInt(value, 10);
@@ -68,6 +75,9 @@ export const env = {
   backupsEnabledForced: forcedBool(process.env.BACKUPS_ENABLED),
   backupsDir: process.env.BACKUPS_DIR ?? '/backups',
   dailyCompactionEnabledForced: forcedBool(process.env.DAILY_COMPACTION_ENABLED),
+  // The biggest collection cover upload, in bytes: Admin › Settings (5 MB
+  // by default); this env var, when set, forces it (images/covers.ts).
+  collectionCoverMaxBytesForced: forcedInt(process.env.COLLECTION_COVER_MAX_BYTES),
 };
 
 function providerEnv(prefix: string): { clientId: string; clientSecret: string } | null {

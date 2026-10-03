@@ -8,6 +8,8 @@
 //      shows up on Vic's page without a reload.
 //   4. Vic opens it, adds one item by itself, then "Add all": only the
 //      other is added (nothing duplicated).
+//   4b. Cora uploads her own cover; it waits for review (the old one stays
+//      up), and shows on Vic's page once approved.
 //   5. The moderator unpublishes one item. It drops out of the collection
 //      on Vic's open page, and Cora's Mine tells her why.
 
@@ -98,6 +100,24 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
     await expect(card).toBeVisible({ timeout: 10000 });
     await expect(card).toContainText('2 modules · by Cora Curator');
     await expect(mine.getByTestId('collection-status')).toHaveText('Public', { timeout: 10000 });
+
+    // Cora uploads her own cover: it waits for review while the old one stays up.
+    await cora.page.getByRole('button', { name: `Edit ${TITLE}` }).click();
+    const edit = cora.page.getByRole('dialog', { name: 'Edit collection' });
+    await expect(edit.getByLabel('Title')).toHaveValue(TITLE);
+    await edit.getByLabel('Upload your own picture').check();
+    await edit.getByLabel('Cover picture').setInputFiles({ name: 'yard.png', mimeType: 'image/png', buffer: Buffer.from(PNG, 'base64') });
+    await expect(edit.getByRole('button', { name: 'Remove custom cover' })).toBeVisible();
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(edit.getByRole('status')).toContainText('Sent for review');
+    await edit.getByRole('button', { name: 'Done' }).click();
+    await expect(card.locator('img')).not.toHaveAttribute('src', /\/cover\?/);
+    await mod.page.reload();
+    const change = mod.page.getByTestId('moderation-collection').filter({ hasText: TITLE });
+    await expect(change).toContainText('Changed: cover');
+    await expect(change.getByTestId('review-new').locator('img')).toHaveAttribute('src', /\/cover\?image=/);
+    await change.getByRole('button', { name: `Approve collection ${TITLE}` }).click();
+    await expect(card.locator('img')).toHaveAttribute('src', /\/cover\?image=.*size=small/, { timeout: 10000 });
 
     // Vic opens it, adds the shed by itself, then Add all: only the yard is new.
     await card.click();

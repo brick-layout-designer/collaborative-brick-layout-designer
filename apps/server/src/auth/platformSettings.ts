@@ -50,6 +50,7 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     demoEnabled: false,
     demoResetEvery: 'daily',
     demoLastResetAt: null,
+    collectionCoverMaxBytes: 5 * 1024 * 1024,
     updatedAt: new Date(),
     updatedBy: null,
   };

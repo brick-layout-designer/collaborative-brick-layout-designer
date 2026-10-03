@@ -162,6 +162,13 @@
       "when": 1790977669025,
       "tag": "0022_trusted_clubs",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790988673667,
+      "tag": "0023_collection_covers",
+      "breakpoints": true
     }
   ]
 }

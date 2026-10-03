@@ -5,6 +5,7 @@
 // Routes are intentionally namespaced at /api/admin/* so a reverse proxy
 // can apply tighter rate limits / IP allowlists per deployment.
 
+import { COVER_MAX_CEILING, COVER_MAX_FLOOR, coverMaxBytes } from '../images/covers.js';
 import type { FastifyInstance } from 'fastify';
 import { and, count, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -1155,6 +1156,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         parts: settings.partsCatalogEnabled,
         review: settings.catalogReview,
         anonymousBrowse: settings.catalogAnonymousBrowse,
+        // The biggest collection cover upload (an env var may force it).
+        coverMaxBytes: await coverMaxBytes(),
       },
       // Background jobs: switches here, unless the server's env var
       // forces one (forcedBy names it).
@@ -1188,6 +1191,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       dailyCompactionEnabled?: boolean;
       demoEnabled?: boolean;
       demoResetEvery?: string;
+      collectionCoverMaxBytes?: number;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1240,6 +1244,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if ('demoResetEvery' in body) {
       if (!DEMO_RESET_CHOICES.includes(body.demoResetEvery as DemoResetEvery)) return reply.code(400).send({ error: 'invalid_input' });
       patch.demoResetEvery = body.demoResetEvery as DemoResetEvery;
+    }
+    if ('collectionCoverMaxBytes' in body) {
+      const n = body.collectionCoverMaxBytes;
+      if (typeof n !== 'number' || !Number.isInteger(n) || n < COVER_MAX_FLOOR || n > COVER_MAX_CEILING) return reply.code(400).send({ error: 'invalid_input' });
+      patch.collectionCoverMaxBytes = n;
     }
     if ('catalogReview' in body) {
       if (body.catalogReview !== 'moderators' && body.catalogReview !== 'none') return reply.code(400).send({ error: 'invalid_input' });
