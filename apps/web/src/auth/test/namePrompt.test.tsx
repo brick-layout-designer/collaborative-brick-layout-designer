@@ -4,9 +4,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { api } from '../../api';
 import { LoginPage } from '../LoginPage';
 import { NamePrompt, forgetNamePromptSkip } from '../NamePrompt';
 
@@ -39,6 +40,12 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+/** Shows once 'me' has loaded, so "the prompt isn't there" is checked after it could have been. */
+function MeLoaded() {
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  return me.data ? <span data-testid="me-loaded" /> : null;
+}
 
 function renderAt(ui: ReactNode, path = '/') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -101,8 +108,8 @@ describe('"What should we call you?"', () => {
     expect(screen.queryByTestId('name-prompt')).toBeNull();
     first.unmount();
     // Same session: still skipped.
-    renderAt(<NamePrompt />);
-    await waitFor(() => expect(calls.filter((c) => c.path === '/api/auth/me').length).toBeGreaterThan(1));
+    renderAt(<><NamePrompt /><MeLoaded /></>);
+    await screen.findByTestId('me-loaded');
     expect(screen.queryByTestId('name-prompt')).toBeNull();
     cleanup();
     forgetNamePromptSkip();
@@ -112,13 +119,13 @@ describe('"What should we call you?"', () => {
 
   it('stays away when the name is fine, and on the sign-in page', async () => {
     routes['GET /api/auth/me'] = () => ({ body: me({ displayName: 'Sam', needsName: false }) });
-    renderAt(<NamePrompt />);
-    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    renderAt(<><NamePrompt /><MeLoaded /></>);
+    await screen.findByTestId('me-loaded');
     expect(screen.queryByTestId('name-prompt')).toBeNull();
     cleanup();
     routes['GET /api/auth/me'] = () => ({ body: me({}) });
-    renderAt(<NamePrompt />, '/login');
-    await waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    renderAt(<><NamePrompt /><MeLoaded /></>, '/login');
+    await screen.findByTestId('me-loaded');
     expect(screen.queryByTestId('name-prompt')).toBeNull();
   });
 });

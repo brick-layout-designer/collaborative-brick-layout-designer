@@ -50,6 +50,8 @@ describe('publicName helper', () => {
     expect(nameFor({ id: 'a', isGlobalAdmin: true }, 'u1', 'ann@example.com')).toBe('ann@example.com');
     expect(nameFor({ id: 'u2' }, 'u1', 'ann@example.com')).not.toContain('@');
     expect(nameFor(null, 'u1', 'ann@example.com')).not.toContain('@');
+    // No name yet: even the person sees "Builder #…", never a blank.
+    expect(nameFor({ id: 'u1' }, 'u1', '')).toBe(fallbackName('u1'));
   });
   it('suggests the part before the @', () => {
     expect(suggestedName('ann.smith@example.com')).toBe('ann smith');

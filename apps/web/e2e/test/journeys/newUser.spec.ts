@@ -5,14 +5,18 @@
 //   rotate a part → it is saved on the server → share a picture → save a
 //   view and export all views.
 //
+// And an older account whose name is its email address: asked "What should
+// we call you?" after signing in, while its club only ever sees
+// "Builder #…", then the new name, live.
+//
 // Every result is checked where a member would find it again: the venue in
 // the layout's file, the part's place and turn in the server's .bbm.
 
 import { test, expect, type Page } from '@playwright/test';
 import { inflateRawSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
-import { PASS } from '../../helpers';
-import { getVerificationToken } from '../../dbHelpers';
+import { PASS, signIn } from '../../helpers';
+import { getVerificationToken, setStoredName } from '../../dbHelpers';
 import catalogue from '../../../src/tours/tours.json' with { type: 'json' };
 
 const ts = Date.now();
@@ -20,6 +24,7 @@ const EMAIL = `j-new-${ts}@example.com`;
 const VENUE = `Village hall ${ts}`;
 const LAYOUT = `First layout ${ts}`;
 const PART = 'ts_narrowgauge_straight.8';
+const NAME = `Sam ${ts}`;
 
 async function clickCanvas(page: Page, fx: number, fy: number): Promise<void> {
   const box = (await page.locator('canvas').first().boundingBox())!;
@@ -62,6 +67,8 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   // ── Sign up with the form, then the link from the email. ──
   await page.goto('/login');
   await page.getByRole('button', { name: /need an account/i }).click();
+  // The name others see is asked for up front (ⓘ says where it shows).
+  await page.getByLabel('Your name (shown to others)').fill(NAME);
   await page.getByPlaceholder('Email').fill(EMAIL);
   await page.getByPlaceholder('Password').fill(PASS);
   // Sign-up is rate-limited per address; on a busy test server, wait the
@@ -87,8 +94,10 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   await page.goto('/');
   const welcome = page.getByTestId('welcome');
   await expect(welcome).toBeVisible({ timeout: 15000 });
-  // Greeted without the email address as a name.
+  // Greeted by the name they gave, never the email address, and not asked again.
   await expect(welcome).not.toContainText('@');
+  await expect(page.getByRole('link', { name: NAME })).toBeVisible();
+  await expect(page.getByTestId('name-prompt')).toHaveCount(0);
   await welcome.getByRole('button', { name: new RegExp(catalogue.welcome.actions.tour.label) }).click();
   await expect(page).toHaveURL(/\/editor\//);
   const steps = catalogue.tours.find((t) => t.id === 'editor')!.steps;
@@ -173,4 +182,45 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   const download = await zip;
   expect(download.suggestedFilename()).toBe(`${LAYOUT} - views.zip`);
   expect(zipNames(readFileSync((await download.path())!))).toEqual([expect.stringContaining('Whole hall')]);
+});
+
+test('an account named by its email is asked for a name, and its club never sees the address', async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  const ADA = `j-names-ada-${ts}@example.com`;
+  const PAT = `j-names-pat-${ts}@example.com`;
+  await signIn(page, ADA, 'Ada Names');
+  const pat = await browser.newPage();
+  await signIn(pat, PAT, 'Pat');
+  // An account from before sign-up asked for a name: its name is its email.
+  setStoredName(PAT, PAT);
+
+  // Ada's club, with Pat in it (an open, listed club: one click to join).
+  const made = await page.request.post('/api/orgs', { data: { name: `Name Club ${ts}` } });
+  expect(made.ok(), await made.text()).toBe(true);
+  const slug = ((await made.json()) as { slug: string }).slug;
+  expect((await page.request.patch(`/api/orgs/${slug}`, { data: { joinPolicy: 'open', listed: true } })).ok()).toBe(true);
+  expect((await pat.request.post(`/api/orgs/${slug}/join`, { data: {} })).ok()).toBe(true);
+
+  // Ada's member list: "Builder #…" for Pat, never the address as a name
+  // (as the club's admin she may see addresses, on their own line).
+  await page.goto(`/orgs/${slug}/admin`);
+  await expect(page.getByRole('combobox', { name: /^Role for Builder #[0-9a-f]{6}$/ })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('combobox', { name: `Role for ${PAT}` })).toHaveCount(0);
+
+  // Pat signs in: "What should we call you?", prefilled from the email.
+  await pat.goto('/');
+  const ask = pat.getByTestId('name-prompt');
+  await expect(ask).toBeVisible({ timeout: 15000 });
+  await expect(ask.getByLabel('Your name (shown to others)')).toHaveValue(`j names pat ${ts}`);
+  await ask.getByLabel('Your name (shown to others)').fill(PAT);
+  await ask.getByRole('button', { name: 'Save name' }).click();
+  await expect(ask.getByText(/can’t be an email address/)).toBeVisible();
+  await ask.getByLabel('Your name (shown to others)').fill(`Pat Plates ${ts}`);
+  await ask.getByRole('button', { name: 'Save name' }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(pat.getByRole('link', { name: `Pat Plates ${ts}` })).toBeVisible();
+
+  // Ada sees the new name without reloading.
+  await expect(page.getByRole('combobox', { name: `Role for Pat Plates ${ts}` })).toBeVisible({ timeout: 15000 });
+  await pat.close();
 });
