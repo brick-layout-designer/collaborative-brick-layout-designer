@@ -82,7 +82,10 @@ const sessions = new Map<string, Cookie[]>();
  * for it. Idempotent and cached for the rest of the run, so it's safe to
  * call from every test / beforeEach.
  */
-export async function ensureUser(email: string, displayName = email): Promise<Cookie[]> {
+/** The name test accounts get unless a spec picks one: never the email (names are shown to others). */
+export const nameOf = (email: string): string => email.split('@')[0]!;
+
+export async function ensureUser(email: string, displayName = nameOf(email)): Promise<Cookie[]> {
   const cached = sessions.get(email);
   if (cached) return cached;
 
@@ -117,7 +120,7 @@ export async function ensureUser(email: string, displayName = email): Promise<Co
 export async function signIn(
   target: Page | BrowserContext,
   email: string,
-  displayName = email,
+  displayName = nameOf(email),
 ): Promise<void> {
   const cookies = await ensureUser(email, displayName);
   const ctx = 'context' in target ? target.context() : target;

@@ -33,6 +33,7 @@ import { env } from '../env.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
+import { publicName } from '../utils/publicName.js';
 
 interface InitiateTransferBody {
   /** Recipient kind. Exactly one of `recipientEmail` / `recipientOrgSlug` set. */
@@ -181,7 +182,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         emailDelivered = await sendInviteEmail({
           to: recipientEmail,
           inviteUrl: transferUrl,
-          inviterName: user.displayName,
+          inviterName: publicName(user.id, user.displayName),
         });
       } catch {
         /* ignored */

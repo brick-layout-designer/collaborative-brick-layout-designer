@@ -28,6 +28,7 @@ import { destinationOrg } from './owners.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { recordVersion } from './modules.js';
 import { collectionCounts, dropFromCollections } from './collections.js';
+import { publicName } from '../utils/publicName.js';
 
 type Kind = 'module' | 'part';
 // The desktop app (an API token) browses the catalog and adds from it:
@@ -157,7 +158,7 @@ export async function ownerNames(items: readonly { ownerUserId: string | null; o
   const orgs = orgIds.length
     ? await db.select({ id: schema.orgs.id, name: schema.orgs.name }).from(schema.orgs).where(inArray(schema.orgs.id, orgIds))
     : [];
-  const u = new Map(users.map((x) => [x.id, x.name]));
+  const u = new Map(users.map((x) => [x.id, publicName(x.id, x.name)]));
   const o = new Map(orgs.map((x) => [x.id, x.name]));
   return (i: { ownerUserId: string | null; ownerOrgId: string | null }) =>
     i.ownerOrgId ? (o.get(i.ownerOrgId) ?? 'A club') : (u.get(i.ownerUserId ?? '') ?? 'Someone');
@@ -755,7 +756,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         isUpdate: q.publicVersion > 0,
         note: q.note,
         by: name(q),
-        submitter: q.submitterName ? { name: q.submitterName, email: q.submitterEmail } : null,
+        submitter: q.submitterEmail ? { name: q.submitterName || q.submitterEmail, email: q.submitterEmail } : null,
         createdAt: q.createdAt.getTime(),
         previewUrl: `/api/catalog/items/${q.itemId}/preview?v=${q.version}`,
         // Whom a moderator would warn about it.

@@ -27,6 +27,7 @@ import { clubModuleRole } from '../access/resolveResourceRole.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { dropModuleFromCollections } from './collections.js';
 import type { User } from '../db/schema.js';
+import { nameFor } from '../utils/publicName.js';
 
 type ModuleRow = typeof schema.modules.$inferSelect;
 
@@ -434,6 +435,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         note: schema.moduleVersions.note,
         createdAt: schema.moduleVersions.createdAt,
         authorName: schema.users.displayName,
+        authorId: schema.moduleVersions.authorId,
         hasThumbnail: sql<number>`${schema.moduleVersions.thumbnail} IS NOT NULL`,
         bytes: sql<number>`length(${schema.moduleVersions.docSnapshot})`.mapWith(Number),
       })
@@ -447,7 +449,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         version: v.version,
         note: v.note,
         createdAt: v.createdAt.getTime(),
-        author: v.authorName ?? null,
+        author: v.authorId && v.authorName !== null ? nameFor(user, v.authorId, v.authorName) : null,
         hasThumbnail: Boolean(v.hasThumbnail),
         bytes: v.bytes,
       })),
@@ -545,7 +547,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
           role: c.role,
           addedAt: c.addedAt.getTime(),
           email: c.email,
-          displayName: c.displayName,
+          displayName: nameFor(user, c.userId, c.displayName),
           avatarUrl: c.avatarUrl,
         })),
       };

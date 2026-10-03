@@ -29,6 +29,7 @@ import { env } from '../env.js';
 import { docHub } from '../ws/docHub.js';
 import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
+import { nameFor, publicName } from '../utils/publicName.js';
 
 interface CreateOrgBody {
   name: string;
@@ -391,8 +392,10 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           userId: m.userId,
           role: m.role,
           joinedAt: m.joinedAt.getTime(),
-          email: m.email,
-          displayName: m.displayName,
+          // Members' addresses are for the people who run the club (and the
+          // person themselves); everyone else sees only names.
+          email: atLeast(myMembership.role, 'manager') || m.userId === user.id || user.isGlobalAdmin ? m.email : '',
+          displayName: nameFor(user, m.userId, m.displayName),
           avatarUrl: m.avatarUrl,
         })),
         invites: invites.map((i) => ({
@@ -485,7 +488,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         emailDelivered = await sendInviteEmail({
           to: email,
           inviteUrl,
-          inviterName: user.displayName,
+          inviterName: publicName(user.id, user.displayName),
         });
       } catch {
         /* ignored — fall back to copy-paste link */
@@ -545,7 +548,9 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           and(
             ne(schema.users.id, user.id),
             or(
-              sql`${schema.users.displayName} LIKE ${safe} ESCAPE '\\'`,
+              // A name that is an email address is never a substring match:
+              // that would make this an email search after all.
+              and(sql`${schema.users.displayName} LIKE ${safe} ESCAPE '\\'`, sql`instr(${schema.users.displayName}, '@') = 0`),
               // Exact email match only (not a substring LIKE) — lets an
               // admin invite-by-pasting-the-exact-email still work
               // without turning this into an email substring search.
@@ -567,7 +572,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         : new Set<string>();
 
       return {
-        users: matches.map((m) => ({ ...m, alreadyMember: memberIds.has(m.id) })),
+        users: matches.map((m) => ({ ...m, displayName: nameFor(user, m.id, m.displayName), alreadyMember: memberIds.has(m.id) })),
       };
     },
   );
@@ -631,7 +636,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       const inviteUrl = `${env.publicUrl}/org-invite/${invite.token}`;
       let emailDelivered = false;
       try {
-        emailDelivered = await sendInviteEmail({ to: invite.invitedEmail, inviteUrl, inviterName: user.displayName });
+        emailDelivered = await sendInviteEmail({ to: invite.invitedEmail, inviteUrl, inviterName: publicName(user.id, user.displayName) });
       } catch {
         /* ignored — the admin can copy the link */
       }

@@ -19,6 +19,7 @@ import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
+import { publicName } from '../utils/publicName.js';
 
 interface InitiateTransferBody {
   recipientEmail?: string;
@@ -158,7 +159,7 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         emailDelivered = await sendInviteEmail({
           to: recipientEmail,
           inviteUrl: transferUrl,
-          inviterName: user.displayName,
+          inviterName: publicName(user.id, user.displayName),
         });
       } catch {
         /* ignored — caller hand-delivers the URL */

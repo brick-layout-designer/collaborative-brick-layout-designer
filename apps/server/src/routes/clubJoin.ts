@@ -31,6 +31,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { escapeLike } from '../utils/validate.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
+import { publicName } from '../utils/publicName.js';
 
 /** The longest note someone can send with a request. */
 export const JOIN_MESSAGE_MAX = 300;
@@ -249,7 +250,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
       requests: rows.map((r) => ({
         id: r.id,
         userId: r.userId,
-        displayName: r.displayName,
+        displayName: publicName(r.userId, r.displayName),
         avatarUrl: r.avatarUrl,
         message: r.message ?? '',
         createdAt: r.createdAt.getTime(),

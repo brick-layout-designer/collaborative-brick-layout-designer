@@ -18,6 +18,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { env } from '../env.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { nameFor, publicName } from '../utils/publicName.js';
 
 interface InviteBody {
   email: string;
@@ -76,7 +77,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
           role: r.role,
           addedAt: r.addedAt.getTime(),
           email: r.email,
-          displayName: r.displayName,
+          displayName: nameFor(user, r.userId, r.displayName),
           avatarUrl: r.avatarUrl,
         })),
         // Filter pending in JS so we don't have to wire isNull through
@@ -161,7 +162,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
         emailDelivered = await sendInviteEmail({
           to: email,
           inviteUrl,
-          inviterName: user.displayName,
+          inviterName: publicName(user.id, user.displayName),
         });
       } catch {
         // Silenced: emailDelivered stays false, the owner gets the URL.

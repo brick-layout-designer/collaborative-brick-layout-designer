@@ -87,7 +87,7 @@ describe('owner-tagged lists', () => {
         const items = await list(bob, kind);
         expect(items.map(label).sort()).toEqual([`Bob ${kind}`, `Club ${kind}`]);
         const mine = items.find((i) => i.id === ids[`${kind}:bob`])!;
-        expect(mine.owner).toEqual({ kind: 'user', id: bob.id, name: 'bob@example.com', slug: null });
+        expect(mine.owner).toEqual({ kind: 'user', id: bob.id, name: 'bob', slug: null });
         const club = items.find((i) => i.id === ids[`${kind}:club`])!;
         expect(club.owner).toMatchObject({ kind: 'org', name: 'ArkLUG', slug: 'arklug' });
       });
@@ -150,7 +150,7 @@ describe('owner-tagged lists', () => {
     it('lists mine and my clubs\' parts, each with its owner and my role', async () => {
       const items = await parts(bob);
       expect(items.map(num).sort()).toEqual(['BOB.1', 'CLUB.1']);
-      expect(items.find((p) => p.partNumber === 'BOB.1')!.owner).toEqual({ kind: 'user', id: bob.id, name: 'bob@example.com', slug: null });
+      expect(items.find((p) => p.partNumber === 'BOB.1')!.owner).toEqual({ kind: 'user', id: bob.id, name: 'bob', slug: null });
       expect(items.find((p) => p.id === clubPart)!.owner).toMatchObject({ kind: 'org', name: 'ArkLUG', slug: 'arklug' });
       expect(items.find((p) => p.id === clubPart)!.role).toBe('editor');
       expect(items.find((p) => p.partNumber === 'BOB.1')!.role).toBe('owner');

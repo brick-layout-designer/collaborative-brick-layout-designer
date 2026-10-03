@@ -27,6 +27,7 @@ import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
+import { nameFor, publicName } from '../utils/publicName.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -390,7 +391,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
           role: c.role,
           addedAt: c.addedAt.getTime(),
           email: c.email,
-          displayName: c.displayName,
+          displayName: nameFor(user, c.userId, c.displayName),
           avatarUrl: c.avatarUrl,
         })),
       };
@@ -449,7 +450,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
           emailDelivered = await sendInviteEmail({
             to: email,
             inviteUrl,
-            inviterName: user.displayName,
+            inviterName: publicName(user.id, user.displayName),
           });
         } catch {
           /* ignored — caller can hand-deliver the URL */

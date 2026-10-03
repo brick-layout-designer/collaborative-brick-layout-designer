@@ -26,7 +26,7 @@ async function registerAndLogin(app: FastifyInstance, email: string): Promise<st
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/password/register',
-    payload: { email, password: 'correct horse battery', displayName: email },
+    payload: { email, password: 'correct horse battery', displayName: email.split('@')[0] },
   });
   expect(res.statusCode).toBe(200);
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
@@ -504,15 +504,15 @@ describe('org user search (invite autocomplete)', () => {
     await app.inject({
       method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org', slug: 'search-org' },
     });
-    await registerAndLogin(app, 'target@example.com'); // displayName defaults to the email
+    await registerAndLogin(app, 'target@example.com'); // displayName 'target'
 
     const res = await app.inject({
       method: 'GET', url: '/api/orgs/search-org/user-search?q=target', headers: { cookie: adminCookie },
     });
     expect(res.statusCode).toBe(200);
     const { users } = res.json() as { users: { displayName: string; alreadyMember: boolean }[] };
-    expect(users.some((u) => u.displayName === 'target@example.com')).toBe(true);
-    expect(users.find((u) => u.displayName === 'target@example.com')?.alreadyMember).toBe(false);
+    expect(users.some((u) => u.displayName === 'target')).toBe(true);
+    expect(users.find((u) => u.displayName === 'target')?.alreadyMember).toBe(false);
   });
 
   it('matches an exact email even though it is not a substring of displayName', async () => {
@@ -563,7 +563,7 @@ describe('org user search (invite autocomplete)', () => {
       method: 'GET', url: '/api/orgs/search-org-4/user-search?q=member-already', headers: { cookie: adminCookie },
     });
     const { users } = res.json() as { users: { displayName: string; alreadyMember: boolean }[] };
-    expect(users.find((u) => u.displayName === 'member-already@example.com')?.alreadyMember).toBe(true);
+    expect(users.find((u) => u.displayName === 'member-already')?.alreadyMember).toBe(true);
   });
 
   it('excludes the caller themself from results', async () => {

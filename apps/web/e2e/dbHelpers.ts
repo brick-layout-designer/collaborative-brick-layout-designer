@@ -72,6 +72,16 @@ export function makeGlobalAdmin(email: string): void {
   }
 }
 
+/** Give an account a stored name directly, as older accounts got their email as their name. */
+export function setStoredName(email: string, name: string): void {
+  const db = new Database(dbPath());
+  try {
+    db.prepare(`UPDATE users SET display_name = ? WHERE email = ?`).run(name, email);
+  } finally {
+    db.close();
+  }
+}
+
 /** Drop a module's picture, as if it was saved before modules had pictures. */
 /** Give a module an old-style picture (a 256 px PNG), as made before pictures were 1024 px. */
 export function setOldModuleThumbnail(moduleId: string, png: Buffer): void {

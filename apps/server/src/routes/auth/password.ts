@@ -10,6 +10,7 @@ import { getPlatformSettings } from '../../auth/platformSettings.js';
 import { findUserByEmail } from '../../auth/users.js';
 import { env } from '../../env.js';
 import { normalizeEmail } from '../../utils/validate.js';
+import { needsName } from '../../utils/publicName.js';
 
 const ARGON_OPTS = { memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1 };
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -72,7 +73,10 @@ export async function passwordRoutes(app: FastifyInstance) {
       await db.insert(schema.users).values({
         id,
         email,
-        displayName: displayName ?? email,
+        // Never the email address: names are shown to other people. The
+        // sign-up form asks for one; without it (older clients) the person
+        // is asked after they sign in.
+        displayName: typeof displayName === 'string' && !needsName(displayName) ? displayName.trim().slice(0, 60) : '',
         avatarUrl: null,
         passwordHash,
         isGlobalAdmin: false,

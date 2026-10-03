@@ -8,6 +8,7 @@ import { db, schema } from '../../db/index.js';
 import { env } from '../../env.js';
 import { getPlatformSettings } from '../../auth/platformSettings.js';
 import { demoStatus, isDemoUser } from '../../demo/demoAccount.js';
+import { looksLikeEmail, needsName, publicName, suggestedName } from '../../utils/publicName.js';
 
 const DISPLAY_NAME_MIN = 1;
 const DISPLAY_NAME_MAX = 60;
@@ -20,6 +21,11 @@ export async function sessionRoutes(app: FastifyInstance) {
         id: req.user.id,
         email: req.user.email,
         displayName: req.user.displayName,
+        // What other people see (live cursors use it), and whether to ask
+        // "What should we call you?" (no name yet, or it's an email).
+        publicName: publicName(req.user.id, req.user.displayName),
+        needsName: needsName(req.user.displayName) && !isDemoUser(req.user),
+        suggestedName: suggestedName(req.user.email),
         avatarUrl: req.user.avatarUrl,
         isDemoAccount: req.user.isDemoAccount,
         isGlobalAdmin: req.user.isGlobalAdmin,
@@ -49,6 +55,8 @@ export async function sessionRoutes(app: FastifyInstance) {
     if (displayName.length < DISPLAY_NAME_MIN || displayName.length > DISPLAY_NAME_MAX) {
       return reply.code(400).send({ error: 'invalid_display_name' });
     }
+    // Names are shown to other people: an email address doesn't belong there.
+    if (looksLikeEmail(displayName)) return reply.code(400).send({ error: 'name_looks_like_email' });
     await db.update(schema.users).set({ displayName }).where(eq(schema.users.id, user.id));
     return { ok: true, displayName };
   });

@@ -302,7 +302,7 @@ describe('Bearer allow-list', () => {
     }
     // Nothing changed behind the rejected requests.
     const me = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).get();
-    expect(me!.displayName).toBe('allow@x.com');
+    expect(me!.displayName).toBe('allow');
     expect(await db.select().from(schema.sessions).all()).toHaveLength(1);
   });
 

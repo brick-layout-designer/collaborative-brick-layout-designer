@@ -28,7 +28,7 @@ async function buildApp(): Promise<FastifyInstance> {
 }
 
 async function login(app: FastifyInstance, email: string): Promise<string> {
-  await app.inject({ method: 'POST', url: '/api/auth/password/register', payload: { email, password: 'correct horse battery', displayName: email } });
+  await app.inject({ method: 'POST', url: '/api/auth/password/register', payload: { email, password: 'correct horse battery', displayName: email.split('@')[0] } });
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   const v = await db.select().from(schema.emailVerifications).where(eq(schema.emailVerifications.userId, user!.id)).get();
   const res = await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${v!.token}` });

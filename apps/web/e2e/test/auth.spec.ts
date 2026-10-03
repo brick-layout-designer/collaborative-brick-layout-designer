@@ -26,6 +26,7 @@ test.describe('auth — register', () => {
   test('registering shows a check-your-inbox state, not an immediate login', async ({ page }) => {
     await page.goto('/login');
     await page.getByRole('button', { name: /need an account/i }).click();
+    await page.getByLabel('Your name (shown to others)').fill('Auth Tester');
     await page.getByLabel(/email/i).fill(EMAIL);
     await page.getByLabel(/password/i).fill(PASS);
     await submitAuthForm(page, '/api/auth/password/register', () =>
@@ -41,6 +42,7 @@ test.describe('auth — register', () => {
   test('rejects registration with a too-short password', async ({ page }) => {
     await page.goto('/login');
     await page.getByRole('button', { name: /need an account/i }).click();
+    await page.getByLabel('Your name (shown to others)').fill('Auth Tester');
 
     await page.getByLabel(/email/i).fill(`weak-${ts}@example.com`);
     await page.getByLabel(/password/i).fill('abc');
@@ -91,6 +93,7 @@ test.describe('auth — email verification', () => {
     // via the API first would just 409 this form submission instead).
     await page.goto('/login');
     await page.getByRole('button', { name: /need an account/i }).click();
+    await page.getByLabel('Your name (shown to others)').fill('Auth Tester');
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill(PASS);
     await submitAuthForm(page, '/api/auth/password/register', () =>

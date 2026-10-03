@@ -11,6 +11,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { atLeast } from '../access/clubRoles.js';
+import { publicName } from '../utils/publicName.js';
 
 export interface OwnerInfo {
   kind: 'user' | 'org';
@@ -82,7 +83,7 @@ export async function ownerLookup(items: readonly Owned[]): Promise<(item: Owned
     }
     if (item.ownerUserId) {
       const u = userById.get(item.ownerUserId);
-      return u ? { kind: 'user', id: u.id, name: u.name, slug: null } : null;
+      return u ? { kind: 'user', id: u.id, name: publicName(u.id, u.name), slug: null } : null;
     }
     return null;
   };
