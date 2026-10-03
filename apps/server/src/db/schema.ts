@@ -227,6 +227,12 @@ export const platformSettings = sqliteTable('platform_settings', {
   demoResetEvery: text('demo_reset_every', { enum: ['1h', '6h', 'daily'] }).notNull().default('daily'),
   /** When the demo account was last reset. Null until the first reset. */
   demoLastResetAt: integer('demo_last_reset_at', { mode: 'timestamp_ms' }),
+  /**
+   * Admin › Settings › Public catalogs: the biggest picture a curator can
+   * upload as a collection's cover (before it's re-encoded). The
+   * COLLECTION_COVER_MAX_BYTES env var, when set, overrides it.
+   */
+  collectionCoverMaxBytes: integer('collection_cover_max_bytes').notNull().default(5 * 1024 * 1024),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
@@ -988,6 +994,11 @@ export const catalogCollections = sqliteTable(
     pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
     /** A club collection's cover can be one of the club's own modules. */
     coverModuleId: text('cover_module_id').references(() => modules.id, { onDelete: 'set null' }),
+    /**
+     * A picture its curators uploaded (catalog_collection_covers.id); when
+     * set, it's the cover, whatever item is chosen.
+     */
+    coverImageId: text('cover_image_id'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -995,6 +1006,29 @@ export const catalogCollections = sqliteTable(
     statusIdx: index('catalog_collections_status_idx').on(t.status, t.featured),
     ownerIdx: index('catalog_collections_owner_idx').on(t.ownerUserId),
     orgIdx: index('catalog_collections_org_idx').on(t.orgId),
+  }),
+);
+
+/**
+ * Collections' own cover pictures: re-encoded as WebP (at most 1200 px
+ * wide, no metadata) and a small copy for cards. A collection has at most
+ * two: the one showing, and a new one waiting for review. Counted in the
+ * collection owner's (or club's) space.
+ */
+export const catalogCollectionCovers = sqliteTable(
+  'catalog_collection_covers',
+  {
+    id: text('id').primaryKey(),
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => catalogCollections.id, { onDelete: 'cascade' }),
+    image: blob('image').notNull(),
+    small: blob('small').notNull(),
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    collectionIdx: index('catalog_collection_covers_collection_idx').on(t.collectionId),
   }),
 );
 

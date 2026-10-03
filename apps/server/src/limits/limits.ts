@@ -16,7 +16,7 @@
 
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { count, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
@@ -60,7 +60,7 @@ export const LIMITS: readonly LimitInfo[] = [
   { key: 'newAccountClubs', label: 'Clubs in an account’s first week', help: 'Lower cap for brand-new accounts, so a throwaway account can’t make many clubs.', unit: 'count', applies: 'user', builtIn: 1, envVar: 'LIMIT_NEW_ACCOUNT_CLUBS' },
   { key: 'layoutsPerUser', label: 'Layouts per person', help: 'Personal layouts one person may keep.', unit: 'count', applies: 'user', builtIn: 500, envVar: 'LIMIT_LAYOUTS_PER_USER' },
   { key: 'layoutsPerClub', label: 'Layouts per club', help: 'Layouts a club may keep.', unit: 'count', applies: 'org', builtIn: 2000, envVar: 'LIMIT_LAYOUTS_PER_CLUB' },
-  { key: 'storagePerUser', label: 'Space per person', help: 'Layouts, custom parts, modules, venues and background pictures one person owns.', unit: 'bytes', applies: 'user', builtIn: 2 * GB, envVar: 'LIMIT_STORAGE_PER_USER' },
+  { key: 'storagePerUser', label: 'Space per person', help: 'Layouts, custom parts, modules, venues, background pictures and collection covers one person owns.', unit: 'bytes', applies: 'user', builtIn: 2 * GB, envVar: 'LIMIT_STORAGE_PER_USER' },
   { key: 'storagePerClub', label: 'Space per club', help: 'The same, for everything a club owns.', unit: 'bytes', applies: 'org', builtIn: 10 * GB, envVar: 'LIMIT_STORAGE_PER_CLUB' },
   { key: 'storagePerClubMember', label: 'Extra club space per member', help: 'Clubs get this much more space for each member, so bigger clubs have more room.', unit: 'bytes', applies: 'org', builtIn: 256 * MB, envVar: 'LIMIT_STORAGE_PER_CLUB_MEMBER' },
   { key: 'customPartsPerUser', label: 'Custom parts per person', help: 'Parts one person may upload.', unit: 'count', applies: 'user', builtIn: 2000, envVar: 'LIMIT_CUSTOM_PARTS_PER_USER' },
@@ -320,6 +320,13 @@ export function usageOf(subject: Subject): Usage {
     .from(schema.venueLibrary)
     .where(eq(vCol, subject.id))
     .get();
+  // Collections' uploaded covers: a person's own collections, or the club's.
+  const covers = db
+    .select({ bytes: sql<number>`coalesce(sum(length(${schema.catalogCollectionCovers.image}) + length(${schema.catalogCollectionCovers.small})), 0)`.mapWith(Number) })
+    .from(schema.catalogCollectionCovers)
+    .innerJoin(schema.catalogCollections, eq(schema.catalogCollections.id, schema.catalogCollectionCovers.collectionId))
+    .where(isUser ? and(eq(schema.catalogCollections.ownerUserId, subject.id), isNull(schema.catalogCollections.orgId)) : eq(schema.catalogCollections.orgId, subject.id))
+    .get();
   const members = isUser
     ? 0
     : db.select({ n: count() }).from(schema.orgMembers).where(eq(schema.orgMembers.orgId, subject.id)).get()?.n ?? 0;
@@ -335,7 +342,7 @@ export function usageOf(subject: Subject): Usage {
     members,
     clubsCreated,
     storageBytes:
-      layouts.reduce((a, l) => a + l.bytes, 0) + pending + (parts?.bytes ?? 0) + (mods?.bytes ?? 0) + (shared?.bytes ?? 0) + (rooms?.bytes ?? 0) + bgImageBytes(ids),
+      layouts.reduce((a, l) => a + l.bytes, 0) + pending + (parts?.bytes ?? 0) + (mods?.bytes ?? 0) + (shared?.bytes ?? 0) + (rooms?.bytes ?? 0) + (covers?.bytes ?? 0) + bgImageBytes(ids),
   };
 }
 

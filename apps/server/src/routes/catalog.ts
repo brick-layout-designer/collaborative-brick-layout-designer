@@ -13,6 +13,7 @@
 // All bodies are JSON (the site's firewall only lets octet-stream through
 // on the two snapshot routes).
 
+import { coverMaxBytes } from '../images/covers.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -446,6 +447,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       review: s.catalogReview,
       anonymousBrowse: s.catalogAnonymousBrowse,
       canModerate: canModerate(req.user),
+      /** The biggest picture a curator can upload as a collection's cover. */
+      coverMaxBytes: (await coverMaxBytes()).value,
     };
   });
 

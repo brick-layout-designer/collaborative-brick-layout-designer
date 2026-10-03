@@ -34,7 +34,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
@@ -46,6 +46,7 @@ import { destinationOrg } from './owners.js';
 import { canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
+import { COVER_BODY_LIMIT, COVER_MIMES, coverMaxBytes, encodeCover, sniffCover, type CoverMime } from '../images/covers.js';
 
 type Kind = 'module' | 'part';
 type Audience = 'everyone' | 'private';
@@ -78,6 +79,8 @@ export interface Text {
   description: string;
   coverItemId: string | null;
   coverModuleId: string | null;
+  /** A picture its curators uploaded (catalog_collection_covers); it wins over the chosen item. */
+  coverImageId: string | null;
 }
 
 /**
@@ -90,6 +93,7 @@ export interface Draft {
   description: string;
   coverItemId: string | null;
   coverModuleId?: string | null;
+  coverImageId?: string | null;
   itemIds?: string[];
 }
 
@@ -260,8 +264,20 @@ export function coverOf(coverItemId: string | null, items: readonly Pick<Item, '
   return it ? itemPreview(it) : null;
 }
 
-/** The cover among what's shown: the chosen entry, else the first module, else the first entry. */
-export function coverFrom(t: Pick<Text, 'coverItemId' | 'coverModuleId'>, shown: readonly Pick<Shown, 'source' | 'id' | 'kind' | 'previewUrl' | 'module' | 'item'>[]): string | null {
+/** An uploaded cover's address; `small` is the card-sized copy. */
+export const coverImageUrl = (collectionId: string, imageId: string, small = false) =>
+  `/api/catalog/collections/${collectionId}/cover?image=${imageId}${small ? '&size=small' : ''}`;
+
+/**
+ * The cover among what's shown: an uploaded picture (given the collection's
+ * `id`), else the chosen entry, else the first module, else the first entry.
+ */
+export function coverFrom(
+  t: Pick<Text, 'coverItemId' | 'coverModuleId'> & { id?: string; coverImageId?: string | null },
+  shown: readonly Pick<Shown, 'source' | 'id' | 'kind' | 'previewUrl' | 'module' | 'item'>[],
+  small = false,
+): string | null {
+  if (t.id && t.coverImageId) return coverImageUrl(t.id, t.coverImageId, small);
   const chosen = shown.find(
     (s) =>
       (t.coverItemId && s.source === 'catalog' && s.id === t.coverItemId) ||
@@ -281,6 +297,7 @@ export function parseDraft(json: string | null): Draft | null {
       description: typeof v.description === 'string' ? v.description : '',
       coverItemId: typeof v.coverItemId === 'string' ? v.coverItemId : null,
       coverModuleId: typeof v.coverModuleId === 'string' ? v.coverModuleId : null,
+      coverImageId: typeof v.coverImageId === 'string' ? v.coverImageId : null,
       ...(Array.isArray(v.itemIds) ? { itemIds: v.itemIds.filter((x): x is string => typeof x === 'string') } : {}),
     };
   } catch {
@@ -288,9 +305,9 @@ export function parseDraft(json: string | null): Draft | null {
   }
 }
 
-const textOf = (c: Collection): Text => ({ title: c.title, description: c.description, coverItemId: c.coverItemId, coverModuleId: c.coverModuleId });
+const textOf = (c: Collection): Text => ({ title: c.title, description: c.description, coverItemId: c.coverItemId, coverModuleId: c.coverModuleId, coverImageId: c.coverImageId });
 const sameText = (a: Text, b: Text) =>
-  a.title === b.title && a.description === b.description && a.coverItemId === b.coverItemId && a.coverModuleId === b.coverModuleId;
+  a.title === b.title && a.description === b.description && a.coverItemId === b.coverItemId && a.coverModuleId === b.coverModuleId && a.coverImageId === b.coverImageId;
 
 /** Every entry, in order, whatever its state (what an edit starts from). */
 async function entriesOf(c: Collection): Promise<Entry[]> {
@@ -393,7 +410,7 @@ function readText(body: Record<string, unknown>, base: Text | null, entries: Ent
       return { ok: false, code: 400, error: 'invalid_input' };
     }
   }
-  return { title, description: description ?? '', coverItemId, coverModuleId };
+  return { title, description: description ?? '', coverItemId, coverModuleId, coverImageId: base?.coverImageId ?? null };
 }
 
 /** An entry as requests spell it. */
@@ -410,7 +427,7 @@ function readAudience(raw: unknown, base: Audience): Audience | null {
 async function applyText(id: string, t: Text, now: Date): Promise<void> {
   await db
     .update(schema.catalogCollections)
-    .set({ title: t.title, description: t.description, coverItemId: t.coverItemId, coverModuleId: t.coverModuleId, updatedAt: now })
+    .set({ title: t.title, description: t.description, coverItemId: t.coverItemId, coverModuleId: t.coverModuleId, coverImageId: t.coverImageId, updatedAt: now })
     .where(eq(schema.catalogCollections.id, id));
 }
 
@@ -496,7 +513,7 @@ function listOut(c: Collection, shown: Shown[], by: string) {
     itemCount: shown.length,
     modules: shown.filter((i) => i.kind === 'module').length,
     parts: shown.filter((i) => i.kind === 'part').length,
-    coverUrl: coverFrom(c, shown),
+    coverUrl: coverFrom(c, shown, true),
     updatedAt: c.updatedAt.getTime(),
   };
 }
@@ -620,6 +637,36 @@ function requireModerator(req: FastifyRequest): User {
 
 const getCollection = (id: string) => db.select().from(schema.catalogCollections).where(eq(schema.catalogCollections.id, id)).get();
 
+/** `imageId` if it's one of this collection's uploaded covers, else null. */
+async function ownCover(collectionId: string, imageId: string | null): Promise<string | null> {
+  if (!imageId) return null;
+  const row = await db
+    .select({ id: schema.catalogCollectionCovers.id })
+    .from(schema.catalogCollectionCovers)
+    .where(and(eq(schema.catalogCollectionCovers.id, imageId), eq(schema.catalogCollectionCovers.collectionId, collectionId)))
+    .get();
+  return row ? row.id : null;
+}
+
+/**
+ * Delete a collection's uploaded covers that are neither showing nor
+ * waiting for review (replaced, removed, declined or withdrawn). A deleted
+ * collection's go with it (the foreign key cascades, for a club's too).
+ */
+export async function pruneCovers(collectionId: string): Promise<void> {
+  const c = await getCollection(collectionId);
+  if (!c) return;
+  const keep = [c.coverImageId, parseDraft(c.pending)?.coverImageId].filter((x): x is string => !!x);
+  await db
+    .delete(schema.catalogCollectionCovers)
+    .where(
+      and(
+        eq(schema.catalogCollectionCovers.collectionId, collectionId),
+        keep.length ? notInArray(schema.catalogCollectionCovers.id, keep) : undefined,
+      ),
+    );
+}
+
 /** Not there, or not for the caller's eyes: the same answer. */
 const NOT_FOUND = { code: 404, body: { error: 'not_found' } } as const;
 
@@ -637,7 +684,7 @@ type Outcome = { code: number; body: unknown };
  * A change to a collection: its text, its entries, who sees it, and (club
  * collections) whether it's pinned. Only text and audience are reviewed.
  */
-async function editCollection(user: User, c: Collection, body: Record<string, unknown>): Promise<Outcome> {
+async function editCollection(user: User, c: Collection, body: Record<string, unknown>, cover: { coverImageId?: string | null } = {}): Promise<Outcome> {
   if (isDemoUser(user)) return { code: 403, body: { error: 'demo_account_cannot_submit' } };
   const refused = await refuseEdit(user, c);
   if (refused) return refused;
@@ -659,10 +706,12 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
   if (bad) return { code: bad.code, body: { error: bad.error, ...(bad.itemId ? { itemId: bad.itemId } : {}) } };
   const waiting = parseDraft(c.pending);
   const shownText: Text = waiting
-    ? { title: waiting.title, description: waiting.description, coverItemId: waiting.coverItemId, coverModuleId: waiting.coverModuleId ?? null }
+    ? { title: waiting.title, description: waiting.description, coverItemId: waiting.coverItemId, coverModuleId: waiting.coverModuleId ?? null, coverImageId: waiting.coverImageId ?? null }
     : textOf(c);
-  const text = readText(body, shownText, entries);
-  if (isFail(text)) return { code: text.code, body: { error: text.error } };
+  const read = readText(body, shownText, entries);
+  if (isFail(read)) return { code: read.code, body: { error: read.error } };
+  // An uploaded cover (or taking it away) is part of the text, so it's reviewed with it.
+  const text: Text = cover.coverImageId !== undefined ? { ...read, coverImageId: cover.coverImageId } : read;
   const audience = readAudience(body.audience, c.audience);
   if (!audience) return { code: 400, body: { error: 'invalid_input' } };
   if (audience === 'everyone' && !on.size) return { code: 404, body: { error: 'catalog_off' } };
@@ -724,13 +773,14 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
     }
   }
   const pending = (await getCollection(c.id))?.pending != null;
+  await pruneCovers(c.id);
   const shared = audience === 'everyone' ? await shareModules(user, { title: text.title }, entries) : { submitted: [], notShared: [] };
   await writeAuditEvent({
     resourceKind: 'catalog_collection',
     resourceId: c.id,
     userId: user.id,
     eventType: 'collection_edit',
-    payload: { title: text.title, items: entries.length, audience, reviewed, pending, shared: shared.submitted.length },
+    payload: { title: text.title, items: entries.length, audience, reviewed, pending, shared: shared.submitted.length, ...(cover.coverImageId !== undefined ? { cover: cover.coverImageId ? 'uploaded' : 'removed' } : {}) },
   });
   return { code: 200, body: { id: c.id, status, audience, pending, ...shared } };
 }
@@ -754,7 +804,9 @@ export async function textQueue(queueRows: Collection[], shownAll: Map<string, S
     const d = parseDraft(c.pending);
     const all = shownAll.get(c.id) ?? [];
     const current = { title: c.title, description: c.description, coverUrl: coverFrom(c, all) };
-    const proposed = d ? { title: d.title, description: d.description, coverUrl: coverFrom({ coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null }, all) } : current;
+    const proposed = d
+      ? { title: d.title, description: d.description, coverUrl: coverFrom({ id: c.id, coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null, coverImageId: d.coverImageId ?? null }, all) }
+      : current;
     return {
       id: c.id,
       isUpdate: d !== null,
@@ -797,6 +849,8 @@ export async function decideCollection(user: User, id: string, approve: boolean,
           description: d.description,
           coverItemId: has('catalog', d.coverItemId) ? d.coverItemId : null,
           coverModuleId: has('module', d.coverModuleId) ? (d.coverModuleId ?? null) : null,
+          // A change from before covers could be uploaded keeps the one showing.
+          coverImageId: d.coverImageId === undefined ? c.coverImageId : await ownCover(c.id, d.coverImageId),
         },
         now,
       );
@@ -826,6 +880,7 @@ export async function decideCollection(user: User, id: string, approve: boolean,
     eventType: approve ? 'collection_approve' : 'collection_decline',
     payload: { isUpdate: !!d, reason, ...(clubId ? { byClub: clubId } : {}) },
   });
+  await pruneCovers(c.id);
   return { code: 200, body: { ok: true } };
 }
 
@@ -842,6 +897,7 @@ export async function unpublishCollection(user: User, id: string, rawReason: unk
     .set({ status: 'unpublished', featured: false, reason, pending: null, pendingAt: null, updatedAt: new Date() })
     .where(eq(schema.catalogCollections.id, c.id));
   await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_unpublish', payload: { reason, ...(clubId ? { byClub: clubId } : {}) } });
+  await pruneCovers(c.id);
   return { code: 200, body: { ok: true } };
 }
 
@@ -852,6 +908,8 @@ export const collectionOwnerNames = (rows: readonly Collection[]) => byNames(row
 export async function shownForQueue(rows: readonly Collection[]): Promise<Map<string, Shown[]>> {
   return shownOf(rows, await kindsOn(), () => true);
 }
+
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // ---- browse --------------------------------------------------------------
@@ -966,10 +1024,18 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         ...listOut(c, shown, by),
         coverItemId: c.coverItemId,
         coverModuleId: c.coverModuleId,
+        coverImageId: c.coverImageId,
         status: c.status,
         reason: a.curator || (a.insider && canModerate(user)) ? c.reason : null,
         pending: d
-          ? { title: d.title, description: d.description, coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null, coverUrl: coverFrom({ coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null }, shown) }
+          ? {
+              title: d.title,
+              description: d.description,
+              coverItemId: d.coverItemId,
+              coverModuleId: d.coverModuleId ?? null,
+              coverImageId: d.coverImageId ?? null,
+              coverUrl: coverFrom({ id: c.id, coverItemId: d.coverItemId, coverModuleId: d.coverModuleId ?? null, coverImageId: d.coverImageId ?? null }, shown),
+            }
           : null,
         curatorNote: a.curator ? c.curatorNote : null,
         canEdit: a.curator,
@@ -1119,6 +1185,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         .set({ status: 'withdrawn', featured: false, pending: null, pendingAt: null, updatedAt: new Date() })
         .where(eq(schema.catalogCollections.id, c.id));
       await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_withdraw', payload: {} });
+      await pruneCovers(c.id);
       return { ok: true };
     },
   );
@@ -1218,6 +1285,92 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         payload: { orgId: dest.orgId, added: added.length, skipped: skipped.length, failed: failed.length },
       });
       return reply.code(201).send({ added, skipped, failed });
+    },
+  );
+
+  // ---- cover picture -------------------------------------------------------
+  // A curator uploads their own cover: JSON {mime, data} with the picture as
+  // base64 (never an octet-stream body). PNG, JPEG or WebP, checked by its
+  // first bytes, no bigger than Admin › Settings allows; it's re-encoded
+  // (images/covers.ts) and the original is never kept. On a public
+  // collection it's reviewed like the title, and the old cover stays up
+  // until it's approved. DELETE takes it away (also reviewed).
+  app.put<{ Params: { id: string }; Body: { mime?: unknown; data?: unknown } }>(
+    '/api/catalog/collections/:id/cover',
+    // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+    { bodyLimit: COVER_BODY_LIMIT, config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const c = await getCollection(req.params.id);
+      if (!c) return reply.code(404).send({ error: 'not_found' });
+      const refused = await refuseEdit(user, c);
+      if (refused) return reply.code(refused.code).send(refused.body);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_submit' });
+      const mime = req.body?.mime;
+      const data = req.body?.data;
+      if (!COVER_MIMES.includes(mime as CoverMime) || typeof data !== 'string' || !BASE64_RE.test(data)) {
+        return reply.code(400).send({ error: 'invalid_cover' });
+      }
+      const max = (await coverMaxBytes()).value;
+      if (Math.floor((data.length * 3) / 4) - 2 > max) return reply.code(413).send({ error: 'cover_too_large', maxBytes: max });
+      const bytes = Buffer.from(data, 'base64');
+      if (bytes.length > max) return reply.code(413).send({ error: 'cover_too_large', maxBytes: max });
+      if (!sniffCover(bytes)) return reply.code(400).send({ error: 'invalid_cover' });
+      const enc = await encodeCover(bytes);
+      if (!enc) return reply.code(400).send({ error: 'invalid_cover' });
+      const owner: Subject = c.orgId ? { kind: 'org', id: c.orgId } : { kind: 'user', id: c.ownerUserId ?? user.id };
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: enc.image.length + enc.small.length }, uploadBytes: bytes.length });
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
+      const imageId = randomUUID();
+      await db.insert(schema.catalogCollectionCovers).values({ id: imageId, collectionId: c.id, image: enc.image, small: enc.small, createdBy: user.id, createdAt: new Date() });
+      const r = await editCollection(user, c, {}, { coverImageId: imageId });
+      if (r.code !== 200) await pruneCovers(c.id);
+      return reply.code(r.code).send(r.code === 200 ? { ...(r.body as object), coverImageId: imageId } : r.body);
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    '/api/catalog/collections/:id/cover',
+    // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const c = await getCollection(req.params.id);
+      if (!c) return reply.code(404).send({ error: 'not_found' });
+      const r = await editCollection(user, c, {}, { coverImageId: null });
+      return reply.code(r.code).send(r.body);
+    },
+  );
+
+  // The picture: the one showing to whoever can see the collection; one
+  // waiting for review only to its curators and moderators. `?size=small`
+  // is the card-sized copy. A new picture has a new id, so it's cached.
+  app.get<{ Params: { id: string }; Querystring: { image?: string; size?: string } }>(
+    '/api/catalog/collections/:id/cover',
+    { config: TOKEN_READ },
+    async (req, reply) => {
+      const c = await getCollection(req.params.id);
+      if (!c) return reply.code(404).send({ error: 'not_found' });
+      const user = req.user ?? null;
+      const imageId = typeof req.query?.image === 'string' && req.query.image ? req.query.image : c.coverImageId;
+      if (!imageId) return reply.code(404).send({ error: 'not_found' });
+      const a = await accessTo(user, c);
+      const showing = imageId === c.coverImageId;
+      const waiting = imageId === parseDraft(c.pending)?.coverImageId;
+      const allowed = showing ? a.insider || (isListed(c) && (await mayBrowse(req))) : waiting && (a.curator || canModerate(user));
+      if (!allowed) return reply.code(404).send({ error: 'not_found' });
+      const small = req.query?.size === 'small';
+      const row = await db
+        .select({ image: small ? schema.catalogCollectionCovers.small : schema.catalogCollectionCovers.image })
+        .from(schema.catalogCollectionCovers)
+        .where(and(eq(schema.catalogCollectionCovers.id, imageId), eq(schema.catalogCollectionCovers.collectionId, c.id)))
+        .get();
+      if (!row) return reply.code(404).send({ error: 'not_found' });
+      const etag = `"${imageId}${small ? '-s' : ''}"`;
+      reply.header('Cache-Control', 'private, max-age=86400');
+      reply.header('ETag', etag);
+      if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+      return reply.type('image/webp').send(Buffer.from(row.image as Uint8Array));
     },
   );
 
