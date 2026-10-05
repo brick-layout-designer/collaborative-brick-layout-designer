@@ -14,7 +14,7 @@ import { makeModuleThumbnail, makeRegionThumbnail, waitForPartPictures } from '.
 import { getSpriteProgress } from './render/spriteCache';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
-import { useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
+import { setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -55,7 +55,7 @@ import { useTouchView } from './useTouchView';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { SheetsSheet, TextEditSheet } from './TouchSheets';
-import { editAnchoredLabel, editTextCell } from './mutations';
+import { editAnchoredLabel, editTextCell, updateSidecarModule } from './mutations';
 import { parseTextKey } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
@@ -125,9 +125,13 @@ import { usePublishAwareness, dispatchCursorMove, dispatchCursorLeave } from './
 import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
 import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
+import { moduleByPart, shapeSelection } from './moduleEdit';
+import { ModuleEditBar } from './ModuleEditBar';
+import { withShowName } from './moduleLook';
+import { ModuleEditDim, editedModuleFrame } from './render/ModuleEditDim';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation } from './moduleDrop';
-import { createModuleFromSelection } from './moduleActions';
+import { absorbIntoEditedModule, createModuleFromSelection, enterModuleEdit, leaveModuleEdit, selectionMayMove, setModulePinned } from './moduleActions';
 import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, viewRegionStuds, type PictureSpec } from './savedViews';
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
@@ -157,6 +161,7 @@ import { askConfirm, askLeaveUnsaved } from '../ui/ConfirmDialog';
 const SharePictureDialog = lazy(() => import('./SharePictureDialog').then((m) => ({ default: m.SharePictureDialog })));
 const ShareDialog = lazy(() => import('../layouts/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 const InsertModuleDialog = lazy(() => import('./InsertModuleDialog').then((m) => ({ default: m.InsertModuleDialog })));
+const ModuleLookDialog = lazy(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
 const SaveModuleDialog = lazy(() => import('./SaveModuleDialog').then((m) => ({ default: m.SaveModuleDialog })));
 const EditBrickDialog = lazy(() => import('./EditBrickDialog').then((m) => ({ default: m.EditBrickDialog })));
 const EditRulerDialog = lazy(() => import('./EditRulerDialog').then((m) => ({ default: m.EditRulerDialog })));
@@ -1484,7 +1489,7 @@ function Canvas({
         if (!hit) return;
         // Held down: pick this part as well, and keep picking more with taps.
         const st = useEditorStore.getState();
-        if (!st.selection.includes(hit.id)) useEditorStore.setState({ selection: [...st.selection, hit.id] });
+        if (!st.selection.includes(hit.id)) useEditorStore.setState({ selection: shapeSelectionIds([...st.selection, hit.id]) });
         useEditorStore.setState({ touchSelectMore: true });
         try {
           navigator.vibrate?.(15);
@@ -1557,6 +1562,22 @@ function Canvas({
   const snapStepStuds = useEditorStore((s) => s.snapStepStuds);
   const rotationStepDegrees = useEditorStore((s) => s.rotationStepDegrees);
   const setSelection = useEditorStore((s) => s.setSelection);
+  const editingModuleId = useEditorStore((s) => s.editingModuleId);
+  // Modules are picked as one piece, and while one is edited only its
+  // parts can be picked (moduleEdit.ts shapeSelection).
+  useEffect(() => {
+    setSelectionShaper((ids) => shapeSelection(ids, readSidecarFromDoc(doc)?.modules ?? [], useEditorStore.getState().editingModuleId));
+    return () => setSelectionShaper(null);
+  }, [doc]);
+  // The module being edited was deleted (here or by someone else), or the
+  // viewer can't edit: back to the whole layout.
+  const editedModuleGone =
+    editingModuleId !== null && (isViewer || !(readSidecarFromDoc(doc)?.modules ?? []).some((m) => m.id === editingModuleId));
+  useEffect(() => {
+    if (editedModuleGone) leaveModuleEdit();
+  }, [editedModuleGone]);
+  // Leaving the editor leaves Edit module too.
+  useEffect(() => () => leaveModuleEdit(), []);
   const showElectricCircuits = useEditorStore((s) => s.showElectricCircuits);
   const venueLabelPx = useEditorStore((s) => s.venueLabelPx);
 
@@ -1591,6 +1612,8 @@ function Canvas({
 
   // Context-menu state — position in viewport px + whether the click
   // landed on a brick (drives the selection-aware entry list).
+  // The Module look window, opened from the map's right-click menu.
+  const [lookModuleId, setLookModuleId] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -1787,6 +1810,8 @@ function Canvas({
           brickDy += Math.round(tly / step) * step - tly;
         }
       }
+      // A pinned module in the selection doesn't move as a whole.
+      if (d.bricks.length > 0 && !selectionMayMove(doc, d.bricks)) return;
       const sc = readSidecarFromDoc(doc);
       translateMixedSelection(doc, m, sc?.anchoredLabels ?? [], sc?.modules ?? [], {
         bricks: d.bricks,
@@ -2080,6 +2105,7 @@ function Canvas({
             // are registered as a sidecar module in the same undo step.
             const res = importBricksAsModule(doc, batches, { name: moduleName, offset });
             if (res) {
+              absorbIntoEditedModule(doc, res.ids);
               setSelection(res.ids);
               useEditorStore
                 .getState()
@@ -2232,6 +2258,8 @@ function Canvas({
       if (e.key === 'Escape') {
         e.preventDefault();
         if (venueDraft) { setVenueDraft(null); return; }
+        // Edit module: Esc goes back to the whole layout.
+        if (useEditorStore.getState().editingModuleId) { leaveModuleEdit(); return; }
         setSelection([]);
         setRulerDraft(null);
         return;
@@ -2441,6 +2469,7 @@ function Canvas({
         else if (e.key === 'ArrowDown') dy = NUDGE;
         if (dx !== 0 || dy !== 0) {
           e.preventDefault();
+          if (!selectionMayMove(doc, selection)) return;
           const sc = readSidecarFromDoc(doc);
           translateMixedSelection(doc, map, sc?.anchoredLabels ?? [], sc?.modules ?? [], {
             bricks: selection,
@@ -2460,6 +2489,7 @@ function Canvas({
         // bare R is CCW; step is the configured rotation step. The whole
         // selection (any layer) turns about its centroid.
         e.preventDefault();
+        if (!selectionMayMove(doc, selection)) return;
         rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees, partOf);
         return;
       }
@@ -2568,6 +2598,17 @@ function Canvas({
     // Only the select tool defers to whatever was clicked; ruler, venue and
     // paint tools act anywhere, over bricks too (desktop handles them before
     // item hit-testing, MapView.cpp:456-535).
+    if (tool === 'select' && editingModuleId && map && evt.button === 0) {
+      // Edit module: a click outside the module (on empty map, the room or
+      // a sheet's paint; parts handle their own) goes back to the whole layout.
+      const onPart = !!e.target.findAncestor((n: Konva.Node) => /^brick-/.test(n.name()), true);
+      const at = pointerStuds();
+      const frame = editedModuleFrame(map, readSidecarFromDoc(doc)?.modules ?? [], editingModuleId);
+      if (!onPart && at && (!frame || at.x < frame.x || at.y < frame.y || at.x > frame.x + frame.width || at.y > frame.y + frame.height)) {
+        leaveModuleEdit();
+        return;
+      }
+    }
     if (tool === 'select' && e.target !== e.target.getStage()) return;
     const studs = pointerStuds();
     if (!studs) return;
@@ -2902,6 +2943,7 @@ function Canvas({
       const ids = insertBricks(doc, targetLayerId, bricks, { dx, dy });
       newIds.push(...ids);
     }
+    absorbIntoEditedModule(doc, newIds);
     if (newIds.length > 0) setSelection(newIds);
   }
 
@@ -2935,6 +2977,7 @@ function Canvas({
       perLayer.set(layerId, [...(perLayer.get(layerId) ?? []), brick]);
     }
     const ids = insertBricksAcrossLayers(doc, perLayer, offset);
+    absorbIntoEditedModule(doc, ids);
     if (ids.length > 0) setSelection(ids);
   }
 
@@ -3063,6 +3106,7 @@ function Canvas({
     // links hand the active connection over (BlueBrick onLinked), so the
     // next chained placement anchors on the right end.
     recomputeConnectivity(doc, linkCatalog);
+    absorbIntoEditedModule(doc, [newId]);
     // Auto-select the placed brick so chain-placing snaps off it.
     // Port of MapView.cpp:1394-1408.
     setSelection([newId]);
@@ -3126,6 +3170,7 @@ function Canvas({
     const setName = group.description || group.key;
     const newIds = insertSet(doc, layerId, bricks, setName);
     recomputeConnectivity(doc, linkCatalog);
+    absorbIntoEditedModule(doc, newIds);
     if (newIds.length > 0) setSelection(newIds);
     useEditorStore.getState().showStatusMessage(`Placed set: ${setName} (${newIds.length} parts)`, 3000);
   }
@@ -3236,7 +3281,7 @@ function Canvas({
     // (MainWindow.cpp:733-742) — same actions as R / Shift+R and
     // Ctrl+Shift+[ / ].
     rotate: (cw) => {
-      if (isViewer || selection.length === 0) return;
+      if (isViewer || selection.length === 0 || !selectionMayMove(doc, selection)) return;
       rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees, partOf);
     },
     reorder: (to) => {
@@ -3451,7 +3496,7 @@ function Canvas({
           isViewer={isViewer}
           onEditBrick={onEditBrick}
         />
-        <Group listening={!isViewer}>
+        <Group listening={!isViewer && !editingModuleId}>
           <TextLayers
             map={shown}
             isViewer={isViewer}
@@ -3523,6 +3568,9 @@ function Canvas({
         {dropModule && dropModule.offset && moduleDragRef.current?.ready && (
           <ModuleGhost batches={moduleDragRef.current.ready} offset={dropModule.offset} partsByKey={partsByKey} />
         )}
+        {editingModuleId && map && (
+          <ModuleEditDim frame={editedModuleFrame(shown, readSidecarFromDoc(doc)?.modules ?? [], editingModuleId)} />
+        )}
         <MarqueeOverlay marquee={marquee} />
         <SnapRing />
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
@@ -3557,9 +3605,26 @@ function Canvas({
     setShowAddText(false);
   }
 
+  // The module the context menu is about: the part's under the pointer, or
+  // a whole module that is the selection.
+  const ctxModule = (() => {
+    if (!ctxMenu) return null;
+    const mods = readSidecarFromDoc(doc)?.modules ?? [];
+    const byPart = moduleByPart(mods);
+    if (ctxMenu.brickIdUnderCursor) return byPart.get(ctxMenu.brickIdUnderCursor) ?? null;
+    const first = selection[0] ? byPart.get(selection[0]) : undefined;
+    return first && first.members.length === selection.length && selection.every((id) => byPart.get(id)?.id === first.id) ? first : null;
+  })();
+
   return (
     <>
       {stageNode}
+      <ModuleEditBar doc={doc} awareness={awareness} />
+      {lookModuleId && (
+        <Suspense fallback={null}>
+          <ModuleLookDialog doc={doc} moduleId={lookModuleId} onClose={() => setLookModuleId(null)} />
+        </Suspense>
+      )}
       <MapLoadingCard catalogLoading={catalog.isPending} />
       <Suspense fallback={null}>
       {editing && (
@@ -3638,8 +3703,8 @@ function Canvas({
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
           onDelete={() => deleteSelection()}
-          onRotateCCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees, partOf)}
-          onRotateCW={() => rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees, partOf)}
+          onRotateCCW={() => selectionMayMove(doc, selection) && rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees, partOf)}
+          onRotateCW={() => selectionMayMove(doc, selection) && rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees, partOf)}
           onBringToFront={() => {
             if (selection.length > 0) reorderBricks(doc, selection, 'front');
           }}
@@ -3702,6 +3767,13 @@ function Canvas({
             }
           }}
           onSaveModule={onSaveModule}
+          module={ctxModule}
+          editingModuleId={editingModuleId}
+          onEditModule={(id) => enterModuleEdit(id)}
+          onDoneEditing={leaveModuleEdit}
+          onPinModule={(id, pinned) => setModulePinned(doc, id, pinned)}
+          onModuleShowName={(id, show) => updateSidecarModule(doc, id, (m) => withShowName(m, show))}
+          onModuleLook={(id) => setLookModuleId(id)}
         />
       )}
       <ScaleBarHud zoom={zoom} />
@@ -3765,7 +3837,15 @@ function CanvasContextMenu({
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
   onRotateCCW, onRotateCW, onBringToFront, onSendToBack,
   onGroup, onUngroup, onSelectConnected, onAddTextHere, onProperties, onSaveModule,
+  module, editingModuleId, onEditModule, onDoneEditing, onPinModule, onModuleShowName, onModuleLook,
 }: {
+  module: import('@cld/bbm').SidecarModule | null;
+  editingModuleId: string | null;
+  onEditModule: (id: string) => void;
+  onDoneEditing: () => void;
+  onPinModule: (id: string, pinned: boolean) => void;
+  onModuleShowName: (id: string, show: boolean) => void;
+  onModuleLook: (id: string) => void;
   x: number; y: number; studX: number; studY: number; onBrick: boolean;
   selection: string[]; map: import('@cld/model').BbmMap | null;
   doc: import('yjs').Doc; activeLayerId: string | null;
@@ -3828,6 +3908,23 @@ function CanvasContextMenu({
   }
 
   const entries: React.ReactNode[] = [];
+
+  // A module: Edit module (or Done), Pin in place / Unpin, its look.
+  if (editingModuleId) {
+    entries.push(item('Done editing module', onDoneEditing));
+    entries.push(sep('sm0'));
+  } else if (module) {
+    entries.push(
+      <div key="mh" className="truncate px-3 pb-0.5 pt-1 text-[11px] uppercase tracking-wide text-muted">
+        {module.name || 'Module'}
+      </div>,
+    );
+    entries.push(item('Edit module', () => onEditModule(module.id)));
+    entries.push(item(module.pinned ? 'Unpin' : 'Pin in place', () => onPinModule(module.id, !module.pinned)));
+    entries.push(item(module.showName === false ? 'Show name' : 'Hide name', () => onModuleShowName(module.id, module.showName === false)));
+    entries.push(item('Colours…', () => onModuleLook(module.id)));
+    entries.push(sep('sm1'));
+  }
 
   // Ruler-attach flow: when a ruler is selected and the cursor is on a
   // brick, offer Attach Endpoint 1 / 2 (and Centre for circular).

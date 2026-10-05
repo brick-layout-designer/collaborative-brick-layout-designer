@@ -24,7 +24,7 @@ import {
   rotateModuleBricks,
   updateSidecarModule,
 } from './mutations';
-import { createModuleFromSelection } from './moduleActions';
+import { createModuleFromSelection, enterModuleEdit, leaveModuleEdit, setModulePinned } from './moduleActions';
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 import { ModuleLookDialog } from './ModuleLookDialog';
 import { withShowName } from './moduleLook';
@@ -88,6 +88,7 @@ function ModuleRow({
 }) {
   const selection = useEditorStore((s) => s.selection);
   const setSelection = useEditorStore((s) => s.setSelection);
+  const editingId = useEditorStore((s) => s.editingModuleId);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(module.name);
@@ -252,6 +253,12 @@ function ModuleRow({
           )}
           <span className="min-w-0 flex-1">
             <span className="font-medium text-ink">{module.name || '(untitled)'}</span>
+            {module.pinned && (
+              <span className="ml-1 text-muted" title="Pinned in place" aria-label="Pinned in place">
+                📌
+              </span>
+            )}
+            {editingId === module.id && <span className="ml-1 text-xs text-accent">editing</span>}
             <span className="ml-2 text-neutral-600">
               {module.members.length} part{module.members.length !== 1 ? 's' : ''}
               {module.sourceFile ? ` — ${/^[0-9a-f-]{36}$/.test(module.sourceFile) ? 'in your Module library' : module.sourceFile.split(/[\\/]/).pop()}` : ''}
@@ -279,11 +286,7 @@ function ModuleRow({
         </span>
       )}
 
-      {lookOpen && (
-        <span onClick={(e) => e.stopPropagation()}>
-          <ModuleLookDialog doc={doc} moduleId={module.id} onClose={() => setLookOpen(false)} />
-        </span>
-      )}
+      {lookOpen && <ModuleLookDialog doc={doc} moduleId={module.id} onClose={() => setLookOpen(false)} />}
       {showMove && (
         <ModuleMoveDialog
           moduleName={module.name}
@@ -305,22 +308,44 @@ function ModuleRow({
           >
             Select its parts
           </button>
+          <button
+            data-testid="module-menu-edit"
+            className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
+            onClick={() => {
+              setCtxMenu(null);
+              if (editingId === module.id) leaveModuleEdit();
+              else enterModuleEdit(module.id);
+            }}
+          >
+            {editingId === module.id ? 'Done editing' : 'Edit module'}
+          </button>
+          <button
+            data-testid="module-menu-pin"
+            className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
+            onClick={() => { setCtxMenu(null); setModulePinned(doc, module.id, !module.pinned); }}
+          >
+            {module.pinned ? 'Unpin' : 'Pin in place'}
+          </button>
           <hr className="my-1 border-border" />
           <button
-            className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
+            className="block w-full px-3 py-1 text-left hover:bg-neutral-700 disabled:cursor-default disabled:opacity-40"
+            disabled={!!module.pinned}
+            title={module.pinned ? 'Pinned in place: unpin it to move it' : undefined}
             onClick={() => { setCtxMenu(null); setShowMove(true); }}
           >
             Move…
           </button>
           <div className="group relative">
             <button
-              className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
+              className="block w-full px-3 py-1 text-left hover:bg-neutral-700 disabled:cursor-default disabled:opacity-40"
+              disabled={!!module.pinned}
+              title={module.pinned ? 'Pinned in place: unpin it to turn it' : undefined}
               aria-expanded={rotateOpen}
               onClick={() => setRotateOpen((o) => !o)}
             >
               Rotate ▸
             </button>
-            <div className={`absolute left-full top-0 min-w-[100px] rounded-lg border border-border bg-panel py-1 shadow-lg group-hover:block ${rotateOpen ? 'block' : 'hidden'}`}>
+            <div className={`absolute left-full top-0 min-w-[100px] rounded-lg border border-border bg-panel py-1 shadow-lg ${module.pinned ? '' : 'group-hover:block'} ${rotateOpen && !module.pinned ? 'block' : 'hidden'}`}>
               {([-90, -45, 45, 90, 180] as const).map((deg) => (
                 <button
                   key={deg}

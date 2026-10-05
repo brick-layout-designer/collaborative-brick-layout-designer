@@ -47,6 +47,7 @@ export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts)
   const tool = useEditorStore((s) => s.tool);
   const selection = useEditorStore((s) => s.selection);
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
+  const editingModule = useEditorStore((s) => s.editingModuleId);
   const cursorRef = useRef<AwarenessCursor | null>(null);
   // Latest everything-but-the-cursor, so the throttled cursor publisher
   // (a long-lived listener) always sends a complete, current state.
@@ -55,6 +56,7 @@ export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts)
     selection: string[];
     tool: AwarenessState['tool'];
     activeLayerId: string | null;
+    editingModule: string | null;
   } | null>(null);
   const publishRef = useRef<() => void>(() => undefined);
 
@@ -71,6 +73,7 @@ export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts)
       cursor: cursorWithLayer,
       selection: { brickIds: base.selection },
       tool: base.tool,
+      editingModule: base.editingModule,
       lastActivityMs: Date.now(),
     };
     awareness.setLocalState(state);
@@ -128,9 +131,10 @@ export function usePublishAwareness({ awareness, me, layoutId }: UsePublishOpts)
       selection,
       tool,
       activeLayerId,
+      editingModule,
     };
     publishRef.current();
-  }, [awareness, me, layoutId, tool, selection, activeLayerId]);
+  }, [awareness, me, layoutId, tool, selection, activeLayerId, editingModule]);
 }
 
 /**

@@ -60,3 +60,16 @@ describe('usePublishAwareness', () => {
     expect(renders).toBe(rendersAfterMount);
   });
 });
+
+describe('Edit module in presence', () => {
+  it('tells the others which module this person is editing', async () => {
+    const { useEditorStore } = await import('../editorStore');
+    const { awareness, states } = fakeAwareness();
+    renderHook(() => usePublishAwareness({ awareness, me, layoutId: 'L' }));
+    expect(states.at(-1)!.editingModule ?? null).toBeNull();
+    act(() => useEditorStore.getState().setEditingModule('m1'));
+    expect(states.at(-1)!.editingModule).toBe('m1');
+    act(() => useEditorStore.getState().setEditingModule(null));
+    expect(states.at(-1)!.editingModule).toBeNull();
+  });
+});
