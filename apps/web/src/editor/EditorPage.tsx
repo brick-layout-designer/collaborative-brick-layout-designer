@@ -136,7 +136,7 @@ import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, v
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
 import { NoticeToast } from './NoticeToast';
-import type { SavedView } from '@cld/bbm';
+import { writeBbm, writeSidecar, type SavedView } from '@cld/bbm';
 import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, unionStudRects, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
@@ -4964,7 +4964,6 @@ function saveFile(file: { filename: string; type: string; data: Uint8Array }): v
  */
 async function downloadLocalLayout(doc: Y.Doc, layoutId: string, title: string, parts: readonly PartWire[] | undefined): Promise<void> {
   try {
-    const { writeBbm, writeSidecar } = await import('@cld/bbm');
     const map = docToBbm(doc);
     const xml = writeBbm(map);
     // The custom parts it uses travel with it.
@@ -4995,7 +4994,6 @@ async function downloadLocalLayout(doc: Y.Doc, layoutId: string, title: string, 
 /** The .bbm alone, for BlueBrick: labels, modules, venue and background stay behind. */
 async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
   try {
-    const { writeBbm } = await import('@cld/bbm');
     saveFile({ filename: `${sanitizeFilename(title)}.bbm`, type: 'application/xml', data: new TextEncoder().encode(writeBbm(docToBbm(doc))) });
   } catch (e) {
     window.alert(`Could not build the .bbm: ${(e as Error).message}`);

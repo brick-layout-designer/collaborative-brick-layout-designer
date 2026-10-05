@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Y from 'yjs';
+import { writeBbm } from '@cld/bbm';
 import { docToBbm } from '@cld/ydoc';
 import { api, moduleVersionThumbnailUrl, type ModuleSummary, type ModuleVersion } from '../api';
 import { sanitizeFilename } from '../bbmFiles';
@@ -35,7 +36,6 @@ export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleS
       const doc = new Y.Doc();
       try {
         Y.applyUpdate(doc, bytes);
-        const { writeBbm } = await import('@cld/bbm');
         const xml = writeBbm(docToBbm(doc));
         downloadBlob(new Blob([xml], { type: 'application/xml' }), `${sanitizeFilename(module.title)} v${v.version}.bbm`);
       } finally {
