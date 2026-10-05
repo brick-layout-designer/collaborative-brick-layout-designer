@@ -4,6 +4,7 @@
 // ModuleLookDialog is the same.
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type * as Y from 'yjs';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useYjsSnapshot } from './useYjsSnapshot';
@@ -82,13 +83,19 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
     </label>
   );
 
-  return (
+  // On <body>: opened from a panel, it must still cover the whole window.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`Module look: ${name}`}
       className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-      onClick={onClose}
+      // A portal still passes React events to the row it was opened from.
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onContextMenu={(e) => e.stopPropagation()}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -112,19 +119,23 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
         <div className="mt-4 space-y-3">
           {swatch('outline', 'Outline colour')}
           {swatch('name', 'Name colour')}
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              data-testid="module-same-colour"
-              checked={linked}
-              onChange={(e) => {
-                flush();
-                updateSidecarModule(doc, moduleId, (m) => withSameColour(m, e.target.checked));
-              }}
-            />
-            Same colour
-            <span className="text-xs text-muted">{linked ? '(outline and name change together)' : '(set each on its own)'}</span>
-          </label>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                data-testid="module-same-colour"
+                checked={linked}
+                onChange={(e) => {
+                  flush();
+                  updateSidecarModule(doc, moduleId, (m) => withSameColour(m, e.target.checked));
+                }}
+              />
+              Same colour
+            </label>
+            <p className="ml-6 mt-0.5 text-xs text-muted">
+              {linked ? 'The outline and the name change together.' : 'Set each colour on its own.'}
+            </p>
+          </div>
         </div>
         <div className="mt-5 flex items-center justify-between gap-2">
           <button
@@ -148,6 +159,7 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

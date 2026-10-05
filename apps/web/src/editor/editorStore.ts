@@ -71,8 +71,29 @@ export function noticeDownloaded(filename: string): void {
   useEditorStore.getState().showNotice(`Downloaded “${filename}”. Look in your Downloads folder.`, 'done', 7000);
 }
 
+/**
+ * Shapes every new selection: modules are picked as one piece, and while a
+ * module is being edited only its parts can be picked (moduleEdit.ts).
+ * The editor installs it; plain tests keep the identity.
+ */
+let selectionShaper: (ids: string[]) => string[] = (ids) => ids;
+export function setSelectionShaper(shaper: ((ids: string[]) => string[]) | null): void {
+  selectionShaper = shaper ?? ((ids) => ids);
+}
+/** The selection `ids` would become (whole modules, or only the edited module's parts). */
+export function shapeSelectionIds(ids: string[]): string[] {
+  return selectionShaper(ids);
+}
+
 export interface EditorState {
   tool: Tool;
+  /**
+   * The placed module being edited part by part ("Edit module"), or null:
+   * then every module acts as one piece.
+   */
+  editingModuleId: string | null;
+  /** Enter (an id) or leave (null) Edit module. Leaving clears the selection. */
+  setEditingModule: (id: string | null) => void;
   /** Brick ids currently selected. */
   selection: string[];
   /** Rulers / labels / text cells selected alongside `selection`. */
@@ -286,6 +307,7 @@ export interface EditorState {
 export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selection: [],
+  editingModuleId: null,
   annoSelection: EMPTY_ANNO,
   touchSelectMore: false,
   touchSelectArea: false,
@@ -506,16 +528,22 @@ export const useEditorStore = create<EditorState>((set) => ({
   setLiveSnap: (liveSnap) => set({ liveSnap }),
   setSnapMoving: (snapMoving) => set({ snapMoving }),
   setConnectionSnap: (connectionSnap) => set({ connectionSnap }),
-  setSelection: (selection) => set({ selection, annoSelection: EMPTY_ANNO }),
-  setMixedSelection: (selection, annoSelection) => set({ selection, annoSelection }),
+  setEditingModule: (editingModuleId) =>
+    set((s) =>
+      s.editingModuleId === editingModuleId
+        ? s
+        : { editingModuleId, selection: [], annoSelection: EMPTY_ANNO },
+    ),
+  setSelection: (selection) => set({ selection: selectionShaper(selection), annoSelection: EMPTY_ANNO }),
+  setMixedSelection: (selection, annoSelection) => set({ selection: selectionShaper(selection), annoSelection }),
   toggleSelected: (id, additive) =>
     set((s) => {
       if (additive) {
         return s.selection.includes(id)
           ? { selection: s.selection.filter((x) => x !== id) }
-          : { selection: [...s.selection, id] };
+          : { selection: selectionShaper([...s.selection, id]) };
       }
-      return { selection: [id], annoSelection: EMPTY_ANNO };
+      return { selection: selectionShaper([id]), annoSelection: EMPTY_ANNO };
     }),
   setActiveLayer: (activeLayerId) => set({ activeLayerId }),
   setPlacePart: (placePartKey) => set({ placePartKey }),

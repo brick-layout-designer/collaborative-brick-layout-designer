@@ -6,7 +6,7 @@ import type Konva from 'konva';
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
-import { useEditorStore, type Tool } from '../editorStore';
+import { shapeSelectionIds, useEditorStore, type Tool } from '../editorStore';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import {
@@ -31,6 +31,11 @@ import { drawOrder, pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
 import { SELECTION } from './selectionStyle';
 import { isTouchEvent, tapGuard } from '../touchGesture';
+import type { SidecarModule } from '@cld/bbm';
+import { boundsOf, canDragPart, moduleByPart, outsideEdit, outsideOutline, pinnedAmong, selectionUnit, type StudRect } from '../moduleEdit';
+import { enterModuleEdit, leaveModuleEdit, takeOutOfModule, tellPinned } from '../moduleActions';
+import { askConfirm } from '../../ui/ConfirmDialog';
+import { useYjsSnapshot } from '../useYjsSnapshot';
 
 /** How long a fast drag must be still before it snaps (ms). */
 const SETTLE_MS = 120;
@@ -47,6 +52,8 @@ interface Props {
   /** Double-click → open per-brick properties dialog. */
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
 }
+
+const NO_MODULES: SidecarModule[] = [];
 
 /**
  * All brick layers. Memoised, and each glyph is memoised with only
@@ -95,6 +102,14 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
     })),
   );
   const selectedIds = useMemo(() => new Set(selection), [selection]);
+  // Modules act as one piece (moduleEdit.ts): their look and pins live in
+  // the sidecar (meta), so follow it as well as the map.
+  useYjsSnapshot(doc.getMap('meta') as unknown as Y.AbstractType<unknown>);
+  const editingModuleId = useEditorStore((s) => s.editingModuleId);
+  const modules = readSidecarFromDoc(doc)?.modules ?? NO_MODULES;
+  const modulesRef = useRef(modules);
+  modulesRef.current = modules;
+  const getModules = useCallback(() => modulesRef.current, []);
 
   // Glyphs read the map only inside event handlers; hand them a stable
   // getter instead of the map itself (a new object on every doc change).
@@ -142,6 +157,9 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   // when a snap starts or ends.
                   snapActive={!isViewer && view.snapActive && selectedIds.has(brick.id)}
                   getMap={getMap}
+                  getModules={getModules}
+                  dragOk={canDragPart(brick.id, modules, editingModuleId)}
+                  outside={outsideEdit(brick.id, modules, editingModuleId)}
                   partsByKey={partsByKey}
                   {...(onEditBrick ? { onEditBrick } : {})}
                 />
@@ -172,6 +190,9 @@ const BrickGlyph = memo(function BrickGlyph({
   selectionTint,
   snapActive,
   getMap,
+  getModules,
+  dragOk,
+  outside,
   partsByKey,
   onEditBrick,
 }: {
@@ -194,6 +215,11 @@ const BrickGlyph = memo(function BrickGlyph({
   /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
   snapActive: boolean;
   getMap: () => BbmMap;
+  getModules: () => readonly SidecarModule[];
+  /** It may be dragged: not out of reach while a module is edited, and not in a pinned module. */
+  dragOk: boolean;
+  /** A module is being edited and this part isn't in it: dimmed and out of reach. */
+  outside: boolean;
   partsByKey: Map<string, PartWire>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
 }) {
@@ -261,6 +287,12 @@ const BrickGlyph = memo(function BrickGlyph({
     // A finger that moved the view, or was held down, doesn't also pick
     // the part it started on (touchGesture.ts tapGuard).
     if (touch && tapGuard.suppress) return;
+    if (outside) {
+      // Clicking outside the module being edited goes back to the whole layout.
+      e.cancelBubble = true;
+      leaveModuleEdit();
+      return;
+    }
     if (tool === 'select') {
       // Match Qt's default QGraphicsScene selection (the path desktop's
       // MapView::mousePressEvent falls through to at MapView.cpp:534):
@@ -276,9 +308,14 @@ const BrickGlyph = memo(function BrickGlyph({
       // group selects every brick sharing that group id, mirroring the
       // desktop's group selection behaviour. (`brick.myGroup` is empty
       // when ungrouped.)
-      const groupMembers = brick.myGroup
-        ? collectGroupMembers(getMap(), brick.myGroup)
-        : [brick.id];
+      // A part of a module picks the whole module (unless it's the one
+      // being edited: then its parts are picked one by one).
+      const groupMembers = selectionUnit(
+        brick.id,
+        getModules(),
+        useEditorStore.getState().editingModuleId,
+        brick.myGroup ? collectGroupMembers(getMap(), brick.myGroup) : [],
+      );
 
       if (additive) {
         // Shift/ctrl-click toggles the whole group on/off, keeping any
@@ -287,7 +324,7 @@ const BrickGlyph = memo(function BrickGlyph({
         const allIn = groupMembers.every((id) => sel.has(id));
         if (allIn) for (const id of groupMembers) sel.delete(id);
         else for (const id of groupMembers) sel.add(id);
-        useEditorStore.setState({ selection: [...sel] });
+        useEditorStore.setState({ selection: shapeSelectionIds([...sel]) });
       } else {
         useEditorStore.getState().setSelection(groupMembers);
       }
@@ -319,7 +356,7 @@ const BrickGlyph = memo(function BrickGlyph({
 
   function handleMouseDown(e: KonvaEventObject<MouseEvent>) {
     grabConnRef.current = -1;
-    if (isViewer || tool !== 'select' || e.evt.button !== 0) return;
+    if (isViewer || tool !== 'select' || e.evt.button !== 0 || outside) return;
     const stage = e.target.getStage();
     const ptr = stage?.getPointerPosition();
     if (!stage || !ptr) return;
@@ -340,7 +377,12 @@ const BrickGlyph = memo(function BrickGlyph({
     }
     lastPress.id = second ? '' : brick.id;
     lastPress.time = now;
-    if (second) {
+    // A module (not the one being edited) never bends part by part: its
+    // double-click opens Edit module instead.
+    const inClosedModule =
+      moduleByPart(getModules()).get(brick.id) !== undefined &&
+      moduleByPart(getModules()).get(brick.id)?.id !== useEditorStore.getState().editingModuleId;
+    if (second && !inClosedModule) {
       const group = groupRef.current;
       const started = startFlexSession({
         stage,
@@ -408,6 +450,9 @@ const BrickGlyph = memo(function BrickGlyph({
     | null
   >(null);
 
+  /** Editing a module: its outline when this drag started, to tell when a part leaves it. */
+  const moduleOutlineRef = useRef<{ moduleId: string; name: string; outline: StudRect; areas: Map<string, StudRect> } | null>(null);
+
   /** This drag's snap state (held join, pointer speed). */
   const snapSessionRef = useRef<SnapSession | null>(null);
   /** The leader's centre where the pointer has it, before any snap (studs). */
@@ -417,9 +462,41 @@ const BrickGlyph = memo(function BrickGlyph({
     snapOrientRef.current = null;
     snapSessionRef.current = new SnapSession();
     rawCentreRef.current = null;
+    moduleOutlineRef.current = null;
     if (isViewer) return;
     if (tool !== 'select') return;
     const map = getMap();
+    {
+      // A part of a module drags the whole module, picked at once; a
+      // pinned module doesn't move as a whole.
+      const st = useEditorStore.getState();
+      const modules = getModules();
+      if (!st.selection.includes(brick.id)) {
+        const unit = selectionUnit(brick.id, modules, st.editingModuleId, []);
+        if (unit.length > 1) st.setSelection(unit);
+      }
+      const pinned = pinnedAmong(
+        useEditorStore.getState().selection.includes(brick.id) ? useEditorStore.getState().selection : [brick.id],
+        modules,
+        st.editingModuleId,
+      );
+      if (pinned) {
+        e.target.stopDrag();
+        e.target.position({ x: studToPx(pivot.x), y: studToPx(pivot.y) });
+        tellPinned(pinned);
+        dragStartRef.current = null;
+        rawCentreRef.current = null;
+        return;
+      }
+      // Editing a module: its outline now, to tell when a part leaves it.
+      const editing = st.editingModuleId ? modules.find((m) => m.id === st.editingModuleId) : undefined;
+      if (editing) {
+        const areas = new Map<string, StudRect>();
+        for (const l of map.layers) if (l.type === 'brick') for (const b of l.bricks) areas.set(b.id, b.displayArea);
+        const outline = boundsOf(editing.members, areas);
+        if (outline) moduleOutlineRef.current = { moduleId: editing.id, name: editing.name, outline, areas };
+      }
+    }
     const { selection, annoSelection } = useEditorStore.getState();
     // Selected rulers and labels move with the bricks (mixed selection,
     // MapViewDrag.cpp:124-153); only when this brick is part of it.
@@ -738,6 +815,32 @@ const BrickGlyph = memo(function BrickGlyph({
     }
     // Desktop confirms the commit in the status bar (MapViewDrag.cpp:594-597).
     useEditorStore.getState().showStatusMessage(wasSnapped ? 'Connection snap' : 'Moved', 1500);
+
+    // Editing a module: parts dragged clear of its outline may leave it.
+    const edit = moduleOutlineRef.current;
+    moduleOutlineRef.current = null;
+    if (edit) {
+      const moved = inSelection && selection.length > 1 ? selection : [brick.id];
+      const left = moved.filter((id) => {
+        const a = edit.areas.get(id);
+        return a && outsideOutline({ ...a, x: a.x + dx, y: a.y + dy }, edit.outline);
+      });
+      const members = new Set(getModules().find((m) => m.id === edit.moduleId)?.members ?? []);
+      const leaving = left.filter((id) => members.has(id));
+      if (leaving.length > 0) void askTakeOut(edit.moduleId, edit.name, leaving);
+    }
+  }
+
+  async function askTakeOut(moduleId: string, name: string, ids: string[]) {
+    const what = ids.length === 1 ? 'this part' : `these ${ids.length} parts`;
+    const ok = await askConfirm({
+      title: `Take ${what} out of “${name || 'the module'}”?`,
+      removes: `${ids.length === 1 ? 'It stays' : 'They stay'} on the map, on ${ids.length === 1 ? 'its' : 'their'} own.`,
+      keeps: `Cancel keeps ${ids.length === 1 ? 'it' : 'them'} in the module, which grows to take ${ids.length === 1 ? 'it' : 'them'} in.`,
+      confirmLabel: 'Take out',
+      danger: false,
+    });
+    if (ok) takeOutOfModule(doc, moduleId, ids);
   }
 
   return (
@@ -746,11 +849,11 @@ const BrickGlyph = memo(function BrickGlyph({
       // Stable name so multi-brick drag can find sibling Groups via
       // `stage.findOne('.brick-<id>')` and translate them in step.
       name={`brick-${brick.id}`}
-      opacity={opacity}
       x={studToPx(pivot.x)}
       y={studToPx(pivot.y)}
       rotation={brick.orientation}
-      draggable={!isViewer && (tool === 'select')}
+      draggable={!isViewer && tool === 'select' && dragOk}
+      opacity={outside ? opacity * 0.5 : opacity}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
       onClick={handleClick}
@@ -762,7 +865,15 @@ const BrickGlyph = memo(function BrickGlyph({
           flexMovedRef.current = false;
           return;
         }
-        if (!isViewer && onEditBrick) onEditBrick(brick, layerId, meta);
+        if (isViewer || outside) return;
+        // A module's part opens Edit module (the part picked); inside the
+        // module being edited it opens the part's properties as usual.
+        const mod = moduleByPart(getModules()).get(brick.id);
+        if (mod && mod.id !== useEditorStore.getState().editingModuleId) {
+          enterModuleEdit(mod.id, brick.id);
+          return;
+        }
+        if (onEditBrick) onEditBrick(brick, layerId, meta);
       }}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}

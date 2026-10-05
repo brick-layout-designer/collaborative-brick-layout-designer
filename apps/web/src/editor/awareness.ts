@@ -33,6 +33,8 @@ export interface AwarenessState {
   cursor: AwarenessCursor | null;
   selection: { brickIds: string[] };
   tool: string;
+  /** The placed module this person is editing ("Edit module"), if any. */
+  editingModule?: string | null;
   /** Unix-millis of the last activity. Compared client-side for idle dot. */
   lastActivityMs: number;
 }

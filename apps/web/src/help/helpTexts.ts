@@ -161,6 +161,11 @@ export const HELP_TEXTS = {
     short: 'This module’s own outline and name colours, and whether its name shows.',
     more: 'With Same colour on, the outline and the name change together. Reset to default brings back the light blue. Long names wrap, get smaller, and are only cut short when nothing else fits.',
   },
+  'module.edit': {
+    title: 'Edit module',
+    short: 'Change this module part by part; the rest of the layout waits, dimmed.',
+    more: 'A module moves as one piece until you edit it: then new parts you drop in join it, and a part dragged outside it asks whether to leave. Done, Esc or a click outside goes back to the whole layout. Pin in place stops the whole module moving, but you can still edit it.',
+  },
 
   // Downloading
   'download.formats': {
