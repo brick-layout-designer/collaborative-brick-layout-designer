@@ -17,6 +17,10 @@ import { VerifyEmailPage } from './auth/VerifyEmailPage';
 import { DevicePage } from './auth/DevicePage';
 import { OrgsPage } from './orgs/OrgsPage';
 import { OrgDetailPage } from './orgs/OrgDetailPage';
+// Not lazy: the layouts and club pages show collections, so the catalog is
+// in the main bundle anyway (a lazy import of it would split nothing).
+import { CatalogPage } from './catalog/CatalogPage';
+import { CollectionPage } from './catalog/Collections';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
@@ -38,8 +42,6 @@ import './styles.css';
 // Heavy routes are code-split so the landing / auth pages don't download
 // the editor (Konva, Yjs, parts rendering) or the admin console.
 const EditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ default: m.EditorPage })));
-const CatalogPage = lazy(() => import('./catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })));
-const CollectionPage = lazy(() => import('./catalog/Collections').then((m) => ({ default: m.CollectionPage })));
 const ModuleEditorPage = lazy(() => import('./editor/EditorPage').then((m) => ({ default: m.ModuleEditorPage })));
 const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default: m.AdminPage })));
 const OrgAdminPage = lazy(() => import('./orgs/OrgAdminPage').then((m) => ({ default: m.OrgAdminPage })));
