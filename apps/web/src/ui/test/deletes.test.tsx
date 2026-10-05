@@ -85,7 +85,7 @@ describe('deleting through the dialog', () => {
     show(<LayoutsPage />);
     await deleteFromMenu('My Town');
     const d = await screen.findByTestId('confirm-dialog');
-    expect(d.textContent).toContain('Modules, parts and venues it uses stay in their libraries.');
+    expect(d.textContent).toContain('The modules, parts and venues it uses aren’t deleted.');
     fireEvent.change(within(d).getByLabelText('Type My Town to confirm'), { target: { value: 'My Tow' } });
     const del = within(d).getByRole('button', { name: 'Delete' }) as HTMLButtonElement;
     expect(del.disabled).toBe(true);

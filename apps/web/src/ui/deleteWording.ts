@@ -10,11 +10,11 @@ export const MODULE_DELETE_WORDING: DeleteWording = {
 };
 
 export const VENUE_DELETE_WORDING: DeleteWording = {
-  removes: 'The venue is deleted from the library.',
+  removes: 'The venue is deleted from the Venue library.',
   keeps: 'Layouts made from it keep their own copy of the venue.',
 };
 
 export const CUSTOM_PART_DELETE_WORDING: DeleteWording = {
-  removes: 'The part is deleted from your library.',
+  removes: 'The part is deleted from your custom parts.',
   keeps: 'Layouts that use it show a placeholder in its place.',
 };
