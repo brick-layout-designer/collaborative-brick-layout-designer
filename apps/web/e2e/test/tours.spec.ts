@@ -68,11 +68,11 @@ test('the keyboard: focus starts on Next, Tab stays in the card, Esc closes', as
   await expect(page.getByRole('button', { name: 'Help', exact: true })).toBeVisible();
 });
 
-test('the Venues tour opens the venue designer from the home page’s Help menu', async ({ page }) => {
+test('the Venues tour opens the venue designer from the home page’s menu', async ({ page }) => {
   await signIn(page, `tour-rooms-${ts}@example.com`, 'Room Planner');
   await page.goto('/');
-  await page.getByRole('button', { name: 'Help', exact: true }).click();
-  await page.getByRole('button', { name: 'Tour: Venues' }).click();
+  await page.getByRole('banner').getByRole('button', { name: /^Menu/ }).click();
+  await page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: 'Tour: Venues' }).click();
   await expect(page).toHaveURL(/\/venues\/new/);
   for (const s of tour('rooms').steps) {
     await expect(card(page)).toHaveAccessibleName(s.title);

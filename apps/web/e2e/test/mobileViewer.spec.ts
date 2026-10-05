@@ -323,13 +323,12 @@ test.describe('phone viewer gestures and pages', () => {
     expect(await noSidewaysScroll(page)).toBe(true);
     expect(await smallTapTargets(page)).toEqual([]);
     await expect(page.getByRole('navigation', { name: 'Site' })).toBeHidden();
-    await page.getByRole('button', { name: 'Menu' }).tap();
-    await expect(page.getByRole('link', { name: 'Clubs' })).toBeVisible();
-    expect(await noSidewaysScroll(page)).toBe(true);
-    // Settings ▾ opens as a bottom sheet with finger-sized entries.
-    await page.getByRole('banner').getByRole('button', { name: /^Settings/ }).tap();
-    const sheet = page.getByRole('menu', { name: 'Settings' });
+    // One menu: a bottom sheet with the pages, Help and the settings, finger-sized.
+    await page.getByRole('banner').getByRole('button', { name: /^Menu/ }).tap();
+    const sheet = page.getByRole('menu', { name: 'Menu' });
     await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole('group', { name: 'Pages' }).getByRole('menuitem', { name: 'Clubs' })).toBeVisible();
+    await expect(sheet.getByRole('menuitem', { name: /^Tour: / }).first()).toBeVisible();
     const sheetBox = (await sheet.boundingBox())!;
     expect(Math.round(sheetBox.y + sheetBox.height)).toBe(page.viewportSize()!.height);
     expect(await noSidewaysScroll(page)).toBe(true);

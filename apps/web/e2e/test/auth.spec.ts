@@ -66,7 +66,7 @@ test.describe('auth — email verification', () => {
     await page.goto(`/verify-email/${token}`);
     await expect(page).toHaveURL('/', { timeout: 5000 });
     // The header's Settings menu names the account by its displayName, not its email.
-    await page.getByRole('banner').getByRole('button', { name: /^Settings/ }).click();
+    await page.getByRole('banner').getByRole('button', { name: /^Menu/ }).click();
     await expect(page.getByTestId('settings-menu-who')).toHaveText('Signed in as Verify User', { timeout: 5000 });
   });
 

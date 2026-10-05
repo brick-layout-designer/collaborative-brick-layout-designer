@@ -97,7 +97,7 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   // Greeted by the name they gave, never the email address, and not asked again.
   await expect(welcome).not.toContainText('@');
   // The Settings menu says who's signed in.
-  await page.getByRole('banner').getByRole('button', { name: /^Settings/ }).click();
+  await page.getByRole('banner').getByRole('button', { name: /^Menu/ }).click();
   await expect(page.getByTestId('settings-menu-who')).toContainText(NAME);
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('name-prompt')).toHaveCount(0);
@@ -221,7 +221,7 @@ test('an account named by its email is asked for a name, and its club never sees
   await ask.getByLabel('Your name (shown to others)').fill(`Pat Plates ${ts}`);
   await ask.getByRole('button', { name: 'Save name' }).click();
   await expect(ask).toHaveCount(0);
-  await pat.getByRole('banner').getByRole('button', { name: /^Settings/ }).click();
+  await pat.getByRole('banner').getByRole('button', { name: /^Menu/ }).click();
   await expect(pat.getByTestId('settings-menu-who')).toContainText(`Pat Plates ${ts}`);
   await pat.keyboard.press('Escape');
 
