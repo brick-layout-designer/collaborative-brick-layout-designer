@@ -262,6 +262,15 @@ export function ClubCollectionsSection({ club }: { club?: string }) {
   );
 }
 
+/**
+ * The question before deleting a collection. Only the collection goes: its
+ * modules and parts stay where they are, and copies people added keep working.
+ */
+export function deleteQuestion(c: { title: string; status: string; audience?: string }): string {
+  const public_ = c.audience !== 'private' && c.status === 'public';
+  return `Delete “${c.title}”?${public_ ? ' It leaves the catalog too.' : ''} Its modules and parts aren't deleted, and copies people already added keep working.`;
+}
+
 /** Your collections: how each stands, and a way to make one. */
 export function MyCollections() {
   const qc = useQueryClient();
@@ -269,6 +278,10 @@ export function MyCollections() {
   const [editing, setEditing] = useState<{ id: string | null } | null>(null);
   const dismiss = useMutation({
     mutationFn: api.catalog.dismissCollectionNote,
+    onSuccess: () => invalidateFor(qc, 'catalog'),
+  });
+  const remove = useMutation({
+    mutationFn: api.catalog.deleteCollection,
     onSuccess: () => invalidateFor(qc, 'catalog'),
   });
   const rows = mine.data?.collections ?? [];
@@ -330,6 +343,17 @@ export function MyCollections() {
                     Edit
                   </button>
                 )}
+                <button
+                  type="button"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    if (confirm(deleteQuestion(c))) remove.mutate(c.id);
+                  }}
+                  aria-label={`Delete ${c.title}`}
+                  className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft disabled:opacity-50"
+                >
+                  Delete
+                </button>
               </li>
             );
           })}
@@ -990,11 +1014,11 @@ export function CollectionPage() {
                     Withdraw
                   </button>
                 )}
-                {c.canEdit && (c.clubInfo || c.audience === 'private' || c.status === 'withdrawn') && (
+                {c.canEdit && (
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm(`Delete “${c.title}”? Copies people already added keep working.`)) remove.mutate();
+                      if (confirm(deleteQuestion(c))) remove.mutate();
                     }}
                     className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
                   >
