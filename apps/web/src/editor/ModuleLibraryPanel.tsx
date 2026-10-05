@@ -66,14 +66,14 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-panel text-sm">
-      <div className="space-y-2 border-b border-line p-2">
+      <div className="flex items-center gap-2 border-b border-line p-2">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter modules…"
-          className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
-        <IconSizeSlider value={iconSize} onChange={setIconSize} label="Module picture size" />
+        <IconSizeSlider value={iconSize} onChange={setIconSize} label="Module picture size" className="w-28 shrink-0" />
       </div>
       <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
         {list.isLoading && <p className="p-3 text-xs text-muted">Loading…</p>}

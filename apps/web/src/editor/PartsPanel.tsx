@@ -121,7 +121,7 @@ export function PartsPanel({
   return (
     <aside className="relative flex h-full min-h-0 w-full flex-col bg-panel text-sm">
       <div className="space-y-2 border-b border-line p-2">
-        <div className="flex gap-1">
+        <div className="flex items-center gap-2">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -134,8 +134,8 @@ export function PartsPanel({
               </option>
             ))}
           </select>
+          <IconSizeSlider value={iconSize} onChange={setIconSize} label="Part picture size" className="w-28 shrink-0" />
         </div>
-        <IconSizeSlider value={iconSize} onChange={setIconSize} label="Part picture size" />
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}

@@ -127,8 +127,21 @@ export function useResizeGestures(ref: RefObject<HTMLElement | null>, size: numb
   }, [ref]);
 }
 
-/** The visible size control: small picture · slider · big picture. */
-export function IconSizeSlider({ value, onChange, label = 'Picture size' }: { value: number; onChange: (n: number) => void; label?: string }) {
+/**
+ * The visible size control: small picture · slider · big picture. Compact
+ * enough to share a row with the list's filter, so the list keeps its room.
+ */
+export function IconSizeSlider({
+  value,
+  onChange,
+  label = 'Picture size',
+  className = '',
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  label?: string;
+  className?: string;
+}) {
   const icon = (px: number) => (
     <svg aria-hidden width={px} height={px} viewBox="0 0 16 16" className="shrink-0 text-muted">
       <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
@@ -137,9 +150,9 @@ export function IconSizeSlider({ value, onChange, label = 'Picture size' }: { va
     </svg>
   );
   return (
-    <label className="flex items-center gap-2" title={`${label}: ${value} px (Ctrl/⌘ + scroll or pinch over the list also works)`}>
+    <label className={`flex items-center gap-1 ${className}`} title={`${label}: ${value} px (Ctrl/⌘ + scroll or pinch over the list also works)`}>
       <span className="sr-only">{label}</span>
-      {icon(12)}
+      {icon(10)}
       <input
         type="range"
         min={PARTS_ICON_MIN}
@@ -148,9 +161,9 @@ export function IconSizeSlider({ value, onChange, label = 'Picture size' }: { va
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-valuetext={`${value} pixels`}
-        className="h-6 min-w-0 flex-1 cursor-pointer accent-accent pointer-coarse:h-11"
+        className="h-5 min-w-0 flex-1 cursor-pointer accent-accent pointer-coarse:h-11"
       />
-      {icon(18)}
+      {icon(16)}
     </label>
   );
 }
