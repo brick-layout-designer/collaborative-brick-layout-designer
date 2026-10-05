@@ -68,6 +68,8 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
 
   // ── Rita, a Manager: the club's things on Home; a club layout. ──
   await rita.goto('/');
+  // Home opens on All the first time, even now she's in a club.
+  await expect(filterRow(rita).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
   await filterRow(rita).getByRole('button', { name: CLUB }).click();
   await rita.getByRole('button', { name: 'New layout', exact: true }).first().click();
   await expect(rita.getByLabel('Save to')).toHaveValue(slug);
@@ -94,7 +96,8 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
 
   // ── Rita sees both under the club; copies the show layout to herself. ──
   await rita.goto('/');
-  await filterRow(rita).getByRole('button', { name: CLUB }).click();
+  // …and after that on the last one she picked.
+  await expect(filterRow(rita).getByRole('button', { name: CLUB })).toHaveAttribute('aria-pressed', 'true');
   await expect(row(rita, `Club Show ${ts}`)).toBeVisible();
   await expect(row(rita, `Ada yard ${ts}`)).toBeVisible();
   await row(rita, `Club Show ${ts}`).getByRole('button', { name: `More for Club Show ${ts}` }).click();

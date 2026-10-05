@@ -34,8 +34,8 @@ export function LayoutsPage() {
   const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   const orgsQuery = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const orgs = orgsQuery.data?.orgs;
-  // All · Mine · each club; remembered, and ?owner=<club> from a club page.
-  const [filter, setFilter] = useOwnerFilter(orgs);
+  // All · Mine · each club; the last pick is remembered per person, and ?owner=<club> from a club page.
+  const [filter, setFilter] = useOwnerFilter(orgs, me.data?.user?.id);
   // "Start layout" on a venue links here with ?newLayoutVenue=<id>[&owner=<club slug>].
   const [params, setParams] = useSearchParams();
   const startVenue = params.get('newLayoutVenue');
