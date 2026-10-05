@@ -15,6 +15,33 @@ const baseSidecar: Sidecar = {
   modules: [],
 };
 
+describe('module look fields', () => {
+  it('round-trips a module’s own look and keeps fields it does not know', () => {
+    const mod = {
+      id: 'm1',
+      name: 'Harbour',
+      members: ['b1'],
+      transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      showName: false,
+      outlineColor: '#ff8800',
+      nameColor: '#112233',
+      sameColor: false,
+      pinned: true,
+      fromTheFuture: { x: 1 },
+    };
+    const back = readSidecar(writeSidecar({ ...baseSidecar, modules: [mod] }));
+    expect(back.modules).toEqual([mod]);
+  });
+
+  it('reads a module written before the look fields as the default look', () => {
+    const back = readSidecar(JSON.stringify({ schemaVersion: 1, modules: [{ id: 'm', name: 'A', members: [], transform: [] }] }));
+    const m = back.modules![0]!;
+    expect(m.showName).toBeUndefined();
+    expect(m.outlineColor).toBeUndefined();
+    expect(m.sameColor).toBeUndefined();
+  });
+});
+
 describe('readSidecar', () => {
   it('parses a minimal sidecar', () => {
     const result = readSidecar(JSON.stringify({ schemaVersion: 1, bbmHashSha256: 'abc' }));

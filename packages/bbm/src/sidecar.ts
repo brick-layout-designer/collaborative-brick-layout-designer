@@ -44,6 +44,20 @@ export interface SidecarModule {
   sourceFile?: string;
   /** ISO 8601 timestamp string. */
   importedAt?: string;
+  // How this placed module looks and behaves. Each is written only when it
+  // differs from the default, so a sidecar without them reads as before.
+  /** Its name shows on the map (absent: true). The layout-wide View ▸ Module names still applies. */
+  showName?: boolean;
+  /** Its outline colour, `#rrggbb` (absent: the default light blue). */
+  outlineColor?: string;
+  /** Its name colour, `#rrggbb` (absent: the default light blue). */
+  nameColor?: string;
+  /** "Same colour": the outline and name colours change together (absent: true). */
+  sameColor?: boolean;
+  /** Pinned in place: it can't be moved as a whole (Edit module still works). Absent: false. */
+  pinned?: boolean;
+  /** Fields a newer build added; kept as they are. */
+  [extra: string]: unknown;
 }
 
 // Venue model (references/VENUE-MODEL.md). Everything is in studs, x to

@@ -4,68 +4,158 @@
 // Each sidecar module has a `members` array of brick IDs. We compute the
 // AABB of all member bricks, draw a dashed outline around it (frame), and
 // place the module name outside the frame, centred on a long side, sized
-// as `moduleLabelPercent`% of the long axis (SceneBuilderSidecar.cpp:242-368).
-// Desktop also dodges other modules' labels; we keep the first slot.
+// as `moduleLabelPercent`% of the long axis and fitted to that side
+// (moduleLabels.ts fitModuleName: two lines, then smaller, then cut short).
+// A name cut short shows in full while its module is selected or the
+// pointer is over it.
 
 import Konva from 'konva';
+import { useMemo } from 'react';
 import { Group, Rect, Text } from 'react-konva';
 import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import { useEditorStore } from '../editorStore';
+import { EXPORT_HIDE } from '../exportRender';
+import { studToPx } from './coords';
 import { MAP_FONT_STACK } from './mapText';
-import { MODULE_FRAME_DASH, MODULE_FRAME_STROKE, MODULE_NAME_FILL, MODULE_NAME_STROKE, moduleLabelLayouts, moduleNameStrokePx } from './moduleLabels';
+import {
+  MODULE_FRAME_DASH,
+  MODULE_FULL_NAME_BG,
+  MODULE_NAME_STROKE,
+  moduleFullNamePill,
+  moduleLabelLayouts,
+  moduleNameStrokePx,
+  type ModuleLabelLayout,
+} from './moduleLabels';
 
-export { fitModuleLabel, moduleLabelFontPx, moduleLabelLayouts, moduleLabelBoundsStuds, type ModuleLabelLayout } from './moduleLabels';
+export { fitModuleName, moduleLabelFontPx, moduleLabelLayouts, moduleLabelBoundsStuds, type ModuleLabelLayout } from './moduleLabels';
 
 interface Props {
   map: BbmMap;
   modules: SidecarModule[];
 }
 
+const widthCache = new Map<string, number>();
+
+/** A bold name's width at a font size, measured as Konva draws it (cached: fitting a name measures it often). */
 export function measureBold(text: string): (fontPx: number) => number {
-  return (fontPx) => new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold', fontFamily: MAP_FONT_STACK }).width();
+  return (fontPx) => {
+    const key = `${fontPx}|${text}`;
+    let w = widthCache.get(key);
+    if (w === undefined) {
+      w = new Konva.Text({ text, fontSize: fontPx, fontStyle: 'bold', fontFamily: MAP_FONT_STACK }).width();
+      if (widthCache.size > 5000) widthCache.clear();
+      widthCache.set(key, w);
+    }
+    return w;
+  };
+}
+
+/** Whether a scene point (px) is on a module's frame or name. */
+function over(layout: ModuleLabelLayout, x: number, y: number): boolean {
+  const b = layout.bounds;
+  return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
 }
 
 export function ModuleOverlay({ map, modules }: Props) {
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
   const frameThickness = useEditorStore((s) => s.moduleFrameThickness);
   const labelPercent = useEditorStore((s) => s.moduleLabelPercent);
+  const selection = useEditorStore((s) => s.selection);
+
+  const layouts = useMemo(
+    () => (showModuleNames ? moduleLabelLayouts(map, modules, labelPercent, measureBold) : []),
+    [map, modules, labelPercent, showModuleNames],
+  );
+  const cut = useMemo(() => layouts.filter((l) => l.text?.truncated), [layouts]);
+  // The shortened name under the pointer (only watched while there is one).
+  const hovered = useEditorStore((s) => {
+    if (cut.length === 0 || s.hudMouseStudX === null || s.hudMouseStudY === null) return null;
+    const x = studToPx(s.hudMouseStudX);
+    const y = studToPx(s.hudMouseStudY);
+    return cut.find((l) => over(l, x, y))?.id ?? null;
+  });
+  const selected = useMemo(() => new Set(selection), [selection]);
 
   // Names and frames share one toggle, like desktop view/moduleNames.
   if (!showModuleNames || modules.length === 0) return null;
+  const byId = new Map(modules.map((m) => [m.id, m]));
+  const showsFull = (l: ModuleLabelLayout) => {
+    if (!l.text?.truncated) return false;
+    if (l.id === hovered) return true;
+    const members = byId.get(l.id)?.members ?? [];
+    return members.length > 0 && members.every((id) => selected.has(id));
+  };
 
   return (
     <Group listening={false}>
-      {moduleLabelLayouts(map, modules, labelPercent, measureBold).map(({ id, name, frame, text }) => (
-        <Group key={id}>
+      {layouts.map((l) => (
+        <Group key={l.id} name={`module-label-${l.id}`}>
           <Rect
-            {...frame}
-            stroke={MODULE_FRAME_STROKE}
+            {...l.frame}
+            name="module-frame"
+            stroke={l.frameStroke}
             strokeWidth={frameThickness}
             strokeScaleEnabled={false}
             dash={MODULE_FRAME_DASH}
             fillEnabled={false}
             perfectDrawEnabled={false}
           />
-          <Text
-            x={text.x}
-            y={text.y}
-            rotation={text.rotation}
-            width={text.width}
-            align="center"
-            wrap="none"
-            text={name}
-            fontSize={text.fontPx}
-            fontStyle="bold"
-            fontFamily={MAP_FONT_STACK}
-            fill={MODULE_NAME_FILL}
-            stroke={MODULE_NAME_STROKE}
-            strokeWidth={moduleNameStrokePx(text.fontPx)}
-            fillAfterStrokeEnabled
-            perfectDrawEnabled={false}
-          />
+          {l.text && (
+            <Group x={l.text.x} y={l.text.y} rotation={l.text.rotation} name="module-name">
+              {l.text.lines.map((line, i) => (
+                <Text
+                  key={i}
+                  y={i * l.text!.fontPx}
+                  width={l.text!.width}
+                  align="center"
+                  wrap="none"
+                  text={line}
+                  fontSize={l.text!.fontPx}
+                  fontStyle="bold"
+                  fontFamily={MAP_FONT_STACK}
+                  fill={l.nameFill}
+                  stroke={MODULE_NAME_STROKE}
+                  strokeWidth={moduleNameStrokePx(l.text!.fontPx)}
+                  fillAfterStrokeEnabled
+                  perfectDrawEnabled={false}
+                />
+              ))}
+              {showsFull(l) && <FullName layout={l} />}
+            </Group>
+          )}
         </Group>
       ))}
+    </Group>
+  );
+}
+
+/** The whole name in a dark pill over the shortened one. */
+function FullName({ layout }: { layout: ModuleLabelLayout }) {
+  const text = layout.text!;
+  const pill = moduleFullNamePill(text, layout.name, measureBold);
+  return (
+    <Group name={`module-full-name ${EXPORT_HIDE}`}>
+      <Rect
+        x={pill.x}
+        y={pill.y}
+        width={pill.width}
+        height={pill.height}
+        cornerRadius={pill.height / 2}
+        fill={MODULE_FULL_NAME_BG}
+        perfectDrawEnabled={false}
+      />
+      <Text
+        x={pill.textX}
+        y={pill.textY}
+        text={layout.name}
+        wrap="none"
+        fontSize={text.fontPx}
+        fontStyle="bold"
+        fontFamily={MAP_FONT_STACK}
+        fill={layout.nameFill}
+        perfectDrawEnabled={false}
+      />
     </Group>
   );
 }
