@@ -70,11 +70,16 @@ describe('fit the whole layout with module names', () => {
     });
   });
 
-  it('takes in a name longer than its module, centred on it', () => {
+  it('keeps a name longer than its module within its width, on two lines above it', () => {
     const { doc, town } = withModule('A very long module name');
-    const r = fitRegionStuds(docToBbm(doc), readSidecarFromDoc(doc), [town], true, names)!;
-    expect(r.x).toBeCloseTo(96.0625 - M);
-    expect(r.width).toBeCloseTo(223 / 8 + 2 * M);
+    // 16 px font: 'A very long' and 'module name' each fit the 21-stud frame,
+    // so the name takes two lines (4 studs) 2 studs above the frame.
+    expect(fitRegionStuds(docToBbm(doc), readSidecarFromDoc(doc), [town], true, names)).toEqual({
+      x: 99.5 - M,
+      y: 43.5 - M,
+      width: 21 + 2 * M,
+      height: 17 + 2 * M,
+    });
   });
 
   it('leaves the names out when they are hidden, or their sheet is', () => {

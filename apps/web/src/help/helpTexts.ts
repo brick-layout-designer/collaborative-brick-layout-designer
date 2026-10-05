@@ -156,6 +156,11 @@ export const HELP_TEXTS = {
     short: 'Save the list of parts as a file, for shopping or packing.',
     more: 'HTML has pictures and opens in a browser. CSV opens in a spreadsheet.',
   },
+  'dialog.moduleLook': {
+    title: 'Module look',
+    short: 'This module’s own outline and name colours, and whether its name shows.',
+    more: 'With Same colour on, the outline and the name change together. Reset to default brings back the light blue. Long names wrap, get smaller, and are only cut short when nothing else fits.',
+  },
 
   // Downloading
   'download.formats': {

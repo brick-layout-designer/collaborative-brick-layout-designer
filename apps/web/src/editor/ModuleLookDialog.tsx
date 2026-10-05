@@ -1,0 +1,153 @@
+// A placed module's look: whether its name shows, its outline and name
+// colours, the "Same colour" link and Reset to default. Changes show on
+// the map (and for everyone else) as they're made; the desktop's
+// ModuleLookDialog is the same.
+
+import { useEffect, useRef } from 'react';
+import type * as Y from 'yjs';
+import { readSidecarFromDoc } from '@cld/ydoc';
+import { useYjsSnapshot } from './useYjsSnapshot';
+import { HelpButton } from '../help/HelpButton';
+import { updateSidecarModule } from './mutations';
+import {
+  coloursLinked,
+  hasCustomColours,
+  moduleColour,
+  withColour,
+  withDefaultColours,
+  withSameColour,
+  withShowName,
+  type ModuleColourPart,
+} from './moduleLook';
+
+interface Props {
+  doc: Y.Doc;
+  moduleId: string;
+  onClose: () => void;
+}
+
+/** How long a colour being dragged around the picker waits before it's written. */
+const COLOUR_WRITE_MS = 120;
+
+export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
+  // Follows the module as it changes, here or from someone else.
+  useYjsSnapshot(doc);
+  const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId) ?? null;
+  const pending = useRef<{ part: ModuleColourPart; hex: string } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function flush() {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+    const p = pending.current;
+    pending.current = null;
+    if (p) updateSidecarModule(doc, moduleId, (m) => withColour(m, p.part, p.hex));
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      flush();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The module was deleted (here or by someone else): nothing to edit.
+  useEffect(() => {
+    if (!mod) onClose();
+  }, [mod, onClose]);
+  if (!mod) return null;
+
+  function pick(part: ModuleColourPart, hex: string) {
+    pending.current = { part, hex };
+    if (timer.current === null) timer.current = setTimeout(flush, COLOUR_WRITE_MS);
+  }
+
+  const linked = coloursLinked(mod);
+  const name = mod.name || '(module)';
+  const swatch = (part: ModuleColourPart, label: string) => (
+    <label className="flex items-center justify-between gap-3 text-sm">
+      <span>{label}</span>
+      <input
+        type="color"
+        aria-label={label}
+        data-testid={`module-${part}-colour`}
+        value={moduleColour(mod, part)}
+        onChange={(e) => pick(part, e.target.value)}
+        className="h-9 w-16 cursor-pointer rounded-lg border border-border bg-transparent"
+      />
+    </label>
+  );
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Module look: ${name}`}
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[22rem] max-w-full rounded-lg border border-line bg-panel p-5 shadow-xl"
+      >
+        <div className="flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 truncate text-base font-semibold" title={name}>
+            {name}
+          </h2>
+          <HelpButton helpKey="dialog.moduleLook" />
+        </div>
+        <label className="mt-4 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            data-testid="module-show-name"
+            checked={mod.showName !== false}
+            onChange={(e) => updateSidecarModule(doc, moduleId, (m) => withShowName(m, e.target.checked))}
+          />
+          Show name
+        </label>
+        <div className="mt-4 space-y-3">
+          {swatch('outline', 'Outline colour')}
+          {swatch('name', 'Name colour')}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              data-testid="module-same-colour"
+              checked={linked}
+              onChange={(e) => {
+                flush();
+                updateSidecarModule(doc, moduleId, (m) => withSameColour(m, e.target.checked));
+              }}
+            />
+            Same colour
+            <span className="text-xs text-muted">{linked ? '(outline and name change together)' : '(set each on its own)'}</span>
+          </label>
+        </div>
+        <div className="mt-5 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            disabled={!hasCustomColours(mod)}
+            onClick={() => {
+              pending.current = null;
+              flush();
+              updateSidecarModule(doc, moduleId, withDefaultColours);
+            }}
+            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft disabled:cursor-default disabled:opacity-40"
+          >
+            Reset to default
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg bg-accent px-3 py-1 text-sm text-accent-ink hover:bg-accent-hover"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -22,9 +22,12 @@ import {
   renameSidecarModule,
   rescanModuleFromBricks,
   rotateModuleBricks,
+  updateSidecarModule,
 } from './mutations';
 import { createModuleFromSelection } from './moduleActions';
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
+import { ModuleLookDialog } from './ModuleLookDialog';
+import { withShowName } from './moduleLook';
 
 interface Props {
   doc: Y.Doc;
@@ -93,6 +96,7 @@ function ModuleRow({
   const [rotateOpen, setRotateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rescanning, setRescanning] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuStyle = useOnScreen(menuRef, ctxMenu);
 
@@ -238,15 +242,48 @@ function ModuleRow({
           className="w-full rounded-lg border border-border bg-soft px-1 py-0.5 text-xs"
         />
       ) : (
-        <>
-          <span className="font-medium text-ink">{module.name || '(untitled)'}</span>
-          <span className="ml-2 text-neutral-600">
-            {module.members.length} part{module.members.length !== 1 ? 's' : ''}
-            {module.sourceFile ? ` — ${/^[0-9a-f-]{36}$/.test(module.sourceFile) ? 'in your Module library' : module.sourceFile.split(/[\\/]/).pop()}` : ''}
+        <span className="flex items-center gap-1">
+          {(module.outlineColor || module.nameColor) && (
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-black/30"
+              style={{ background: module.outlineColor ?? module.nameColor }}
+            />
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="font-medium text-ink">{module.name || '(untitled)'}</span>
+            <span className="ml-2 text-neutral-600">
+              {module.members.length} part{module.members.length !== 1 ? 's' : ''}
+              {module.sourceFile ? ` — ${/^[0-9a-f-]{36}$/.test(module.sourceFile) ? 'in your Module library' : module.sourceFile.split(/[\\/]/).pop()}` : ''}
+            </span>
           </span>
-        </>
+          {!isViewer && (
+            <button
+              type="button"
+              aria-label={`More for ${module.name || 'this module'}`}
+              title="More"
+              data-testid="module-more"
+              aria-haspopup="menu"
+              onClick={(e) => {
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                setRotateOpen(false);
+                setCtxMenu(ctxMenu ? null : { x: r.right - 170, y: r.bottom + 2 });
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted hover:bg-soft hover:text-ink"
+            >
+              ⋯
+            </button>
+          )}
+        </span>
       )}
 
+      {lookOpen && (
+        <span onClick={(e) => e.stopPropagation()}>
+          <ModuleLookDialog doc={doc} moduleId={module.id} onClose={() => setLookOpen(false)} />
+        </span>
+      )}
       {showMove && (
         <ModuleMoveDialog
           moduleName={module.name}
@@ -304,6 +341,26 @@ function ModuleRow({
             onClick={() => { setCtxMenu(null); setDraft(module.name); setRenaming(true); }}
           >
             Rename…
+          </button>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={module.showName !== false}
+            data-testid="module-menu-show-name"
+            className="flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-neutral-700"
+            onClick={() => {
+              setCtxMenu(null);
+              updateSidecarModule(doc, module.id, (m) => withShowName(m, m.showName === false));
+            }}
+          >
+            <span className="w-3">{module.showName !== false ? '✓' : ''}</span>
+            Show name
+          </button>
+          <button
+            data-testid="module-menu-look"
+            className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
+            onClick={() => { setCtxMenu(null); setLookOpen(true); }}
+          >
+            Colours…
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"

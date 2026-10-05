@@ -8,20 +8,40 @@ import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import SPEC from '../../../../packages/bbm/tests/fixtures/render-parity/modules.json';
 import {
+  MODULE_FRAME_ALPHA,
   MODULE_FRAME_DASH,
   MODULE_FRAME_STROKE,
+  MODULE_FULL_NAME_BG,
+  MODULE_NAME_ALPHA,
   MODULE_NAME_FILL,
+  MODULE_NAME_LINE_HEIGHT,
+  MODULE_NAME_MIN_PX,
   MODULE_NAME_STROKE,
+  fitModuleName,
   moduleLabelLayouts,
+  moduleLook,
   moduleNameStrokePx,
 } from '../editor/render/moduleLabels';
+
+const fixedWidth = (t: string) => (f: number) => t.length * SPEC.charWidth * f;
 
 describe('render parity: modules', () => {
   it.each(SPEC.cases)('lays out $name as the shared description says', (c) => {
     const map = { layers: [{ type: 'brick', visible: true, bricks: [{ id: 'b', displayArea: c.studs }] }] } as unknown as BbmMap;
-    const mod = { id: 'm', name: c.name, members: ['b'] } as unknown as SidecarModule;
-    const [got] = moduleLabelLayouts(map, [mod], c.labelPercent, (t) => (f) => t.length * SPEC.charWidth * f);
-    expect({ frame: got!.frame, text: got!.text, bounds: got!.bounds }).toEqual(c.expect);
+    const mod = { id: 'm', name: c.name, members: ['b'], ...('module' in c ? c.module : {}) } as unknown as SidecarModule;
+    const [got] = moduleLabelLayouts(map, [mod], c.labelPercent, fixedWidth);
+    expect({ frame: got!.frame, ...(got!.text ? { text: got!.text } : {}), bounds: got!.bounds }).toEqual(c.expect);
+  });
+
+  it.each(SPEC.fit)('fits "$text" at $fontPx px on a $side px side as the shared description says', (c) => {
+    const got = fitModuleName(c.text, fixedWidth, c.fontPx, c.side);
+    expect(got).toEqual(c.expect);
+    // Never longer than the side.
+    for (const line of got.lines) expect(fixedWidth(line)(got.fontPx)).toBeLessThanOrEqual(c.side);
+  });
+
+  it.each(SPEC.looks)('draws a module with $module in the shared colours', (c) => {
+    expect(moduleLook(c.module)).toEqual(c.expect);
   });
 
   it('draws the shared colours, dash and outline', () => {
@@ -29,6 +49,11 @@ describe('render parity: modules', () => {
     expect(MODULE_FRAME_DASH).toEqual(SPEC.style.frameDash);
     expect(MODULE_NAME_FILL).toBe(SPEC.style.nameFill);
     expect(MODULE_NAME_STROKE).toBe(SPEC.style.nameStroke);
+    expect(MODULE_FULL_NAME_BG).toBe(SPEC.style.fullNameBackground);
+    expect(MODULE_NAME_LINE_HEIGHT).toBe(SPEC.style.nameLineHeight);
+    expect(MODULE_NAME_MIN_PX).toBe(SPEC.minFontPx);
+    expect(MODULE_FRAME_ALPHA).toBe(SPEC.style.customFrameAlpha);
+    expect(MODULE_NAME_ALPHA).toBe(SPEC.style.customNameAlpha);
     expect(moduleNameStrokePx(12)).toBe(2);
     expect(moduleNameStrokePx(120)).toBe(10);
   });

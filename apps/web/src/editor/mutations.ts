@@ -2052,6 +2052,19 @@ export function patchSidecarModule(
 }
 
 /**
+ * Replace one sidecar module entry with what `change` makes of it (its
+ * look, pin, …), in one undo step. Nothing happens for an unknown id.
+ */
+export function updateSidecarModule(doc: Y.Doc, id: string, change: (m: SidecarModule) => SidecarModule): void {
+  doc.transact(() => {
+    const cache = readSidecarCache(doc);
+    const modules = getSidecarModules(cache);
+    if (!modules.some((m) => m.id === id)) return;
+    writeSidecarCache(doc, { ...cache, modules: modules.map((m) => (m.id === id ? change(m) : m)) });
+  }, LOCAL_ORIGIN);
+}
+
+/**
  * Clone a module — duplicate every member brick across all layers with fresh
  * IDs, offset by the module's bounding-box width + 2 studs, and register a
  * new sidecar module entry. Mirrors CloneModuleCommand (ModuleCommands.cpp:232-300).
