@@ -1,14 +1,18 @@
-// The header's "Settings ▾" menu: shortcuts straight to the parts of the
-// Settings, Profile and Admin pages, in three groups.
+// The header's one menu ("Menu ▾"): everything that isn't a page link, in
+// groups. On a phone the page links come first, so it's the only menu.
 //
+//   Pages           Home · Clubs · Catalog · About · Notices (phones only)
+//   Help            the tours · help buttons on/off · all help topics ·
+//                   keyboard shortcuts (not on phones)
 //   Account         Profile and name · Sign-in methods · Devices · Sign out
 //   Look            Light or dark · Colour and text size · Help and tours ·
 //                   Install the app (only where installing is offered)
 //   Admin settings  one entry per admin tab (moderators: Moderation only)
 //
-// Reviews waiting for a moderator show as a badge on the button. Works by
-// mouse, touch and keyboard (arrows, Home/End, Escape returns focus to the
-// button). On a phone it opens as a bottom sheet over a dimmed page.
+// Reviews waiting for a moderator, and people waiting to join a club, show
+// as a badge on the button. Works by mouse, touch and keyboard (arrows,
+// Home/End, Escape returns focus to the button). On a phone it opens as a
+// bottom sheet over a dimmed page.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -16,11 +20,20 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type Me } from './api';
 import { isMobileDevice } from './pwa/install';
 import { ADMIN_MENU_LABELS, adminTabsFor, adminTabUrl } from './admin/adminTabs';
+import { usePreferences } from './theme/PrefsProvider';
+import { isPhoneScreen, useTours } from './tours/TourProvider';
+import { toursFor } from './tours/tours';
 
-interface Entry {
+export interface Entry {
   label: string;
-  to: string;
+  /** A page to open; or `onSelect` for an action (start a tour, a toggle). */
+  to?: string;
+  onSelect?: () => void;
   badge?: number;
+  /** Words for the badge, for screen readers. */
+  badgeLabel?: string;
+  /** A quiet note on the right, like "seen" on a tour already taken. */
+  note?: string;
 }
 
 interface Group {
@@ -91,15 +104,65 @@ function Badge({ n, label }: { n: number; label: string }) {
   );
 }
 
-export function SettingsMenu({ user, onSignOut, signingOut = false }: { user: Me; onSignOut: () => void; signingOut?: boolean }) {
+/** The Help group: the tours, the help buttons switch and the help pages. */
+function useHelpEntries(phone: boolean): Entry[] {
+  const { prefs, setPrefs } = usePreferences();
+  const { startTour } = useTours();
+  return [
+    ...toursFor(phone).map((t) => ({
+      label: `Tour: ${t.title}`,
+      onSelect: () => startTour(t.id),
+      ...(prefs.toursSeen.includes(t.id) ? { note: 'seen' } : {}),
+    })),
+    { label: prefs.helpIcons ? 'Turn help buttons off' : 'Turn help buttons on', onSelect: () => setPrefs({ helpIcons: !prefs.helpIcons }) },
+    { label: 'All help topics', to: '/help' },
+    ...(phone ? [] : [{ label: 'Keyboard shortcuts', to: '/help#shortcuts' }]),
+  ];
+}
+
+/** True below Tailwind's `sm` breakpoint, kept up to date as the window changes. */
+function usePhoneWidth(): boolean {
+  const query = '(max-width: 639.98px)';
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return phone;
+}
+
+export function SettingsMenu({
+  user,
+  onSignOut,
+  signingOut = false,
+  pages = [],
+}: {
+  user: Me;
+  onSignOut: () => void;
+  signingOut?: boolean;
+  /** The page links, shown in the menu on a phone (they're in the header otherwise). */
+  pages?: Entry[];
+}) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const waiting = useWaitingReviews(user);
+  const phone = usePhoneWidth();
+  const help = useHelpEntries(phone || isPhoneScreen());
   // Installing is offered on phones and tablets (the Settings page's rule).
   const installOffered = useMemo(() => isMobileDevice(), []);
-  const groups = settingsMenuGroups(user, { installOffered, waitingReviews: waiting });
+  const groups: Group[] = [
+    ...(phone && pages.length > 0 ? [{ id: 'pages', title: 'Pages', entries: pages }] : []),
+    { id: 'help', title: 'Help', entries: help },
+    ...settingsMenuGroups(user, { installOffered, waitingReviews: waiting }),
+  ];
+  // People waiting to join a club only show in the Pages group, so the button counts them on a phone.
+  const pageBadges = phone ? pages.reduce((n, p) => n + (p.badge ?? 0), 0) : 0;
+  const buttonBadge = waiting + pageBadges;
   const reviewWords = `${waiting} ${waiting === 1 ? 'review' : 'reviews'} waiting`;
 
   const items = () => Array.from(menu.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? []);
@@ -172,13 +235,11 @@ export function SettingsMenu({ user, onSignOut, signingOut = false }: { user: Me
         className="tap-target inline-flex h-11 items-center gap-1.5 rounded-control border border-border px-3 text-sm font-semibold text-ink hover:bg-soft sm:h-9 pointer-coarse:h-11"
       >
         {user.avatarUrl && <img src={user.avatarUrl} alt="" className="-ml-1 hidden h-6 w-6 rounded-full sm:block" />}
-        {/* Phones: a gear, so the header fits on one row; the name is still "Settings". */}
-        <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 sm:hidden" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 sm:hidden" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
         </svg>
-        <span className="sr-only sm:not-sr-only">Settings</span>
-        {waiting > 0 && <Badge n={waiting} label={reviewWords} />}
+        <span className="sr-only sm:not-sr-only">Menu</span>
+        {buttonBadge > 0 && <Badge n={buttonBadge} label={pageBadges > 0 && waiting === 0 ? `${pageBadges} waiting` : reviewWords} />}
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className={`hidden transition-transform sm:block ${open ? 'rotate-180' : ''}`}>
           <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -191,7 +252,7 @@ export function SettingsMenu({ user, onSignOut, signingOut = false }: { user: Me
             ref={menu}
             id="settings-menu"
             role="menu"
-            aria-label="Settings"
+            aria-label="Menu"
             onKeyDown={onMenuKey}
             onClick={(e) => {
               if ((e.target as HTMLElement).closest('[role=menuitem]')) setOpen(false);
@@ -207,12 +268,24 @@ export function SettingsMenu({ user, onSignOut, signingOut = false }: { user: Me
                 <p id={`settings-menu-${g.id}`} className="px-4 pb-1 pt-2 text-xs font-bold uppercase tracking-wide text-muted">
                   {g.title}
                 </p>
-                {g.entries.map((e) => (
-                  <Link key={e.to} role="menuitem" to={e.to} className={ITEM}>
-                    <span className="flex-1">{e.label}</span>
-                    {e.badge !== undefined && <Badge n={e.badge} label={reviewWords} />}
-                  </Link>
-                ))}
+                {g.entries.map((e) => {
+                  const inner = (
+                    <>
+                      <span className="flex-1">{e.label}</span>
+                      {e.note && <span className="text-xs font-normal text-muted">{e.note}</span>}
+                      {e.badge !== undefined && <Badge n={e.badge} label={e.badgeLabel ?? reviewWords} />}
+                    </>
+                  );
+                  return e.to ? (
+                    <Link key={e.label} role="menuitem" to={e.to} className={ITEM}>
+                      {inner}
+                    </Link>
+                  ) : (
+                    <button key={e.label} type="button" role="menuitem" onClick={e.onSelect} className={ITEM}>
+                      {inner}
+                    </button>
+                  );
+                })}
                 {g.id === 'account' && (
                   <button
                     type="button"

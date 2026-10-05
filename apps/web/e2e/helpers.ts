@@ -132,8 +132,8 @@ export async function signIn(
  * settings), e.g. `fromSettingsMenu(page, /^Moderation/)`.
  */
 export async function fromSettingsMenu(page: Page, entry: string | RegExp, opts: { tap?: boolean } = {}): Promise<void> {
-  const button = page.getByRole('banner').getByRole('button', { name: /^Settings/ });
-  const item = page.getByRole('menu', { name: 'Settings' }).getByRole('menuitem', { name: entry });
+  const button = page.getByRole('banner').getByRole('button', { name: /^Menu/ });
+  const item = page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: entry });
   if (opts.tap) {
     await button.tap();
     await item.tap();
