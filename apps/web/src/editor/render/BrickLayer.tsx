@@ -21,7 +21,7 @@ import { studToPx } from './coords';
 import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
-import { liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
+import { linkKeys, liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
 import { SnapSession, snapBypassed } from '../snapFeel';
 import { liveSnapReach } from '../liveSnapReach';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
@@ -342,6 +342,21 @@ const BrickGlyph = memo(function BrickGlyph({
    */
   const grabConnRef = useRef<number>(-1);
 
+  /**
+   * What the grabbed part's links may point at and still hold during the
+   * drag: the parts moving with it (the selection it's in, else itself).
+   */
+  function grabKeys(): Set<string> {
+    const sel = new Set(useEditorStore.getState().selection);
+    if (!sel.has(brick.id)) return linkKeys([brick]);
+    const moving: Brick[] = [];
+    for (const layer of getMap().layers) {
+      if (layer.type !== 'brick') continue;
+      for (const b of layer.bricks) if (sel.has(b.id)) moving.push(b);
+    }
+    return linkKeys(moving);
+  }
+
   /** A finger on the part: grab the connection nearest it, as a mouse press does. */
   function handleTouchStart(e: KonvaEventObject<TouchEvent>) {
     grabConnRef.current = -1;
@@ -350,7 +365,7 @@ const BrickGlyph = memo(function BrickGlyph({
     const ptr = stage?.getPointerPosition();
     if (!stage || !ptr) return;
     const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
-    const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx());
+    const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx(), grabKeys());
     if (idx >= 0) grabConnRef.current = idx;
   }
 
@@ -406,7 +421,7 @@ const BrickGlyph = memo(function BrickGlyph({
         return;
       }
     }
-    const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx());
+    const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx(), grabKeys());
     if (idx < 0) return;
     grabConnRef.current = idx;
     setActiveConnectionPoint(doc, layerId, brick.id, idx);
@@ -443,7 +458,7 @@ const BrickGlyph = memo(function BrickGlyph({
           startCentre: { x: number; y: number };
           node: Konva.Node | null;
           part: PartWire | undefined;
-          links: { linkedTo: string }[];
+          links: { linkedTo: string; id?: string }[];
           orientation: number;
         }[];
       }

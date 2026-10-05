@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../../api';
+import { rebuildConnectivity } from '@cld/parts-catalog/browser';
+import { catalogFromParts } from '../catalogFromParts';
 import {
+  linkKeys,
   liveDragSnap,
   nearestConnectionIndex,
   rotationAlignedCentre,
@@ -542,9 +545,14 @@ describe('nearestConnectionIndex', () => {
     expect(nearestConnectionIndex(b, track, 4, 1)).toBe(0);
   });
 
-  it('prefers a free connection over a nearer linked one', () => {
+  it('takes the nearer end even when it is linked to a part left behind', () => {
     const b = makeBrick({ connexions: [{ id: 'c0', linkedTo: 'other' }, { id: 'c1', linkedTo: '' }] });
-    expect(nearestConnectionIndex(b, track, 1, 4)).toBe(1);
+    expect(nearestConnectionIndex(b, track, 1, 4)).toBe(0);
+  });
+
+  it('passes over a nearer end linked to a part moving with it', () => {
+    const b = makeBrick({ connexions: [{ id: 'c0', linkedTo: 'o1' }, { id: 'c1', linkedTo: '' }] });
+    expect(nearestConnectionIndex(b, track, 1, 4, new Set(['b1', 'c0', 'c1', 'O', 'o1']))).toBe(1);
   });
 
   it('falls back to the nearest connection when every end is linked', () => {
@@ -710,5 +718,76 @@ describe('snapPlacement — calm snapping', () => {
     session.sample(100, 0, 10);
     expect(place(8.5, { session }).snappedToConnection).toBe(false);
     expect(place(8.5, { session, final: true }).snappedToConnection).toBe(true);
+  });
+});
+
+// ---- a part linked at one end snaps elsewhere in the same drag --------------
+
+describe('liveDragSnap — links to the parts left behind', () => {
+  const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+  // A 4 x 2 straight (pivot = box centre), ends 2 studs either side.
+  const track = makePart({ connections: [conn(-2, 0, 180), conn(2, 0, 0)] });
+  const partsByKey = new Map<string, PartWire>([['test.0', track]]);
+  const cx = (id: string, i: number, linkedTo = '') => ({ id: `${id}${i}`, linkedTo });
+  // A (0..4) joined to B (4..8) at x 4; C (14..18) has a free right end at x 18.
+  const map = () =>
+    brickLayerMap([
+      makeBrick({ id: 'A', x: 0, y: 0, w: 4, h: 2, connexions: [cx('a', 0), cx('a', 1, 'b0')] }),
+      makeBrick({ id: 'B', x: 4, y: 0, w: 4, h: 2, connexions: [cx('b', 0, 'a1'), cx('b', 1)] }),
+      makeBrick({ id: 'C', x: 14, y: 0, w: 4, h: 2, connexions: [cx('c', 0), cx('c', 1)] }),
+    ]);
+  const dragB = (centreX: number, centreY: number, m: BbmMap, extra: Partial<Parameters<typeof liveDragSnap>[0]> = {}) =>
+    liveDragSnap(
+      {
+        part: track, movingId: 'B', movingLinks: [cx('b', 0, 'a1'), cx('b', 1)],
+        centreX, centreY, mouseStudX: centreX - 2, mouseStudY: centreY, orientation: 0,
+        snapStepStuds: 0, reach: 1, leadConnIndex: 0, ...extra,
+      },
+      m, partsByKey,
+    );
+
+  it('the joined end, pulled to another free end, snaps there', () => {
+    // B's left end 0.4 studs past C's right end (18, 1).
+    const r = dragB(20.4, 1, map());
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.ringStudX).toBeCloseTo(18);
+    expect(r.centreX).toBeCloseTo(20);
+  });
+
+  it('the end it left behind is free for it again', () => {
+    // Pulled away and back: B's left end 0.3 studs off A's right end.
+    const r = dragB(6, 1.3, map());
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.ringStudX).toBeCloseTo(4);
+    expect(r.centreY).toBeCloseTo(1);
+  });
+
+  it('a joint inside the moving set stays joined', () => {
+    // A and B dragged together: B's left end is joined to A, which moves too.
+    const r = dragB(20.4, 1, map(), {
+      siblings: [{ id: 'A', part: track, links: [cx('a', 0), cx('a', 1, 'b0')], offsetX: -4, offsetY: 0, orientation: 0 }],
+    });
+    // Only A's free left end (at 14.4) could join C's ends; it is 3.6 studs
+    // from C's right end and 0.4 from C's left end, but of the same type
+    // and facing, so it joins at 14: never B's joined end.
+    expect(r.ringStudX).toBeCloseTo(14);
+  });
+
+  it('the grab anchor takes the grabbed end even when it is joined', () => {
+    const m = map();
+    const b = (m.layers[0] as import('@cld/model').LayerBrick).bricks[1]!;
+    expect(nearestConnectionIndex({ ...b, id: 'B' }, track, 4.2, 1)).toBe(0);
+    // Unless it is joined to a part moving with it.
+    expect(nearestConnectionIndex(b, track, 4.2, 1, linkKeys([{ id: 'B', connexions: b.connexions }, { id: 'A', connexions: [cx('a', 0), cx('a', 1, 'b0')] }]))).toBe(1);
+  });
+
+  it('on the drop, connectivity lets go of A and joins C', () => {
+    const m = map();
+    const bricks = (m.layers[0] as import('@cld/model').LayerBrick).bricks;
+    bricks[1]!.displayArea.x = 18; // where the snap put B
+    rebuildConnectivity(m, catalogFromParts([track]));
+    expect(bricks[1]!.connexions[0]!.linkedTo).toBe('c1');
+    expect(bricks[2]!.connexions[1]!.linkedTo).toBe('b0');
+    expect(bricks[0]!.connexions[1]!.linkedTo).toBe('');
   });
 });

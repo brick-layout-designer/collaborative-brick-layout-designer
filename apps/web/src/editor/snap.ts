@@ -235,6 +235,34 @@ export interface OwnedWorldConnection extends WorldConnection {
   index: number;
 }
 
+/** A linked connection on the map, with what it links to. */
+interface LinkedWorldConnection extends OwnedWorldConnection {
+  linkedTo: string;
+}
+
+/**
+ * What the links of a moving set can point at: its brick ids and their
+ * connexion ids (linkedTo holds the partner connexion's id; a brick id is
+ * accepted too, as the desktop's rebuildConnectivity writes one).
+ */
+export function linkKeys(bricks: Iterable<{ id: string; connexions: readonly { id?: string }[] }>): Set<string> {
+  const keys = new Set<string>();
+  for (const b of bricks) {
+    keys.add(b.id);
+    for (const c of b.connexions) if (c.id) keys.add(c.id);
+  }
+  return keys;
+}
+
+/**
+ * During a drag a link to the parts left behind no longer holds: a moving
+ * connection is taken only when it links inside the moving set (`keys`
+ * from linkKeys).
+ */
+export function takenWhileMoving(linkedTo: string | undefined, keys: ReadonlySet<string>): boolean {
+  return !!linkedTo && keys.has(linkedTo);
+}
+
 /** Stable key of a brick's connection, for snap locks. */
 export function connKey(brickId: string, index: number): string {
   return `${brickId}#${index}`;
@@ -248,16 +276,24 @@ export function connKey(brickId: string, index: number): string {
 // on every doc change), so keying on identity is safe.
 const freeConnCache = new WeakMap<
   BbmMap,
-  { partsByKey: Map<string, PartWire>; conns: OwnedWorldConnection[] }
+  { partsByKey: Map<string, PartWire>; conns: OwnedWorldConnection[]; linked: LinkedWorldConnection[] }
 >();
 
 export function freeConnectionsCached(
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
 ): OwnedWorldConnection[] {
+  return connectionsCached(map, partsByKey).conns;
+}
+
+function connectionsCached(
+  map: BbmMap,
+  partsByKey: Map<string, PartWire>,
+): { conns: OwnedWorldConnection[]; linked: LinkedWorldConnection[] } {
   const hit = freeConnCache.get(map);
-  if (hit && hit.partsByKey === partsByKey) return hit.conns;
+  if (hit && hit.partsByKey === partsByKey) return hit;
   const conns: OwnedWorldConnection[] = [];
+  const linked: LinkedWorldConnection[] = [];
   for (const layer of map.layers) {
     if (!isBrickLayer(layer)) continue;
     for (const brick of layer.bricks) {
@@ -267,21 +303,25 @@ export function freeConnectionsCached(
         const cp = meta.connections[i]!;
         if (!cp.type) continue;
         const link = brick.connexions[i];
-        if (link && link.linkedTo !== '') continue; // already taken
         const [wx, wy] = transformLocalToWorld(cp.x, cp.y, brick, meta);
-        conns.push({
+        const conn = {
           x: wx,
           y: wy,
           type: cp.type,
           angle: mod360(cp.angle + brick.orientation),
           brickId: brick.id,
           index: i,
-        });
+        };
+        // Taken ends are kept aside: one linked to a part being dragged
+        // away is free for that drag.
+        if (link && link.linkedTo !== '') linked.push({ ...conn, linkedTo: link.linkedTo });
+        else conns.push(conn);
       }
     }
   }
-  freeConnCache.set(map, { partsByKey, conns });
-  return conns;
+  const entry = { partsByKey, conns, linked };
+  freeConnCache.set(map, entry);
+  return entry;
 }
 
 interface MatchOffset {
@@ -444,7 +484,7 @@ export interface DragSibling {
   /** Catalog metadata; undefined = no connection geometry (skipped). */
   part: PartWire | undefined;
   /** Per-connection link state, index-aligned with `part.connections`. */
-  links: { linkedTo: string }[];
+  links: { linkedTo: string; id?: string }[];
   /** Centre offset from the leader's centre, in studs. */
   offsetX: number;
   offsetY: number;
@@ -480,7 +520,7 @@ export interface DragSnapInput {
    * `master.connections[activeConnIdx].linkedToId` check in
    * `masterBrickSnap` (ConnectionSnap.cpp:93-94).
    */
-  movingLinks: { linkedTo: string }[];
+  movingLinks: { linkedTo: string; id?: string }[];
   /** Current (mid-drag) pivot (sprite centre) of the LEADER in studs. */
   centreX: number;
   centreY: number;
@@ -584,7 +624,14 @@ export function liveDragSnap(
   const movingSet = new Set<string>(drag.movingIds ?? [drag.movingId]);
   movingSet.add(drag.movingId);
   for (const s of siblings) movingSet.add(s.id);
-  const targets = reach > 0 ? collectFreeConnectionsExcludingSet(map, partsByKey, movingSet) : [];
+  // Links to the parts left behind don't hold while dragging; links
+  // inside the moving set do.
+  const keys = linkKeys([
+    { id: drag.movingId, connexions: drag.movingLinks },
+    ...siblings.map((s) => ({ id: s.id, connexions: s.links })),
+    ...[...movingSet].map((id) => ({ id, connexions: [] })),
+  ]);
+  const targets = reach > 0 ? collectFreeConnectionsExcludingSet(map, partsByKey, movingSet, keys) : [];
   const single = siblings.length === 0;
 
   // Free connections on every moving brick at its CURRENT pose. Skip
@@ -608,7 +655,7 @@ export function liveDragSnap(
     id: string,
     leader: boolean,
     part: PartWire | undefined,
-    links: { linkedTo: string }[],
+    links: { linkedTo: string; id?: string }[],
     cx: number,
     cy: number,
     orientation: number,
@@ -620,8 +667,7 @@ export function liveDragSnap(
     for (let i = 0; i < part.connections.length; i++) {
       const cp = part.connections[i]!;
       if (!cp.type) continue;
-      const link = links[i];
-      if (link && link.linkedTo !== '') continue;
+      if (takenWhileMoving(links[i]?.linkedTo, keys)) continue;
       const wx = cx + cp.x * cos - cp.y * sin;
       const wy = cy + cp.x * sin + cp.y * cos;
       movingConns.push({
@@ -729,17 +775,19 @@ export function liveDragSnap(
 
 /**
  * Grab anchor — port of desktop `nearestConnectionIndex`
- * (MapViewDrag.cpp:60-101). The connection of `brick` whose world
- * position is nearest to the click, preferring free (unlinked) ones so
- * clicking a brick already connected at one end grabs the OTHER end.
- * Falls back to the nearest connection of any link state; -1 when the
- * part has no typed connections.
+ * (MapViewDrag.cpp). The connection of `brick` whose world position is
+ * nearest to the click. The grabbed end leads even when it is linked to a
+ * part left behind (the drag pulls it away); only an end linked inside the
+ * moving set (`keys`, from linkKeys; default: just this brick) is passed
+ * over. Falls back to the nearest connection of any link state; -1 when
+ * the part has no typed connections.
  */
 export function nearestConnectionIndex(
-  brick: Pick<Brick, 'displayArea' | 'orientation' | 'connexions'>,
+  brick: Pick<Brick, 'displayArea' | 'orientation' | 'connexions'> & { id?: string },
   part: PartWire | undefined,
   clickX: number,
   clickY: number,
+  keys: ReadonlySet<string> = linkKeys([{ id: brick.id ?? '', connexions: brick.connexions }]),
 ): number {
   if (!part || part.connections.length === 0) return -1;
   const { x: cx, y: cy } = pivotOf(brick, part);
@@ -752,10 +800,7 @@ export function nearestConnectionIndex(
     for (let i = 0; i < part.connections.length; i++) {
       const c = part.connections[i]!;
       if (!c.type) continue;
-      if (freeOnly) {
-        const link = brick.connexions[i];
-        if (link && link.linkedTo !== '') continue;
-      }
+      if (freeOnly && takenWhileMoving(brick.connexions[i]?.linkedTo, keys)) continue;
       const wx = cx + c.x * cos - c.y * sin;
       const wy = cy + c.x * sin + c.y * cos;
       const sq = (wx - clickX) ** 2 + (wy - clickY) ** 2;
@@ -823,11 +868,16 @@ function collectFreeConnectionsExcludingSet(
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
   excludeIds: Set<string>,
+  keys: ReadonlySet<string>,
 ): OwnedWorldConnection[] {
-  const all = freeConnectionsCached(map, partsByKey);
+  const { conns, linked } = connectionsCached(map, partsByKey);
   const out: OwnedWorldConnection[] = [];
-  for (const c of all) {
+  for (const c of conns) {
     if (!excludeIds.has(c.brickId)) out.push(c);
+  }
+  // An end linked to a part being dragged away is free again.
+  for (const c of linked) {
+    if (!excludeIds.has(c.brickId) && keys.has(c.linkedTo)) out.push(c);
   }
   return out;
 }
