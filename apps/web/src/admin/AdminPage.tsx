@@ -10,11 +10,14 @@
 //   - Audit:     full platform audit log (paginated)
 //   - Settings:  email verification requirement + SMTP config + usage limits
 //
+// The tab is in the address: /admin?tab=users (see adminTabs.ts).
+//
 // Every mutation routes through `/api/admin/*` and is audited server-side.
 
 import { lazy, Suspense, useRef, useState } from 'react';
 import { useCardTables } from '../ui/cardTables';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { adminTabsFor, adminTabText, type AdminTab } from './adminTabs';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
@@ -26,8 +29,7 @@ import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 import { DemoAccountSection } from './DemoAccount';
 import { HelpButton } from '../help/HelpButton';
 
-type Tab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
-const ADMIN_TABS: Tab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'audit', 'settings'];
+type Tab = AdminTab;
 
 /** Content size (doc snapshot + sidecar + unflushed Yjs updates) — see adminLayoutStats.ts. Not raw disk usage. */
 function formatBytes(bytes: number): string {
@@ -44,7 +46,11 @@ function formatBytes(bytes: number): string {
 
 export function AdminPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
-  const [chosen, setTab] = useState<Tab | null>(null);
+  // The tab lives in the address (/admin?tab=users): the Settings menu
+  // links straight to one, and back/forward step between them.
+  const [params, setParams] = useSearchParams();
+  const chosen = params.get('tab') as Tab | null;
+  const setTab = (t: Tab) => setParams({ tab: t });
   // Its tables become cards on a phone.
   const pageRef = useCardTables();
 
@@ -53,7 +59,7 @@ export function AdminPage() {
   const isAdmin = me.data.user.isGlobalAdmin;
   // Moderators see only Moderation; everything else stays the admins'.
   if (!isAdmin && !me.data.user.isModerator) return <Forbidden />;
-  const tabs: Tab[] = isAdmin ? ADMIN_TABS : ['moderation'];
+  const tabs = adminTabsFor(me.data.user);
   const tab: Tab = chosen && tabs.includes(chosen) ? chosen : tabs[0]!;
 
   return (
@@ -72,6 +78,7 @@ export function AdminPage() {
         {tabs.map((t) => (
           <button
             key={t}
+            aria-current={tab === t ? 'page' : undefined}
             onClick={() => setTab(t)}
             className={
               'min-h-11 shrink-0 whitespace-nowrap border-b-2 px-3 py-2 capitalize ' +
@@ -80,7 +87,7 @@ export function AdminPage() {
                 : 'border-transparent text-muted hover:text-ink')
             }
           >
-            {t === 'orgs' ? 'clubs' : t === 'heavy' ? 'heavy use' : t}
+            {adminTabText(t)}
           </button>
         ))}
       </nav>

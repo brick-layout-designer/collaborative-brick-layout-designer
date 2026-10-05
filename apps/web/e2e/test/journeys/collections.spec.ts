@@ -14,7 +14,7 @@
 //      on Vic's open page, and Cora's Mine tells her why.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, fromSettingsMenu } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -86,7 +86,7 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
 
     // Mo approves it from Moderation.
     await mod.page.goto('/');
-    await mod.page.getByRole('link', { name: 'Moderation' }).click();
+    await fromSettingsMenu(mod.page, /^Moderation/);
     const entry = mod.page.getByTestId('moderation-collection').filter({ hasText: TITLE });
     await expect(entry).toContainText(CORA);
     // The review covers its text; each item is reviewed on its own.

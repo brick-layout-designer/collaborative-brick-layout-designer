@@ -5,6 +5,7 @@ import { api } from '../api';
 import { AppHeader } from '../AppHeader';
 import { DevicesSection } from './DevicesSection';
 import { HelpButton } from '../help/HelpButton';
+import { useHashScroll } from '../ui/useHashScroll';
 
 export function ProfilePage() {
   const qc = useQueryClient();
@@ -14,6 +15,9 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // /profile#name, #sign-in, #devices (the header's Settings menu) open at that part.
+  useHashScroll(!!me.data?.user);
 
   const saveName = useMutation({
     mutationFn: (displayName: string) => api.updateDisplayName(displayName),
@@ -37,7 +41,7 @@ export function ProfilePage() {
     <div className="h-full overflow-y-auto p-8">
       <AppHeader user={user} />
       <main className="mx-auto mt-8 max-w-2xl space-y-6">
-        <header className="flex items-center gap-4">
+        <header id="name" className="flex scroll-mt-6 items-center gap-4">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="h-16 w-16 rounded-full" />}
           <div className="flex-1">
             {editing ? (
@@ -100,7 +104,7 @@ export function ProfilePage() {
         </header>
 
         {!user.isDemoAccount && (
-        <section className="space-y-2">
+        <section id="sign-in" className="scroll-mt-6 space-y-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
             Linked sign-in methods
           </h2>

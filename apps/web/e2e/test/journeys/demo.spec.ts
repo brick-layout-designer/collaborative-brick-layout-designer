@@ -53,7 +53,7 @@ test('an admin turns on the demo, a visitor tries it, and Reset now puts the sam
   try {
     // ── 1. The admin turns it on. ──
     await admin.goto('/admin');
-    await admin.getByRole('button', { name: 'settings' }).click();
+    await admin.getByRole('button', { name: 'settings', exact: true }).click();
     const enable = admin.getByLabel('Enable the demo account');
     await expect(enable).not.toBeChecked();
     await enable.click(); // saved, then shown from the server

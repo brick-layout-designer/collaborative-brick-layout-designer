@@ -12,7 +12,7 @@
 
 import { test, expect } from '@playwright/test';
 import { getVerificationToken, expireVerificationToken } from '../dbHelpers';
-import { PASS, postAuth, submitAuthForm } from '../helpers';
+import { fromSettingsMenu, PASS, postAuth, submitAuthForm } from '../helpers';
 
 // This file exercises the rate-limited register/login/resend endpoints
 // directly (and through the UI), so every such call goes through
@@ -65,8 +65,9 @@ test.describe('auth — email verification', () => {
     const token = await getVerificationToken(email);
     await page.goto(`/verify-email/${token}`);
     await expect(page).toHaveURL('/', { timeout: 5000 });
-    // The header shows the account's displayName, not its email.
-    await expect(page.getByText('Verify User').first()).toBeVisible({ timeout: 5000 });
+    // The header's Settings menu names the account by its displayName, not its email.
+    await page.getByRole('banner').getByRole('button', { name: /^Settings/ }).click();
+    await expect(page.getByTestId('settings-menu-who')).toHaveText('Signed in as Verify User', { timeout: 5000 });
   });
 
   test('an expired verification link shows an error, not a login', async ({ page, request }) => {
@@ -209,9 +210,8 @@ test.describe('auth — logout', () => {
     await page.goto('/');
     await expect(page).toHaveURL('/');
 
-    // Click the logout button.
-    const logoutBtn = page.getByRole('button', { name: /log.?out|sign.?out/i });
-    await logoutBtn.click();
+    // Settings ▾ › Sign out.
+    await fromSettingsMenu(page, 'Sign out');
     await expect(page).toHaveURL(/\/login/);
 
     // After logout, revisiting / must redirect.

@@ -8,7 +8,7 @@
 //   desktop's parts sync (the manifest) lists it for them.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../../helpers';
+import { ensureUser, signIn, fromSettingsMenu } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -105,7 +105,7 @@ test('a custom part goes from upload to another member’s layout and desktop', 
   // ── The moderator approves it. ──
   await as(page, MOD, 'Mod Max');
   await page.goto('/');
-  await page.getByRole('link', { name: 'Moderation' }).click();
+  await fromSettingsMenu(page, /^Moderation/);
   const entry = page.getByTestId('moderation-entry').filter({ hasText: NAME });
   await entry.getByRole('button', { name: new RegExp(`^Approve`) }).click();
   await expect(entry).toHaveCount(0);

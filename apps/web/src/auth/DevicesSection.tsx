@@ -31,7 +31,7 @@ export function DevicesSection() {
   });
 
   return (
-    <section className="space-y-2">
+    <section id="devices" className="scroll-mt-6 space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Devices</h2>
       <p className="text-sm text-muted">
         Desktop apps signed in to your account. To add one, choose “Sign in” in the desktop app and

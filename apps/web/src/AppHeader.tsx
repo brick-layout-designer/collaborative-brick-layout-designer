@@ -2,9 +2,10 @@
 // editor, which has its own dense per-document toolbar).
 //
 // Top-left: app title (links to Layouts home).
-// Top-right: Home / Clubs / About / [Admin if applicable] / Settings / display
-//            name → Profile / Sign out, then the Help menu (tours).
-//            name → Profile / Sign out.
+// Top-right: Home / Clubs / [Catalog] / About / [Notices], then the Help
+//            menu (tours) and the Settings ▾ menu: Account (profile, sign-in,
+//            devices, sign out), Look, and Admin settings for admins and
+//            moderators (see SettingsMenu.tsx).
 //
 // All routes go through `<Link>` so React Router takes the
 // hard-refresh out of the loop. Logout posts to /api/auth/logout and
@@ -16,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Me } from './api';
 import { HelpMenu } from './editor/EditorChrome';
 import { forgetNamePromptSkip } from './auth/NamePrompt';
+import { SettingsMenu } from './SettingsMenu';
 
 interface Props {
   user: Me;
@@ -58,9 +60,10 @@ export function AppHeader({ user }: Props) {
         <img src="/logo.png" alt="" className="h-9 w-9 shrink-0 rounded-[9px]" />
         <span className="truncate font-display text-xl font-bold text-ink">Brick Layout Designer</span>
       </Link>
-      {/* Help (tours, help topics) stays one tap away on a phone too. */}
-      <div className="ml-auto sm:order-last sm:ml-0">
+      {/* Help (tours, help topics) and Settings stay one tap away on a phone too. */}
+      <div className="ml-auto flex items-center gap-2 sm:order-last sm:ml-0">
         <HelpMenu />
+        <SettingsMenu user={user} onSignOut={() => logout.mutate()} signingOut={logout.isPending} />
       </div>
       <button
         type="button"
@@ -106,46 +109,11 @@ export function AppHeader({ user }: Props) {
         <NavLink to="/about" className={link}>
           About
         </NavLink>
-        {!user.isGlobalAdmin && user.isModerator && (
-          <Link
-            to="/admin"
-            className="tap-target flex items-center rounded-control bg-amber-900/40 px-3 py-2 font-semibold text-amber-300 hover:bg-amber-900/60"
-            title="Review the public catalogs"
-          >
-            Moderation
-          </Link>
-        )}
-        {user.isGlobalAdmin && (
-          <Link
-            to="/admin"
-            className="tap-target flex items-center rounded-control bg-amber-900/40 px-3 py-2 font-semibold text-amber-300 hover:bg-amber-900/60"
-            title="Platform admin"
-          >
-            Admin
-          </Link>
-        )}
         {(notices.data?.notices?.length ?? 0) > 0 && (
           <NavLink to="/notices" className={link}>
             Notices
           </NavLink>
         )}
-        <NavLink to="/settings" className={link}>
-          Settings
-        </NavLink>
-        <Link to="/profile" className="tap-target flex items-center gap-2 sm:ml-1 rounded-control px-2 py-1.5 font-semibold hover:bg-soft">
-          {user.avatarUrl && (
-            <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
-          )}
-          <span>{user.displayName || user.publicName || 'Profile'}</span>
-        </Link>
-        <button
-          onClick={() => logout.mutate()}
-          disabled={logout.isPending}
-          className="h-9 rounded-control border border-border px-3 text-sm font-semibold text-ink hover:bg-soft disabled:opacity-50"
-          title="Sign out"
-        >
-          Sign out
-        </button>
       </nav>
     </header>
   );

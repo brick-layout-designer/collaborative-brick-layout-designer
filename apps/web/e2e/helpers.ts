@@ -126,3 +126,19 @@ export async function signIn(
   const ctx = 'context' in target ? target.context() : target;
   await ctx.addCookies(cookies);
 }
+
+/**
+ * Open an entry of the header's Settings ▾ menu (Account, Look, Admin
+ * settings), e.g. `fromSettingsMenu(page, /^Moderation/)`.
+ */
+export async function fromSettingsMenu(page: Page, entry: string | RegExp, opts: { tap?: boolean } = {}): Promise<void> {
+  const button = page.getByRole('banner').getByRole('button', { name: /^Settings/ });
+  const item = page.getByRole('menu', { name: 'Settings' }).getByRole('menuitem', { name: entry });
+  if (opts.tap) {
+    await button.tap();
+    await item.tap();
+  } else {
+    await button.click();
+    await item.click();
+  }
+}

@@ -11,7 +11,7 @@
 //   own layout → the owner publishes an update → the copy offers it.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../../helpers';
+import { ensureUser, signIn, fromSettingsMenu } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -141,7 +141,7 @@ test('a module goes from New module to another member’s layout', async ({ page
   // ── The site's admin opens the module catalog and names a moderator. ──
   await as(page, ADMIN, 'Admin Ari');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'settings' }).click();
+  await page.getByRole('button', { name: 'settings', exact: true }).click();
   const catalogToggle = page.getByLabel('Public module catalog');
   if (!(await catalogToggle.isChecked())) await catalogToggle.click();
   await expect(catalogToggle).toBeChecked();
@@ -165,7 +165,7 @@ test('a module goes from New module to another member’s layout', async ({ page
   // ── The moderator approves it. ──
   await as(page, MOD, 'Mod Mia');
   await page.goto('/');
-  await page.getByRole('link', { name: 'Moderation' }).click();
+  await fromSettingsMenu(page, /^Moderation/);
   const entry = page.getByTestId('moderation-entry').filter({ hasText: TITLE });
   await entry.getByRole('button', { name: `Approve ${TITLE}` }).click();
   await expect(entry).toHaveCount(0);
@@ -201,7 +201,7 @@ test('a module goes from New module to another member’s layout', async ({ page
   await expect(upd.getByRole('status')).toContainText('Sent for review');
   await as(page, MOD, 'Mod Mia');
   await page.goto('/');
-  await page.getByRole('link', { name: 'Moderation' }).click();
+  await fromSettingsMenu(page, /^Moderation/);
   await page.getByTestId('moderation-entry').filter({ hasText: TITLE }).getByRole('button', { name: `Approve ${TITLE}` }).click();
   await expect(page.getByTestId('moderation-entry').filter({ hasText: TITLE })).toHaveCount(0);
 

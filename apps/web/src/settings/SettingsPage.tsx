@@ -12,6 +12,7 @@ import type { ThemeChoice } from '../theme/theme';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
 import { isMobileDevice, useInstallState } from '../pwa/install';
+import { useHashScroll } from '../ui/useHashScroll';
 import { isPhoneScreen, useTours } from '../tours/TourProvider';
 import { toursFor } from '../tours/tours';
 
@@ -273,6 +274,8 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
 /** /settings as its own page. */
 export function SettingsPage() {
   const navigate = useNavigate();
+  // /settings#look etc. (the header's Settings menu) opens at that section.
+  useHashScroll();
   return (
     <div className="h-full overflow-y-auto bg-bg px-4 py-8 text-ink sm:px-16 sm:py-12">
       <div className="mx-auto max-w-5xl">
