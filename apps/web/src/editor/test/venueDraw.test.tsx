@@ -83,4 +83,33 @@ describe('VenueOverlay', () => {
     expect(drawn.some((d) => d.type === 'Line' && d.props.closed && d.props.fill === undefined && d.props.strokeWidth === 3)).toBe(true);
     await act(async () => root.unmount());
   });
+
+  it('puts each wall’s label in a pill, and shows a shortened one whole under the pointer', async () => {
+    drawn = [];
+    const venue = {
+      name: 'Hall',
+      enabled: true,
+      minWalkwayStuds: 0,
+      bounds: { x: 0, y: 0, w: 600, h: 400 },
+      edges: [
+        { kind: 0 as const, doorWidthStuds: 0, label: 'West wall by the stage', poly: [{ x: 0, y: 400 }, { x: 0, y: 210 }] },
+        { kind: 1 as const, doorWidthStuds: 0, label: 'Fire door', poly: [{ x: 0, y: 210 }, { x: 0, y: 190 }] },
+      ],
+      obstacles: [],
+    };
+    const root = createRoot(document.createElement('div'));
+    await act(async () => root.render(h(VenueOverlay, { venue, labelFontPx: 60 })));
+    const pills = drawn.filter((d) => d.type === 'Rect');
+    expect(pills).toHaveLength(2);
+    let texts = drawn.filter((d) => d.type === 'Text').map((d) => String(d.props.text));
+    expect(texts).toEqual(['4.99 ft', '6.3"']);
+    // The pointer on the door's label: its whole text.
+    const at = drawn.filter((d) => d.type === 'Group' && d.props.name === 'venue-label')[1]!.props;
+    const door = { x: Number(at.x), y: Number(at.y) };
+    drawn = [];
+    await act(async () => root.render(h(VenueOverlay, { venue, labelFontPx: 60, pointer: door })));
+    texts = drawn.filter((d) => d.type === 'Text').map((d) => String(d.props.text));
+    expect(texts).toContain('Fire door — 6.3"');
+    await act(async () => root.unmount());
+  });
 });

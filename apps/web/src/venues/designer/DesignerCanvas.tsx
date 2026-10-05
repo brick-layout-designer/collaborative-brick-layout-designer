@@ -20,6 +20,8 @@ import { coarsePointer } from '../../editor/useViewportSize';
 
 const FT = 12 * STUDS_PER_INCH;
 const SELECT = '#2f6fed';
+/** Over the grid inside the room: the canvas white, so the grid fades there. */
+export const GRID_FADE = 'rgba(255,255,255,0.55)';
 /** How close the pointer must be to pick or snap, in screen px. */
 const HIT_PX = 8;
 /** The same for a finger, which covers far more than a mouse pointer. */
@@ -284,6 +286,8 @@ export function DesignerCanvas({
     return null;
   })();
   const flat = (pts: Pt[]) => pts.flatMap((p) => [p.x, p.y]);
+  // The room's outline: its walls end to end.
+  const roomFill = useMemo(() => flat(shown.edges.flatMap((e) => e.poly ?? [])), [shown]);
   const hs = (coarse ? TOUCH_HANDLE_PX : HANDLE_PX) / v.scale; // handle half-size, world
   const bubble = (at: Pt, text: string) => {
     const w = text.length * 7 + 16;
@@ -327,8 +331,17 @@ export function DesignerCanvas({
             {grid.map((g, i) => (
               <Line key={i} points={g.pts} stroke={g.major ? '#d5dae1' : '#eef0f3'} strokeWidth={1} strokeScaleEnabled={false} />
             ))}
+            {/* The grid fades a little under the venue. */}
+            {roomFill.length >= 6 && <Line points={roomFill} closed fill={GRID_FADE} listening={false} perfectDrawEnabled={false} />}
             <Group scaleX={1 / px} scaleY={1 / px}>
-              <VenueOverlay venue={shown} labelFontPx={(13 / v.scale) * px} />
+              <VenueOverlay
+                venue={shown}
+                labelFontPx={(13 / v.scale) * px}
+                selectedEdge={sel?.kind === 'edge' ? sel.index : null}
+                handles={handles}
+                handleHalfPx={(hs + 2 / v.scale) * px}
+                pointer={state.pointer ? { x: state.pointer.x * px, y: state.pointer.y * px } : null}
+              />
             </Group>
             {selOutline && <Line points={flat(selOutline)} closed stroke={SELECT} strokeWidth={2} strokeScaleEnabled={false} />}
             {sel?.kind === 'edge' && venue.edges[sel.index] && (
