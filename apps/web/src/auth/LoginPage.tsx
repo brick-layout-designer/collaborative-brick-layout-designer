@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { HelpButton } from '../help/HelpButton';
+import { DESKTOP_URL, LICENCE, REPO_URL } from '../projectLinks';
 
 /**
  * `?next=` target to return to after signing in (e.g. /device, /invite/…).
@@ -22,34 +23,56 @@ export function LoginPage() {
   if (me.data?.user) return <Navigate to={next} replace />;
 
   return (
-    <div className="grid min-h-screen place-items-center px-4">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
-        <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
-        <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
+    <div className="grid min-h-screen place-items-center px-4 py-6">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
+          <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
+          <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
 
-        <div className="space-y-2">
-          {providers.data?.providers
-            .filter((p) => p.enabled)
-            .map((p) => (
-              <a
-                key={p.id}
-                href={`/api/auth/${p.id}`}
-                className="block rounded-lg border border-border px-4 py-2 text-center hover:bg-soft"
-              >
-                Continue with {p.label}
-              </a>
-            ))}
-          {providers.data && !providers.data.passwordEnabled && !providers.data.demoEnabled && providers.data.providers.every((p) => !p.enabled) && (
-            <p className="text-center text-sm text-muted">
-              Signing in isn’t set up on this site yet. Ask the person who runs it.
-            </p>
-          )}
+          <div className="space-y-2">
+            {providers.data?.providers
+              .filter((p) => p.enabled)
+              .map((p) => (
+                <a
+                  key={p.id}
+                  href={`/api/auth/${p.id}`}
+                  className="block rounded-lg border border-border px-4 py-2 text-center hover:bg-soft"
+                >
+                  Continue with {p.label}
+                </a>
+              ))}
+            {providers.data && !providers.data.passwordEnabled && !providers.data.demoEnabled && providers.data.providers.every((p) => !p.enabled) && (
+              <p className="text-center text-sm text-muted">
+                Signing in isn’t set up on this site yet. Ask the person who runs it.
+              </p>
+            )}
+          </div>
+
+          {providers.data?.passwordEnabled && <PasswordForm next={next} />}
+          {providers.data?.demoEnabled && <TryDemo next={next} />}
         </div>
-
-        {providers.data?.passwordEnabled && <PasswordForm next={next} />}
-        {providers.data?.demoEnabled && <TryDemo next={next} />}
+        <SourceFooter />
       </div>
     </div>
+  );
+}
+
+/** A quiet line under the card: where the code lives, and its licence. */
+function SourceFooter() {
+  const link = 'tap-target inline-flex items-center hover:text-ink hover:underline';
+  return (
+    <footer className="flex flex-wrap items-center justify-center gap-x-2 text-xs text-muted">
+      <span>Source on GitHub:</span>
+      <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={link}>
+        Website
+      </a>
+      <span aria-hidden="true">·</span>
+      <a href={DESKTOP_URL} target="_blank" rel="noopener noreferrer" className={link}>
+        Desktop app
+      </a>
+      <span aria-hidden="true">·</span>
+      <span>{LICENCE}</span>
+    </footer>
   );
 }
 
