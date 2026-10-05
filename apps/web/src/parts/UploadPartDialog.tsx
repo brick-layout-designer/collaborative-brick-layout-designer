@@ -5,11 +5,12 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { defaultSaveTo, readOwnerFilter } from '../owners/owners';
+import { defaultSaveTo, readOwnerFilter, type OwnerFilter } from '../owners/owners';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { CategoryPicker } from './CategoryPicker';
 
-export function UploadPartDialog({ onClose }: { onClose: () => void }) {
+/** `filter`: the owner filter being shown (home page); otherwise the last one picked there. */
+export function UploadPartDialog({ onClose, filter }: { onClose: () => void; filter?: OwnerFilter }) {
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const catalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
@@ -18,7 +19,8 @@ export function UploadPartDialog({ onClose }: { onClose: () => void }) {
   const [category, setCategory] = useState('Custom');
   const [xmlText, setXmlText] = useState('');
   const [spriteFile, setSpriteFile] = useState<File | null>(null);
-  const [ownerSlug, setOwnerSlug] = useState(() => defaultSaveTo(readOwnerFilter()));
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const [ownerSlug, setOwnerSlug] = useState(() => defaultSaveTo(filter ?? readOwnerFilter(me.data?.user?.id)));
   // A remembered club you've since left: save to Me.
   useEffect(() => {
     if (ownerSlug && orgs.data && !orgs.data.orgs.some((o) => o.slug === ownerSlug)) setOwnerSlug('');

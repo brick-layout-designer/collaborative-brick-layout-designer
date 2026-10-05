@@ -3,7 +3,8 @@
 // ownership vs. an org the user belongs to.
 
 import { useState, type FormEvent } from 'react';
-import type { OrgSummary } from '../api';
+import { useQuery } from '@tanstack/react-query';
+import { api, type OrgSummary } from '../api';
 import { defaultSaveTo, readOwnerFilter, validOwnerFilter } from '../owners/owners';
 import { SaveToPicker } from '../owners/OwnerControls';
 
@@ -16,7 +17,8 @@ interface Props {
 
 export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Props) {
   // '' = Me, else a club's slug; starts at the club the home page shows.
-  const [target, setTarget] = useState(() => defaultSaveTo(validOwnerFilter(readOwnerFilter(), orgs)));
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const [target, setTarget] = useState(() => defaultSaveTo(validOwnerFilter(readOwnerFilter(me.data?.user?.id), orgs)));
   const [name, setName] = useState(venueName || 'Venue');
 
   function submit(e: FormEvent) {

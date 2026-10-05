@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { defaultSaveTo, matchesOwnerFilter, ownerLabel, OWNER_FILTER_KEY, validOwnerFilter } from '../owners';
+import { defaultSaveTo, matchesOwnerFilter, ownerFilterKey, ownerLabel, readOwnerFilter, validOwnerFilter, writeOwnerFilter } from '../owners';
 import { LayoutsPage } from '../../layouts/LayoutsPage';
 
 const CLUB = { id: 'org1', name: 'ArkLUG', slug: 'arklug', createdAt: 0, myRole: 'member' as const };
@@ -123,7 +123,7 @@ describe('home page', () => {
     expect(screen.queryByText('My Town')).toBeNull();
     expect(screen.getByText('Club Show')).toBeTruthy();
     expect(screen.queryByText('My Garage')).toBeNull();
-    expect(localStorage.getItem(OWNER_FILTER_KEY)).toBe('arklug');
+    expect(localStorage.getItem(ownerFilterKey('u1'))).toBe('arklug');
 
     cleanup();
     renderHome();
@@ -145,5 +145,70 @@ describe('home page', () => {
     const picker = (await screen.findByLabelText('Save to')) as HTMLSelectElement;
     expect(picker.value).toBe('arklug');
     expect([...picker.options].map((o) => o.textContent)).toEqual(['Me', 'ArkLUG']);
+  });
+
+  it('opens on All the first time', async () => {
+    renderHome();
+    await screen.findByText('My Town');
+    expect(filterButton('All').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Club Show')).toBeTruthy();
+    expect(localStorage.getItem(ownerFilterKey('u1'))).toBeNull();
+  });
+
+  it('a club page link shows the club but isn’t remembered as the pick', async () => {
+    renderHome('/?owner=arklug');
+    await screen.findByText('Club Show');
+    expect(filterButton('ArkLUG').getAttribute('aria-pressed')).toBe('true');
+    cleanup();
+    renderHome();
+    await screen.findByText('My Town');
+    expect(filterButton('All').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('a remembered club that’s gone (left or deleted) opens on All and is forgotten', async () => {
+    localStorage.setItem(ownerFilterKey('u1'), 'gone-club');
+    renderHome();
+    await screen.findByText('My Town');
+    await waitFor(() => expect(filterButton('All').getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.getByText('Club Show')).toBeTruthy();
+    await waitFor(() => expect(localStorage.getItem(ownerFilterKey('u1'))).toBe('all'));
+  });
+
+  it('remembers per person: someone else signing in here starts on All', async () => {
+    localStorage.setItem(ownerFilterKey('u2'), 'arklug');
+    localStorage.setItem('cld:ownerFilter', 'arklug'); // an older build's one-per-browser value
+    renderHome();
+    await screen.findByText('My Town');
+    expect(filterButton('All').getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+describe('remembered owner filter storage', () => {
+  it('is keyed by person and server', () => {
+    expect(ownerFilterKey('u1', 'https://a.example')).toBe('cld:ownerFilter:https://a.example:u1');
+    expect(ownerFilterKey('u1', 'https://a.example')).not.toBe(ownerFilterKey('u1', 'https://b.example'));
+    expect(ownerFilterKey('u1')).toBe(`cld:ownerFilter:${window.location.origin}:u1`);
+  });
+
+  it('All when signed out or never picked; reads back a pick', () => {
+    expect(readOwnerFilter(undefined)).toBe('all');
+    expect(readOwnerFilter('u1')).toBe('all');
+    writeOwnerFilter('u1', 'me');
+    expect(readOwnerFilter('u1')).toBe('me');
+    writeOwnerFilter(undefined, 'arklug');
+    expect(localStorage.length).toBe(1);
+  });
+
+  it('blocked storage just means All and nothing remembered', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(readOwnerFilter('u1')).toBe('all');
+    expect(() => writeOwnerFilter('u1', 'me')).not.toThrow();
+    get.mockRestore();
+    set.mockRestore();
   });
 });

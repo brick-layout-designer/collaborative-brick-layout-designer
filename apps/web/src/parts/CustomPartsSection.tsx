@@ -154,7 +154,7 @@ export function CustomPartsSection({
         </ul>
       )}
       {/* It saves to the club being shown, like New layout. */}
-      {uploading && <UploadPartDialog onClose={() => setUploading(false)} />}
+      {uploading && <UploadPartDialog filter={filter} onClose={() => setUploading(false)} />}
       {toCollection && <AddToCollectionDialog target={{ kind: 'part', part: toCollection }} onClose={() => setToCollection(null)} />}
       {sharing && (
         <ShareToCatalogDialog
