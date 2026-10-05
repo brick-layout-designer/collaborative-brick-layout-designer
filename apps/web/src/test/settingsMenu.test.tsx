@@ -75,15 +75,16 @@ function wrap(ui: ReactNode, url = '/') {
 }
 
 const header = (user: Me) => wrap(<AppHeader user={user} />);
-const settingsButton = () => screen.getByRole('button', { name: /^Settings/ });
+const settingsButton = () => screen.getByRole('button', { name: /^Menu/ });
 function openMenu() {
   fireEvent.click(settingsButton());
-  return screen.getByRole('menu', { name: 'Settings' });
+  return screen.getByRole('menu', { name: 'Menu' });
 }
-/** Each group's title and its entries' names and links. */
-function groupsOf(menu: HTMLElement) {
+/** Each group's title and its entries' names and links (Help is checked on its own). */
+function groupsOf(menu: HTMLElement, opts: { withHelp?: boolean } = {}) {
   return within(menu)
     .getAllByRole('group')
+    .filter((g) => opts.withHelp || g.getAttribute('aria-labelledby') !== 'settings-menu-help')
     .map((g) => ({
       title: g.getAttribute('aria-labelledby') && document.getElementById(g.getAttribute('aria-labelledby')!)!.textContent,
       entries: within(g)
@@ -141,6 +142,32 @@ describe('Settings menu by role', () => {
         'Site settings /admin?tab=settings',
       ],
     });
+  });
+
+  it('one menu: Help comes first, with the tours, the help buttons switch and the help pages', () => {
+    header(USER);
+    const [help] = groupsOf(openMenu(), { withHelp: true });
+    expect(help!.title).toBe('Help');
+    expect(help!.entries.some((e) => e.startsWith('Tour: '))).toBe(true);
+    expect(help!.entries).toEqual(
+      expect.arrayContaining(['Turn help buttons off (button)', 'All help topics /help', 'Keyboard shortcuts /help#shortcuts']),
+    );
+    // No separate ? button in the header any more.
+    expect(within(screen.getByRole('banner')).queryByRole('button', { name: 'Help' })).toBeNull();
+  });
+
+  it('on a phone the page links are in the menu too', () => {
+    const before = window.matchMedia;
+    window.matchMedia = ((q: string) =>
+      ({ matches: q.includes('max-width'), media: q, addEventListener: () => {}, removeEventListener: () => {} }) as unknown as MediaQueryList);
+    try {
+      header(USER);
+      const groups = groupsOf(openMenu(), { withHelp: true });
+      expect(groups[0]!.title).toBe('Pages');
+      expect(groups[0]!.entries).toEqual(expect.arrayContaining(['Home /', 'Clubs /orgs', 'About /about']));
+    } finally {
+      window.matchMedia = before;
+    }
   });
 
   it('a member never asks for the review queues', async () => {
