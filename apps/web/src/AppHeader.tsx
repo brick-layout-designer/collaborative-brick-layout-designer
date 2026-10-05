@@ -82,7 +82,7 @@ export function AppHeader({ user }: Props) {
       <nav
         id="site-nav"
         aria-label="Site"
-        className={`${menuOpen ? 'flex' : 'hidden'} w-full flex-col items-stretch gap-1 text-base sm:flex sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:text-sm`}
+        className={`${menuOpen ? 'flex' : 'hidden'} w-full flex-col items-stretch gap-1 text-base sm:ml-auto sm:flex sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:text-sm`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) setMenuOpen(false);
         }}
