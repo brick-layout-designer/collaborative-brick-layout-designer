@@ -5,7 +5,8 @@
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
 import type { ModuleBatch } from './mutations';
-import { connectionSnapReach, freeConnectionsCached, lookupPart } from './snap';
+import { connKey, freeConnectionsCached, lookupPart } from './snap';
+import { holdReach, pickSnap, type SnapCandidate, type SnapSession } from './snapFeel';
 
 /**
  * One batch per non-empty brick layer of a module file, named after the
@@ -28,6 +29,15 @@ export function moduleBatchesFromMap(map: BbmMap): ModuleBatch[] {
   return out;
 }
 
+/** Connection snap for a module drop: reach, the drag's session, Alt, the drop. */
+export interface ModuleSnapOptions {
+  /** Reach in studs (`snapReachStuds`); 0 = no connection snap. */
+  reach: number;
+  session?: SnapSession;
+  bypass?: boolean;
+  final?: boolean;
+}
+
 /**
  * Translation that drops a module onto `target` (studs) like desktop:
  *   1. the module's centroid (mean brick centre) goes under the cursor;
@@ -44,7 +54,8 @@ export function moduleDropTranslation(
   snapStepStuds: number,
   host: BbmMap | null,
   partsByKey: Map<string, PartWire> | null,
-): { dx: number; dy: number } {
+  snap: ModuleSnapOptions = { reach: 0 },
+): { dx: number; dy: number; ringStudX?: number; ringStudY?: number } {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -71,17 +82,26 @@ export function moduleDropTranslation(
     tx = Math.round((tx + offX) / snapStepStuds) * snapStepStuds - offX;
     ty = Math.round((ty + offY) / snapStepStuds) * snapStepStuds - offY;
   }
-  let dx = tx - cx;
-  let dy = ty - cy;
+  const dx = tx - cx;
+  const dy = ty - cy;
 
-  if (host && partsByKey) {
+  const reach = snap.bypass ? 0 : snap.reach;
+  if (host && partsByKey && reach > 0) {
     const targets = freeConnectionsCached(host, partsByKey);
+    const limit = holdReach(reach);
+    const limitSq = limit * limit;
+    interface Pair extends SnapCandidate {
+      ex: number;
+      ey: number;
+      tx: number;
+      ty: number;
+    }
+    const pairs: Pair[] = [];
     if (targets.length > 0) {
-      const reach = connectionSnapReach(snapStepStuds);
-      let bestSq = reach * reach;
-      let best: { x: number; y: number } | null = null;
+      let brickIndex = 0;
       for (const batch of batches) {
         for (const b of batch.bricks) {
+          const bi = brickIndex++;
           const meta = lookupPart(partsByKey, b.partNumber);
           if (!meta || meta.connections.length === 0) continue;
           const a = b.displayArea;
@@ -90,7 +110,8 @@ export function moduleDropTranslation(
           const t = ((b.orientation ?? 0) * Math.PI) / 180;
           const cos = Math.cos(t);
           const sin = Math.sin(t);
-          for (const c of meta.connections) {
+          for (let ci = 0; ci < meta.connections.length; ci++) {
+            const c = meta.connections[ci]!;
             if (!c.type) continue;
             const wx = bx + c.x * cos - c.y * sin;
             const wy = by + c.x * sin + c.y * cos;
@@ -99,19 +120,28 @@ export function moduleDropTranslation(
               const ex = tc.x - wx;
               const ey = tc.y - wy;
               const sq = ex * ex + ey * ey;
-              if (sq < bestSq) {
-                bestSq = sq;
-                best = { x: ex, y: ey };
-              }
+              if (sq > limitSq) continue;
+              pairs.push({
+                movingKey: `module#${bi}#${ci}`,
+                targetKey: connKey(tc.brickId, tc.index),
+                dist: Math.sqrt(sq),
+                mouseDist: Math.hypot(wx - target.x, wy - target.y),
+                ex,
+                ey,
+                tx: tc.x,
+                ty: tc.y,
+              });
             }
           }
         }
       }
-      if (best) {
-        dx += best.x;
-        dy += best.y;
-      }
     }
+    const best = snap.session
+      ? snap.session.step(pairs, reach, { ...(snap.final ? { final: true } : {}) })
+      : pickSnap(pairs, null, reach);
+    if (best) return { dx: dx + best.ex, dy: dy + best.ey, ringStudX: best.tx, ringStudY: best.ty };
+  } else if (snap.session) {
+    snap.session.lock = null;
   }
   return { dx, dy };
 }

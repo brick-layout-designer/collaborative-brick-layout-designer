@@ -69,7 +69,7 @@ describe('render parity: painted areas', () => {
 });
 
 import SEL from '../../../../packages/bbm/tests/fixtures/render-parity/selection.json';
-import { SELECTION, rulerHaloWidth } from '../editor/render/selectionStyle';
+import { SELECTION, SNAP_MARKS, rulerHaloWidth } from '../editor/render/selectionStyle';
 import { selectionHalo } from '../editor/render/BrickLayer';
 
 describe('render parity: selection', () => {
@@ -94,5 +94,10 @@ describe('render parity: selection', () => {
     expect(SELECTION.handleFill).toBe(SEL.ruler.handle.fill);
     expect(SELECTION.handleStroke).toBe(SEL.ruler.handle.stroke);
     expect(SELECTION.handleStrokeWidth).toBe(SEL.ruler.handle.strokeWidth);
+  });
+
+  it('marks a connection snap as the shared description says', () => {
+    const { about: _about, ...marks } = SEL.snap;
+    expect(SNAP_MARKS).toEqual(marks);
   });
 });

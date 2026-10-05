@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../../api';
 import {
-  connectionSnapReach,
   liveDragSnap,
   nearestConnectionIndex,
   rotationAlignedCentre,
@@ -10,6 +9,7 @@ import {
   snapToAnchorBrick,
   type PlaceCandidate,
 } from '../snap';
+import { SnapSession } from '../snapFeel';
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -87,20 +87,6 @@ function brickLayerMap(bricks: import('@cld/model').Brick[]): BbmMap {
   } as unknown as BbmMap;
 }
 
-// ---- connectionSnapReach ---------------------------------------------------
-
-describe('connectionSnapReach', () => {
-  it('returns step + 2 when step > 0', () => {
-    expect(connectionSnapReach(1)).toBe(3);
-    expect(connectionSnapReach(8)).toBe(10);
-    expect(connectionSnapReach(32)).toBe(34);
-  });
-
-  it('returns 4 as fallback when step is 0', () => {
-    expect(connectionSnapReach(0)).toBe(4);
-  });
-});
-
 // ---- snapPlacement — grid snap --------------------------------------------
 
 describe('snapPlacement — grid snap', () => {
@@ -114,7 +100,7 @@ describe('snapPlacement — grid snap', () => {
       orientation: 0,
       width: 8,
       height: 8,
-      snapStepStuds: 1,
+      snapStepStuds: 1, reach: 3,
     };
     const result = snapPlacement(candidate, emptyMap(), partsByKey);
     expect(result.snappedToConnection).toBe(false);
@@ -131,7 +117,7 @@ describe('snapPlacement — grid snap', () => {
       orientation: 0,
       width: 8,
       height: 8,
-      snapStepStuds: 0,
+      snapStepStuds: 0, reach: 4,
     };
     const result = snapPlacement(candidate, emptyMap(), partsByKey);
     expect(result.centreX).toBe(3.7);
@@ -146,7 +132,7 @@ describe('snapPlacement — grid snap', () => {
       orientation: 0,
       width: 8,
       height: 8,
-      snapStepStuds: 8,
+      snapStepStuds: 8, reach: 10,
     };
     const result = snapPlacement(candidate, emptyMap(), partsByKey);
     expect(result.centreX).toBeCloseTo(20);
@@ -177,7 +163,7 @@ describe('snapPlacement — connection snap', () => {
       orientation: 0,
       width: 8,
       height: 8,
-      snapStepStuds: 1,
+      snapStepStuds: 1, reach: 3,
     };
     const result = snapPlacement(candidate, map, partsByKey);
     expect(result.snappedToConnection).toBe(true);
@@ -208,7 +194,7 @@ describe('snapPlacement — connection snap', () => {
       orientation: 0,
       width: 8,
       height: 8,
-      snapStepStuds: 1,
+      snapStepStuds: 1, reach: 3,
     };
     const result = snapPlacement(candidate, map, partsByKey);
     // Linked conn must be ignored — falls back to grid snap.
@@ -224,7 +210,7 @@ describe('snapPlacement — connection snap', () => {
       orientation: 0,
       width: 8,
       height: 8,
-      snapStepStuds: 1,
+      snapStepStuds: 1, reach: 3,
     };
     const result = snapPlacement(candidate, emptyMap(), partsByKey);
     // Falls through to grid snap, no connection snap possible.
@@ -347,7 +333,7 @@ describe('liveDragSnap', () => {
         mouseStudX: 3,
         mouseStudY: 7,
         orientation: 0,
-        snapStepStuds: 1,
+        snapStepStuds: 1, reach: 3,
       },
       emptyMap(),
       partsByKey,
@@ -378,7 +364,7 @@ describe('liveDragSnap', () => {
         mouseStudX: 4,
         mouseStudY: 4,
         orientation: 0,
-        snapStepStuds: 0,
+        snapStepStuds: 0, reach: 4,
       },
       map,
       partsByKey,
@@ -410,7 +396,7 @@ describe('liveDragSnap', () => {
         mouseStudX: 11,
         mouseStudY: 4,
         orientation: 0,
-        snapStepStuds: 1,
+        snapStepStuds: 1, reach: 3,
       },
       map,
       partsByKey,
@@ -433,7 +419,7 @@ describe('liveDragSnap', () => {
         mouseStudX: 3,
         mouseStudY: 2,
         orientation: 0,
-        snapStepStuds: 0,
+        snapStepStuds: 0, reach: 4,
       },
       emptyMap(),
       partsByKey,
@@ -461,7 +447,7 @@ describe('liveDragSnap — desktop parity', () => {
       {
         part: oneEnd, movingId: 'd', movingLinks: [],
         centreX: 16, centreY: 1, mouseStudX: 16, mouseStudY: 5,
-        orientation: 90, snapStepStuds: 1,
+        orientation: 90, snapStepStuds: 1, reach: 3,
       },
       map, partsByKey,
     );
@@ -487,7 +473,7 @@ describe('liveDragSnap — desktop parity', () => {
         part: noConn, movingId: 'lead', movingLinks: [],
         siblings: [{ id: 'sib', part: sibPart, links: [], offsetX: 10, offsetY: 0, orientation: 0 }],
         centreX: 10.5, centreY: 4.5, mouseStudX: 10.5, mouseStudY: 4.5,
-        orientation: 0, snapStepStuds: 1,
+        orientation: 0, snapStepStuds: 1, reach: 3,
       },
       map, partsByKey,
     );
@@ -506,7 +492,7 @@ describe('liveDragSnap — desktop parity', () => {
         part: track, movingId: 'lead', movingLinks: [],
         siblings: [{ id: 'sib', part: track, links: [], offsetX: 8, offsetY: 0, orientation: 0 }],
         centreX: 4.3, centreY: 4, mouseStudX: 4, mouseStudY: 4,
-        orientation: 0, snapStepStuds: 0,
+        orientation: 0, snapStepStuds: 0, reach: 4,
       },
       map, partsByKey,
     );
@@ -519,7 +505,7 @@ describe('liveDragSnap — desktop parity', () => {
       {
         part, movingId: 'd', movingLinks: [],
         centreX: 1.8, centreY: 2.4, width: 3, height: 5,
-        mouseStudX: 0, mouseStudY: 0, orientation: 0, snapStepStuds: 1,
+        mouseStudX: 0, mouseStudY: 0, orientation: 0, snapStepStuds: 1, reach: 3,
       },
       emptyMap(), new Map(),
     );
@@ -587,20 +573,20 @@ describe('liveDragSnap — grab anchor lead', () => {
   };
 
   it('without a lead the smallest translation wins (left end)', () => {
-    const r = liveDragSnap({ ...base, snapStepStuds: 8 }, map, partsByKey);
+    const r = liveDragSnap({ ...base, snapStepStuds: 8, reach: 10 }, map, partsByKey);
     expect(r.snappedToConnection).toBe(true);
     expect(r.centreX).toBeCloseTo(0);
   });
 
   it('the grabbed connection leads when it has a target in reach', () => {
-    const r = liveDragSnap({ ...base, snapStepStuds: 8, leadConnIndex: 1 }, map, partsByKey);
+    const r = liveDragSnap({ ...base, snapStepStuds: 8, reach: 10, leadConnIndex: 1 }, map, partsByKey);
     expect(r.snappedToConnection).toBe(true);
     expect(r.ringStudX).toBeCloseTo(10);
     expect(r.centreX).toBeCloseTo(6);
   });
 
   it('falls back to the other connections when the lead has nothing in reach', () => {
-    const r = liveDragSnap({ ...base, snapStepStuds: 1, leadConnIndex: 1 }, map, partsByKey);
+    const r = liveDragSnap({ ...base, snapStepStuds: 1, reach: 3, leadConnIndex: 1 }, map, partsByKey);
     expect(r.snappedToConnection).toBe(true);
     expect(r.ringStudX).toBeCloseTo(-4);
     expect(r.centreX).toBeCloseTo(0);
@@ -609,11 +595,120 @@ describe('liveDragSnap — grab anchor lead', () => {
   it('is ignored for a multi-brick drag', () => {
     const r = liveDragSnap(
       {
-        ...base, snapStepStuds: 8, leadConnIndex: 1,
+        ...base, snapStepStuds: 8, reach: 10, leadConnIndex: 1,
         siblings: [{ id: 'sib', part: undefined, links: [], offsetX: 0, offsetY: 40, orientation: 0 }],
       },
       map, partsByKey,
     );
     expect(r.ringStudX).toBeCloseTo(-4);
+  });
+});
+
+// ---- calm snapping: hold, Alt, speed gate, the drop -------------------------
+
+describe('liveDragSnap — calm snapping', () => {
+  const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+  const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+  const partsByKey = new Map<string, PartWire>([['test.0', track]]);
+  // A: centre (-8,4); its free right end is at (-4,4). The dragged track's
+  // left end sits 4 studs left of its centre, so centre x = 0 joins them.
+  const map = brickLayerMap([makeBrick({ id: 'a', x: -12, y: 0, w: 8, h: 8 })]);
+  const at = (centreX: number, extra: Partial<Parameters<typeof liveDragSnap>[0]> = {}) =>
+    liveDragSnap(
+      {
+        part: track, movingId: 'd', movingLinks: [],
+        centreX, centreY: 4, mouseStudX: centreX, mouseStudY: 4, orientation: 0,
+        snapStepStuds: 0, reach: 1, ...extra,
+      },
+      map, partsByKey,
+    );
+
+  it('snaps within the reach and not beyond it', () => {
+    expect(at(0.9).snappedToConnection).toBe(true);
+    expect(at(0.9).centreX).toBeCloseTo(0);
+    expect(at(1.1).snappedToConnection).toBe(false);
+    expect(at(1.1).centreX).toBeCloseTo(1.1);
+  });
+
+  it('holds on inside 1.6x the reach and lets go past it', () => {
+    const session = new SnapSession();
+    expect(at(0.9, { session }).snappedToConnection).toBe(true);
+    const held = at(1.5, { session });
+    expect(held.snappedToConnection).toBe(true);
+    expect(held.centreX).toBeCloseTo(0);
+    expect(held.ringStudX).toBeCloseTo(-4);
+    expect(at(1.7, { session }).snappedToConnection).toBe(false);
+    expect(session.lock).toBeNull();
+    // Coming back in, it waits for the plain reach again.
+    expect(at(1.5, { session }).snappedToConnection).toBe(false);
+    expect(at(1.0, { session }).snappedToConnection).toBe(true);
+  });
+
+  it('Alt places without connection snap, keeping the grid', () => {
+    const r = at(0.6, { bypass: true, snapStepStuds: 1 });
+    expect(r.snappedToConnection).toBe(false);
+    expect(r.centreX).toBeCloseTo(1);
+    expect(at(0.6, { bypass: true }).centreX).toBeCloseTo(0.6);
+  });
+
+  it('a fast drag starts no snap until the drop, which snaps at the normal reach', () => {
+    const session = new SnapSession();
+    session.sample(0, 0, 0);
+    session.sample(60, 0, 10);
+    session.sample(120, 0, 20);
+    expect(at(0.5, { session }).snappedToConnection).toBe(false);
+    const drop = at(0.5, { session, final: true });
+    expect(drop.snappedToConnection).toBe(true);
+    expect(drop.centreX).toBeCloseTo(0);
+    // The drop's reach is the normal one: no further.
+    const far = new SnapSession();
+    expect(at(1.2, { session: far, final: true }).snappedToConnection).toBe(false);
+  });
+
+  it('no reach (Snap strength off) never snaps', () => {
+    expect(at(0.1, { reach: 0 }).snappedToConnection).toBe(false);
+  });
+
+  it('shows the moving connection: the grabbed end, or the joined one', () => {
+    const free = at(3, { leadConnIndex: 1 });
+    expect(free.snappedToConnection).toBe(false);
+    expect(free.movingStudX).toBeCloseTo(7);
+    expect(free.movingStudY).toBeCloseTo(4);
+    const joined = at(0.5);
+    expect(joined.movingStudX).toBeCloseTo(-4);
+    expect(joined.ringStudX).toBeCloseTo(-4);
+  });
+});
+
+describe('snapPlacement — calm snapping', () => {
+  const partWithConn = makePart({ connections: [{ type: 'male', x: 4, y: 0, angle: 0, electricPlug: 0 }] });
+  const partsByKey = new Map<string, PartWire>([['test.0', partWithConn]]);
+  const map = brickLayerMap([makeBrick({ x: -4, y: -4, w: 8, h: 8 })]);
+  const newPart = makePart({ connections: [{ type: 'male', x: -4, y: 0, angle: 180, electricPlug: 0 }] });
+  // The new part's connection is 4 studs left of its centre; centre 8 joins.
+  const place = (centreX: number, extra: Partial<PlaceCandidate> = {}) =>
+    snapPlacement(
+      { part: newPart, centreX, centreY: 0, orientation: 0, width: 8, height: 8, snapStepStuds: 0, reach: 1, ...extra },
+      map,
+      partsByKey,
+    );
+
+  it('reaches only as far as the reach, holds with a session, and gives the ring', () => {
+    expect(place(9.2).snappedToConnection).toBe(false);
+    const session = new SnapSession();
+    const first = place(8.8, { session });
+    expect(first.snappedToConnection).toBe(true);
+    expect(first.ringStudX).toBeCloseTo(4);
+    expect(place(9.5, { session }).centreX).toBeCloseTo(8);
+    expect(place(9.7, { session }).snappedToConnection).toBe(false);
+  });
+
+  it('Alt and a fast drag hold back; the drop snaps', () => {
+    expect(place(8.5, { bypass: true }).snappedToConnection).toBe(false);
+    const session = new SnapSession();
+    session.sample(0, 0, 0);
+    session.sample(100, 0, 10);
+    expect(place(8.5, { session }).snappedToConnection).toBe(false);
+    expect(place(8.5, { session, final: true }).snappedToConnection).toBe(true);
   });
 });

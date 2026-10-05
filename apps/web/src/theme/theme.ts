@@ -4,6 +4,7 @@
 // loads so a dark-theme user never sees a flash of light.
 
 import { ACCENTS, ACCENT_IDS, LARGE_TEXT_SCALE, NEUTRALS, type AccentId, type Mode } from './tokens';
+import { isSnapStrength, type SnapStrength } from '../editor/snapFeel';
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
 export const THEME_CHOICES: readonly ThemeChoice[] = ['light', 'dark', 'system'];
@@ -18,6 +19,8 @@ export interface Preferences {
   toursSeen: string[];
   /** Picture size in the editor's parts and module lists (32–160 px); absent until set. */
   partsIconSize?: number;
+  /** Connection Snap strength (off / gentle / strong); absent until set, which means gentle. */
+  connectionSnap?: SnapStrength;
 }
 
 export const PARTS_ICON_MIN = 32;
@@ -106,6 +109,7 @@ export function sanitizePreferences(input: unknown): Preferences {
   if (typeof o.partsIconSize === 'number' && Number.isFinite(o.partsIconSize)) {
     out.partsIconSize = Math.round(Math.min(PARTS_ICON_MAX, Math.max(PARTS_ICON_MIN, o.partsIconSize)));
   }
+  if (isSnapStrength(o.connectionSnap)) out.connectionSnap = o.connectionSnap;
   return out;
 }
 

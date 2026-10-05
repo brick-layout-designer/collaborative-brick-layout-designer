@@ -21,7 +21,9 @@ import { studToPx } from './coords';
 import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
-import { liveDragSnap, nearestConnectionIndex } from '../snap';
+import { liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
+import { SnapSession, snapBypassed } from '../snapFeel';
+import { liveSnapReach } from '../liveSnapReach';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
@@ -29,6 +31,9 @@ import { drawOrder, pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
 import { SELECTION } from './selectionStyle';
 import { isTouchEvent, tapGuard } from '../touchGesture';
+
+/** How long a fast drag must be still before it snaps (ms). */
+const SETTLE_MS = 120;
 
 /** Konva's double-click window; the second press of a double-click starts a flex move. */
 const DOUBLE_CLICK_MS = 400;
@@ -403,8 +408,15 @@ const BrickGlyph = memo(function BrickGlyph({
     | null
   >(null);
 
+  /** This drag's snap state (held join, pointer speed). */
+  const snapSessionRef = useRef<SnapSession | null>(null);
+  /** The leader's centre where the pointer has it, before any snap (studs). */
+  const rawCentreRef = useRef<{ x: number; y: number } | null>(null);
+
   function handleDragStart(e: KonvaEventObject<DragEvent>) {
     snapOrientRef.current = null;
+    snapSessionRef.current = new SnapSession();
+    rawCentreRef.current = null;
     if (isViewer) return;
     if (tool !== 'select') return;
     const map = getMap();
@@ -464,12 +476,87 @@ const BrickGlyph = memo(function BrickGlyph({
     if (tool !== 'select') return;
 
     const node = e.target;
-    const centreStudX = node.x() / studToPx();
-    const centreStudY = node.y() / studToPx();
+    // Konva has just put the node where the pointer has it.
+    rawCentreRef.current = { x: node.x() / studToPx(), y: node.y() / studToPx() };
+    const ptr = node.getStage()?.getPointerPosition();
+    if (ptr) {
+      if (!snapSessionRef.current) snapSessionRef.current = new SnapSession();
+      snapSessionRef.current.sample(ptr.x, ptr.y, performance.now());
+    }
+    dragFrame(node, snapBypassed(e.evt));
+  }
+
+  /** Re-runs the snap once a fast drag stops dead (no more moves come). */
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function clearSettle() {
+    if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = null;
+  }
+
+  /** One drag frame: snap from the raw centre, then the ring, hint and cursor. */
+  function dragFrame(node: Konva.Node, bypass: boolean) {
+    const raw = rawCentreRef.current;
+    if (!raw) return;
     const stage = node.getStage();
     const ptr = stage?.getPointerPosition();
-    let mouseStudX = centreStudX;
-    let mouseStudY = centreStudY;
+    const result = snapLeader(node, raw, bypass, false);
+    // Too fast to snap: if the pointer stops here, snap shortly after.
+    clearSettle();
+    const session = snapSessionRef.current;
+    if (session && !result.snappedToConnection && session.meter.isFast()) {
+      settleTimerRef.current = setTimeout(() => {
+        settleTimerRef.current = null;
+        if (snapSessionRef.current !== session || !ptr) return;
+        // The pointer is still where it was: a still sample slows the speed.
+        session.sample(ptr.x, ptr.y, performance.now());
+        dragFrame(node, bypass);
+      }, SETTLE_MS);
+    }
+
+    if (result.snappedToConnection && result.ringStudX !== null) {
+      useEditorStore.getState().setLiveSnap({ studX: result.ringStudX, studY: result.ringStudY! });
+    } else {
+      useEditorStore.getState().setLiveSnap(null);
+    }
+    useEditorStore
+      .getState()
+      .setSnapMoving(result.movingStudX !== null ? { studX: result.movingStudX, studY: result.movingStudY! } : null);
+
+    // Status-bar snap diagnostic, as desktop shows during a live drag
+    // (MapViewDrag.cpp). Only written when the text changes so a drag
+    // doesn't hit the store every frame.
+    const hint = result.snappedToConnection
+      ? `Connection snap active (${result.movingConnCount} candidate conn(s))`
+      : bypass
+        ? 'Connection snap: off while Alt is held'
+        : result.movingConnCount === 0
+          ? 'Connection snap: no free connections in selection'
+          : `Connection snap: ${result.movingConnCount} moving conn(s), no target in reach`;
+    if (hint !== snapHintRef.current) {
+      snapHintRef.current = hint;
+      useEditorStore.getState().showStatusMessage(hint, 1500);
+    }
+
+    // Drag-out-to-delete cursor hint — port of MapView.cpp:584-587.
+    const container = stage?.container();
+    if (container) {
+      const stageW = stage!.width();
+      const stageH = stage!.height();
+      const out = !ptr || ptr.x < 0 || ptr.y < 0 || ptr.x >= stageW || ptr.y >= stageH;
+      container.style.cursor = out ? 'not-allowed' : '';
+    }
+  }
+
+  /**
+   * Snap the leader from its raw (pointer) centre and move it, the rest
+   * of the selection and any riding rulers / labels to match. `final` is
+   * the drop: one last snap with the speed gate off.
+   */
+  function snapLeader(node: Konva.Node, raw: { x: number; y: number }, bypass: boolean, final: boolean): DragSnapResult {
+    const stage = node.getStage();
+    const ptr = stage?.getPointerPosition();
+    let mouseStudX = raw.x;
+    let mouseStudY = raw.y;
     if (stage && ptr) {
       const t = stage.getAbsoluteTransform().copy().invert();
       const scenePos = t.point(ptr);
@@ -479,6 +566,7 @@ const BrickGlyph = memo(function BrickGlyph({
 
     const dragStart = dragStartRef.current;
     const isMulti = !!dragStart && dragStart.siblings.length > 0;
+    const session = snapSessionRef.current;
 
     const result = liveDragSnap(
       {
@@ -497,8 +585,8 @@ const BrickGlyph = memo(function BrickGlyph({
             }
           : {}),
         movingLinks: brick.connexions,
-        centreX: centreStudX,
-        centreY: centreStudY,
+        centreX: raw.x,
+        centreY: raw.y,
         width: brick.displayArea.width,
         height: brick.displayArea.height,
         pivotOffsetX: pivotOff.x,
@@ -507,6 +595,10 @@ const BrickGlyph = memo(function BrickGlyph({
         mouseStudY,
         orientation: brick.orientation,
         snapStepStuds: useEditorStore.getState().snapStepStuds,
+        reach: liveSnapReach(),
+        ...(session ? { session } : {}),
+        ...(bypass ? { bypass: true } : {}),
+        ...(final ? { final: true } : {}),
         ...(!isMulti && grabConnRef.current >= 0 ? { leadConnIndex: grabConnRef.current } : {}),
       },
       getMap(),
@@ -548,38 +640,22 @@ const BrickGlyph = memo(function BrickGlyph({
       shiftNodes(annoNodesRef.current, (result.centreX - startX) * studToPx(), (result.centreY - startY) * studToPx());
     }
 
-    if (result.snappedToConnection && result.ringStudX !== null) {
-      useEditorStore.getState().setLiveSnap({ studX: result.ringStudX, studY: result.ringStudY! });
-    } else {
-      useEditorStore.getState().setLiveSnap(null);
-    }
-
-    // Status-bar snap diagnostic, as desktop shows during a live drag
-    // (MapViewDrag.cpp:352-376). Only written when the text changes so a
-    // drag doesn't hit the store every frame.
-    const hint = result.snappedToConnection
-      ? `Connection snap active (${result.movingConnCount} candidate conn(s))`
-      : result.movingConnCount === 0
-        ? 'Connection snap: no free connections in selection'
-        : `Connection snap: ${result.movingConnCount} moving conn(s), no target in reach`;
-    if (hint !== snapHintRef.current) {
-      snapHintRef.current = hint;
-      useEditorStore.getState().showStatusMessage(hint, 1500);
-    }
-
-    // Drag-out-to-delete cursor hint — port of MapView.cpp:584-587.
-    const container = stage?.container();
-    if (container) {
-      const stageW = stage!.width();
-      const stageH = stage!.height();
-      const out = !ptr || ptr.x < 0 || ptr.y < 0 || ptr.x >= stageW || ptr.y >= stageH;
-      container.style.cursor = out ? 'not-allowed' : '';
-    }
+    return result;
   }
 
   function handleDragEnd(e: KonvaEventObject<DragEvent>) {
-    const wasSnapped = useEditorStore.getState().liveSnap !== null;
+    // The drop: one last snap at the normal reach, so a join the fast
+    // drag held back happens now (and a held one stays).
+    let finalSnap: DragSnapResult | null = null;
+    if (!isViewer && tool === 'select' && rawCentreRef.current) {
+      finalSnap = snapLeader(e.target, rawCentreRef.current, snapBypassed(e.evt), true);
+    }
+    const wasSnapped = finalSnap ? finalSnap.snappedToConnection : useEditorStore.getState().liveSnap !== null;
+    clearSettle();
+    snapSessionRef.current = null;
+    rawCentreRef.current = null;
     useEditorStore.getState().setLiveSnap(null);
+    useEditorStore.getState().setSnapMoving(null);
     snapHintRef.current = null;
     const container = e.target.getStage()?.container();
     if (container) container.style.cursor = '';

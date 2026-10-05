@@ -143,7 +143,7 @@ describe('snapping and picking from the pivot', () => {
 
   it('the grid rounds the box corner, not the pivot', () => {
     const r = snapPlacement(
-      { part: { ...HULL, connections: [] }, centreX: 10.3, centreY: 5.2, orientation: 0, width: 2, height: 2, pivotOffsetX: 1, pivotOffsetY: 0, snapStepStuds: 1 },
+      { part: { ...HULL, connections: [] }, centreX: 10.3, centreY: 5.2, orientation: 0, width: 2, height: 2, pivotOffsetX: 1, pivotOffsetY: 0, snapStepStuds: 1, reach: 3 },
       mapOf([]),
       parts,
     );

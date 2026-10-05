@@ -4,6 +4,7 @@
 // purely local.
 
 import { create } from 'zustand';
+import { DEFAULT_SNAP_STRENGTH, type SnapStrength } from './snapFeel';
 
 export type Tool =
   | 'select'
@@ -107,6 +108,18 @@ export interface EditorState {
    * SelectionOverlay::setSnapState — SelectionOverlay.cpp:63-68).
    */
   liveSnap: { studX: number; studY: number } | null;
+  /**
+   * The moving connection that joins (or would join) during a drag, in
+   * world studs: drawn as a small dot so people see which end will
+   * connect. Null when not dragging.
+   */
+  snapMoving: { studX: number; studY: number } | null;
+  /**
+   * Snap strength (account preference `connectionSnap`): off, gentle or
+   * strong. Mirrored here from the preferences so drag handlers read it
+   * without a React context.
+   */
+  connectionSnap: SnapStrength;
   /**
    * Paint colour as AARRGGBB hex (uppercase, no leading "#"). Drives
    * the Paint Area tool. Defaults to a 50%-alpha green similar to the
@@ -227,6 +240,8 @@ export interface EditorState {
   setSnapStep: (studs: number) => void;
   setRotationStep: (degrees: number) => void;
   setLiveSnap: (p: { studX: number; studY: number } | null) => void;
+  setSnapMoving: (p: { studX: number; studY: number } | null) => void;
+  setConnectionSnap: (v: SnapStrength) => void;
   setPaintColor: (argbHex: string) => void;
   setHudMouse: (studX: number | null, studY: number | null) => void;
   setShowConnectionPoints: (v: boolean) => void;
@@ -295,6 +310,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     return Number.isFinite(n) && n > 0 ? n : 90;
   })(),
   liveSnap: null,
+  snapMoving: null,
+  connectionSnap: DEFAULT_SNAP_STRENGTH,
   hudMapWidthStuds: null,
   hudMapHeightStuds: null,
   paintColor: (() => {
@@ -487,6 +504,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     set({ rotationStepDegrees: v });
   },
   setLiveSnap: (liveSnap) => set({ liveSnap }),
+  setSnapMoving: (snapMoving) => set({ snapMoving }),
+  setConnectionSnap: (connectionSnap) => set({ connectionSnap }),
   setSelection: (selection) => set({ selection, annoSelection: EMPTY_ANNO }),
   setMixedSelection: (selection, annoSelection) => set({ selection, annoSelection }),
   toggleSelected: (id, additive) =>
