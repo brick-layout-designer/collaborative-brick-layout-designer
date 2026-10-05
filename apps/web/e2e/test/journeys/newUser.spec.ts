@@ -96,7 +96,10 @@ test('a new member signs up and makes, saves and shares a first layout', async (
   await expect(welcome).toBeVisible({ timeout: 15000 });
   // Greeted by the name they gave, never the email address, and not asked again.
   await expect(welcome).not.toContainText('@');
-  await expect(page.getByRole('link', { name: NAME })).toBeVisible();
+  // The Settings menu says who's signed in.
+  await page.getByRole('banner').getByRole('button', { name: /^Settings/ }).click();
+  await expect(page.getByTestId('settings-menu-who')).toContainText(NAME);
+  await page.keyboard.press('Escape');
   await expect(page.getByTestId('name-prompt')).toHaveCount(0);
   await welcome.getByRole('button', { name: new RegExp(catalogue.welcome.actions.tour.label) }).click();
   await expect(page).toHaveURL(/\/editor\//);
@@ -218,7 +221,9 @@ test('an account named by its email is asked for a name, and its club never sees
   await ask.getByLabel('Your name (shown to others)').fill(`Pat Plates ${ts}`);
   await ask.getByRole('button', { name: 'Save name' }).click();
   await expect(ask).toHaveCount(0);
-  await expect(pat.getByRole('link', { name: `Pat Plates ${ts}` })).toBeVisible();
+  await pat.getByRole('banner').getByRole('button', { name: /^Settings/ }).click();
+  await expect(pat.getByTestId('settings-menu-who')).toContainText(`Pat Plates ${ts}`);
+  await pat.keyboard.press('Escape');
 
   // Ada sees the new name without reloading.
   await expect(page.getByRole('combobox', { name: `Role for Pat Plates ${ts}` })).toBeVisible({ timeout: 15000 });

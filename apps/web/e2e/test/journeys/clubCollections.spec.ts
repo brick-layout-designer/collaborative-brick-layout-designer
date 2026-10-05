@@ -23,7 +23,7 @@
 //      page, live. A new title waits for review, shown old beside new.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, fromSettingsMenu } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -149,7 +149,7 @@ test('a club’s private collection: members see it live and Add all, outsiders 
     await mel.page.goto(url);
     await streamOpen(mel.page);
     await mod.page.goto('/');
-    await mod.page.getByRole('link', { name: 'Moderation' }).click();
+    await fromSettingsMenu(mod.page, /^Moderation/);
     const row = mod.page.getByTestId('moderated-club-collection').filter({ hasText: TITLE });
     await expect(row).toContainText(`ArkLUG ${tag}`);
     mod.page.once('dialog', (d) => void d.accept('Spam'));
@@ -231,7 +231,7 @@ test('Add to a collection… from Home and the Catalog; made public, its text an
 
     // The moderator approves the text: Vic sees it with the catalog module only.
     await mod.page.goto('/');
-    await mod.page.getByRole('link', { name: 'Moderation' }).click();
+    await fromSettingsMenu(mod.page, /^Moderation/);
     const entry = mod.page.getByTestId('moderation-collection').filter({ hasText: TITLE });
     await expect(entry.getByTestId('review-new')).toContainText(TITLE);
     await expect(entry.getByTestId('review-old')).toHaveCount(0);

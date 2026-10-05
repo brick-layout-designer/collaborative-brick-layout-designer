@@ -12,7 +12,7 @@
 //      her next share waits for the site's moderators again.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, fromSettingsMenu } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -56,7 +56,7 @@ test('a trusted club reviews its members’ shares itself; untrusted, the site r
 
     // The moderator trusts the club from Moderation.
     await mod.page.goto('/');
-    await mod.page.getByRole('link', { name: 'Moderation' }).click();
+    await fromSettingsMenu(mod.page, /^Moderation/);
     await mod.page.getByLabel('Find a club to trust').fill(String(ts));
     await mod.page.getByRole('list', { name: 'Clubs found' }).getByRole('button', { name: `Trust ${CLUB}` }).click();
     await expect(mod.page.getByTestId('trusted-club').filter({ hasText: CLUB })).toContainText('Trusted club');

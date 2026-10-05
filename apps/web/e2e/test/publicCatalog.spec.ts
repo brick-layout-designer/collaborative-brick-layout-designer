@@ -6,7 +6,7 @@
 // added from the editor's Parts panel. With the catalogs off nothing shows.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../helpers';
+import { ensureUser, signIn, fromSettingsMenu } from '../helpers';
 import { makeGlobalAdmin } from '../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -72,7 +72,7 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   // The admin turns the module catalog on and makes a moderator, in Admin.
   await as(page, ADMIN, 'Site Admin');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'settings' }).click();
+  await page.getByRole('button', { name: 'settings', exact: true }).click();
   await page.getByLabel('Public module catalog').click();
   await expect(page.getByLabel('Public module catalog')).toBeChecked();
   await expect(page.getByLabel('Moderators approve each one')).toBeChecked();
@@ -113,7 +113,7 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   // The moderator sees who sent it and approves it.
   await as(page, MOD, 'Mo Derator');
   await page.goto('/');
-  await page.getByRole('link', { name: 'Moderation' }).click();
+  await fromSettingsMenu(page, /^Moderation/);
   const entry = page.getByTestId('moderation-entry').filter({ hasText: 'Coal stage' });
   await expect(entry).toContainText(OWNER);
   await expect(page.getByRole('button', { name: 'users' })).toHaveCount(0);
