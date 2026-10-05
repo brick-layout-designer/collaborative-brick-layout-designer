@@ -24,6 +24,7 @@ import {
   rotateModuleBricks,
 } from './mutations';
 import { createModuleFromSelection } from './moduleActions';
+import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 
 interface Props {
   doc: Y.Doc;
@@ -330,9 +331,17 @@ function ModuleRow({
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
-            onClick={() => {
+            onClick={async () => {
               setCtxMenu(null);
-              if (!confirm(`Ungroup "${module.name}"? It leaves the module list; its parts stay where they are.`)) return;
+              const ok = await askConfirm({
+                title: `Ungroup “${module.name}”?`,
+                removes: 'It leaves the module list.',
+                keeps: 'Its parts stay where they are.',
+                undo: 'You can undo this with Ctrl+Z.',
+                confirmLabel: 'Ungroup',
+                danger: false,
+              });
+              if (!ok) return;
               flattenSidecarModule(doc, module.id);
             }}
           >
@@ -341,9 +350,14 @@ function ModuleRow({
           <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
-            onClick={() => {
+            onClick={async () => {
               setCtxMenu(null);
-              if (!confirm(`Delete module "${module.name}"? Its parts stay on the map.`)) return;
+              const ok = await confirmDelete(module.name, {
+                removes: 'The module group leaves this layout’s module list.',
+                keeps: 'Its parts stay on the map, and the Module library doesn’t change.',
+                undoable: 'You can undo this with Ctrl+Z.',
+              });
+              if (!ok) return;
               deleteSidecarModule(doc, module.id);
             }}
           >

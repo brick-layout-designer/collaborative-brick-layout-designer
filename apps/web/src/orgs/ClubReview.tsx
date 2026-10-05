@@ -8,6 +8,7 @@ import { api } from '../api';
 import { invalidateFor } from '../live/invalidate';
 import { TextReview } from '../admin/Moderation';
 import { HelpButton } from '../help/HelpButton';
+import { askReason } from '../ui/ConfirmDialog';
 
 const btn = 'tap-target rounded-lg border border-border px-3 py-1.5 hover:bg-soft';
 const primary = 'tap-target rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-ink hover:bg-accent-hover';
@@ -63,8 +64,14 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const reason = prompt(`Why is "${q.title}" declined? (the member sees this)`);
+                  onClick={async () => {
+                    const reason = await askReason({
+                      title: `Decline “${q.title}”?`,
+                      removes: 'It doesn’t go into the catalog.',
+                      keeps: 'Nothing is deleted; they can change it and send it again.',
+                      confirmLabel: 'Decline',
+                      reason: { label: 'Why? (the member sees this)' },
+                    });
                     if (reason !== null) version.mutate({ id: q.versionId, ok: false, reason });
                   }}
                   aria-label={`Decline ${q.title}`}
@@ -89,8 +96,14 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const reason = prompt(`Why is "${q.title}" declined?`);
+                  onClick={async () => {
+                    const reason = await askReason({
+                      title: `Decline “${q.title}”?`,
+                      removes: 'It doesn’t go into the catalog.',
+                      keeps: 'Nothing is deleted; they can change it and send it again.',
+                      confirmLabel: 'Decline',
+                      reason: { label: 'Why? (the curator sees this)' },
+                    });
                     if (reason !== null) text.mutate({ id: q.id, ok: false, reason });
                   }}
                   aria-label={`Decline collection ${q.title}`}
@@ -120,8 +133,14 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
               {i.status === 'public' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const reason = prompt(`Take "${i.title}" out of the catalog? Reason:`);
+                  onClick={async () => {
+                    const reason = await askReason({
+                      title: `Unpublish “${i.title}”?`,
+                      removes: 'It leaves the public catalog, so nobody new can add it.',
+                      keeps: 'Copies people already added keep working.',
+                      confirmLabel: 'Unpublish',
+                      reason: { label: 'Reason' },
+                    });
                     if (reason !== null) unpublishItem.mutate({ id: i.id, reason });
                   }}
                   aria-label={`Unpublish ${i.title}`}
@@ -141,8 +160,14 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
               {c.status === 'public' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const reason = prompt(`Take "${c.title}" out of the catalog? Reason:`);
+                  onClick={async () => {
+                    const reason = await askReason({
+                      title: `Unpublish “${c.title}”?`,
+                      removes: 'It leaves the public catalog, so nobody new can add it.',
+                      keeps: 'Copies people already added keep working.',
+                      confirmLabel: 'Unpublish',
+                      reason: { label: 'Reason' },
+                    });
                     if (reason !== null) unpublishColl.mutate({ id: c.id, reason });
                   }}
                   aria-label={`Unpublish collection ${c.title}`}

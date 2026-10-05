@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type InviteSummary } from '../api';
 import { HelpButton } from '../help/HelpButton';
+import { askConfirm, confirmDelete, showToast } from '../ui/ConfirmDialog';
 
 interface Props {
   layoutId: string;
@@ -305,15 +306,20 @@ function CollaboratorRow({
         )}
         {(isOwner || isSelf) && collaborator.role !== 'owner' && (
           <button
-            onClick={() => {
-              if (
-                confirm(
-                  isSelf
-                    ? 'Remove yourself from this layout?'
-                    : `Remove ${collaborator.displayName}?`,
-                )
-              )
-                remove.mutate();
+            onClick={async () => {
+              const ok = isSelf
+                ? await askConfirm({
+                    title: 'Leave this layout?',
+                    removes: 'You lose access to it and it leaves your list.',
+                    keeps: 'The layout itself doesn’t change. The owner can invite you again.',
+                    confirmLabel: 'Leave',
+                  })
+                : await confirmDelete(collaborator.displayName, {
+                    verb: 'Remove',
+                    removes: `${collaborator.displayName} can’t open this layout any more.`,
+                    keeps: 'The layout doesn’t change. You can invite them again.',
+                  });
+              if (ok) remove.mutate();
             }}
             className="rounded-lg border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950"
           >
@@ -359,7 +365,16 @@ function PendingInvites({
             </div>
             {isOwner && (
               <button
-                onClick={() => revoke.mutate(i.id)}
+                onClick={async () => {
+                  const ok = await confirmDelete(i.invitedEmail, {
+                    title: `Cancel the invite for ${i.invitedEmail}?`,
+                    verb: 'Cancel',
+                    confirmLabel: 'Cancel invite',
+                    removes: 'The invite link stops working.',
+                    keeps: 'You can invite them again.',
+                  });
+                  if (ok) revoke.mutate(i.id);
+                }}
                 className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft"
               >
                 Revoke
@@ -377,11 +392,20 @@ function TransferSection({ layoutId }: { layoutId: string }) {
   const [mode, setMode] = useState<'closed' | 'user' | 'org'>('closed');
   const [email, setEmail] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
-  const [linkResult, setLinkResult] = useState<{ url: string; emailDelivered: boolean } | null>(
+  const [linkResult, setLinkResult] = useState<{ id: string; url: string; emailDelivered: boolean } | null>(
     null,
   );
   const [orgResult, setOrgResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const cancelTransfer = useMutation({
+    mutationFn: (id: string) => api.transfers.cancel(layoutId, id),
+    onSuccess: () => {
+      setLinkResult(null);
+      showToast('Transfer cancelled');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
 
   const initiate = useMutation({
     mutationFn: () =>
@@ -394,7 +418,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
         setOrgResult(res.ownerSlug);
         setLinkResult(null);
       } else {
-        setLinkResult({ url: res.transferUrl, emailDelivered: res.emailDelivered });
+        setLinkResult({ id: res.id, url: res.transferUrl, emailDelivered: res.emailDelivered });
         setOrgResult(null);
       }
     },
@@ -530,6 +554,22 @@ function TransferSection({ layoutId }: { layoutId: string }) {
           >
             Copy link
           </button>
+          <button
+            type="button"
+            disabled={cancelTransfer.isPending}
+            onClick={async () => {
+              const ok = await askConfirm({
+                title: 'Cancel this transfer?',
+                removes: 'The transfer link stops working.',
+                keeps: 'The layout stays yours. You can start a new transfer.',
+                confirmLabel: 'Cancel transfer',
+              });
+              if (ok) cancelTransfer.mutate(linkResult.id);
+            }}
+            className="ml-3 mt-1 text-xs text-danger hover:underline disabled:opacity-50"
+          >
+            Cancel transfer
+          </button>
         </div>
       )}
 
@@ -638,10 +678,15 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
         </div>
         {token ? (
           <button
-            onClick={() => {
-              if (confirm('Disable the public link? The current URL will stop working.')) {
-                disable.mutate();
-              }
+            onClick={async () => {
+              const ok = await askConfirm({
+                title: 'Turn off the public link?',
+                removes: 'The current link stops working for everyone who has it.',
+                keeps: 'The layout and its collaborators don’t change.',
+                undo: 'Turning it on again makes a new link.',
+                confirmLabel: 'Turn off',
+              });
+              if (ok) disable.mutate();
             }}
             disabled={disable.isPending}
             className="rounded-lg border border-red-900 px-2 py-1 text-xs text-danger hover:bg-red-950 disabled:opacity-50"

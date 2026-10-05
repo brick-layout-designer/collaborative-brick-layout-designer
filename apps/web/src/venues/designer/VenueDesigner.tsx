@@ -13,6 +13,7 @@ import { calibrate, loadPlan, planOf, withPlan, type FloorPlan } from './plan';
 import { formatLength, parseLength, STUDS_PER_INCH, type LengthUnit } from './units';
 import { HelpButton } from '../../help/HelpButton';
 import { HelpMenu } from '../../editor/EditorChrome';
+import { askConfirm } from '../../ui/ConfirmDialog';
 
 const FT = 12 * STUDS_PER_INCH;
 const LAYERS: { layer: Layer; name: string }[] = [
@@ -119,8 +120,13 @@ export function VenueDesigner({
       setSaving(false);
     }
   };
-  const close = () => {
-    if (dirty && !window.confirm('Close the Venue Designer without saving your changes?')) return;
+  const close = async () => {
+    if (dirty && !(await askConfirm({
+      title: 'Close without saving?',
+      removes: 'Your changes to the venue are thrown away.',
+      undo: 'This can’t be undone.',
+      confirmLabel: 'Discard changes',
+    }))) return;
     onClose();
   };
 

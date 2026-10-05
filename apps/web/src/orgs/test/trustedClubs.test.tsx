@@ -2,6 +2,7 @@
 // Trusted clubs on the web: the moderators' list (trust, stop trusting),
 // the club's own Review tab, the share note, and what refetches.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -50,10 +51,9 @@ describe('Trusted clubs (moderators)', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/moderation/clubs/texlug/trust')).toBe(true));
     expect(JSON.parse(calls.find((c) => c.path === '/api/moderation/clubs/texlug/trust')!.body!)).toEqual({ trusted: true });
     // Stopping asks first; saying no sends nothing.
-    const ask = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const asked = autoConfirm(false, true);
     fireEvent.click(screen.getByRole('button', { name: 'Stop trusting ArkLUG' }));
-    expect(ask).toHaveBeenCalledTimes(1);
-    expect(ask.mock.calls[0]![0]).toContain('Stop trusting ArkLUG?');
+    await waitFor(() => expect(asked.titles).toEqual(['Stop trusting ArkLUG?']));
     // Give a request time to go out, had it been sent.
     await new Promise((r) => setTimeout(r, 50));
     expect(calls.some((c) => c.path === '/api/moderation/clubs/arklug/trust')).toBe(false);
@@ -75,7 +75,7 @@ describe('The club’s Review tab', () => {
     expect((await screen.findByTestId('club-review-item')).textContent).toContain('Sent by Mel');
     fireEvent.click(screen.getByRole('button', { name: 'Approve Bench' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/orgs/arklug/review/versions/v1/approve')).toBe(true));
-    vi.spyOn(window, 'prompt').mockReturnValue('Too dark');
+    autoConfirm('Too dark');
     fireEvent.click(screen.getByRole('button', { name: 'Decline collection Standards' }));
     await waitFor(() => expect(calls.some((c) => c.path === '/api/orgs/arklug/review/collections/c1/decline')).toBe(true));
     expect(JSON.parse(calls.find((c) => c.path === '/api/orgs/arklug/review/collections/c1/decline')!.body!)).toEqual({ reason: 'Too dark' });

@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-import { signIn } from '../helpers';
+import { signIn, confirmInDialog } from '../helpers';
 
 const EMAIL = `device-${Date.now()}@example.com`;
 const MESSAGE_SYNC = 0;
@@ -108,8 +108,8 @@ test.describe('desktop sign-in (device code)', () => {
     // --- the device shows on the profile and can be revoked ------------
     await page.goto('/profile');
     await expect(page.getByText('Playwright Desktop')).toBeVisible();
-    page.once('dialog', (d) => void d.accept());
     await page.getByRole('button', { name: 'Revoke Playwright Desktop' }).click();
+    await confirmInDialog(page);
     await expect(page.getByText('No devices signed in.')).toBeVisible();
     expect(await Promise.race([closed, new Promise((r) => setTimeout(() => r('open'), 5000))])).toBe(1008);
   });

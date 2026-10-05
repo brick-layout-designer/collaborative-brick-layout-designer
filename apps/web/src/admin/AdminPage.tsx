@@ -28,6 +28,7 @@ import { SubjectWarnings } from './SubjectWarnings';
 import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 import { DemoAccountSection } from './DemoAccount';
 import { HelpButton } from '../help/HelpButton';
+import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 
 type Tab = AdminTab;
 
@@ -245,10 +246,14 @@ function UsersTab({ selfId }: { selfId: string }) {
                     <Td align="right">
                       <div className="flex justify-end gap-1 text-xs">
                         <button
-                          onClick={() => {
-                            if (confirm(`Revoke ALL sessions for ${u.email}?`)) {
-                              revokeSessions.mutate(u.id);
-                            }
+                          onClick={async () => {
+                            const ok = await askConfirm({
+                              title: `Sign ${u.email} out everywhere?`,
+                              removes: 'Every session they have is ended, on every device.',
+                              keeps: 'Their account and things don’t change; they can sign in again.',
+                              confirmLabel: 'Sign out',
+                            });
+                            if (ok) revokeSessions.mutate(u.id);
                           }}
                           className="rounded-lg border border-border px-2 py-0.5 hover:bg-soft"
                         >
@@ -256,14 +261,14 @@ function UsersTab({ selfId }: { selfId: string }) {
                         </button>
                         <button
                           disabled={isSelf}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Delete ${u.email}? This cascades to their layouts/parts/modules and CANNOT be undone.`,
-                              )
-                            ) {
-                              removeUser.mutate(u.id);
-                            }
+                          onClick={async () => {
+                            const ok = await confirmDelete(u.email, {
+                              title: `Delete the account ${u.email}?`,
+                              removes: 'The account and everything it owns (layouts, parts, modules, venues) are deleted.',
+                              keeps: 'Clubs keep their own things.',
+                              typeName: true,
+                            });
+                            if (ok) removeUser.mutate(u.id, { onSuccess: () => toastDeleted(u.email) });
                           }}
                           className="rounded-lg border border-red-900 px-2 py-0.5 text-red-300 hover:bg-red-900/40 disabled:opacity-30"
                         >
@@ -436,14 +441,13 @@ function OrgsTab() {
                   <Td>{new Date(o.createdAt).toLocaleDateString()}</Td>
                   <Td align="right">
                     <button
-                      onClick={() => {
-                        if (
-                          confirm(
-                            `Delete org "${o.name}"? Cascades to layouts/parts/modules owned by the org.`,
-                          )
-                        ) {
-                          removeOrg.mutate(o.id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirmDelete(o.name, {
+                          removes: 'The club and everything it owns (layouts, parts, modules, venues) are deleted.',
+                          keeps: 'Members keep their own things.',
+                          typeName: true,
+                        });
+                        if (ok) removeOrg.mutate(o.id, { onSuccess: () => toastDeleted(o.name) });
                       }}
                       className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
                     >
@@ -480,9 +484,16 @@ function TrustToggle({ slug, name, trusted }: { slug: string; name: string; trus
           type="checkbox"
           checked={trusted}
           disabled={set.isPending}
-          onChange={(e) => {
-            if (!e.target.checked && !confirm(`Stop trusting ${name}? What's public stays public; what's waiting in its queue moves to the site's.`)) return;
-            set.mutate(e.target.checked);
+          onChange={async (e) => {
+            const on = e.target.checked;
+            if (!on && !(await askConfirm({
+              title: `Stop trusting ${name}?`,
+              removes: 'Its new shares wait for review again.',
+              keeps: `What’s public stays public; what’s waiting in its queue moves to the site’s.`,
+              undo: 'You can trust it again later.',
+              confirmLabel: 'Stop trusting',
+            }))) return;
+            set.mutate(on);
           }}
         />
         Trusted club
@@ -633,10 +644,13 @@ function LayoutsTab() {
                   <Td>{l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : '—'}</Td>
                   <Td align="right">
                     <button
-                      onClick={() => {
-                        if (confirm(`Delete layout "${l.title}"?`)) {
-                          removeLayout.mutate(l.id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirmDelete(l.title, {
+                          removes: 'The layout, its history and its share links are deleted for everyone who can open it.',
+                          keeps: 'Modules, parts and venues it uses stay in their libraries.',
+                          typeName: true,
+                        });
+                        if (ok) removeLayout.mutate(l.id, { onSuccess: () => toastDeleted(l.title) });
                       }}
                       className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
                     >
@@ -896,10 +910,12 @@ function GlobalPartsTab() {
                   <Td>{new Date(p.createdAt).toLocaleDateString()}</Td>
                   <Td>
                     <button
-                      onClick={() => {
-                        if (confirm(`Delete global part "${p.displayName}"?`)) {
-                          deletePart.mutate(p.id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirmDelete(p.displayName, {
+                          removes: 'The part leaves the site-wide parts library for everyone.',
+                          keeps: 'Layouts that use it show a placeholder in its place.',
+                        });
+                        if (ok) deletePart.mutate(p.id, { onSuccess: () => toastDeleted(p.displayName) });
                       }}
                       className="text-danger hover:underline"
                     >
@@ -1476,10 +1492,13 @@ function PartLibrariesTab() {
                         </button>
                         {!lib.locked && (
                           <button
-                            onClick={() => {
-                              if (confirm(`Delete library "${lib.name}"?\n\nThis removes the parts folder from disk and cannot be undone.`)) {
-                                deleteLib.mutate(lib.id);
-                              }
+                            onClick={async () => {
+                              const ok = await confirmDelete(lib.name, {
+                                removes: 'The library and its parts folder are removed from the server’s disk.',
+                                keeps: 'Layouts that use its parts show placeholders in their place.',
+                                typeName: true,
+                              });
+                              if (ok) deleteLib.mutate(lib.id, { onSuccess: () => toastDeleted(lib.name) });
                             }}
                             className="text-danger hover:underline"
                           >

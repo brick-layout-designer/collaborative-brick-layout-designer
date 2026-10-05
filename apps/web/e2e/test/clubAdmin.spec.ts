@@ -4,7 +4,7 @@
 // admin's tools and can leave.
 
 import { test, expect, type Page } from '@playwright/test';
-import { signIn } from '../helpers';
+import { signIn, confirmInDialog } from '../helpers';
 
 const ts = Date.now();
 const ADMIN = `club-admin-${ts}@example.com`;
@@ -60,8 +60,8 @@ test('an admin changes settings, invites with an expiry and sees it in the activ
   await member.goto(`/orgs/${slug}`);
   await expect(member.getByText('We meet on Tuesdays.')).toBeVisible();
   await expect(member.getByRole('link', { name: 'Manage the club' })).toHaveCount(0);
-  member.once('dialog', (d) => void d.accept());
   await member.getByRole('button', { name: 'Leave the club' }).click();
+  await confirmInDialog(member);
   await expect(member).toHaveURL(/\/orgs$/);
   await member.close();
 });
@@ -79,9 +79,9 @@ test('an admin hands the club over, and the new admin deletes it with its name t
   await page.getByRole('button', { name: 'Leave the club' }).click();
   await expect(page.getByRole('alert')).toContainText('only admin');
 
-  page.once('dialog', (d) => void d.accept());
   await page.getByLabel('New admin').selectOption({ label: 'Max Member' });
   await page.getByRole('button', { name: 'Hand over' }).click();
+  await confirmInDialog(page);
   await expect(page).toHaveURL(new RegExp(`/orgs/${slug}$`));
   await expect(page.getByText('you are a member')).toBeVisible();
 

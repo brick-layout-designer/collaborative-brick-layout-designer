@@ -2,8 +2,9 @@
 // go to a view, "Use this area" / "Fit whole layout", sheets, rename,
 // delete, share and export all; viewers can look and share only.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as Y from 'yjs';
 import { addSavedView, readSavedViews } from '../mutations';
 import { newView } from '../savedViews';
@@ -146,7 +147,7 @@ describe('ViewsPanel', () => {
     expect(readSavedViews(doc)[0]).toMatchObject({ labels: false, grid: true });
   });
 
-  it('renames and deletes (after asking)', () => {
+  it('renames and deletes (after asking)', async () => {
     const doc = new Y.Doc();
     addSavedView(doc, newView('a', 'Station'));
     addSavedView(doc, newView('b', 'Yard'));
@@ -156,12 +157,13 @@ describe('ViewsPanel', () => {
     fireEvent.change(screen.getByLabelText('View name'), { target: { value: 'Main station' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(readSavedViews(doc).map((v) => v.name)).toEqual(['Main station', 'Yard']);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const asked = autoConfirm(false, true);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(asked.titles).toHaveLength(1));
+    expect(asked.titles[0]).toBe('Delete “Main station”?');
     expect(readSavedViews(doc)).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(readSavedViews(doc).map((v) => v.id)).toEqual(['b']);
-    confirm.mockRestore();
+    await waitFor(() => expect(readSavedViews(doc).map((v) => v.id)).toEqual(['b']));
   });
 
   it('viewers can look and share, not change', () => {

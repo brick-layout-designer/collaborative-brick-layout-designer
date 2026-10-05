@@ -4,6 +4,7 @@
 // button in each state (Join, Ask to join with a note, Request sent with
 // Cancel, Invite only). The API is a stubbed fetch.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -122,6 +123,7 @@ describe('requests to join (admins)', () => {
 
   it('declines', async () => {
     show(<JoinRequestsSection slug="arklug" requests={REQUESTS} />);
+    autoConfirm(true);
     fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
     await waitFor(() => expect(writes()).toHaveLength(1));
     expect(writes()[0]).toMatchObject({ method: 'POST', path: '/api/orgs/arklug/join-requests/r1/decline' });
@@ -154,6 +156,7 @@ describe('the join button', () => {
   it('shows Request sent and lets the asker cancel', async () => {
     show(<JoinControls club={{ ...CLUB, joinPolicy: 'request', myStatus: 'requested' }} />);
     expect(screen.getByText('Request sent')).toBeTruthy();
+    autoConfirm(true);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }));
     await waitFor(() => expect(writes()).toHaveLength(1));
     expect(writes()[0]).toMatchObject({ method: 'DELETE', path: '/api/orgs/arklug/join' });

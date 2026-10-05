@@ -12,8 +12,10 @@ import { api } from '../api';
 import { setVenue } from './mutations';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useEditorStore } from './editorStore';
-import { saveVenueToLibrary, venueDetail, venueNamed } from './venueLibrary';
+import { askOverwrite, saveVenueToLibrary, venueDetail, venueNamed } from './venueLibrary';
 import { VenueSaveLibraryDialog } from './VenueSaveLibraryDialog';
+import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { VENUE_DELETE_WORDING } from '../ui/deleteWording';
 
 interface Props {
   doc: Y.Doc;
@@ -141,9 +143,10 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
             <button
               className={`${btn} border-red-900 text-danger hover:bg-red-950`}
               disabled={!current}
-              onClick={() => {
-                if (!current || !confirm(`Delete "${current.name}" from the library?`)) return;
-                remove.mutate(current.id);
+              onClick={async () => {
+                if (!current || !(await confirmDelete(current.name, VENUE_DELETE_WORDING))) return;
+                const name = current.name;
+                remove.mutate(current.id, { onSuccess: () => toastDeleted(name) });
               }}
             >
               Delete
@@ -160,7 +163,7 @@ export function VenueLibraryPanel({ doc, isViewer }: Props) {
             const venue = saving;
             setSaving(null);
             const orgId = orgSlug ? (orgs.data?.orgs.find((o) => o.slug === orgSlug)?.id ?? null) : null;
-            void saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, venues, api.venues, (m) => confirm(m))
+            void saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, venues, api.venues, askOverwrite)
               .then((r) => {
                 if (r === 'cancelled') return;
                 useEditorStore.getState().showNotice('Venue saved to the Venue library.');

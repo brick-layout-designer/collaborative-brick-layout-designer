@@ -1,6 +1,7 @@
 // Venue lists outside the editor (org page, layouts page) and starting a
 // new layout from a saved venue. The API is a stubbed fetch.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -147,7 +148,7 @@ describe('VenueList', () => {
     routes['PATCH /api/venues/v-mine'] = () => ({ body: { ok: true, id: 'v-mine', name: 'Shed' } });
     routes['DELETE /api/venues/v-mine'] = () => ({ body: { ok: true } });
     vi.stubGlobal('prompt', () => 'Shed');
-    vi.stubGlobal('confirm', () => true);
+    autoConfirm(true);
     renderAt(<VenueList filter="me" myUserId="u1" orgs={[]} />);
 
     const row = (await screen.findByText('Garage')).closest('li')!;

@@ -1,6 +1,7 @@
 // Desktop sign-in UI: the /device approval page and the profile page's
 // Devices list. The API is a stubbed fetch.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -115,7 +116,7 @@ describe('DevicesSection', () => {
       tokens = tokens.filter((t) => t.id !== 't1');
       return { body: { ok: true } };
     };
-    vi.stubGlobal('confirm', () => true);
+    autoConfirm(true);
     renderAt(<DevicesSection />);
 
     expect(await screen.findByText('Workshop laptop')).toBeTruthy();
@@ -135,7 +136,7 @@ describe('DevicesSection', () => {
 
   it('does nothing when the revoke is not confirmed', async () => {
     routes['GET /api/tokens'] = () => ({ body: { tokens: TOKENS } });
-    vi.stubGlobal('confirm', () => false);
+    autoConfirm(false);
     renderAt(<DevicesSection />);
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke Show PC' }));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);

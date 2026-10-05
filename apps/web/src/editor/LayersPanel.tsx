@@ -28,6 +28,7 @@ import {
   type LayerKind,
 } from './mutations';
 import { LayerOptionsDialog } from './LayerOptionsDialog';
+import { confirmDelete } from '../ui/ConfirmDialog';
 
 interface Props {
   map: BbmMap;
@@ -112,10 +113,17 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
               ▼
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!activeLayerId) return;
-                if (!confirm('Delete this sheet? This is undo-able.')) return;
-                deleteLayer(doc, activeLayerId);
+                const id = activeLayerId;
+                const ok = await confirmDelete('this sheet', {
+                title: 'Delete this sheet?',
+                removes: 'The sheet and everything on it leave the layout.',
+                keeps: 'The other sheets don’t change.',
+                undoable: 'You can undo this with Ctrl+Z.',
+              });
+              if (!ok) return;
+                deleteLayer(doc, id);
               }}
               disabled={!activeLayerId}
               className="rounded-lg px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
@@ -356,9 +364,15 @@ function LayerRow({
           <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
-            onClick={() => {
+            onClick={async () => {
               setCtxMenu(null);
-              if (!confirm('Delete this sheet? This is undo-able.')) return;
+              const ok = await confirmDelete('this sheet', {
+                title: 'Delete this sheet?',
+                removes: 'The sheet and everything on it leave the layout.',
+                keeps: 'The other sheets don’t change.',
+                undoable: 'You can undo this with Ctrl+Z.',
+              });
+              if (!ok) return;
               deleteLayer(doc, layer.id);
             }}
           >

@@ -10,6 +10,7 @@ import type { SavedView } from '@cld/bbm';
 import type { StudRect } from './exportRender';
 import { addSavedView, deleteSavedView, makeId, readSavedViews, updateSavedView } from './mutations';
 import { newView } from './savedViews';
+import { confirmDelete } from '../ui/ConfirmDialog';
 
 export interface ViewsPanelProps {
   doc: Y.Doc;
@@ -159,8 +160,13 @@ export function ViewsPanel(props: ViewsPanelProps) {
                   }}
                   onRename={() => setRenaming({ id: view.id, name: view.name })}
                   onClose={() => setOpenId(null)}
-                  onDelete={() => {
-                    if (!window.confirm(`Delete the view "${view.name}"? The layout itself doesn't change.`)) return;
+                  onDelete={async () => {
+                    const ok = await confirmDelete(view.name, {
+                      removes: 'This saved view is deleted.',
+                      keeps: 'The layout itself doesn’t change.',
+                      undoable: 'You can undo this with Ctrl+Z.',
+                    });
+                    if (!ok) return;
                     deleteSavedView(doc, view.id);
                     setOpenId(null);
                     if (active) onShowEverything();

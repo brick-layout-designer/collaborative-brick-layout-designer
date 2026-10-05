@@ -3,6 +3,7 @@
 // custom parts (the server lets them), while the part-library switches
 // stay with the admins. The API is a stubbed fetch.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -47,7 +48,7 @@ beforeEach(() => {
     calls.push({ method: init?.method ?? 'GET', path: input });
     return new Response(JSON.stringify(reply(input)), { status: 200, headers: { 'content-type': 'application/json' } });
   });
-  vi.stubGlobal('confirm', () => true);
+  autoConfirm(true);
 });
 afterEach(() => {
   cleanup();

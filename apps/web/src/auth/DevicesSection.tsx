@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type ApiTokenSummary } from '../api';
+import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -65,8 +66,13 @@ export function DevicesSection() {
                 </div>
               </div>
               <button
-                onClick={() => {
-                  if (confirm(`Revoke access for “${t.name}”? The device will be signed out.`)) revoke.mutate(t.id);
+                onClick={async () => {
+                  const ok = await confirmDelete(t.name, {
+                    verb: 'Revoke',
+                    removes: 'This device is signed out and can’t reach your account any more.',
+                    keeps: 'Nothing on the server is deleted. You can sign that device in again later.',
+                  });
+                  if (ok) revoke.mutate(t.id, { onSuccess: () => toastDeleted(t.name) });
                 }}
                 disabled={revoke.isPending}
                 aria-label={`Revoke ${t.name}`}

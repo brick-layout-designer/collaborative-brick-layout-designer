@@ -37,6 +37,7 @@ import { HelpButton } from '../help/HelpButton';
 import { AddDialog, CatalogPreview } from './CatalogPage';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { TrustedBadge } from './TrustedBadge';
+import { askConfirm, askReason, confirmDelete, deleteOptions, toastDeleted, type DeleteWording } from '../ui/ConfirmDialog';
 
 /** Who sees it, in a few words. */
 export function audienceLabel(audience: CollectionAudience | undefined, clubName?: string | null): string {
@@ -266,9 +267,12 @@ export function ClubCollectionsSection({ club }: { club?: string }) {
  * The question before deleting a collection. Only the collection goes: its
  * modules and parts stay where they are, and copies people added keep working.
  */
-export function deleteQuestion(c: { title: string; status: string; audience?: string }): string {
+export function deleteWording(c: { title: string; status: string; audience?: string }): DeleteWording {
   const public_ = c.audience !== 'private' && c.status === 'public';
-  return `Delete “${c.title}”?${public_ ? ' It leaves the catalog too.' : ''} Its modules and parts aren't deleted, and copies people already added keep working.`;
+  return {
+    removes: `The collection is deleted${public_ ? ' and leaves the catalog' : ''}.`,
+    keeps: 'Its modules and parts aren’t deleted, and copies people already added keep working.',
+  };
 }
 
 /** Your collections: how each stands, and a way to make one. */
@@ -346,8 +350,8 @@ export function MyCollections() {
                 <button
                   type="button"
                   disabled={remove.isPending}
-                  onClick={() => {
-                    if (confirm(deleteQuestion(c))) remove.mutate(c.id);
+                  onClick={async () => {
+                    if (await confirmDelete(c.title, deleteWording(c))) remove.mutate(c.id, { onSuccess: () => toastDeleted(c.title) });
                   }}
                   aria-label={`Delete ${c.title}`}
                   className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft disabled:opacity-50"
@@ -1006,8 +1010,15 @@ export function CollectionPage() {
                 {c.canEdit && c.audience !== 'private' && c.status !== 'withdrawn' && !c.clubInfo && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(`Take “${c.title}” out of the catalog? Copies people already added keep working.`)) withdraw.mutate();
+                    onClick={async () => {
+                      const ok = await askConfirm({
+                        title: `Withdraw “${c.title}” from the catalog?`,
+                        removes: 'It leaves the public catalog, so nobody new can add it.',
+                        keeps: 'Your collection stays here, and copies people already added keep working.',
+                        undo: 'You can share it to the catalog again later.',
+                        confirmLabel: 'Withdraw',
+                      });
+                      if (ok) withdraw.mutate();
                     }}
                     className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
                   >
@@ -1017,8 +1028,8 @@ export function CollectionPage() {
                 {c.canEdit && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(deleteQuestion(c))) remove.mutate();
+                    onClick={async () => {
+                      if (await confirmDelete(c.title, deleteWording(c))) remove.mutate(undefined, { onSuccess: () => toastDeleted(c.title) });
                     }}
                     className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"
                   >
@@ -1028,8 +1039,15 @@ export function CollectionPage() {
                 {c.canRemove && !c.canEdit && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const reason = prompt(`Remove “${c.title}” from ${clubName ?? 'the club'}? Say why (the club's admins can ask).`);
+                    onClick={async () => {
+                      const reason = await askReason({
+                        ...deleteOptions(c.title, {
+                          verb: 'Remove',
+                          removes: `It’s removed from ${clubName ?? 'the club'}.`,
+                          keeps: 'Its modules and parts aren’t deleted.',
+                        }),
+                        reason: { label: 'Say why (the club’s admins can ask)' },
+                      });
                       if (reason !== null) modRemove.mutate(reason);
                     }}
                     className="tap-target rounded-lg border border-border px-4 py-2 text-danger hover:bg-soft"

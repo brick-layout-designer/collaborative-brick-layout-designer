@@ -12,7 +12,7 @@
 //      her next share waits for the site's moderators again.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { signIn, fromSettingsMenu } from '../../helpers';
+import { signIn, fromSettingsMenu, confirmInDialog } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -100,8 +100,8 @@ test('a trusted club reviews its members’ shares itself; untrusted, the site r
     expect(((await (await ada.page.request.post('/api/catalog/submissions', { data: { kind: 'module', sourceId: made[`Lamp ${ts}`] } })).json()) as { status: string }).status).toBe('public');
 
     // Untrusted: Ada's Review tab goes (live), and her next share waits for the site.
-    mod.page.once('dialog', (d) => void d.accept());
     await mod.page.getByRole('button', { name: `Stop trusting ${CLUB}` }).click();
+    await confirmInDialog(mod.page);
     await expect(ada.page.getByRole('tab', { name: 'Review' })).toHaveCount(0, { timeout: 10000 });
     expect(((await (await ada.page.request.post('/api/catalog/submissions', { data: { kind: 'module', sourceId: made[`Gate ${ts}`] } })).json()) as { status: string }).status).toBe('in_review');
     // What was public stays public.

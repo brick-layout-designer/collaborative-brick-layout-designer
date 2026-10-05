@@ -20,6 +20,8 @@ import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
 import { aRole, atLeast } from './clubRoles';
 import { ClubReviewTab } from './ClubReview';
+import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
 
 export function OrgAdminPage() {
   const params = useParams<{ slug: string }>();
@@ -291,8 +293,9 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
               <p className="mt-1 line-clamp-1 font-mono">{p.partNumber}</p>
               <p className="line-clamp-1 text-muted">{p.displayName}</p>
               <button
-                onClick={() => {
-                  if (confirm(`Delete "${p.partNumber}"?`)) remove.mutate(p.id);
+                onClick={async () => {
+                  if (await confirmDelete(p.partNumber, CUSTOM_PART_DELETE_WORDING))
+                    remove.mutate(p.id, { onSuccess: () => toastDeleted(p.partNumber) });
                 }}
                 className="mt-1 text-[10px] text-danger hover:underline"
               >

@@ -7,6 +7,7 @@ import type * as Y from 'yjs';
 import type { Venue, VenueEdge } from '@cld/bbm';
 import { setVenue } from './mutations';
 import { newVenue } from './venueValidator';
+import { askConfirm } from '../ui/ConfirmDialog';
 
 const STUDS_PER_FOOT = 38.09814081;
 
@@ -39,8 +40,14 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
     onClose();
   }
 
-  function clearVenue() {
-    if (!confirm('Remove the entire venue from this project?')) return;
+  async function clearVenue() {
+    if (!(await askConfirm({
+      title: 'Remove the venue from this layout?',
+      removes: 'The venue’s outline, walls, doors and obstacles leave this layout.',
+      keeps: 'Your parts stay where they are, and the venue stays in the Venue library if you saved it there.',
+      undo: 'You can undo this with Ctrl+Z.',
+      confirmLabel: 'Remove',
+    }))) return;
     setVenue(doc, null);
     onClose();
   }

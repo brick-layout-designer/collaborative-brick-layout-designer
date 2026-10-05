@@ -1,3 +1,6 @@
+import { afterEach, beforeEach } from 'vitest';
+import { mountConfirmHost, unmountConfirmHost } from './confirmHost';
+
 // Replace jsdom's localStorage with a proper in-memory implementation that
 // supports all standard methods including clear(). jsdom's optional
 // --localstorage-file flag can strip clear() away; this stub is stable.
@@ -13,4 +16,10 @@ const localStorageShim: Storage = {
 
 if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'localStorage', { value: localStorageShim, writable: true });
+}
+
+// The app's confirmation dialog (main.tsx mounts it in the app).
+if (typeof document !== 'undefined') {
+  beforeEach(() => mountConfirmHost());
+  afterEach(() => unmountConfirmHost());
 }
