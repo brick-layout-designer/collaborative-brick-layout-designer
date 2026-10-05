@@ -18,8 +18,8 @@
 // (drawing, dimensions dialog). The data round-trips through the
 // sidecar regardless.
 
-import type { JSX } from 'react';
-import { Circle, Group, Line, Text } from 'react-konva';
+import { useEffect, useState } from 'react';
+import { Circle, Group, Line, Rect, Text } from 'react-konva';
 import type { Venue, VenueDimension, VenueNote, VenueObstacle as VenueObstacleT, VenuePower } from '@cld/bbm';
 import { studToPx } from './coords';
 import {
@@ -35,21 +35,32 @@ import {
   stairMarks,
   type Seg,
 } from './venueDraw';
+import { VENUE_LABEL, VENUE_LABEL_THEME, venueEdgeLabels, type VenueLabel, type VenueLabelOptions } from './venueLabels';
+import { measureBold } from './ModuleOverlay';
+import { MAP_FONT_STACK } from './mapText';
 
 interface Props {
   venue: Venue | null | undefined;
   /** Font size for edge distance labels in px. Default 28 (matches desktop). */
   labelFontPx?: number;
   onDoubleClick?: () => void;
+  /** The Venue Designer: the selected wall, its handles (studs, half size in px) and the pointer (px). */
+  selectedEdge?: number | null;
+  handles?: readonly Pt[];
+  handleHalfPx?: number;
+  pointer?: Pt | null;
 }
 
-export function VenueOverlay({ venue, labelFontPx = 28, onDoubleClick }: Props) {
+type Pt = { x: number; y: number };
+
+export function VenueOverlay({ venue, labelFontPx = 28, onDoubleClick, selectedEdge = null, handles = [], handleHalfPx = 0, pointer = null }: Props) {
   if (!venue || !venue.enabled) return null;
   const groupProps = onDoubleClick ? { listening: true, onDblClick: onDoubleClick } : { listening: false };
+  const labels = { selectedEdge, handles, handleHalfPx, pointer };
   return (
     <Group {...groupProps}>
       {venue.edges.map((edge, i) => (
-        <VenueEdge key={`edge-${i}`} edge={edge} minWalkwayStuds={venue.minWalkwayStuds} labelFontPx={labelFontPx} />
+        <VenueEdge key={`edge-${i}`} edge={edge} minWalkwayStuds={venue.minWalkwayStuds} />
       ))}
       {venue.obstacles.map((ob, i) => (
         <VenueObstacle key={`ob-${i}`} obstacle={ob} />
@@ -63,18 +74,93 @@ export function VenueOverlay({ venue, labelFontPx = 28, onDoubleClick }: Props) 
       {(venue.notes ?? []).map((n, i) => (
         <VenueNoteMark key={`note-${i}`} note={n} fontPx={labelFontPx * 0.8} />
       ))}
+      <VenueEdgeLabels venue={venue} fontPx={labelFontPx} labels={labels} />
     </Group>
   );
+}
+
+/** The walls' labels: pills just outside the room (venueLabels.ts). */
+function VenueEdgeLabels({ venue, fontPx, labels }: { venue: Venue; fontPx: number; labels: Omit<VenueLabelOptions, 'fontPx' | 'measure'> & { pointer?: Pt | null } }) {
+  const dark = useDarkTheme();
+  const theme = dark ? VENUE_LABEL_THEME.dark : VENUE_LABEL_THEME.light;
+  const laid = venueEdgeLabels(venue.edges, { fontPx, measure: measureLabel, ...labels });
+  return (
+    <Group listening={false} name="venue-labels">
+      {laid.map((l) => {
+        // The pointer on a shortened label shows it whole.
+        const p = labels.pointer;
+        const hover = !!p && l.shortened && insidePill(l, p);
+        const text = hover ? l.full : l.text;
+        const width = hover ? measureLabel(l.full, fontPx) + 2 * VENUE_LABEL.padX * fontPx : l.width;
+        return (
+          <Group key={l.edge} x={l.x} y={l.y} rotation={l.angle} name="venue-label">
+            <Rect
+              x={-width / 2}
+              y={-l.height / 2}
+              width={width}
+              height={l.height}
+              cornerRadius={VENUE_LABEL.radius * fontPx}
+              fill={theme.fill}
+              stroke={theme.border}
+              strokeWidth={1}
+              strokeScaleEnabled={false}
+              perfectDrawEnabled={false}
+            />
+            <Text
+              x={-width / 2}
+              y={-fontPx / 2}
+              width={width}
+              align="center"
+              text={text}
+              fontSize={fontPx}
+              fontFamily={MAP_FONT_STACK}
+              fontStyle="bold"
+              fill={theme.text}
+              perfectDrawEnabled={false}
+            />
+          </Group>
+        );
+      })}
+    </Group>
+  );
+}
+
+function insidePill(l: VenueLabel, p: Pt): boolean {
+  const t = (-l.angle * Math.PI) / 180;
+  const dx = p.x - l.x, dy = p.y - l.y;
+  const u = dx * Math.cos(t) - dy * Math.sin(t);
+  const v = dx * Math.sin(t) + dy * Math.cos(t);
+  return Math.abs(u) <= l.width / 2 && Math.abs(v) <= l.height / 2;
+}
+
+function measureLabel(text: string, fontPx: number): number {
+  try {
+    return measureBold(text)(fontPx);
+  } catch {
+    // No canvas to measure on (tests): about 0.6 em a letter.
+    return text.length * 0.6 * fontPx;
+  }
+}
+
+/** Whether the app shows its dark theme (html[data-theme]), following changes. */
+function useDarkTheme(): boolean {
+  const read = () => typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
+  const [dark, setDark] = useState(read);
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined') return;
+    const mo = new MutationObserver(() => setDark(read()));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => mo.disconnect();
+  }, []);
+  return dark;
 }
 
 function VenueEdge({
   edge,
   minWalkwayStuds,
-  labelFontPx,
 }: {
   edge: Venue['edges'][number];
   minWalkwayStuds: number;
-  labelFontPx: number;
 }) {
   if (!edge.poly || edge.poly.length < 2) return null;
   const px = studToPx();
@@ -102,49 +188,6 @@ function VenueEdge({
   // INSIDE (left-hand normal) of every segment.
   const showWalk = edge.kind !== 0 && minWalkwayStuds > 0;
 
-  // Distance label on the OUTSIDE midpoint of the polyline (using only
-  // first→last point for simplicity, matching desktop behaviour).
-  const a = edge.poly[0]!;
-  const b = edge.poly[edge.poly.length - 1]!;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lenStuds = Math.hypot(dx, dy);
-  let labelEl: JSX.Element | null = null;
-  if (lenStuds > 0.5) {
-    const lenFt = lenStuds * 0.026248; // matches desktop conversion
-    const lenIn = lenFt * 12;
-    const distance = lenFt < 1 ? `${lenIn.toFixed(1)}"` : `${lenFt.toFixed(2)} ft`;
-    const base = edge.label ? `${edge.label} — ${distance}` : distance;
-    const txt = edge.estimated ? estimatedText(base) : base;
-    const ux = dx / lenStuds;
-    const uy = dy / lenStuds;
-    // Right-hand normal: positive 90° rotation of segment direction.
-    const nx = -uy;
-    const ny = ux;
-    const offsetPx = 16;
-    const mid = { x: ((a.x + b.x) / 2) * px, y: ((a.y + b.y) / 2) * px };
-    const lblX = mid.x + nx * offsetPx;
-    const lblY = mid.y + ny * offsetPx;
-    let angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-    if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
-    labelEl = (
-      <Text
-        x={lblX}
-        y={lblY}
-        text={txt}
-        fontFamily="sans-serif"
-        fontStyle="bold"
-        fontSize={labelFontPx}
-        fill="rgb(20,20,20)"
-        rotation={angleDeg}
-        offsetX={0}
-        offsetY={14}
-        listening={false}
-        perfectDrawEnabled={false}
-      />
-    );
-  }
-
   return (
     <Group>
       {showWalk && <WalkwayBand poly={edge.poly} widthStuds={minWalkwayStuds} />}
@@ -158,7 +201,6 @@ function VenueEdge({
         listening={false}
         perfectDrawEnabled={false}
       />
-      {labelEl}
     </Group>
   );
 }

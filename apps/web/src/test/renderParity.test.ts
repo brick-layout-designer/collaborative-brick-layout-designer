@@ -126,3 +126,55 @@ describe('render parity: selection', () => {
     expect(SNAP_MARKS).toEqual(marks);
   });
 });
+
+import VENUE from '../../../../packages/bbm/tests/fixtures/render-parity/venue-labels.json';
+import type { VenueEdge } from '@cld/bbm';
+import { GRID_FADE } from '../venues/designer/DesignerCanvas';
+import { VENUE_LABEL, VENUE_LABEL_THEME, pillsOverlap, uprightAngle, venueEdgeLabels } from '../editor/render/venueLabels';
+
+describe('render parity: venue wall labels', () => {
+  const measure = (t: string, f: number) => t.length * VENUE.charWidth * f;
+  it.each(VENUE.cases)('$name', (c) => {
+    const got = venueEdgeLabels(c.edges as VenueEdge[], {
+      fontPx: c.fontPx,
+      measure,
+      ...('selectedEdge' in c ? { selectedEdge: c.selectedEdge } : {}),
+      ...('handles' in c ? { handles: c.handles, handleHalfPx: c.handleHalfPx } : {}),
+    });
+    expect(got.length).toBe(c.expect.length);
+    got.forEach((l, i) => {
+      const w = c.expect[i]!;
+      expect({ edge: l.edge, text: l.text, full: l.full, shortened: l.shortened, angle: l.angle }).toEqual({
+        edge: w.edge,
+        text: w.text,
+        full: w.full,
+        shortened: w.shortened,
+        angle: w.angle,
+      });
+      for (const k of ['x', 'y', 'width', 'height'] as const) expect(l[k]).toBeCloseTo(w[k], 4);
+    });
+  });
+
+  it('draws the shared pill, colours and grid fade', () => {
+    expect(VENUE_LABEL).toEqual(VENUE.pill);
+    expect(VENUE_LABEL_THEME).toEqual(VENUE.theme);
+    expect(GRID_FADE).toBe(VENUE.gridFade);
+  });
+
+  it('reads upright: left to right, bottom to top on a vertical wall, never upside down', () => {
+    expect(uprightAngle(1, 0)).toBe(0);
+    expect(uprightAngle(-1, 0)).toBeCloseTo(0);
+    expect(uprightAngle(0, 1)).toBe(-90);
+    expect(uprightAngle(0, -1)).toBe(-90);
+    expect(uprightAngle(1, 1)).toBeCloseTo(45);
+    expect(uprightAngle(-1, -1)).toBeCloseTo(45);
+  });
+
+  it('tells turned pills apart', () => {
+    const a = { x: 0, y: 0, angle: 0, width: 10, height: 2 };
+    expect(pillsOverlap(a, { x: 9, y: 0, angle: 0, width: 10, height: 2 })).toBe(true);
+    expect(pillsOverlap(a, { x: 10, y: 0, angle: 0, width: 10, height: 2 })).toBe(false);
+    expect(pillsOverlap(a, { x: 0, y: 4, angle: 90, width: 6, height: 2 })).toBe(true);
+    expect(pillsOverlap(a, { x: 0, y: 5.5, angle: 90, width: 6, height: 2 })).toBe(false);
+  });
+});
