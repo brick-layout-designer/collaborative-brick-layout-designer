@@ -90,9 +90,9 @@ describe('account preferences', () => {
     expect(got.json().prefs).toEqual({ ...DEFAULT_PREFERENCES, theme: 'dark', partsIconSize: 96 });
   });
 
-  it('keeps the Snap strength only once it is set: off, gentle or strong', async () => {
+  it('keeps the Snap strength: gentle until set, then off, gentle or strong', async () => {
     const before = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
-    expect('connectionSnap' in (before.json() as { prefs: object }).prefs).toBe(false);
+    expect((before.json() as { prefs: { connectionSnap: string } }).prefs.connectionSnap).toBe('gentle');
     for (const v of ['off', 'strong', 'gentle', 'strong']) {
       const res = await put({ cookie: user.cookie }, { connectionSnap: v });
       expect(res.statusCode).toBe(200);

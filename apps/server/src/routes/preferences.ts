@@ -34,8 +34,11 @@ export interface Preferences {
   toursSeen: string[];
   /** Absent until the person sets it (clients migrate an older local value then). */
   partsIconSize?: number;
-  /** Snap strength; absent until set (clients use "gentle"). */
-  connectionSnap?: (typeof CONNECTION_SNAP)[number];
+  /**
+   * Snap strength. Always returned (default "gentle"), so a client that
+   * sends only the keys a server returns (the desktop) knows it can save it.
+   */
+  connectionSnap: (typeof CONNECTION_SNAP)[number];
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -45,6 +48,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   expertMode: false,
   helpIcons: true,
   toursSeen: [],
+  connectionSnap: 'gentle',
 };
 
 /**
