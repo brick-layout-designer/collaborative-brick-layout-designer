@@ -9,6 +9,7 @@ import { HelpButton } from '../help/HelpButton';
 import { WarnForm } from '../notices/Notices';
 import { invalidateFor } from '../live/invalidate';
 import { TrustedBadge } from '../catalog/TrustedBadge';
+import { askConfirm, askReason, deleteOptions, toastDeleted } from '../ui/ConfirmDialog';
 
 export function ModerationTab() {
   const qc = useQueryClient();
@@ -57,10 +58,16 @@ export function ModerationTab() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const reason = prompt(`Why is "${q.title}" declined? (optional; the owner sees this)`);
-                        if (reason !== null) decline.mutate({ id: q.versionId, reason });
-                      }}
+                      onClick={async () => {
+                    const reason = await askReason({
+                      title: `Decline “${q.title}”?`,
+                      removes: 'It doesn’t go into the catalog.',
+                      keeps: 'Nothing is deleted; they can change it and send it again.',
+                      confirmLabel: 'Decline',
+                      reason: { label: 'Why? (optional; the owner sees this)' },
+                    });
+                    if (reason !== null) decline.mutate({ id: q.versionId, reason });
+                  }}
                       aria-label={`Decline ${q.title}`}
                       className="tap-target rounded-lg border border-border px-3 py-1.5 hover:bg-soft"
                     >
@@ -111,10 +118,16 @@ export function ModerationTab() {
                 {i.status === 'public' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const reason = prompt(`Unpublish "${i.title}"? Copies people already have keep working. Reason (optional):`);
-                      if (reason !== null) unpublish.mutate({ id: i.id, reason });
-                    }}
+                    onClick={async () => {
+                    const reason = await askReason({
+                      title: `Unpublish “${i.title}”?`,
+                      removes: 'It leaves the public catalog, so nobody new can add it.',
+                      keeps: 'Copies people already added keep working.',
+                      confirmLabel: 'Unpublish',
+                      reason: { label: 'Reason (optional)' },
+                    });
+                    if (reason !== null) unpublish.mutate({ id: i.id, reason });
+                  }}
                     aria-label={`Unpublish ${i.title}`}
                     className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"
                   >
@@ -162,8 +175,14 @@ export function TrustedClubsSection() {
       </span>
       <button
         type="button"
-        onClick={() => {
-          if (c.trusted && !confirm(`Stop trusting ${c.name}? What's public stays public; what's waiting in its queue moves to yours.`)) return;
+        onClick={async () => {
+          if (c.trusted && !(await askConfirm({
+              title: `Stop trusting ${c.name}?`,
+              removes: 'Its new shares wait for review again.',
+              keeps: `What’s public stays public; what’s waiting in its queue moves to yours.`,
+              undo: 'You can trust it again later.',
+              confirmLabel: 'Stop trusting',
+            }))) return;
           set.mutate({ slug: c.slug, trusted: !c.trusted });
         }}
         aria-label={`${c.trusted ? 'Stop trusting' : 'Trust'} ${c.name}`}
@@ -283,10 +302,16 @@ function CollectionModeration() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const reason = prompt(`Why is "${q.title}" declined? (optional; the curator sees this)`);
-                        if (reason !== null) decline.mutate({ id: q.id, reason });
-                      }}
+                      onClick={async () => {
+                    const reason = await askReason({
+                      title: `Decline “${q.title}”?`,
+                      removes: 'It doesn’t go into the catalog.',
+                      keeps: 'Nothing is deleted; they can change it and send it again.',
+                      confirmLabel: 'Decline',
+                      reason: { label: 'Why? (optional; the curator sees this)' },
+                    });
+                    if (reason !== null) decline.mutate({ id: q.id, reason });
+                  }}
                       aria-label={`Decline collection ${q.title}`}
                       className="tap-target rounded-lg border border-border px-3 py-1.5 hover:bg-soft"
                     >
@@ -339,10 +364,16 @@ function CollectionModeration() {
                 {c.status === 'public' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const reason = prompt(`Unpublish "${c.title}"? Reason (optional; the curator sees this):`);
-                      if (reason !== null) unpublish.mutate({ id: c.id, reason });
-                    }}
+                    onClick={async () => {
+                    const reason = await askReason({
+                      title: `Unpublish “${c.title}”?`,
+                      removes: 'It leaves the public catalog, so nobody new can add it.',
+                      keeps: 'Copies people already added keep working.',
+                      confirmLabel: 'Unpublish',
+                      reason: { label: 'Reason (optional; the curator sees this)' },
+                    });
+                    if (reason !== null) unpublish.mutate({ id: c.id, reason });
+                  }}
                     aria-label={`Unpublish collection ${c.title}`}
                     className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"
                   >
@@ -372,9 +403,16 @@ function CollectionModeration() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    const reason = prompt(`Remove "${c.title}" from ${c.by}? It's deleted for good. Reason (logged):`);
-                    if (reason !== null) remove.mutate({ id: c.id, reason });
+                  onClick={async () => {
+                    const reason = await askReason({
+                      ...deleteOptions(c.title, {
+                        verb: 'Remove',
+                        removes: `The collection is deleted for good from ${c.by}.`,
+                        keeps: 'Its modules and parts aren’t deleted.',
+                      }),
+                      reason: { label: 'Reason (logged)' },
+                    });
+                    if (reason !== null) remove.mutate({ id: c.id, reason }, { onSuccess: () => toastDeleted(c.title) });
                   }}
                   aria-label={`Remove collection ${c.title}`}
                   className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"

@@ -692,6 +692,9 @@ export const api = {
         expiresAt: number;
       }>(`/api/transfers/${token}`),
     accept: (token: string) => post<{ layoutId: string }>(`/api/transfers/${token}`),
+    /** Call off a transfer that hasn't been accepted: its link stops working. */
+    cancel: (layoutId: string, transferId: string) =>
+      del(`/api/layouts/${encodeURIComponent(layoutId)}/transfer/${encodeURIComponent(transferId)}`),
   },
 
   customParts: {

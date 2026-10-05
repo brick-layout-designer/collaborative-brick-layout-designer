@@ -7,7 +7,7 @@
 //   copies one to herself → Ada hands the club over to Rita.
 
 import { test, expect, type Page } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, confirmInDialog } from '../../helpers';
 
 const ts = Date.now();
 const ADA = `j-club-ada-${ts}@example.com`;
@@ -112,9 +112,9 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
   // ── Ada hands the club over to Rita. ──
   await page.goto(`/orgs/${slug}/admin`);
   await page.getByRole('tab', { name: 'Settings' }).click();
-  page.once('dialog', (d) => void d.accept());
   await page.getByLabel('New admin').selectOption({ label: 'Rita Rails (a manager)' });
   await page.getByRole('button', { name: 'Hand over' }).click();
+  await confirmInDialog(page);
   await expect(page).toHaveURL(new RegExp(`/orgs/${slug}$`));
   await rita.goto(`/orgs/${slug}/admin`);
   await rita.getByRole('tab', { name: 'Settings' }).click();

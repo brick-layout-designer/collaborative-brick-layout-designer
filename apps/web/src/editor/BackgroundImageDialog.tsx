@@ -7,6 +7,7 @@ import type { BackgroundImage } from '@cld/bbm';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { setBackgroundImage, clearBackgroundImage } from './mutations';
 import { noteWrite } from '../api';
+import { confirmDelete } from '../ui/ConfirmDialog';
 
 interface Props {
   layoutId: string;
@@ -58,6 +59,13 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
   }
 
   async function remove() {
+    const ok = await confirmDelete('the background image', {
+      title: 'Remove the background image?',
+      verb: 'Remove',
+      removes: 'The picture behind this layout is deleted from the server.',
+      keeps: 'Your parts and sheets don’t change. You can add a picture again.',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await fetch(`/api/layouts/${layoutId}/background-image`, {

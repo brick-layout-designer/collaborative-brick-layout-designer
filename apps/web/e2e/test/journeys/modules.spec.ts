@@ -11,7 +11,7 @@
 //   own layout → the owner publishes an update → the copy offers it.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn, fromSettingsMenu } from '../../helpers';
+import { ensureUser, signIn, fromSettingsMenu, confirmInDialog } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -123,8 +123,8 @@ test('a module goes from New module to another member’s layout', async ({ page
   await page.getByRole('menuitem', { name: 'Version history…' }).click();
   const history = page.getByRole('dialog', { name: `Versions of ${TITLE}` });
   await expect(history.getByTestId('module-version')).toHaveCount(2);
-  page.once('dialog', (d) => void d.accept());
   await history.getByRole('button', { name: 'Restore version 1' }).click();
+  await confirmInDialog(page);
   await expect(history.getByRole('status')).toContainText('saved as version 3');
   await history.getByRole('button', { name: 'Close' }).click();
   await expect(moduleRow(page)).toContainText('version 3');

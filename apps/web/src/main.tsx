@@ -24,6 +24,7 @@ import { SiteVersionBar } from './SiteVersionBar';
 import { DemoBanner } from './demo/DemoBanner';
 import { NamePrompt } from './auth/NamePrompt';
 import { CollectionToastHost } from './catalog/collectionToast';
+import { ConfirmDialogHost, ToastHost } from './ui/ConfirmDialog';
 import { HelpPage } from './help/HelpPage';
 import { SettingsPage } from './settings/SettingsPage';
 import { PrefsProvider } from './theme/PrefsProvider';
@@ -151,6 +152,8 @@ createRoot(root).render(
         <DemoBanner />
         <NamePrompt />
         <CollectionToastHost />
+        <ConfirmDialogHost />
+        <ToastHost />
         <TourProvider>
         <Suspense fallback={null}>
         <Routes>

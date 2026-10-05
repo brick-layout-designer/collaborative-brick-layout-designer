@@ -15,6 +15,8 @@ import { defaultSaveTo, itemOrgSlug, matchesOwnerFilter, type OwnerFilter } from
 import { MoveCopyDialog, OwnerChip, SaveToDialog } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { atLeast } from '../orgs/clubRoles';
+import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { VENUE_DELETE_WORDING } from '../ui/deleteWording';
 
 /** May change it: the server says so; older servers: yours, or a club you manage. */
 export function canManageVenue(v: VenueSummary, orgs: readonly OrgSummary[] | undefined): boolean {
@@ -175,8 +177,9 @@ export function VenueList({
                             role="menuitem"
                             type="button"
                             className={`${MORE_ITEM} text-danger`}
-                            onClick={() => {
-                              if (confirm(`Delete "${v.name}"?`)) remove.mutate(v.id);
+                            onClick={async () => {
+                              if (await confirmDelete(v.name, VENUE_DELETE_WORDING))
+                                remove.mutate(v.id, { onSuccess: () => toastDeleted(v.name) });
                             }}
                           >
                             Delete

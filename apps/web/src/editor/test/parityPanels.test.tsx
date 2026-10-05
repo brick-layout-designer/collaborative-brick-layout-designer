@@ -3,6 +3,7 @@
 // Venue Library (VenueLibraryPanel.cpp): details, Rename with its
 // duplicate-name check, and Save Current Venue.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createElement as h, Fragment, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -208,14 +209,14 @@ describe('VenueLibraryPanel', () => {
     await waitFor(() => expect(apiMock.venuesCreate).toHaveBeenCalledWith({ name: 'Big Hall', data: expect.objectContaining({ name: 'Hall' }) }));
 
     // Same name as a saved venue (any case): overwrite only after a yes.
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const asked = autoConfirm(false, true);
     for (let i = 0; i < 2; i++) {
       fireEvent.click(screen.getByRole('button', { name: 'Save Current Venue' }));
       fireEvent.change(screen.getByLabelText('Name for this venue'), { target: { value: 'HALL' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(i + 1));
+      await waitFor(() => expect(asked.titles).toHaveLength(i + 1));
     }
-    expect(confirm).toHaveBeenCalledWith('Hall already exists. Overwrite?');
+    expect(asked.titles).toEqual(['Replace “Hall”?', 'Replace “Hall”?']);
     await waitFor(() => expect(apiMock.venuesUpdate).toHaveBeenCalledTimes(1));
     expect(apiMock.venuesUpdate).toHaveBeenCalledWith('v1', expect.objectContaining({ name: 'Hall' }));
     expect(apiMock.venuesCreate).toHaveBeenCalledTimes(1);

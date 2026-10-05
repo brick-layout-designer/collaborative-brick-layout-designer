@@ -3,6 +3,7 @@
 // already be taken (desktop asks before overwriting that file).
 
 import type { Venue } from '@cld/bbm';
+import { askConfirm } from '../ui/ConfirmDialog';
 
 export interface SavedVenue {
   id: string;
@@ -30,6 +31,17 @@ export interface VenueSaveApi {
   update: (id: string, data: unknown) => Promise<unknown>;
 }
 
+/** "‹name› already exists. Replace it?" in the app's confirmation dialog. */
+export function askOverwrite(name: string): Promise<boolean> {
+  return askConfirm({
+    title: `Replace “${name}”?`,
+    removes: `A venue called “${name}” is already in the library. Its walls, doors and obstacles are replaced by this one.`,
+    keeps: 'Layouts made from it keep their own copy.',
+    undo: 'This can’t be undone.',
+    confirmLabel: 'Replace',
+  });
+}
+
 /**
  * Save `venue` to the library as `name` for the personal library or an
  * org. When that owner already has a venue with the name, `confirm`
@@ -41,11 +53,11 @@ export async function saveVenueToLibrary(
   owner: { orgSlug?: string; orgId: string | null },
   list: readonly SavedVenue[],
   api: VenueSaveApi,
-  confirm: (message: string) => boolean,
+  confirm: (name: string) => boolean | Promise<boolean>,
 ): Promise<'created' | 'overwritten' | 'cancelled'> {
   const existing = venueNamed(list, name, owner.orgId);
   if (existing) {
-    if (!confirm(`${existing.name} already exists. Overwrite?`)) return 'cancelled';
+    if (!(await confirm(existing.name))) return 'cancelled';
     await api.update(existing.id, venue);
     return 'overwritten';
   }

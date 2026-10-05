@@ -13,6 +13,8 @@ import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus }
 import { UploadPartDialog } from './UploadPartDialog';
 import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { atLeast } from '../orgs/clubRoles';
+import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
 
 /** Where the old Library page (/library) now lands: the home page's parts section. */
 export const PARTS_SECTION = { pathname: '/', hash: '#parts' } as const;
@@ -126,10 +128,14 @@ export function CustomPartsSection({
                     <button
                       role="menuitem"
                       type="button"
-                      onClick={() => {
-                        if (confirm(`Take "${p.partNumber}" out of the public catalog? Copies people already have keep working.`)) {
-                          withdraw.mutate(catalog.shared('part', p.id)!.id);
-                        }
+                      onClick={async () => {
+                        if (await askConfirm({
+                          title: `Withdraw “${p.partNumber}” from the catalog?`,
+                          removes: 'It leaves the public catalog, so nobody new can add it.',
+                          keeps: 'Yours stays here, and copies people already added keep working.',
+                          undo: 'You can share it to the catalog again later.',
+                          confirmLabel: 'Withdraw',
+                        })) withdraw.mutate(catalog.shared('part', p.id)!.id);
                       }}
                       className={MORE_ITEM}
                     >
@@ -141,8 +147,9 @@ export function CustomPartsSection({
                     role="menuitem"
                     type="button"
                     className={`${MORE_ITEM} text-danger`}
-                    onClick={() => {
-                      if (confirm(`Delete "${p.partNumber}"? Layouts that use it will show a placeholder.`)) remove.mutate(p.id);
+                    onClick={async () => {
+                      if (await confirmDelete(p.partNumber, CUSTOM_PART_DELETE_WORDING))
+                        remove.mutate(p.id, { onSuccess: () => toastDeleted(p.partNumber) });
                     }}
                   >
                     Delete

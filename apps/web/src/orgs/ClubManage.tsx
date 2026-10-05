@@ -19,6 +19,7 @@ import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
 import { aRole, atLeast, byRole, CLUB_ROLES, roleLabel, type ClubRole } from './clubRoles';
 import { WarnForm, WarningHistory } from '../notices/Notices';
+import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 
 const card = 'space-y-3 rounded-section border border-line bg-panel p-4';
 const btn = 'tap-target inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft disabled:opacity-50';
@@ -166,9 +167,15 @@ export function MembersSection({
                   <button
                     type="button"
                     className={danger}
-                    onClick={() => {
+                    onClick={async () => {
                       setError(null);
-                      if (confirm(`Remove ${m.displayName} from the club? They keep their own things.`)) remove.mutate(m.userId);
+                      const ok = await confirmDelete(m.displayName, {
+                        verb: 'Remove',
+                        removes: `${m.displayName} leaves the club.`,
+                        keeps: 'They keep their own things, and the club keeps its things.',
+                        undoable: 'You can invite them again.',
+                      });
+                      if (ok) remove.mutate(m.userId);
                     }}
                   >
                     Remove
@@ -421,8 +428,15 @@ export function PendingInvitesSection({
                     <button
                       type="button"
                       className={danger}
-                      onClick={() => {
-                        if (confirm(`Cancel the invite for ${i.invitedEmail}? The link stops working.`)) cancel.mutate(i.id);
+                      onClick={async () => {
+                        const ok = await confirmDelete(i.invitedEmail, {
+                          title: `Cancel the invite for ${i.invitedEmail}?`,
+                          verb: 'Cancel',
+                          confirmLabel: 'Cancel invite',
+                          removes: 'The invite link stops working.',
+                          undoable: 'You can invite them again.',
+                        });
+                        if (ok) cancel.mutate(i.id);
                       }}
                     >
                       Cancel invite
@@ -683,7 +697,15 @@ export function JoinRequestsSection({ slug, requests }: { slug: string; requests
                 <button type="button" className={primary} disabled={busy} onClick={() => approve.mutate(r)}>
                   Approve
                 </button>
-                <button type="button" className={btn} disabled={busy} onClick={() => decline.mutate(r)}>
+                <button type="button" className={btn} disabled={busy} onClick={async () => {
+                  const ok = await confirmDelete(r.displayName, {
+                    title: `Decline ${r.displayName}’s request?`,
+                    verb: 'Decline',
+                    removes: 'The request to join is turned down.',
+                    keeps: 'They can ask again later.',
+                  });
+                  if (ok) decline.mutate(r);
+                }}>
                   Decline
                 </button>
               </div>
@@ -726,11 +748,18 @@ export function HandOverSection({ slug, myUserId, members }: { slug: string; myU
       ) : (
         <form
           className="flex flex-col gap-3 text-sm sm:flex-row sm:items-end"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             setError(null);
             const who = others.find((m) => m.userId === to)?.displayName ?? 'them';
-            if (confirm(`Make ${who} an admin and step down to member? You can’t undo this yourself.`)) hand.mutate();
+            const ok = await askConfirm({
+              title: `Hand the club to ${who}?`,
+              removes: `${who} becomes an admin and you step down to member.`,
+              keeps: 'Nothing is deleted.',
+              undo: 'You can’t undo this yourself.',
+              confirmLabel: 'Hand over',
+            });
+            if (ok) hand.mutate();
           }}
         >
           <label className="block flex-1">
@@ -822,7 +851,13 @@ export function LeaveClubButton({ org, myUserId }: { org: OrgDetail; myUserId: s
             setError('You’re the club’s only admin. Hand the club over (or make someone else an admin) before you leave.');
             return;
           }
-          if (confirm(`Leave ${org.name}? You keep your own things; the club keeps its things.`)) leave.mutate();
+          void askConfirm({
+            title: `Leave ${org.name}?`,
+            removes: 'You stop being a member and lose access to the club’s things.',
+            keeps: 'You keep your own things, and the club keeps its things.',
+            undo: 'An admin can invite you again.',
+            confirmLabel: 'Leave',
+          }).then((ok) => ok && leave.mutate());
         }}
       >
         Leave the club

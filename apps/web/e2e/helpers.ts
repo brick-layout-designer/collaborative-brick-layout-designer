@@ -142,3 +142,17 @@ export async function fromSettingsMenu(page: Page, entry: string | RegExp, opts:
     await item.click();
   }
 }
+
+/**
+ * Answer the app's confirmation dialog (ui/ConfirmDialog.tsx) with its
+ * confirm button: types the name first when it asks, and fills the reason
+ * box when given one.
+ */
+export async function confirmInDialog(page: Page, opts: { reason?: string } = {}): Promise<void> {
+  const d = page.getByTestId('confirm-dialog');
+  await d.waitFor();
+  if (await d.locator('input').count()) await d.locator('input').fill((await d.locator('label strong').textContent()) ?? '');
+  if (opts.reason !== undefined) await d.locator('textarea').fill(opts.reason);
+  await d.getByRole('button').last().click();
+  await d.waitFor({ state: 'detached' });
+}

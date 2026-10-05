@@ -17,6 +17,8 @@ import { ModuleThumb } from '../modules/ModuleThumb';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { IconSizeSlider, useListIconSize, useResizeGestures } from './listIconSize';
+import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { MODULE_DELETE_WORDING } from '../ui/deleteWording';
 export { MODULE_MIME };
 
 interface Props {
@@ -104,11 +106,12 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
                 )
               }
               onAddToCollection={collectionsOn && (m.role === undefined || m.role === 'owner') ? () => setToCollection(m) : undefined}
-              onDelete={() => {
-                if (!confirm(`Delete module "${m.title}"?`)) return;
-                void api.modules.remove(m.id).then(() =>
-                  qc.invalidateQueries({ queryKey: ['modules'] }),
-                );
+              onDelete={async () => {
+                if (!(await confirmDelete(m.title, MODULE_DELETE_WORDING))) return;
+                void api.modules.remove(m.id).then(() => {
+                  toastDeleted(m.title);
+                  return qc.invalidateQueries({ queryKey: ['modules'] });
+                });
               }}
             />
           ))}

@@ -3,6 +3,7 @@
 // and cancel, handing over, leaving (with the last-admin rule) and
 // deleting with a typed name. The API is a stubbed fetch.
 
+import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -52,7 +53,7 @@ beforeEach(() => {
             : { ok: true };
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   });
-  vi.stubGlobal('confirm', () => true);
+  autoConfirm(true);
 });
 afterEach(() => {
   cleanup();

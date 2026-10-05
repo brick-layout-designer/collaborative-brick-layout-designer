@@ -23,6 +23,8 @@ import { lastLayoutToReopen } from './reopenLast';
 import { useEditorStore } from '../editor/editorStore';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { ModuleVersionsDialog } from '../modules/ModuleVersionsDialog';
+import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { MODULE_DELETE_WORDING } from '../ui/deleteWording';
 import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
 const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
@@ -143,8 +145,13 @@ export function LayoutsPage() {
                 key={l.id}
                 layout={l}
                 chip={<OwnerChip item={l} myUserId={myUserId} orgs={orgs} />}
-                onDelete={() => {
-                  if (confirm(`Delete "${l.title}"? This cannot be undone.`)) remove.mutate(l.id);
+                onDelete={async () => {
+                  const ok = await confirmDelete(l.title, {
+                    removes: 'The layout, its history and its share links are deleted for everyone who can open it.',
+                    keeps: 'Modules, parts and venues it uses stay in their libraries.',
+                    typeName: true,
+                  });
+                  if (ok) remove.mutate(l.id, { onSuccess: () => toastDeleted(l.title) });
                 }}
                 onShare={() => setShareLayout(l)}
                 onMove={hasClubs ? () => setMoving({ kind: 'layout', item: l }) : undefined}
@@ -248,10 +255,15 @@ export function LayoutsPage() {
                       <button
                         role="menuitem"
                         type="button"
-                        onClick={() => {
-                          if (confirm(`Take "${m.title}" out of the public catalog? Copies people already have keep working.`)) {
-                            withdraw.mutate(catalog.shared('module', m.id)!.id);
-                          }
+                        onClick={async () => {
+                          const ok = await askConfirm({
+                            title: `Withdraw “${m.title}” from the catalog?`,
+                            removes: 'It leaves the public catalog, so nobody new can add it.',
+                            keeps: 'Your module stays here, and copies people already added keep working.',
+                            undo: 'You can share it to the catalog again later.',
+                            confirmLabel: 'Withdraw',
+                          });
+                          if (ok) withdraw.mutate(catalog.shared('module', m.id)!.id);
                         }}
                         className={MORE_ITEM}
                       >
@@ -267,8 +279,9 @@ export function LayoutsPage() {
                     <button
                       role="menuitem"
                       type="button"
-                      onClick={() => {
-                        if (confirm(`Delete "${m.title}"?`)) removeModule.mutate(m.id);
+                      onClick={async () => {
+                        if (await confirmDelete(m.title, MODULE_DELETE_WORDING))
+                          removeModule.mutate(m.id, { onSuccess: () => toastDeleted(m.title) });
                       }}
                       className={`${MORE_ITEM} text-danger`}
                     >

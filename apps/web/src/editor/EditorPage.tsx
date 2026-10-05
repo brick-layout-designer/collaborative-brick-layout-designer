@@ -142,7 +142,7 @@ import { ColorAlphaInput } from './ColorAlphaInput';
 import { fitView, isUntouchedFit, withGridLabels, type ViewInsets } from './viewFit';
 import { PartListDialog } from './PartListDialog';
 import { blueBrickLeavesOut, DownloadAsDialog } from './DownloadAsDialog';
-import { saveVenueToLibrary } from './venueLibrary';
+import { askOverwrite, saveVenueToLibrary } from './venueLibrary';
 import { drawnGridLayer, gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 import { AppMark, HelpMenu, LayoutNameMenu, SavePill, SettingsButton, TaskTabs, type EditorTask } from './EditorChrome';
 import { SettingsDialog } from '../settings/SettingsPage';
@@ -150,6 +150,7 @@ import { usePreferences } from '../theme/PrefsProvider';
 import { DEFAULT_SNAP_STRENGTH, SnapSession } from './snapFeel';
 import { liveSnapReach } from './liveSnapReach';
 import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
+import { askConfirm, askLeaveUnsaved } from '../ui/ConfirmDialog';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -264,9 +265,14 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       useEditorStore.getState().showStatusMessage('All changes saved to the server', 3000);
       return;
     }
-    if (window.confirm('Not connected to the server — your latest changes will sync when the connection returns.\n\nDownload a copy of the current local version (.bld-layout) now?')) {
-      void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', partsRef.current);
-    }
+    const download = await askConfirm({
+      title: 'Download a copy?',
+      removes: 'You’re not connected to the server. Your latest changes sync when the connection returns.',
+      keeps: 'You can download a copy of this layout (.bld-layout) now, to be safe.',
+      confirmLabel: 'Download',
+      danger: false,
+    });
+    if (download) void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', partsRef.current);
   }, [doc, layoutId, checkSaved, meta.data?.layout.title, moduleMode]);
   // The module editor's Save: the module's contents, then its picture.
   const saveModuleRef = useRef<() => Promise<void>>(async () => undefined);
@@ -660,9 +666,9 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     }
   };
 
-  const leaveLayout = () => {
+  const leaveLayout = async () => {
     if (status.kind === 'reconnecting' || status.kind === 'offline' || status.kind === 'error' || status.kind === 'unsaved' || status.kind === 'saving') {
-      if (!confirm('Changes may not be saved. Leave anyway?')) return;
+      if (!(await askLeaveUnsaved())) return;
     }
     window.location.href = '/';
   };
@@ -956,9 +962,15 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               onVenueProps={() => setShowVenueProps(true)}
               onVenueDesigner={() => setShowVenueDesigner(true)}
               onVenueDimensions={() => setShowVenueDimensions(true)}
-              onVenueClear={() => {
+              onVenueClear={async () => {
                 if (!doc) return;
-                if (!confirm('Remove the entire venue from this project?')) return;
+                if (!(await askConfirm({
+      title: 'Remove the venue from this layout?',
+      removes: 'The venue’s outline, walls, doors and obstacles leave this layout.',
+      keeps: 'Your parts stay where they are, and the venue stays in the Venue library if you saved it there.',
+      undo: 'You can undo this with Ctrl+Z.',
+      confirmLabel: 'Remove',
+    }))) return;
                 setVenue(doc, null);
               }}
               onVenueDrawOutline={() => {
@@ -1262,7 +1274,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               const orgId = orgSlug ? (myOrgs.data?.orgs.find((o) => o.slug === orgSlug)?.id ?? null) : null;
               void (async () => {
                 const saved = (await qc.fetchQuery({ queryKey: ['venue-library'], queryFn: api.venues.list })).venues;
-                const r = await saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, saved, api.venues, (m) => confirm(m));
+                const r = await saveVenueToLibrary(venue, name, { ...(orgSlug ? { orgSlug } : {}), orgId }, saved, api.venues, askOverwrite);
                 if (r === 'cancelled') return;
                 useEditorStore.getState().showStatusMessage('Venue saved to the Venue library.');
                 await qc.invalidateQueries({ queryKey: ['venue-library'] });
@@ -2366,7 +2378,10 @@ function Canvas({
         e.preventDefault();
         const s = status;
         if (s.kind === 'reconnecting' || s.kind === 'offline' || s.kind === 'error') {
-          if (!confirm('Changes may not be saved. Leave anyway?')) return;
+          void askLeaveUnsaved().then((ok) => {
+            if (ok) window.location.href = '/';
+          });
+          return;
         }
         window.location.href = '/';
         return;
@@ -2378,7 +2393,10 @@ function Canvas({
         e.preventDefault();
         const s = status;
         if (s.kind === 'reconnecting' || s.kind === 'offline' || s.kind === 'error') {
-          if (!confirm('Changes may not be saved. Leave anyway?')) return;
+          void askLeaveUnsaved().then((ok) => {
+            if (ok) window.location.href = '/';
+          });
+          return;
         }
         window.location.href = '/';
         return;

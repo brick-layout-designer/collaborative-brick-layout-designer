@@ -6,7 +6,7 @@
 // added from the editor's Parts panel. With the catalogs off nothing shows.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn, fromSettingsMenu } from '../helpers';
+import { ensureUser, signIn, fromSettingsMenu, confirmInDialog } from '../helpers';
 import { makeGlobalAdmin } from '../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -174,8 +174,8 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   await as(page, ADMIN, 'Site Admin');
   await page.goto('/admin');
   await page.getByRole('button', { name: 'moderation' }).click();
-  page.once('dialog', (d) => void d.accept('No longer allowed'));
   await page.getByRole('button', { name: 'Unpublish Coal stage' }).click();
+  await confirmInDialog(page, { reason: 'No longer allowed' });
   await expect(page.getByText(/Unpublished: No longer allowed/)).toBeVisible();
   await as(page, TAKER, 'Taker Tom');
   await page.goto('/catalog');

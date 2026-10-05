@@ -4,7 +4,7 @@
 // existing module instead of making a new one.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../helpers';
+import { ensureUser, signIn, confirmInDialog } from '../helpers';
 
 const ts = Date.now();
 let seq = 0;
@@ -79,8 +79,8 @@ test.describe('module versions', () => {
     expect(xml.match(/<Brick /g)?.length).toBe(1);
 
     // Restore version 1: it becomes version 3.
-    page.once('dialog', (d) => void d.accept());
     await history.getByRole('button', { name: 'Restore version 1' }).click();
+    await confirmInDialog(page);
     await expect(history.getByRole('status')).toContainText('saved as version 3');
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText('Restored version 1');

@@ -10,6 +10,7 @@ import { docToBbm } from '@cld/ydoc';
 import { api, moduleVersionThumbnailUrl, type ModuleSummary, type ModuleVersion } from '../api';
 import { sanitizeFilename } from '../bbmFiles';
 import { downloadBlob } from '../editor/sharePicture';
+import { askConfirm } from '../ui/ConfirmDialog';
 
 export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleSummary, 'id' | 'title'>; onClose: () => void }) {
   const qc = useQueryClient();
@@ -124,8 +125,15 @@ export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleS
                       <button
                         type="button"
                         disabled={restore.isPending}
-                        onClick={() => {
-                          if (confirm(`Make version ${v.version} the module again? This adds a new version; nothing is lost.`)) restore.mutate(v.version);
+                        onClick={async () => {
+                          const ok = await askConfirm({
+                            title: `Restore version ${v.version}?`,
+                            removes: 'The module goes back to how it was in this version.',
+                            keeps: 'This adds a new version; nothing is lost.',
+                            confirmLabel: 'Restore',
+                            danger: false,
+                          });
+                          if (ok) restore.mutate(v.version);
                         }}
                         aria-label={`Restore version ${v.version}`}
                         className="tap-target rounded-lg bg-accent px-2 py-1 text-xs font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"

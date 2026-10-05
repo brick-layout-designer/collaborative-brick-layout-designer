@@ -23,7 +23,7 @@
 //      page, live. A new title waits for review, shown old beside new.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { signIn, fromSettingsMenu } from '../../helpers';
+import { signIn, fromSettingsMenu, confirmInDialog } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -152,8 +152,8 @@ test('a club’s private collection: members see it live and Add all, outsiders 
     await fromSettingsMenu(mod.page, /^Moderation/);
     const row = mod.page.getByTestId('moderated-club-collection').filter({ hasText: TITLE });
     await expect(row).toContainText(`ArkLUG ${tag}`);
-    mod.page.once('dialog', (d) => void d.accept('Spam'));
     await row.getByRole('button', { name: `Remove collection ${TITLE}` }).click();
+    await confirmInDialog(mod.page, { reason: 'Spam' });
     await expect(row).toHaveCount(0);
     await expect(mel.page.getByText('This collection isn’t in the catalog, or you can’t see it.')).toBeVisible({ timeout: 10000 });
   } finally {

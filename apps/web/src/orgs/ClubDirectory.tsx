@@ -7,6 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type ClubSummary } from '../api';
 import { HelpButton } from '../help/HelpButton';
+import { confirmDelete } from '../ui/ConfirmDialog';
 
 const btn = 'tap-target inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft disabled:opacity-50';
 const primary = 'tap-target inline-flex items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50';
@@ -58,7 +59,16 @@ export function JoinControls({ club }: { club: ClubSummary }) {
         <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent-text" role="status">
           Request sent
         </span>
-        <button type="button" className={btn} disabled={cancel.isPending} onClick={() => cancel.mutate()}>
+        <button type="button" className={btn} disabled={cancel.isPending} onClick={async () => {
+          const ok = await confirmDelete(club.name, {
+            title: `Cancel your request to join ${club.name}?`,
+            verb: 'Cancel',
+            confirmLabel: 'Cancel request',
+            removes: 'The club’s admins no longer see your request.',
+            undoable: 'You can ask again any time.',
+          });
+          if (ok) cancel.mutate();
+        }}>
           Cancel request
         </button>
       </div>
