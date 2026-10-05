@@ -113,7 +113,9 @@ describe('deleting through the dialog', () => {
   it('a collection', async () => {
     show(<MyCollections />);
     await cancelThenDelete(
-      async () => fireEvent.click(await screen.findByRole('button', { name: 'Delete My picks' })),
+      async () => {
+        fireEvent.click(await screen.findByRole('button', { name: 'Delete My picks' }));
+      },
       'DELETE /api/catalog/collections/c1',
       'Delete “My picks”?',
       'My picks',
