@@ -19,6 +19,8 @@ function resetStore() {
     snapStepStuds: 1,
     rotationStepDegrees: 90,
     liveSnap: null,
+    snapMoving: null,
+    connectionSnap: 'gentle',
     paintColor: '80008000',
     hudMouseStudX: null,
     hudMouseStudY: null,

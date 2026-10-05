@@ -1,5 +1,5 @@
-// Settings: light or dark, colour, bigger text and help
-// icons. Signed in, they're stored on the account on this server (named
+// Settings: light or dark, colour, bigger text, help icons and how
+// strongly parts snap together. Signed in, they're stored on the account on this server (named
 // by window.location.host, since every club runs its own); signed out,
 // in this browser only. Used as a page (/settings) and as a dialog over
 // the editor, so changing the look doesn't mean leaving a layout.
@@ -15,6 +15,13 @@ import { isMobileDevice, useInstallState } from '../pwa/install';
 import { useHashScroll } from '../ui/useHashScroll';
 import { isPhoneScreen, useTours } from '../tours/TourProvider';
 import { toursFor } from '../tours/tours';
+import { DEFAULT_SNAP_STRENGTH, type SnapStrength } from '../editor/snapFeel';
+
+const SNAP_CHOICES: { id: SnapStrength; label: string; hint: string }[] = [
+  { id: 'off', label: 'Off', hint: 'Parts never pull onto each other; the grid still lines them up.' },
+  { id: 'gentle', label: 'Gentle', hint: 'Pulls only when the ends are close. Recommended.' },
+  { id: 'strong', label: 'Strong', hint: 'Reaches further, for quick rough placing.' },
+];
 
 const THEME_CARDS: { id: ThemeChoice; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -90,6 +97,9 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
         <h1 className="mb-4 font-display text-3xl font-bold">Settings</h1>
         <a href="#look" className="rounded-control border border-line bg-panel px-3 py-2.5 font-bold text-ink">
           Look and feel
+        </a>
+        <a href="#editing" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
+          Editing
         </a>
         <a href="#help" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Help and tours
@@ -190,6 +200,42 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
               Bigger text and buttons
             </label>
             <HelpButton helpKey="settings.largeText" />
+          </div>
+        </Section>
+
+        <Section id="editing" title="Editing">
+          <div className="flex flex-col gap-3">
+            <div>
+              <div id="snap-strength-label" className="flex items-center gap-2 text-[15px] font-semibold">
+                Snap strength
+                <HelpButton helpKey="settings.connectionSnap" target='[role="radiogroup"][aria-labelledby="snap-strength-label"]' />
+              </div>
+              <div className="text-sm text-muted">How strongly a part you drag pulls onto a matching connection nearby.</div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby="snap-strength-label">
+              {SNAP_CHOICES.map((c) => {
+                const on = (prefs.connectionSnap ?? DEFAULT_SNAP_STRENGTH) === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    data-testid={`snap-strength-${c.id}`}
+                    onClick={() => setPrefs({ connectionSnap: c.id })}
+                    className={`flex min-h-11 flex-col gap-1 rounded-bubble bg-panel p-3 text-left ${on ? 'border-2 border-accent' : 'border border-border hover:border-muted'}`}
+                  >
+                    <span className="text-sm font-bold text-ink">{c.label}</span>
+                    <span className="text-[13px] leading-snug text-muted">{c.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-sm text-muted">
+              Tip: hold <kbd className="rounded border border-border px-1 font-sans text-xs">Alt</kbd> (
+              <kbd className="rounded border border-border px-1 font-sans text-xs">⌥ Option</kbd> on a Mac) while dragging to
+              place one part without snapping.
+            </p>
           </div>
         </Section>
 

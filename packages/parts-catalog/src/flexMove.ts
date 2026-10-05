@@ -227,19 +227,19 @@ export class FlexMove {
   /**
    * Bend the chain so its end reaches `mouse`, snapping (unless `snap` is
    * off) the grabbed brick's active connection to a free connection of its
-   * type on a brick outside the chain, within max(grid, 4) studs
-   * (LayerBrick.getMovedSnapPoint). Returns the snap point, if any.
+   * type on a brick outside the chain, within `reachStuds` (the editor's
+   * connection-snap reach; LayerBrick.getMovedSnapPoint used max(grid, 4)).
+   * Returns the snap point, if any.
    */
-  moveTo(mouse: Pt, gridSnapStuds: number, snap = true): Pt | null {
+  moveTo(mouse: Pt, reachStuds: number, snap = true): Pt | null {
     let target = NULL_CONN();
     const g = this.grabbed!;
     const n = this.connectionCount(g);
     const active = this.conn(g, Math.min(Math.max(g.activeConnectionPointIndex, 0), n - 1));
-    if (snap && this.isFree(active)) {
+    if (snap && reachStuds > 0 && this.isFree(active)) {
       const type = this.type(active);
       const virtual = { x: mouse.x - this.grabDelta.x, y: mouse.y - this.grabDelta.y };
-      const threshold = Math.max(gridSnapStuds, 4);
-      let best = threshold * threshold;
+      let best = reachStuds * reachStuds;
       for (const b of this.layer.bricks) {
         if (this.chainBricks.includes(b)) continue;
         const conns = this.metaOf(b)?.connections ?? [];

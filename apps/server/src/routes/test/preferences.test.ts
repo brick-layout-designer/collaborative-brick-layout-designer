@@ -90,6 +90,20 @@ describe('account preferences', () => {
     expect(got.json().prefs).toEqual({ ...DEFAULT_PREFERENCES, theme: 'dark', partsIconSize: 96 });
   });
 
+  it('keeps the Snap strength only once it is set: off, gentle or strong', async () => {
+    const before = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    expect('connectionSnap' in (before.json() as { prefs: object }).prefs).toBe(false);
+    for (const v of ['off', 'strong', 'gentle', 'strong']) {
+      const res = await put({ cookie: user.cookie }, { connectionSnap: v });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().prefs.connectionSnap).toBe(v);
+    }
+    await put({ cookie: user.cookie }, { largeText: true });
+    const got = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    expect(got.json().prefs.connectionSnap).toBe('strong');
+    expect(got.json().prefs.largeText).toBe(true);
+  });
+
   it('refuses unknown keys and wrong values without storing anything', async () => {
     const bad: unknown[] = [
       { theme: 'purple' },
@@ -105,6 +119,9 @@ describe('account preferences', () => {
       { partsIconSize: 161 },
       { partsIconSize: 48.5 },
       { partsIconSize: '48' },
+      { connectionSnap: 'medium' },
+      { connectionSnap: true },
+      { connectionSnap: 'Gentle' },
       ['theme'],
       null,
     ];

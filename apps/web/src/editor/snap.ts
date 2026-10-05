@@ -17,16 +17,7 @@
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import type { PartWire } from '../api';
 import { pivotOf } from './brickGeometry';
-
-/**
- * Connection-snap reach in studs — port of desktop's
- * `connectionSnapThresholdStuds` (MapViewDrag.cpp:225-237):
- *   - if grid step > 0 → grid step + 2 studs of grace
- *   - else fall back to 4 studs ("half a brick unit")
- */
-export function connectionSnapReach(snapStepStuds: number): number {
-  return snapStepStuds > 0 ? snapStepStuds + 2 : 4;
-}
+import { holdReach, pickSnap, type SnapCandidate, type SnapSession } from './snapFeel';
 
 export interface PlaceCandidate {
   part: PartWire;
@@ -46,6 +37,14 @@ export interface PlaceCandidate {
   pivotOffsetY?: number;
   /** Active grid snap step in studs (0 = grid snap disabled). */
   snapStepStuds: number;
+  /** Connection-snap reach in studs (`snapReachStuds`); 0 = no connection snap. */
+  reach: number;
+  /** The placement drag's session (hold, speed gate); none = a one-off placement. */
+  session?: SnapSession;
+  /** Alt held: no connection snap. */
+  bypass?: boolean;
+  /** The drop: one last snap with the speed gate off. */
+  final?: boolean;
 }
 
 export interface SnapResult {
@@ -59,6 +58,9 @@ export interface SnapResult {
    * connection snap fired. `null` when `snappedToConnection` is false.
    */
   newOrientation: number | null;
+  /** Where the joined connections meet (studs), for the snap ring; absent without a connection snap. */
+  ringStudX?: number;
+  ringStudY?: number;
 }
 
 export interface AnchorSnapResult extends SnapResult {
@@ -170,13 +172,15 @@ export function snapPlacement(
   const candidateConns = candidate.part.connections;
   if (candidateConns.length > 0) {
     const free = collectFreeConnectionsInWorld(map, partsByKey);
-    const best = findBestConnectionMatch(candidate, candidateConns, free, candidate.snapStepStuds);
+    const best = findBestConnectionMatch(candidate, candidateConns, free);
     if (best) {
       return {
         centreX: best.newCentreX,
         centreY: best.newCentreY,
         snappedToConnection: true,
         newOrientation: best.newOrientation,
+        ringStudX: best.ringX,
+        ringStudY: best.ringY,
       };
     }
   }
@@ -221,12 +225,19 @@ export interface WorldConnection {
 function collectFreeConnectionsInWorld(
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
-): WorldConnection[] {
+): OwnedWorldConnection[] {
   return freeConnectionsCached(map, partsByKey);
 }
 
 export interface OwnedWorldConnection extends WorldConnection {
   brickId: string;
+  /** Index of the connection on its brick's part. */
+  index: number;
+}
+
+/** Stable key of a brick's connection, for snap locks. */
+export function connKey(brickId: string, index: number): string {
+  return `${brickId}#${index}`;
 }
 
 // Free-connection lists per (map, catalog). A drag fires dragmove at
@@ -264,6 +275,7 @@ export function freeConnectionsCached(
           type: cp.type,
           angle: mod360(cp.angle + brick.orientation),
           brickId: brick.id,
+          index: i,
         });
       }
     }
@@ -278,14 +290,23 @@ interface MatchOffset {
   newCentreY: number;
   /** New orientation for the candidate brick after snapping, degrees. */
   newOrientation: number;
+  /** The target connection (where the two meet). */
+  ringX: number;
+  ringY: number;
+}
+
+interface PlaceMatch extends SnapCandidate {
+  cc: PartWire['connections'][number];
+  fc: WorldConnection;
 }
 
 /**
- * Find the (existing connection, candidate connection) pair whose worlds
- * are closest. Returns the rotation-aligned centre and new orientation so
- * the candidate's CP meets the target CP mouth-to-mouth.
+ * Pick the (existing connection, candidate connection) join for a new
+ * part (snapFeel.pickSnap: reach, hold, switching, ties, speed gate).
+ * Returns the rotation-aligned centre and new orientation so the
+ * candidate's CP meets the target CP mouth-to-mouth.
  *
- * Mirrors desktop `newPartPlacementSnap` (ConnectionSnap.cpp:117-156):
+ * Mirrors desktop `newPartPlacementSnap` (ConnectionSnap.cpp):
  *   newCenter = target.worldPos - rotatePoint(c.position, newOrient)
  *
  * Null if nothing is within reach.
@@ -293,12 +314,16 @@ interface MatchOffset {
 function findBestConnectionMatch(
   candidate: PlaceCandidate,
   candidateConns: PartWire['connections'],
-  free: WorldConnection[],
-  snapStepStuds: number,
+  free: OwnedWorldConnection[],
 ): MatchOffset | null {
-  const reach = connectionSnapReach(snapStepStuds);
-  const threshSq = reach * reach;
-  let best: { distSq: number; newCentreX: number; newCentreY: number; newOrientation: number } | null = null;
+  const reach = candidate.reach;
+  const session = candidate.session;
+  if (!(reach > 0) || candidate.bypass) {
+    if (session) session.lock = null;
+    return null;
+  }
+  const limit = holdReach(reach);
+  const limitSq = limit * limit;
 
   // Pre-rotate candidate connection points using current orientation to
   // compute world positions for distance checks.
@@ -306,7 +331,9 @@ function findBestConnectionMatch(
   const cos0 = Math.cos(theta0);
   const sin0 = Math.sin(theta0);
 
-  for (const cc of candidateConns) {
+  const matches: PlaceMatch[] = [];
+  for (let ci = 0; ci < candidateConns.length; ci++) {
+    const cc = candidateConns[ci]!;
     if (!cc.type) continue;
     // Current world position of this CP (at candidate's current orientation).
     const candWorldX = candidate.centreX + cc.x * cos0 - cc.y * sin0;
@@ -316,22 +343,30 @@ function findBestConnectionMatch(
       const ddx = fc.x - candWorldX;
       const ddy = fc.y - candWorldY;
       const distSq = ddx * ddx + ddy * ddy;
-      if (distSq > threshSq) continue;
-      // Required orientation: moving CP angle + newOrientation = target angle + 180°
-      const newOrientation = mod360(fc.angle + 180 - cc.angle);
-      // Rotation-aligned centre: target.worldPos - rotate(cp.position, newOrient)
-      // Mirrors ConnectionSnap.cpp:149-151.
-      const thetaNew = (newOrientation * Math.PI) / 180;
-      const cosN = Math.cos(thetaNew);
-      const sinN = Math.sin(thetaNew);
-      const newCentreX = fc.x - (cc.x * cosN - cc.y * sinN);
-      const newCentreY = fc.y - (cc.x * sinN + cc.y * cosN);
-      if (!best || distSq < best.distSq) {
-        best = { distSq, newCentreX, newCentreY, newOrientation };
-      }
+      if (distSq > limitSq) continue;
+      const dist = Math.sqrt(distSq);
+      // The placed part sits centred on the cursor: its connection's
+      // distance to the cursor is just its distance from the centre.
+      matches.push({
+        movingKey: `new#${ci}`,
+        targetKey: connKey(fc.brickId, fc.index),
+        dist,
+        mouseDist: Math.hypot(cc.x, cc.y),
+        cc,
+        fc,
+      });
     }
   }
-  return best;
+  const pick = session
+    ? session.step(matches, reach, { ...(candidate.final ? { final: true } : {}) })
+    : pickSnap(matches, null, reach);
+  if (!pick) return null;
+  const { cc, fc } = pick;
+  // Required orientation: moving CP angle + newOrientation = target angle + 180°
+  const newOrientation = mod360(fc.angle + 180 - cc.angle);
+  // Rotation-aligned centre: target.worldPos - rotate(cp.position, newOrient)
+  const aligned = rotationAlignedCentre(fc.x, fc.y, cc.x, cc.y, newOrientation);
+  return { newCentreX: aligned.x, newCentreY: aligned.y, newOrientation, ringX: fc.x, ringY: fc.y };
 }
 
 /** The brick's pivot (sprite centre), then rotate the local point into world. */
@@ -466,6 +501,14 @@ export interface DragSnapInput {
   orientation: number;
   /** Active grid snap step in studs (0 = off). */
   snapStepStuds: number;
+  /** Connection-snap reach in studs (`snapReachStuds`); 0 = no connection snap. */
+  reach: number;
+  /** The drag's session (hold, speed gate); none = a one-off snap. */
+  session?: SnapSession;
+  /** Alt held: no connection snap, grid snap only. */
+  bypass?: boolean;
+  /** The drop: one last snap with the speed gate off. */
+  final?: boolean;
   /**
    * Grab anchor: index into `part.connections` of the leader connection
    * nearest the click that started the drag (desktop `captureGrabAnchor`,
@@ -491,6 +534,13 @@ export interface DragSnapResult {
   ringStudX: number | null;
   ringStudY: number | null;
   /**
+   * The moving connection that joins (or would join): the grab anchor of a
+   * single-brick drag, else the free one nearest the cursor; where it is
+   * after the snap. Null when the moving set has no free connection.
+   */
+  movingStudX: number | null;
+  movingStudY: number | null;
+  /**
    * Orientation the dragged brick should be rotated to so the matched
    * CPs align angle-to-angle (mouth-to-mouth). Only for a single-brick
    * drag — desktop never rotates a multi-brick group on snap
@@ -507,53 +557,55 @@ export interface DragSnapResult {
  * Compute the centre position the dragged brick should be at, given:
  *   - free connections on every moving brick (local-coords from catalog)
  *   - free connections on every NON-moving brick in the map
- * Picks the (moving conn, target conn) pair with the smallest required
- * translation, breaking ties with mouse proximity (matches
- * MapViewDrag.cpp:303-328 — `kTieStudsSq = 16`).
+ * Every (moving conn, target conn) pair within the hold distance is a
+ * candidate; snapFeel.pickSnap picks one (reach, hold, clearly-better
+ * switching, steady ties, speed gate).
  *
- * Single brick: the result is rotation-aligned (ConnectionSnap.cpp:103-110,
+ * Single brick: the result is rotation-aligned (ConnectionSnap.cpp,
  * newCentre = target - rotate(conn.local, newOrient)). Multi-brick: pure
  * translation of the whole group.
  *
- * Falls back to grid snap when no connection match is in range.
+ * Falls back to grid snap when no connection match is picked.
  */
 export function liveDragSnap(
   drag: DragSnapInput,
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
 ): DragSnapResult {
-  const reach = connectionSnapReach(drag.snapStepStuds);
-  const reachSq = reach * reach;
-  const TIE_SQ = 16; // 4 studs squared (MapViewDrag.cpp:303)
+  const reach = drag.bypass ? 0 : drag.reach;
+  const limit = holdReach(reach);
+  const limitSq = limit * limit;
 
   // Free targets — every brick NOT in the moving set. For a multi-brick
   // drag this excludes the whole selection so the group can't snap to
   // its own connection points (matches desktop's `movingGuids` arg to
-  // `scanForNearestFreeTarget` — ConnectionSnap.cpp:32-69).
+  // `scanForNearestFreeTarget` — ConnectionSnap.cpp).
   const siblings = drag.siblings ?? [];
   const movingSet = new Set<string>(drag.movingIds ?? [drag.movingId]);
   movingSet.add(drag.movingId);
   for (const s of siblings) movingSet.add(s.id);
-  const targets = collectFreeConnectionsExcludingSet(map, partsByKey, movingSet);
+  const targets = reach > 0 ? collectFreeConnectionsExcludingSet(map, partsByKey, movingSet) : [];
   const single = siblings.length === 0;
 
   // Free connections on every moving brick at its CURRENT pose. Skip
   // conns that are already linked to another brick — desktop bails on
-  // those at MapView::applyLiveConnectionSnap:277-279.
+  // those at MapView::applyLiveConnectionSnap.
   interface MovingConn {
     /** True for the leader's connections; `index` is into its part. */
     leader: boolean;
+    key: string;
     index: number;
     worldX: number;
     worldY: number;
     type: string;
-    mouseDistSq: number;
+    mouseDist: number;
     localX: number;
     localY: number;
     localAngle: number;
   }
   const movingConns: MovingConn[] = [];
   const addConns = (
+    id: string,
     leader: boolean,
     part: PartWire | undefined,
     links: { linkedTo: string }[],
@@ -572,62 +624,79 @@ export function liveDragSnap(
       if (link && link.linkedTo !== '') continue;
       const wx = cx + cp.x * cos - cp.y * sin;
       const wy = cy + cp.x * sin + cp.y * cos;
-      const mdx = wx - drag.mouseStudX;
-      const mdy = wy - drag.mouseStudY;
       movingConns.push({
         leader,
+        key: connKey(id, i),
         index: i,
         worldX: wx,
         worldY: wy,
         type: cp.type,
-        mouseDistSq: mdx * mdx + mdy * mdy,
+        mouseDist: Math.hypot(wx - drag.mouseStudX, wy - drag.mouseStudY),
         localX: cp.x,
         localY: cp.y,
         localAngle: cp.angle,
       });
     }
   };
-  addConns(true, drag.part, drag.movingLinks, drag.centreX, drag.centreY, drag.orientation);
+  addConns(drag.movingId, true, drag.part, drag.movingLinks, drag.centreX, drag.centreY, drag.orientation);
   for (const s of siblings) {
-    addConns(false, s.part, s.links, drag.centreX + s.offsetX, drag.centreY + s.offsetY, s.orientation);
+    addConns(s.id, false, s.part, s.links, drag.centreX + s.offsetX, drag.centreY + s.offsetY, s.orientation);
   }
 
-  if (movingConns.length === 0 || targets.length === 0) {
-    return gridFallback(drag, movingConns.length);
-  }
+  // The grab anchor leads a single-brick drag: its targets are tried on
+  // their own first, the other free connections only when it has none.
+  const lead =
+    single && drag.leadConnIndex !== undefined && drag.leadConnIndex >= 0
+      ? movingConns.find((m) => m.leader && m.index === drag.leadConnIndex)
+      : undefined;
 
-  type Best = { mc: MovingConn; tc: WorldConnection; transSq: number; mouseDistSq: number };
-  const search = (candidates: MovingConn[]): Best | null => {
-    let best: Best | null = null;
+  interface Pair extends SnapCandidate {
+    mc: MovingConn;
+    tc: OwnedWorldConnection;
+  }
+  const pairs = (candidates: MovingConn[]): Pair[] => {
+    const out: Pair[] = [];
     for (const mc of candidates) {
       for (const tc of targets) {
         if (tc.type !== mc.type) continue;
         const dx = tc.x - mc.worldX;
         const dy = tc.y - mc.worldY;
-        const transSq = dx * dx + dy * dy;
-        if (transSq > reachSq) continue;
-        // Pick the smallest translation; tiebreak on mouse proximity.
-        // Same logic as MapViewDrag.cpp:313-319.
-        let take = false;
-        if (best === null || transSq + TIE_SQ < best.transSq) take = true;
-        else if (Math.abs(transSq - best.transSq) <= TIE_SQ && mc.mouseDistSq < best.mouseDistSq) {
-          take = true;
-        }
-        if (take) best = { mc, tc, transSq, mouseDistSq: mc.mouseDistSq };
+        const sq = dx * dx + dy * dy;
+        if (sq > limitSq) continue;
+        out.push({ movingKey: mc.key, targetKey: connKey(tc.brickId, tc.index), dist: Math.sqrt(sq), mouseDist: mc.mouseDist, mc, tc });
       }
     }
-    return best;
+    return out;
+  };
+  const choose = (cands: Pair[]): Pair | null => {
+    if (drag.session) return drag.session.step(cands, reach, { ...(drag.final ? { final: true } : {}) });
+    return pickSnap(cands, null, reach);
   };
 
-  // Grab anchor leads a single-brick drag; fall back to every free
-  // connection when it has nothing in reach.
-  let best: Best | null = null;
-  if (single && drag.leadConnIndex !== undefined && drag.leadConnIndex >= 0) {
-    best = search(movingConns.filter((m) => m.leader && m.index === drag.leadConnIndex));
+  let best: Pair | null = null;
+  if (reach > 0 && movingConns.length > 0 && targets.length > 0) {
+    const leadPairs = lead ? pairs([lead]) : [];
+    const held = drag.session?.lock;
+    // A join held on another connection stays in the running.
+    const leadHasNew = leadPairs.some((p) => p.dist <= reach) || (!!held && held.movingKey === lead?.key);
+    best = choose(leadHasNew ? leadPairs : pairs(movingConns));
+  } else if (drag.session) {
+    drag.session.lock = null;
   }
-  if (best === null) best = search(movingConns);
 
-  if (best === null) return gridFallback(drag, movingConns.length);
+  // The connection to highlight: the joined one, else the grab anchor,
+  // else the free one nearest the cursor.
+  let shown: MovingConn | undefined = best?.mc ?? lead;
+  if (!shown) for (const m of movingConns) if (!shown || m.mouseDist < shown.mouseDist) shown = m;
+
+  if (best === null) {
+    const r = gridFallback(drag, movingConns.length);
+    if (shown) {
+      r.movingStudX = shown.worldX + (r.centreX - drag.centreX);
+      r.movingStudY = shown.worldY + (r.centreY - drag.centreY);
+    }
+    return r;
+  }
   const { mc, tc } = best;
   if (!single) {
     return {
@@ -636,6 +705,8 @@ export function liveDragSnap(
       snappedToConnection: true,
       ringStudX: tc.x,
       ringStudY: tc.y,
+      movingStudX: tc.x,
+      movingStudY: tc.y,
       newOrientation: null,
       movingConnCount: movingConns.length,
     };
@@ -649,6 +720,8 @@ export function liveDragSnap(
     snappedToConnection: true,
     ringStudX: tc.x,
     ringStudY: tc.y,
+    movingStudX: tc.x,
+    movingStudY: tc.y,
     newOrientation,
     movingConnCount: movingConns.length,
   };
@@ -726,6 +799,8 @@ function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapRes
     snappedToConnection: false,
     ringStudX: null,
     ringStudY: null,
+    movingStudX: null,
+    movingStudY: null,
     newOrientation: null,
     movingConnCount,
   };
@@ -748,9 +823,9 @@ function collectFreeConnectionsExcludingSet(
   map: BbmMap,
   partsByKey: Map<string, PartWire>,
   excludeIds: Set<string>,
-): WorldConnection[] {
+): OwnedWorldConnection[] {
   const all = freeConnectionsCached(map, partsByKey);
-  const out: WorldConnection[] = [];
+  const out: OwnedWorldConnection[] = [];
   for (const c of all) {
     if (!excludeIds.has(c.brickId)) out.push(c);
   }

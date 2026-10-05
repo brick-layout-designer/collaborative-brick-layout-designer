@@ -248,6 +248,11 @@ export const HELP_TEXTS = {
     short: 'Short guided walks through the app.',
     more: 'A tour points at the real buttons, one step at a time. Press “Show tours again” to see the ones you have already finished.',
   },
+  'settings.connectionSnap': {
+    title: 'Snap strength',
+    short: 'How strongly a part you drag pulls onto a matching connection nearby.',
+    more: 'Gentle pulls only when the ends are close and lets go once you move away; Strong reaches further; Off never pulls, and the grid still lines parts up. Hold Alt (Option on a Mac) while dragging to place one part without snapping.',
+  },
 
   // The venue designer
   'room.tools': {

@@ -13,6 +13,8 @@ import type { PartWire } from '../api';
 import { useEditorStore } from './editorStore';
 import { catalogFromParts } from './useConnectivity';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import { liveSnapReach } from './liveSnapReach';
+import { snapBypassed } from './snapFeel';
 
 const PX = 8;
 
@@ -90,10 +92,11 @@ export function startFlexSession(opts: {
     }
     stage.batchDraw();
   };
-  const onMove = () => {
+  const onMove = (e?: { evt?: { altKey?: boolean } }) => {
     const m = pointerStuds();
     if (!m) return;
-    const snapped = flex.moveTo(m, useEditorStore.getState().snapStepStuds);
+    // The editor's connection-snap reach; Alt bends without snapping.
+    const snapped = flex.moveTo(m, liveSnapReach(), !snapBypassed(e?.evt));
     moved = true;
     useEditorStore.getState().setLiveSnap(snapped ? { studX: snapped.x, studY: snapped.y } : null);
     draw();

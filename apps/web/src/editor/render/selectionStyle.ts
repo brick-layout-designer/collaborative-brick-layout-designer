@@ -24,6 +24,24 @@ export const SELECTION = {
   handleStrokeWidth: 1.5,
 } as const;
 
+/**
+ * Connection-snap marks while dragging, in screen px at any zoom: a green
+ * ring (with a light halo, readable on dark and light backgrounds) on the
+ * target connection, an amber dot on the moving connection that joins.
+ * Same as the desktop (SelectionStyle.h, namespace snapmarks).
+ */
+export const SNAP_MARKS = {
+  ring: 'rgb(22,163,74)',
+  ringRadius: 9,
+  ringWidth: 2.5,
+  ringFill: 'rgba(34,197,94,0.2)',
+  halo: 'rgba(255,255,255,0.8)',
+  haloWidth: 1.5,
+  dot: 'rgb(245,158,11)',
+  dotRadius: 4,
+  dotHaloWidth: 1.5,
+} as const;
+
 /** The band's width for a ruler line `thickness` scene px wide. */
 export function rulerHaloWidth(thickness: number): number {
   return Math.max(thickness + SELECTION.rulerHaloExtra, SELECTION.rulerHaloMin);

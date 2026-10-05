@@ -108,13 +108,14 @@ import {
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
 import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
-import { pxToStud } from './render/coords';
+import { pxToStud, studToPx } from './render/coords';
+import { SNAP_MARKS } from './render/selectionStyle';
 import { ensureSprite, getSpriteSync, resetSpriteProgress, wantSprites } from './render/spriteCache';
 import { layoutSpriteUrls } from './render/layoutSprites';
 import { MapLoadingCard, OpeningLayoutScreen } from './LoadingCard';
 import { PlaceGhost } from './render/PlaceGhost';
 import { ModuleGhost } from './render/ModuleGhost';
-import { snapPlacement, snapToAnchorBrick } from './snap';
+import { snapPlacement, snapToAnchorBrick, type SnapResult } from './snap';
 import { MarqueeOverlay, bricksInMarquee } from './render/MarqueeOverlay';
 import { useUndoManager } from './useUndoManager';
 import { isEditableTarget } from './keyboardGuard';
@@ -145,6 +146,9 @@ import { saveVenueToLibrary } from './venueLibrary';
 import { drawnGridLayer, gridCellAt, parseCellIndexCorner } from './render/gridIndex';
 import { AppMark, HelpMenu, LayoutNameMenu, SavePill, SettingsButton, TaskTabs, type EditorTask } from './EditorChrome';
 import { SettingsDialog } from '../settings/SettingsPage';
+import { usePreferences } from '../theme/PrefsProvider';
+import { DEFAULT_SNAP_STRENGTH, SnapSession } from './snapFeel';
+import { liveSnapReach } from './liveSnapReach';
 import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
@@ -1551,10 +1555,20 @@ function Canvas({
   // dragover; we render the same PlaceGhost as the place tool so the
   // user sees a live preview with snap-to-connection. Mirrors desktop
   // `MapView::dragMoveEvent` + `updateDragPreview` (MapView.cpp:1678-1761).
-  const [dropPart, setDropPart] = useState<{ key: string; studX: number; studY: number } | null>(null);
+  const [dropPart, setDropPart] = useState<{ key: string; studX: number; studY: number; snapped?: SnapResult } | null>(null);
   // Same for a module dragged from the Module library: cursor position
   // plus the module's snapshot, fetched once per drag (MapView.cpp:1796-1900).
-  const [dropModule, setDropModule] = useState<{ studX: number; studY: number } | null>(null);
+  const [dropModule, setDropModule] = useState<{ studX: number; studY: number; offset?: { dx: number; dy: number } } | null>(null);
+  // Snap state of the part / module being dragged in (hold, speed gate).
+  const placeSnapRef = useRef(new SnapSession());
+  const moduleSnapRef = useRef(new SnapSession());
+  // The Snap strength setting lives on the account; drag handlers read it
+  // from the editor store.
+  const { prefs: accountPrefs } = usePreferences();
+  const connectionSnapPref = accountPrefs.connectionSnap ?? DEFAULT_SNAP_STRENGTH;
+  useEffect(() => {
+    useEditorStore.getState().setConnectionSnap(connectionSnapPref);
+  }, [connectionSnapPref]);
   const moduleDragRef = useRef<{ key: string; batches: Promise<ModuleBatch[]>; ready: ModuleBatch[] | null } | null>(null);
   const [, setModuleDragReady] = useState(0);
 
@@ -1876,9 +1890,42 @@ function Canvas({
       };
     }
 
-    function updateDropPart(next: { key: string; studX: number; studY: number } | null) {
+    function updateDropPart(next: { key: string; studX: number; studY: number; snapped?: SnapResult } | null) {
       dropPartRef.current = next;
       setDropPart(next);
+    }
+
+    /** Show (or clear) the snap ring and the joining connection while dragging in. */
+    function showDropSnap(ring: { x: number; y: number } | null) {
+      const st = useEditorStore.getState();
+      st.setLiveSnap(ring ? { studX: ring.x, studY: ring.y } : null);
+      st.setSnapMoving(ring ? { studX: ring.x, studY: ring.y } : null);
+    }
+
+    /** Where the part being dragged in would land, snapped (the ghost). */
+    function ghostSnap(key: string, studX: number, studY: number, bypass: boolean): SnapResult | undefined {
+      const part = key ? partsByKey.get(key.toLowerCase()) : undefined;
+      if (!part || !map) return undefined;
+      const ghostUrl = spriteUrlFor(part);
+      const cached = ghostUrl ? getSpriteSync(ghostUrl) : null;
+      const widthStuds = cached ? cached.naturalWidth / part.pxPerStud : 16;
+      const heightStuds = cached ? cached.naturalHeight / part.pxPerStud : 16;
+      return snapPlacement(
+        {
+          part,
+          centreX: studX,
+          centreY: studY,
+          orientation: 0,
+          width: widthStuds,
+          height: heightStuds,
+          snapStepStuds,
+          reach: liveSnapReach(),
+          session: placeSnapRef.current,
+          ...(bypass ? { bypass: true } : {}),
+        },
+        map,
+        partsByKey,
+      );
     }
 
     function readPartKey(dt: DataTransfer | null): string | null {
@@ -1930,27 +1977,45 @@ function Canvas({
       useEditorStore.getState().setDropTargetHint(dropTargetHint(map?.layers ?? [], activeLayerId));
       const studs = clientToStuds(e.clientX, e.clientY);
       if (!studs) return;
+      const now = performance.now();
       if (isModule) {
         // Ghost of the whole module where the drop will put it.
         const id = activeModuleDrag.id;
         if (!id) return;
-        moduleDragBatches(id);
-        setDropModule({ studX: studs.x, studY: studs.y });
+        const entry = moduleDragBatches(id);
+        moduleSnapRef.current.sample(e.clientX, e.clientY, now);
+        const offset = entry.ready
+          ? moduleDropTranslation(entry.ready, studs, snapStepStuds, map, partsByKey, {
+              reach: liveSnapReach(),
+              session: moduleSnapRef.current,
+              bypass: e.altKey,
+            })
+          : undefined;
+        showDropSnap(offset && offset.ringStudX !== undefined ? { x: offset.ringStudX, y: offset.ringStudY! } : null);
+        setDropModule({ studX: studs.x, studY: studs.y, ...(offset ? { offset: { dx: offset.dx, dy: offset.dy } } : {}) });
         return;
       }
       const key = readPartKey(dt);
       // dragover on Firefox doesn't expose getData payloads — fall back
       // to the most-recently-stored key from a previous dragover.
+      const partKey = key || dropPartRef.current?.key || '';
+      placeSnapRef.current.sample(e.clientX, e.clientY, now);
+      const snapped = ghostSnap(partKey, studs.x, studs.y, e.altKey);
+      showDropSnap(snapped?.ringStudX !== undefined ? { x: snapped.ringStudX, y: snapped.ringStudY! } : null);
       updateDropPart({
-        key: key || dropPartRef.current?.key || '',
+        key: partKey,
         studX: studs.x,
         studY: studs.y,
+        ...(snapped ? { snapped } : {}),
       });
     }
 
     function onDragLeave(_e: DragEvent) {
       updateDropPart(null);
       setDropModule(null);
+      showDropSnap(null);
+      placeSnapRef.current = new SnapSession();
+      moduleSnapRef.current = new SnapSession();
       useEditorStore.getState().setDropTargetHint(null);
     }
 
@@ -1960,6 +2025,13 @@ function Canvas({
       const lastDropPart = dropPartRef.current;
       updateDropPart(null);
       setDropModule(null);
+      showDropSnap(null);
+      // The drop's final snap keeps the join the drag was holding.
+      const placeSnap = placeSnapRef.current;
+      const moduleSnap = moduleSnapRef.current;
+      placeSnapRef.current = new SnapSession();
+      moduleSnapRef.current = new SnapSession();
+      const bypass = e.altKey;
       useEditorStore.getState().setDropTargetHint(null);
       const dragged = moduleDragRef.current;
       moduleDragRef.current = null;
@@ -1989,6 +2061,7 @@ function Canvas({
                   useEditorStore.getState().snapStepStuds,
                   hostMap,
                   catalog,
+                  { reach: liveSnapReach(), session: moduleSnap, bypass, final: true },
                 )
               : { dx: 0, dy: 0 };
             // Bricks go to host layers named like the module's layers and
@@ -2010,7 +2083,7 @@ function Canvas({
       if (!key || !studs) return;
       const meta = partsByKey.get(key.toLowerCase());
       if (!meta) return;
-      void placePartAt(meta, studs.x, studs.y);
+      void placePartAt(meta, studs.x, studs.y, { session: placeSnap, bypass, final: true });
     }
 
     // Refreshed every render so the listeners below (attached once per
@@ -2869,7 +2942,12 @@ function Canvas({
    * + grid fallback. For `.set` (group) parts this expands the set
    * into one brick per subpart — port of MapView.cpp:1279-1360.
    */
-  async function placePartAt(meta: PartWire, studX: number, studY: number) {
+  async function placePartAt(
+    meta: PartWire,
+    studX: number,
+    studY: number,
+    snapOpts: { session?: SnapSession; bypass?: boolean; final?: boolean } = {},
+  ) {
     if (!budgetAllows(meta.key)) return;
     // Group / set placement — expand into individual bricks at the
     // subpart-relative offsets the .set.xml declares. Single Yjs
@@ -2929,6 +3007,8 @@ function Canvas({
               pivotOffsetX: imageOffset(meta, 0).x,
               pivotOffsetY: imageOffset(meta, 0).y,
               snapStepStuds,
+              reach: liveSnapReach(),
+              ...snapOpts,
             },
             map,
             partsByKey,
@@ -3416,32 +3496,15 @@ function Canvas({
           snap ring, ruler/venue drafts, remote cursors. */}
       <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
         {dropPart && (() => {
+          // Snapped in the dragover handler, which keeps the drag's snap
+          // session (hold, speed gate).
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
-          if (!part || !map) {
-            return <PlaceGhost part={part} cursorStudX={dropPart.studX} cursorStudY={dropPart.studY} />;
-          }
-          const ghostUrl = spriteUrlFor(part);
-          const cached = ghostUrl ? getSpriteSync(ghostUrl) : null;
-          const widthStuds = cached ? cached.naturalWidth / part.pxPerStud : 16;
-          const heightStuds = cached ? cached.naturalHeight / part.pxPerStud : 16;
-          const snapped = snapPlacement(
-            { part, centreX: dropPart.studX, centreY: dropPart.studY, orientation: 0, width: widthStuds, height: heightStuds, snapStepStuds },
-            map,
-            partsByKey,
-          );
-          return <PlaceGhost part={part} cursorStudX={snapped.centreX} cursorStudY={snapped.centreY} />;
+          const at = dropPart.snapped ?? { centreX: dropPart.studX, centreY: dropPart.studY };
+          return <PlaceGhost part={part} cursorStudX={at.centreX} cursorStudY={at.centreY} />;
         })()}
-        {dropModule && moduleDragRef.current?.ready && (() => {
-          const batches = moduleDragRef.current.ready;
-          const offset = moduleDropTranslation(
-            batches,
-            { x: dropModule.studX, y: dropModule.studY },
-            snapStepStuds,
-            map,
-            partsByKey,
-          );
-          return <ModuleGhost batches={batches} offset={offset} partsByKey={partsByKey} />;
-        })()}
+        {dropModule && dropModule.offset && moduleDragRef.current?.ready && (
+          <ModuleGhost batches={moduleDragRef.current.ready} offset={dropModule.offset} partsByKey={partsByKey} />
+        )}
         <MarqueeOverlay marquee={marquee} />
         <SnapRing />
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
@@ -3823,24 +3886,59 @@ function CanvasContextMenu({
 }
 
 /**
- * Green ring drawn at the active connection-snap target during drag —
- * port of SelectionOverlay::paint snap-state branch (SelectionOverlay.cpp:42-46).
- * Driven by editor-store `liveSnap`.
+ * Snap feedback while dragging: a green ring on the target connection
+ * when a connection snap holds, and an amber dot on the moving
+ * connection that joins (or would join). Sizes are screen pixels, the
+ * same at any zoom, and match the desktop (SelectionOverlay.cpp,
+ * SnapMarks in SelectionStyle.h). Driven by editor-store `liveSnap` and
+ * `snapMoving`.
  */
 function SnapRing() {
   const live = useEditorStore((s) => s.liveSnap);
-  if (!live) return null;
+  const moving = useEditorStore((s) => s.snapMoving);
+  const zoom = useEditorStore((s) => s.zoom);
+  if (!live && !moving) return null;
+  const px = (n: number) => n / (zoom > 0 ? zoom : 1);
   return (
-    <Circle
-      x={live.studX * 8}
-      y={live.studY * 8}
-      radius={10}
-      stroke="rgb(20, 180, 80)"
-      strokeWidth={3}
-      fill="rgba(80, 255, 120, 0.4)"
-      listening={false}
-      perfectDrawEnabled={false}
-    />
+    <>
+      {live && (
+        <>
+          <Circle
+            x={studToPx(live.studX)}
+            y={studToPx(live.studY)}
+            radius={px(SNAP_MARKS.ringRadius + SNAP_MARKS.ringWidth)}
+            stroke={SNAP_MARKS.halo}
+            strokeWidth={px(SNAP_MARKS.haloWidth)}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+          <Circle
+            name="snap-ring"
+            x={studToPx(live.studX)}
+            y={studToPx(live.studY)}
+            radius={px(SNAP_MARKS.ringRadius)}
+            stroke={SNAP_MARKS.ring}
+            strokeWidth={px(SNAP_MARKS.ringWidth)}
+            fill={SNAP_MARKS.ringFill}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+        </>
+      )}
+      {moving && (
+        <Circle
+          name="snap-moving"
+          x={studToPx(moving.studX)}
+          y={studToPx(moving.studY)}
+          radius={px(SNAP_MARKS.dotRadius)}
+          fill={SNAP_MARKS.dot}
+          stroke={SNAP_MARKS.halo}
+          strokeWidth={px(SNAP_MARKS.dotHaloWidth)}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      )}
+    </>
   );
 }
 

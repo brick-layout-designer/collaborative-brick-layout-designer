@@ -82,7 +82,7 @@ describe.skipIf(!existsSync(PARTS))('flex move matches vanilla BlueBrick', () =>
     const layer = brickLayer(map);
     const before = layer.bricks.map((b) => ({ area: { ...b.displayArea }, orientation: b.orientation }));
     const flex = FlexMove.start(layer, new Set(layer.bricks.map((b) => b.id)), '6887642994309303552', { x: 68, y: 40 }, catalog)!;
-    flex.moveTo({ x: 62, y: 30 }, 0);
+    flex.moveTo({ x: 62, y: 30 }, 4);
     flex.restore();
     layer.bricks.forEach((b, i) => {
       expect(b.displayArea).toEqual(before[i]!.area);

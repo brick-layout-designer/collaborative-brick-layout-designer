@@ -155,4 +155,11 @@ describe('cached preferences', () => {
       toursSeen: ['a'],
     });
   });
+
+  it('keeps a known Snap strength and drops anything else', () => {
+    expect(sanitizePreferences({ connectionSnap: 'strong' }).connectionSnap).toBe('strong');
+    expect(sanitizePreferences({ connectionSnap: 'off' }).connectionSnap).toBe('off');
+    expect('connectionSnap' in sanitizePreferences({ connectionSnap: 'medium' })).toBe(false);
+    expect('connectionSnap' in sanitizePreferences({})).toBe(false);
+  });
 });

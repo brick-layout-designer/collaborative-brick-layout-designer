@@ -24,6 +24,7 @@ import {
   setLayerVisible,
 } from '../mutations';
 import { moduleBatchesFromMap, moduleDropTranslation } from '../moduleDrop';
+import { SnapSession } from '../snapFeel';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { rotateAroundPivots } from '../brickGeometry';
 
@@ -191,9 +192,35 @@ describe('module drop placement (E)', () => {
     const host = docToBbm(doc);
     const batches = [{ layerName: 'L', bricks: [{ partNumber: 'trk.0', displayArea: { x: -4, y: -1, width: 8, height: 2 } }] }];
     // Dropped centre (13, 1.5): its left end at (9, 1.5) — 1.1 studs off.
-    const t = moduleDropTranslation(batches, { x: 13, y: 1.5 }, 0, host, partsByKey);
+    const t = moduleDropTranslation(batches, { x: 13, y: 1.5 }, 0, host, partsByKey, { reach: 4 });
     expect(t.dx).toBeCloseTo(12);
     expect(t.dy).toBeCloseTo(1);
+  });
+
+  it('snaps a module with the same feel: reach, hold, Alt, the drop', () => {
+    const trk = part([{ type: '1', x: -4, y: 0, angle: 180, electricPlug: 0 }, { type: '1', x: 4, y: 0, angle: 0, electricPlug: 0 }]);
+    const partsByKey = new Map([['trk.0', trk]]);
+    const doc = new Y.Doc();
+    const l = ensureBrickLayer(doc);
+    placeBrick(doc, l, { partNumber: 'trk.0', x: 0, y: 0, width: 8, height: 2 }); // right end at (8,1)
+    const host = docToBbm(doc);
+    const batches = [{ layerName: 'L', bricks: [{ partNumber: 'trk.0', displayArea: { x: -4, y: -1, width: 8, height: 2 } }] }];
+    // Centre x 12 + gap: the module's left end is `gap` studs off the host's right end.
+    const drop = (gap: number, snap: Parameters<typeof moduleDropTranslation>[5]) =>
+      moduleDropTranslation(batches, { x: 12 + gap, y: 1 }, 0, host, partsByKey, snap);
+    expect(drop(1.2, { reach: 1 }).dx).toBeCloseTo(13.2);
+    expect(drop(0.8, { reach: 1, bypass: true }).dx).toBeCloseTo(12.8);
+    const session = new SnapSession();
+    const first = drop(0.8, { reach: 1, session });
+    expect(first.dx).toBeCloseTo(12);
+    expect(first.ringStudX).toBeCloseTo(8);
+    expect(drop(1.5, { reach: 1, session }).dx).toBeCloseTo(12);
+    expect(drop(1.7, { reach: 1, session }).dx).toBeCloseTo(13.7);
+    const fast = new SnapSession();
+    fast.sample(0, 0, 0);
+    fast.sample(100, 0, 10);
+    expect(drop(0.5, { reach: 1, session: fast }).dx).toBeCloseTo(12.5);
+    expect(drop(0.5, { reach: 1, session: fast, final: true }).dx).toBeCloseTo(12);
   });
 
   it('moduleBatchesFromMap keeps one batch per non-empty brick layer', () => {
