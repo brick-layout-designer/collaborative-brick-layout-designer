@@ -8,10 +8,8 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 import { AppHeader } from './AppHeader';
+import { DESKTOP_URL, ISSUES_URL, LICENCE, REPO_URL } from './projectLinks';
 
-const REPO_URL = 'https://github.com/brick-layout-designer/collaborative-brick-layout-designer';
-const ISSUES_URL = `${REPO_URL}/issues`;
-const DESKTOP_URL = 'https://github.com/brick-layout-designer/brick-layout-designer';
 const BLUEBRICK_PARTS_URL = 'https://github.com/Lswbanban/BlueBrickParts';
 const ORIGINAL_BLUEBRICK_URL = 'http://bluebrick.lswproject.com/';
 
@@ -125,7 +123,7 @@ export function AboutPage() {
         <section>
           <h2 className="text-lg font-semibold">Licence</h2>
           <p className="mt-2 text-sm text-neutral-300">
-            AGPL-3.0-or-later. The bundled BlueBrickParts library is a
+            {LICENCE}. The bundled BlueBrickParts library is a
             git submodule of the upstream project and retains its
             original licence.
           </p>
