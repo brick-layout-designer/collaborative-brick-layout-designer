@@ -3,7 +3,7 @@
 // drag-to-canvas (MIME `application/x-cld-module` carrying the module id).
 // Drag drop is handled by the canvas event listeners in EditorPage.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ModuleSummary } from '../api';
@@ -16,6 +16,7 @@ import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { AddToCollectionDialog } from '../catalog/AddToCollection';
+import { IconSizeSlider, useListIconSize, useResizeGestures } from './listIconSize';
 export { MODULE_MIME };
 
 interface Props {
@@ -34,6 +35,11 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
   const [toCollection, setToCollection] = useState<ModuleSummary | null>(null);
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
   const collectionsOn = !!settings.data && (settings.data.modules || settings.data.parts);
+
+  // Picture size, shared with the Parts list: slider, Ctrl/⌘ + wheel or pinch.
+  const [iconSize, setIconSize] = useListIconSize();
+  const listRef = useRef<HTMLDivElement>(null);
+  useResizeGestures(listRef, iconSize, setIconSize);
 
   const modules = (list.data?.modules ?? []).filter((m) =>
     !filter.trim() || m.title.toLowerCase().includes(filter.trim().toLowerCase()),
@@ -60,15 +66,16 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-panel text-sm">
-      <div className="border-b border-line p-2">
+      <div className="flex items-center gap-2 border-b border-line p-2">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter modules…"
-          className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
+        <IconSizeSlider value={iconSize} onChange={setIconSize} label="Module picture size" className="w-28 shrink-0" />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
         {list.isLoading && <p className="p-3 text-xs text-muted">Loading…</p>}
         {!list.isLoading && modules.length === 0 && (
           <p className="p-3 text-xs text-muted">
@@ -85,6 +92,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
             <ModuleLibraryRow
               key={m.id}
               module={m}
+              thumbPx={iconSize}
               isViewer={isViewer}
               isInserting={inserting === m.id}
               isEditingThis={m.id === editingModuleId}
@@ -113,6 +121,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
 
 function ModuleLibraryRow({
   module,
+  thumbPx,
   isViewer,
   isInserting,
   isEditingThis,
@@ -123,6 +132,7 @@ function ModuleLibraryRow({
   onAddToCollection,
 }: {
   module: ModuleSummary;
+  thumbPx: number;
   isViewer: boolean;
   isInserting: boolean;
   /** This is the module open in the editor right now. */
@@ -173,7 +183,7 @@ function ModuleLibraryRow({
       className={`flex items-center justify-between gap-2 px-2 py-2 ${isEditingThis ? 'bg-soft/60' : 'cursor-grab hover:bg-soft/60 active:cursor-grabbing'}`}
       data-testid="module-library-row"
     >
-      <ModuleThumb module={module} size="sm" />
+      <ModuleThumb module={module} px={thumbPx} />
       <div className="min-w-0 flex-1 leading-tight" onDoubleClick={isViewer || isEditingThis ? undefined : onInsert}>
         {editing ? (
           <input

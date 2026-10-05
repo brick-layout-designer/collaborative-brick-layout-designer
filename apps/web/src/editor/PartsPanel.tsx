@@ -8,6 +8,7 @@ import { countUsage, effectiveLimit } from './budgetUsage';
 import { useEditorStore } from './editorStore';
 import { UploadPartDialog } from '../parts/UploadPartDialog';
 import { CatalogPartsDialog } from '../catalog/CatalogPartsDialog';
+import { IconSizeSlider, tileMinWidth, useListIconSize, useResizeGestures } from './listIconSize';
 
 interface PartContextMenu {
   part: PartWire;
@@ -17,13 +18,6 @@ interface PartContextMenu {
 
 const ALL_CATEGORIES = '__all__';
 
-type IconSize = 'S' | 'M' | 'L';
-// Tile min-width and img size class for each icon size level.
-const ICON_CFG: Record<IconSize, { minWidth: number; imgCls: string }> = {
-  S: { minWidth: 56,  imgCls: 'h-8 w-8'   },
-  M: { minWidth: 84,  imgCls: 'h-12 w-12' },
-  L: { minWidth: 116, imgCls: 'h-16 w-16' },
-};
 
 export function PartsPanel({
   onPlacePart,
@@ -51,9 +45,10 @@ export function PartsPanel({
   const usage = useMemo(() => (hasBudget && showNumbers ? countUsage(map) : null), [hasBudget, showNumbers, map]);
   const [ctxMenu, setCtxMenu] = useState<PartContextMenu | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [iconSize, setIconSize] = useState<IconSize>(
-    () => (localStorage.getItem('cld:partsIconSize') as IconSize | null) ?? 'M',
-  );
+  // Picture size: the slider, Ctrl/⌘ + wheel or a pinch over the list.
+  const [iconSize, setIconSize] = useListIconSize();
+  const listRef = useRef<HTMLDivElement>(null);
+  useResizeGestures(listRef, iconSize, setIconSize);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -123,18 +118,10 @@ export function PartsPanel({
     return scored.map((s) => s.part);
   }, [data, filter, category, hasBudget, showOnlyBudgeted, budgetLimits, defaultInfinite]);
 
-  const cfg = ICON_CFG[iconSize];
-
-  function cycleIconSize() {
-    const next: IconSize = iconSize === 'S' ? 'M' : iconSize === 'M' ? 'L' : 'S';
-    setIconSize(next);
-    localStorage.setItem('cld:partsIconSize', next);
-  }
-
   return (
     <aside className="relative flex h-full min-h-0 w-full flex-col bg-panel text-sm">
       <div className="space-y-2 border-b border-line p-2">
-        <div className="flex gap-1">
+        <div className="flex items-center gap-2">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -147,13 +134,7 @@ export function PartsPanel({
               </option>
             ))}
           </select>
-          <button
-            onClick={cycleIconSize}
-            title={`Icon size: ${iconSize} — click to cycle S/M/L`}
-            className="shrink-0 rounded-lg border border-border bg-soft px-2 py-1 text-[10px] text-muted hover:bg-neutral-700"
-          >
-            {iconSize}
-          </button>
+          <IconSizeSlider value={iconSize} onChange={setIconSize} label="Part picture size" className="w-28 shrink-0" />
         </div>
         <input
           value={filter}
@@ -178,7 +159,7 @@ export function PartsPanel({
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
         {isLoading && <p className="p-3 text-xs text-muted">Loading catalog…</p>}
         {!isLoading && visible.length === 0 && (
           <p className="p-3 text-xs text-muted">No parts match this filter.</p>
@@ -187,14 +168,13 @@ export function PartsPanel({
           Auto-fill the column count based on panel width — mirrors
           desktop's PartsBrowser, which uses QListView::IconMode +
           QListView::Adjust (PartsBrowser.cpp:115-117) so resizing the
-          dock reflows the thumbnail grid. Each cell is at least 84px
-          wide (12-px h-12 thumbnail + caption + a few px padding); the
-          grid grows to as many full columns as the available width
-          allows.
+          dock reflows the thumbnail grid. Each cell is a little wider
+          than the picture size (space for the caption); the grid grows to
+          as many full columns as the available width allows.
         */}
         <ul
           className="grid gap-1 p-2"
-          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cfg.minWidth}px, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileMinWidth(iconSize)}px, 1fr))` }}
         >
           {visible.map((p) => {
             // Caption + tooltip rules ported from PartsBrowser.cpp:215-228:
@@ -239,7 +219,7 @@ export function PartsPanel({
                   title={tooltip}
                   className={`flex w-full flex-col items-center rounded-lg p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-panel hover:bg-soft'} ${selectedTile === p.key ? 'ring-2 ring-accent' : ''}`}
                 >
-                  <PartThumbnail part={p} partsByKey={partsByKey} imgCls={cfg.imgCls} />
+                  <PartThumbnail part={p} partsByKey={partsByKey} px={iconSize} />
                   <span className="mt-1 line-clamp-2 text-center leading-tight">
                     {caption}
                   </span>
@@ -320,7 +300,7 @@ function PartContextMenuPopup({
  *   - empty needle → 1 (everything visible, matches desktop)
  */
 /**
- * Renders the 48×48 thumbnail for a part tile. For leaf parts this is
+ * Renders the thumbnail for a part tile (48×48 unless sized). For leaf parts this is
  * just the catalog sprite. For groups (`.set` parts) we either:
  *   - use the pre-rendered `.set.gif` if BlueBrickParts shipped one, or
  *   - synthesise a composite via `ensureSetThumbnail` from the
@@ -334,10 +314,13 @@ export function PartThumbnail({
   part,
   partsByKey,
   imgCls = 'h-12 w-12',
+  px,
 }: {
   part: PartWire;
   partsByKey: Map<string, PartWire>;
   imgCls?: string;
+  /** Exact size in CSS px (the Parts list's slider); overrides the size in `imgCls`. */
+  px?: number;
 }) {
   const directUrl = spriteUrlFor(part);
   const [synthUrl, setSynthUrl] = useState<string | null>(() =>
@@ -358,17 +341,27 @@ export function PartThumbnail({
   }, [directUrl, part, partsByKey, synthUrl]);
 
   const url = directUrl || synthUrl;
+  const cls = px === undefined ? imgCls : '';
+  const box = px === undefined ? undefined : { width: px, height: px };
   if (url) {
+    // The full sprite, never a downsized copy. One much smaller than the
+    // box (an 8 px/stud BlueBrick GIF shown big) is scaled up in crisp
+    // pixels rather than blurred.
+    const natural = part.spriteSize ? Math.max(part.spriteSize.w, part.spriteSize.h) : 0;
+    const crisp = px !== undefined && natural > 0 && natural * 1.5 < px * (globalThis.devicePixelRatio || 1);
     return (
       <img
         src={url}
         alt=""
-        className={`${imgCls} object-contain`}
+        className={`${cls} object-contain`}
+        style={crisp ? { ...box, imageRendering: 'pixelated' } : box}
+        data-crisp={crisp || undefined}
         loading="lazy"
+        decoding="async"
       />
     );
   }
-  return <div className={`${imgCls} rounded-lg bg-soft`} />;
+  return <div className={`${cls} rounded-lg bg-soft`} style={box} />;
 }
 
 export function fuzzyScore(needle: string, hay: string): number {

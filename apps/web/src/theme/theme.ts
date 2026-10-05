@@ -16,7 +16,12 @@ export interface Preferences {
   expertMode: boolean;
   helpIcons: boolean;
   toursSeen: string[];
+  /** Picture size in the editor's parts and module lists (32–160 px); absent until set. */
+  partsIconSize?: number;
 }
+
+export const PARTS_ICON_MIN = 32;
+export const PARTS_ICON_MAX = 160;
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'system',
@@ -98,6 +103,9 @@ export function sanitizePreferences(input: unknown): Preferences {
     if (typeof o[k] === 'boolean') out[k] = o[k] as boolean;
   }
   if (Array.isArray(o.toursSeen)) out.toursSeen = o.toursSeen.filter((t): t is string => typeof t === 'string');
+  if (typeof o.partsIconSize === 'number' && Number.isFinite(o.partsIconSize)) {
+    out.partsIconSize = Math.round(Math.min(PARTS_ICON_MAX, Math.max(PARTS_ICON_MIN, o.partsIconSize)));
+  }
   return out;
 }
 

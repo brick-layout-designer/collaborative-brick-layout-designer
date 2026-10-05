@@ -1,5 +1,5 @@
-// Account preferences: the appearance and help settings that follow a
-// person between browsers and, through an API token, the desktop app.
+// Account preferences: the appearance and help settings (and the editor
+// lists' picture size) that follow a person between browsers and, through an API token, the desktop app.
 //
 //   GET /api/me/preferences  -> { prefs, updatedAt }
 //   PUT /api/me/preferences  { prefs: {...some keys} } -> { prefs, updatedAt }
@@ -18,6 +18,9 @@ import { requireUser } from '../auth/cookie.js';
 export const THEMES = ['light', 'dark', 'system'] as const;
 export const ACCENTS = ['brick', 'ocean', 'forest', 'plum', 'sunny'] as const;
 export const MAX_TOURS = 200;
+/** Picture size in the editor's parts and module lists, in CSS px. */
+export const PARTS_ICON_MIN = 32;
+export const PARTS_ICON_MAX = 160;
 const TOUR_ID = /^[A-Za-z0-9._-]{1,64}$/;
 
 export interface Preferences {
@@ -27,6 +30,8 @@ export interface Preferences {
   expertMode: boolean;
   helpIcons: boolean;
   toursSeen: string[];
+  /** Absent until the person sets it (clients migrate an older local value then). */
+  partsIconSize?: number;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -69,6 +74,12 @@ export function validatePreferences(input: unknown): { ok: Partial<Preferences> 
         out.toursSeen = [...new Set(value as string[])];
         break;
       }
+      case 'partsIconSize':
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < PARTS_ICON_MIN || value > PARTS_ICON_MAX) {
+          return { error: `partsIconSize must be a whole number from ${PARTS_ICON_MIN} to ${PARTS_ICON_MAX}` };
+        }
+        out.partsIconSize = value;
+        break;
       default:
         return { error: `unknown preference: ${key}` };
     }

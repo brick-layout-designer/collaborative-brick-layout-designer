@@ -78,6 +78,18 @@ describe('account preferences', () => {
     expect(theirs.json()).toEqual({ prefs: DEFAULT_PREFERENCES, updatedAt: null });
   });
 
+  it('keeps the parts picture size only once it is set, from 32 to 160 px', async () => {
+    const before = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    expect('partsIconSize' in (before.json() as { prefs: object }).prefs).toBe(false);
+    for (const size of [32, 160, 96]) {
+      const res = await put({ cookie: user.cookie }, { partsIconSize: size });
+      expect(res.statusCode).toBe(200);
+    }
+    await put({ cookie: user.cookie }, { theme: 'dark' });
+    const got = await app.inject({ method: 'GET', url: URL, headers: { cookie: user.cookie } });
+    expect(got.json().prefs).toEqual({ ...DEFAULT_PREFERENCES, theme: 'dark', partsIconSize: 96 });
+  });
+
   it('refuses unknown keys and wrong values without storing anything', async () => {
     const bad: unknown[] = [
       { theme: 'purple' },
@@ -89,6 +101,10 @@ describe('account preferences', () => {
       { toursSeen: ['has space'] },
       { toursSeen: Array.from({ length: 201 }, (_, i) => `t${i}`) },
       { fontSize: 20 },
+      { partsIconSize: 31 },
+      { partsIconSize: 161 },
+      { partsIconSize: 48.5 },
+      { partsIconSize: '48' },
       ['theme'],
       null,
     ];
