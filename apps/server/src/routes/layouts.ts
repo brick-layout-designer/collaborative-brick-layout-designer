@@ -289,7 +289,8 @@ export async function layoutRoutes(app: FastifyInstance) {
   );
 
   // ---- delete --------------------------------------------------------------
-  app.delete<{ Params: { id: string } }>('/api/layouts/:id', async (req, reply) => {
+  // The desktop app deletes layouts you own with a layouts:write token.
+  app.delete<{ Params: { id: string } }>('/api/layouts/:id', { config: { apiToken: 'layouts:write' } }, async (req, reply) => {
     const user = requireUser(req);
     const role = await resolveResourceRole(user.id, 'layout', req.params.id);
     if (role.role === null) return reply.code(404).send({ error: 'not_found' });

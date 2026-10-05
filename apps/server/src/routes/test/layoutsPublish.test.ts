@@ -59,6 +59,24 @@ describe('publishing layouts with an API token', () => {
     expect(layouts.map((l) => [l.title, l.ownerOrgId !== null]).sort()).toEqual([['Club show', true], ['From desktop', false]]);
   });
 
+  it('layouts:write deletes a layout you own, not one shared with you', async () => {
+    const owner = await loginAs(app, 'owner@example.com');
+    const user = await loginAs(app, 'desk@example.com');
+    const creator = await issueToken(app, user.cookie, 'layouts:create');
+    const mine = (await publish(creator, { title: 'Mine' })).json() as { id: string };
+    const theirs = (await app.inject({ method: 'POST', url: '/api/layouts', headers: { cookie: owner.cookie }, payload: { title: 'Theirs' } })).json() as { id: string };
+    const del = (token: string, id: string) =>
+      app.inject({ method: 'DELETE', url: `/api/layouts/${id}`, headers: { authorization: `Bearer ${token}` } });
+
+    const reader = await issueToken(app, user.cookie, 'layouts:read');
+    expect((await del(reader, mine.id)).statusCode).toBe(403);
+    const writer = await issueToken(app, user.cookie, 'layouts:write');
+    expect((await del(writer, theirs.id)).statusCode).toBe(404);
+    expect((await del(writer, mine.id)).statusCode).toBe(200);
+    const list = await app.inject({ method: 'GET', url: '/api/layouts', headers: { cookie: user.cookie } });
+    expect((list.json() as { layouts: unknown[] }).layouts).toEqual([]);
+  });
+
   it('refuses other scopes, and orgs the user is not in', async () => {
     const owner = await loginAs(app, 'owner@example.com');
     await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: owner.cookie }, payload: { name: 'Other', slug: 'other' } });

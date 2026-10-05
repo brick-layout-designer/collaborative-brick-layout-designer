@@ -148,7 +148,7 @@ export function LayoutsPage() {
                 onDelete={async () => {
                   const ok = await confirmDelete(l.title, {
                     removes: 'The layout, its history and its share links are deleted for everyone who can open it.',
-                    keeps: 'Modules, parts and venues it uses stay in their libraries.',
+                    keeps: 'The modules, parts and venues it uses aren’t deleted.',
                     typeName: true,
                   });
                   if (ok) remove.mutate(l.id, { onSuccess: () => toastDeleted(l.title) });

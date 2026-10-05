@@ -283,7 +283,7 @@ describe('Bearer allow-list', () => {
       ['POST', '/api/auth/device/lookup', { user_code: 'BCDF-GHJK' }],
       // POST /api/layouts is allowed with layouts:create (layoutsPublish.test.ts).
       ['PATCH', `/api/layouts/${layoutId}`, { title: 'x' }],
-      ['DELETE', `/api/layouts/${layoutId}`],
+      // DELETE /api/layouts/:id is allowed with layouts:write, for the owner (layoutsPublish.test.ts).
       ['GET', `/api/layouts/${layoutId}/snapshot`],
       ['PUT', `/api/layouts/${layoutId}/snapshot`],
       ['POST', `/api/layouts/${layoutId}/public-share`],
