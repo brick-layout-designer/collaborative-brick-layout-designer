@@ -2,7 +2,7 @@
 // handle on each free end, and dragging one bends the whole run — the
 // desktop's MapViewTest.ABendHandleOnTheFreeEndBendsTheWholeRun.
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type Konva from 'konva';
 import type { LayerBrick } from '@cld/model';
 import { createDefaultLayoutDoc, docToBbm } from '@cld/ydoc';
@@ -10,8 +10,10 @@ import type { PartWire } from '../../api';
 import { insertBricks } from '../mutations';
 import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
 import { startFlexSession } from '../flexSession';
-import { flexRunEnds } from '../render/BendHandles';
+import { BEND_HANDLE_PX, flexRunEnds, handleCircle } from '../render/BendHandles';
+import { areaForPivot, connectionWorld, rotated } from '../brickGeometry';
 import { useEditorStore } from '../editorStore';
+import { liveSnapReach } from '../liveSnapReach';
 
 const half = (key: string, connections: unknown[]) =>
   ({ key, partNumber: key.split('.')[0], colorCode: '8', kind: 'leaf', pxPerStud: 8, hullPts: [], connections, subparts: [] }) as unknown as PartWire;
@@ -55,6 +57,7 @@ const stage = {
 } as unknown as Konva.Stage;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   handlers.clear();
   pointer = null;
   useEditorStore.getState().setSelection([]);
@@ -107,5 +110,129 @@ describe('bend handles', () => {
     expect(after[0]!.displayArea).toEqual(before[0]!.displayArea);
     expect(after[3]!.orientation).not.toBe(before[3]!.orientation);
     expect(useEditorStore.getState().statusMessage).toBe('Bend flex track');
+  });
+});
+
+describe('the handle on screen', () => {
+  it('is the same size at every zoom, frame after frame', () => {
+    // As Konva draws it: the shape's absolute scale is the stage's zoom.
+    for (const zoom of [0.25, 1, 6]) {
+      for (const [touch, ring, hit] of [
+        [false, BEND_HANDLE_PX.ring.mouse, BEND_HANDLE_PX.hit.mouse],
+        [true, BEND_HANDLE_PX.ring.touch, BEND_HANDLE_PX.hit.touch],
+      ] as const) {
+        const radii: number[] = [];
+        const ctx = {
+          beginPath: () => undefined,
+          closePath: () => undefined,
+          moveTo: () => undefined,
+          lineTo: () => undefined,
+          arc: (_x: number, _y: number, r: number) => radii.push(r),
+          fillStrokeShape: () => undefined,
+        };
+        const shape = { getAbsoluteScale: () => ({ x: zoom, y: zoom }) };
+        handleCircle(ring)(ctx as never, shape as never);
+        handleCircle(hit)(ctx as never, shape as never);
+        expect(radii.map((r) => r * zoom), `zoom ${zoom} touch ${touch}`).toEqual([ring, hit]);
+      }
+    }
+    expect(BEND_HANDLE_PX.hit.touch * 2).toBe(44);
+  });
+});
+
+describe('bending the end onto track at a large angle', () => {
+  const STRAIGHT = half('2865.8', [
+    { type: '1', x: -8, y: 0, angle: 180, electricPlug: 0 },
+    { type: '1', x: 8, y: 0, angle: 0, electricPlug: 0 },
+  ]);
+  const ALL = new Map([...PARTS, ['2865.8', STRAIGHT]]);
+
+  it('snaps on the way, holds through a wobbly hand, and links on release', () => {
+    // A straight, six flex sets, and a straight where the run ends when
+    // each set bends 8 degrees: 48 degrees in all.
+    const sets = 6;
+    const bend = 8;
+    const place = (part: PartWire, orientation: number, conn: number, at: { x: number; y: number }) => {
+      const c = part.connections[conn]!;
+      const r = rotated({ x: c.x, y: c.y }, orientation);
+      return { partNumber: part.key, orientation, displayArea: areaForPivot(part, orientation, { x: at.x - r.x, y: at.y - r.y }) };
+    };
+    let at = { x: -1.95, y: 0 };
+    let turn = 0;
+    for (let k = 0; k < sets; k++) {
+      const female = place(FEMALE, turn, 0, at);
+      const male = place(MALE, turn + bend, 1, connectionWorld(female, FEMALE, 1));
+      at = connectionWorld(male, MALE, 0);
+      turn += bend;
+    }
+    const doc = createDefaultLayoutDoc();
+    const layerId = docToBbm(doc).layers.find((l) => l.type === 'brick')!.id;
+    const straight: Parameters<typeof insertBricks>[2] = [place(STRAIGHT, 0, 1, { x: -1.95, y: 0 })];
+    for (let k = 0; k < sets; k++) {
+      let p = { x: 4 * k - 1.95, y: 0 };
+      const female = place(FEMALE, 0, 0, p);
+      p = connectionWorld(female, FEMALE, 1);
+      const male = place(MALE, 0, 1, p);
+      straight.push(female, male);
+    }
+    straight.push(place(STRAIGHT, turn, 0, at));
+    const ids = insertBricks(doc, layerId, straight);
+    recomputeConnectivity(doc, catalogFromParts([...ALL.values()]));
+    const ends = flexRunEnds(docToBbm(doc), [ids[1]!], ALL);
+    expect(ends).toHaveLength(1);
+    const end = ends[0]!;
+    expect(end.world.x).toBeCloseTo(4 * sets - 1.95, 2);
+
+    // A slow hand: one move every 100 ms.
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (now += 100));
+    expect(
+      startFlexSession({
+        stage,
+        doc,
+        map: docToBbm(doc),
+        layerId,
+        grabbedId: end.brickId,
+        chain: end.run,
+        activeConnection: end.connection,
+        mouseStuds: end.world,
+        partsByKey: ALL,
+        label: 'Bend flex track',
+        onEnd: () => undefined,
+      }),
+    ).toBe(true);
+    const near = { x: at.x - 0.6, y: at.y + 0.4 };
+    const snaps: (string | null)[] = [];
+    for (let i = 1; i <= 16; i++) {
+      const f = Math.min(1, i / 12);
+      const wobble = { x: 0.25 * Math.sin(i * 1.7), y: 0.25 * Math.cos(i * 2.3) };
+      pointer = { x: (end.world.x + (near.x - end.world.x) * f + wobble.x) * 8, y: (end.world.y + (near.y - end.world.y) * f + wobble.y) * 8 };
+      handlers.get('mousemove.flex touchmove.flex')!();
+      const s = useEditorStore.getState().liveSnap;
+      snaps.push(s ? `${s.studX.toFixed(2)},${s.studY.toFixed(2)}` : null);
+    }
+    // Once it snaps, it stays on the target, frame after frame.
+    const first = snaps.findIndex((s) => s !== null);
+    expect(first).toBeGreaterThan(0);
+    expect(new Set(snaps.slice(first))).toEqual(new Set([`${at.x.toFixed(2)},${at.y.toFixed(2)}`]));
+    // Pulled away past the reach, it holds on; past the hold, it lets go.
+    const reach = liveSnapReach();
+    const frame = (d: number) => {
+      pointer = { x: (at.x - d * 0.6) * 8, y: (at.y + d * 0.8) * 8 };
+      handlers.get('mousemove.flex touchmove.flex')!();
+      return useEditorStore.getState().liveSnap !== null;
+    };
+    expect(frame(reach * 1.3)).toBe(true);
+    expect(frame(reach * 1.5)).toBe(true);
+    expect(frame(reach * 2.2)).toBe(false);
+    expect(frame(reach * 1.3)).toBe(false); // a new snap needs the reach
+    expect(frame(reach * 0.5)).toBe(true);
+    handlers.get('mouseup.flex touchend.flex')!();
+    recomputeConnectivity(doc, catalogFromParts([...ALL.values()]));
+    const bricks = layerOf(doc).bricks;
+    const last = bricks[2 * sets]!;
+    expect(last.connexions[0]!.linkedTo).toBe(bricks[2 * sets + 1]!.connexions[0]!.id);
+    expect(Math.abs(last.orientation - turn)).toBeLessThan(2);
+    expect(bricks[1]!.connexions[0]!.linkedTo).toBe(bricks[0]!.connexions[1]!.id);
   });
 });

@@ -6,7 +6,8 @@
 // by mouse or finger.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Arc, Circle, Group } from 'react-konva';
+import { Group, Shape } from 'react-konva';
+import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type * as Y from 'yjs';
 import type { BbmMap, LayerBrick } from '@cld/model';
@@ -89,6 +90,49 @@ function layerRunEnds(layer: LayerBrick, want: ReadonlySet<string>, parts: Reado
   return ends;
 }
 
+/**
+ * A bend handle's size on screen, px, the same at every zoom: a small ring
+ * for the mouse, a bigger one under a finger, and the area that grabs it
+ * (a 44 px target on touch).
+ */
+export const BEND_HANDLE_PX = { ring: { mouse: 9, touch: 12 }, hit: { mouse: 12, touch: 22 } } as const;
+
+/** Scene units for `screenPx` on screen, at the node's absolute scale. */
+export function sceneRadius(screenPx: number, absoluteScale: number): number {
+  return screenPx / Math.max(Math.abs(absoluteScale), 1e-6);
+}
+
+type Ctx = Pick<Konva.Context, 'beginPath' | 'arc' | 'closePath' | 'fillStrokeShape' | 'moveTo' | 'lineTo'>;
+type ScaledShape = Pick<Konva.Shape, 'getAbsoluteScale'>;
+
+/** Draws (or hit-tests) a circle `screenPx` across on screen, whatever the scale. */
+export function handleCircle(screenPx: number) {
+  return (ctx: Ctx, shape: ScaledShape) => {
+    const r = sceneRadius(screenPx, shape.getAbsoluteScale().x);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2, false);
+    ctx.closePath();
+    ctx.fillStrokeShape(shape as Konva.Shape);
+  };
+}
+
+/** The curved arrow inside a handle of `screenPx` radius. */
+export function handleArrow(screenPx: number) {
+  return (ctx: Ctx, shape: ScaledShape) => {
+    const r = sceneRadius(screenPx, shape.getAbsoluteScale().x) * 0.55;
+    const from = (200 * Math.PI) / 180;
+    const to = (340 * Math.PI) / 180;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, from, to, false);
+    const tip = { x: r * Math.cos(to), y: r * Math.sin(to) };
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(tip.x - r * 0.55, tip.y - r * 0.1);
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(tip.x - r * 0.1, tip.y + r * 0.55);
+    ctx.fillStrokeShape(shape as Konva.Shape);
+  };
+}
+
 interface Props {
   map: BbmMap;
   doc: Y.Doc;
@@ -96,11 +140,12 @@ interface Props {
   partsByKey: Map<string, PartWire>;
   modules: readonly SidecarModule[];
   editingModuleId: string | null;
-  zoom: number;
+  /** Kept for the callers; the handle reads the stage's scale as it draws. */
+  zoom?: number;
   touch: boolean;
 }
 
-export function BendHandles({ map, doc, selection, partsByKey, modules, editingModuleId, zoom, touch }: Props) {
+export function BendHandles({ map, doc, selection, partsByKey, modules, editingModuleId, touch }: Props) {
   const [bending, setBending] = useState(false);
   const ends = useMemo(
     () => flexRunEnds(map, selection, partsByKey).filter((e) => !pinnedAmong(e.run, modules, editingModuleId)),
@@ -120,8 +165,8 @@ export function BendHandles({ map, doc, selection, partsByKey, modules, editingM
   }, [shown]);
   if (!shown) return null;
 
-  // Screen size, whatever the zoom; bigger under a finger.
-  const r = (touch ? 22 : 9) / zoom;
+  const ring = touch ? BEND_HANDLE_PX.ring.touch : BEND_HANDLE_PX.ring.mouse;
+  const hit = touch ? BEND_HANDLE_PX.hit.touch : BEND_HANDLE_PX.hit.mouse;
   const start = (e: KonvaEventObject<MouseEvent | TouchEvent>, end: FlexEnd) => {
     if ('button' in e.evt && e.evt.button !== 0) return;
     e.cancelBubble = true;
@@ -161,9 +206,22 @@ export function BendHandles({ map, doc, selection, partsByKey, modules, editingM
             if (c) c.style.cursor = '';
           }}
         >
-          <Circle radius={r} fill="#ffd700" stroke="#ffffff" strokeWidth={2 / zoom} shadowColor="#000" shadowBlur={4 / zoom} shadowOpacity={0.35} />
+          {/* Drawn at the scale the stage has when it draws, so the
+              handle stays the same size on screen at every zoom, also
+              mid-pinch. */}
+          <Shape
+            sceneFunc={handleCircle(ring)}
+            hitFunc={handleCircle(hit)}
+            fill="#ffd700"
+            stroke="#ffffff"
+            strokeWidth={2}
+            strokeScaleEnabled={false}
+            shadowColor="#000"
+            shadowBlur={4}
+            shadowOpacity={0.35}
+          />
           {/* A curved arrow: bend. */}
-          <Arc innerRadius={r * 0.45} outerRadius={r * 0.6} angle={240} rotation={150} fill="#141414" listening={false} />
+          <Shape sceneFunc={handleArrow(ring)} stroke="#141414" strokeWidth={1.6} strokeScaleEnabled={false} listening={false} />
         </Group>
       ))}
     </Group>

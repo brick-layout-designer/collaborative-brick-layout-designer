@@ -15,7 +15,7 @@ import { useEditorStore } from './editorStore';
 import { catalogFromParts } from './useConnectivity';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { liveSnapReach } from './liveSnapReach';
-import { snapBypassed } from './snapFeel';
+import { holdReach, SnapSession, snapBypassed } from './snapFeel';
 import { pinnedAmong } from './moduleEdit';
 
 const PX = 8;
@@ -107,15 +107,38 @@ export function startFlexSession(opts: {
     }
     stage.batchDraw();
   };
+  // The end snaps like a dragged part's grabbed end (snap.ts, #240): it
+  // joins the nearest free end of its type at any angle, reach measured
+  // from where the pointer has it, with the calm-snap hold and switch.
+  const session = new SnapSession();
+  let bypass = false;
+  const bend = (m: { x: number; y: number }, final: boolean) => {
+    const targets = flex.snapTargets();
+    const end = flex.endFor(m);
+    const reach = liveSnapReach();
+    const hold = holdReach(reach);
+    const candidates = targets.flatMap((t, index) => {
+      const dist = Math.hypot(t.world.x - end.x, t.world.y - end.y);
+      return dist <= hold ? [{ movingKey: 'flex', targetKey: t.key, dist, mouseDist: 0, index }] : [];
+    });
+    const pick = session.step(candidates, reach, { bypass, final });
+    const joined = flex.bendTo(m, pick ? pick.index : -1);
+    // Out of the chain's reach (each hinge within its limit): no join.
+    if (pick && !joined) session.lock = null;
+    moved = true;
+    const at = joined && pick ? targets[pick.index]!.world : null;
+    useEditorStore.getState().setLiveSnap(at ? { studX: at.x, studY: at.y } : null);
+    useEditorStore.getState().setHingeLimits(flex.hingesAtLimit().map((p) => ({ studX: p.x, studY: p.y })));
+    draw();
+  };
   const onMove = (e?: { evt?: { altKey?: boolean } }) => {
     const m = pointerStuds();
     if (!m) return;
-    // The editor's connection-snap reach; Alt bends without snapping.
-    const snapped = flex.moveTo(m, liveSnapReach(), !snapBypassed(e?.evt));
-    moved = true;
-    useEditorStore.getState().setLiveSnap(snapped ? { studX: snapped.x, studY: snapped.y } : null);
-    useEditorStore.getState().setHingeLimits(flex.hingesAtLimit().map((p) => ({ studX: p.x, studY: p.y })));
-    draw();
+    const screen = stage.getPointerPosition();
+    if (screen) session.sample(screen.x, screen.y, performance.now());
+    // Alt bends without snapping.
+    bypass = snapBypassed(e?.evt);
+    bend(m, false);
   };
   let done = false;
   const onUp = () => {
@@ -124,6 +147,9 @@ export function startFlexSession(opts: {
     stage.off('mousemove.flex touchmove.flex');
     stage.off('mouseup.flex touchend.flex');
     window.removeEventListener('mouseup', onUp);
+    // The release settles the join (no speed gate), so it links.
+    const m = moved ? pointerStuds() : null;
+    if (m) bend(m, true);
     useEditorStore.getState().setLiveSnap(null);
     useEditorStore.getState().setHingeLimits([]);
     if (moved) {
