@@ -31,10 +31,12 @@ const DEMO: Me = { ...base, isDemoAccount: true };
 
 let me: Me;
 let calls: string[];
+let catalogSettings: unknown = null;
 
 beforeEach(() => {
   me = USER;
   calls = [];
+  catalogSettings = null;
   vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
     const key = `${init?.method ?? 'GET'} ${input}`;
     calls.push(key);
@@ -47,7 +49,9 @@ beforeEach(() => {
             ? { queue: [{ id: 'c1' }], collections: [] }
             : input === '/api/auth/logout'
               ? { ok: true }
-              : null;
+              : input === '/api/catalog/settings'
+                ? catalogSettings
+                : null;
     if (body === null) return new Response(JSON.stringify({ error: 'not_found' }), { status: 404 });
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   });
@@ -277,5 +281,18 @@ describe('Settings › Back', () => {
     // Opened straight from a link, or the tab's earlier pages are another site's.
     expect(backWithinSite({ idx: 0, key: 'k', usr: null })).toBe(false);
     expect(backWithinSite(null)).toBe(false);
+  });
+});
+
+describe('AppHeader', () => {
+  it('links the Catalog when only the layout catalog is on', async () => {
+    catalogSettings = { modules: false, parts: false, layouts: true, venues: false, review: 'moderators', anonymousBrowse: true };
+    header(USER);
+    expect(await screen.findByRole('link', { name: 'Catalog' })).toBeTruthy();
+  });
+
+  it('says so when the account is on hold, instead of letting each change fail', () => {
+    header({ ...USER, restricted: true });
+    expect(screen.getByTestId('account-on-hold').textContent).toContain('on hold (read only)');
   });
 });

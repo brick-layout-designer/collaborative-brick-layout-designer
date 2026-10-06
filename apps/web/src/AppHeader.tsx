@@ -47,7 +47,9 @@ export function AppHeader({ user }: Props) {
   });
   const waitingCount = waiting.data?.count ?? 0;
 
-  const showCatalog = !!(catalog.data?.modules || catalog.data?.parts);
+  // Any of the four catalogs (a site may share only layouts or venues).
+  const c = catalog.data;
+  const showCatalog = !!(c?.modules || c?.parts || c?.layouts || c?.venues);
   const hasNotices = (notices.data?.notices?.length ?? 0) > 0;
   // On a phone the page links live in the menu.
   const pages = [
@@ -67,6 +69,7 @@ export function AppHeader({ user }: Props) {
   // The page you're on is marked (aria-current="page" from NavLink).
   const link = ({ isActive }: { isActive: boolean }) => `${linkBase} ${isActive ? 'bg-soft text-ink' : 'text-muted'}`;
   return (
+    <>
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-section border border-line bg-panel px-4 py-3">
       <Link to="/" className="tap-target flex min-w-0 flex-1 items-center gap-3 sm:flex-none">
         <img src="/logo.png" alt="" className="h-9 w-9 shrink-0 rounded-[9px]" />
@@ -96,7 +99,7 @@ export function AppHeader({ user }: Props) {
             </span>
           )}
         </NavLink>
-        {(catalog.data?.modules || catalog.data?.parts) && (
+        {showCatalog && (
           <NavLink to="/catalog" className={link}>
             Catalog
           </NavLink>
@@ -111,5 +114,11 @@ export function AppHeader({ user }: Props) {
         )}
       </nav>
     </header>
+    {user.restricted && (
+      <p role="status" data-testid="account-on-hold" className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-4 py-2 text-sm text-ink">
+        Your account is on hold (read only) while a privacy request is looked at. You can still see and download your things, but not change them. Ask the site admin if you have questions.
+      </p>
+    )}
+    </>
   );
 }

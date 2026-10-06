@@ -30,6 +30,9 @@ export async function sessionRoutes(app: FastifyInstance) {
         isDemoAccount: req.user.isDemoAccount,
         isGlobalAdmin: req.user.isGlobalAdmin,
         isModerator: req.user.isModerator,
+        // On hold (read only) while a privacy request is looked at: the
+        // pages say so, rather than each change failing on its own.
+        restricted: !!req.user.restrictedAt,
         linkedProviders: await listLinkedProviders(req.user.id),
         // The demo banner: how often it resets and when next.
         ...(isDemoUser(req.user) ? { demo: demoStatus(await getPlatformSettings()) } : {}),
