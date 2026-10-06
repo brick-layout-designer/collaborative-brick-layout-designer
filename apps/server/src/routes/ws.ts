@@ -113,7 +113,7 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
     for (const [sock, who] of openSockets) {
       if (isRevokedBy(who.credential, who.userId, r)) {
         try {
-          sock.close(1008, revokedReason(who.credential));
+          sock.close(1008, ('userId' in r && r.reason) || revokedReason(who.credential));
         } catch {
           /* already closed */
         }

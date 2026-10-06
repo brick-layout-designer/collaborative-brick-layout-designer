@@ -21,7 +21,6 @@ import { db, schema } from '../db/index.js';
 import type { PrivacyRequest } from '../db/schema.js';
 import { requireGlobalAdmin } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { invalidateAllSessions } from '../auth/session.js';
 import { notifyCredentialRevoked } from '../auth/revocation.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { publish } from '../events/audience.js';
@@ -29,6 +28,7 @@ import { describeExport, listExports, startExport } from '../privacy/exports.js'
 import { EraseRefused, eraseUser, erasedLabel } from '../privacy/accountDeletion.js';
 import { privacySettings } from '../privacy/settings.js';
 import { privacyContact } from '../privacy/page.js';
+import { postPersonalNote } from './warnings.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** "Due soon": within this many days. */
@@ -128,8 +128,8 @@ async function audit(adminId: string, r: PrivacyRequest, action: string, extra: 
 /** Freeze or unfreeze an account (restriction): read only, and what it owns alone too. */
 export async function setRestricted(userId: string, restricted: boolean): Promise<void> {
   await db.update(schema.users).set({ restrictedAt: restricted ? new Date() : null }).where(eq(schema.users.id, userId));
-  // Open editors drop, so nothing keeps writing; the next connection is read only.
-  if (restricted) notifyCredentialRevoked({ userId });
+  // Open editors drop, so nothing keeps writing; they reconnect read only.
+  if (restricted) notifyCredentialRevoked({ userId, reason: 'account_restricted' });
 }
 
 export async function privacyAdminRoutes(app: FastifyInstance): Promise<void> {
@@ -305,8 +305,15 @@ export async function privacyAdminRoutes(app: FastifyInstance): Promise<void> {
     const restricted = (req.body as Body | undefined)?.restricted;
     if (typeof restricted !== 'boolean') return reply.code(400).send({ error: 'invalid_input' });
     if (r.subjectUserId === admin.id) return reply.code(400).send({ error: 'cannot_restrict_self' });
+    // They stay signed in: restriction makes the account read only, it doesn't sign anyone out.
     await setRestricted(r.subjectUserId, restricted);
-    if (restricted) await invalidateAllSessions(r.subjectUserId).catch(() => undefined);
+    await postPersonalNote(
+      r.subjectUserId,
+      restricted
+        ? 'Your account is on hold (read only) while a privacy request is looked at. You can still see and download your things. Ask the site admin if you have questions.'
+        : 'Your account is no longer on hold. You can change things again.',
+      '/privacy',
+    );
     await addEvent(r.id, admin.id, restricted ? 'restrict' : 'unrestrict', restricted ? 'Restricted the account: read only, with what it owns.' : 'Lifted the restriction.');
     await audit(admin.id, r, restricted ? 'restrict' : 'unrestrict');
     void publish({ kind: 'me', owner: { kind: 'user', id: r.subjectUserId }, action: 'update:restricted' });

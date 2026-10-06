@@ -163,6 +163,10 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
 
     const onConnectionClose = (event: CloseEvent | null): void => {
       if (!event) return;
+      if (event.code === 1008 && event.reason === 'account_restricted') {
+        // The account was put on hold (privacy): it reconnects read only by itself.
+        return;
+      }
       if (event.code === 4404 || event.code === 1008) {
         // Terminal: retrying can't succeed, and y-websocket would
         // otherwise keep reconnecting with backoff forever.
@@ -171,7 +175,15 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           clearTimeout(syncTimer);
           syncTimer = null;
         }
-        setLoadError(new Error(event.code === 4404 ? 'layout not found' : 'not signed in'));
+        setLoadError(
+          new Error(
+            event.code === 4404
+              ? 'layout not found'
+              : event.reason === 'account_pending_deletion'
+                ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
+                : 'not signed in',
+          ),
+        );
       } else if (event.code === 4429) {
         setLoadError(
           new Error(

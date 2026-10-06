@@ -153,6 +153,10 @@ describe('Admin › Privacy requests', () => {
     const r = await log({ type: 'restriction', subjectUserId: ann.id, receivedVia: 'email' });
     expect((await app.inject({ method: 'POST', url: `/api/admin/privacy/requests/${r.id}/restrict`, headers: h(admin), payload: { restricted: true } })).statusCode).toBe(200);
 
+    // She's told, and stays signed in.
+    const held = await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, ann.id)).all();
+    expect(held.some((n) => n.reason.includes('on hold (read only)'))).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/api/layouts', headers: h(ann) })).statusCode).toBe(200);
     // Ann reads, but can't change anything...
     const ann2 = await app.inject({ method: 'POST', url: '/api/auth/password/login', payload: { email: 'ann@example.com', password: 'correct horse battery' } });
     const sc = ann2.headers['set-cookie'];

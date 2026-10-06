@@ -13,6 +13,8 @@ import { sessionRoutes } from '../auth/session.js';
 import { layoutRoutes } from '../layouts.js';
 import { adminRoutes } from '../admin.js';
 import { wsRoutes, WS_MAX_PAYLOAD } from '../ws.js';
+import { privacyRoutes } from '../privacy.js';
+import { privacyAdminRoutes } from '../privacyAdmin.js';
 
 async function buildApp(): Promise<{ app: FastifyInstance; port: number }> {
   const app = Fastify({ logger: false });
@@ -23,6 +25,8 @@ async function buildApp(): Promise<{ app: FastifyInstance; port: number }> {
   await app.register(layoutRoutes);
   await app.register(adminRoutes);
   await app.register(wsRoutes);
+  await app.register(privacyRoutes);
+  await app.register(privacyAdminRoutes);
   await app.listen({ port: 0, host: '127.0.0.1' });
   const addr = app.server.address();
   return { app, port: typeof addr === 'object' && addr ? addr.port : 0 };
@@ -58,6 +62,29 @@ describe('WS lifetime is bound to the session', () => {
   });
   afterEach(async () => {
     await app.close();
+  });
+
+  it('privacy: deleting the account, or putting it on hold, closes its sockets and says why', async () => {
+    const reasonOf = (ws: WebSocket) => new Promise<string>((r) => ws.once('close', (_c, reason) => r(reason.toString())));
+    // On hold: closed with the reason, and it can come straight back (read only).
+    const admin = await loginAs(app, 'admin@x.com');
+    await db.update(schema.users).set({ isGlobalAdmin: true }).where(eq(schema.users.id, admin.id));
+    const req = (
+      await app.inject({ method: 'POST', url: '/api/admin/privacy/requests', headers: { cookie: admin.cookie }, payload: { type: 'restriction', subjectUserId: user.id } })
+    ).json().request.id as string;
+    const a = await open(port, layoutId, user.cookie);
+    const heldReason = reasonOf(a.ws);
+    await app.inject({ method: 'POST', url: `/api/admin/privacy/requests/${req}/restrict`, headers: { cookie: admin.cookie }, payload: { restricted: true } });
+    expect(await withTimeout(heldReason, 2000)).toBe('account_restricted');
+    const again = await open(port, layoutId, user.cookie);
+    again.ws.close();
+    await app.inject({ method: 'POST', url: `/api/admin/privacy/requests/${req}/restrict`, headers: { cookie: admin.cookie }, payload: { restricted: false } });
+
+    // Being deleted: closed with that reason.
+    const b = await open(port, layoutId, user.cookie);
+    const goneReason = reasonOf(b.ws);
+    await app.inject({ method: 'POST', url: '/api/me/deletion', headers: { cookie: user.cookie }, payload: { confirm: 'ws-user@x.com' } });
+    expect(await withTimeout(goneReason, 2000)).toBe('account_pending_deletion');
   });
 
   it('logout closes the sockets opened with that session', async () => {
