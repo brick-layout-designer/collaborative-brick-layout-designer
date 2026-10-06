@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { DeadLinkHelp, SwitchAccountButton } from '../auth/signIn';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 
@@ -50,6 +51,7 @@ export function TransferPage() {
         <Box>
           <p className="font-semibold text-danger">This transfer isn't valid.</p>
           <p className="mt-1 text-xs">{(preview.error as Error).message}</p>
+          <DeadLinkHelp what="transfer link" />
         </Box>
       </Centered>
     );
@@ -82,6 +84,7 @@ export function TransferPage() {
           <p className="mt-3 rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
             This transfer is for <strong>{t.recipientEmail}</strong>, but you're signed
             in as <strong>{me.data!.user!.email}</strong>.
+            <SwitchAccountButton className="mt-2 block" />
           </p>
         )}
         {error && (

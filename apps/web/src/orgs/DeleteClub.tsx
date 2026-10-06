@@ -6,7 +6,7 @@
 // and deleted for good after the waiting time; its admins or a site admin
 // can restore it until then (Clubs › Being deleted).
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiGet, apiSend, type OrgDetail } from '../api';
@@ -342,5 +342,30 @@ export function BeingDeletedSection() {
         Gone too soon? A site admin can restore it too. <Link to="/privacy" className="text-accent-text hover:underline">How this site looks after your data</Link>
       </p>
     </section>
+  );
+}
+
+/**
+ * A link to a club that's being deleted (from a bookmark, a notice or a
+ * chat): say so, and where to restore it, rather than "Club not found".
+ * `fallback` shows for a club that really isn't there (or is private).
+ */
+export function ClubGoneNotice({ slug, fallback }: { slug: string; fallback: ReactNode }) {
+  const q = useQuery({ queryKey: ['clubs-deleting'], queryFn: clubDeletionApi.deleting });
+  if (q.isLoading) return <p className="text-muted">Loading…</p>;
+  const club = q.data?.clubs.find((c) => c.slug === slug);
+  if (!club) return <>{fallback}</>;
+  return (
+    <div data-testid="club-being-deleted" className="rounded-lg border border-line bg-panel p-4 text-sm">
+      <p className="font-semibold">{club.name} is being deleted.</p>
+      <p className="mt-1 text-muted">It’s hidden now, and goes for good on {longDay(club.deletionDueAt)}.</p>
+      {club.canRestore ? (
+        <Link to="/orgs#being-deleted" className="tap-target mt-2 inline-flex items-center font-semibold text-accent-text hover:underline">
+          Restore it from Clubs
+        </Link>
+      ) : (
+        <p className="mt-1 text-muted">Ask one of its admins to restore it.</p>
+      )}
+    </div>
   );
 }

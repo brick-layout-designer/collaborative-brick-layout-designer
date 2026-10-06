@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { safeNext } from './signIn';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 
@@ -8,19 +9,22 @@ import { api } from '../api';
  * Unlike an invite, there's no identity to match — the token itself is
  * the proof — so this simply fires the request on mount and, on success,
  * the server has already set the session cookie: refresh `me` and go
- * home. On failure (expired/invalid/already used) show the error with a
+ * on to `?next=` (where they were going when they signed up, e.g. a club
+ * invite), else Home. On failure (expired/invalid/already used) show the error with a
  * link back to /login where the user can request a fresh one.
  */
 export function VerifyEmailPage() {
   const params = useParams<{ token: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [params2] = useSearchParams();
+  const next = safeNext(params2.get('next'));
 
   const verify = useMutation({
     mutationFn: () => api.verifyEmail(params.token!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['me'] });
-      setTimeout(() => navigate('/', { replace: true }), 600);
+      setTimeout(() => navigate(next, { replace: true }), 600);
     },
   });
 

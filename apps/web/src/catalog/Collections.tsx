@@ -14,6 +14,7 @@
 
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { SignInLink } from '../auth/signIn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
@@ -864,9 +865,9 @@ export function CollectionPage() {
       ) : (
         <header className="flex items-center justify-between gap-3">
           <Link to="/" className="font-display text-lg font-bold">Brick Layout Designer</Link>
-          <Link to="/login" className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
+          <SignInLink className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
             Sign in
-          </Link>
+          </SignInLink>
         </header>
       )}
       <main className="mx-auto mt-6 max-w-5xl space-y-5">
@@ -910,9 +911,9 @@ export function CollectionPage() {
                     </button>
                   )
                 ) : (
-                  <Link to="/login" className="tap-target rounded-lg border border-border px-4 py-2 font-semibold hover:bg-soft">
+                  <SignInLink className="tap-target rounded-lg border border-border px-4 py-2 font-semibold hover:bg-soft">
                     Sign in to add
-                  </Link>
+                  </SignInLink>
                 )}
                 {c.canEdit && c.status !== 'withdrawn' && (
                   <button type="button" onClick={() => setEditing(true)} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">

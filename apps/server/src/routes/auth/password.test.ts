@@ -1,7 +1,16 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { eq } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The links that would have been emailed (no SMTP in tests: still "not delivered").
+const sentLinks: string[] = [];
+vi.mock('../../email/sendVerification.js', () => ({
+  sendVerificationEmail: async (args: { verifyUrl: string }) => {
+    sentLinks.push(args.verifyUrl);
+    return false;
+  },
+}));
 import { resetDb } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { db, schema } from '../../db/index.js';
@@ -101,6 +110,20 @@ describe('password auth routes', () => {
     });
     expect(login.statusCode).toBe(200);
     expect(cookieHeader(login)).toContain('cld_session=');
+  });
+
+  it('the emailed link goes on to where the person was going (a path on this site only)', async () => {
+    sentLinks.length = 0;
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/password/register',
+      payload: { email: 'nina@example.com', password: 'correct horse battery', displayName: 'Nina', next: '/org-invite/abc' },
+    });
+    expect(sentLinks.at(-1)).toMatch(/\/verify-email\/[0-9a-f]+\?next=%2Forg-invite%2Fabc$/);
+    await app.inject({ method: 'POST', url: '/api/auth/password/resend-verification', payload: { email: 'nina@example.com', next: '/device' } });
+    expect(sentLinks.at(-1)).toMatch(/\?next=%2Fdevice$/);
+    await app.inject({ method: 'POST', url: '/api/auth/password/resend-verification', payload: { email: 'nina@example.com', next: 'https://evil.test/' } });
+    expect(sentLinks.at(-1)).toMatch(/\/verify-email\/[0-9a-f]+$/);
   });
 
   it('verify-email consumes the token — a second use 404s', async () => {

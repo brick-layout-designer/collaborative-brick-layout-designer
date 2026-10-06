@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { SignInLink } from '../auth/signIn';
 import { usePreferences } from '../theme/PrefsProvider';
 import { ACCENTS, ACCENT_IDS, NEUTRALS } from '../theme/tokens';
 import type { ThemeChoice } from '../theme/theme';
@@ -307,9 +308,9 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
             </p>
           ) : (
             <p className="text-[15px] text-muted">
-              <Link to="/login" onClick={onClose} className="font-semibold text-accent-text underline">
+              <SignInLink onClick={onClose} className="font-semibold text-accent-text underline">
                 Sign in
-              </Link>{' '}
+              </SignInLink>{' '}
               to keep your settings with your account.
             </p>
           )}

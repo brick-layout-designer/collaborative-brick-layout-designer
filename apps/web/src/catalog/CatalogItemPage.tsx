@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { SignInLink } from '../auth/signIn';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createDefaultLayoutDoc, decodeDoc } from '@cld/ydoc';
 import type * as Y from 'yjs';
@@ -63,8 +64,10 @@ function ItemPage({ id }: { id: string }) {
       </div>
     );
   }
+  // Modules and parts have no page of their own: their list instead (before
+  // waiting for a picture that never comes for them).
+  if (item && item.kind !== 'layout' && item.kind !== 'venue') return <Navigate to={`/catalog?kind=${item.kind}`} replace />;
   if (!item || !doc) return <div className="grid min-h-screen place-items-center text-muted">Loading…</div>;
-  if (item.kind !== 'layout' && item.kind !== 'venue') return <Navigate to={`/catalog?kind=${item.kind}`} replace />;
   const v = venue.data?.venue;
   return (
     <LayoutViewer
@@ -150,9 +153,9 @@ function InfoPanel({ item, signedIn }: { item: CatalogItem & { club?: { slug: st
                   )}
                 </>
               ) : (
-                <Link to="/login" className={primary}>
+                <SignInLink className={primary}>
                   Sign in to copy it
-                </Link>
+                </SignInLink>
               )}
             </div>
             {start.isError && <p className="text-danger">{(start.error as Error).message}</p>}

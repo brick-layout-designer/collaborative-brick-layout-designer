@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { SignInFirst } from '../auth/signIn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
@@ -19,7 +20,7 @@ export function OrgsPage() {
   useHashScroll(!!list.data);
 
   if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
-  if (!me.data?.user) return <Navigate to="/login" replace />;
+  if (!me.data?.user) return <SignInFirst />;
 
   return (
     <div className="h-full overflow-y-auto p-8">

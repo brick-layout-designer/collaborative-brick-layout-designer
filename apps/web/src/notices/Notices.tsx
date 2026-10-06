@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { SignInFirst } from '../auth/signIn';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, type WarningInput, type WarningSeverity, type WarningSummary } from '../api';
 
@@ -97,7 +98,7 @@ export function NoticesPage() {
   const notices = useNotices(!!me.data?.user);
   const ack = useAcknowledge();
   if (me.isLoading || notices.isLoading) return <p className="p-8 text-muted">Loading…</p>;
-  if (!me.data?.user) return <p className="p-8">Sign in to see your notices.</p>;
+  if (!me.data?.user) return <SignInFirst />;
   const list = notices.data?.notices ?? [];
   return (
     <main className="mx-auto max-w-2xl space-y-4 p-4 text-ink sm:p-8">

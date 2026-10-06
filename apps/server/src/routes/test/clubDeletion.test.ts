@@ -152,6 +152,8 @@ describe('deleting a club', () => {
     expect(notes[0]!.reason).toContain('ada deleted the club Train Club');
     expect(notes[0]!.reason).toContain('gone for good on');
     expect(notes[0]!.reason).toContain('restore it');
+    // Ada deleted it herself: no note telling her what she just did.
+    expect(await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, ada.id)).all()).toHaveLength(0);
 
     // Being deleted: both see it; only Ada (an admin) can restore.
     const benList = (await call(ben, 'GET', '/api/orgs/deleting')).json().clubs;
@@ -169,6 +171,7 @@ describe('deleting a club', () => {
     expect((await call(ben, 'GET', `/api/layouts/${yard}`)).statusCode).toBe(200);
     const after = await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, ben.id)).all();
     expect(after.some((n) => n.reason.includes('restored the club Train Club'))).toBe(true);
+    expect(await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, ada.id)).all()).toHaveLength(0);
     // And it won't be deleted when the time would have come.
     expect((await privacyTick(new Date(Date.now() + 20 * DAY))).clubsErased).toBe(0);
   });

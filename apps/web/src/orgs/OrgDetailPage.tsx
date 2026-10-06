@@ -1,4 +1,6 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { ClubGoneNotice } from './DeleteClub';
+import { SignInFirst } from '../auth/signIn';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Me, type OrgPartLibrary } from '../api';
 import { ModuleThumb } from '../modules/ModuleThumb';
@@ -27,7 +29,7 @@ function OrgDetail({ slug }: { slug: string }) {
   if (me.isLoading || detail.isLoading) {
     return <div className="grid h-screen place-items-center text-muted">Loading…</div>;
   }
-  if (!me.data?.user) return <Navigate to="/login" replace />;
+  if (!me.data?.user) return <SignInFirst />;
   if (detail.isError) {
     // Not a member: a listed club shows what anyone may see, and the join button.
     return <OutsideView slug={slug} user={me.data.user} />;
@@ -217,10 +219,15 @@ function OutsideView({ slug, user }: { slug: string; user: Me }) {
         </p>
         {summary.isLoading && <p className="text-muted">Loading…</p>}
         {summary.isError && (
-          <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-            <p className="font-semibold text-danger">Club not found.</p>
-            <p className="mt-1 text-muted">It may be private. Ask one of its admins for an invite.</p>
-          </div>
+          <ClubGoneNotice
+            slug={slug}
+            fallback={
+              <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
+                <p className="font-semibold text-danger">Club not found.</p>
+                <p className="mt-1 text-muted">It may be private. Ask one of its admins for an invite.</p>
+              </div>
+            }
+          />
         )}
         {summary.data && <ClubPublicView club={summary.data} />}
       </main>

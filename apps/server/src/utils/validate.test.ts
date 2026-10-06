@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, isValidEmail } from './validate.js';
+import { escapeHtml, isValidEmail, safeNextPath } from './validate.js';
 
 describe('isValidEmail', () => {
   it('returns false for non-string input (number)', () => {
@@ -61,5 +61,17 @@ describe('escapeHtml', () => {
 
   it('leaves plain text untouched', () => {
     expect(escapeHtml('Alice Wonderland')).toBe('Alice Wonderland');
+  });
+});
+
+describe('safeNextPath', () => {
+  it('keeps a path on this site, with its query', () => {
+    expect(safeNextPath('/device?code=AB-CD')).toBe('/device?code=AB-CD');
+    expect(safeNextPath('/org-invite/abc')).toBe('/org-invite/abc');
+  });
+  it('refuses other sites, odd values and control characters', () => {
+    for (const bad of ['https://evil.test/', '//evil.test', '/\\evil.test', 'device', '', null, 42, '/a\r\nSet-Cookie: x', '/' + 'a'.repeat(600)]) {
+      expect(safeNextPath(bad)).toBeNull();
+    }
   });
 });
