@@ -1,5 +1,8 @@
 # CLD Web — Collaborative BlueBrick Layout Designer
 
+> **Historical.** This is the original plan, kept for its decisions. The
+> [README](../README.md) describes the app as it is now.
+
 A web port of Collaborative Layout Designer with Google sign-in, real-time
 multi-user editing, organizations, and layout sharing. Self-hosted via
 `docker compose up`. Save-format compatible with the desktop CLD's `.bbm`
