@@ -143,6 +143,14 @@ interface ChainLink {
   angleBetween: number;
 }
 
+/** A free connection a flex move's end may join. */
+export interface FlexSnapTarget {
+  key: string;
+  type: string;
+  world: Pt;
+  angle: number;
+}
+
 export class FlexMove {
   private readonly lookup: (partNumber: string) => PartMetadata | undefined;
   private readonly metas = new Map<Brick, PartMetadata | undefined>();
@@ -159,6 +167,8 @@ export class FlexMove {
   private status = Ccd.Failure;
   private grabbed: Brick | null = null;
   private grabDelta: Pt = { x: 0, y: 0 };
+  private targets: FlexSnapTarget[] | null = null;
+  private targetConns: Conn[] = [];
   private initial: FlexState[] = [];
 
   private constructor(
@@ -277,6 +287,60 @@ export class FlexMove {
     }
     this.reach(mouse, NULL_CONN());
     return null;
+  }
+
+  /**
+   * For the editor's calm snapping (snapFeel): the free connections the
+   * moving end may join (of its type, on bricks outside the chain), the
+   * desktop's FlexMove::snapTargets.
+   */
+  snapTargets(): readonly FlexSnapTarget[] {
+    if (this.targets) return this.targets;
+    this.targets = [];
+    const active = this.activeConn();
+    if (!this.isFree(active)) return this.targets;
+    const type = this.type(active);
+    for (const b of this.layer.bricks) {
+      if (this.chainBricks.includes(b)) continue;
+      const conns = this.metaOf(b)?.connections ?? [];
+      for (let i = 0; i < conns.length && i < b.connexions.length; i++) {
+        if (conns[i]!.type !== type || b.connexions[i]!.linkedTo) continue;
+        const c = this.conn(b, i);
+        this.targetConns.push(c);
+        this.targets.push({ key: `${b.id}#${i}`, type, world: this.world(c), angle: b.orientation + this.angle(c) });
+      }
+    }
+    return this.targets;
+  }
+
+  /** Where the moving end is for a pointer at `mouse` (studs). */
+  endFor(mouse: Pt): Pt {
+    return { x: mouse.x - this.grabDelta.x, y: mouse.y - this.grabDelta.y };
+  }
+
+  /**
+   * Bend the chain so its end follows `mouse`, or onto snapTargets()[target]
+   * (the end facing it). False when that target is out of the chain's reach
+   * (each hinge within its limit): the end then follows the pointer.
+   */
+  bendTo(mouse: Pt, target = -1): boolean {
+    const targets = this.snapTargets();
+    if (target >= 0 && target < targets.length) {
+      const to = this.targetConns[target]!;
+      const p = this.world(to);
+      this.reach(p, to);
+      // Joined only where the end really got: links are made from positions.
+      const end = this.world(this.activeConn());
+      if (Math.hypot(end.x - p.x, end.y - p.y) <= 0.2) return true;
+    }
+    this.reach(mouse, NULL_CONN());
+    return false;
+  }
+
+  private activeConn(): Conn {
+    const g = this.grabbed!;
+    const n = this.connectionCount(g);
+    return this.conn(g, Math.min(Math.max(g.activeConnectionPointIndex, 0), n - 1));
   }
 
   // ---------------------------------------------------------------------
@@ -482,15 +546,21 @@ export class FlexMove {
       this.secondaryTarget = { x: target.x + v.x, y: target.y + v.y };
     }
     this.status = Ccd.Processing;
-    const precision = 0.1; // studs
+    // BlueBrick's 0.1 stud; tighter when joining a connection, so the end
+    // also faces it (the second target sets its direction).
+    const precision = this.useTwoTargets ? 0.02 : 0.1; // studs
     const count = this.bones.length;
     for (let step = 0; step < 5000 && this.status === Ccd.Processing; step++) {
+      let second = Ccd.Success;
       if (this.useTwoTargets) {
-        solveCcd(this.bones, this.secondaryTarget.x, -this.secondaryTarget.y, precision, count - 1);
+        second = solveCcd(this.bones, this.secondaryTarget.x, -this.secondaryTarget.y, precision, count - 1);
         this.place();
       }
       this.status = solveCcd(this.bones, this.primaryTarget.x, -this.primaryTarget.y, precision, count);
       this.place();
+      // Joining a connection: done once the end also faces it (BlueBrick
+      // stopped at the position alone, often a few degrees off).
+      if (this.status === Ccd.Success && second === Ccd.Processing) this.status = Ccd.Processing;
     }
   }
 }
