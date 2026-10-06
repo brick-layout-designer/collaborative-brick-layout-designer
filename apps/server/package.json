@@ -11,7 +11,8 @@
     "lint": "eslint src",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts"
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
+    "docs:env": "tsx scripts/gen-env-docs.ts"
   },
   "dependencies": {
     "@cld/bbm": "workspace:*",
