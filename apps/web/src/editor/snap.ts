@@ -712,7 +712,20 @@ export function liveDragSnap(
   // Taken (joined inside the moving set), nothing snaps. Without a grab
   // anchor (a programmatic snap), every free moving end is tried.
   const hasLead = drag.leadConnIndex !== undefined && drag.leadConnIndex >= 0;
-  const lead = hasLead ? movingConns.find((m) => m.leader && m.index === drag.leadConnIndex) : undefined;
+  let lead = hasLead ? movingConns.find((m) => m.leader && m.index === drag.leadConnIndex) : undefined;
+  // The grabbed part has no free end (a flex half in the middle of a picked
+  // run): the moving set's free end nearest the grabbed end leads instead, as
+  // a BlueBrick group's own connection does (the desktop's captureGrabAnchor).
+  // The set moves rigidly, so it is the same end all through the drag.
+  const grabbed = hasLead ? drag.part?.connections[drag.leadConnIndex!] : undefined;
+  if (hasLead && !lead && grabbed) {
+    const t = (drag.orientation * Math.PI) / 180;
+    const gx = drag.centreX + grabbed.x * Math.cos(t) - grabbed.y * Math.sin(t);
+    const gy = drag.centreY + grabbed.x * Math.sin(t) + grabbed.y * Math.cos(t);
+    for (const m of movingConns) {
+      if (!lead || Math.hypot(m.worldX - gx, m.worldY - gy) < Math.hypot(lead.worldX - gx, lead.worldY - gy)) lead = m;
+    }
+  }
 
   interface Pair extends SnapCandidate {
     mc: MovingConn;

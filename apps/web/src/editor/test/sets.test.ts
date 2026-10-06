@@ -21,7 +21,7 @@ import {
 import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { buildPartList } from '../partList';
-import { cloneGroups, expandSet, expandToGroups, findSetModules, libraryItems, selectedSet, setAnchorOrder, ungroupState } from '../sets';
+import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, libraryItems, selectedSet, setAnchorOrder, ungroupState } from '../sets';
 
 const part = (key: string, connections: unknown[], extra: Partial<PartWire> = {}) =>
   ({
@@ -250,5 +250,70 @@ describe('modules older versions made of placed sets', () => {
     recomputeConnectivity(doc, catalogFromParts([...PARTS.values()]));
     const sets = findSetModules(docToBbm(doc), readSidecarFromDoc(doc)?.modules ?? [], PARTS, makeId);
     expect(sets.map((s) => s.moduleId)).toEqual([modules[0]!.id]);
+  });
+});
+
+describe('flex track halves left loose (placed before sets were groups)', () => {
+  /** Loose halves: no group, no module. */
+  function placeLoose(doc: Y.Doc, layerId: string, at: { x: number; y: number }, turn = 0) {
+    const set = expandSet(PARTS, 'flex.group', at, turn, makeId);
+    const ids = insertSet(doc, layerId, { bricks: set.bricks.map((b) => ({ ...b, myGroup: '' })), groups: [] });
+    recomputeConnectivity(doc, catalogFromParts([...PARTS.values()]));
+    return ids;
+  }
+  const bricksOf = (doc: Y.Doc, layerId: string) =>
+    (doc.getMap('layerData').get(layerId) as Y.Map<unknown>).get('bricks') as Y.Array<Y.Map<unknown>>;
+
+  it('become sets when still joined at their hinge, once, in one undo step', () => {
+    const { doc, layerId } = newDoc();
+    const um = new Y.UndoManager([doc.getMap('layerData'), doc.getMap('meta')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
+    const a = placeLoose(doc, layerId, { x: 3, y: 4 });
+    const b = placeLoose(doc, layerId, { x: 30, y: 4 }, 90);
+    // A half alone, and a pair pulled apart, stay loose.
+    const [, lone] = placeLoose(doc, layerId, { x: 60, y: 4 });
+    const [apart] = placeLoose(doc, layerId, { x: 90, y: 4 });
+    doc.transact(() => {
+      const ys = bricksOf(doc, layerId).toArray();
+      bricksOf(doc, layerId).delete(ys.findIndex((y) => y.get('id') === lone), 1);
+      const y = bricksOf(doc, layerId).toArray().find((y) => y.get('id') === apart)!;
+      const area = y.get('displayArea') as { x: number };
+      y.set('displayArea', { ...area, x: area.x - 0.5 });
+    }, LOCAL_ORIGIN);
+    // A set that is already a set is left as it is.
+    place(doc, layerId, 'flex.group', { x: 120, y: 4 });
+    recomputeConnectivity(doc, catalogFromParts([...PARTS.values()]));
+    um.clear();
+
+    const sets = findLooseSets(docToBbm(doc), PARTS, makeId);
+    expect(sets.map((s) => [...s.parentOf.keys()].sort())).toEqual([[...a].sort(), [...b].sort()]);
+    expect(sets.every((s) => s.moduleId === '')).toBe(true);
+    makeSetsOfModules(doc, sets);
+    expect(libraryItems(layerOf(doc))).toEqual(expect.arrayContaining(['FLEX.GROUP', 'FLEX.GROUP', 'FLEX.GROUP']));
+    const group = (id: string) => layerOf(doc).bricks.find((x) => x.id === id)!.myGroup;
+    expect(group(a[0]!)).toBeTruthy();
+    expect(group(a[0]!)).toBe(group(a[1]!));
+    expect(group(b[0]!)).not.toBe(group(a[0]!));
+    expect(group(apart!)).toBe('');
+    // The second time (or the other app): nothing.
+    expect(findLooseSets(docToBbm(doc), PARTS, makeId)).toEqual([]);
+    expect(um.undoStack).toHaveLength(1);
+    um.undo();
+    expect(group(a[0]!)).toBe('');
+    expect(layerOf(doc).groups).toHaveLength(1);
+  });
+
+  it('leave halves becoming a set from their module to it', () => {
+    const { doc, layerId } = newDoc();
+    placeAsModule(doc, layerId, { x: 3, y: 4 }, 'Flex Track');
+    const map = docToBbm(doc);
+    const fromModules = findSetModules(map, readSidecarFromDoc(doc)?.modules ?? [], PARTS, makeId);
+    expect(fromModules).toHaveLength(1);
+    expect(findLooseSets(map, PARTS, makeId, new Set(fromModules[0]!.parentOf.keys()))).toEqual([]);
+    expect(findLooseSets(map, PARTS, makeId)).toHaveLength(1);
+  });
+
+  it('says what happened', () => {
+    expect(setsAgainNotice(0, 1)).toMatch(/^A flex track piece had come apart into loose halves\. It is now a set/);
+    expect(setsAgainNotice(2, 3)).toMatch(/2 sets .* modules .* 3 flex track pieces .* They are now sets/);
   });
 });

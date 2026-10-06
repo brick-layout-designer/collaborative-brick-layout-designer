@@ -612,6 +612,26 @@ describe('liveDragSnap — grab anchor lead', () => {
     );
     expect(r.ringStudX).toBeCloseTo(10);
   });
+
+  it('grabbed by a part whose ends are both joined inside the run, the run\'s free end nearest the grab leads', () => {
+    // L | d | R in a row, d joined to both (the middle of a flex track run); a still part's end at (13,4),
+    // half a stud past R's free right end (12.5,4). d is grabbed by its right end (index 1), which is joined to R.
+    const still = brickLayerMap([makeBrick({ id: 'b', x: 13, y: 0, w: 8, h: 8 })]);
+    const r = liveDragSnap(
+      {
+        ...base, snapStepStuds: 0, reach: 1, leadConnIndex: 1,
+        movingLinks: [{ id: 'd0', linkedTo: 'l1' }, { id: 'd1', linkedTo: 'r0' }],
+        siblings: [
+          { id: 'l', part: track, links: [{ id: 'l0', linkedTo: '' }, { id: 'l1', linkedTo: 'd0' }], offsetX: -8, offsetY: 0, orientation: 0 },
+          { id: 'r', part: track, links: [{ id: 'r0', linkedTo: 'd1' }, { id: 'r1', linkedTo: '' }], offsetX: 8, offsetY: 0, orientation: 0 },
+        ],
+      },
+      still, partsByKey,
+    );
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.ringStudX).toBeCloseTo(13);
+    expect(r.centreX).toBeCloseTo(1);
+  });
 });
 
 // ---- calm snapping: hold, Alt, speed gate, the drop -------------------------

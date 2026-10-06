@@ -110,7 +110,7 @@ import {
   makeSetsOfModules,
   type ModuleBatch,
 } from './mutations';
-import { cloneGroups, expandSet, expandToGroups, findSetModules, groupChain, selectedSet, setAnchorOrder, ungroupState } from './sets';
+import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, groupChain, selectedSet, setAnchorOrder, ungroupState } from './sets';
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
@@ -1966,16 +1966,12 @@ function Canvas({
     if (isViewer || !map || partsByKey.size === 0 || setsCheckedRef.current === doc) return;
     if (!map.layers.some((l) => l.type === 'brick' && l.bricks.length > 0)) return;
     setsCheckedRef.current = doc;
-    const sets = findSetModules(map, readSidecarFromDoc(doc)?.modules ?? [], partsByKey, makeId);
-    if (sets.length === 0) return;
-    makeSetsOfModules(doc, sets);
-    useEditorStore
-      .getState()
-      .showNotice(
-        `${sets.length === 1 ? 'A set such as flex track was' : `${sets.length} sets such as flex track were`} kept as ${sets.length === 1 ? 'a module' : 'modules'} by an older version. ${sets.length === 1 ? 'It is now a set' : 'They are now sets'}: each one selects, moves and counts as one part, as in BlueBrick. Undo (Ctrl+Z) puts the modules back.`,
-        'done',
-        12000,
-      );
+    const fromModules = findSetModules(map, readSidecarFromDoc(doc)?.modules ?? [], partsByKey, makeId);
+    const taken = new Set(fromModules.flatMap((s) => [...s.parentOf.keys()]));
+    const loose = findLooseSets(map, partsByKey, makeId, taken);
+    if (fromModules.length + loose.length === 0) return;
+    makeSetsOfModules(doc, [...fromModules, ...loose]);
+    useEditorStore.getState().showNotice(setsAgainNotice(fromModules.length, loose.length), 'done', 12000);
   }, [doc, map, partsByKey, isViewer]);
   const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
   // Ask for every picture the shown layout needs at once, so the loading
