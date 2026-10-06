@@ -37,7 +37,7 @@ import { sweepUsage } from '../metrics/usage.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { demoResetDue } from '../demo/demoAccount.js';
 import { runDemoReset } from '../demo/reset.js';
-import { privacyTick } from '../privacy/tick.js';
+import { privacyTick, privacyTickSummary } from '../privacy/tick.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -53,8 +53,9 @@ export function startWorkers(): void {
   if (env.nodeEnv === 'test') return;
   if (timer) return;
   demoTimer = setInterval(() => void safeRun('demoReset', async () => void (await demoTick())), DEMO_CHECK_MS);
-  privacyTimer = setInterval(() => void safeRun('privacy', async () => void (await privacyTick())), PRIVACY_CHECK_MS);
-  setTimeout(() => void safeRun('privacy', async () => void (await privacyTick())), 90_000);
+  privacyTimer = setInterval(() => void safeRun('privacy', runPrivacyTick), PRIVACY_CHECK_MS);
+  setTimeout(() => void safeRun('privacy', runPrivacyTick), 90_000);
+  console.log('[privacy] clean-up scheduled hourly');
   // Run on first tick after 60s (so a server crash-restart loop doesn't
   // hammer the DB) and every 24h thereafter.
   setTimeout(() => {
@@ -76,6 +77,12 @@ export function stopWorkers(): void {
     clearInterval(privacyTimer);
     privacyTimer = null;
   }
+}
+
+/** One privacy clean-up, with a log line when it removed anything (so the operator can see it runs). */
+export async function runPrivacyTick(now = new Date()): Promise<void> {
+  const line = privacyTickSummary(await privacyTick(now));
+  if (line) console.log(line);
 }
 
 /** Reset the demo account when it's on and its reset is due. */
