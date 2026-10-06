@@ -564,6 +564,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     return reply.send(zip);
   });
 
+  /** What enable mints: 32 hex characters. */
+  const SHARE_TOKEN = /^[0-9a-f]{32}$/;
+
   // ---- public share: enable -----------------------------------------------
   // Owner-only. Mints a fresh random token and stores it on the layout.
   // Anyone with the token URL (`/p/:token`) can read the layout without
@@ -626,7 +629,18 @@ export async function layoutRoutes(app: FastifyInstance) {
       .where(eq(schema.layouts.publicShareToken, req.params.token))
       .get();
     // A club waiting to be deleted is hidden, its share links too.
-    if (!layout || (await inDeletingClub(layout.ownerOrgId))) return reply.code(404).send({ error: 'not_found' });
+    if (!layout || (await inDeletingClub(layout.ownerOrgId))) {
+      // A link that was shared and since switched off (or its layout
+      // deleted) is normal use: everyone at a show opening an old link
+      // from the club chat must not add up to a burst of 404s that gets
+      // the venue's address banned (README, "Operations: the 4xx
+      // profile"). Anything not shaped like a share token is still a 404.
+      if (SHARE_TOKEN.test(req.params.token)) {
+        reply.header('Cache-Control', 'no-store');
+        return { layout: null };
+      }
+      return reply.code(404).send({ error: 'not_found' });
+    }
     rollup.count('share_views');
     if (layout.ownerOrgId) usage.count('org', layout.ownerOrgId, 'share_views');
     else if (layout.ownerUserId) usage.count('user', layout.ownerUserId, 'share_views');

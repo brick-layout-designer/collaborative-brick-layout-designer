@@ -43,7 +43,7 @@ import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { destinationOrg } from './owners.js';
-import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, submitToCatalog, trustedClubs } from './catalog.js';
+import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, picturedVersions, previewUrlOf, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
@@ -202,8 +202,9 @@ export interface Shown {
   catalog?: Item | null;
 }
 
-const itemPreview = (i: Pick<Item, 'id' | 'publicVersion'>) => `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`;
-const modulePreview = (m: Pick<ModuleRow, 'id' | 'thumbnailAt'>) => `/api/modules/${m.id}/thumbnail?v=${m.thumbnailAt?.getTime() ?? 0}`;
+// '' for no picture: never an address that would only answer 404.
+const itemPreview = (i: Pick<Item, 'id' | 'publicVersion'>, pictured: ReadonlySet<string>) => previewUrlOf(i.id, i.publicVersion, pictured);
+const modulePreview = (m: Pick<ModuleRow, 'id' | 'thumbnailAt'>) => (m.thumbnailAt ? `/api/modules/${m.id}/thumbnail?v=${m.thumbnailAt.getTime()}` : '');
 
 const partPreview = (p: Pick<PartRow, 'id' | 'updatedAt'>) => `/api/custom-parts/${p.id}/sprite?v=${p.updatedAt.getTime()}`;
 
@@ -229,13 +230,16 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
   const parts = await partRows(ids);
   const shared = await catalogItemsFor('module', [...mods.values()].flat().map((r) => r.module.id));
   const sharedParts = await catalogItemsFor('part', [...parts.values()].flat().map((r) => r.part.id));
+  const pictured = await picturedVersions(
+    [...[...items.values()].flat().map((r) => r.item), ...shared.values(), ...sharedParts.values()].map((i) => ({ id: i.id, version: i.publicVersion })),
+  );
   const out = new Map<string, Shown[]>();
   for (const c of cs) {
     const inside = insider(c);
     const rows: { pos: number; s: Shown }[] = [];
     for (const r of items.get(c.id) ?? []) {
       if (!isPublicItem(r.item, on)) continue;
-      rows.push({ pos: r.pos, s: { source: 'catalog', id: r.item.id, kind: r.item.kind, title: r.item.title, previewUrl: itemPreview(r.item), item: r.item } });
+      rows.push({ pos: r.pos, s: { source: 'catalog', id: r.item.id, kind: r.item.kind, title: r.item.title, previewUrl: itemPreview(r.item, pictured), item: r.item } });
     }
     for (const r of mods.get(c.id) ?? []) {
       if (!owns(c, r.module)) continue;
@@ -243,7 +247,7 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
       if (inside) {
         rows.push({ pos: r.pos, s: { source: 'library', id: r.module.id, kind: 'module', title: r.module.title, previewUrl: modulePreview(r.module), module: r.module, catalog: item } });
       } else if (item && isPublicItem(item, on)) {
-        rows.push({ pos: r.pos, s: { source: 'catalog', id: item.id, kind: 'module', title: item.title, previewUrl: itemPreview(item), item } });
+        rows.push({ pos: r.pos, s: { source: 'catalog', id: item.id, kind: 'module', title: item.title, previewUrl: itemPreview(item, pictured), item } });
       }
     }
     for (const r of parts.get(c.id) ?? []) {
@@ -252,7 +256,7 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
       if (inside) {
         rows.push({ pos: r.pos, s: { source: 'library', id: r.part.id, kind: 'part', title: r.part.displayName, previewUrl: partPreview(r.part), part: r.part, catalog: item } });
       } else if (item && isPublicItem(item, on)) {
-        rows.push({ pos: r.pos, s: { source: 'catalog', id: item.id, kind: 'part', title: item.title, previewUrl: itemPreview(item), item } });
+        rows.push({ pos: r.pos, s: { source: 'catalog', id: item.id, kind: 'part', title: item.title, previewUrl: itemPreview(item, pictured), item } });
       }
     }
     rows.sort((a, b) => a.pos - b.pos);
@@ -264,7 +268,7 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
 /** The cover: the chosen item, else the first module, else the first item. */
 export function coverOf(coverItemId: string | null, items: readonly Pick<Item, 'id' | 'kind' | 'publicVersion'>[]): string | null {
   const it = items.find((i) => i.id === coverItemId) ?? items.find((i) => i.kind === 'module') ?? items[0];
-  return it ? itemPreview(it) : null;
+  return it ? `/api/catalog/items/${it.id}/preview?v=${it.publicVersion}` : null;
 }
 
 /** An uploaded cover's address; `small` is the card-sized copy. */
@@ -287,7 +291,7 @@ export function coverFrom(
       (t.coverModuleId && ((s.source === 'library' && s.kind === 'module' && s.id === t.coverModuleId) || (s.source === 'catalog' && s.item?.sourceId === t.coverModuleId))),
   );
   const it = chosen ?? shown.find((s) => s.kind === 'module') ?? shown[0];
-  return it ? it.previewUrl : null;
+  return it?.previewUrl || null;
 }
 
 export function parseDraft(json: string | null): Draft | null {
@@ -1019,6 +1023,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     if (!a.insider && !(await mayBrowse(req))) return reply.code(401).send({ error: 'unauthorized' });
     const by = (await byNames([c]))(c);
     const itemBy = await ownerNames(shown.flatMap((s) => (s.item ? [s.item] : [])));
+    const pictured = await picturedVersions(shown.flatMap((s) => (s.item ? [{ id: s.item.id, version: s.item.publicVersion }] : [])));
     const club = c.orgId ? await db.select({ id: schema.orgs.id, slug: schema.orgs.slug, name: schema.orgs.name }).from(schema.orgs).where(eq(schema.orgs.id, c.orgId)).get() : null;
     const d = a.curator || (a.insider && canModerate(user)) ? parseDraft(c.pending) : null;
     const showReview = a.curator && c.audience === 'everyone';
@@ -1051,7 +1056,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       },
       items: shown.map((s) =>
         s.source === 'catalog' && s.item
-          ? { ...itemOut(s.item, itemBy(s.item)), source: 'catalog' as const }
+          ? { ...itemOut(s.item, itemBy(s.item), pictured), source: 'catalog' as const }
           : {
               id: s.id,
               kind: s.kind,

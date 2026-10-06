@@ -9,9 +9,9 @@ import { api, type MyCatalogItem } from '../api';
 import { invalidateFor } from '../live/invalidate';
 import { CoverPicker, type CoverMode, type CoverPickerHandle } from '../ui/CoverPicker';
 
-/** The drawn picture of what's shared: the public version, else the one waiting. */
-export const drawnPictureUrl = (i: Pick<MyCatalogItem, 'id' | 'version' | 'pendingVersion'>) =>
-  `/api/catalog/items/${i.id}/preview?v=${i.version || i.pendingVersion || 0}`;
+/** The drawn picture of what's shared: the public version, else the one waiting; null when it has none. */
+export const drawnPictureUrl = (i: Pick<MyCatalogItem, 'id' | 'version' | 'pendingVersion' | 'drawnUrl'>): string | null =>
+  i.drawnUrl !== undefined ? i.drawnUrl || null : `/api/catalog/items/${i.id}/preview?v=${i.version || i.pendingVersion || 0}`;
 
 /** What saving said, in plain words. */
 export function coverSavedText(status: 'public' | 'in_review' | undefined, removed: boolean, clubReview?: string): string {

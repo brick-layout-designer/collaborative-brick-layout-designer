@@ -21,7 +21,7 @@ import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
-import { canModerate, decideVersion, itemOut, ownerNames, unpublishItem } from './catalog.js';
+import { canModerate, decideVersion, itemOut, ownerNames, picturedVersions, previewUrlOf, unpublishItem } from './catalog.js';
 import { decideCollection, textQueue, unpublishCollection, collectionOwnerNames, shownForQueue } from './collections.js';
 import { publicName } from '../utils/publicName.js';
 import { coverQueue, decideCover } from './itemCovers.js';
@@ -160,6 +160,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
     const shown = await shownForQueue([...collRows, ...publicColls]);
     const collName = await collectionOwnerNames([...collRows, ...publicColls]);
     const texts = await textQueue(collRows, shown, collName);
+    const pictured = await picturedVersions([...waiting.map((w) => ({ id: w.item.id, version: w.version })), ...published.map((i) => ({ id: i.id, version: i.publicVersion }))]);
     return {
       items: waiting.map((w) => ({
         versionId: w.versionId,
@@ -172,12 +173,12 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
         note: w.note,
         submitter: w.submitterId ? publicName(w.submitterId, w.submitter) : null,
         createdAt: w.createdAt.getTime(),
-        previewUrl: `/api/catalog/items/${w.item.id}/preview?v=${w.version}`,
+        previewUrl: previewUrlOf(w.item.id, w.version, pictured),
       })),
       collections: [...texts.queue, ...texts.trustedQueue],
       /** New pictures for the club's public items: what shows now beside the new one. */
       covers: await coverQueue(org.id),
-      published: published.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason })),
+      published: published.map((i) => ({ ...itemOut(i, name(i), pictured), status: i.status, reason: i.reason })),
       publicCollections: publicColls.map((c) => ({ id: c.id, title: c.title, status: c.status, reason: c.reason })),
     };
   });

@@ -28,7 +28,7 @@ import { atLeast } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
-import { canModerate, catalogOn, cleanText, clubRole, isTrustedClub, manages, mayBrowse, ownerNames, trustedClubs } from './catalog.js';
+import { canModerate, catalogOn, cleanText, clubRole, isTrustedClub, manages, mayBrowse, ownerNames, picturedVersions, previewUrlOf, trustedClubs } from './catalog.js';
 import { perPerson } from '../utils/rateLimits.js';
 
 type Item = typeof schema.catalogItems.$inferSelect;
@@ -112,7 +112,7 @@ export interface CoverQueueEntry {
   title: string;
   by: string;
   /** What's showing now: the uploaded picture, or the drawn one. */
-  oldUrl: string;
+  oldUrl: string | null;
   newUrl: string;
   submitter: string | null;
   createdAt: number;
@@ -136,12 +136,13 @@ export async function coverQueue(orgId: string | null = null): Promise<CoverQueu
     .orderBy(schema.catalogItemCovers.createdAt);
   const name = await ownerNames(rows.map((r) => r.item));
   const trusted = await trustedClubs(rows.map((r) => r.item.ownerOrgId));
+  const pictured = await picturedVersions(rows.map((r) => ({ id: r.item.id, version: r.item.publicVersion })));
   return rows.map(({ item: i, createdAt, submitter, submitterId }) => ({
     itemId: i.id,
     kind: i.kind,
     title: i.title,
     by: name(i),
-    oldUrl: i.coverImageId ? itemCoverUrl(i.id, i.coverImageId) : `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`,
+    oldUrl: i.coverImageId ? itemCoverUrl(i.id, i.coverImageId) : previewUrlOf(i.id, i.publicVersion, pictured) || null,
     newUrl: itemCoverUrl(i.id, i.pendingCoverImageId!),
     // Club reviewers see this too: a name, never an address.
     submitter: submitterId ? publicName(submitterId, submitter) : null,

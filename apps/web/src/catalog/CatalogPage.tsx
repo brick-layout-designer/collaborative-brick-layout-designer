@@ -265,7 +265,8 @@ export function summaryText(s: CatalogSummary): string {
 export function CatalogPreview({ item }: { item: Pick<CatalogItem, 'previewUrl' | 'title' | 'coverUrl' | 'customCover'> }) {
   const [failed, setFailed] = useState(false);
   const custom = !!item.customCover && !!item.coverUrl;
-  return failed ? (
+  // No picture ('' from the server): a blank card, without asking for one.
+  return failed || !(custom ? item.coverUrl : item.previewUrl) ? (
     <span aria-hidden className="block aspect-[4/3] w-full rounded-lg border border-line bg-soft" />
   ) : (
     <img

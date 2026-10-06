@@ -183,6 +183,60 @@ nginx, for example: `client_max_body_size 50m;`, and for `/ws/`:
 proxy_set_header Connection "upgrade"; proxy_read_timeout 1h;`.
 Cloudflare's free plan accepts bodies up to 100 MB.
 
+#### Operations: the 4xx profile (CrowdSec and other WAFs)
+
+WAF scenarios such as CrowdSec's `http-probing` ban an address after a
+burst of 404/403/400 answers, and at a show a whole club shares one
+venue Wi-Fi address. So everyday use of the site and the desktop app
+gets **no 4xx answers at all**: opening layouts (also ones with parts
+this server doesn't have), browsing the catalog and collections,
+viewing shared links signed out, live editing while someone else
+deletes things, and the desktop's parts and library sync. The apps
+check before they ask:
+
+- part sprites are fetched only for parts the parts catalog
+  (`/api/parts/catalog`) lists; a missing part is drawn locally as a
+  placeholder, never requested;
+- pictures are asked for only when the list says one exists (a
+  catalog item's `previewUrl` is `''` without one, a module's
+  `thumbnailAt` is empty);
+- after a live "deleted" hint the deleted thing's own queries aren't
+  refetched, only the lists that showed it;
+- an old share link (`/api/public-layouts/<token>`, switched off or its
+  layout deleted) answers `200 {"layout": null}`;
+- the desktop downloads only the files the parts manifest lists, and
+  only the ones whose hash changed.
+
+What may still answer 4xx, one request at a time rather than in bursts:
+
+| Answer | When |
+|---|---|
+| 401 on `/api/*` | the session ended (signed out in another tab, account deleted) |
+| 403 / 404 on `/api/layouts/:id`, `/api/modules/:id`, `/api/venues/:id`, `/api/orgs/:slug/*` | a link to something deleted, or not shared with you; a club's manage page just after you handed the club over |
+| 404 on `/api/auth/password/verify-email/:token`, `/api/invites/*`, `/api/transfers/*`, `/api/org-invites/*` | an emailed link used twice or expired |
+| 400 / 409 / 413 | a form refused (a taken part number, a file too big) |
+| 429 | the server's own rate limits |
+
+The web e2e journeys fail when a normal journey draws any 4xx
+(`apps/web/e2e/quietNetwork.ts`), so this stays true.
+
+With CrowdSec, keep `http-probing` on (it still catches real probing)
+and, if the paths above ever trip it for a club, whitelist the app's own
+paths in a parser (`/etc/crowdsec/parsers/s02-enrich/cld-whitelist.yaml`):
+
+```yaml
+name: local/cld-app-paths
+description: "Brick Layout Designer: the app's own paths may 404 now and then"
+whitelist:
+  reason: "app paths that may answer 401/403/404 in normal use"
+  expression:
+    - evt.Meta.http_status in ['401', '403', '404'] && evt.Meta.http_path matches '^/api/(layouts|modules|venues|orgs|auth/password/verify-email|invites|transfers|org-invites)/'
+```
+
+Leave `/parts/`, `/api/catalog/` and `/api/public-layouts/` out of it:
+the apps never ask there for what isn't listed, so 404s there are
+probing.
+
 ### Backups
 
 Every night the server writes a consistent copy of the database to
