@@ -52,7 +52,13 @@ jobs:
 
       - name: Trivy gate (CRITICAL fail)
         uses: aquasecurity/trivy-action@v0.36.0
+        timeout-minutes: 15
+        env:
+          # The ECR mirror first: ghcr.io rate-limits the database downloads.
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db,ghcr.io/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db,ghcr.io/aquasecurity/trivy-java-db
         with:
+          timeout: 10m
           image-ref: ghcr.io/${{ steps.repo.outputs.name }}:v${{ steps.ver.outputs.version }}
           format: table
           severity: CRITICAL
