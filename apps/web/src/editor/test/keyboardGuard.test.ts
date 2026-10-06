@@ -31,6 +31,18 @@ describe('isEditableTarget', () => {
     }
   });
 
+  it('flags every key while a dialog is open over the map, wherever the focus is', () => {
+    expect(isEditableTarget(document.body)).toBe(false);
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialog);
+    expect(isEditableTarget(document.body)).toBe(true);
+    expect(isEditableTarget(null)).toBe(true);
+    dialog.remove();
+    expect(isEditableTarget(document.body)).toBe(false);
+  });
+
   it('flags entries of an open menu', () => {
     const menu = document.createElement('div');
     menu.setAttribute('role', 'menu');

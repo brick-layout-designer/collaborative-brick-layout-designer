@@ -11,6 +11,7 @@ import type { Brick } from '@cld/model';
 import type * as Y from 'yjs';
 import { editBrick } from './mutations';
 import type { PartWire } from '../api';
+import { useEscape } from './useEscape';
 
 interface Props {
   brick: Brick;
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
+  useEscape(onClose);
   const [partNumber, setPartNumber] = useState(brick.partNumber);
   const [x, setX] = useState(brick.displayArea.x);
   const [y, setY] = useState(brick.displayArea.y);
@@ -45,7 +47,7 @@ export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
 
   return (
     <div
-      role="dialog"
+      role="dialog" aria-label="Part properties"
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}

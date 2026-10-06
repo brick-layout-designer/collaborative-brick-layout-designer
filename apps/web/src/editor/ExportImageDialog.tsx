@@ -24,6 +24,7 @@ import { useEditorStore, noticeDownloaded } from './editorStore';
 import { buildImagePdf, dataUrlBytes, pdfPageLayout, printPixelRatio, printTiles } from './printLayout';
 import { loadExportSettings, saveExportSettings } from './exportSettings';
 import { HelpButton } from '../help/HelpButton';
+import { useEscape } from './useEscape';
 
 export interface ExportHandle {
   /**
@@ -78,6 +79,7 @@ const PAPER_SIZES: Record<string, { w: number; h: number; label: string }> = {
 };
 
 export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Props) {
+  useEscape(onClose);
   const [mode, setMode] = useState<'image' | 'print' | 'pdf'>('image');
   // Desktop remembers the watermark checkbox (QSettings export/watermark).
   const [watermark, setWatermark] = useState(() => useEditorStore.getState().showExportWatermark);
@@ -223,7 +225,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
   }
 
   return (
-    <div
+    <div role="dialog" aria-label="Export / Print" aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
     >

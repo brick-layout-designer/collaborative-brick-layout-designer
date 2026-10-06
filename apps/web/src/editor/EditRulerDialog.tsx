@@ -22,6 +22,7 @@ import { attachRulerEndpoint, editRulerItem } from './mutations';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { colorSpecToArgb } from './layerOptions';
 import { HelpButton } from '../help/HelpButton';
+import { useEscape } from './useEscape';
 
 interface Props {
   item: RulerItem;
@@ -40,6 +41,7 @@ const UNITS = [
 ];
 
 export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
+  useEscape(onClose);
   const [color, setColor] = useState<string>(colorSpecToArgb(item.color));
   const [lineThickness, setLineThickness] = useState(item.lineThickness);
   const [displayDistance, setDisplayDistance] = useState(item.displayDistance);
@@ -100,7 +102,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
 
   return (
     <div
-      role="dialog"
+      role="dialog" aria-label="Ruler properties"
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}

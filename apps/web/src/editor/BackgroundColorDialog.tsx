@@ -7,6 +7,7 @@ import type * as Y from 'yjs';
 import type { ColorSpec } from '@cld/model';
 import { setBackgroundColor } from './mutations';
 import { argbSpec, hexAlpha } from './background';
+import { useEscape } from './useEscape';
 
 interface Props {
   current: ColorSpec;
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function BackgroundColorDialog({ current, doc, onClose }: Props) {
+  useEscape(onClose);
   const initial = hexAlpha(current);
   const [rgb, setRgb] = useState(initial.hex);
   const [alpha, setAlpha] = useState(initial.alpha);
@@ -26,7 +28,7 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
 
   return (
     <div
-      role="dialog"
+      role="dialog" aria-label="Background colour"
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}

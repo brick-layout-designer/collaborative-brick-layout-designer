@@ -8,6 +8,7 @@ import { readSidecarFromDoc } from '@cld/ydoc';
 import { setBackgroundImage, clearBackgroundImage } from './mutations';
 import { noteWrite } from '../api';
 import { confirmDelete } from '../ui/ConfirmDialog';
+import { useEscape } from './useEscape';
 
 interface Props {
   layoutId: string;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
+  useEscape(onClose);
   const existing = readSidecarFromDoc(doc)?.backgroundImage ?? null;
 
   const [file, setFile] = useState<File | null>(null);
@@ -83,7 +85,7 @@ export function BackgroundImageDialog({ layoutId, doc, onClose }: Props) {
   }
 
   return (
-    <div
+    <div role="dialog" aria-label="Background image" aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}
     >
