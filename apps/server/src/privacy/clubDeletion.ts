@@ -305,8 +305,3 @@ export async function deletingClubsFor(user: { id: string; isGlobalAdmin: boolea
     }));
 }
 
-/** True while a club is waiting to be deleted (hidden). */
-export function isDeleting(org: Pick<Org, 'deletionDueAt'> | null | undefined): boolean {
-  return !!org?.deletionDueAt;
-}
-

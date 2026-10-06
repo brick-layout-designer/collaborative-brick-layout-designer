@@ -229,7 +229,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- club settings (admins) ---------------------------------------------
   // Name, address (slug), description, whether members may add layouts,
-  // rooms and modules to the club, who can join, and whether it is listed
+  // venues and modules to the club, who can join, and whether it is listed
   // in the Clubs directory.
   app.patch<{
     Params: { slug: string };

@@ -383,7 +383,6 @@ class DocHub {
    * ON DELETE CASCADE from its owner), shut the session down.
    */
   private onPersistError(session: DocSession, err: unknown): void {
-     
     console.error(`[docHub] failed to persist update for layout ${session.layoutId}:`, err);
     void (async () => {
       try {

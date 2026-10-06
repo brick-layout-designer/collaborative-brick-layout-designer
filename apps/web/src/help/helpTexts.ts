@@ -394,7 +394,3 @@ export const HELP_TEXTS = {
 export type HelpKey = keyof typeof HELP_TEXTS;
 
 export const HELP_KEYS = Object.keys(HELP_TEXTS) as HelpKey[];
-
-export function helpText(key: HelpKey): HelpEntry {
-  return HELP_TEXTS[key];
-}

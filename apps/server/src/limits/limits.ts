@@ -155,11 +155,6 @@ export async function limitsEnforced(now: number = Date.now()): Promise<boolean>
   return globalCache!.enforced;
 }
 
-/** Synchronous view of the global limits for hot paths (falls back to env defaults before the first load). */
-export function globalLimitsSync(): LimitValues {
-  return globalCache?.values ?? envDefaults();
-}
-
 function overrideKey(kind: 'user' | 'org', id: string): string {
   return `${kind}:${id}`;
 }
@@ -497,7 +492,7 @@ export async function checkGrowth(opts: {
   return null;
 }
 
-/** Owner subject of a layout/part/module/room row. */
+/** Owner subject of a layout/part/module/venue row. */
 export function ownerOf(row: { ownerUserId: string | null; ownerOrgId: string | null }): Subject | null {
   if (row.ownerOrgId) return { kind: 'org', id: row.ownerOrgId };
   if (row.ownerUserId) return { kind: 'user', id: row.ownerUserId };

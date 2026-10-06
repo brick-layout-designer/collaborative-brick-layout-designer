@@ -110,7 +110,6 @@ async function safeRun(name: string, fn: () => Promise<void>): Promise<void> {
   } catch (err) {
     // Workers must never crash the process. Log and move on; the next
     // tick will retry.
-     
     console.error(`[workers] ${name} failed:`, err);
   }
 }
@@ -181,7 +180,6 @@ export async function dailyCompaction(): Promise<void> {
     compacted += 1;
   }
   if (compacted > 0) {
-     
     console.log(`[dailyCompaction] compacted ${compacted} layouts`);
   }
 }

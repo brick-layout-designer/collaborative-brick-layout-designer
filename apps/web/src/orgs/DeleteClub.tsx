@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiGet, apiSend, type OrgDetail } from '../api';
 import { showToast, typedMatches } from '../ui/ConfirmDialog';
 import { ExportRow, type DataExport } from '../privacy/MyDataSection';
+import { plural } from '../ui/plural';
 
 interface Named {
   id: string;
@@ -51,7 +52,6 @@ export const clubDeletionApi = {
 };
 
 const longDay = (ms: number) => new Date(ms).toLocaleDateString(undefined, { dateStyle: 'long' });
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const names = (list: Named[]) => {
   const shown = list.slice(0, 6).map((n) => `“${n.name || 'Untitled'}”`);
   return list.length > 6 ? `${shown.join(', ')} and ${list.length - 6} more` : shown.join(', ');

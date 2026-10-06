@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@cld/bbm": "workspace:*",

@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiGet, apiSend } from '../api';
 import { typedMatches } from '../ui/ConfirmDialog';
+import { plural } from '../ui/plural';
 
 interface Named {
   id: string;
@@ -33,7 +34,6 @@ export const deletionApi = {
   request: (confirm: string) => apiSend<{ ok: true; dueAt: number }>('POST', '/api/me/deletion', { confirm }),
 };
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function Names({ list }: { list: Named[] }) {
   const shown = list.slice(0, 8);

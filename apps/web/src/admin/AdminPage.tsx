@@ -18,6 +18,7 @@ import { lazy, Suspense, useRef, useState } from 'react';
 import { useCardTables } from '../ui/cardTables';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { adminTabsFor, adminTabText, type AdminTab } from './adminTabs';
+import { formatBytes } from './insights/format';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiSend, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
@@ -35,18 +36,6 @@ import { askConfirm, confirmDelete, showToast, toastDeleted } from '../ui/Confir
 
 type Tab = AdminTab;
 
-/** Content size (doc snapshot + sidecar + unflushed Yjs updates) — see adminLayoutStats.ts. Not raw disk usage. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes / 1024;
-  let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i++;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[i]}`;
-}
 
 export function AdminPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });

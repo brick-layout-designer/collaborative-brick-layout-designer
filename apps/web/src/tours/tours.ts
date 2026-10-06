@@ -34,8 +34,6 @@ export const WELCOME = catalogue.welcome;
 export const WELCOME_ID = catalogue.welcome.id;
 export const TOUR_BUTTONS = catalogue.buttons;
 
-export type TourId = 'editor' | 'rooms' | 'clubs' | 'view';
-
 export function getTour(id: string): Tour | undefined {
   return TOURS.find((t) => t.id === id);
 }

@@ -276,7 +276,7 @@ export const orgs = sqliteTable('orgs', {
   /** A line or two about the club, shown on its page. */
   description: text('description'),
   /**
-   * Whether members (not only admins) may add layouts, rooms and modules
+   * Whether members (not only admins) may add layouts, venues and modules
    * to the club. On by default.
    */
   membersCanCreate: integer('members_can_create', { mode: 'boolean' }).notNull().default(true),

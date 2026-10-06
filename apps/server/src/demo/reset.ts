@@ -55,7 +55,7 @@ function docFromBbm(text: string | null): Uint8Array {
   return encodeDoc(createDefaultLayoutDoc());
 }
 
-/** How many layouts, modules, rooms and custom parts the demo account has. */
+/** How many layouts, modules, venues and custom parts the demo account has. */
 export async function demoItemCount(): Promise<number> {
   let n = 0;
   for (const t of [schema.layouts, schema.modules, schema.venueLibrary, schema.customParts]) {
