@@ -57,6 +57,12 @@ export function startFlexSession(opts: {
   partsByKey: ReadonlyMap<string, PartWire>;
   /** The layout's modules: a pinned one never bends. */
   modules?: readonly SidecarModule[];
+  /** The bricks that may bend (a bend handle's run), instead of the selection. */
+  chain?: readonly string[];
+  /** The grabbed brick's connection that follows the pointer (a bend handle's end), instead of its active one. */
+  activeConnection?: number;
+  /** The undo step's status message. */
+  label?: string;
   onEnd: (moved: boolean) => void;
 }): boolean {
   const { stage, doc, map, layerId, grabbedId, pressSelection = [], mouseStuds, partsByKey, modules = [], onEnd } = opts;
@@ -67,7 +73,11 @@ export function startFlexSession(opts: {
   const st = useEditorStore.getState();
   // The chain is the current selection (the double-click's first click
   // selected the brick), as in BlueBrick.
-  const selection = new Set([...st.selection, ...pressSelection, grabbedId]);
+  const selection = new Set(opts.chain ? [...opts.chain, grabbedId] : [...st.selection, ...pressSelection, grabbedId]);
+  if (opts.activeConnection !== undefined) {
+    const grabbed = layer.bricks.find((b) => b.id === grabbedId);
+    if (grabbed) grabbed.activeConnectionPointIndex = opts.activeConnection;
+  }
   const flex = FlexMove.start(layer, selection, grabbedId, mouseStuds, catalogFromParts([...new Set(partsByKey.values())]));
   if (!flex) return false;
 
@@ -116,7 +126,7 @@ export function startFlexSession(opts: {
     useEditorStore.getState().setLiveSnap(null);
     if (moved) {
       commitFlex(doc, layerId, flex.currentState());
-      useEditorStore.getState().showStatusMessage('Flex move', 1500);
+      useEditorStore.getState().showStatusMessage(opts.label ?? 'Flex move', 1500);
     }
     onEnd(moved);
   };
