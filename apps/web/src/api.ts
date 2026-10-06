@@ -921,7 +921,7 @@ export const api = {
   },
 
   // ---------------------------------------------------------------------
-  // Platform admin — gated server-side by `requireGlobalAdmin`. Every
+  // Site admin — gated server-side by `requireGlobalAdmin`. Every
   // mutation writes an audit_event keyed by the admin's userId.
   // ---------------------------------------------------------------------
   admin: {
@@ -1457,7 +1457,8 @@ export interface ModerationEntry {
   isUpdate: boolean;
   note: string | null;
   by: string;
-  submitter: { name: string; email: string } | null;
+  /** Who sent it; `email` only for site admins. */
+  submitter: { name: string; email?: string } | null;
   createdAt: number;
   previewUrl: string;
   /** Its uploaded picture, reviewed with it. */

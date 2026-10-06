@@ -25,6 +25,7 @@ import { isDemoUser } from '../demo/demoAccount.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
+import { publicName } from '../utils/publicName.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
 import { canModerate, catalogOn, cleanText, clubRole, isTrustedClub, manages, mayBrowse, ownerNames, trustedClubs } from './catalog.js';
@@ -125,7 +126,7 @@ export async function coverQueue(orgId: string | null = null): Promise<CoverQueu
       item: schema.catalogItems,
       createdAt: schema.catalogItemCovers.createdAt,
       submitter: schema.users.displayName,
-      submitterEmail: schema.users.email,
+      submitterId: schema.users.id,
     })
     .from(schema.catalogItems)
     .innerJoin(schema.catalogItemCovers, eq(schema.catalogItemCovers.id, schema.catalogItems.pendingCoverImageId))
@@ -134,14 +135,15 @@ export async function coverQueue(orgId: string | null = null): Promise<CoverQueu
     .orderBy(schema.catalogItemCovers.createdAt);
   const name = await ownerNames(rows.map((r) => r.item));
   const trusted = await trustedClubs(rows.map((r) => r.item.ownerOrgId));
-  return rows.map(({ item: i, createdAt, submitter, submitterEmail }) => ({
+  return rows.map(({ item: i, createdAt, submitter, submitterId }) => ({
     itemId: i.id,
     kind: i.kind,
     title: i.title,
     by: name(i),
     oldUrl: i.coverImageId ? itemCoverUrl(i.id, i.coverImageId) : `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`,
     newUrl: itemCoverUrl(i.id, i.pendingCoverImageId!),
-    submitter: submitter || submitterEmail || null,
+    // Club reviewers see this too: a name, never an address.
+    submitter: submitterId ? publicName(submitterId, submitter) : null,
     createdAt: createdAt.getTime(),
     owner: i.ownerOrgId ? { kind: 'org' as const, id: i.ownerOrgId } : i.ownerUserId ? { kind: 'user' as const, id: i.ownerUserId } : null,
     trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId),

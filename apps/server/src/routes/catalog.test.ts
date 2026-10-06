@@ -71,7 +71,7 @@ describe('public catalogs', () => {
   }
   const queue = async (cookie: string) =>
     ((await app.inject({ method: 'GET', url: '/api/moderation/items', headers: { cookie } })).json() as {
-      queue: { versionId: string; itemId: string; submitter: { email: string } | null; isUpdate: boolean }[];
+      queue: { versionId: string; itemId: string; submitter: { name: string; email?: string } | null; isUpdate: boolean }[];
       items: { id: string; status: string }[];
     });
 
@@ -85,6 +85,15 @@ describe('public catalogs', () => {
   describe('with the module catalog on and review by moderators', () => {
     beforeEach(async () => settings({ moduleCatalogEnabled: true }));
 
+    it("a moderator sees who sent it by name; only a site admin sees the address", async () => {
+      expect((await share(alice)).statusCode).toBe(201);
+      const q = await queue(await moderator());
+      expect(q.queue[0]!.submitter).toEqual({ name: 'alice' });
+      const admin = await login(app, 'admin@example.com');
+      await db.update(schema.users).set({ isGlobalAdmin: true }).where(eq(schema.users.id, await userId('admin@example.com')));
+      expect((await queue(admin)).queue[0]!.submitter).toEqual({ name: 'alice', email: 'alice@example.com' });
+    });
+
     it('a submission waits for a moderator, who sees who sent it, and approves it', async () => {
       const r = await share(alice);
       expect(r.statusCode).toBe(201);
@@ -95,7 +104,7 @@ describe('public catalogs', () => {
       const mod = await moderator();
       const q = await queue(mod);
       expect(q.queue).toHaveLength(1);
-      expect(q.queue[0]!.submitter?.email).toBe('alice@example.com');
+      expect(q.queue[0]!.submitter?.name).toBe('alice');
       const ok = await app.inject({ method: 'POST', url: `/api/moderation/versions/${q.queue[0]!.versionId}/approve`, headers: { cookie: mod }, payload: {} });
       expect(ok.statusCode).toBe(200);
       const items = (await list(alice)).json() as { items: { title: string; tags: string[]; by: string }[] };

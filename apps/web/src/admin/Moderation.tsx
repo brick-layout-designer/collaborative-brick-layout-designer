@@ -4,12 +4,25 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type AdminJobSetting, type CatalogReview, type CollectionReviewEntry, type CoverReviewEntry, type ModerationClub, type WarningSubject } from '../api';
+import { api, type AdminJobSetting, type CatalogKind, type CatalogReview, type CollectionReviewEntry, type CoverReviewEntry, type ModerationClub, type WarningSubject } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import { WarnForm } from '../notices/Notices';
 import { invalidateFor } from '../live/invalidate';
 import { TrustedBadge } from '../catalog/TrustedBadge';
 import { askConfirm, askReason, deleteOptions, toastDeleted } from '../ui/ConfirmDialog';
+
+/** What a catalog entry is, in a sentence. */
+const KIND_WORD: Record<CatalogKind, string> = { module: 'module', part: 'part', layout: 'layout', venue: 'venue' };
+
+/** An entry's picture, or a plain tile when it has none (or it can't load). */
+function Thumb({ src, className }: { src: string; className: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed ? (
+    <span aria-hidden className={`${className} block`} />
+  ) : (
+    <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} className={className} />
+  );
+}
 
 export function ModerationTab() {
   const qc = useQueryClient();
@@ -38,15 +51,15 @@ export function ModerationTab() {
           <ul className="space-y-2">
               {list.map((q) => (
                 <li key={q.versionId} data-testid="moderation-entry" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
-                  <img src={q.previewUrl} alt="" className="size-24 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+                  <Thumb src={q.previewUrl} className="size-24 shrink-0 rounded-lg border border-line bg-soft object-contain" />
                   {q.coverUrl && <img src={q.coverUrl} alt="Its cover picture" className="aspect-[4/3] w-32 shrink-0 rounded-lg border border-line bg-soft object-cover" />}
                   <div className="min-w-[12rem] flex-1 space-y-1">
                     <p className="font-semibold">
-                      {q.title} <span className="font-normal text-muted">({q.kind === 'module' ? 'module' : 'part'}, {q.isUpdate ? `update, version ${q.version}` : 'new'})</span>
+                      {q.title} <span className="font-normal text-muted">({KIND_WORD[q.kind]}, {q.isUpdate ? `update, version ${q.version}` : 'new'})</span>
                     </p>
                     <p className="text-xs text-muted">
                       From {q.by}
-                      {q.submitter ? `, sent by ${q.submitter.name} (${q.submitter.email})` : ''} · {new Date(q.createdAt).toLocaleString()}
+                      {q.submitter ? `, sent by ${q.submitter.name}${q.submitter.email ? ` (${q.submitter.email})` : ''}` : ''} · {new Date(q.createdAt).toLocaleString()}
                     </p>
                     {q.description && <p>{q.description}</p>}
                     {q.note && <p className="text-xs">What changed: {q.note}</p>}
@@ -121,14 +134,14 @@ export function ModerationTab() {
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
             {items.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
-                <img src={i.previewUrl} alt="" loading="lazy" className="size-12 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+                <Thumb src={i.previewUrl} className="size-12 shrink-0 rounded-lg border border-line bg-soft object-contain" />
                 <div className="min-w-[10rem] flex-1">
                   <p className="flex flex-wrap items-center gap-2 font-medium">
                     {i.title}
                     {i.trustedClub && <TrustedBadge />}
                   </p>
                   <p className="text-xs text-muted">
-                    {i.kind === 'module' ? 'Module' : 'Part'} by {i.by} · {i.uses} uses ·{' '}
+                    {KIND_WORD[i.kind].replace(/^./, (c) => c.toUpperCase())} by {i.by} · {i.uses} uses ·{' '}
                     {i.status === 'public' ? 'Public' : `Unpublished${i.reason ? `: ${i.reason}` : ''}`}
                   </p>
                 </div>

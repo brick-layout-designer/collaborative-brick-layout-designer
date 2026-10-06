@@ -29,7 +29,7 @@ import { destinationOrg } from './owners.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { recordVersion } from './modules.js';
 import { collectionCounts, dropFromCollections } from './collections.js';
-import { publicName } from '../utils/publicName.js';
+import { nameFor, publicName } from '../utils/publicName.js';
 import { creditLookup } from './credits.js';
 import { coverQueue, coverState, itemCoverUrl } from './itemCovers.js';
 import { catalogSummaries, publicVenue, publishLayoutDoc, venuePicture, venueSummary } from './catalogDocs.js';
@@ -854,7 +854,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   };
 
   app.get<{ Querystring: { status?: string } }>('/api/moderation/items', async (req) => {
-    requireModerator(req);
+    const viewer = requireModerator(req);
     // The queue (versions waiting), and the items in the catalogs.
     const queue = await db
       .select({
@@ -869,6 +869,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         tags: schema.catalogItems.tags,
         publicVersion: schema.catalogItems.publicVersion,
         coverImageId: schema.catalogItems.coverImageId,
+        submitterId: schema.users.id,
         submitterName: schema.users.displayName,
         submitterEmail: schema.users.email,
         ownerUserId: schema.catalogItems.ownerUserId,
@@ -900,7 +901,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         isUpdate: q.publicVersion > 0,
         note: q.note,
         by: name(q),
-        submitter: q.submitterEmail ? { name: q.submitterName || q.submitterEmail, email: q.submitterEmail } : null,
+        // Who sent it: their name for moderators, and their address only for
+        // site admins (email addresses are never shown to other people).
+        submitter: q.submitterId
+          ? {
+              name: nameFor(viewer, q.submitterId, q.submitterName),
+              ...(viewer.isGlobalAdmin && q.submitterEmail ? { email: q.submitterEmail } : {}),
+            }
+          : null,
         createdAt: q.createdAt.getTime(),
         previewUrl: `/api/catalog/items/${q.itemId}/preview?v=${q.version}`,
         /** Its uploaded picture, when it has one (reviewed with it). */
