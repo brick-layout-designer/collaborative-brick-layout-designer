@@ -3,7 +3,7 @@
 // so, and the module is on Home where it opens with its parts.
 
 import { test, expect, type Page } from '@playwright/test';
-import { signIn } from '../helpers';
+import { signIn, mapMenu } from '../helpers';
 
 const ts = Date.now();
 const PART = 'ts_narrowgauge_straight.8';
@@ -31,9 +31,8 @@ test('group parts as a module, save it to the Module library, find it on Home', 
   // Map > Group Selection as Module.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
   page.once('dialog', (d) => void d.accept(`Siding ${ts}`));
-  await page.getByRole('button', { name: 'Group Selection as Module' }).click();
+  await mapMenu(page, 'Modules & sets', 'Group selection as module');
   await expect(page.getByText(`Grouped “Siding ${ts}” as a module`)).toBeVisible();
 
   // Modules panel: right-click it > Save to Module library.

@@ -514,7 +514,7 @@ function LayoutRow({
             role="menuitem"
             href={api.layouts.exportZipUrl(layout.id)}
             className={MORE_ITEM}
-            title="A copy BlueBrick can open (.bbm in a .zip). To keep everything, open the layout and use Map › Download Layout."
+            title="A copy BlueBrick can open (.bbm in a .zip). To keep everything, open the layout and use Map › Download & export › Download layout."
           >
             Download for BlueBrick (.zip)
           </a>

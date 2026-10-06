@@ -134,7 +134,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         {tab === 'mine' && list.isLoading && <p className="text-muted">Loading…</p>}
         {tab === 'mine' && list.data && list.data.modules.length === 0 && (
           <p className="rounded-lg border border-dashed border-line p-4 text-muted">
-            No saved modules yet. Pick some parts and choose <em>Save Selection as Module</em> in the Map menu, or use <em>New module</em> on Home.
+            No saved modules yet. Pick some parts and choose <em>Map ▸ Modules &amp; sets ▸ Save selection as module</em>, or use <em>New module</em> on Home.
           </p>
         )}
         {tab === 'mine' && list.data && list.data.modules.length > 0 && (

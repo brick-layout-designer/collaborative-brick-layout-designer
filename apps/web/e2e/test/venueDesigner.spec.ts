@@ -3,7 +3,7 @@
 // then open the designer from a layout and save the venue there.
 
 import { test, expect, devices, type CDPSession, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../helpers';
+import { ensureUser, signIn, mapMenu } from '../helpers';
 
 const EMAIL = `venue-designer-${Date.now()}@example.com`;
 
@@ -93,8 +93,7 @@ test("opens from a layout's Map menu and saves the venue into the layout", async
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
   await page.waitForTimeout(1000); // live sync settles
 
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
-  await page.getByRole('button', { name: /Open Venue Designer/ }).click();
+  await mapMenu(page, 'Venue', 'Open venue designer…');
   await expect(page.getByRole('navigation', { name: 'Tools', exact: true })).toBeVisible();
   await page.keyboard.press('r');
   await clickCanvas(page, 0.3, 0.3);

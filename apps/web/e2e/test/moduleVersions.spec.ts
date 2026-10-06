@@ -4,7 +4,7 @@
 // existing module instead of making a new one.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn, confirmInDialog } from '../helpers';
+import { ensureUser, signIn, confirmInDialog, mapMenu } from '../helpers';
 
 const ts = Date.now();
 let seq = 0;
@@ -117,8 +117,7 @@ test.describe('module versions', () => {
     await expect.poll(() => brickCount(page)).toBe(3);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press('Control+a');
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByText('Save Selection as Module...').click();
+    await mapMenu(page, 'Modules & sets', 'Save selection as module…');
     await page.getByLabel(/Update an existing module/).check();
     await page.getByRole('radiogroup', { name: 'Module to update' }).getByText('Passing loop').click();
     await page.getByLabel('What changed? (optional)').fill('Longer loop');

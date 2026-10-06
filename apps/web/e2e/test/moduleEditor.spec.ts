@@ -57,9 +57,12 @@ test.describe('module editor', () => {
     // Only what a module needs: no venue, views or layout sharing.
     await expect(page.getByRole('button', { name: 'Share', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await expect(page.getByText(/^Venue/)).toHaveCount(0);
+    const map = page.getByRole('menu', { name: 'Map' });
+    await expect(map.getByRole('menuitem', { name: 'Find…' })).toBeVisible();
+    await expect(map.getByRole('menuitem', { name: 'Find…' })).toContainText('Ctrl+F');
+    await expect(map.getByRole('menuitem', { name: 'Venue' })).toHaveCount(0);
+    await expect(map.getByRole('menuitem', { name: 'Budget' })).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Build tools' }).getByRole('button', { name: 'Select' })).toBeVisible();
-    await expect(page.getByText('Find...  Ctrl+F')).toBeVisible();
     await page.keyboard.press('Escape');
 
     // Home: the module, with its picture and Open.

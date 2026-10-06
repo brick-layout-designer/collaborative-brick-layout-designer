@@ -8,7 +8,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { signIn } from '../helpers';
+import { signIn, mapMenu } from '../helpers';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, name), 'utf-8');
@@ -76,8 +76,7 @@ test.describe('Download As', () => {
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(1000);
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Download As...' }).click();
+    await mapMenu(page, 'Download & export', 'Download as…');
     const dialog = page.getByRole('dialog', { name: 'Download As' });
     await dialog.getByLabel('LDraw (.ldr)').check();
     await expect(dialog).toContainText("This format can't store everything in the map");
@@ -91,8 +90,7 @@ test.describe('Download As', () => {
     // One line per brick, as vanilla BlueBrick wrote for the same layout.
     expect(brickLines(ldr)).toBe(brickLines(fixture('oracle/tight-corner.ldr')));
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Download As...' }).click();
+    await mapMenu(page, 'Download & export', 'Download as…');
     await dialog.getByLabel('TrackDesigner (.tdl)').check();
     await expect(dialog).not.toContainText("can't store everything");
     dl = page.waitForEvent('download');

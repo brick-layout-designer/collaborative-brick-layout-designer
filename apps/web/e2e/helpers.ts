@@ -156,3 +156,19 @@ export async function confirmInDialog(page: Page, opts: { reason?: string } = {}
   await d.getByRole('button').last().click();
   await d.waitFor({ state: 'detached' });
 }
+
+/**
+ * Map ▸ … ▸ entry: opens the editor's Map menu and clicks down `path`
+ * (submenus, then the entry). Works with a mouse and on a touch screen,
+ * where the menu is a bottom sheet and each submenu a page of it.
+ */
+export async function mapMenu(page: Page, ...path: string[]): Promise<void> {
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  for (const label of path) {
+    const menu = page.getByRole('menu').last();
+    await menu
+      .getByRole('menuitem', { name: label, exact: true })
+      .or(menu.getByRole('menuitemcheckbox', { name: label, exact: true }))
+      .click();
+  }
+}
