@@ -8,6 +8,7 @@ import { usePosedMap } from './liveDragPose';
 import { validateVenue, venueStatus } from './venueValidator';
 
 export function useLiveVenueReadout(venue: Venue | null | undefined, map: BbmMap | null): ReturnType<typeof venueStatus> {
-  const live = usePosedMap(map);
+  // Only with a venue to check against.
+  const live = usePosedMap(map, () => !!venue?.enabled);
   return useMemo(() => venueStatus(venue, validateVenue(venue, live)), [venue, live]);
 }

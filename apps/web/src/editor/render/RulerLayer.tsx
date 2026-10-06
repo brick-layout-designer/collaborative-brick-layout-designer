@@ -86,7 +86,13 @@ export function RulerLayers({
 }: Props) {
   // The parts being dragged where they are now (liveDragPose.ts), so this
   // follows the drag every frame, not only the drop.
-  const map = usePosedMap(committedMap);
+  const map = usePosedMap(committedMap, (pose) =>
+    committedMap.layers.some(
+      (l) =>
+        l.type === 'ruler' &&
+        l.rulerItems.some((r) => (r.kind === 'linear' ? pose.ids.has(r.attachedBrick1Id) || pose.ids.has(r.attachedBrick2Id) : pose.ids.has(r.attachedBrickId))),
+    ),
+  );
   const layers = map.layers.filter(
     (l): l is LayerRuler => l.type === 'ruler' && l.visible,
   );
