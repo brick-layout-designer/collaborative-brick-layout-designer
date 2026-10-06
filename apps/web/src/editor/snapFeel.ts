@@ -20,6 +20,10 @@
 //     few moves) no new snap starts; one already made holds. The drop
 //     always runs one last snap at the normal reach.
 //   - Alt (Option on a Mac) while dragging places without connection snap.
+//   - A group or module turns as a whole about the joined connection so the
+//     two ends face each other, as a single part does; it turns at most
+//     90 degrees, and a join that needs more isn't offered at all.
+//     Level targets prefer the smaller turn.
 
 export const SNAP_FEEL = {
   /** Reach on screen, CSS px. */
@@ -40,6 +44,10 @@ export const SNAP_FEEL = {
   speedSamples: 4,
   /** Older moves than this (ms) don't count towards the speed. */
   speedWindowMs: 200,
+  /** The most a group or module turns to join (degrees). */
+  maxGroupTurnDeg: 90,
+  /** Turns closer than this (degrees) count as the same. */
+  turnTieDeg: 1,
 } as const;
 
 export const SNAP_STRENGTHS = ['off', 'gentle', 'strong'] as const;
@@ -76,6 +84,8 @@ export interface SnapCandidate {
   dist: number;
   /** Studs from the moving connection to the cursor. */
   mouseDist: number;
+  /** Degrees the moving part(s) turn to face the target (absolute); 0 when absent. */
+  turn?: number;
 }
 
 /** The join a drag is holding on to. */
@@ -145,6 +155,9 @@ function bestNew<C extends SnapCandidate>(candidates: readonly C[], reach: numbe
 }
 
 function better(a: SnapCandidate, b: SnapCandidate): boolean {
+  const ta = a.turn ?? 0;
+  const tb = b.turn ?? 0;
+  if (Math.abs(ta - tb) > SNAP_FEEL.turnTieDeg) return ta < tb;
   if (Math.abs(a.mouseDist - b.mouseDist) > 1e-9) return a.mouseDist < b.mouseDist;
   if (Math.abs(a.dist - b.dist) > 1e-9) return a.dist < b.dist;
   if (a.targetKey !== b.targetKey) return a.targetKey < b.targetKey;
@@ -210,6 +223,49 @@ export class SnapSession {
     this.lock = null;
     this.meter.reset();
   }
+}
+
+/** `deg` folded into (-180, 180]. */
+export function wrap180(deg: number): number {
+  let d = deg % 360;
+  if (d > 180) d -= 360;
+  if (d <= -180) d += 360;
+  return d;
+}
+
+/**
+ * The turn (degrees, (-180, 180]) that makes a connection facing
+ * `movingAngle` (world) face one facing `targetAngle`: mouth to mouth.
+ */
+export function facingTurn(targetAngle: number, movingAngle: number): number {
+  return wrap180(targetAngle + 180 - movingAngle);
+}
+
+/** A group or module may join with this turn (degrees). */
+export function groupTurnAllowed(turn: number): boolean {
+  return Math.abs(turn) <= SNAP_FEEL.maxGroupTurnDeg + 1e-9;
+}
+
+/** A turn of a whole group about the joined connection, then onto the target. */
+export interface GroupTurn {
+  /** Degrees, clockwise positive. */
+  degrees: number;
+  /** The moving connection, where the pointer has it (the turn's pivot). */
+  pivotX: number;
+  pivotY: number;
+  /** The target connection it lands on. */
+  toX: number;
+  toY: number;
+}
+
+/** Where a point of the moving group lands: turned about the pivot, onto the target. */
+export function applyGroupTurn(t: GroupTurn, x: number, y: number): { x: number; y: number } {
+  const r = (t.degrees * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const dx = x - t.pivotX;
+  const dy = y - t.pivotY;
+  return { x: t.toX + dx * c - dy * s, y: t.toY + dx * s + dy * c };
 }
 
 /** Alt (Option on a Mac) held: place without connection snap. */

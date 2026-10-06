@@ -130,7 +130,8 @@ import { ModuleEditBar } from './ModuleEditBar';
 import { withShowName } from './moduleLook';
 import { ModuleEditDim, editedModuleFrame } from './render/ModuleEditDim';
 import { fetchModuleBatches } from './moduleSnapshot';
-import { moduleDropTranslation } from './moduleDrop';
+import { moduleDropTranslation, placedModuleBatches } from './moduleDrop';
+import type { GroupTurn } from './snapFeel';
 import { absorbIntoEditedModule, createModuleFromSelection, enterModuleEdit, leaveModuleEdit, selectionMayMove, setModulePinned } from './moduleActions';
 import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, viewRegionStuds, type PictureSpec } from './savedViews';
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
@@ -1610,7 +1611,9 @@ function Canvas({
   const [dropPart, setDropPart] = useState<{ key: string; studX: number; studY: number; snapped?: SnapResult } | null>(null);
   // Same for a module dragged from the Module library: cursor position
   // plus the module's snapshot, fetched once per drag (MapView.cpp:1796-1900).
-  const [dropModule, setDropModule] = useState<{ studX: number; studY: number; offset?: { dx: number; dy: number } } | null>(null);
+  const [dropModule, setDropModule] = useState<
+    { studX: number; studY: number; offset?: { dx: number; dy: number; turn?: GroupTurn } } | null
+  >(null);
   // Snap state of the part / module being dragged in (hold, speed gate).
   const placeSnapRef = useRef(new SnapSession());
   const moduleSnapRef = useRef(new SnapSession());
@@ -2048,7 +2051,11 @@ function Canvas({
             })
           : undefined;
         showDropSnap(offset && offset.ringStudX !== undefined ? { x: offset.ringStudX, y: offset.ringStudY! } : null);
-        setDropModule({ studX: studs.x, studY: studs.y, ...(offset ? { offset: { dx: offset.dx, dy: offset.dy } } : {}) });
+        setDropModule({
+          studX: studs.x,
+          studY: studs.y,
+          ...(offset ? { offset: { dx: offset.dx, dy: offset.dy, ...(offset.turn ? { turn: offset.turn } : {}) } } : {}),
+        });
         return;
       }
       const key = readPartKey(dt);
@@ -2108,8 +2115,8 @@ function Canvas({
               ? dragged.batches
               : fetchModuleBatches(moduleId));
             // Desktop drop (MapView.cpp:1900-2060): centroid under the
-            // cursor, bbox top-left on the grid, then a translation-only
-            // connection snap onto the host's free ends.
+            // cursor, bbox top-left on the grid, then a connection snap
+            // onto the host's free ends (turning the module to face one).
             const offset = dropStuds
               ? moduleDropTranslation(
                   batches,
@@ -2122,7 +2129,7 @@ function Canvas({
               : { dx: 0, dy: 0 };
             // Bricks go to host layers named like the module's layers and
             // are registered as a sidecar module in the same undo step.
-            const res = importBricksAsModule(doc, batches, { name: moduleName, offset });
+            const res = importBricksAsModule(doc, placedModuleBatches(batches, offset, catalog), { name: moduleName });
             if (res) {
               absorbIntoEditedModule(doc, res.ids);
               setSelection(res.ids);
@@ -3585,7 +3592,11 @@ function Canvas({
           return <PlaceGhost part={part} cursorStudX={at.centreX} cursorStudY={at.centreY} />;
         })()}
         {dropModule && dropModule.offset && moduleDragRef.current?.ready && (
-          <ModuleGhost batches={moduleDragRef.current.ready} offset={dropModule.offset} partsByKey={partsByKey} />
+          <ModuleGhost
+            batches={placedModuleBatches(moduleDragRef.current.ready, dropModule.offset, partsByKey)}
+            offset={{ dx: 0, dy: 0 }}
+            partsByKey={partsByKey}
+          />
         )}
         {editingModuleId && map && (
           <ModuleEditDim frame={editedModuleFrame(shown, readSidecarFromDoc(doc)?.modules ?? [], editingModuleId)} />

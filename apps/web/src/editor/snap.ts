@@ -17,7 +17,7 @@
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import type { PartWire } from '../api';
 import { pivotOf } from './brickGeometry';
-import { holdReach, pickSnap, type SnapCandidate, type SnapSession } from './snapFeel';
+import { applyGroupTurn, facingTurn, groupTurnAllowed, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
 
 export interface PlaceCandidate {
   part: PartWire;
@@ -589,6 +589,14 @@ export interface DragSnapResult {
    * connection, rotated to `newOrientation`, lands exactly on the target.
    */
   newOrientation: number | null;
+  /**
+   * A multi-brick snap whose ends don't already face: the whole group
+   * turns about the joined connection and lands on the target. Every
+   * moving point p (pivot, studs, where the pointer has it) goes to
+   * applyGroupTurn(groupTurn, p), every orientation gains its degrees.
+   * Null for a single brick (newOrientation) and for a straight join.
+   */
+  groupTurn: GroupTurn | null;
   /** Free connections considered on the moving set (status-bar hint). */
   movingConnCount: number;
 }
@@ -649,6 +657,8 @@ export function liveDragSnap(
     localX: number;
     localY: number;
     localAngle: number;
+    /** World angle the connection faces now. */
+    worldAngle: number;
   }
   const movingConns: MovingConn[] = [];
   const addConns = (
@@ -681,6 +691,7 @@ export function liveDragSnap(
         localX: cp.x,
         localY: cp.y,
         localAngle: cp.angle,
+        worldAngle: cp.angle + orientation,
       });
     }
   };
@@ -699,6 +710,8 @@ export function liveDragSnap(
   interface Pair extends SnapCandidate {
     mc: MovingConn;
     tc: OwnedWorldConnection;
+    /** Signed turn that makes the two ends face. */
+    delta: number;
   }
   const pairs = (candidates: MovingConn[]): Pair[] => {
     const out: Pair[] = [];
@@ -709,7 +722,20 @@ export function liveDragSnap(
         const dy = tc.y - mc.worldY;
         const sq = dx * dx + dy * dy;
         if (sq > limitSq) continue;
-        out.push({ movingKey: mc.key, targetKey: connKey(tc.brickId, tc.index), dist: Math.sqrt(sq), mouseDist: mc.mouseDist, mc, tc });
+        // A single part turns freely; a group turns at most a quarter,
+        // and a join needing more isn't offered (no crooked half-snap).
+        const delta = facingTurn(tc.angle, mc.worldAngle);
+        if (!single && !groupTurnAllowed(delta)) continue;
+        out.push({
+          movingKey: mc.key,
+          targetKey: connKey(tc.brickId, tc.index),
+          dist: Math.sqrt(sq),
+          mouseDist: mc.mouseDist,
+          turn: Math.abs(delta),
+          mc,
+          tc,
+          delta,
+        });
       }
     }
     return out;
@@ -745,15 +771,25 @@ export function liveDragSnap(
   }
   const { mc, tc } = best;
   if (!single) {
+    // The whole group turns about the joined connection (none when the
+    // ends already face), then that connection lands on the target.
+    const groupTurn: GroupTurn | null =
+      Math.abs(best.delta) > 1e-6
+        ? { degrees: best.delta, pivotX: mc.worldX, pivotY: mc.worldY, toX: tc.x, toY: tc.y }
+        : null;
+    const leader = groupTurn
+      ? applyGroupTurn(groupTurn, drag.centreX, drag.centreY)
+      : { x: drag.centreX + (tc.x - mc.worldX), y: drag.centreY + (tc.y - mc.worldY) };
     return {
-      centreX: drag.centreX + (tc.x - mc.worldX),
-      centreY: drag.centreY + (tc.y - mc.worldY),
+      centreX: leader.x,
+      centreY: leader.y,
       snappedToConnection: true,
       ringStudX: tc.x,
       ringStudY: tc.y,
       movingStudX: tc.x,
       movingStudY: tc.y,
       newOrientation: null,
+      groupTurn,
       movingConnCount: movingConns.length,
     };
   }
@@ -769,6 +805,7 @@ export function liveDragSnap(
     movingStudX: tc.x,
     movingStudY: tc.y,
     newOrientation,
+    groupTurn: null,
     movingConnCount: movingConns.length,
   };
 }
@@ -847,6 +884,7 @@ function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapRes
     movingStudX: null,
     movingStudY: null,
     newOrientation: null,
+    groupTurn: null,
     movingConnCount,
   };
   if (drag.snapStepStuds <= 0) return { ...base, centreX: drag.centreX, centreY: drag.centreY };

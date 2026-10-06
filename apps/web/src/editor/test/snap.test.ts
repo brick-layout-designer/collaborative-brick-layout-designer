@@ -12,7 +12,7 @@ import {
   snapToAnchorBrick,
   type PlaceCandidate,
 } from '../snap';
-import { SnapSession } from '../snapFeel';
+import { SnapSession, applyGroupTurn, wrap180 } from '../snapFeel';
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -462,7 +462,7 @@ describe('liveDragSnap — desktop parity', () => {
     expect(r.centreY + 4 * Math.sin(t)).toBeCloseTo(4);
   });
 
-  it('multi-select drag snaps via a sibling connection, translating without rotating', () => {
+  it('multi-select drag snaps via a sibling connection, turning the group to face it', () => {
     const noConn = makePart({ key: 'plain.0', partNumber: 'PLAIN' });
     const track = makePart({ connections: [conn(4, 0, 0)] });
     const sibPart = makePart({ key: 'sib.0', partNumber: 'SIB', connections: [conn(-4, 0, 90)] });
@@ -482,8 +482,11 @@ describe('liveDragSnap — desktop parity', () => {
     );
     expect(r.snappedToConnection).toBe(true);
     expect(r.newOrientation).toBeNull();
-    expect(r.centreX).toBeCloseTo(10);
-    expect(r.centreY).toBeCloseTo(4);
+    // The sibling's end faces 90°, the target 0°: the group turns 90°
+    // about the sibling's end (16.5, 4.5), which lands on (16, 4).
+    expect(r.groupTurn?.degrees).toBeCloseTo(90);
+    expect(r.centreX).toBeCloseTo(16);
+    expect(r.centreY).toBeCloseTo(-2);
   });
 
   it('never snaps the group onto its own siblings', () => {
@@ -767,10 +770,10 @@ describe('liveDragSnap — links to the parts left behind', () => {
     const r = dragB(20.4, 1, map(), {
       siblings: [{ id: 'A', part: track, links: [cx('a', 0), cx('a', 1, 'b0')], offsetX: -4, offsetY: 0, orientation: 0 }],
     });
-    // Only A's free left end (at 14.4) could join C's ends; it is 3.6 studs
-    // from C's right end and 0.4 from C's left end, but of the same type
-    // and facing, so it joins at 14: never B's joined end.
-    expect(r.ringStudX).toBeCloseTo(14);
+    // Only A's free left end (at 14.4) is free: C's left end is 0.4 studs
+    // off but faces the same way (a half turn, more than a group may
+    // turn), C's right end is out of reach. Never B's joined end.
+    expect(r.snappedToConnection).toBe(false);
   });
 
   it('the grab anchor takes the grabbed end even when it is joined', () => {
@@ -789,5 +792,127 @@ describe('liveDragSnap — links to the parts left behind', () => {
     expect(bricks[1]!.connexions[0]!.linkedTo).toBe('c1');
     expect(bricks[2]!.connexions[1]!.linkedTo).toBe('b0');
     expect(bricks[0]!.connexions[1]!.linkedTo).toBe('');
+  });
+});
+
+// ---- a joined group of curves snaps by turning as a whole ------------------
+
+describe('liveDragSnap — group of curves at an angle', () => {
+  // BlueBrick's 9V curve (2867): 22.5 degrees of an R40 circle.
+  const curve = makePart({
+    connections: [
+      { type: '1', x: -8.1875, y: -1.375, angle: 180, electricPlug: 0 },
+      { type: '1', x: 7.1198, y: 1.6698, angle: 22.5, electricPlug: 0 },
+    ],
+  });
+  const partsByKey = new Map<string, PartWire>([['test.0', curve]]);
+  const rot = (x: number, y: number, deg: number) => {
+    const r = (deg * Math.PI) / 180;
+    return { x: x * Math.cos(r) - y * Math.sin(r), y: x * Math.sin(r) + y * Math.cos(r) };
+  };
+  const end = (cx: number, cy: number, o: number, i: number) => {
+    const c = curve.connections[i]!;
+    const p = rot(c.x, c.y, o);
+    return { x: cx + p.x, y: cy + p.y, angle: c.angle + o };
+  };
+  const at = (id: string, cx: number, cy: number, o: number, links: { id: string; linkedTo: string }[]) =>
+    makeBrick({ id, x: cx - 8, y: cy - 4, w: 16, h: 8, orientation: o, connexions: links });
+  // A at the origin, turned 0; B joined to A's end, turned 22.5.
+  const aEnd = end(0, 0, 0, 1);
+  const bOff = rot(curve.connections[0]!.x, curve.connections[0]!.y, 22.5);
+  const bCentre = { x: aEnd.x - bOff.x, y: aEnd.y - bOff.y };
+  const bFree = end(bCentre.x, bCentre.y, 22.5, 1); // faces 45
+
+  // A target curve C whose free first end sits 3 studs right of B's free
+  // end and needs the group to turn `turn` degrees to face it.
+  const scene = (turn: number) => {
+    const phi = turn - 135; // facingTurn(phi, 45) = turn
+    const oc = phi - 180;
+    const p = { x: bFree.x + 3, y: bFree.y };
+    const off = rot(curve.connections[0]!.x, curve.connections[0]!.y, oc);
+    const map = brickLayerMap([at('C', p.x - off.x, p.y - off.y, oc, [{ id: 'c0', linkedTo: '' }, { id: 'c1', linkedTo: '' }])]);
+    return { map, p };
+  };
+  const drag = (map: BbmMap, shiftX: number, session: SnapSession, final = false) =>
+    liveDragSnap(
+      {
+        part: curve, movingId: 'A', movingLinks: [{ id: 'a0', linkedTo: '' }, { id: 'a1', linkedTo: 'b0' }],
+        siblings: [{ id: 'B', part: curve, links: [{ id: 'b0', linkedTo: 'a1' }, { id: 'b1', linkedTo: '' }], offsetX: bCentre.x, offsetY: bCentre.y, orientation: 22.5 }],
+        centreX: shiftX, centreY: 0.1, mouseStudX: bCentre.x + shiftX, mouseStudY: bCentre.y, orientation: 0,
+        snapStepStuds: 0, reach: 1, session, ...(final ? { final: true } : {}),
+      },
+      map, partsByKey,
+    );
+
+  for (const turn of [0, 22.5, -22.5, 45, -45]) {
+    it(`turns ${turn} degrees to join, and keeps one target over a slow approach`, () => {
+      const { map, p } = scene(turn);
+      const session = new SnapSession();
+      let first = -1;
+      let r = drag(map, 0, session);
+      for (let i = 0; i <= 12; i++) {
+        r = drag(map, i * 0.25, session, i === 12);
+        if (r.snappedToConnection && first < 0) first = i;
+        if (first >= 0) {
+          // Once joined, the same end every frame: no flipping.
+          expect(r.snappedToConnection, `frame ${i}`).toBe(true);
+          expect(r.ringStudX).toBeCloseTo(p.x, 6);
+          expect(r.ringStudY).toBeCloseTo(p.y, 6);
+        }
+      }
+      expect(first).toBeGreaterThanOrEqual(0);
+      expect(first).toBeLessThan(12);
+      // The group turned as one about the joint and B's free end meets C's,
+      // mouth to mouth; A and B are still joined.
+      expect(r.groupTurn?.degrees ?? 0).toBeCloseTo(turn, 6);
+      const t = r.groupTurn ?? { degrees: 0, pivotX: 0, pivotY: 0, toX: r.centreX - 3, toY: r.centreY - 0.1 };
+      const place = (x: number, y: number) =>
+        r.groupTurn ? applyGroupTurn(t, x + 3, y + 0.1) : { x: x + r.centreX, y: y + r.centreY - 0 };
+      const a = place(0, 0);
+      expect(a.x).toBeCloseTo(r.centreX, 6);
+      expect(a.y).toBeCloseTo(r.centreY, 6);
+      const b = r.groupTurn ? applyGroupTurn(t, bCentre.x + 3, bCentre.y + 0.1) : { x: bCentre.x + r.centreX, y: bCentre.y + r.centreY };
+      const bEnd = end(b.x, b.y, 22.5 + turn, 1);
+      expect(bEnd.x).toBeCloseTo(p.x, 6);
+      expect(bEnd.y).toBeCloseTo(p.y, 6);
+      expect(wrap180(bEnd.angle - (turn - 135) - 180)).toBeCloseTo(0, 6);
+      const aJoint = end(r.centreX, r.centreY, turn, 1);
+      const bJoint = end(b.x, b.y, 22.5 + turn, 0);
+      expect(aJoint.x).toBeCloseTo(bJoint.x, 6);
+      expect(aJoint.y).toBeCloseTo(bJoint.y, 6);
+    });
+  }
+
+  it('a join needing more than a quarter turn is not offered: no crooked half-snap', () => {
+    const { map } = scene(112.5);
+    const session = new SnapSession();
+    for (let i = 0; i <= 12; i++) {
+      expect(drag(map, i * 0.25, session, i === 12).snappedToConnection, `frame ${i}`).toBe(false);
+    }
+  });
+});
+
+describe('liveDragSnap — level targets prefer the smaller turn', () => {
+  it('takes the end that needs no turn over one nearer the cursor that needs a big one', () => {
+    const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+    const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+    const partsByKey = new Map<string, PartWire>([['test.0', track]]);
+    // L: right end at (-4, 4) facing 0 — the dragged left end faces it already.
+    // R: turned 45, its left end at (4.4, 4) facing 225 — the dragged right end must turn.
+    const r45 = (45 * Math.PI) / 180;
+    const map = brickLayerMap([
+      makeBrick({ id: 'L', x: -12, y: 0, w: 8, h: 8 }),
+      makeBrick({ id: 'R', x: 4.4 + 4 * Math.cos(r45) - 4, y: 4 + 4 * Math.sin(r45) - 4, w: 8, h: 8, orientation: 45 }),
+    ]);
+    const r = liveDragSnap(
+      {
+        part: track, movingId: 'd', movingLinks: [],
+        centreX: 0.3, centreY: 4, mouseStudX: 4.3, mouseStudY: 4, orientation: 0,
+        snapStepStuds: 0, reach: 1,
+      },
+      map, partsByKey,
+    );
+    expect(r.ringStudX).toBeCloseTo(-4);
+    expect(r.newOrientation).toBeCloseTo(0);
   });
 });

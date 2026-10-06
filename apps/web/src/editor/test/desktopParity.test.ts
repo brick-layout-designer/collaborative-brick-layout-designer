@@ -23,7 +23,7 @@ import {
   rotateBricksAboutCentroid,
   setLayerVisible,
 } from '../mutations';
-import { moduleBatchesFromMap, moduleDropTranslation } from '../moduleDrop';
+import { moduleBatchesFromMap, moduleDropTranslation, placedModuleBatches } from '../moduleDrop';
 import { SnapSession } from '../snapFeel';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { rotateAroundPivots } from '../brickGeometry';
@@ -195,6 +195,35 @@ describe('module drop placement (E)', () => {
     const t = moduleDropTranslation(batches, { x: 13, y: 1.5 }, 0, host, partsByKey, { reach: 4 });
     expect(t.dx).toBeCloseTo(12);
     expect(t.dy).toBeCloseTo(1);
+  });
+
+  it('turns a module as a whole to face an end at an angle, and refuses more than a quarter turn', () => {
+    const trk = part([{ type: '1', x: -4, y: 0, angle: 180, electricPlug: 0 }, { type: '1', x: 4, y: 0, angle: 0, electricPlug: 0 }]);
+    const partsByKey = new Map([['trk.0', trk]]);
+    const host = (orientation: number) => {
+      const doc = new Y.Doc();
+      const l = ensureBrickLayer(doc);
+      // A straight turned `orientation` about (4, 1): its free end at (4 + 4cos, 1 + 4sin).
+      placeBrick(doc, l, { partNumber: 'trk.0', x: 0, y: 0, width: 8, height: 2, orientation });
+      return docToBbm(doc);
+    };
+    const batches = [{ layerName: 'L', bricks: [{ partNumber: 'trk.0', displayArea: { x: -4, y: -1, width: 8, height: 2 } }] }];
+    const r = (deg: number) => (deg * Math.PI) / 180;
+    // Host turned 45: its right end faces 45; the module's left end faces 180 → turn 45.
+    const end45 = { x: 4 + 4 * Math.cos(r(45)), y: 1 + 4 * Math.sin(r(45)) };
+    const drop = moduleDropTranslation(batches, { x: end45.x + 4.3, y: end45.y }, 0, host(45), partsByKey, { reach: 1 });
+    expect(drop.turn?.degrees).toBeCloseTo(45);
+    const placed = placedModuleBatches(batches, drop, partsByKey)[0]!.bricks[0]!;
+    expect(placed.orientation).toBeCloseTo(45);
+    // Its left end lands on the host's end.
+    const c = { x: placed.displayArea.x + placed.displayArea.width / 2, y: placed.displayArea.y + placed.displayArea.height / 2 };
+    expect(c.x - 4 * Math.cos(r(45))).toBeCloseTo(end45.x);
+    expect(c.y - 4 * Math.sin(r(45))).toBeCloseTo(end45.y);
+    // Host turned 135: a 135 degree turn; not offered.
+    const end135 = { x: 4 + 4 * Math.cos(r(135)), y: 1 + 4 * Math.sin(r(135)) };
+    const far = moduleDropTranslation(batches, { x: end135.x + 4.3, y: end135.y }, 0, host(135), partsByKey, { reach: 1 });
+    expect(far.turn).toBeUndefined();
+    expect(far.ringStudX).toBeUndefined();
   });
 
   it('snaps a module with the same feel: reach, hold, Alt, the drop', () => {
