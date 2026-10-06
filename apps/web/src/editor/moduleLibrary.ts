@@ -316,18 +316,27 @@ export function alignToPlaced(
     const r = (turn.v * Math.PI) / 180;
     const c = Math.cos(r);
     const s = Math.sin(r);
-    const shifts = new Map<string, { n: number; v: Pt }>();
+    // The shift most pairs agree on, in 0.05-stud steps; then exactly: the
+    // mean of the pairs in that step.
+    const shifts = new Map<string, { n: number; v: Pt; sum: Pt }>();
     for (const [a, b] of pairs(lib, here)) {
       const d = norm360(b.o - a.o);
       if (Math.min(Math.abs(d - turn.v), 360 - Math.abs(d - turn.v)) > 0.1) continue;
-      const v = { x: bucket(b.p.x - (a.p.x * c - a.p.y * s), 0.05), y: bucket(b.p.y - (a.p.x * s + a.p.y * c), 0.05) };
+      const exact = { x: b.p.x - (a.p.x * c - a.p.y * s), y: b.p.y - (a.p.x * s + a.p.y * c) };
+      const v = { x: bucket(exact.x, 0.05), y: bucket(exact.y, 0.05) };
       const k = `${v.x.toFixed(2)},${v.y.toFixed(2)}`;
       const e = shifts.get(k);
-      if (e) e.n++;
-      else shifts.set(k, { n: 1, v });
+      if (e) {
+        e.n++;
+        e.sum.x += exact.x;
+        e.sum.y += exact.y;
+      } else shifts.set(k, { n: 1, v, sum: { ...exact } });
     }
     const shift = mode(shifts, (x, y) => x.x < y.x || (x.x === y.x && x.y < y.y));
-    if (shift) return { degrees: turn.v, toX: shift.v.x, toY: shift.v.y, matched: shift.n };
+    if (shift) {
+      const e = shifts.get(`${shift.v.x.toFixed(2)},${shift.v.y.toFixed(2)}`)!;
+      return { degrees: turn.v, toX: e.sum.x / e.n, toY: e.sum.y / e.n, matched: shift.n };
+    }
   }
   // Nothing alike: the library version's middle on the module's middle.
   const mid = (xs: readonly Item[]) =>

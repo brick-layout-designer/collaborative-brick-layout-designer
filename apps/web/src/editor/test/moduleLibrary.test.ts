@@ -73,11 +73,11 @@ describe('where a library version goes', () => {
 
   it('finds the turn and the shift of the placed copy, and the copy matches', () => {
     const lib = v1();
-    const placed = placeVersion(lib, { degrees: 90, toX: 100, toY: 50, matched: 0 }, null)[0]!.bricks as Brick[];
+    const placed = placeVersion(lib, { degrees: 90, toX: 100.0123, toY: 50.0371, matched: 0 }, null)[0]!.bricks as Brick[];
     const p = alignToPlaced(lib, placed, null);
     expect(p.degrees).toBe(90);
-    expect(p.toX).toBeCloseTo(100);
-    expect(p.toY).toBeCloseTo(50);
+    expect(p.toX).toBeCloseTo(100.0123, 6);
+    expect(p.toY).toBeCloseTo(50.0371, 6);
     expect(p.matched).toBe(3);
     expect(matchesVersion(lib, placed, null)).toBe(true);
   });
