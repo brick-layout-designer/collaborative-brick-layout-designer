@@ -5,6 +5,7 @@
 // as the public layout viewer.
 
 import { Link } from 'react-router-dom';
+import { SignInLink } from './auth/signIn';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 import { AppHeader } from './AppHeader';
@@ -27,9 +28,9 @@ export function AboutPage() {
             Collaborative Brick Layout Designer
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link to="/login" className="text-neutral-300 hover:underline">
+            <SignInLink className="text-neutral-300 hover:underline">
               Sign in
-            </Link>
+            </SignInLink>
           </nav>
         </header>
       )}

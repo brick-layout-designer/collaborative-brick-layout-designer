@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { DeadLinkHelp, SwitchAccountButton } from '../auth/signIn';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 
@@ -52,6 +53,7 @@ export function OrgInvitePage() {
         <Box>
           <p className="font-semibold text-danger">This invite isn't valid.</p>
           <p className="mt-1 text-xs">{(preview.error as Error).message}</p>
+          <DeadLinkHelp what="invite" />
         </Box>
       </Centered>
     );
@@ -84,6 +86,7 @@ export function OrgInvitePage() {
             The invite is for <strong>{inv.invitedEmail}</strong>, but you're signed in
             as <strong>{me.data!.user!.email}</strong>. Sign out and back in with the
             matching email.
+            <SwitchAccountButton className="mt-2 block" />
           </p>
         )}
         {error && (

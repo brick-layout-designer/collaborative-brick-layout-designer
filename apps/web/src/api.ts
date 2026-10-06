@@ -475,14 +475,20 @@ export const api = {
   tryDemo: () => post<{ ok: true }>('/api/auth/demo', {}),
   passwordLogin: (email: string, password: string) =>
     post<{ ok: true }>('/api/auth/password/login', { email, password }),
-  passwordRegister: (email: string, password: string, displayName?: string) =>
-    post<{ ok: true; verificationRequired: true }>('/api/auth/password/register', {
+  /**
+   * `next`: where to go once the emailed link is opened (a path on this
+   * site). `verificationRequired: false` means the site doesn't ask for
+   * the email check and the new account is already signed in.
+   */
+  passwordRegister: (email: string, password: string, displayName?: string, next?: string) =>
+    post<{ ok: true; verificationRequired: boolean }>('/api/auth/password/register', {
       email,
       password,
       displayName,
+      ...(next && next !== '/' ? { next } : {}),
     }),
-  resendVerification: (email: string) =>
-    post<{ ok: true }>('/api/auth/password/resend-verification', { email }),
+  resendVerification: (email: string, next?: string) =>
+    post<{ ok: true }>('/api/auth/password/resend-verification', { email, ...(next && next !== '/' ? { next } : {}) }),
   verifyEmail: (token: string) =>
     post<{ ok: true }>(`/api/auth/password/verify-email/${encodeURIComponent(token)}`),
 

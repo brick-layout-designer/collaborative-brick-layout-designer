@@ -9,7 +9,7 @@ import { sendVerificationEmail } from '../../email/sendVerification.js';
 import { getPlatformSettings } from '../../auth/platformSettings.js';
 import { findUserByEmail } from '../../auth/users.js';
 import { env } from '../../env.js';
-import { normalizeEmail } from '../../utils/validate.js';
+import { normalizeEmail, safeNextPath } from '../../utils/validate.js';
 import { needsName } from '../../utils/publicName.js';
 
 const ARGON_OPTS = { memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1 };
@@ -22,7 +22,17 @@ const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
  * there's no copy-paste fallback surfaced to the client the way invite
  * links have, since a brand-new account has nowhere else to show it.
  */
-async function issueVerification(log: FastifyBaseLogger, userId: string, email: string): Promise<void> {
+/**
+ * The emailed link. `next` (a path on this site) is where the person was
+ * going when they signed up, e.g. a club invite: verifying takes them on
+ * there instead of to Home.
+ */
+export function verificationUrl(token: string, next: string | null): string {
+  const base = `${env.publicUrl}/verify-email/${token}`;
+  return next && next !== '/' ? `${base}?next=${encodeURIComponent(next)}` : base;
+}
+
+async function issueVerification(log: FastifyBaseLogger, userId: string, email: string, next: string | null = null): Promise<void> {
   await db.delete(schema.emailVerifications).where(eq(schema.emailVerifications.userId, userId));
   const token = randomBytes(24).toString('hex');
   await db.insert(schema.emailVerifications).values({
@@ -32,7 +42,7 @@ async function issueVerification(log: FastifyBaseLogger, userId: string, email: 
     expiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
     createdAt: new Date(),
   });
-  const verifyUrl = `${env.publicUrl}/verify-email/${token}`;
+  const verifyUrl = verificationUrl(token, next);
   let delivered = false;
   try {
     delivered = await sendVerificationEmail({ to: email, verifyUrl });
@@ -50,7 +60,7 @@ async function issueVerification(log: FastifyBaseLogger, userId: string, email: 
 export async function passwordRoutes(app: FastifyInstance) {
   if (!env.enablePasswordAuth) return;
 
-  app.post<{ Body: { email: string; password: string; displayName?: string } }>(
+  app.post<{ Body: { email: string; password: string; displayName?: string; next?: string } }>(
     '/api/auth/password/register',
     {
       config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
@@ -93,13 +103,13 @@ export async function passwordRoutes(app: FastifyInstance) {
         return reply.send({ ok: true, verificationRequired: false });
       }
 
-      await issueVerification(req.log, id, email);
+      await issueVerification(req.log, id, email, safeNextPath(req.body.next));
       // No session cookie yet — the account can't log in until verified.
       return reply.send({ ok: true, verificationRequired: true });
     },
   );
 
-  app.post<{ Body: { email: string } }>(
+  app.post<{ Body: { email: string; next?: string } }>(
     '/api/auth/password/resend-verification',
     {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
@@ -113,7 +123,7 @@ export async function passwordRoutes(app: FastifyInstance) {
       // already verified — don't let this endpoint be used to enumerate
       // registered emails.
       if (settings.requireEmailVerification && user && user.passwordHash && !user.emailVerified) {
-        await issueVerification(req.log, user.id, user.email);
+        await issueVerification(req.log, user.id, user.email, safeNextPath(req.body.next));
       }
       return reply.send({ ok: true });
     },

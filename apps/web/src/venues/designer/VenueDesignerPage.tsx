@@ -9,6 +9,20 @@ import { api } from '../../api';
 import { normalizeVenue } from '../../editor/venueFile';
 import { VenueDesigner } from './VenueDesigner';
 import { emptyVenue } from './model';
+import { SignInFirst } from '../../auth/signIn';
+
+/** The club's name for "New venue for …" (its address until the list is in). */
+function useClubName(org: string | null): string | null {
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list, enabled: !!org });
+  if (!org) return null;
+  return orgs.data?.orgs.find((o) => o.slug === org)?.name ?? org;
+}
+
+/** Venues are kept in an account: signed out, sign in first and come back. */
+function useSignedIn(): 'loading' | boolean {
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  return me.isLoading ? 'loading' : !!me.data?.user;
+}
 
 function back(navigate: ReturnType<typeof useNavigate>, org: string | null) {
   navigate(org ? `/orgs/${org}` : '/');
@@ -19,10 +33,14 @@ export function NewVenuePage() {
   const qc = useQueryClient();
   const [params] = useSearchParams();
   const org = params.get('org');
+  const club = useClubName(org);
+  const signedIn = useSignedIn();
+  if (signedIn === 'loading') return <div className="grid h-full place-items-center text-muted">Loading…</div>;
+  if (!signedIn) return <SignInFirst />;
   return (
     <VenueDesigner
       initial={emptyVenue()}
-      subtitle={org ? `New venue for ${org}` : 'New venue in your library'}
+      subtitle={club ? `New venue for ${club}` : 'New venue in your library'}
       onSave={async (v: Venue) => {
         const created = await api.venues.create({ name: v.name.trim() || 'Venue', data: v, ...(org ? { orgSlug: org } : {}) });
         await qc.invalidateQueries({ queryKey: ['venues'] });
@@ -39,9 +57,12 @@ export function VenueDesignPage() {
   const qc = useQueryClient();
   const [params] = useSearchParams();
   const org = params.get('org');
-  const venue = useQuery({ queryKey: ['venue', id], queryFn: () => api.venues.get(id) });
+  const club = useClubName(org);
+  const signedIn = useSignedIn();
+  const venue = useQuery({ queryKey: ['venue', id], queryFn: () => api.venues.get(id), enabled: signedIn === true });
 
-  if (venue.isLoading) return <div className="grid h-full place-items-center text-muted">Loading venue…</div>;
+  if (signedIn === false) return <SignInFirst />;
+  if (signedIn === 'loading' || venue.isLoading) return <div className="grid h-full place-items-center text-muted">Loading venue…</div>;
   if (venue.isError || !venue.data) {
     return (
       <div className="grid h-full place-items-center">
@@ -59,7 +80,7 @@ export function VenueDesignPage() {
     <VenueDesigner
       key={id}
       initial={initial}
-      subtitle={org ? `Venue of ${org}` : 'Venue in your library'}
+      subtitle={club ? `Venue of ${club}` : 'Venue in your library'}
       onSave={async (v: Venue) => {
         await api.venues.update(id, v);
         const name = v.name.trim();

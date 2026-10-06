@@ -1,4 +1,5 @@
-import { Navigate } from 'react-router-dom';
+
+import { SignInFirst } from './auth/signIn';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 import { AppHeader } from './AppHeader';
@@ -8,7 +9,7 @@ import { SiteFooter } from './privacy/SiteFooter';
 export function App() {
   const { data, isLoading } = useQuery({ queryKey: ['me'], queryFn: api.me });
   if (isLoading) return <Loading />;
-  if (!data?.user) return <Navigate to="/login" replace />;
+  if (!data?.user) return <SignInFirst />;
 
   return (
     <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">

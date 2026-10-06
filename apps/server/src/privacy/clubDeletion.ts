@@ -142,7 +142,9 @@ export async function requestClubDeletion(
   });
   await docHub.closeMany(layouts);
   const by = actor.isGlobalAdmin && !members.some((m) => m.userId === actor.id) ? 'A site admin' : publicName(actor.id, actor.displayName);
+  // Everyone else who was in it is told; whoever deleted it already knows.
   for (const m of members) {
+    if (m.userId === actor.id) continue;
     await postPersonalNote(
       m.userId,
       `${by} deleted the club ${org.name} on ${day(now)}. It's hidden now, and will be gone for good on ${day(dueAt)}. Until then, any of the club's admins, or a site admin, can restore it with everything in it (Clubs › Being deleted).`,
@@ -192,6 +194,7 @@ export async function restoreClub(org: Org, actor: { id: string; displayName: st
   });
   const by = actor.isGlobalAdmin && !members.some((m) => m.userId === actor.id) ? 'A site admin' : publicName(actor.id, actor.displayName);
   for (const m of back) {
+    if (m.userId === actor.id) continue;
     await postPersonalNote(m.userId, `${by} restored the club ${org.name}. It's back, with everything in it.`, `/orgs/${org.slug}`, {
       clubOrgId: org.id,
       issuedBy: actor.id,

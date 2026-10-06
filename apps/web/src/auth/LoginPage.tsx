@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { safeNext } from './signIn';
+
+export { safeNext };
 import { DeletingNotice } from '../privacy/DeleteAccount';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
@@ -7,15 +10,13 @@ import { HelpButton } from '../help/HelpButton';
 import { DESKTOP_URL, LICENCE, REPO_URL } from '../projectLinks';
 import { kindsOn } from '../catalog/CatalogPage';
 
-/**
- * `?next=` target to return to after signing in (e.g. /device, /invite/…).
- * Same-origin paths only, so the login page can't be used as an open
- * redirect.
- */
-export function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/';
-  return raw;
-}
+/** What went wrong with a GitHub/Google sign-in (the server's `?error=`). */
+export const SIGN_IN_ERRORS: Record<string, string> = {
+  invalid_state: 'That sign-in took too long or was started in another tab. Please try again.',
+  oauth_error: 'The sign-in didn’t go through. Please try again.',
+  email_not_verified: 'That account’s email address isn’t confirmed with the provider yet. Confirm it there, or use another way to sign in.',
+  email_unavailable: 'GitHub didn’t share a confirmed email address for that account. Add one in GitHub’s settings, or use another way to sign in.',
+};
 
 export function LoginPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -25,6 +26,7 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
   const deleting = Number(params.get('deleting') ?? '');
+  const failed = params.get('error');
   if (me.data?.user) return <Navigate to={next} replace />;
 
   return (
@@ -34,6 +36,11 @@ export function LoginPage() {
         <div className="space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
           <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
           <h1 className="text-center text-xl font-semibold">Sign in to Brick Layout Designer</h1>
+          {failed && (
+            <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+              {SIGN_IN_ERRORS[failed] ?? SIGN_IN_ERRORS.oauth_error}
+            </p>
+          )}
 
           <div className="space-y-2">
             {providers.data?.providers
@@ -41,7 +48,7 @@ export function LoginPage() {
               .map((p) => (
                 <a
                   key={p.id}
-                  href={`/api/auth/${p.id}`}
+                  href={`/api/auth/${p.id}${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`}
                   className="block rounded-lg border border-border px-4 py-2 text-center hover:bg-soft"
                 >
                   Continue with {p.label}
@@ -139,9 +146,10 @@ function PasswordForm({ next }: { next: string }) {
     mutationFn: () =>
       mode === 'login'
         ? api.passwordLogin(email, password)
-        : api.passwordRegister(email, password, name.trim()),
-    onSuccess: () => {
-      if (mode === 'register') {
+        : api.passwordRegister(email, password, name.trim(), next),
+    onSuccess: (res) => {
+      // A site that doesn't ask for the email check signs the new account straight in.
+      if (mode === 'register' && 'verificationRequired' in res && res.verificationRequired) {
         setAwaitingVerification(email);
         return;
       }
@@ -152,7 +160,7 @@ function PasswordForm({ next }: { next: string }) {
   });
 
   const resend = useMutation({
-    mutationFn: () => api.resendVerification(email),
+    mutationFn: () => api.resendVerification(email, next),
   });
 
   if (awaitingVerification) {

@@ -62,6 +62,8 @@ test('a club admin deletes a club handing its public module to a member; the mem
   await confirm.getByRole('button', { name: 'Delete the club', exact: true }).click();
   await expect(ada).toHaveURL(/\/orgs#being-deleted$/);
   await expect(ada.getByTestId('being-deleted')).toContainText(CLUB);
+  // She did it herself: no notice telling her so, over the Restore button.
+  await expect(ada.getByTestId('notice-banner')).toHaveCount(0);
 
   // ---- Ben: it's gone from his clubs, and he has a notice ---------------------
   await ben.goto('/orgs');
@@ -73,8 +75,15 @@ test('a club admin deletes a club handing its public module to a member; the mem
   await expect(notice).toContainText('restore it');
   await expect(ben.getByTestId('being-deleted')).toContainText('Ask one of its admins to restore it.');
   expect((await ben.request.post(`/api/orgs/${club.slug}/restore`)).status()).toBe(404);
+  // An old link to the club says what happened, not "Club not found".
+  await ben.goto(`/orgs/${club.slug}`);
+  await expect(ben.getByTestId('club-being-deleted')).toContainText(`${CLUB} is being deleted.`);
+  await expect(ben.getByTestId('club-being-deleted')).toContainText('Ask one of its admins to restore it.');
 
   // ---- Ada restores it --------------------------------------------------------
+  await ada.goto(`/orgs/${club.slug}/admin`);
+  await ada.getByTestId('club-being-deleted').getByRole('link', { name: 'Restore it from Clubs' }).click();
+  await expect(ada).toHaveURL(/\/orgs#being-deleted$/);
   await ada.getByTestId('being-deleted').getByRole('button', { name: 'Restore' }).click();
   await expect(ada.getByTestId('toast')).toContainText('is back');
   await expect(ada.getByRole('link', { name: CLUB })).toBeVisible();

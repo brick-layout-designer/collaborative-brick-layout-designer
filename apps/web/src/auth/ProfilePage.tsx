@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+
+import { SignInFirst } from './signIn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
@@ -36,7 +37,7 @@ export function ProfilePage() {
   });
 
   if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
-  if (!me.data?.user) return <Navigate to="/login" replace />;
+  if (!me.data?.user) return <SignInFirst />;
   const user = me.data.user;
 
   return (

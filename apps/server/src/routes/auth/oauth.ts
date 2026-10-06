@@ -16,16 +16,28 @@ import {
 import { db, schema } from '../../db/index.js';
 import { env } from '../../env.js';
 import { looksLikeEmail } from '../../utils/publicName.js';
+import { safeNextPath } from '../../utils/validate.js';
 
 const STATE_COOKIE = 'cld_oauth_state';
 const VERIFIER_COOKIE = 'cld_oauth_verifier';
+/** Where to go once signed in (the login page's `?next=`). */
+const NEXT_COOKIE = 'cld_oauth_next';
+
+/**
+ * A sign-in that didn't work goes back to the sign-in page, which says
+ * why in plain words, never to a page of JSON.
+ */
+export function oauthFailure(reply: import('fastify').FastifyReply, error: 'invalid_state' | 'oauth_error' | 'email_not_verified' | 'email_unavailable') {
+  reply.clearCookie(NEXT_COOKIE, { path: '/' });
+  return reply.redirect(`/login?error=${error}`);
+}
 
 export async function oauthRoutes(app: FastifyInstance) {
   // ---- Google ------------------------------------------------------------
   const googleClient = google;
   if (googleClient) {
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    app.get('/api/auth/google', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => {
+    app.get<{ Querystring: { next?: string } }>('/api/auth/google', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
       const state = generateState();
       const codeVerifier = generateCodeVerifier();
       const url = googleClient.createAuthorizationURL(state, codeVerifier, [
@@ -33,7 +45,7 @@ export async function oauthRoutes(app: FastifyInstance) {
         'email',
         'profile',
       ]);
-      setStateCookies(reply, state, codeVerifier);
+      setStateCookies(reply, state, codeVerifier, req.query.next);
       return reply.redirect(url.toString());
     });
 
@@ -42,15 +54,15 @@ export async function oauthRoutes(app: FastifyInstance) {
       const params = req.query as { code?: string; state?: string };
       const stored = readStateCookies(req);
       if (!params.code || !params.state || !stored.state || params.state !== stored.state) {
-        return reply.code(400).send({ error: 'invalid_state' });
+        return oauthFailure(reply, 'invalid_state');
       }
       try {
         const tokens = await googleClient.validateAuthorizationCode(params.code, stored.verifier);
         const profile = await fetchGoogleProfile(tokens.accessToken());
-        return await completeLogin(reply, 'google', profile);
+        return await completeLogin(reply, 'google', profile, stored.next);
       } catch (e) {
-        if (e instanceof OAuth2RequestError) return reply.code(400).send({ error: 'oauth_error' });
-        if (e instanceof UnverifiedEmailError) return reply.code(403).send({ error: 'email_not_verified' });
+        if (e instanceof OAuth2RequestError) return oauthFailure(reply, 'oauth_error');
+        if (e instanceof UnverifiedEmailError) return oauthFailure(reply, 'email_not_verified');
         throw e;
       }
     });
@@ -60,10 +72,10 @@ export async function oauthRoutes(app: FastifyInstance) {
   const githubClient = github;
   if (githubClient) {
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    app.get('/api/auth/github', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (_req, reply) => {
+    app.get<{ Querystring: { next?: string } }>('/api/auth/github', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
       const state = generateState();
       const url = githubClient.createAuthorizationURL(state, ['read:user', 'user:email']);
-      setStateCookies(reply, state, '');
+      setStateCookies(reply, state, '', req.query.next);
       return reply.redirect(url.toString());
     });
 
@@ -72,14 +84,15 @@ export async function oauthRoutes(app: FastifyInstance) {
       const params = req.query as { code?: string; state?: string };
       const stored = readStateCookies(req);
       if (!params.code || !params.state || !stored.state || params.state !== stored.state) {
-        return reply.code(400).send({ error: 'invalid_state' });
+        return oauthFailure(reply, 'invalid_state');
       }
       try {
         const tokens = await githubClient.validateAuthorizationCode(params.code);
         const profile = await fetchGithubProfile(tokens.accessToken());
-        return await completeLogin(reply, 'github', profile);
+        return await completeLogin(reply, 'github', profile, stored.next);
       } catch (e) {
-        if (e instanceof OAuth2RequestError) return reply.code(400).send({ error: 'oauth_error' });
+        if (e instanceof OAuth2RequestError) return oauthFailure(reply, 'oauth_error');
+        if (e instanceof GithubEmailUnavailableError) return oauthFailure(reply, 'email_unavailable');
         throw e;
       }
     });
@@ -140,11 +153,13 @@ export async function oauthRoutes(app: FastifyInstance) {
   // when env.oidc is set; the route handlers go in `oidc.ts` next.
 }
 
-async function completeLogin(
+export async function completeLogin(
   reply: import('fastify').FastifyReply,
   provider: ProviderId,
   profile: NormalisedProfile,
+  next = '',
 ) {
+  reply.clearCookie(NEXT_COOKIE, { path: '/' });
   const { user, linkPrompt } = await resolveOauthUser(provider, profile);
   if (linkPrompt) {
     // Redirect to the link-confirmation page. The pending link is kept
@@ -163,13 +178,14 @@ async function completeLogin(
   }
   const { token, expiresAt } = await createSession(user.id);
   setSessionCookie(reply, token, expiresAt);
-  return reply.redirect('/');
+  return reply.redirect(safeNextPath(next) ?? '/');
 }
 
 function setStateCookies(
   reply: import('fastify').FastifyReply,
   state: string,
   verifier: string,
+  next: unknown,
 ) {
   const opts = {
     httpOnly: true,
@@ -180,13 +196,24 @@ function setStateCookies(
   };
   reply.setCookie(STATE_COOKIE, state, opts);
   reply.setCookie(VERIFIER_COOKIE, verifier, opts);
+  const to = safeNextPath(next);
+  if (to) reply.setCookie(NEXT_COOKIE, to, opts);
+  else reply.clearCookie(NEXT_COOKIE, { path: '/' });
 }
 
 function readStateCookies(req: import('fastify').FastifyRequest) {
   return {
     state: req.cookies[STATE_COOKIE] ?? '',
     verifier: req.cookies[VERIFIER_COOKIE] ?? '',
+    next: req.cookies[NEXT_COOKIE] ?? '',
   };
+}
+
+/** Thrown when GitHub shares no verified email for the account. */
+export class GithubEmailUnavailableError extends Error {
+  constructor() {
+    super('github email unavailable');
+  }
 }
 
 /** Thrown when the provider can't vouch for the account's email. */
@@ -243,7 +270,7 @@ async function fetchGithubProfile(accessToken: string): Promise<NormalisedProfil
       email = emails.find((e) => e.primary && e.verified)?.email ?? null;
     }
   }
-  if (!email) throw new Error('github email unavailable');
+  if (!email) throw new GithubEmailUnavailableError();
   return {
     providerUserId: String(user.id),
     email,

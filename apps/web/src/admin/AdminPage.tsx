@@ -16,7 +16,8 @@
 
 import { lazy, Suspense, useRef, useState } from 'react';
 import { useCardTables } from '../ui/cardTables';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { SignInFirst } from '../auth/signIn';
 import { adminTabsFor, adminTabText, type AdminTab } from './adminTabs';
 import { formatBytes } from './insights/format';
 import { AppHeader } from '../AppHeader';
@@ -49,7 +50,7 @@ export function AdminPage() {
   const privacyDue = usePrivacyDue({ isGlobalAdmin: !!me.data?.user?.isGlobalAdmin });
 
   if (me.isLoading) return <Loading />;
-  if (!me.data?.user) return <Navigate to="/login" replace />;
+  if (!me.data?.user) return <SignInFirst />;
   const isAdmin = me.data.user.isGlobalAdmin;
   // Moderators see only Moderation; everything else stays the admins'.
   if (!isAdmin && !me.data.user.isModerator) return <Forbidden />;

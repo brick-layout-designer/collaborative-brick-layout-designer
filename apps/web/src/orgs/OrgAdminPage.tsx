@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { SignInFirst } from '../auth/signIn';
 import { useHashScroll } from '../ui/useHashScroll';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type OrgPartLibrary } from '../api';
@@ -20,7 +21,7 @@ import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
 import { aRole, atLeast } from './clubRoles';
 import { ClubReviewTab } from './ClubReview';
-import { DeleteClubSection } from './DeleteClub';
+import { ClubGoneNotice, DeleteClubSection } from './DeleteClub';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
 
@@ -52,14 +53,19 @@ function OrgAdmin({ slug }: { slug: string }) {
   if (me.isLoading || detail.isLoading) {
     return <div className="grid h-screen place-items-center text-muted">Loading…</div>;
   }
-  if (!me.data?.user) return <Navigate to="/login" replace />;
+  if (!me.data?.user) return <SignInFirst />;
   if (detail.isError) {
     return (
       <div className="grid h-screen place-items-center">
-        <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-          <p className="font-semibold text-danger">Club not found.</p>
-          <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
-        </div>
+        <ClubGoneNotice
+          slug={slug}
+          fallback={
+            <div className="rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
+              <p className="font-semibold text-danger">Club not found.</p>
+              <Link to="/orgs" className="mt-2 inline-block text-accent-text hover:underline">← back</Link>
+            </div>
+          }
+        />
       </div>
     );
   }
