@@ -206,7 +206,7 @@ export class FlexMove {
       startConn = s;
     }
     d.createChain(list, g, startConn);
-    if (d.bones.length < 2) return null;
+    if (d.bones.length < 2 || d.chain.length === 0 || d.chainBricks.length === 0) return null;
     const active = Math.min(Math.max(g.activeConnectionPointIndex, 0), n - 1);
     const a = d.world(d.conn(g, active));
     d.grabDelta = { x: mouse.x - a.x, y: mouse.y - a.y };
@@ -461,6 +461,10 @@ export class FlexMove {
     let current: Brick | null = g;
     let currentFirst = currentFirstIn;
     let hingedLink = -1; // counted from the chain's end: links are inserted at the front
+    // Each brick once: links that lead round in a circle not through `g`
+    // (two halves joined at both ends, entered by a stale link) would
+    // otherwise grow the chain without end. BlueBrick trusted the links.
+    const seen = new Set<Brick>([g]);
     this.addBone(currentFirst, g, 0);
     while (current && list.has(current) && (isNull(currentFirst) || this.connectionCount(current) === 2)) {
       const secondIndex = sameConn(currentFirst, this.conn(current, 0)) ? 1 : 0;
@@ -491,8 +495,14 @@ export class FlexMove {
       current = next;
       currentFirst = nextFirst;
       if (current === g) break;
+      if (current && seen.has(current)) break;
+      if (current) seen.add(current);
     }
     if (hingedLink >= 0) this.rootLink = hingedLink;
+    if (this.chain.length === 0 || this.rootLink < 0 || this.rootLink >= this.chain.length) {
+      this.chain = [];
+      return; // no chain: start() says so
+    }
 
     if (this.bones.length > 2) {
       const last = this.bones.length - 1;
