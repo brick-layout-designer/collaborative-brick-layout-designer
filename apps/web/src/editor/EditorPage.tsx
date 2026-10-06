@@ -55,7 +55,7 @@ import { useTouchView } from './useTouchView';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { SheetsSheet, TextEditSheet } from './TouchSheets';
-import { editAnchoredLabel, editTextCell, updateSidecarModule } from './mutations';
+import { editAnchoredLabel, editTextCell, setExportElectricCircuit, updateSidecarModule } from './mutations';
 import { parseTextKey } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
@@ -3277,6 +3277,8 @@ function Canvas({
         ...(watermark ? { watermark: watermarkText(map) } : {}),
       });
     },
+    exportElectric: () => map?.exportInfo.exportElectricCircuit ?? false,
+    setExportElectric: (on) => setExportElectricCircuit(doc, on),
     region: () => (map ? exportRegionStuds(map, readSidecarFromDoc(doc), moduleNameBoxes(map, readSidecarFromDoc(doc))) : null),
     screenRegion: () => screenRegion(),
     renderPicture: (spec, size) => renderPicture(spec, size),

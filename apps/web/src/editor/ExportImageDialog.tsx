@@ -18,6 +18,7 @@
 // map fitted (desktop File ▸ Export as PDF), written without a library.
 
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { MAX_CANVAS_SIDE, aspectHeight, type StudRect } from './exportRender';
 import { useEditorStore, noticeDownloaded } from './editorStore';
 import { buildImagePdf, dataUrlBytes, pdfPageLayout, printPixelRatio, printTiles } from './printLayout';
@@ -41,6 +42,9 @@ export interface ExportHandle {
     /** Render only this map region (studs) — a print tile. */
     regionStuds?: StudRect;
   }) => { canvas: HTMLCanvasElement; pixelRatio: number } | null;
+  /** The map's "export electric circuits" choice (<ExportElectricCircuit>). */
+  exportElectric?: () => boolean;
+  setExportElectric?: (on: boolean) => void;
   /** Scene-pixel size of the whole-map export (1×), or null when empty. */
   sceneSize: () => { width: number; height: number } | null;
   /** Stud region of the whole-map export, or null when empty. */
@@ -77,6 +81,8 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
   const [mode, setMode] = useState<'image' | 'print' | 'pdf'>('image');
   // Desktop remembers the watermark checkbox (QSettings export/watermark).
   const [watermark, setWatermark] = useState(() => useEditorStore.getState().showExportWatermark);
+  // BlueBrick's "Electric circuits", remembered in the map.
+  const [electric, setElectric] = useState(() => exportImageRef.current?.exportElectric?.() ?? false);
   // Native (1×) export size; the image defaults to 2×, like the old
   // resolution picker.
   const [scene] = useState(() => exportImageRef.current?.sceneSize() ?? null);
@@ -109,12 +115,20 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
     setCustomHeight(Math.min(MAX_CANVAS_SIDE, Math.round(scene.height * k)));
   }
 
-  function doExportImage() {
+  async function doExportImage() {
     const handle = exportImageRef.current;
     if (!handle || !sizeValid) return;
     setExporting(true);
     setError('');
+    // The overlay shows in the picture as asked, whatever the view shows now.
+    const shown = useEditorStore.getState().showElectricCircuits;
+    const swap = shown !== electric;
     try {
+      handle.setExportElectric?.(electric);
+      if (swap) {
+        flushSync(() => useEditorStore.setState({ showElectricCircuits: electric }));
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      }
       const jpeg = format === 'jpeg';
       const result = handle.render({
         pixelRatio: 1,
@@ -140,6 +154,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
     } catch (e) {
       setError(String(e));
     } finally {
+      if (swap) flushSync(() => useEditorStore.setState({ showElectricCircuits: shown }));
       setExporting(false);
     }
   }
@@ -345,6 +360,10 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
                 />
                 Embed general-info watermark
               </label>
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <input type="checkbox" checked={electric} onChange={(e) => setElectric(e.target.checked)} />
+                Electric circuits
+              </label>
             </>
           ) : mode === 'pdf' ? (
             <p className="text-xs text-muted">
@@ -422,7 +441,7 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
             Cancel
           </button>
           <button
-            onClick={mode === 'image' ? doExportImage : mode === 'print' ? doTiledPrint : doExportPdf}
+            onClick={mode === 'image' ? () => void doExportImage() : mode === 'print' ? doTiledPrint : doExportPdf}
             disabled={exporting || (mode === 'image' && !sizeValid)}
             className="rounded-lg bg-accent px-3 py-1.5 text-xs text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >

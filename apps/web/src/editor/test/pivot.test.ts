@@ -179,8 +179,8 @@ describe('annotations and overlays follow the pivot', () => {
   });
 
   it('electric rails run between the pivot-relative connection points', () => {
-    const { lines } = electricOverlay(mapOf([hullBrick('a', 10, 5)]), parts);
-    const xs = lines.flatMap((l) => [l.x1, l.x2]).map((x) => Math.round(x / 8));
+    const { strokes } = electricOverlay(mapOf([hullBrick('a', 10, 5)]), parts);
+    const xs = strokes.flatMap((l) => l.points.filter((_, i) => i % 2 === 0)).map((x) => Math.round(x / 8));
     expect(Math.min(...xs)).toBe(8);
     expect(Math.max(...xs)).toBe(12);
   });

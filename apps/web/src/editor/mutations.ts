@@ -1368,6 +1368,18 @@ export function editBrick(
 export const UI_STATE_ORIGIN = Symbol('cld-ui-state-origin');
 
 /**
+ * The map's "export electric circuits" choice (BlueBrick's
+ * Map.ExportElectricCircuit, <ExportElectricCircuit> in the .bbm), saved
+ * when an image is exported. Not an undo step (UI_STATE_ORIGIN).
+ */
+export function setExportElectricCircuit(doc: Y.Doc, on: boolean): void {
+  const meta = doc.getMap('meta');
+  const info = meta.get('exportInfo') as Record<string, unknown> | undefined;
+  if (!info || info.exportElectricCircuit === on) return;
+  doc.transact(() => meta.set('exportInfo', { ...info, exportElectricCircuit: on }), UI_STATE_ORIGIN);
+}
+
+/**
  * Persist the grab anchor: the connection the user clicked becomes the
  * brick's active connection point. Desktop `captureGrabAnchor` mutates
  * `activeConnectionPointIndex` in place without an undo command
