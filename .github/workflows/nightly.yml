@@ -81,6 +81,9 @@ jobs:
     name: Trivy image scan
     needs: image
     runs-on: ubuntu-latest
+    # Usually under a minute. A stalled vulnerability-database download
+    # used to hang here until the run was cancelled.
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: read
@@ -101,7 +104,14 @@ jobs:
 
       - name: Run Trivy
         uses: aquasecurity/trivy-action@v0.36.0
+        # Report only: a scan that times out leaves the nightly green.
+        continue-on-error: true
+        env:
+          # The ECR mirror first: ghcr.io rate-limits the database downloads.
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db,ghcr.io/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db,ghcr.io/aquasecurity/trivy-java-db
         with:
+          timeout: 10m
           image-ref: ghcr.io/${{ steps.repo.outputs.name }}:sha-${{ github.sha }}
           format: sarif
           output: trivy-results.sarif
@@ -111,6 +121,7 @@ jobs:
           skip-dirs: /root/.local/share/pnpm,/home/runner/.local/share/pnpm
 
       - name: Upload SARIF to code scanning
+        if: hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
