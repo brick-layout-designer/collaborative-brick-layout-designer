@@ -6,7 +6,7 @@ import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
 import type { ModuleBatch } from './mutations';
 import { connKey, freeConnectionsCached, lookupPart } from './snap';
-import { applyGroupTurn, facingTurn, groupTurnAllowed, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
+import { applyGroupTurn, facingTurn, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
 import { areaForPivot, pivotOf } from './brickGeometry';
 
 /**
@@ -128,9 +128,8 @@ export function moduleDropTranslation(
               const ey = tc.y - wy;
               const sq = ex * ex + ey * ey;
               if (sq > limitSq) continue;
-              // The module turns as a whole to face the end, at most a quarter.
+              // The module turns as a whole to face the end, at any angle.
               const delta = facingTurn(tc.angle, c.angle + (b.orientation ?? 0));
-              if (!groupTurnAllowed(delta)) continue;
               pairs.push({
                 movingKey: `module#${bi}#${ci}`,
                 targetKey: connKey(tc.brickId, tc.index),
