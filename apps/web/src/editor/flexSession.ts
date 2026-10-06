@@ -8,6 +8,7 @@
 import * as Y from 'yjs';
 import type Konva from 'konva';
 import type { BbmMap, LayerBrick } from '@cld/model';
+import type { SidecarModule } from '@cld/bbm';
 import { FlexMove, imageOffset, type FlexState } from '@cld/parts-catalog/browser';
 import type { PartWire } from '../api';
 import { useEditorStore } from './editorStore';
@@ -15,6 +16,7 @@ import { catalogFromParts } from './useConnectivity';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { liveSnapReach } from './liveSnapReach';
 import { snapBypassed } from './snapFeel';
+import { pinnedAmong } from './moduleEdit';
 
 const PX = 8;
 
@@ -53,9 +55,11 @@ export function startFlexSession(opts: {
   pressSelection?: readonly string[];
   mouseStuds: { x: number; y: number };
   partsByKey: ReadonlyMap<string, PartWire>;
+  /** The layout's modules: a pinned one never bends. */
+  modules?: readonly SidecarModule[];
   onEnd: (moved: boolean) => void;
 }): boolean {
-  const { stage, doc, map, layerId, grabbedId, pressSelection = [], mouseStuds, partsByKey, onEnd } = opts;
+  const { stage, doc, map, layerId, grabbedId, pressSelection = [], mouseStuds, partsByKey, modules = [], onEnd } = opts;
   const source = map.layers.find((l): l is LayerBrick => l.id === layerId && l.type === 'brick');
   if (!source) return false;
   // The move edits bricks in place: work on a copy of the layer.
@@ -68,6 +72,7 @@ export function startFlexSession(opts: {
   if (!flex) return false;
 
   const chainIds = flex.initialState().map((s) => s.id);
+  if (pinnedAmong(chainIds, modules, st.editingModuleId)) return false;
   st.setSelection(chainIds);
   let moved = false;
 

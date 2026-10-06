@@ -392,12 +392,10 @@ const BrickGlyph = memo(function BrickGlyph({
     }
     lastPress.id = second ? '' : brick.id;
     lastPress.time = now;
-    // A module (not the one being edited) never bends part by part: its
-    // double-click opens Edit module instead.
-    const inClosedModule =
-      moduleByPart(getModules()).get(brick.id) !== undefined &&
-      moduleByPart(getModules()).get(brick.id)?.id !== useEditorStore.getState().editingModuleId;
-    if (second && !inClosedModule) {
+    // A hinged chain bends even in a module (a flex track set is placed as
+    // one), unless it's pinned; a double-click without a drag still opens
+    // Edit module (onDblClick).
+    if (second) {
       const group = groupRef.current;
       const started = startFlexSession({
         stage,
@@ -408,6 +406,7 @@ const BrickGlyph = memo(function BrickGlyph({
         pressSelection: pressSelection.includes(brick.id) ? pressSelection : [],
         mouseStuds: { x: p.x / studToPx(), y: p.y / studToPx() },
         partsByKey,
+        modules: getModules(),
         onEnd: (moved) => {
           group?.draggable(true);
           // Moved: the release is not a double-click that opens properties.
