@@ -3,10 +3,11 @@
 // buttons, through the same mutations as the Sheets panel.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as Y from 'yjs';
 import { docToBbm } from '@cld/ydoc';
-import { ensureBrickLayer, ensureRulerLayer, ensureTextLayer, renameLayer } from '../mutations';
+import { placeBrick, ensureBrickLayer, ensureRulerLayer, ensureTextLayer, renameLayer } from '../mutations';
+import { autoConfirm } from '../../test/confirmHost';
 import { SheetsSheet, TextEditSheet } from '../TouchSheets';
 import { useEditorStore } from '../editorStore';
 
@@ -75,6 +76,49 @@ describe('the touch Sheets list', () => {
     view();
     fireEvent.click(screen.getByRole('button', { name: 'Move Sizes down' }));
     expect(names()).toEqual(['Labels', 'Sizes', 'Tracks']);
+  });
+
+  it('fades a sheet with the Solid slider', () => {
+    const { doc, parts, view } = setup();
+    view();
+    const slider = screen.getByRole('slider', { name: 'How solid Tracks is' });
+    expect(slider.className).toContain('h-11');
+    fireEvent.change(slider, { target: { value: '40' } });
+    expect(docToBbm(doc).layers.find((l) => l.id === parts)!.transparency).toBe(40);
+  });
+
+  it('adds each kind of sheet, on top, and picks it', () => {
+    const { doc, view } = setup();
+    for (const [label, type] of [['Parts sheet', 'brick'], ['Text sheet', 'text'], ['Area sheet', 'area'], ['Ruler sheet', 'ruler'], ['Grid sheet', 'grid']] as const) {
+      cleanup();
+      view();
+      fireEvent.click(screen.getByRole('button', { name: 'Add a sheet' }));
+      const choices = screen.getByRole('group', { name: 'Add a sheet' });
+      fireEvent.click(within(choices).getByText(label));
+      const layers = docToBbm(doc).layers;
+      expect(layers.at(-1)!.type).toBe(type);
+      expect(useEditorStore.getState().activeLayerId).toBe(layers.at(-1)!.id);
+      expect(screen.queryByRole('group', { name: 'Add a sheet' })).toBeNull();
+    }
+    expect(docToBbm(doc).layers).toHaveLength(8);
+  });
+
+  it('deletes a sheet after asking, and the question says what is on it', async () => {
+    const { doc, parts, view, names } = setup();
+    placeBrick(doc, parts, { partNumber: '3001.1', x: 0, y: 0, width: 2, height: 2 });
+    placeBrick(doc, parts, { partNumber: '3001.1', x: 4, y: 0, width: 2, height: 2 });
+    useEditorStore.setState({ activeLayerId: parts });
+    view();
+    expect(screen.getByText(/Parts · 2 parts/)).toBeTruthy();
+    const asked = autoConfirm(false, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Tracks' }));
+    await waitFor(() => expect(asked.titles).toHaveLength(1));
+    expect(asked.titles[0]).toBe('Delete the sheet “Tracks”?');
+    expect(asked.texts[0]).toContain('along with 2 parts on it');
+    expect(names()).toEqual(['Tracks', 'Labels', 'Sizes']);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Tracks' }));
+    await waitFor(() => expect(names()).toEqual(['Labels', 'Sizes']));
+    expect(useEditorStore.getState().activeLayerId).toBeNull();
   });
 
   it('picks the sheet a tap lands on', () => {
