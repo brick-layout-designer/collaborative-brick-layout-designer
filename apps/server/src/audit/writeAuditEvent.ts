@@ -99,12 +99,18 @@ export type AuditEventType =
   // recipient said they read it ('warn_ack'). Subject is the person or club.
   | 'warn'
   | 'club_warn'
-  | 'warn_ack';
+  | 'warn_ack'
+  // Author credit: a club's thing went back to the person who made it, by
+  // them ('take_back') or by the club's admins and managers ('give_back').
+  // The club keeps a copy (payload.keptCopyId). Subject is the original.
+  | 'take_back'
+  | 'give_back';
 
 export type AuditResourceKind =
   | 'layout'
   | 'custom_part'
   | 'module'
+  | 'venue'
   | 'org'
   | 'user'
   | 'part_library'

@@ -1520,7 +1520,7 @@ async function alreadyHaveModules(mods: readonly Pick<ModuleRow, 'id' | 'ownerUs
  * Copy one of a collection's own custom parts to `user` or the club
  * `destOrgId`. A part with the same number there already: 409 (they have it).
  */
-async function copyPartTo(user: User, partId: string, destOrgId: string | null): Promise<{ ok: true; id: string } | { ok: false; status: number; body: unknown }> {
+export async function copyPartTo(user: User, partId: string, destOrgId: string | null): Promise<{ ok: true; id: string } | { ok: false; status: number; body: unknown }> {
   const src = await db.select().from(schema.customParts).where(eq(schema.customParts.id, partId)).get();
   if (!src) return { ok: false, status: 404, body: { error: 'not_found' } };
   const taken = await db
@@ -1547,6 +1547,7 @@ async function copyPartTo(user: User, partId: string, destOrgId: string | null):
     xmlBlob: xml,
     spriteBlob: sprite,
     spriteMime: src.spriteMime,
+    copiedFromId: src.id,
     createdAt: now,
     updatedAt: now,
   });

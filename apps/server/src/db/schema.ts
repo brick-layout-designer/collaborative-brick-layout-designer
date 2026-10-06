@@ -369,6 +369,15 @@ export const layouts = sqliteTable(
      * list. Null until first opened after this column was added.
      */
     lastOpenedAt: integer('last_opened_at', { mode: 'timestamp_ms' }),
+    /**
+     * Author credit (0024). `copiedFromId`: the item this one was copied
+     * from (no FK: the original may go), shown as "based on ‹title› by
+     * ‹author›". `deletedAuthorId`: when the author's account was deleted,
+     * their old id (created_by then points at someone else, for the FK),
+     * so the credit reads "Builder #…" instead of naming that someone.
+     */
+    copiedFromId: text('copied_from_id'),
+    deletedAuthorId: text('deleted_author_id'),
   },
   (t) => ({
     // The admin "layouts created / edited" graphs.
@@ -482,7 +491,7 @@ export const auditEvents = sqliteTable(
    * (resource_kind + resource_id) must be set; never both, never
    * neither. Enforced in the writer, not in the schema.
    */
-  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'org', 'user', 'part_library', 'platform_settings', 'catalog_item', 'catalog_collection'] }),
+  resourceKind: text('resource_kind', { enum: ['layout', 'custom_part', 'module', 'venue', 'org', 'user', 'part_library', 'platform_settings', 'catalog_item', 'catalog_collection'] }),
   resourceId: text('resource_id'),
   userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   eventType: text('event_type').notNull(),
@@ -538,6 +547,15 @@ export const customParts = sqliteTable(
   /** Sprite bytes (gif/png). */
   spriteBlob: blob('sprite_blob').notNull(),
   spriteMime: text('sprite_mime', { enum: ['image/gif', 'image/png'] }).notNull(),
+  /**
+   * Author credit (0024). `copiedFromId`: the item this one was copied
+   * from (no FK: the original may go), shown as "based on ‹title› by
+   * ‹author›". `deletedAuthorId`: when the author's account was deleted,
+   * their old id (created_by then points at someone else, for the FK),
+   * so the credit reads "Builder #…" instead of naming that someone.
+   */
+  copiedFromId: text('copied_from_id'),
+  deletedAuthorId: text('deleted_author_id'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -617,6 +635,8 @@ export const modules = sqliteTable(
    * Null for modules made from scratch, and for copies made before 0021.
    */
   copiedFromId: text('copied_from_id'),
+  /** See custom_parts.deletedAuthorId (0024). */
+  deletedAuthorId: text('deleted_author_id'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -763,6 +783,13 @@ export const venueLibrary = sqliteTable('venue_library', {
   name: text('name').notNull(),
   /** Serialised Venue JSON. */
   data: text('data').notNull(),
+  /**
+   * Who made it (0024). No FK, so a deleted author's id stays and the
+   * credit reads "Builder #…". Null for club venues saved before 0024.
+   */
+  createdBy: text('created_by'),
+  /** The venue this one was copied from (no FK), as on layouts. */
+  copiedFromId: text('copied_from_id'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 export type VenueLibraryEntry = typeof venueLibrary.$inferSelect;

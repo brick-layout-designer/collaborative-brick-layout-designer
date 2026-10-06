@@ -164,6 +164,31 @@ async function issue(args: {
   return row;
 }
 
+/**
+ * A note to a club's admins and managers about something that happened to
+ * the club's things (an author took back a module, say). It shows with
+ * their notices, to read and acknowledge; it's not a warning to anyone,
+ * so no email. The caller audit-logs what happened.
+ */
+export async function postClubNote(orgId: string, actorId: string, reason: string, link: string | null): Promise<string> {
+  const id = randomUUID();
+  await db.insert(schema.warnings).values({
+    id,
+    scope: 'club',
+    clubOrgId: orgId,
+    subjectUserId: null,
+    subjectOrgId: orgId,
+    severity: 'note',
+    reason: reason.slice(0, MAX_REASON),
+    link: link && link.length <= MAX_LINK ? link : null,
+    issuedBy: actorId,
+    createdAt: new Date(),
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+  });
+  return id;
+}
+
 export async function warningRoutes(app: FastifyInstance): Promise<void> {
   // ---- site warnings ------------------------------------------------------
   app.post('/api/admin/warnings', { config: { rateLimit: RATE } }, async (req, reply) => {
@@ -264,7 +289,8 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
       .where(
         or(
           eq(schema.warnings.subjectUserId, user.id),
-          clubs.length ? and(eq(schema.warnings.scope, 'site'), inArray(schema.warnings.subjectOrgId, clubs)) : undefined,
+          // Site warnings to a club I run, and the club's own notes to its runners (postClubNote).
+          clubs.length ? inArray(schema.warnings.subjectOrgId, clubs) : undefined,
         ),
       )
       .orderBy(desc(schema.warnings.createdAt))

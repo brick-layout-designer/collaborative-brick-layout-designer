@@ -10,6 +10,7 @@ import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { atLeast } from '../access/clubRoles.js';
+import { creditLookup } from './credits.js';
 
 // The desktop app reaches these with an API token too: venues:read to list
 // and download, venues:write to save, rename and delete.
@@ -52,6 +53,11 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     }
     const shown = all.filter((v) => matchesOwner(v, filter, user.id));
     const ownerOf = await ownerLookup(shown);
+    const creditOf = await creditLookup(
+      'venue',
+      shown.map((v) => v.id),
+      user.id,
+    );
     return {
       venues: shown.map((v) => {
         const owner = ownerOf(v);
@@ -60,6 +66,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
           ownerOrgName: owner?.kind === 'org' ? owner.name : null,
           ownerOrgSlug: owner?.kind === 'org' ? owner.slug : null,
           owner,
+          credit: creditOf(v.id),
         };
       }),
     };
@@ -90,7 +97,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
           .get()) != null);
     if (!canRead) return reply.code(403).send({ error: 'Forbidden' });
 
-    return { id: row.id, name: row.name, data: JSON.parse(row.data) };
+    const credit = (await creditLookup('venue', [row.id], user.id))(row.id);
+    return { id: row.id, name: row.name, data: JSON.parse(row.data), credit };
   });
 
   // ---- save a new venue ---------------------------------------------------
@@ -119,6 +127,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
         ownerOrgId,
         name: name.trim(),
         data: JSON.stringify(data),
+        createdBy: user.id,
         createdAt: new Date(),
       });
       return reply.code(201).send({ id, name: name.trim() });
@@ -214,6 +223,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
         ownerOrgId: dest.orgId,
         name,
         data: row.data,
+        createdBy: user.id,
+        copiedFromId: row.id,
         createdAt: new Date(),
       });
       return reply.code(201).send({ id, name });

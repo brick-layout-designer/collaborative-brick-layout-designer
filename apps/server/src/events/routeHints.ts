@@ -354,6 +354,20 @@ function warningHint(idFrom: (ctx: HintCtx) => string | null): HintSpec {
   };
 }
 
+/**
+ * A club's thing handed back to its author (routes/ownership.ts): the
+ * thing's hints (the club, which also gains its copy, and the author),
+ * and the note to the club's admins and managers.
+ */
+function returned(kind: ResourceKind): HintSpec {
+  const r = resource(kind);
+  const note = warningHint((c) => str(c.reply?.noticeId));
+  return {
+    before: async (ctx) => r.before?.(ctx),
+    after: async (ctx) => [...(await r.after(ctx)), ...(await note.after(ctx))],
+  };
+}
+
 export const ROUTE_HINTS: Record<string, HintSpec> = {
   // ---- account (other tabs and the desktop app of the same person)
   'PATCH /api/auth/me': rename,
@@ -382,6 +396,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/layouts/:id/transfer': resource('layout'),
   'POST /api/transfers/:token': resource('layout', { reply: 'layoutId' }),
   'DELETE /api/layouts/:id/transfer/:transferId': resource('layout'),
+  'POST /api/layouts/:id/take-back': returned('layout'),
+  'POST /api/layouts/:id/give-back': returned('layout'),
 
   // ---- modules
   'POST /api/modules': resource('module', { reply: 'id' }),
@@ -395,6 +411,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'DELETE /api/modules/:id/collaborators/:userId': resource('module', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'POST /api/modules/:id/transfer': resource('module'),
   'POST /api/module-transfers/:token': resource('module', { reply: 'moduleId' }),
+  'POST /api/modules/:id/take-back': returned('module'),
+  'POST /api/modules/:id/give-back': returned('module'),
 
   // ---- venues
   'POST /api/venues': resource('venue', { reply: 'id' }),
@@ -402,6 +420,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'DELETE /api/venues/:id': resource('venue'),
   'POST /api/venues/:id/copy': resource('venue', { reply: 'id' }),
   'POST /api/venues/:id/move': resource('venue'),
+  'POST /api/venues/:id/take-back': returned('venue'),
+  'POST /api/venues/:id/give-back': returned('venue'),
 
   // ---- custom parts
   'POST /api/custom-parts': resource('custom-part', { reply: 'id' }),
@@ -411,6 +431,10 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'PATCH /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'DELETE /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'POST /api/custom-part-invites/:token': resource('custom-part', { reply: 'customPartId' }),
+  'POST /api/custom-parts/:id/move': resource('custom-part'),
+  'POST /api/custom-parts/:id/copy': resource('custom-part', { reply: 'id' }),
+  'POST /api/custom-parts/:id/take-back': returned('custom-part'),
+  'POST /api/custom-parts/:id/give-back': returned('custom-part'),
 
   // ---- public catalog
   'POST /api/catalog/submissions': catalog(async (c) => str(c.reply?.id), false),

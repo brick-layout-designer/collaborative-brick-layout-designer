@@ -35,6 +35,7 @@ import { transferRoutes } from './transfers.js';
 import { wsRoutes } from './ws.js';
 import { eventRoutes } from './events.js';
 import { warningRoutes } from './warnings.js';
+import { ownershipRoutes } from './ownership.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(versionRoutes);
@@ -69,4 +70,5 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(wsRoutes);
   await app.register(eventRoutes);
   await app.register(warningRoutes);
+  await app.register(ownershipRoutes);
 }
