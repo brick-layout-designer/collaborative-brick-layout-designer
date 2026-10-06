@@ -72,9 +72,9 @@ export function AdminPage() {
       <AppHeader user={me.data.user} />
       <div className="mt-6">
         <h1 className="text-base font-semibold">
-          {isAdmin ? 'Platform admin' : 'Moderation'}
+          {isAdmin ? 'Site admin' : 'Moderation'}
           <span className="ml-2 rounded-lg bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
-            Restricted
+            {isAdmin ? 'Only site admins see this' : 'Only moderators see this'}
           </span>
         </h1>
       </div>
