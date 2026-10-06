@@ -60,6 +60,14 @@ describe('the tour catalogue', () => {
     expect(getTour('rooms')!.title).toBe('Venues');
   });
 
+  it('leaves out the steps for the desktop only', () => {
+    const raw = JSON.parse(catalogueText) as { tours: { id: string; steps: { target: string; apps?: string[] }[] }[] };
+    const desktopOnly = raw.tours.flatMap((t) => t.steps.filter((s) => s.apps && !s.apps.includes('web')).map((s) => s.target));
+    expect(desktopOnly).toContain('servers.status');
+    for (const t of TOURS) for (const s of t.steps) expect(desktopOnly, s.target).not.toContain(s.target);
+    expect(getTour('clubs')!.steps.map((s) => s.target)).toEqual(['owners.filter', 'publish.owner', 'clubs.page', 'clubs.join']);
+  });
+
   it('names where the desktop copy lives, so the two stay identical', () => {
     const about = (JSON.parse(catalogueText) as { _about: string })._about;
     expect(about).toContain('apps/web/src/tours/tours.json');

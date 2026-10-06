@@ -14,6 +14,8 @@ export interface TourStep {
   target: string;
   title: string;
   text: string;
+  /** Only in these apps; every app when left out. */
+  apps?: ('web' | 'desktop')[];
 }
 
 export interface Tour {
@@ -23,7 +25,11 @@ export interface Tour {
   steps: TourStep[];
 }
 
-export const TOURS: readonly Tour[] = catalogue.tours as Tour[];
+/** The tours with the steps for this app (some are desktop only, like its server status). */
+export const TOURS: readonly Tour[] = (catalogue.tours as Tour[]).map((t) => ({
+  ...t,
+  steps: t.steps.filter((s) => !s.apps || s.apps.includes('web')),
+}));
 export const WELCOME = catalogue.welcome;
 export const WELCOME_ID = catalogue.welcome.id;
 export const TOUR_BUTTONS = catalogue.buttons;

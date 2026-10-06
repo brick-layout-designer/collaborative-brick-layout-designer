@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config';
+import { workspaceSources } from '../../vitest.sources';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  resolve: { alias: workspaceSources() },
   plugins: [react()],
   // Layout-file fixtures load as data URLs (`?inline`).
   assetsInclude: ['**/*.bld-layout'],
