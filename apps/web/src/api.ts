@@ -20,6 +20,8 @@ export interface Me {
   isGlobalAdmin: boolean;
   /** Reviews the public catalogs (global admins can too). */
   isModerator?: boolean;
+  /** On hold (read only) while a privacy request is looked at (older servers leave it out). */
+  restricted?: boolean;
   linkedProviders: ProviderId[];
   /** Only on the demo account: how often it resets, and when next. */
   demo?: DemoStatus;

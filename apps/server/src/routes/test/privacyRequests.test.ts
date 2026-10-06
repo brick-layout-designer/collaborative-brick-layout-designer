@@ -12,6 +12,7 @@ import { eq } from 'drizzle-orm';
 import { db, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { sqlite } from '../../db/index.js';
 import { attachUser } from '../../auth/cookie.js';
+import { sessionRoutes } from '../auth/session.js';
 import { passwordRoutes } from '../auth/password.js';
 import { layoutRoutes } from '../layouts.js';
 import { adminRoutes } from '../admin.js';
@@ -32,6 +33,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(cookie);
   app.addHook('preHandler', attachUser);
   await app.register(passwordRoutes);
+  await app.register(sessionRoutes);
   await app.register(layoutRoutes);
   await app.register(adminRoutes);
   await app.register(collaboratorRoutes);
@@ -165,6 +167,8 @@ describe('Admin › Privacy requests', () => {
     const write = await app.inject({ method: 'POST', url: '/api/layouts', headers: annCookie, payload: { title: 'New' } });
     expect(write.statusCode).toBe(403);
     expect(write.json().error).toBe('account_restricted');
+    // The pages say so up front (/me), not only when a change fails.
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: annCookie })).json().user.restricted).toBe(true);
     // ...except asking for her data.
     expect((await app.inject({ method: 'POST', url: '/api/me/privacy/exports', headers: annCookie })).statusCode).toBe(202);
     // Bob, an editor on her layout, now only views it.
@@ -175,6 +179,7 @@ describe('Admin › Privacy requests', () => {
     await app.inject({ method: 'POST', url: `/api/admin/privacy/requests/${r.id}/restrict`, headers: h(admin), payload: { restricted: false } });
     expect((await app.inject({ method: 'PATCH', url: `/api/layouts/${mine}`, headers: h(bob), payload: { title: 'Changed' } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/api/layouts', headers: annCookie, payload: { title: 'New' } })).statusCode).toBe(201);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: annCookie })).json().user.restricted).toBe(false);
   });
 
   it('erase now needs the email typed, erases at once, and keeps only a pseudonym on the request', async () => {
