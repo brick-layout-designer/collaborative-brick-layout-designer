@@ -99,6 +99,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         createdAt: schema.orgs.createdAt,
         myRole: schema.orgMembers.role,
         trusted: schema.orgs.trusted,
+        membersCanCreate: schema.orgs.membersCanCreate,
       })
       .from(schema.orgMembers)
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
@@ -112,6 +113,10 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         createdAt: r.createdAt.getTime(),
         myRole: r.myRole,
         trusted: r.trusted,
+        // May I save new things to it (layouts, modules, venues, parts)?
+        // The same rule as destinationOrg (owners.ts), so "Save to" only
+        // offers the clubs that will take it.
+        canAdd: r.membersCanCreate || atLeast(r.myRole, 'manager'),
       })),
     };
   });

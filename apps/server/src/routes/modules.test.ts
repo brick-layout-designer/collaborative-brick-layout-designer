@@ -438,6 +438,11 @@ describe('modules', () => {
     const acme = await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'acme')).get();
     await db.insert(schema.orgMembers).values({ orgId: acme!.id, userId: bob!.id, role: 'member', joinedAt: new Date() });
     await db.update(schema.orgs).set({ membersCanCreate: false }).where(eq(schema.orgs.id, acme!.id));
+    // "Save to" offers only the clubs that will take it: Bob can't add here, Alice (its admin) can.
+    const canAdd = async (cookie: string) =>
+      ((await app.inject({ method: 'GET', url: '/api/orgs', headers: { cookie } })).json() as { orgs: { slug: string; canAdd: boolean }[] }).orgs.find((o) => o.slug === 'acme')?.canAdd;
+    expect(await canAdd(bobCookie)).toBe(false);
+    expect(await canAdd(aliceCookie)).toBe(true);
     const get = (await app.inject({ method: 'GET', url: `/api/modules/${id}`, headers: { cookie: bobCookie } })).json() as { role: string };
     expect(get.role).toBe('viewer');
     const list = (await app.inject({ method: 'GET', url: '/api/modules', headers: { cookie: bobCookie } })).json() as { modules: { id: string; role: string }[] };
