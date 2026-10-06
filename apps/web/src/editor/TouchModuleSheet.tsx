@@ -1,18 +1,24 @@
 // A picked module's menu on a phone or tablet (the touch bar's Module
-// button): Edit module, Pin in place and the Module library entries (Save to
-// library…, Update Module library version…, Update from Module library), as the map's
-// right-click menu has them.
+// button): Edit module, Pin in place, Show / Hide name, Colours… and the
+// Module library entries (Save to library…, Update Module library version…,
+// Update from Module library), as the map's right-click menu has them.
 
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type * as Y from 'yjs';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { enterModuleEdit, setModulePinned } from './moduleActions';
 import { useLibraryEntries, type ModuleMenuEntry } from './moduleLibraryMenu';
+import { updateSidecarModule } from './mutations';
+import { withShowName } from './moduleLook';
+
+const ModuleLookDialog = lazy(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
 
 export function TouchModuleSheet({ doc, moduleId, onClose }: { doc: Y.Doc; moduleId: string; onClose: () => void }) {
   const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId);
   const library = useLibraryEntries(doc);
   const [open, setOpen] = useState(false);
+  // Colours… replaces the sheet with the colours dialog; closing it closes both.
+  const [look, setLook] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setOpen(true));
     return () => cancelAnimationFrame(id);
@@ -25,9 +31,19 @@ export function TouchModuleSheet({ doc, moduleId, onClose }: { doc: Y.Doc; modul
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   if (!mod) return null;
-  const entries: ModuleMenuEntry[] = [
+  if (look) {
+    return (
+      <Suspense fallback={null}>
+        <ModuleLookDialog doc={doc} moduleId={mod.id} onClose={onClose} />
+      </Suspense>
+    );
+  }
+  const hidden = mod.showName === false;
+  const entries: (ModuleMenuEntry & { keepOpen?: boolean })[] = [
     { id: 'edit', label: 'Edit module', onSelect: () => enterModuleEdit(mod.id) },
     { id: 'pin', label: mod.pinned ? 'Unpin' : 'Pin in place', onSelect: () => setModulePinned(doc, mod.id, !mod.pinned) },
+    { id: 'name', label: hidden ? 'Show name' : 'Hide name', onSelect: () => updateSidecarModule(doc, mod.id, (m) => withShowName(m, hidden)) },
+    { id: 'look', label: 'Colours…', keepOpen: true, onSelect: () => setLook(true) },
     ...library(mod),
   ];
   return (
@@ -60,8 +76,9 @@ export function TouchModuleSheet({ doc, moduleId, onClose }: { doc: Y.Doc; modul
               <button
                 type="button"
                 disabled={e.disabled}
+                data-testid={`touch-module-${e.id}`}
                 onClick={() => {
-                  onClose();
+                  if (!e.keepOpen) onClose();
                   e.onSelect();
                 }}
                 className="flex min-h-12 w-full items-center rounded-control px-3 text-left text-base font-semibold hover:bg-soft disabled:opacity-40"

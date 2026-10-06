@@ -2136,48 +2136,32 @@ export function moveModuleBricks(
 
 /**
  * Rotate all member bricks of a sidecar module by `degrees` around their
- * collective centroid. Mirrors RotateModuleCommand (ModuleCommands.cpp:125-183).
+ * pivot, on every sheet (RotateModuleCommand, ModuleCommands.cpp:125-183).
+ * The same turn as rotating the picked parts: each displayArea follows the
+ * turned footprint, so BlueBrick shows the parts where this app does.
+ * One undo step.
  */
 export function rotateModuleBricks(
   doc: Y.Doc,
   memberIds: string[],
   degrees: number,
+  partOf: (partNumber: string) => PartGeom | undefined = () => undefined,
 ): void {
   if (memberIds.length === 0 || degrees === 0) return;
   const idSet = new Set(memberIds);
-  const layerOrder = doc.getArray<string>('layers');
-
-  // Collect all member Y.Maps and compute centroid first.
-  const found: Array<{ yBrick: Y.Map<unknown>; area: RectangleF }> = [];
-  for (const layerId of layerOrder.toArray()) {
+  const byLayer = new Map<string, string[]>();
+  for (const layerId of doc.getArray<string>('layers').toArray()) {
     const layerData = doc.getMap('layerData').get(layerId);
     if (!(layerData instanceof Y.Map)) continue;
     const bricks = layerData.get('bricks');
     if (!(bricks instanceof Y.Array)) continue;
-    for (let i = 0; i < bricks.length; i++) {
-      const b = bricks.get(i);
-      if (!(b instanceof Y.Map) || !idSet.has(b.get('id') as string)) continue;
-      found.push({ yBrick: b, area: b.get('displayArea') as RectangleF });
-    }
+    const ids: string[] = [];
+    bricks.forEach((b) => {
+      if (b instanceof Y.Map && idSet.has(b.get('id') as string)) ids.push(b.get('id') as string);
+    });
+    if (ids.length > 0) byLayer.set(layerId, ids);
   }
-  if (found.length === 0) return;
-
-  const cx = found.reduce((s, { area }) => s + area.x + area.width / 2, 0) / found.length;
-  const cy = found.reduce((s, { area }) => s + area.y + area.height / 2, 0) / found.length;
-  const rad = (degrees * Math.PI) / 180;
-  const cosA = Math.cos(rad), sinA = Math.sin(rad);
-
-  doc.transact(() => {
-    for (const { yBrick, area } of found) {
-      const bx = area.x + area.width / 2 - cx;
-      const by = area.y + area.height / 2 - cy;
-      const nx = cx + (bx * cosA - by * sinA) - area.width / 2;
-      const ny = cy + (bx * sinA + by * cosA) - area.height / 2;
-      yBrick.set('displayArea', { ...area, x: nx, y: ny });
-      const orient = (yBrick.get('orientation') as number) ?? 0;
-      yBrick.set('orientation', mod360(orient + degrees));
-    }
-  }, LOCAL_ORIGIN);
+  rotateBricksAboutCentroid(doc, byLayer, degrees, partOf);
 }
 
 /**

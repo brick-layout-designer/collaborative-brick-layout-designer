@@ -25,6 +25,7 @@ import { bricksByLayer, createSidecarModule } from './mutations';
 import { libraryState, publishModuleVersion, saveModuleToLibrary, type MakeThumbnail } from './moduleLibrary';
 import { oneSheetName, pickedBySheet } from './moduleSheets';
 import { useDocMap } from './useDocMap';
+import { coarsePointer } from './useViewportSize';
 
 const FIELD = 'w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent';
 
@@ -112,6 +113,16 @@ function useOwner(layoutOwnerOrgId: string | null | undefined) {
   return { slug, setSlug: setPicked, orgs: orgs.data?.orgs, clubName };
 }
 
+/**
+ * What Make a module says when the module is in this layout only: where its
+ * Module library entry is. By touch there's no ⋯ menu: the touch bar's Module button opens it.
+ */
+export function madeModuleNotice(title: string, touch: boolean): string {
+  return touch
+    ? `“${title}” is a module in this layout. To use it in other layouts, pick it, tap Module, then Save to Module library….`
+    : `“${title}” is a module in this layout. To use it in other layouts, choose Save to Module library… from its ⋯ menu.`;
+}
+
 function savedMessage(title: string, version: number | undefined): string {
   return version && version > 1 ? `Saved “${title}” to the Module library as version ${version}` : `Saved “${title}” to the Module library`;
 }
@@ -148,7 +159,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
         void qc.invalidateQueries({ queryKey: ['modules'] });
         showStatusMessage(savedMessage(r.saved.title, r.saved.version), 5000);
       } else {
-        showNotice(`“${title}” is a module in this layout. To use it in other layouts, choose Save to Module library… from its ⋯ menu.`);
+        showNotice(madeModuleNotice(title, coarsePointer()));
       }
       onClose();
     },

@@ -1263,7 +1263,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       )}
       {/* Status bar — port of MainWindow.cpp:861-1014 status widgets.
           Spans every column. Shows mouse coords / selection count / zoom. */}
-      <NoticeToast />
+      <NoticeToast lifted={touchEditing || touchTablet} />
       {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
         compact={viewport.isMobile}

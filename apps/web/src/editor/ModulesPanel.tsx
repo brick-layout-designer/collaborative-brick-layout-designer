@@ -6,7 +6,7 @@
 // Make a module opens ModuleDialogs.tsx; Import… is ImportBbmDialog.
 
 import { useOnScreen } from './menuPosition';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { useQuery } from '@tanstack/react-query';
 import type { SidecarModule } from '@cld/bbm';
@@ -30,6 +30,8 @@ import { ModuleLookDialog } from './ModuleLookDialog';
 import { withShowName } from './moduleLook';
 import { useDocMap } from './useDocMap';
 import { hiddenSheetsNote, moduleSheetsUsed } from './moduleSheets';
+import { indexParts } from './partIndex';
+import type { PartGeom } from './brickGeometry';
 
 interface Props {
   doc: Y.Doc;
@@ -43,6 +45,10 @@ export function ModulesPanel({ doc, isViewer }: Props) {
 
   const library = useQuery({ queryKey: ['modules'], queryFn: api.modules.list, enabled: modules.length > 0 });
   const libraryEntries = useLibraryEntries(doc);
+  // Rotate needs each part's footprint, as rotating picked parts does.
+  const catalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
+  const partsByKey = useMemo(() => indexParts(catalog.data?.parts), [catalog.data]);
+  const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
   // Desktop ModulesPanel's "Make a module" (createModuleRequested).
   const createButton = isViewer ? null : (
     <button
@@ -82,6 +88,7 @@ export function ModulesPanel({ doc, isViewer }: Props) {
             hiddenNote={map ? hiddenSheetsNote(moduleSheetsUsed(map, mod.members)) : null}
             libraryLine={libraryNote(libraryState(mod, library.data?.modules))}
             libraryEntries={libraryEntries(mod)}
+            partOf={partOf}
           />
         ))}
       </ul>
@@ -96,7 +103,9 @@ function ModuleRow({
   hiddenNote,
   libraryLine,
   libraryEntries,
+  partOf,
 }: {
+  partOf: (partNumber: string) => PartGeom | undefined;
   module: SidecarModule;
   doc: Y.Doc;
   isViewer: boolean;
@@ -301,7 +310,7 @@ function ModuleRow({
                   className="block w-full px-3 py-1 text-left text-xs hover:bg-neutral-700"
                   onClick={() => {
                     setCtxMenu(null);
-                    rotateModuleBricks(doc, module.members, deg);
+                    rotateModuleBricks(doc, module.members, deg, partOf);
                   }}
                 >
                   {deg > 0 ? `+${deg}°` : `${deg}°`}

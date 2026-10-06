@@ -364,6 +364,28 @@ describe('rotateModuleBricks', () => {
     rotateModuleBricks(doc, ['b1'], 0);
     expect(b.get('orientation')).toBe(30);
   });
+
+  it('turns each part\'s box with its footprint, so BlueBrick shows it where this app does', () => {
+    // A 2.25 x 4 stud part (18 x 32 px at 8 px a stud): a quarter turn makes its box 4 x 2.25, round the same centre.
+    const doc = blankDoc();
+    const layerId = ensureBrickLayer(doc);
+    const bricks = (doc.getMap('layerData').get(layerId) as Y.Map<unknown>).get('bricks') as Y.Array<Y.Map<unknown>>;
+    const b = new Y.Map<unknown>();
+    b.set('id', 'b1');
+    b.set('partNumber', 'tall.8');
+    b.set('displayArea', { x: 0, y: 0, width: 2.25, height: 4 });
+    b.set('orientation', 0);
+    bricks.push([b]);
+    const tall = { pxPerStud: 8, hullPts: [], spriteSize: { w: 18, h: 32 } };
+
+    rotateModuleBricks(doc, ['b1'], 90, (n) => (n === 'tall.8' ? tall : undefined));
+    const a = b.get('displayArea') as { x: number; y: number; width: number; height: number };
+    expect(a.width).toBeCloseTo(4);
+    expect(a.height).toBeCloseTo(2.25);
+    expect(a.x + a.width / 2).toBeCloseTo(1.125);
+    expect(a.y + a.height / 2).toBeCloseTo(2);
+    expect(b.get('orientation')).toBe(90);
+  });
 });
 
 // ---- patchSidecarModule -----------------------------------------------------
