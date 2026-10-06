@@ -76,6 +76,31 @@ describe('NoticeBanner', () => {
     expect(screen.getByRole('link', { name: "See what it's about" }).getAttribute('href')).toBe('/catalog');
   });
 
+  it('a warning comes before any note, and only warnings count in "1 of n"', async () => {
+    notices = [{ ...base, id: 'n1', severity: 'note', reason: 'Club restored' }, base];
+    show(<NoticeBanner />);
+    const banner = await screen.findByTestId('notice-banner');
+    expect(banner.getAttribute('role')).toBe('alertdialog');
+    expect(banner.textContent).toContain('Please stop posting spam');
+    expect(banner.textContent).not.toContain('1 of');
+  });
+
+  it('notes don’t block: a card at the bottom with Dismiss, and Dismiss all for more than one', async () => {
+    notices = [
+      { ...base, id: 'n1', severity: 'note', reason: 'Your download is ready' },
+      { ...base, id: 'n2', severity: 'note', reason: 'Club restored' },
+    ];
+    show(<NoticeBanner />);
+    const card = await screen.findByTestId('notice-banner');
+    expect(card.getAttribute('role')).toBe('status');
+    expect(card.textContent).toContain('Note · From the site team (1 of 2)');
+    expect(screen.queryByRole('button', { name: 'I understand' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss all' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/notices/acknowledge-all')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/notices/n1/acknowledge')).toBe(true));
+  });
+
   it('shows nothing when everything was read', async () => {
     notices = [{ ...base, acknowledgedAt: 5 }];
     show(<NoticeBanner />);

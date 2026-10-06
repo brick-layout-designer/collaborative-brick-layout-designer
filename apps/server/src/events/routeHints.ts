@@ -545,6 +545,15 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/admin/warnings': warningHint((c) => str(c.reply?.id)),
   'POST /api/orgs/:slug/warnings': warningHint((c) => str(c.reply?.id)),
   'POST /api/notices/:id/acknowledge': warningHint((c) => c.params.id ?? null),
+  'POST /api/notices/acknowledge-all': {
+    // Each dismissed note, to whoever else sees it (a club's other runners).
+    after: async (ctx) => {
+      const ids = Array.isArray(ctx.reply?.acknowledged) ? (ctx.reply.acknowledged as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+      const out = [];
+      for (const id of ids) out.push(...(await warningHint(() => id).after!(ctx)));
+      return out;
+    },
+  },
 
   // ---- site admin
   'PATCH /api/admin/users/:id': adminOnly('admin', param('id')),

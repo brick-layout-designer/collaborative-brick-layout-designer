@@ -40,7 +40,7 @@ test('a person downloads their data, deletes their account, and keeps it by sign
   expect(body).toContain(`layouts/${LAYOUT}.bld-layout`);
   // A note says it was ready.
   await expect(page.getByTestId('notice-banner')).toContainText('is ready');
-  await page.getByTestId('notice-banner').getByRole('button', { name: 'I understand' }).click();
+  await page.getByTestId('notice-banner').getByRole('button', { name: 'Dismiss', exact: true }).click();
 
   // ---- Delete my account ------------------------------------------------------
   await fromSettingsMenu(page, 'Delete my account');

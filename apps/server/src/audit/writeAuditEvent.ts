@@ -103,6 +103,8 @@ export type AuditEventType =
   | 'warn'
   | 'club_warn'
   | 'warn_ack'
+  // "Dismiss all": every unread note at once (payload: warningIds).
+  | 'warn_ack_all'
   // Author credit: a club's thing went back to the person who made it, by
   // them ('take_back') or by the club's admins and managers ('give_back').
   // The club keeps a copy (payload.keptCopyId). Subject is the original.
