@@ -125,7 +125,7 @@ export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo
 export function TouchActionBar({ actions, onAddPart, onSheets, onEditText }: {
   actions: Actions;
   onAddPart?: (() => void) | undefined;
-  /** Opens the sheets list (show / hide, rename, reorder). */
+  /** Opens the sheets list (add, delete, show / hide, fade, rename, reorder). */
   onSheets?: (() => void) | undefined;
   /** Opens the text editor for the one picked label or text. */
   onEditText?: (() => void) | undefined;

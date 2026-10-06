@@ -1,13 +1,15 @@
 // Touch editing's bottom sheets beyond "Add part": the sheets (layers)
-// list, to show / hide, rename and reorder from a phone, with buttons big
-// enough for a finger. Every change goes through the same mutations as
+// list, to add, delete, show / hide, fade, rename and reorder from a
+// phone or tablet, with controls big enough for a finger. Every change goes through the same mutations as
 // the Sheets panel, so undo and live sync just work.
 
 import { useEffect, useState, type ReactNode } from 'react';
 import type * as Y from 'yjs';
 import type { BbmMap, Layer } from '@cld/model';
 import { useEditorStore } from './editorStore';
-import { moveLayer, renameLayer, setLayerVisible } from './mutations';
+import { addLayer, deleteLayer, moveLayer, renameLayer, setLayerTransparency, setLayerVisible } from './mutations';
+import { confirmDelete } from '../ui/ConfirmDialog';
+import { SHEET_KINDS, deleteSheetWording, sheetContents } from './sheetContents';
 
 /** A sheet that slides up from the bottom, over a dimmed map, with a title and Close. */
 export function BottomSheet({ title, onClose, children, footer }: {
@@ -64,11 +66,20 @@ const EyeOff = () => (<svg {...svg}><path d="M3 3l18 18" /><path d="M10.6 5.1A10
 const Pencil = () => (<svg {...svg}><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>);
 const Up = () => (<svg {...svg}><path d="M6 15l6-6 6 6" /></svg>);
 const Down = () => (<svg {...svg}><path d="M6 9l6 6 6-6" /></svg>);
+const Trash = () => (<svg {...svg}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>);
+const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
 
 const KIND: Record<Layer['type'], string> = { grid: 'Grid', brick: 'Parts', text: 'Text', area: 'Area', ruler: 'Rulers' };
 
 const iconBtn =
   'flex size-11 shrink-0 items-center justify-center rounded-control text-ink hover:bg-soft disabled:opacity-30';
+
+async function askDeleteSheet(doc: Y.Doc, layer: Layer) {
+  if (!(await confirmDelete(layer.name, deleteSheetWording(layer, 'You can undo this with Undo.')))) return;
+  deleteLayer(doc, layer.id);
+  const { activeLayerId, setActiveLayer } = useEditorStore.getState();
+  if (activeLayerId === layer.id) setActiveLayer(null);
+}
 
 function SheetRow({ layer, doc, first, last, active }: { layer: Layer; doc: Y.Doc; first: boolean; last: boolean; active: boolean }) {
   const [renaming, setRenaming] = useState(false);
@@ -80,48 +91,79 @@ function SheetRow({ layer, doc, first, last, active }: { layer: Layer; doc: Y.Do
     setRenaming(false);
   };
   return (
-    <li data-sheet={layer.id} className={`flex items-center gap-1 rounded-control px-1 ${active ? 'bg-soft' : ''}`}>
-      <button
-        type="button"
-        aria-label={`${layer.visible ? 'Hide' : 'Show'} ${label}`}
-        aria-pressed={layer.visible}
-        onClick={() => setLayerVisible(doc, layer.id, !layer.visible)}
-        className={iconBtn}
-      >
-        {layer.visible ? <Eye /> : <EyeOff />}
-      </button>
-      {renaming ? (
-        <form
-          className="flex min-w-0 flex-1 items-center gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save();
-          }}
+    <li data-sheet={layer.id} className={`rounded-control px-1 pb-1 ${active ? 'bg-soft' : ''}`}>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={`${layer.visible ? 'Hide' : 'Show'} ${label}`}
+          aria-pressed={layer.visible}
+          onClick={() => setLayerVisible(doc, layer.id, !layer.visible)}
+          className={iconBtn}
         >
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            aria-label={`New name for ${label}`}
-            maxLength={120}
-            // 16 px, so iOS doesn't zoom in on the field.
-            className="h-11 min-w-0 flex-1 rounded-control border border-line bg-bg px-3 text-base"
-          />
-          <button type="submit" className="min-h-11 shrink-0 rounded-control bg-accent px-3 text-sm font-bold text-accent-ink">
-            Save
-          </button>
-        </form>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => useEditorStore.getState().setActiveLayer(layer.id)}
-            aria-current={active ? 'true' : undefined}
-            className={`min-h-11 min-w-0 flex-1 text-left ${layer.visible ? '' : 'text-muted'}`}
+          {layer.visible ? <Eye /> : <EyeOff />}
+        </button>
+        {renaming ? (
+          <form
+            className="flex min-w-0 flex-1 items-center gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
           >
-            <span className="block truncate text-base font-bold">{label}</span>
-            <span className="block text-xs text-muted">{KIND[layer.type]}{active ? ' · picked sheet' : ''}</span>
-          </button>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label={`New name for ${label}`}
+              maxLength={120}
+              // 16 px, so iOS doesn't zoom in on the field.
+              className="h-11 min-w-0 flex-1 rounded-control border border-line bg-bg px-3 text-base"
+            />
+            <button type="submit" className="min-h-11 shrink-0 rounded-control bg-accent px-3 text-sm font-bold text-accent-ink">
+              Save
+            </button>
+          </form>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => useEditorStore.getState().setActiveLayer(layer.id)}
+              aria-current={active ? 'true' : undefined}
+              className={`min-h-11 min-w-0 flex-1 text-left ${layer.visible ? '' : 'text-muted'}`}
+            >
+              <span className="block truncate text-base font-bold">{label}</span>
+              <span className="block truncate text-xs text-muted">
+                {KIND[layer.type]} · {sheetContents(layer)}
+                {active ? ' · picked sheet' : ''}
+              </span>
+            </button>
+            <button type="button" aria-label={`Move ${label} up`} disabled={first} onClick={() => moveLayer(doc, layer.id, 'up')} className={iconBtn}>
+              <Up />
+            </button>
+            <button type="button" aria-label={`Move ${label} down`} disabled={last} onClick={() => moveLayer(doc, layer.id, 'down')} className={iconBtn}>
+              <Down />
+            </button>
+          </>
+        )}
+      </div>
+      {!renaming && (
+        <div className="flex items-center gap-1">
+          {/* Lined up under the name, past the eye button. */}
+          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 pl-12 text-xs text-muted">
+            <span className="shrink-0">Solid</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={layer.transparency}
+              onChange={(e) => setLayerTransparency(doc, layer.id, parseInt(e.target.value, 10))}
+              aria-label={`How solid ${label} is`}
+              aria-valuetext={`${layer.transparency}%`}
+              className="h-11 min-w-0 flex-1 accent-accent"
+            />
+            <span className="w-9 shrink-0 text-right tabular-nums">{layer.transparency}%</span>
+          </label>
           <button
             type="button"
             aria-label={`Rename ${label}`}
@@ -133,25 +175,69 @@ function SheetRow({ layer, doc, first, last, active }: { layer: Layer; doc: Y.Do
           >
             <Pencil />
           </button>
-          <button type="button" aria-label={`Move ${label} up`} disabled={first} onClick={() => moveLayer(doc, layer.id, 'up')} className={iconBtn}>
-            <Up />
+          <button type="button" aria-label={`Delete ${label}`} onClick={() => void askDeleteSheet(doc, layer)} className={`${iconBtn} text-danger`}>
+            <Trash />
           </button>
-          <button type="button" aria-label={`Move ${label} down`} disabled={last} onClick={() => moveLayer(doc, layer.id, 'down')} className={iconBtn}>
-            <Down />
-          </button>
-        </>
+        </div>
       )}
     </li>
   );
 }
 
-/** The sheets, topmost first (as the Sheets panel lists them): show / hide, rename and reorder by touch. */
+/** Pick the kind of sheet to add: big rows that say what each kind is for. */
+function AddSheetChoices({ doc, onDone }: { doc: Y.Doc; onDone: () => void }) {
+  return (
+    <div role="group" aria-label="Add a sheet" className="flex flex-col gap-1">
+      <p className="text-sm font-bold">What will go on the new sheet?</p>
+      {SHEET_KINDS.map(({ kind, label, about }) => (
+        <button
+          key={kind}
+          type="button"
+          onClick={() => {
+            const id = addLayer(doc, kind);
+            useEditorStore.getState().setActiveLayer(id);
+            onDone();
+          }}
+          className="min-h-11 rounded-control border border-line px-3 py-1.5 text-left hover:bg-soft"
+        >
+          <span className="block text-base font-bold">{label}</span>
+          <span className="block text-xs text-muted">{about}</span>
+        </button>
+      ))}
+      <button type="button" onClick={onDone} className="min-h-11 rounded-control px-3 text-sm font-bold hover:bg-soft">
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/** The sheets, topmost first (as the Sheets panel lists them): add, delete, show / hide, fade, rename and reorder by touch. */
 export function SheetsSheet({ map, doc, onClose }: { map: BbmMap; doc: Y.Doc; onClose: () => void }) {
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
+  const [adding, setAdding] = useState(false);
   const rows = [...map.layers].reverse();
   return (
-    <BottomSheet title="Sheets" onClose={onClose}>
-      <p className="mb-2 text-sm text-muted">Sheets are like see-through pages. The top one is drawn over the others.</p>
+    <BottomSheet
+      title="Sheets"
+      onClose={onClose}
+      footer={
+        adding ? (
+          <AddSheetChoices doc={doc} onDone={() => setAdding(false)} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-control bg-accent px-4 text-sm font-bold text-accent-ink hover:bg-accent-hover"
+          >
+            <Plus />
+            Add a sheet
+          </button>
+        )
+      }
+    >
+      <p className="mb-2 text-sm text-muted">
+        Sheets are like see-through pages. The top one is drawn over the others. Slide “Solid” down to fade a sheet.
+      </p>
       <ul className="flex flex-col gap-1" aria-label="Sheets, top first">
         {rows.map((layer, i) => (
           <SheetRow
@@ -164,6 +250,7 @@ export function SheetsSheet({ map, doc, onClose }: { map: BbmMap; doc: Y.Doc; on
           />
         ))}
       </ul>
+      {rows.length === 0 && <p className="py-4 text-center text-sm text-muted">No sheets yet. Add one below.</p>}
     </BottomSheet>
   );
 }

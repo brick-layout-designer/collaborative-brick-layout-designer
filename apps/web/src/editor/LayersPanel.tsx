@@ -29,6 +29,7 @@ import {
 } from './mutations';
 import { LayerOptionsDialog } from './LayerOptionsDialog';
 import { confirmDelete } from '../ui/ConfirmDialog';
+import { deleteSheetWording } from './sheetContents';
 
 interface Props {
   map: BbmMap;
@@ -96,7 +97,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 moveLayer(doc, activeLayerId, 'up');
               }}
               disabled={!activeLayerId}
-              className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+              className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               title="Move active sheet toward the top"
             >
               ▲
@@ -107,7 +108,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 moveLayer(doc, activeLayerId, 'down');
               }}
               disabled={!activeLayerId}
-              className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+              className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft disabled:opacity-30 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               title="Move active sheet toward the bottom"
             >
               ▼
@@ -116,17 +117,13 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
               onClick={async () => {
                 if (!activeLayerId) return;
                 const id = activeLayerId;
-                const ok = await confirmDelete('this sheet', {
-                title: 'Delete this sheet?',
-                removes: 'The sheet and everything on it leave the layout.',
-                keeps: 'The other sheets don’t change.',
-                undoable: 'You can undo this with Ctrl+Z.',
-              });
-              if (!ok) return;
+                const layer = map.layers.find((l) => l.id === id);
+                if (!layer) return;
+                if (!(await confirmDelete(layer.name, deleteSheetWording(layer, 'You can undo this with Ctrl+Z.')))) return;
                 deleteLayer(doc, id);
               }}
               disabled={!activeLayerId}
-              className="rounded-lg px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30"
+              className="rounded-lg px-2 py-0.5 text-xs hover:bg-red-900/40 disabled:opacity-30 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               title="Delete active sheet"
             >
               ✕
@@ -135,7 +132,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => showAllLayers(doc)}
-              className="flex-1 rounded-lg py-0.5 text-xs hover:bg-soft"
+              className="flex-1 rounded-lg py-0.5 text-xs hover:bg-soft pointer-coarse:min-h-11"
               title="Make all sheets visible"
             >
               Show all
@@ -146,7 +143,7 @@ export function LayersPanel({ map, doc, isViewer }: Props) {
                 soloLayer(doc, activeLayerId);
               }}
               disabled={!activeLayerId}
-              className="flex-1 rounded-lg py-0.5 text-xs hover:bg-soft disabled:opacity-30"
+              className="flex-1 rounded-lg py-0.5 text-xs hover:bg-soft disabled:opacity-30 pointer-coarse:min-h-11"
               title="Show only the active sheet, hide all others"
             >
               Solo
@@ -306,7 +303,7 @@ function LayerRow({
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => setLayerTransparency(doc, layer.id, parseInt(e.target.value, 10))}
           title="Transparency (0% transparent → 100% opaque)"
-          className="flex-1 accent-accent"
+          className="flex-1 accent-accent pointer-coarse:h-11"
         />
         <span className="w-7 text-right tabular-nums">{layer.transparency}%</span>
       </div>
@@ -366,13 +363,7 @@ function LayerRow({
             className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
             onClick={async () => {
               setCtxMenu(null);
-              const ok = await confirmDelete('this sheet', {
-                title: 'Delete this sheet?',
-                removes: 'The sheet and everything on it leave the layout.',
-                keeps: 'The other sheets don’t change.',
-                undoable: 'You can undo this with Ctrl+Z.',
-              });
-              if (!ok) return;
+              if (!(await confirmDelete(layer.name, deleteSheetWording(layer, 'You can undo this with Ctrl+Z.')))) return;
               deleteLayer(doc, layer.id);
             }}
           >
@@ -413,21 +404,21 @@ function AddLayerButton({ doc, onAdd }: { doc: Y.Doc; onAdd: (layerId: string) =
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft"
+        className="rounded-lg px-2 py-0.5 text-xs hover:bg-soft pointer-coarse:min-h-11"
         title="Add a new sheet"
       >
         + Add sheet
       </button>
       {open && (
         <ul
-          className="absolute bottom-7 left-0 z-10 w-40 rounded-lg border border-border bg-panel text-xs shadow-sm"
+          className="absolute bottom-full left-0 z-10 mb-1 w-40 rounded-lg border border-border bg-panel text-xs shadow-sm"
           onClick={() => setOpen(false)}
         >
           {ADD_LAYER_OPTIONS.map(({ kind, label }) => (
             <li key={kind}>
               <button
                 onClick={() => onAdd(addLayer(doc, kind))}
-                className="block w-full px-2 py-1 text-left hover:bg-soft"
+                className="block w-full px-2 py-1 text-left hover:bg-soft pointer-coarse:min-h-11"
               >
                 {label}
               </button>

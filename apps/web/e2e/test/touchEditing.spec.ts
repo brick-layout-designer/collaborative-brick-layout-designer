@@ -359,6 +359,79 @@ test.describe('sheets by touch', () => {
     await expect(rows.nth(1).locator('.font-bold')).toHaveText('Main line');
     await expect(sheet.getByRole('button', { name: 'Show Main line' })).toBeVisible();
   });
+  test('a finger adds a sheet, fades it, and deletes one after a question that says what is on it', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+    const id = await newLayout(page, 'sheets-add');
+    await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
+    // A part on the picked parts sheet, so the delete question has something to say.
+    await page.getByTestId('add-part').tap();
+    const parts = page.getByRole('dialog', { name: 'Add a part' });
+    await parts.getByRole('searchbox', { name: 'Search parts' }).fill('narrow gauge track straight 4 x 16');
+    await parts.locator(`[data-part-key="${PART}"]`).tap();
+    await expect(parts).toHaveCount(0);
+    await bar(page).getByRole('button', { name: 'Done' }).tap();
+
+    await bar(page).getByRole('button', { name: 'Sheets' }).tap();
+    const sheet = page.getByRole('dialog', { name: 'Sheets' });
+    const rows = sheet.getByRole('list', { name: 'Sheets, top first' }).getByRole('listitem');
+    const before = await rows.count();
+
+    // Add: the kinds, each with what it is for.
+    await sheet.getByRole('button', { name: 'Add a sheet' }).tap();
+    const kinds = sheet.getByRole('group', { name: 'Add a sheet' });
+    for (const k of ['Parts sheet', 'Text sheet', 'Area sheet', 'Ruler sheet', 'Grid sheet']) await expect(kinds.getByText(k, { exact: true })).toBeVisible();
+    await shoot(page, 'phone-sheets-add');
+    await kinds.getByText('Text sheet', { exact: true }).tap();
+    await expect(rows).toHaveCount(before + 1);
+    // On top, and picked.
+    await expect(rows.first()).toContainText('picked sheet');
+    const added = (await rows.first().locator('.font-bold').textContent())!;
+
+    // Fade it: a finger on the Solid slider, a quarter of the way along.
+    const slider = sheet.getByRole('slider', { name: `How solid ${added} is` });
+    const box = (await slider.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(43.5);
+    await slider.tap({ position: { x: box.width * 0.25, y: box.height / 2 } });
+    await expect.poll(async () => Number(await slider.inputValue())).toBeLessThan(50);
+    const faded = Number(await slider.inputValue());
+    await shoot(page, 'phone-sheets-fade');
+
+    // Delete the parts sheet: the question names it and its part; Cancel keeps it.
+    const partsRow = rows.filter({ hasText: '1 part' });
+    const partsName = (await partsRow.locator('.font-bold').textContent())!;
+    await partsRow.getByRole('button', { name: `Delete ${partsName}` }).tap();
+    const ask = page.getByTestId('confirm-dialog');
+    await expect(ask).toContainText(`Delete the sheet “${partsName}”?`);
+    await expect(ask).toContainText('along with 1 part on it');
+    await shoot(page, 'phone-sheets-delete');
+    await ask.getByRole('button', { name: 'Cancel' }).tap();
+    await expect(rows).toHaveCount(before + 1);
+    await expect(sheet).toBeVisible();
+    await partsRow.getByRole('button', { name: `Delete ${partsName}` }).tap();
+    await ask.getByRole('button', { name: 'Delete' }).tap();
+    await expect(rows).toHaveCount(before);
+    await expect(bricks(page).then((b) => b.length)).resolves.toBe(0);
+
+    // Every control is finger-sized.
+    for (const b of await sheet.getByRole('button').all()) {
+      if (!(await b.isVisible())) continue;
+      const r = (await b.boundingBox())!;
+      expect(r.height, (await b.getAttribute('aria-label')) ?? (await b.textContent()) ?? '').toBeGreaterThanOrEqual(43.5);
+    }
+    await sheet.getByRole('button', { name: 'Close' }).last().tap();
+
+    // The server has it: the new text sheet, faded; the parts sheet gone.
+    const ctx = page.context();
+    await page.close();
+    const p2 = await ctx.newPage();
+    await p2.waitForTimeout(1500);
+    const xml = await (await p2.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    const layers = [...xml.matchAll(/<Layer type="(\w+)"[^>]*>\s*<Name>([^<]*)<\/Name>\s*<Visible>[^<]*<\/Visible>\s*<Transparency>(\d+)<\/Transparency>/g)].map((m) => ({ type: m[1], name: m[2], t: Number(m[3]) }));
+    expect(layers.find((l) => l.name === added)).toEqual({ type: 'text', name: added, t: faded });
+    expect(layers.find((l) => l.name === partsName)).toBeUndefined();
+    expect(xml).not.toContain('<Brick ');
+    await p2.close();
+  });
 });
 
 test.describe('labels by touch', () => {
@@ -517,5 +590,27 @@ test.describe('touch editing on a tablet', () => {
     const saved = await serverBricks(page, id);
     expect(saved).toHaveLength(2);
     expect(saved.some((b) => b.rot !== 0)).toBe(true);
+  });
+});
+
+test.describe('sheets on a tablet', () => {
+  test.use(iPad);
+
+  test('the Sheets panel has finger-sized controls, and the touch bar opens the full Sheets list', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+    await newLayout(page, 'tablet-sheets');
+    const panel = page.locator('aside').filter({ hasText: 'Sheets' }).first();
+    await expect(panel).toBeVisible();
+    for (const name of ['+ Add sheet', '▲', '▼', '✕', 'Show all', 'Solo']) {
+      const r = (await panel.getByRole('button', { name, exact: true }).boundingBox())!;
+      expect(r.height, name).toBeGreaterThanOrEqual(43.5);
+    }
+    await shoot(page, 'tablet-sheets-panel');
+    await bar(page).getByRole('button', { name: 'Sheets' }).tap();
+    const sheet = page.getByRole('dialog', { name: 'Sheets' });
+    await expect(sheet.getByRole('button', { name: 'Add a sheet' })).toBeVisible();
+    await expect(sheet.getByRole('slider').first()).toBeVisible();
+    await expect(sheet.getByRole('button', { name: /^Delete / }).first()).toBeVisible();
+    await shoot(page, 'tablet-sheets');
   });
 });
