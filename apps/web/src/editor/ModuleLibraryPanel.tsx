@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ModuleSummary } from '../api';
 import { api } from '../api';
 import { useEditorStore } from './editorStore';
-import { importBricksAsModule } from './mutations';
+import { placeModuleAsking } from './SheetChoiceDialog';
 import { fetchModuleBatches } from './moduleSnapshot';
 
 import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
@@ -58,7 +58,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
       // are registered as a sidecar module in the same undo step
       // (desktop ImportBbmAsModuleCommand).
       const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';
-      const res = importBricksAsModule(doc, batches, { name: title });
+      const res = await placeModuleAsking(doc, batches, { name: title });
       if (res) useEditorStore.getState().setSelection(res.ids);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

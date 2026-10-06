@@ -8,7 +8,7 @@ import { useRef, useState } from 'react';
 import type * as Y from 'yjs';
 import { readBbm } from '@cld/bbm';
 import { useEditorStore } from './editorStore';
-import { importBricksAsModule } from './mutations';
+import { placeModuleAsking } from './SheetChoiceDialog';
 import { moduleBatchesFromMap } from './moduleDrop';
 
 interface Props {
@@ -46,7 +46,7 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
       const cy = sumY / allBricks.length;
 
       const name = file.name.replace(/\.bbm$/i, '') || 'Module';
-      const res = importBricksAsModule(doc, batches, {
+      const res = await placeModuleAsking(doc, batches, {
         name,
         offset: { dx: -cx, dy: -cy },
         sourceFile: file.name,

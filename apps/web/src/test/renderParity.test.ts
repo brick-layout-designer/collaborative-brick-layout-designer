@@ -10,6 +10,7 @@ import SPEC from '../../../../packages/bbm/tests/fixtures/render-parity/modules.
 import {
   MODULE_FRAME_ALPHA,
   MODULE_FRAME_DASH,
+  MODULE_FRAME_PARTLY_HIDDEN_DASH,
   MODULE_FRAME_STROKE,
   MODULE_FULL_NAME_BG,
   MODULE_NAME_ALPHA,
@@ -47,6 +48,7 @@ describe('render parity: modules', () => {
   it('draws the shared colours, dash and outline', () => {
     expect(MODULE_FRAME_STROKE).toBe(SPEC.style.frameStroke);
     expect(MODULE_FRAME_DASH).toEqual(SPEC.style.frameDash);
+    expect(MODULE_FRAME_PARTLY_HIDDEN_DASH).toEqual(SPEC.style.partlyHiddenFrameDash);
     expect(MODULE_NAME_FILL).toBe(SPEC.style.nameFill);
     expect(MODULE_NAME_STROKE).toBe(SPEC.style.nameStroke);
     expect(MODULE_FULL_NAME_BG).toBe(SPEC.style.fullNameBackground);

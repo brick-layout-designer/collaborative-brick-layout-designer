@@ -166,6 +166,11 @@ export const HELP_TEXTS = {
     short: 'Change this module part by part; the rest of the layout waits, dimmed.',
     more: 'A module moves as one piece until you edit it: then new parts you drop in join it, and a part dragged outside it asks whether to leave. Done, Esc or a click outside goes back to the whole layout. Pin in place stops the whole module moving, but you can still edit it.',
   },
+  'module.sheets': {
+    title: 'Module sheets',
+    short: 'A module keeps the sheets its parts were on, like Track and Buildings.',
+    more: 'When you add it to a layout, each sheet’s parts go on the layout’s sheet with the same name. If the layout has no sheet by that name, you choose where they go: the picked sheet, or a new sheet with that name. Put everything on one sheet saves the module with a single sheet instead.',
+  },
 
   // Downloading
   'download.formats': {

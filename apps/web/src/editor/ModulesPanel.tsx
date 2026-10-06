@@ -28,6 +28,8 @@ import { createModuleFromSelection, enterModuleEdit, leaveModuleEdit, setModuleP
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 import { ModuleLookDialog } from './ModuleLookDialog';
 import { withShowName } from './moduleLook';
+import { useDocMap } from './useDocMap';
+import { hiddenSheetsNote, moduleSheetsUsed } from './moduleSheets';
 
 interface Props {
   doc: Y.Doc;
@@ -37,6 +39,7 @@ interface Props {
 export function ModulesPanel({ doc, isViewer }: Props) {
   const sidecar = readSidecarFromDoc(doc);
   const modules = sidecar?.modules ?? [];
+  const map = useDocMap(doc);
 
   // Desktop ModulesPanel's "Create from selection" (createModuleRequested
   // → MainWindow::onCreateModuleFromSelection).
@@ -70,7 +73,7 @@ export function ModulesPanel({ doc, isViewer }: Props) {
       </div>
       <ul className="flex-1 min-h-0 overflow-y-auto">
         {modules.map((mod) => (
-          <ModuleRow key={mod.id} module={mod} doc={doc} isViewer={isViewer} />
+          <ModuleRow key={mod.id} module={mod} doc={doc} isViewer={isViewer} hiddenNote={map ? hiddenSheetsNote(moduleSheetsUsed(map, mod.members)) : null} />
         ))}
       </ul>
     </aside>
@@ -81,10 +84,13 @@ function ModuleRow({
   module,
   doc,
   isViewer,
+  hiddenNote,
 }: {
   module: SidecarModule;
   doc: Y.Doc;
   isViewer: boolean;
+  /** Some or all of its parts are on hidden sheets: says so. */
+  hiddenNote: string | null;
 }) {
   const selection = useEditorStore((s) => s.selection);
   const setSelection = useEditorStore((s) => s.setSelection);
@@ -263,6 +269,11 @@ function ModuleRow({
               {module.members.length} part{module.members.length !== 1 ? 's' : ''}
               {module.sourceFile ? ` — ${/^[0-9a-f-]{36}$/.test(module.sourceFile) ? 'in your Module library' : module.sourceFile.split(/[\\/]/).pop()}` : ''}
             </span>
+            {hiddenNote && (
+              <span data-testid="module-hidden-note" className="ml-2 text-xs italic text-muted">
+                {hiddenNote}
+              </span>
+            )}
           </span>
           {!isViewer && (
             <button

@@ -6,10 +6,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { seedFromBbm, encodeDoc } from '@cld/ydoc';
-import type { BbmMap, Brick } from '@cld/model';
+import type { BbmMap } from '@cld/model';
 import { api } from '../api';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { ModuleThumb } from '../modules/ModuleThumb';
+import { HelpButton } from '../help/HelpButton';
+import { moduleMapFromSelection, oneSheetName, pickedBySheet } from './moduleSheets';
 
 type Thumb = { mime: 'image/png' | 'image/webp'; data: string };
 
@@ -31,6 +33,9 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved, layoutOwner
   const [mode, setMode] = useState<'new' | 'update'>('new');
   const [target, setTarget] = useState('');
   const [note, setNote] = useState('');
+  // The sheets the picked parts are on; with two or more, the dialog says so.
+  const sheets = pickedBySheet(map, selection);
+  const [oneSheet, setOneSheet] = useState(false);
   const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   const editable = (modules.data?.modules ?? []).filter((m) => m.role === undefined || m.role === 'owner' || m.role === 'editor');
   const [error, setError] = useState<string | null>(null);
@@ -44,66 +49,9 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved, layoutOwner
 
   const save = useMutation({
     mutationFn: async (name: string) => {
-      const selSet = new Set(selection);
-
-      // Collect selected bricks per brick layer.
-      const bricksByLayer: { name: string; bricks: Brick[] }[] = [];
-      for (const layer of map.layers) {
-        if (layer.type !== 'brick') continue;
-        const picked = layer.bricks.filter((b) => selSet.has(b.id));
-        if (picked.length > 0) bricksByLayer.push({ name: layer.name, bricks: picked });
-      }
-      const allBricks = bricksByLayer.flatMap((l) => l.bricks);
-      if (allBricks.length === 0) throw new Error('No bricks selected');
-
-      // Translate so the centroid lands at (0, 0).
-      let sumX = 0, sumY = 0;
-      for (const b of allBricks) {
-        sumX += b.displayArea.x + b.displayArea.width / 2;
-        sumY += b.displayArea.y + b.displayArea.height / 2;
-      }
-      const cx = sumX / allBricks.length;
-      const cy = sumY / allBricks.length;
-      // The picked parts' area on the map, for the module's picture.
-      const x0 = Math.min(...allBricks.map((b) => b.displayArea.x));
-      const y0 = Math.min(...allBricks.map((b) => b.displayArea.y));
-      const x1 = Math.max(...allBricks.map((b) => b.displayArea.x + b.displayArea.width));
-      const y1 = Math.max(...allBricks.map((b) => b.displayArea.y + b.displayArea.height));
-      const region = { x: x0 - 1, y: y0 - 1, width: x1 - x0 + 2, height: y1 - y0 + 2 };
-
-      const defaultHull = { isVisible: false, hullColor: { kind: 'known' as const, name: 'black' }, hullThickness: 1 };
-
-      const moduleMap: BbmMap = {
-        version: map.version,
-        nbItems: allBricks.length,
-        backgroundColor: map.backgroundColor,
-        author: map.author,
-        lug: map.lug,
-        event: map.event,
-        date: map.date,
-        comment: '',
-        exportInfo: map.exportInfo,
-        selectedLayerIndex: 0,
-        layers: bricksByLayer.map((layer, i) => ({
-          type: 'brick' as const,
-          id: `module-layer-${i}`,
-          name: layer.name,
-          visible: true,
-          transparency: 0,
-          displayBrickElevation: false,
-          hullProperties: defaultHull,
-          groups: [],
-          bricks: layer.bricks.map((b) => ({
-            ...b,
-            connexions: [],
-            displayArea: {
-              ...b.displayArea,
-              x: b.displayArea.x - cx,
-              y: b.displayArea.y - cy,
-            },
-          })),
-        })),
-      };
+      const built = moduleMapFromSelection(map, selection, { oneSheet });
+      if (!built) throw new Error('No bricks selected');
+      const { moduleMap, region } = built;
 
       const doc = seedFromBbm(moduleMap);
       const bytes = encodeDoc(doc);
@@ -215,6 +163,28 @@ export function SaveModuleDialog({ map, selection, onClose, onSaved, layoutOwner
               className="w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent"
             />
           </div>
+          {sheets.length > 1 && (
+            <div data-testid="module-sheets" className="rounded-lg border border-line p-2 text-xs">
+              <p className="flex items-start gap-1">
+                <span className="flex-1">
+                  {oneSheet ? (
+                    <>
+                      All its parts go on one sheet: <b>{oneSheetName(sheets)}</b>.
+                    </>
+                  ) : (
+                    <>
+                      This module uses {sheets.length} sheets: <b>{sheets.map((g) => g.layer.name || 'untitled').join(', ')}</b>.
+                    </>
+                  )}
+                </span>
+                <HelpButton helpKey="module.sheets" />
+              </p>
+              <label className="mt-1.5 flex items-center gap-2">
+                <input type="checkbox" checked={oneSheet} onChange={(e) => setOneSheet(e.target.checked)} />
+                Put everything on one sheet
+              </label>
+            </div>
+          )}
           {error && <p className="text-xs text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
             <button
