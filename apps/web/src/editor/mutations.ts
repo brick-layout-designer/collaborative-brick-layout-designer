@@ -1950,7 +1950,8 @@ export function insertSet(doc: Y.Doc, layerId: string, set: ExpandedSet): string
 /**
  * Modules older versions made of placed sets become sets again: each
  * module is removed and its parts get the set's groups — the desktop's
- * makeSetsCommand. One undo step.
+ * makeSetsCommand. Loose sets (findLooseSets) have no module to remove.
+ * One undo step.
  */
 export function makeSetsOfModules(doc: Y.Doc, sets: readonly SetModule[]): void {
   if (sets.length === 0) return;
@@ -1973,7 +1974,8 @@ export function makeSetsOfModules(doc: Y.Doc, sets: readonly SetModule[]): void 
       g.yBricks.forEach((b) => {
         if (!(b instanceof Y.Map)) return;
         const to = set.parentOf.get(b.get('id') as string);
-        if (to) b.set('myGroup', to);
+        // A part grouped meanwhile (someone else made it a set first) keeps its group.
+        if (to && !b.get('myGroup')) b.set('myGroup', to);
       });
     }
   }, LOCAL_ORIGIN);

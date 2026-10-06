@@ -380,6 +380,88 @@ export function findSetModules(map: BbmMap, modules: readonly SidecarModule[], p
 }
 
 /**
+ * Sets used whole (`<CanUngroup>false`, joined at hinges: flex track) whose
+ * parts lie loose on a brick layer, in no group, still joined at their
+ * hinge: the halves layouts made before sets were groups hold. Each comes
+ * back with no `moduleId` (the desktop's findLooseSets). Parts in `skip`
+ * (already becoming a set) are left alone; parts already in a group never
+ * are taken, so it finds nothing the second time, here or on the desktop.
+ */
+export function findLooseSets(map: BbmMap, parts: Parts, newId: () => string, skip: ReadonlySet<string> = new Set()): SetModule[] {
+  const out: SetModule[] = [];
+  const kinds: { key: string; parts: string }[] = [];
+  const setParts = new Set<string>();
+  const seenKeys = new Set<string>();
+  for (const p of parts.values()) {
+    if (p.kind !== 'group' || p.canUngroup !== false || p.subparts.length === 0 || seenKeys.has(p.key)) continue;
+    seenKeys.add(p.key);
+    const set = expandSet(parts, p.key, { x: 0, y: 0 }, 0, newId);
+    if (set.bricks.length < 2) continue;
+    const names = set.bricks.map((b) => b.partNumber.toUpperCase());
+    for (const n of names) setParts.add(n);
+    kinds.push({ key: p.key, parts: names.sort().join('\n') });
+  }
+  if (kinds.length === 0) return out;
+  for (const layer of map.layers) {
+    if (layer.type !== 'brick') continue;
+    const loose = (b: Brick) => !b.myGroup && !skip.has(b.id) && setParts.has(b.partNumber.toUpperCase());
+    // Loose set parts by their connections' ids.
+    const byConnection = new Map<string, number>();
+    layer.bricks.forEach((b, i) => {
+      if (loose(b)) for (const c of b.connexions) if (c.id) byConnection.set(c.id, i);
+    });
+    const seen = new Array<boolean>(layer.bricks.length).fill(false);
+    layer.bricks.forEach((first, i) => {
+      if (seen[i] || !loose(first)) return;
+      // The parts joined to it at hinges, and to those, and so on.
+      const joined = [i];
+      seen[i] = true;
+      for (let n = 0; n < joined.length && joined.length <= 16; n++) {
+        const b = layer.bricks[joined[n]!]!;
+        const conns = partOf(parts, b.partNumber)?.connections ?? [];
+        const count = Math.min(conns.length, b.connexions.length);
+        for (let c = 0; c < count; c++) {
+          if (connectionHingeAngle(conns[c]!.type) <= 0) continue;
+          const j = byConnection.get(b.connexions[c]!.linkedTo ?? '');
+          if (j === undefined || seen[j]) continue;
+          seen[j] = true;
+          joined.push(j);
+        }
+      }
+      if (joined.length < 2) return;
+      const members = joined.map((j) => layer.bricks[j]!);
+      const have = members.map((b) => b.partNumber.toUpperCase()).sort().join('\n');
+      for (const kind of kinds) {
+        if (kind.parts !== have) continue;
+        const set = expandSet(parts, kind.key, { x: 0, y: 0 }, 0, newId);
+        const pick = matchByJoints(parts, set.bricks, members);
+        if (!pick) continue;
+        out.push({
+          moduleId: '',
+          setKey: kind.key,
+          layerId: layer.id,
+          groups: set.groups,
+          parentOf: new Map(set.bricks.map((b, l) => [members[pick[l]!]!.id, b.myGroup])),
+        });
+        break;
+      }
+    });
+  }
+  return out;
+}
+
+/** What the editor says after findSetModules / findLooseSets made sets again (the desktop's notice). */
+export function setsAgainNotice(fromModules: number, loose: number): string {
+  const what: string[] = [];
+  if (fromModules > 0) {
+    what.push(`${fromModules === 1 ? 'A set such as flex track was' : `${fromModules} sets such as flex track were`} kept as ${fromModules === 1 ? 'a module' : 'modules'} by an older version.`);
+  }
+  if (loose > 0) what.push(`${loose === 1 ? 'A flex track piece had' : `${loose} flex track pieces had`} come apart into loose halves.`);
+  const n = fromModules + loose;
+  return `${what.join(' ')} ${n === 1 ? 'It is now a set' : 'They are now sets'}: each one selects, moves and counts as one part, as in BlueBrick. Undo (Ctrl+Z) puts ${n === 1 ? 'it' : 'them'} back as before.`;
+}
+
+/**
  * What Ungroup would do to `selection`: nothing grouped, split something,
  * or only sets that are always used whole (`canUngroup` says no).
  */
