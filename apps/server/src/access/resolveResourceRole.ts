@@ -204,7 +204,16 @@ export async function resolveResourceRole(
 
   if (res.collaboratorRole) role = strongerOf(role, res.collaboratorRole);
 
+  // A restricted person's own things are frozen (privacy: restriction):
+  // anyone who may see them still can, but nobody changes them.
+  if (role !== null && role !== 'viewer' && res.ownerUserId && (await isRestricted(res.ownerUserId))) role = 'viewer';
+
   return { role };
+}
+
+async function isRestricted(userId: string): Promise<boolean> {
+  const row = await db.select({ r: schema.users.restrictedAt }).from(schema.users).where(eq(schema.users.id, userId)).get();
+  return !!row?.r;
 }
 
 /** Convenience predicate: does the user have at least the given role? */

@@ -89,7 +89,7 @@ export async function ensureDemoUser(): Promise<User> {
     await db.delete(schema.oauthAccounts).where(eq(schema.oauthAccounts.userId, DEMO_USER_ID));
     return { ...existing, ...fields };
   }
-  const row: User = { id: DEMO_USER_ID, email: DEMO_EMAIL, createdAt: new Date(), lastSeenAt: null, deletionRequestedAt: null, deletionDueAt: null, ...fields };
+  const row: User = { id: DEMO_USER_ID, email: DEMO_EMAIL, createdAt: new Date(), lastSeenAt: null, deletionRequestedAt: null, deletionDueAt: null, restrictedAt: null, ...fields };
   const taken = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, DEMO_EMAIL)).get();
   // Somebody already has the address (it can't be signed up for, but an
   // admin could have typed it): give the demo account its own.

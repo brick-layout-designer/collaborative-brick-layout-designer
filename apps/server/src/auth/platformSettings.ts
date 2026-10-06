@@ -52,6 +52,8 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     demoLastResetAt: null,
     collectionCoverMaxBytes: 5 * 1024 * 1024,
     privacy: null,
+    privacyNotice: null,
+    privacyContact: null,
     updatedAt: new Date(),
     updatedBy: null,
   };

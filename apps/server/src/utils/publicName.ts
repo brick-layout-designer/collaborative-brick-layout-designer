@@ -40,6 +40,15 @@ export function nameFor(
   return publicName(userId, name);
 }
 
+/**
+ * Whether `viewer` may see the email addresses on a share list: the people
+ * who manage sharing (the owners) and site admins. Everyone else sees
+ * names only (each person still sees their own address).
+ */
+export function emailsVisible(viewer: { isGlobalAdmin?: boolean }, role: 'owner' | 'editor' | 'viewer' | null): boolean {
+  return role === 'owner' || !!viewer.isGlobalAdmin;
+}
+
 /** A suggestion for the "What should we call you?" prompt: the part of the email before '@'. */
 export function suggestedName(email: string): string {
   return (email.split('@')[0] ?? '').replace(/[._+-]+/g, ' ').trim().slice(0, 60);

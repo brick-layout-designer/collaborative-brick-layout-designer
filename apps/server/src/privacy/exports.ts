@@ -25,6 +25,7 @@ import { ZipFileWriter, ZipTooBigError } from './zipWriter.js';
 import { postPersonalNote } from '../routes/warnings.js';
 import { sendNoticeEmail, siteUrl } from '../email/sendNotice.js';
 import { publish } from '../events/audience.js';
+import { privacyContact } from './page.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -204,7 +205,7 @@ function readme(args: {
 }
 
 /** Hooks later features add to the README (the site's privacy contact). */
-export const exportHooks: { contact: () => Promise<string | null> } = { contact: async () => null };
+export const exportHooks: { contact: () => Promise<string | null> } = { contact: async () => (await privacyContact()).value };
 
 async function buildExport(id: string): Promise<void> {
   const row = await db.select().from(schema.dataExports).where(eq(schema.dataExports.id, id)).get();

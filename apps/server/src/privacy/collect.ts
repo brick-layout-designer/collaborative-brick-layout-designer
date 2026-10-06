@@ -75,6 +75,7 @@ export const NO_PERSONAL_DATA: Record<string, string> = {
   orgs: 'Clubs: the club’s own data. A person’s memberships are listed under clubs.',
   platform_settings: 'Site settings. Only "who last changed them" points at a person, and that is listed under audit-log.',
   erasures: 'The record that an account or club was erased: a pseudonym ("Deleted user #abc123"), when, and how many things went. No personal data.',
+  privacy_request_events: 'The history of a privacy request (listed under privacy-requests); the admin who acted is a site admin.',
   __drizzle_migrations: 'The database’s own record of its upgrades.',
 };
 
@@ -200,6 +201,11 @@ export async function collectUserData(userId: string): Promise<DataSection[]> {
     (await db.select({ updatedAt: s.platformSettings.updatedAt }).from(s.platformSettings).where(eq(s.platformSettings.updatedBy, userId)).all()) as Record<string, unknown>[],
   );
   add(
+    'privacy-requests',
+    'Privacy requests about you that the site admins logged, and what was done.',
+    await select(s.privacyRequests, eq(s.privacyRequests.subjectUserId, userId)),
+  );
+  add(
     'data-downloads',
     'Downloads of your data, like this one.',
     await select(s.dataExports, or(and(eq(s.dataExports.subjectKind, 'user'), eq(s.dataExports.subjectId, userId)), eq(s.dataExports.requestedBy, userId))),
@@ -241,4 +247,5 @@ export const READ_TABLES = [
   'usage_daily',
   'audit_events',
   'data_exports',
+  'privacy_requests',
 ];

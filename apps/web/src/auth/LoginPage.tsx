@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { DeletingNotice } from '../privacy/DeleteAccount';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
@@ -75,6 +75,10 @@ function SourceFooter() {
       </a>
       <span aria-hidden="true">·</span>
       <span>{LICENCE}</span>
+      <span aria-hidden="true">·</span>
+      <Link to="/privacy" className={link}>
+        Privacy
+      </Link>
     </footer>
   );
 }
@@ -209,6 +213,15 @@ function PasswordForm({ next }: { next: string }) {
         minLength={8}
         className="w-full rounded-lg border border-border bg-soft px-3 py-2"
       />
+      {mode === 'register' && (
+        <p className="text-xs text-muted" data-testid="signup-privacy">
+          We keep your email to sign you in and send you what you ask for. How this site looks after your data:{' '}
+          <Link to="/privacy" className="text-accent-text hover:underline">
+            Privacy
+          </Link>
+          .
+        </p>
+      )}
       {error && (
         <div className="text-sm text-danger">
           <p>{error}</p>

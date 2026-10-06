@@ -18,7 +18,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { env } from '../env.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
-import { nameFor, publicName } from '../utils/publicName.js';
+import { emailsVisible, nameFor, publicName } from '../utils/publicName.js';
 
 interface InviteBody {
   email: string;
@@ -39,9 +39,10 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'layout', req.params.id);
       if (role === null) return reply.code(404).send({ error: 'not_found' });
-      // Anyone with at least viewer access can see the collaborator list.
-      // Phase 6 may expose this only to editor+; for now transparency is
-      // the friendlier default.
+      // Anyone with at least viewer access can see who it's shared with, by
+      // name. Addresses are for the people who manage sharing (its owners),
+      // site admins, and each person's own row (privacy: emailsFor).
+      const seesEmails = emailsVisible(user, role);
 
       const rows = await db
         .select({
@@ -76,14 +77,15 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
           userId: r.userId,
           role: r.role,
           addedAt: r.addedAt.getTime(),
-          email: r.email,
+          email: seesEmails || r.userId === user.id ? r.email : '',
           displayName: nameFor(user, r.userId, r.displayName),
           avatarUrl: r.avatarUrl,
         })),
         // Filter pending in JS so we don't have to wire isNull through
-        // Drizzle here. Cheap (typically 1-2 invites per layout).
+        // Drizzle here. Cheap (typically 1-2 invites per layout). Pending
+        // invites are addresses only: for the people who manage sharing.
         invites: pendingInvites
-          .filter((i) => i.acceptedAt === null)
+          .filter((i) => i.acceptedAt === null && seesEmails)
           .map((i) => ({
             id: i.id,
             invitedEmail: i.invitedEmail,

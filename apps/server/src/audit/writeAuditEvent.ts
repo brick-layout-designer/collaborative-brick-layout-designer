@@ -115,7 +115,11 @@ export type AuditEventType =
   // own rows carry it in actor_label).
   | 'deletion_request'
   | 'deletion_cancel'
-  | 'account_erased';
+  | 'account_erased'
+  // Admin › Privacy requests: logged, changed, and each one-click answer
+  // (payload.action: log, update, erase, restrict, unrestrict). Subject is
+  // the person (or "request:<id>" when there is no account).
+  | 'privacy_request';
 
 export type AuditResourceKind =
   | 'layout'

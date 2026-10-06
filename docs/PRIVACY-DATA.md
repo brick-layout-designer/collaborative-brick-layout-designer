@@ -19,7 +19,7 @@ host's to keep or not.
 
 | Table | Personal data | Export | Notes |
 |---|---|---|---|
-| `users` | email, display name, avatar URL, password hash, admin/moderator flags, created and last-seen times | yes (no hash) | `last_seen_at` is one time, rounded, no history. |
+| `users` | email, display name, avatar URL, password hash, admin/moderator flags, created and last-seen times, deletion and restriction dates | yes (no hash) | `last_seen_at` is one time, rounded, no history. |
 | `sessions` | which browsers are signed in, until when | yes (no ids) | The id is a hash of the cookie: a secret. |
 | `api_tokens` | desktop sign-ins: name, prefix and last 4 characters, scopes, last used | yes (no hash) | Revoked rows are kept so the Devices list can show them. |
 | `device_codes` | desktop sign-in codes a person approved or denied | yes (no codes) | Expire after minutes. |
@@ -78,6 +78,9 @@ host's to keep or not.
 | `audit_events` | who did what to which thing, with a JSON payload; some payloads name an email (invites, admin actions) | yes | No IP addresses or user agents. |
 | `platform_settings` | `updated_by` (the admin who last saved) | as "site-settings-changes" | |
 | `data_exports` | data downloads: about whom, asked by whom, when | yes | Files in `exports/<id>.zip` next to the database. |
+| `privacy_requests` | requests logged by admins: type, the account or (with no account) who asked in the admin's words, dates, notes | yes | Closed ones are deleted after the records setting. After an erasure the request keeps the pseudonym. |
+| `privacy_request_events` | the history of a request (which admin did what) | with its request | |
+| `erasures` | none: a pseudonym, when, how, counts | no | Deleted after the records setting. |
 
 ## Files outside the database
 
@@ -124,3 +127,52 @@ When the account is erased (`privacy/accountDeletion.ts`):
 | `erasures` | a new row: kind, the pseudonym, how (self / admin / request), when, and counts only |
 
 The last site admin can never be deleted.
+
+## Privacy requests and restriction
+
+Admin › Privacy requests logs requests that arrive by email, letter or in
+person (access, erasure, rectification, restriction, objection, other),
+each due a month after it arrived by default (`requestDueDays`). Overdue
+and nearly-due ones (within 7 days) show a badge on the Admin menu entry
+and a card on the dashboard. One-click answers, all audit-logged
+(`privacy_request`) and kept in the request's history:
+
+- **Export their data**: the same zip as "Download my data", for the admin to download and send.
+- **Restrict**: `users.restricted_at`. The account is read only (every change refused with `403 account_restricted`, except signing in and out, reading notices, and downloading or deleting its own data), its live editing is read only, and what it owns alone is frozen for everyone (its role caps at viewer). Lifting it undoes all of that.
+- **Erase now**: the erasure above, with no waiting time, after typing the account's email.
+
+## Keeping data no longer than needed
+
+Admin › Settings › Privacy, all adjustable, each forced by its env var
+when set. The hourly privacy clean-up (`privacy/retention.ts`) applies them:
+
+| Setting | Default | What goes |
+|---|---|---|
+| `exportKeepDays` | 7 days | data downloads (row and file) |
+| `deletionGraceDays` | 14 days (7 to 30) | accounts waiting to be deleted are erased |
+| `requestDueDays` | 30 days | (when a logged request is due) |
+| `auditPersonalDays` | 365 days | email addresses, and any `ip` / `userAgent` field, in older audit payloads |
+| `expiredSignInDays` | 30 days | expired sessions, revoked or expired desktop sign-ins, device codes, email confirmation links, unaccepted invites and offers |
+| `recordsKeepDays` | 1095 days | erasure records, and closed privacy requests |
+| always | | background pictures whose layout is gone |
+
+`usage_daily` and `daily_stats` keep their own sweeps (`USAGE_RETENTION_DAYS`,
+`ROLLUP_RETENTION_DAYS`). Backups keep 7 daily, 3 weekly and 12 monthly
+copies; an erased account stays in older backups until they rotate out.
+
+## Who sees email addresses
+
+Display names never show an address (`publicName`). On a layout's,
+module's or part's share list, addresses show only to the person
+themselves, the owners (who manage sharing) and site admins; pending
+invites (addresses only) show only to owners. Club member lists already
+showed addresses only to the club's admins and managers.
+
+## The privacy page
+
+`/privacy` shows the notice an admin writes (markdown, Admin › Settings ›
+Privacy) and the privacy contact (an email or web address;
+`PRIVACY_CONTACT` forces it), with links to download your data and delete
+your account. It is linked at the bottom of Home, on the sign-in page,
+under Help in the menu, and on sign-up. The dashboard nudges while the
+notice or contact is empty.

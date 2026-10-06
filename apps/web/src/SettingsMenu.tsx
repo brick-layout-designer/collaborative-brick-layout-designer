@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Me } from './api';
+import { api, apiGet, type Me } from './api';
 import { isMobileDevice } from './pwa/install';
 import { ADMIN_MENU_LABELS, adminTabsFor, adminTabUrl } from './admin/adminTabs';
 import { usePreferences } from './theme/PrefsProvider';
@@ -42,6 +42,18 @@ interface Group {
   entries: Entry[];
 }
 
+/** Privacy requests overdue or due within a week, for site admins (the Admin menu's badge). */
+export function usePrivacyDue(user: Pick<Me, 'isGlobalAdmin'>): number {
+  const q = useQuery({
+    queryKey: ['admin-privacy-summary'],
+    queryFn: () => apiGet<{ overdue: number; dueSoon: number }>('/api/admin/privacy/summary'),
+    enabled: user.isGlobalAdmin,
+    staleTime: 60_000,
+    retry: false,
+  });
+  return (q.data?.overdue ?? 0) + (q.data?.dueSoon ?? 0);
+}
+
 /** How many reviews are waiting (catalog items and collections), for moderators and admins. */
 export function useWaitingReviews(user: Pick<Me, 'isGlobalAdmin' | 'isModerator'>): number {
   const reviews = user.isGlobalAdmin || !!user.isModerator;
@@ -61,7 +73,7 @@ export function useWaitingReviews(user: Pick<Me, 'isGlobalAdmin' | 'isModerator'
 /** The menu's groups for this person. */
 export function settingsMenuGroups(
   user: Pick<Me, 'isGlobalAdmin' | 'isModerator' | 'isDemoAccount'>,
-  opts: { installOffered: boolean; waitingReviews: number },
+  opts: { installOffered: boolean; waitingReviews: number; privacyDue?: number },
 ): Group[] {
   const account: Entry[] = [{ label: 'Profile and name', to: '/profile#name' }];
   // The shared demo account can't change its sign-in or connect a desktop app.
@@ -92,6 +104,9 @@ export function settingsMenuGroups(
         label: ADMIN_MENU_LABELS[t],
         to: adminTabUrl(t),
         ...(t === 'moderation' && opts.waitingReviews > 0 ? { badge: opts.waitingReviews } : {}),
+        ...(t === 'privacy' && (opts.privacyDue ?? 0) > 0
+          ? { badge: opts.privacyDue, badgeLabel: `${opts.privacyDue} privacy ${opts.privacyDue === 1 ? 'request' : 'requests'} due soon or overdue` }
+          : {}),
       })),
     });
   }
@@ -121,6 +136,7 @@ function useHelpEntries(phone: boolean): Entry[] {
     })),
     { label: prefs.helpIcons ? 'Turn help buttons off' : 'Turn help buttons on', onSelect: () => setPrefs({ helpIcons: !prefs.helpIcons }) },
     { label: 'All help topics', to: '/help' },
+    { label: 'Privacy', to: '/privacy' },
     ...(phone ? [] : [{ label: 'Keyboard shortcuts', to: '/help#shortcuts' }]),
   ];
 }
@@ -156,6 +172,7 @@ export function SettingsMenu({
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const waiting = useWaitingReviews(user);
+  const privacyDue = usePrivacyDue(user);
   const phone = usePhoneWidth();
   const help = useHelpEntries(phone || isPhoneScreen());
   // Installing is offered on phones and tablets (the Settings page's rule).
@@ -163,11 +180,11 @@ export function SettingsMenu({
   const groups: Group[] = [
     ...(phone && pages.length > 0 ? [{ id: 'pages', title: 'Pages', entries: pages }] : []),
     { id: 'help', title: 'Help', entries: help },
-    ...settingsMenuGroups(user, { installOffered, waitingReviews: waiting }),
+    ...settingsMenuGroups(user, { installOffered, waitingReviews: waiting, privacyDue }),
   ];
   // People waiting to join a club only show in the Pages group, so the button counts them on a phone.
   const pageBadges = phone ? pages.reduce((n, p) => n + (p.badge ?? 0), 0) : 0;
-  const buttonBadge = waiting + pageBadges;
+  const buttonBadge = waiting + privacyDue + pageBadges;
   const reviewWords = `${waiting} ${waiting === 1 ? 'review' : 'reviews'} waiting`;
 
   const items = () => Array.from(menu.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? []);
@@ -244,7 +261,18 @@ export function SettingsMenu({
           {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
         </svg>
         <span className="sr-only sm:not-sr-only">Menu</span>
-        {buttonBadge > 0 && <Badge n={buttonBadge} label={pageBadges > 0 && waiting === 0 ? `${pageBadges} waiting` : reviewWords} />}
+        {buttonBadge > 0 && (
+          <Badge
+            n={buttonBadge}
+            label={
+              privacyDue > 0 && waiting === 0 && pageBadges === 0
+                ? `${privacyDue} privacy ${privacyDue === 1 ? 'request' : 'requests'} due`
+                : pageBadges > 0 && waiting === 0
+                  ? `${pageBadges} waiting`
+                  : reviewWords
+            }
+          />
+        )}
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className={`hidden transition-transform sm:block ${open ? 'rotate-180' : ''}`}>
           <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>

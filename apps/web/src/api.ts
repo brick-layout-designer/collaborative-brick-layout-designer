@@ -114,7 +114,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /** Errors whose server message is the sentence to show (privacy: "You can ask again after …"). */
-const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion']);
+const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required']);
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
 export const FIREWALL_BLOCKED =
@@ -995,6 +995,8 @@ export const api = {
       collectionCoverMaxBytes?: number;
       /** Admin › Settings › Privacy: key -> number, or null for the default. */
       privacy?: Record<string, number | null>;
+      privacyNotice?: string | null;
+      privacyContact?: string | null;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
     /** Demo account › Reset now (JSON, empty object body). */
     resetDemo: () => post<{ ok: true; lastResetAt: number; items: number }>('/api/admin/demo/reset', {}),
@@ -1420,7 +1422,13 @@ export interface AdminSettings {
   /** The demo account: on or off, how often it resets, and what it has now. */
   demo?: DemoStatus & { items: number };
   /** Privacy: data downloads (and more), each with its default and whether the server forces it. */
-  privacy?: { settings: PrivacySettingState[] };
+  privacy?: {
+    settings: PrivacySettingState[];
+    /** The privacy page's notice (markdown), '' when none yet. */
+    notice?: string;
+    /** Who to ask: what applies, what an admin saved, and the env var forcing it. */
+    contact?: { value: string | null; setting: string | null; forcedBy: string | null };
+  };
   /** The server's env-only settings, read only (never a secret's value). */
   serverSetup?: { name: string; value: string; env: string; why: ServerSetupWhy }[];
   updatedAt: number;
