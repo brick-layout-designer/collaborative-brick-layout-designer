@@ -121,11 +121,13 @@ export function CatalogPage() {
             {items.isError && <p className="text-danger">{(items.error as Error).message}</p>}
             {items.data && items.data.items.length === 0 && (
               <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
-                {kind === 'layout'
-                  ? 'Nothing here yet. Share a layout from the editor’s menu, or its ⋯ menu on Home.'
-                  : kind === 'venue'
-                    ? 'Nothing here yet. Share a venue from its ⋯ menu in your venues.'
-                    : 'Nothing here yet. Share a module or part from its ⋯ menu on Home.'}
+                {!me.data?.user
+                  ? 'Nothing here yet. Check back later, or sign in to share your own.'
+                  : kind === 'layout'
+                    ? 'Nothing here yet. Share a layout from the editor’s menu, or its ⋯ menu on Home.'
+                    : kind === 'venue'
+                      ? 'Nothing here yet. Share a venue from its ⋯ menu in your venues.'
+                      : `Nothing here yet. Share a ${kind} from its ⋯ menu on Home.`}
               </p>
             )}
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3">

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import { DESKTOP_URL, LICENCE, REPO_URL } from '../projectLinks';
+import { kindsOn } from '../catalog/CatalogPage';
 
 /**
  * `?next=` target to return to after signing in (e.g. /device, /invite/…).
@@ -19,6 +20,8 @@ export function safeNext(raw: string | null): string {
 export function LoginPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const providers = useQuery({ queryKey: ['providers'], queryFn: api.providers });
+  const catalog = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
+  const browse = !!catalog.data?.anonymousBrowse && kindsOn(catalog.data).length > 0;
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
   const deleting = Number(params.get('deleting') ?? '');
@@ -30,7 +33,7 @@ export function LoginPage() {
         {deleting > 0 && <DeletingNotice dueAt={deleting} />}
         <div className="space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
           <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
-          <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
+          <h1 className="text-center text-xl font-semibold">Sign in to Brick Layout Designer</h1>
 
           <div className="space-y-2">
             {providers.data?.providers
@@ -53,6 +56,15 @@ export function LoginPage() {
 
           {providers.data?.passwordEnabled && <PasswordForm next={next} />}
           {providers.data?.demoEnabled && <TryDemo next={next} />}
+          {browse && (
+            <p className="border-t border-line pt-4 text-center text-sm text-muted">
+              Just looking?{' '}
+              <Link to="/catalog" className="text-accent-text hover:underline">
+                Browse the catalog
+              </Link>{' '}
+              of layouts, modules, venues and parts people share.
+            </p>
+          )}
         </div>
         <SourceFooter />
       </div>

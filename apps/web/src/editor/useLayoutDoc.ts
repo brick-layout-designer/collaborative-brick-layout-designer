@@ -72,6 +72,11 @@ const SYNC_TIMEOUT_MS = 10_000;
 export const UNREADABLE_LAYOUT =
   'This layout was saved by a newer version of Brick Layout Designer. Reload the page to get the newest version, then open it again.';
 
+/** Load errors the editor's error screen words (and offers Sign in for the last). */
+export const LAYOUT_NOT_FOUND = "This layout isn't here: it may have been deleted, or it isn't shared with you. Ask its owner for access.";
+export const LOAD_TIMED_OUT = "The layout didn't open in time. Check your connection, then reload the page.";
+export const SIGN_IN_TO_OPEN = 'This layout is private. Sign in with an account it is shared with to open it.';
+
 /** Build the WS URL relative to the current page (so dev + prod both work). */
 function wsUrlBase(): string {
   if (typeof window === 'undefined') return '';
@@ -109,7 +114,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       // If the handshake doesn't complete within 10s, surface a clear
       // error rather than spinning forever. Common cause: the layout
       // doesn't exist or the user isn't authorized.
-      setLoadError(new Error('connection timed out'));
+      setLoadError(new Error(LOAD_TIMED_OUT));
       setStatus({ kind: 'error', message: 'connection timed out' });
     }, SYNC_TIMEOUT_MS);
 
@@ -178,10 +183,10 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
         setLoadError(
           new Error(
             event.code === 4404
-              ? 'layout not found'
+              ? LAYOUT_NOT_FOUND
               : event.reason === 'account_pending_deletion'
                 ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
-                : 'not signed in',
+                : SIGN_IN_TO_OPEN,
           ),
         );
       } else if (event.code === 4429) {
@@ -189,7 +194,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           new Error(
             event.reason === 'limit_reached'
               ? 'Too many people have this layout open right now. Try again in a little while.'
-              : 'too many connections',
+              : 'This browser has too many layouts open at once. Close a few tabs, then try again.',
           ),
         );
       }

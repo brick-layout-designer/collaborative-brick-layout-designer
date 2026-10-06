@@ -129,6 +129,7 @@ test.describe('layout deletion', () => {
     await page.goto(`/editor/${id}`);
     // Should show an error — not the editor.
     await expect(page.locator('canvas')).not.toBeVisible({ timeout: 3000 });
-    await expect(page.getByText(/not found|error|unavailable/i).or(page.locator('h1'))).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Couldn't open this layout")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/isn't here/)).toBeVisible();
   });
 });

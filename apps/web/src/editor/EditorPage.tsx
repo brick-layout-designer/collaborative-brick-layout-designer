@@ -7,7 +7,7 @@ import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, T
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
-import { useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
+import { SIGN_IN_TO_OPEN, useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
 import { useModuleDoc } from './useModuleDoc';
 import { ShareToCatalogDialog, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { makeModuleThumbnail, makeRegionThumbnail, waitForPartPictures } from './moduleThumbnail';
@@ -4986,14 +4986,23 @@ function RotationPicker() {
 
 
 function ErrorScreen({ err, what }: { err: Error; what: 'layout' | 'module' }) {
+  const signIn = err.message === SIGN_IN_TO_OPEN;
+  const here = `${window.location.pathname}${window.location.search}`;
   return (
-    <div className="grid h-screen place-items-center">
-      <div className="max-w-sm rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-        <p className="font-semibold text-danger">Couldn't load this {what}.</p>
+    <div className="grid h-screen place-items-center p-4">
+      <div role="alert" className="max-w-sm rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
+        <p className="font-semibold text-danger">{signIn ? `Sign in to open this ${what}` : `Couldn't open this ${what}`}</p>
         <p className="mt-2 text-neutral-300">{err.message}</p>
-        <Link to="/" className="mt-4 inline-block text-accent-text hover:underline">
-          ← back to Home
-        </Link>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          {signIn && (
+            <Link to={`/login?next=${encodeURIComponent(here)}`} className="rounded-lg bg-accent px-3 py-1.5 text-accent-ink hover:bg-accent-hover">
+              Sign in
+            </Link>
+          )}
+          <Link to="/" className="text-accent-text hover:underline">
+            ← Back to Home
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -5003,8 +5012,8 @@ function EmptyDoc() {
   return (
     <div className="absolute inset-0 grid place-items-center text-muted">
       <div className="text-center">
-        <p>This layout has no map data yet.</p>
-        <p className="text-sm">Import a <code>.bbm</code> from the layouts list to populate it.</p>
+        <p>This layout has no map yet.</p>
+        <p className="text-sm">Open a <code>.bld-layout</code> or <code>.bbm</code> file from the Layouts list to fill it.</p>
       </div>
     </div>
   );
