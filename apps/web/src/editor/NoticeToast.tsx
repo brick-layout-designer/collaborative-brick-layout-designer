@@ -3,14 +3,16 @@
 
 import { useEditorStore } from './editorStore';
 
-export function NoticeToast() {
+/** `lifted`: editing by touch, so it sits above the touch bar instead of over its buttons. */
+export function NoticeToast({ lifted = false }: { lifted?: boolean } = {}) {
   const notice = useEditorStore((s) => s.notice);
   const dismiss = useEditorStore((s) => s.dismissNotice);
   return (
     <div
       role={notice?.kind === 'error' ? 'alert' : 'status'}
       aria-live={notice?.kind === 'error' ? 'assertive' : 'polite'}
-      className="pointer-events-none fixed inset-x-0 bottom-12 z-40 flex justify-center px-4"
+      data-testid="notice-area"
+      className={`pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 ${lifted ? 'bottom-36' : 'bottom-12'}`}
     >
       {notice && (
         <div

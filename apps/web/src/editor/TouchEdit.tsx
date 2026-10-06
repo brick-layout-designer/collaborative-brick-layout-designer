@@ -59,8 +59,10 @@ interface Actions {
   delete: () => void;
 }
 
-function BarButton({ label, onClick, children, pressed, danger, testId }: {
+function BarButton({ label, short, onClick, children, pressed, danger, testId }: {
   label: string;
+  /** Shown under the icon when the full label is too long for a phone's bar (it stays the button's name). */
+  short?: string;
   onClick: () => void;
   children: ReactNode;
   pressed?: boolean;
@@ -74,12 +76,13 @@ function BarButton({ label, onClick, children, pressed, danger, testId }: {
       {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
       {...(testId ? { 'data-testid': testId } : {})}
       onClick={onClick}
-      className={`flex min-h-14 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-control px-1 text-[11px] font-bold leading-tight ${
+      // Sized to its word (not equal shares), so eight fit across a phone without the words running into each other.
+      className={`flex min-h-14 min-w-11 shrink-0 grow flex-col items-center justify-center gap-0.5 rounded-control px-1 text-[11px] font-bold leading-tight ${
         pressed ? 'bg-accent text-accent-ink' : danger ? 'text-red-600 hover:bg-soft dark:text-red-400' : 'text-ink hover:bg-soft'
       }`}
     >
       {children}
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="whitespace-nowrap">{short ?? label}</span>
     </button>
   );
 }
@@ -142,8 +145,9 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
   if (count === 0 && !onAddPart) return null;
   const toggleMore = () => useEditorStore.setState({ touchSelectMore: !more });
   const toggleArea = () => useEditorStore.setState({ touchSelectArea: !area });
-  const areaButton = (
-    <BarButton label="Select area" pressed={area} onClick={toggleArea} testId="select-area"><Area /></BarButton>
+  // With parts picked the bar is full, so it shows the short word.
+  const areaButton = (short?: string) => (
+    <BarButton label="Select area" {...(short ? { short } : {})} pressed={area} onClick={toggleArea} testId="select-area"><Area /></BarButton>
   );
   return (
     <div
@@ -162,19 +166,20 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
         </p>
       )}
       {count > 0 ? (
-        <div className="flex items-stretch gap-1">
+        // On the narrowest phones the row scrolls sideways rather than squeezing the words together.
+        <div className="flex items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {oneText && onEditText && <BarButton label="Edit text" onClick={onEditText} testId="edit-text"><Pencil /></BarButton>}
           {parts > 0 && (
             <>
-              <BarButton label="Rotate left" onClick={() => actions.rotate(false)}><RotLeft /></BarButton>
-              <BarButton label="Rotate right" onClick={() => actions.rotate(true)}><RotRight /></BarButton>
+              <BarButton label="Rotate left" short="Left" onClick={() => actions.rotate(false)}><RotLeft /></BarButton>
+              <BarButton label="Rotate right" short="Right" onClick={() => actions.rotate(true)}><RotRight /></BarButton>
               <BarButton label="Duplicate" onClick={() => actions.duplicate(true)}><Copy /></BarButton>
               {onModule && <BarButton label="Module" onClick={onModule} testId="touch-module"><ModuleIcon /></BarButton>}
             </>
           )}
           <BarButton label="Delete" danger onClick={() => actions.delete()}><Trash /></BarButton>
-          <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
-          {areaButton}
+          <BarButton label="Select more" short="More" pressed={more} onClick={toggleMore}><More /></BarButton>
+          {areaButton('Area')}
           <BarButton
             label="Done"
             onClick={() => {
@@ -197,7 +202,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
             Add part
           </button>
           <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
-          {areaButton}
+          {areaButton()}
           {onSheets && <BarButton label="Sheets" onClick={onSheets} testId="touch-sheets"><Layers /></BarButton>}
         </div>
       )}
