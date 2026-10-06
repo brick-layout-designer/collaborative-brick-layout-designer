@@ -46,6 +46,7 @@ import { TextLayers, type TextCellRef } from './render/TextLayer';
 import { RulerLayers } from './render/RulerLayer';
 import { AnchoredLabels } from './render/AnchoredLabels';
 import { ElectricCircuitLayer } from './render/ElectricCircuitLayer';
+import { BendHandles } from './render/BendHandles';
 import { ModuleOverlay, measureBold, moduleLabelBoundsStuds } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
@@ -3636,6 +3637,18 @@ function Canvas({
             modules={readSidecarFromDoc(doc)?.modules ?? []}
           />
         </Group>
+        {!isViewer && tool === 'select' && (
+          <BendHandles
+            map={shown}
+            doc={doc}
+            selection={selection}
+            partsByKey={partsByKey}
+            modules={readSidecarFromDoc(doc)?.modules ?? []}
+            editingModuleId={editingModuleId}
+            zoom={zoom}
+            touch={coarsePointer()}
+          />
+        )}
       </KonvaLayer>
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
