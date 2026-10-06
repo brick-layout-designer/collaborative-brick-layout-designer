@@ -52,6 +52,8 @@ interface PartWire {
    * pre-rendered `.set.gif` on disk. Empty for leaf parts.
    */
   subparts: SubPartWire[];
+  /** Group-only: false when the set may never be split (<CanUngroup>, flex.group); absent otherwise. */
+  canUngroup?: false;
   /**
    * UI category — the parent folder of the part's XML file inside the
    * parts library. Matches desktop's PartsBrowser::categoryForPath
@@ -391,6 +393,7 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
       angle: s.angle,
     })),
     hullPts: p.hullPts,
+    ...(p.kind === 'group' && p.canUngroup === false ? { canUngroup: false as const } : {}),
     ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
     ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
     ...remapsOf(p),

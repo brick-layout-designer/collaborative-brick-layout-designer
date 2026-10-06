@@ -6,6 +6,7 @@ import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
 import { colorName } from './colorNames';
 import { effectiveLimit, limitFor } from './budgetUsage';
+import { libraryItems } from './sets';
 
 export const COLUMN_TITLES = ['Part', 'In Use', 'Color', 'Description', 'Budgeted', 'Missing', 'Part Usage %'] as const;
 
@@ -90,8 +91,9 @@ export function buildPartList(
     if (!includeHidden && !layer.visible) continue;
     if (options.splitPerLayer) counts.push({ name: layer.name, byPart: new Map() });
     const c = counts[counts.length - 1]!;
-    for (const b of layer.bricks) {
-      const id = b.partNumber.toUpperCase();
+    // BlueBrick's LibraryBrickList: a set counts once, not its parts.
+    for (const part of libraryItems(layer)) {
+      const id = part.toUpperCase();
       c.byPart.set(id, (c.byPart.get(id) ?? 0) + 1);
     }
   }

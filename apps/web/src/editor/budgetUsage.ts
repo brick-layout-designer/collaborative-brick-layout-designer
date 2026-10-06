@@ -5,6 +5,7 @@
 
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
+import { libraryItems } from './sets';
 
 const fold = (part: string) => part.toLowerCase();
 
@@ -24,11 +25,12 @@ export function countUsage(map: BbmMap | null | undefined): Map<string, { part: 
   if (!map) return usage;
   for (const layer of map.layers) {
     if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      const k = fold(b.partNumber);
+    // As BlueBrick's budget: a set counts once (LibraryBrickList).
+    for (const part of libraryItems(layer)) {
+      const k = fold(part);
       const u = usage.get(k);
       if (u) u.count++;
-      else usage.set(k, { part: b.partNumber, count: 1 });
+      else usage.set(k, { part, count: 1 });
     }
   }
   return usage;

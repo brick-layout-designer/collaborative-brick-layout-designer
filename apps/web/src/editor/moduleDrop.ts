@@ -24,7 +24,10 @@ export function moduleBatchesFromMap(map: BbmMap): ModuleBatch[] {
         displayArea: { ...b.displayArea },
         orientation: b.orientation,
         altitude: b.altitude,
+        myGroup: b.myGroup,
       })),
+      // Its sets stay sets (importBricksAsModule copies them under new ids).
+      groups: l.groups,
     });
   }
   return out;

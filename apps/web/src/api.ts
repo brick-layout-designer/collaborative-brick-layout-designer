@@ -383,6 +383,8 @@ export interface PartWire {
   connections: ConnectionPointWire[];
   /** Group-only: subparts that compose this set; empty for leaves. */
   subparts: SubPartWire[];
+  /** Group-only: false when the set may never be split (<CanUngroup>, flex.group); absent otherwise. */
+  canUngroup?: false;
   /** Hull polygon in pixel space (relative to sprite top-left). Empty = use bounding rect. */
   hullPts: { x: number; y: number }[];
   source: 'bundled' | 'custom';
