@@ -410,7 +410,7 @@ describe('live updates', () => {
     }
     expect(hintsForWrite('POST', '/api/catalog/collections/x/items').map((h) => h.kind)).toEqual(['catalog']);
     expect(hintsForWrite('DELETE', '/api/catalog/collections/x').map((h) => h.kind)).toEqual(['catalog']);
-    expect(hintsForWrite('POST', '/api/catalog/collections/x/add').map((h) => h.kind)).toEqual(['catalog', 'module', 'custom-part']);
+    expect(hintsForWrite('POST', '/api/catalog/collections/x/add').map((h) => h.kind)).toEqual(['catalog', 'module', 'custom-part', 'layout', 'venue']);
     expect(hintsForWrite('PATCH', '/api/catalog/collections/x').map((h) => h.kind)).toEqual(['catalog']);
     expect(hintsForWrite('POST', '/api/moderation/collections/x/approve').map((h) => h.kind)).toEqual(['catalog']);
   });
