@@ -205,9 +205,9 @@ export async function requestDeletion(user: User, now = new Date()): Promise<{ d
   const { deletionGraceDays } = await privacySettings(now.getTime());
   const dueAt = new Date(now.getTime() + deletionGraceDays * DAY_MS);
   await db.update(schema.users).set({ deletionRequestedAt: now, deletionDueAt: dueAt }).where(eq(schema.users.id, user.id));
+  // Live editors drop first, saying why; then every browser is signed out.
+  notifyCredentialRevoked({ userId: user.id, reason: 'account_pending_deletion' });
   await invalidateAllSessions(user.id);
-  // Live editors and event streams opened with a desktop token drop too.
-  notifyCredentialRevoked({ userId: user.id });
   await writeAuditEvent({
     resourceKind: 'user',
     resourceId: user.id,

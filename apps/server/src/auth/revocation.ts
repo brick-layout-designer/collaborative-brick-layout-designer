@@ -3,7 +3,15 @@
 // ends — logout, "revoke all sessions", user deletion, or an API token
 // being revoked — instead of living on until the socket closes by itself.
 
-export type CredentialRevocation = { sessionId: string } | { tokenId: string } | { userId: string };
+export type CredentialRevocation =
+  | { sessionId: string }
+  | { tokenId: string }
+  /**
+   * Every credential of one person. `reason`, when the account itself
+   * changed (privacy), is the WebSocket close reason, so the web and the
+   * desktop can say why instead of "not signed in".
+   */
+  | { userId: string; reason?: 'account_pending_deletion' | 'account_restricted' };
 
 const revocationListeners = new Set<(r: CredentialRevocation) => void>();
 
