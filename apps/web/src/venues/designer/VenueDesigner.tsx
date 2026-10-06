@@ -157,9 +157,10 @@ export function VenueDesigner({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-bg text-ink">
-      {/* On a phone or a narrow tablet the buttons wrap under the name. */}
-      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-panel px-3 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:flex-nowrap md:px-4 md:py-0">
-        <div className="min-w-0 basis-full md:basis-auto md:flex-1">
+      {/* On a phone or a tablet held upright the buttons wrap under the name
+          (one row squeezed "Save to layout" out of its button on an iPad). */}
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-panel px-3 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] lg:flex-nowrap lg:px-4 lg:py-0 [&_button]:whitespace-nowrap">
+        <div className="min-w-0 basis-full lg:basis-auto lg:flex-1">
           <div className="truncate font-semibold">
             {venue.name || 'Venue'}
             {dirty && <span className="ml-2 text-xs font-normal text-amber-300">unsaved</span>}

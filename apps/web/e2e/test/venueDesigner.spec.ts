@@ -195,3 +195,58 @@ test.describe('by touch, on a tablet', () => {
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
   });
 });
+
+test.describe('a layout with a venue, opened on a tablet held upright', () => {
+  const { defaultBrowserType: _d, ...iPad } = devices['iPad (gen 7)'];
+  test.use(iPad);
+  // A 40 x 30 ft room (as Fordyce's), in studs.
+  const W = 1524;
+  const H = 1143;
+  const wall = (a: [number, number], b: [number, number]) => ({ doorWidthStuds: 0, kind: 2, label: '', poly: [{ x: a[0], y: a[1] }, { x: b[0], y: b[1] }] });
+  const sidecar = JSON.stringify({
+    schemaVersion: 1,
+    modules: [],
+    anchoredLabels: [],
+    venue: {
+      bounds: { x: 0, y: 0, w: 0, h: 0 }, enabled: true, minWalkwayStuds: 112.5, name: '', obstacles: [],
+      edges: [wall([0, 0], [W, 0]), wall([W, 0], [W, H]), wall([W, H], [0, H]), wall([0, H], [0, 0])],
+    },
+  });
+  /** The designer's view (its drawing group's place and scale), on the stage inside the designer. */
+  const view = (page: Page) =>
+    page.evaluate(() => {
+      type G = { x: () => number; y: () => number; scaleX: () => number; getClassName: () => string };
+      type S = { container: () => HTMLElement; find: (f: (n: G) => boolean) => G[] };
+      const st = (window as unknown as { Konva: { stages: S[] } }).Konva.stages.find((s) => s.container().closest('[data-testid="venue-canvas"]'));
+      const g = st!.find((n) => n.getClassName() === 'Group')[0]!;
+      return { x: Math.round(g.x()), y: Math.round(g.y()), scale: Math.round(g.scaleX() * 1000) / 1000 };
+    });
+
+  test('the whole room is in view when the designer opens, and every header button fits its words', async ({ page }) => {
+    const email = `venue-fit-${Date.now()}@example.com`;
+    await ensureUser(email);
+    await signIn(page, email);
+    const fordyce = (await import('node:fs')).readFileSync(
+      new URL('../../../../packages/bbm/tests/fixtures/fordyce-2026.bbm', import.meta.url),
+      'utf-8',
+    );
+    const res = await page.request.post('/api/layouts', { data: { title: 'Venue fit', bbm: fordyce, sidecar } });
+    expect(res.ok()).toBe(true);
+    const id = ((await res.json()) as { id: string }).id;
+    await page.goto(`/editor/${id}`);
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await mapMenu(page, 'Venue', 'Open venue designer…');
+    await expect(page.getByRole('navigation', { name: 'Tools', exact: true })).toBeVisible();
+    await page.waitForTimeout(800);
+    // Opened fitted: Fit changes nothing.
+    const opened = await view(page);
+    await page.getByTestId('venue-canvas').locator('xpath=..').getByRole('button', { name: 'Fit', exact: true }).click();
+    await page.waitForTimeout(300);
+    expect(await view(page)).toEqual(opened);
+    // No header button's words spill out of it.
+    const spill = await page.locator('header').last().locator('button').evaluateAll((els) =>
+      els.filter((b) => b.scrollWidth > b.clientWidth + 1 || b.scrollHeight > b.clientHeight + 1).map((b) => b.textContent),
+    );
+    expect(spill).toEqual([]);
+  });
+});
