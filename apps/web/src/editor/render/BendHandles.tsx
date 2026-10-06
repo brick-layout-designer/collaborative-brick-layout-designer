@@ -5,7 +5,7 @@
 // solver, each hinge within its limit) so that end follows the pointer,
 // by mouse or finger.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Group, Shape } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -19,6 +19,7 @@ import { startFlexSession } from '../flexSession';
 import { pinnedAmong } from '../moduleEdit';
 import { useEditorStore } from '../editorStore';
 import { EXPORT_HIDE } from '../exportRender';
+import { dragsAny, nodePointIn, useLiveDragPose } from '../liveDragPose';
 
 const PX = 8;
 
@@ -31,6 +32,8 @@ export interface FlexEnd {
   connection: number;
   /** Where that connection is, studs. */
   world: Pt;
+  /** Where it is on its brick (studs from the sprite centre, before the turn). */
+  local: Pt;
   /** Every brick of the run. */
   run: string[];
 }
@@ -84,7 +87,7 @@ function layerRunEnds(layer: LayerBrick, want: ReadonlySet<string>, parts: Reado
     const p = partOf(b.partNumber)!;
     p.connections.forEach((c, i) => {
       if (!c.type || b.connexions[i]?.linkedTo) return;
-      ends.push({ layerId: layer.id, brickId: b.id, connection: i, world: connectionWorld(b, p, i), run: runIds });
+      ends.push({ layerId: layer.id, brickId: b.id, connection: i, world: connectionWorld(b, p, i), local: { x: c.x, y: c.y }, run: runIds });
     });
   }
   return ends;
@@ -95,6 +98,9 @@ function layerRunEnds(layer: LayerBrick, want: ReadonlySet<string>, parts: Reado
  * for the mouse, a bigger one under a finger, and the area that grabs it
  * (a 44 px target on touch).
  */
+/** The Konva name of a handle's group (the touch gestures leave it to the handle). */
+export const BEND_HANDLE_NAME = 'bend-handle';
+
 export const BEND_HANDLE_PX = { ring: { mouse: 9, touch: 12 }, hit: { mouse: 12, touch: 22 } } as const;
 
 /** Scene units for `screenPx` on screen, at the node's absolute scale. */
@@ -104,33 +110,47 @@ export function sceneRadius(screenPx: number, absoluteScale: number): number {
 
 type Ctx = Pick<Konva.Context, 'beginPath' | 'arc' | 'closePath' | 'fillStrokeShape' | 'moveTo' | 'lineTo'>;
 type ScaledShape = Pick<Konva.Shape, 'getAbsoluteScale'>;
+/** Where the handle is drawn this frame, in the shape's frame (its origin by default). */
+type Centre = (shape: ScaledShape) => { x: number; y: number };
+const ORIGIN: Centre = () => ({ x: 0, y: 0 });
 
 /** Draws (or hit-tests) a circle `screenPx` across on screen, whatever the scale. */
-export function handleCircle(screenPx: number) {
+export function handleCircle(screenPx: number, centre: Centre = ORIGIN) {
   return (ctx: Ctx, shape: ScaledShape) => {
     const r = sceneRadius(screenPx, shape.getAbsoluteScale().x);
+    const c = centre(shape);
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2, false);
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2, false);
     ctx.closePath();
     ctx.fillStrokeShape(shape as Konva.Shape);
   };
 }
 
 /** The curved arrow inside a handle of `screenPx` radius. */
-export function handleArrow(screenPx: number) {
+export function handleArrow(screenPx: number, centre: Centre = ORIGIN) {
   return (ctx: Ctx, shape: ScaledShape) => {
     const r = sceneRadius(screenPx, shape.getAbsoluteScale().x) * 0.55;
+    const c = centre(shape);
     const from = (200 * Math.PI) / 180;
     const to = (340 * Math.PI) / 180;
     ctx.beginPath();
-    ctx.arc(0, 0, r, from, to, false);
-    const tip = { x: r * Math.cos(to), y: r * Math.sin(to) };
+    ctx.arc(c.x, c.y, r, from, to, false);
+    const tip = { x: c.x + r * Math.cos(to), y: c.y + r * Math.sin(to) };
     ctx.moveTo(tip.x, tip.y);
     ctx.lineTo(tip.x - r * 0.55, tip.y - r * 0.1);
     ctx.moveTo(tip.x, tip.y);
     ctx.lineTo(tip.x - r * 0.1, tip.y + r * 0.55);
     ctx.fillStrokeShape(shape as Konva.Shape);
   };
+}
+
+/**
+ * Where an end's handle is this frame: on the end's connection as its brick
+ * is drawn now (liveDragPose nodePoint), so it follows a drag, a turn or a bend before
+ * it's committed.
+ */
+export function liveEndCentre(end: Pick<FlexEnd, 'brickId' | 'local'>): Centre {
+  return (shape) => nodePointIn(shape as unknown as Konva.Node, end.brickId, end.local);
 }
 
 interface Props {
@@ -143,18 +163,25 @@ interface Props {
   /** Kept for the callers; the handle reads the stage's scale as it draws. */
   zoom?: number;
   touch: boolean;
+  /**
+   * The finger's halo: drawn under the parts (rendered before them), it
+   * takes a finger within the 44 px target where it isn't on a part, so a
+   * finger on a short flex set still moves the set. The rings, on top,
+   * take a finger on them.
+   */
+  halo?: boolean;
 }
 
-export function BendHandles({ map, doc, selection, partsByKey, modules, editingModuleId, touch }: Props) {
-  const [bending, setBending] = useState(false);
+export function BendHandles({ map, doc, selection, partsByKey, modules, editingModuleId, touch, halo = false }: Props) {
   const ends = useMemo(
     () => flexRunEnds(map, selection, partsByKey).filter((e) => !pinnedAmong(e.run, modules, editingModuleId)),
     [map, selection, partsByKey, modules, editingModuleId],
   );
   // The first time, a tip says what the handle does.
-  const shown = ends.length > 0 && !bending;
+  // They stay while a run bends, following its ends (nodePoint).
+  const shown = ends.length > 0;
   useEffect(() => {
-    if (!shown) return;
+    if (!shown || halo) return;
     try {
       if (localStorage.getItem('cld:hint:bendHandle')) return;
       localStorage.setItem('cld:hint:bendHandle', '1');
@@ -162,17 +189,28 @@ export function BendHandles({ map, doc, selection, partsByKey, modules, editingM
       /* no storage: say it anyway */
     }
     useEditorStore.getState().showStatusMessage('Drag the round handle at the end of the flex track to bend it', 8000);
-  }, [shown]);
-  if (!shown) return null;
+  }, [shown, halo]);
+  // A drag moves its parts on the drag layer and redraws only that; the
+  // handles of the parts it moves are drawn again with each frame.
+  const groupRef = useRef<Konva.Group>(null);
+  useEffect(() => {
+    if (!shown) return;
+    const ids = new Set(ends.flatMap((e) => e.run));
+    return useLiveDragPose.subscribe((s) => {
+      if (s.pose && dragsAny(s.pose, ids)) groupRef.current?.getLayer()?.batchDraw();
+    });
+  }, [shown, ends]);
+  if (!shown || (halo && !touch)) return null;
 
   const ring = touch ? BEND_HANDLE_PX.ring.touch : BEND_HANDLE_PX.ring.mouse;
-  const hit = touch ? BEND_HANDLE_PX.hit.touch : BEND_HANDLE_PX.hit.mouse;
+  // The ring takes a pointer within 12 px; the halo, under the parts, a finger within 22.
+  const hit = halo ? BEND_HANDLE_PX.hit.touch : BEND_HANDLE_PX.hit.mouse;
   const start = (e: KonvaEventObject<MouseEvent | TouchEvent>, end: FlexEnd) => {
     if ('button' in e.evt && e.evt.button !== 0) return;
     e.cancelBubble = true;
     const stage = e.target.getStage();
     if (!stage) return;
-    const started = startFlexSession({
+    startFlexSession({
       stage,
       doc,
       map,
@@ -184,15 +222,15 @@ export function BendHandles({ map, doc, selection, partsByKey, modules, editingM
       partsByKey,
       modules,
       label: 'Bend flex track',
-      onEnd: () => setBending(false),
+      onEnd: () => undefined,
     });
-    if (started) setBending(true);
   };
   return (
-    <Group name={EXPORT_HIDE}>
+    <Group ref={groupRef} name={`${EXPORT_HIDE} ${halo ? 'bend-halos' : 'bend-rings'}`}>
       {ends.map((end) => (
         <Group
           key={`${end.brickId}:${end.connection}`}
+          name={BEND_HANDLE_NAME}
           x={end.world.x * PX}
           y={end.world.y * PX}
           onMouseDown={(e) => start(e, end)}
@@ -209,19 +247,28 @@ export function BendHandles({ map, doc, selection, partsByKey, modules, editingM
           {/* Drawn at the scale the stage has when it draws, so the
               handle stays the same size on screen at every zoom, also
               mid-pinch. */}
-          <Shape
-            sceneFunc={handleCircle(ring)}
-            hitFunc={handleCircle(hit)}
-            fill="#ffd700"
-            stroke="#ffffff"
-            strokeWidth={2}
-            strokeScaleEnabled={false}
-            shadowColor="#000"
-            shadowBlur={4}
-            shadowOpacity={0.35}
-          />
-          {/* A curved arrow: bend. */}
-          <Shape sceneFunc={handleArrow(ring)} stroke="#141414" strokeWidth={1.6} strokeScaleEnabled={false} listening={false} />
+          {halo ? (
+            <Shape sceneFunc={() => undefined} hitFunc={handleCircle(hit, liveEndCentre(end))} fill="#000" />
+          ) : (
+            <>
+              {/* Drawn at the scale the stage has when it draws, so the
+                  handle stays the same size on screen at every zoom, also
+                  mid-pinch, and where its end is drawn now (nodePoint). */}
+              <Shape
+                sceneFunc={handleCircle(ring, liveEndCentre(end))}
+                hitFunc={handleCircle(hit, liveEndCentre(end))}
+                fill="#ffd700"
+                stroke="#ffffff"
+                strokeWidth={2}
+                strokeScaleEnabled={false}
+                shadowColor="#000"
+                shadowBlur={4}
+                shadowOpacity={0.35}
+              />
+              {/* A curved arrow: bend. */}
+              <Shape sceneFunc={handleArrow(ring, liveEndCentre(end))} stroke="#141414" strokeWidth={1.6} strokeScaleEnabled={false} listening={false} />
+            </>
+          )}
         </Group>
       ))}
     </Group>

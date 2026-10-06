@@ -46,7 +46,7 @@ import { TextLayers, type TextCellRef } from './render/TextLayer';
 import { RulerLayers } from './render/RulerLayer';
 import { AnchoredLabels } from './render/AnchoredLabels';
 import { ElectricCircuitLayer } from './render/ElectricCircuitLayer';
-import { BendHandles } from './render/BendHandles';
+import { BEND_HANDLE_NAME, BendHandles } from './render/BendHandles';
 import { ModuleOverlay, measureBold, moduleLabelBoundsStuds } from './render/ModuleOverlay';
 import { VenueOverlay } from './render/VenueOverlay';
 import { readSidecarFromDoc } from '@cld/ydoc';
@@ -1460,7 +1460,7 @@ function Canvas({
     return hit?.kind === 'brick' ? hit : null;
   };
   /** The part, anchored label or text cell under a point of the canvas area. */
-  const itemAt = (p: Pt): { kind: 'brick' | 'labels' | 'texts'; id: string; node: Konva.Node } | null => {
+  const itemAt = (p: Pt): { kind: 'brick' | 'labels' | 'texts' | 'handle'; id: string; node: Konva.Node } | null => {
     const stage = stageRef.current;
     if (!stage || !touchEl) return null;
     const area = touchEl.getBoundingClientRect();
@@ -1468,6 +1468,9 @@ function Canvas({
     const shape = stage.getIntersection({ x: p.x + area.left - box.left, y: p.y + area.top - box.top });
     if (!shape) return null;
     if (shape.name() === 'text-cell') return { kind: 'texts', id: shape.id(), node: shape };
+    // A bend handle: the finger bends the run (BendHandles), never pans.
+    const handle = shape.findAncestor((n: Konva.Node) => n.name() === BEND_HANDLE_NAME);
+    if (handle) return { kind: 'handle', id: '', node: handle };
     const g = shape.findAncestor((n: Konva.Node) => n.getClassName() === 'Group' && /^(brick|label)-/.test(n.name()));
     if (!g) return null;
     return g.name().startsWith('brick-')
@@ -1478,6 +1481,7 @@ function Canvas({
   /** Picked, so a finger on it drags it: a part or an anchored label (text cells don't drag). */
   const dragsPicked = (hit: ReturnType<typeof itemAt>) => {
     if (!hit) return false;
+    if (hit.kind === 'handle') return true;
     if (hit.kind === 'brick') return isPicked(hit.id);
     return hit.kind === 'labels' && useEditorStore.getState().annoSelection.labels.includes(hit.id);
   };
@@ -3661,6 +3665,18 @@ function Canvas({
       {/* Layer 2 — interactive content: bricks, text, rulers, labels.
           Hit-testing is enabled so clicks/drags on bricks and text work. */}
       <KonvaLayer name="parts-layer" perfectDrawEnabled={false}>
+        {!isViewer && tool === 'select' && (
+          <BendHandles
+            halo
+            map={shown}
+            doc={doc}
+            selection={selection}
+            partsByKey={partsByKey}
+            modules={readSidecarFromDoc(doc)?.modules ?? []}
+            editingModuleId={editingModuleId}
+            touch={coarsePointer()}
+          />
+        )}
         <BrickLayer
           map={shown}
           doc={doc}
@@ -3720,18 +3736,6 @@ function Canvas({
                 {...(tool === 'select' ? { drag: annoDrag } : {})}
               />}
         </Group>
-        {!isViewer && tool === 'select' && (
-          <BendHandles
-            map={shown}
-            doc={doc}
-            selection={selection}
-            partsByKey={partsByKey}
-            modules={readSidecarFromDoc(doc)?.modules ?? []}
-            editingModuleId={editingModuleId}
-            zoom={zoom}
-            touch={coarsePointer()}
-          />
-        )}
       </KonvaLayer>
 
       {/* Module outlines and names: a layer of their own, so a drag that
@@ -3743,6 +3747,22 @@ function Canvas({
       {/* The parts being dragged move here for the drag (BrickLayer), so
           only they are drawn again every frame. */}
       <KonvaLayer name={DRAG_LAYER} perfectDrawEnabled={false} />
+
+      {/* Bend handles' rings, above every part (the dragged ones too), on a
+          layer of their own that redraws as their parts move. */}
+      <KonvaLayer name="bend-layer" perfectDrawEnabled={false}>
+        {!isViewer && tool === 'select' && (
+          <BendHandles
+            map={shown}
+            doc={doc}
+            selection={selection}
+            partsByKey={partsByKey}
+            modules={readSidecarFromDoc(doc)?.modules ?? []}
+            editingModuleId={editingModuleId}
+            touch={coarsePointer()}
+          />
+        )}
+      </KonvaLayer>
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
           snap ring, ruler/venue drafts, remote cursors. */}
