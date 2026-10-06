@@ -243,6 +243,8 @@ export interface ModuleLabelLayout {
   };
   /** Where the name went (absent when hidden). */
   side?: ModuleNameSide;
+  /** Which candidate place it took ("top:0", "inside:1"): a live drag keeps it (placeModuleNames `keep`). */
+  slot?: string;
   /** Frame and name together. */
   bounds: { x: number; y: number; width: number; height: number };
   /** Some of its parts are on hidden sheets: the frame fits the rest, drawn with sparser dashes. */
@@ -267,6 +269,7 @@ export function moduleLabelLayouts(
   modules: readonly SidecarModule[],
   labelPercent: number,
   measure: TextMeasure,
+  keep?: ReadonlyMap<string, string>,
 ): ModuleLabelLayout[] {
   if (modules.length === 0) return [];
   // Index brick positions by id.
@@ -294,6 +297,7 @@ export function moduleLabelLayouts(
     parts,
     labelPercent,
     measure,
+    keep,
   );
   return placed.map((p, i) => {
     const mod = shown[i]!.mod;
@@ -429,6 +433,8 @@ export function placeModuleNames(
   parts: readonly Box[],
   labelPercent: number,
   measure: TextMeasure,
+  /** Module id → the slot to keep (while parts are dragged, names stay on their side). */
+  keep?: ReadonlyMap<string, string>,
 ): PlacedModuleName[] {
   const k = studToPx();
   const S = MODULE_NAME_SCORE;
@@ -479,7 +485,7 @@ export function placeModuleNames(
     };
     const across = fitTo(frame.width);
     const along = fitTo(frame.height);
-    type Cand = { side: ModuleNameSide; x: number; y: number; rotation: number; box: Box; f: typeof across; extra: number };
+    type Cand = { slot: string; side: ModuleNameSide; x: number; y: number; rotation: number; box: Box; f: typeof across; extra: number };
     const cands: Cand[] = [];
     const xMid = frame.x + (frame.width - across.w) / 2;
     const yMid = frame.y + (frame.height - along.w) / 2;
@@ -490,10 +496,10 @@ export function placeModuleNames(
       const right = frame.x + frame.width + GAP + along.h + level * (along.h + GAP);
       const extra = level * S.level;
       cands.push(
-        { side: 'top', x: frame.x, y: top, rotation: 0, box: { x: xMid, y: top, width: across.w, height: across.h }, f: across, extra },
-        { side: 'bottom', x: frame.x, y: bottom, rotation: 0, box: { x: xMid, y: bottom, width: across.w, height: across.h }, f: across, extra },
-        { side: 'left', x: left, y: frame.y + frame.height, rotation: -90, box: { x: left, y: yMid, width: along.h, height: along.w }, f: along, extra },
-        { side: 'right', x: right, y: frame.y, rotation: 90, box: { x: right - along.h, y: yMid, width: along.h, height: along.w }, f: along, extra },
+        { slot: `top:${level}`, side: 'top', x: frame.x, y: top, rotation: 0, box: { x: xMid, y: top, width: across.w, height: across.h }, f: across, extra },
+        { slot: `bottom:${level}`, side: 'bottom', x: frame.x, y: bottom, rotation: 0, box: { x: xMid, y: bottom, width: across.w, height: across.h }, f: across, extra },
+        { slot: `left:${level}`, side: 'left', x: left, y: frame.y + frame.height, rotation: -90, box: { x: left, y: yMid, width: along.h, height: along.w }, f: along, extra },
+        { slot: `right:${level}`, side: 'right', x: right, y: frame.y, rotation: 90, box: { x: right - along.h, y: yMid, width: along.h, height: along.w }, f: along, extra },
       );
     }
     // Inside, as a last resort: the emptiest of three places across the module.
@@ -503,17 +509,18 @@ export function placeModuleNames(
         const space = frame.width - 2 * PAD - inner.h;
         const x = frame.x + PAD + (space > 0 ? (i * space) / 2 : space / 2);
         const box = { x, y: frame.y + (frame.height - inner.w) / 2, width: inner.h, height: inner.w };
-        cands.push({ side: 'inside', x, y: frame.y + frame.height, rotation: -90, box, f: inner, extra: S.inside });
+        cands.push({ slot: `inside:${i}`, side: 'inside', x, y: frame.y + frame.height, rotation: -90, box, f: inner, extra: S.inside });
       } else {
         const space = frame.height - 2 * PAD - inner.h;
         const y = frame.y + PAD + (space > 0 ? (i * space) / 2 : space / 2);
         const box = { x: frame.x + (frame.width - inner.w) / 2, y, width: inner.w, height: inner.h };
-        cands.push({ side: 'inside', x: frame.x, y, rotation: 0, box, f: inner, extra: S.inside });
+        cands.push({ slot: `inside:${i}`, side: 'inside', x: frame.x, y, rotation: 0, box, f: inner, extra: S.inside });
       }
     }
     let best = cands[0]!;
     let bestScore = Infinity;
-    for (const c of cands) {
+    const kept = keep?.get(m.id);
+    for (const c of kept && cands.some((x) => x.slot === kept) ? cands.filter((x) => x.slot === kept) : cands) {
       const area = Math.max(c.box.width * c.box.height, 1);
       let score = c.extra + pref[c.side];
       const onParts = grid.covered(c.box);
@@ -548,7 +555,7 @@ export function placeModuleNames(
     const by0 = Math.min(frame.y, nameBox.y);
     const bx1 = Math.max(frame.x + frame.width, nameBox.x + nameBox.width);
     const by1 = Math.max(frame.y + frame.height, nameBox.y + nameBox.height);
-    return { ...base, text, side: best.side, bounds: { x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0 } };
+    return { ...base, text, side: best.side, slot: best.slot, bounds: { x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0 } };
   });
 }
 

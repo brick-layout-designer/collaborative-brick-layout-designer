@@ -83,6 +83,20 @@ describe('render parity: modules', () => {
     }
   });
 
+  it('keeps a name in its place while its module is dragged (keep), and places it afresh otherwise', () => {
+    const c = SPEC.placement[1]!; // a part right above: the name goes below
+    const parts = c.parts.map((r) => ({ x: r.x * 8, y: r.y * 8, width: r.w * 8, height: r.h * 8 }));
+    const mods = c.modules.map((m) => ({ ...m, showName: true }));
+    const [settled] = placeModuleNames(mods, parts, c.labelPercent, fixedWidth);
+    expect(settled!.slot).toBe('bottom:0');
+    // Dragged up past the part: on its own it would go on top, but it keeps its place below.
+    const moved = mods.map((m) => ({ ...m, studs: { ...m.studs, y: m.studs.y - 400 } }));
+    expect(placeModuleNames(moved, parts, c.labelPercent, fixedWidth)[0]!.slot).toBe('top:0');
+    const kept = placeModuleNames(moved, parts, c.labelPercent, fixedWidth, new Map([[settled!.id, settled!.slot!]]))[0]!;
+    expect(kept.slot).toBe('bottom:0');
+    expect(kept.text!.y - settled!.text!.y).toBeCloseTo(-400 * 8, 6);
+  });
+
   it.each(SPEC.colours.cases)('gives each module its own default colour: $name', (c) => {
     expect(Object.fromEntries(moduleColours(c.modules))).toEqual(c.expect);
   });

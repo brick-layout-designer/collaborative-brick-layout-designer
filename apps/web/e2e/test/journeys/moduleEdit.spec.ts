@@ -138,10 +138,10 @@ test('a module is one piece, opens with Edit module, and its new colour reaches 
 
   // Sam recolours the module from its ⋯ menu; Alex sees it at once.
   // Before: its own default colour, the same in both browsers.
-  const before = await frameStroke(alex);
-  expect(before).toMatch(/^rgba\(\d+,\d+,\d+,0\.8\)$/);
-  expect(before).not.toBe('rgba(255,136,0,0.8)');
-  expect(await frameStroke(page)).toBe(before);
+  const ownColour = await frameStroke(alex);
+  expect(ownColour).toMatch(/^rgba\(\d+,\d+,\d+,0\.8\)$/);
+  expect(ownColour).not.toBe('rgba(255,136,0,0.8)');
+  expect(await frameStroke(page)).toBe(ownColour);
   // (The "is a module in this layout" note has gone: it sat where the click below closes Panels.)
   await expect(page.getByText(`“${NAME}” is a module in this layout`)).toBeHidden({ timeout: 10000 });
   await page.getByRole('button', { name: 'Panels', exact: true }).click();
