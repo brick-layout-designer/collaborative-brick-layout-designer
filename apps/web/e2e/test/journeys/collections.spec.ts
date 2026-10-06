@@ -67,10 +67,12 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
     // (Other journeys may have left catalog items and collections behind.)
     await expect(vic.page.getByTestId('catalog-item').filter({ hasText: String(ts) })).toHaveCount(2);
     await streamOpen(vic.page);
+    // Collections are a tab of the Catalog, like the kinds.
+    await vic.page.getByRole('tab', { name: 'Collections' }).click();
     await expect(vic.page.getByTestId('collection-card').filter({ hasText: TITLE })).toHaveCount(0);
 
     // Cora builds a collection from the Catalog page and submits it.
-    await cora.page.goto('/catalog');
+    await cora.page.goto('/catalog?kind=collections');
     await cora.page.getByRole('button', { name: 'New collection' }).click();
     const editor = cora.page.getByRole('dialog', { name: 'New collection' });
     await editor.getByLabel('Title').fill(TITLE);

@@ -200,8 +200,9 @@ test('Add to a collection… from Home and the Catalog; made public, its text an
     await expect(cora.page.getByTestId('home-my-collection').filter({ hasText: TITLE })).toBeVisible({ timeout: 10000 });
 
     // A catalog module, from its card in the Catalog: the note links to the collection.
-    await cora.page.goto('/catalog');
+    await cora.page.goto('/catalog?kind=collections');
     await expect(cora.page.getByRole('heading', { name: /Your collections/ })).toBeVisible();
+    await cora.page.getByRole('tab', { name: 'Modules' }).click();
     const catalogCard = cora.page.getByTestId('catalog-item').filter({ hasText: `Freight yard ${tag}` });
     await catalogCard.getByRole('button', { name: `Freight yard ${tag}: add to a collection` }).click();
     await cora.page.getByRole('dialog', { name: 'Add to a collection' }).getByRole('button', { name: `Add to ${TITLE}` }).click();

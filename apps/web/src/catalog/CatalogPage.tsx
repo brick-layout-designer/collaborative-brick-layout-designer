@@ -23,16 +23,22 @@ export function CatalogPage() {
   const user = me.data?.user ?? null;
   const s = settings.data;
   const kinds = kindsOn(s);
-  const wanted = (params.get('kind') ?? 'module') as CatalogKind;
-  const kind: CatalogKind = kinds.includes(wanted) ? wanted : (kinds[0] ?? 'module');
-  const kindParam = (k: CatalogKind): Record<string, string> => (k === 'module' ? {} : { kind: k });
+  // Collections (of modules and parts) are a tab like the kinds, as in the
+  // desktop app: on a phone the list you asked for comes first, not a
+  // screenful of collection cards.
+  const tabs: CatalogTab[] = [...kinds, ...(s?.modules || s?.parts ? (['collections'] as const) : [])];
+  const wantedTab = (params.get('kind') ?? 'module') as CatalogTab;
+  const tab: CatalogTab = tabs.includes(wantedTab) ? wantedTab : (tabs[0] ?? 'module');
+  const showingCollections = tab === 'collections';
+  const kind: CatalogKind = tab === 'collections' ? (kinds[0] ?? 'module') : tab;
+  const kindParam = (k: CatalogTab): Record<string, string> => (k === 'module' ? {} : { kind: k });
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'newest' | 'popular'>('newest');
   const tag = params.get('tag') ?? '';
   const items = useQuery({
     queryKey: ['catalog-items', kind, q, tag, sort],
     queryFn: () => api.catalog.items(kind, { q, tag, sort }),
-    enabled: kinds.length > 0 && (!!user || !!s?.anonymousBrowse),
+    enabled: kinds.length > 0 && !showingCollections && (!!user || !!s?.anonymousBrowse),
   });
   const [adding, setAdding] = useState<CatalogItem | null>(null);
   // What I (or my clubs) shared: those cards offer "Cover picture…".
@@ -47,7 +53,7 @@ export function CatalogPage() {
         <AppHeader user={user} />
       ) : (
         <header className="flex items-center justify-between gap-3">
-          <Link to="/" className="font-display text-lg font-bold">Brick Layout Designer</Link>
+          <Link to="/" className="tap-target inline-flex items-center font-display text-lg font-bold">Brick Layout Designer</Link>
           <SignInLink className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
             Sign in
           </SignInLink>
@@ -75,24 +81,27 @@ export function CatalogPage() {
           </p>
         ) : (
           <>
-            <CollectionsSection signedIn={!!user} />
+            {tabs.length > 1 && (
+              <div role="tablist" aria-label="Catalog" className="flex w-fit max-w-full flex-wrap rounded-lg border border-line p-0.5">
+                {tabs.map((k) => (
+                  <button
+                    key={k}
+                    role="tab"
+                    type="button"
+                    aria-selected={tab === k}
+                    onClick={() => setParams(kindParam(k))}
+                    className={`tap-target rounded-md px-4 py-1.5 text-sm font-semibold ${tab === k ? 'bg-accent text-accent-ink' : 'hover:bg-soft'}`}
+                  >
+                    {k === 'collections' ? 'Collections' : KIND_LABEL[k].tab}
+                  </button>
+                ))}
+              </div>
+            )}
+            {showingCollections ? (
+              <CollectionsSection signedIn={!!user} />
+            ) : (
+            <>
             <div className="flex flex-wrap items-center gap-2">
-              {kinds.length > 1 && (
-                <div role="tablist" aria-label="Catalog" className="flex rounded-lg border border-line p-0.5">
-                  {kinds.map((k) => (
-                    <button
-                      key={k}
-                      role="tab"
-                      type="button"
-                      aria-selected={kind === k}
-                      onClick={() => setParams(kindParam(k))}
-                      className={`tap-target rounded-md px-4 py-1.5 text-sm font-semibold ${kind === k ? 'bg-accent text-accent-ink' : 'hover:bg-soft'}`}
-                    >
-                      {KIND_LABEL[k].tab}
-                    </button>
-                  ))}
-                </div>
-              )}
               <input
                 type="search"
                 value={q}
@@ -212,6 +221,8 @@ export function CatalogPage() {
                 </li>
               ))}
             </ul>
+            </>
+            )}
           </>
         )}
       </main>
@@ -223,6 +234,9 @@ export function CatalogPage() {
 }
 
 /** The card's picture: its owner's own fills the card (it was cropped to it); the drawn one fits inside. */
+/** The Catalog page's tabs: each kind that's on, and Collections. */
+export type CatalogTab = CatalogKind | 'collections';
+
 /** What each kind is called on tabs and buttons. */
 export const KIND_LABEL: Record<CatalogKind, { tab: string; add: string; mine: string }> = {
   module: { tab: 'Modules', add: 'Add to my modules', mine: 'modules' },

@@ -87,9 +87,9 @@ test('a layout, a module, a venue, a part and a collection are deleted through t
 
     await deleteIt(fromMenu(LAYOUT), LAYOUT, 'its share links are deleted', true);
     // The collection first: deleting the module would take it out of the collection.
-    await one.page.goto('/catalog');
+    await one.page.goto('/catalog?kind=collections');
     await streamOpen(one.page);
-    await two.page.goto('/catalog');
+    await two.page.goto('/catalog?kind=collections');
     await streamOpen(two.page);
     await deleteIt(async () => one.page.getByRole('button', { name: `Delete ${COLLECTION}` }).click(), COLLECTION, 'Its modules and parts aren’t deleted');
     await one.page.goto('/');
