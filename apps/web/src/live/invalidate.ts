@@ -135,6 +135,8 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/(metrics|auth\/password\/resend-verification|auth\/device\/(code|token|lookup))\b|^\/api\/layouts\/[^/]+\/compare$/, []],
   [/^\/api\/(warnings|notices|admin\/warnings)\b|^\/api\/orgs\/[^/]+\/warnings\b/, ['warning']],
   [/^\/api\/(auth|tokens|me)\b/, ['me']],
+  // Taking back or giving back: the thing, the club's copy, and the note to the club's runners.
+  [/^\/api\/[^/]+\/[^/]+\/(take|give)-back$/, ['layout', 'module', 'venue', 'custom-part', 'warning']],
   [/^\/api\/layouts\/[^/]+\/transfer\b|^\/api\/transfers\b/, ['layout', 'transfer']],
   [/^\/api\/(layouts|invites)\b/, ['layout']],
   [/^\/api\/modules\/[^/]+\/transfer\b|^\/api\/module-transfers\b/, ['module', 'transfer']],

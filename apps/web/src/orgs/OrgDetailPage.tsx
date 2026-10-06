@@ -8,6 +8,7 @@ import { ClubPublicView } from './ClubDirectory';
 import { aRole, atLeast } from './clubRoles';
 import { ClubCollectionsSection } from '../catalog/Collections';
 import { TrustedBadge } from '../catalog/TrustedBadge';
+import { creditText } from '../owners/owners';
 
 export function OrgDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -183,10 +184,12 @@ function ClubThings({ org }: { org: { id: string; name: string; slug: string } }
                 <Link
                   to={`/modules/${m.id}`}
                   aria-label={`Open ${m.title}`}
+                  title={creditText(m.credit).line ?? undefined}
                   className="tap-target flex flex-col items-center gap-1 rounded-lg border border-line bg-soft p-2 text-center text-xs hover:border-accent"
                 >
                   <ModuleThumb module={m} size="lg" />
                   <span className="line-clamp-2 break-words font-medium">{m.title}</span>
+                  {m.credit?.by && <span className="line-clamp-1 break-words text-muted">by {m.credit.by}</span>}
                 </Link>
               </li>
             ))}

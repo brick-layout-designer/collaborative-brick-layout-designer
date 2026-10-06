@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { OrgSummary, OwnerInfo } from '../api';
+import type { Credit, OrgSummary, OwnerInfo } from '../api';
 
 /** 'all', 'me', or a club's slug. */
 export type OwnerFilter = string;
@@ -138,4 +138,28 @@ export function useOwnerFilter(
 /** Where "Save to" starts: the club being shown, else Me (empty string). */
 export function defaultSaveTo(filter: OwnerFilter): string {
   return filter === 'all' || filter === 'me' ? '' : filter;
+}
+
+/**
+ * The credit's words: "by Sam · in ArkLUG" (a club's), "by Sam" (a
+ * person's), and for a copy "based on Yard by Sam". Nulls when there is
+ * nothing to say (older servers send no credit).
+ */
+export function creditText(credit: Credit | null | undefined): { line: string | null; basedOn: string | null } {
+  if (!credit) return { line: null, basedOn: null };
+  const parts = [credit.by ? `by ${credit.by}` : null, credit.club ? `in ${credit.club}` : null].filter((x): x is string => !!x);
+  const b = credit.basedOn;
+  return {
+    line: parts.length ? parts.join(' · ') : null,
+    basedOn: b ? `based on ${b.title}${b.by ? ` by ${b.by}` : ''}` : null,
+  };
+}
+
+/** What a club will be told before something moves into it (both apps say the same). */
+export function moveToClubWording(clubName: string): { title: string; removes: string; keeps: string } {
+  return {
+    title: `Move it to ${clubName}?`,
+    removes: `${clubName} will own this. Its admins and managers can change or delete it.`,
+    keeps: 'You stay credited as the author, and you can take it back while you’re a member.',
+  };
 }

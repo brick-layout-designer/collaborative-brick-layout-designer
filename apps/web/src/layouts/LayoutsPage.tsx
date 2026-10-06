@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, lowResThumbnail, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
 import { defaultSaveTo, matchesOwnerFilter, useOwnerFilter, type OwnedItem } from '../owners/owners';
-import { MoveCopyDialog, OwnerChip, OwnerFilterBar, SaveToPicker } from '../owners/OwnerControls';
+import { CreditLine, MoveCopyDialog, OwnerChip, OwnerFilterBar, ReturnMenuItems, SaveToPicker } from '../owners/OwnerControls';
 import { HelpButton } from '../help/HelpButton';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
@@ -215,6 +215,7 @@ export function LayoutsPage() {
                   <p className="text-xs text-muted">
                     {m.latestVersion ? `version ${m.latestVersion} · ` : ''}updated {new Date(m.updatedAt).toLocaleString()}
                   </p>
+                  <CreditLine credit={m.credit} />
                   {m.role !== 'viewer' && lowResThumbnail(m) && (
                     <p data-testid="low-res-picture" className="text-xs text-muted">
                       Picture is low resolution.{' '}
@@ -275,6 +276,7 @@ export function LayoutsPage() {
                       Move or copy…
                     </button>
                   )}
+                  <ReturnMenuItems kind="modules" id={m.id} title={m.title} credit={m.credit} />
                   {(m.role === undefined || m.role === 'owner') && (
                     <button
                       role="menuitem"
@@ -495,6 +497,7 @@ function LayoutRow({
             </>
           )}
         </p>
+        <CreditLine credit={layout.credit} />
       </div>
       <div className="flex shrink-0 items-center gap-2 text-sm">
         <Link
@@ -531,6 +534,7 @@ function LayoutRow({
               Move or copy…
             </button>
           )}
+          <ReturnMenuItems kind="layouts" id={layout.id} title={layout.title} credit={layout.credit} />
           {isOwner && (
             <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
               Delete

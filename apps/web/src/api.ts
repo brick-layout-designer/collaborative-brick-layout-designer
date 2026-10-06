@@ -65,8 +65,15 @@ const ERROR_MESSAGES: Record<string, string> = {
   message_too_long: 'Please keep the note to 300 characters.',
   invalid_join_policy: 'Pick who can join: Invite only, Ask to join or Open.',
   invalid_expiry: 'Pick between 1 and 30 days.',
-  org_owned_rooms_can_only_move_to_orgs: "A club's venue stays with the club. Make a copy for yourself instead.",
-  org_owned_layouts_can_only_transfer_to_orgs: "A club's layout stays with the club. Make a copy for yourself instead.",
+  org_owned_rooms_can_only_move_to_orgs: "A club's venue stays with the club. Its author can take it back, or make a copy for yourself.",
+  org_owned_layouts_can_only_transfer_to_orgs: "A club's layout stays with the club. Its author can take it back, or make a copy for yourself.",
+  parts_can_only_move_to_clubs: 'Parts move to a club. To have your own, make a copy.',
+  only_the_author_can_take_back: 'Only the person who made it can take it back.',
+  only_club_admins_can_give_back: 'Only the club’s admins and managers can give it back.',
+  author_gone: 'The person who made it no longer has an account here.',
+  already_returned: 'This is the club’s copy; its author already has the original.',
+  already_yours: 'It’s already yours.',
+  part_number_taken: 'There’s already a part with that number there.',
   invalid_email: 'Enter a valid email address.',
   forbidden: "You don't have permission to do that.",
   not_found: 'That item could not be found.',
@@ -241,6 +248,25 @@ export interface OwnerInfo {
 /** `?owner=` on the list endpoints: everything, only mine, or one club's (by slug). */
 export type OwnerQuery = 'all' | 'me' | string;
 
+/**
+ * Author credit (newer servers): "by Sam · in ArkLUG", "based on Yard by
+ * Sam", and whether you may take it back or give it back to its author.
+ */
+export interface Credit {
+  /** "you", a name, "a former member" or "Builder #…"; null when nobody is recorded. */
+  by: string | null;
+  /** The author's name while their account exists ("Give back to ‹name›"). */
+  authorName: string | null;
+  /** The club that holds it. */
+  club: string | null;
+  basedOn: { id: string; title: string; by: string | null } | null;
+  canTakeBack: boolean;
+  canGiveBack: boolean;
+}
+
+/** The four kinds of thing a person makes, as their API paths. */
+export type OwnableKind = 'layouts' | 'modules' | 'venues' | 'custom-parts';
+
 export interface VenueSummary {
   id: string;
   name: string;
@@ -251,6 +277,7 @@ export interface VenueSummary {
   /** May rename, redesign, move or delete it (yours, or a club you admin). */
   canManage?: boolean;
   owner?: OwnerInfo | null;
+  credit?: Credit | null;
 }
 
 export interface LayoutSummary {
@@ -273,6 +300,7 @@ export interface LayoutSummary {
    * suffix of the share URL (`/p/<token>`). Null = private.
    */
   publicShareToken: string | null;
+  credit?: Credit | null;
 }
 
 /** Anonymous-readable summary for `/p/:token` viewer pages. */
@@ -728,6 +756,12 @@ export const api = {
       },
     ) => put<{ id: string; partNumber: string; displayName: string }>(`/api/custom-parts/${id}`, body),
     remove: (id: string) => del(`/api/custom-parts/${id}`),
+    /** Hand a part to a club (a club's part goes back only to its author). */
+    move: (id: string, orgSlug: string) =>
+      post<{ ok: true; id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/move`, { orgSlug }),
+    /** Copy into your own parts (no `orgSlug`) or a club's. */
+    copy: (id: string, orgSlug?: string) =>
+      post<{ id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
     spriteUrl: (id: string) => `/api/custom-parts/${id}/sprite`,
     xmlUrl: (id: string) => `/api/custom-parts/${id}/xml`,
     invite: (id: string, email: string, role: 'viewer' | 'editor') =>
@@ -790,7 +824,7 @@ export const api = {
     /** Hand a venue to a club (a club's venue never moves back to one person). */
     move: (id: string, orgSlug: string) =>
       post<{ ok: true; id: string; name: string }>(`/api/venues/${encodeURIComponent(id)}/move`, { orgSlug }),
-    get: (id: string) => get<{ id: string; name: string; data: unknown }>(`/api/venues/${id}`),
+    get: (id: string) => get<{ id: string; name: string; data: unknown; credit?: Credit | null }>(`/api/venues/${id}`),
     create: (body: { name: string; data: unknown; orgSlug?: string }) =>
       post<{ id: string; name: string }>('/api/venues', body),
     rename: (id: string, name: string) =>
@@ -799,6 +833,16 @@ export const api = {
     update: (id: string, data: unknown) =>
       patch<{ ok: true; id: string; name: string }>(`/api/venues/${id}`, { data }),
     remove: (id: string) => del(`/api/venues/${id}`),
+  },
+
+  /** Handing a club's thing back to the person who made it (the club keeps a copy). */
+  ownership: {
+    /** The author takes it back (while a member of the club). */
+    takeBack: (kind: OwnableKind, id: string) =>
+      post<{ ok: true; id: string; keptCopyId: string; ownerUserId: string }>(`/api/${kind}/${encodeURIComponent(id)}/take-back`, {}),
+    /** The club's admins and managers give it back to its author. */
+    giveBack: (kind: OwnableKind, id: string) =>
+      post<{ ok: true; id: string; keptCopyId: string; ownerUserId: string }>(`/api/${kind}/${encodeURIComponent(id)}/give-back`, {}),
   },
 
   audit: {
@@ -1489,6 +1533,7 @@ export interface CustomPartSummary {
   spriteMime: 'image/gif' | 'image/png';
   createdAt: number;
   updatedAt: number;
+  credit?: Credit | null;
 }
 
 export interface ModuleSummary {
@@ -1509,6 +1554,7 @@ export interface ModuleSummary {
   latestVersion?: number;
   createdAt: number;
   updatedAt: number;
+  credit?: Credit | null;
 }
 
 /** One saved version of a module. */

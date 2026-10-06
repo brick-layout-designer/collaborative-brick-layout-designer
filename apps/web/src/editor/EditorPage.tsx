@@ -155,6 +155,8 @@ import { DEFAULT_SNAP_STRENGTH, SnapSession } from './snapFeel';
 import { liveSnapReach } from './liveSnapReach';
 import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
 import { askConfirm, askLeaveUnsaved } from '../ui/ConfirmDialog';
+import { creditText } from '../owners/owners';
+import type { Credit } from '../api';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -227,6 +229,12 @@ async function moduleMeta(id: string): Promise<{ layout: LayoutSummary; role: 'o
       publicShareToken: null,
     },
   };
+}
+
+/** The credit as one line ("by Sam · in ArkLUG · based on Yard by Sam"), or null. */
+function creditLabel(credit: Credit | null | undefined): string | null {
+  const { line, basedOn } = creditText(credit);
+  return [line, basedOn].filter(Boolean).join(' · ') || null;
 }
 
 /** Panels a module has no use for (it has no venue and no saved views). */
@@ -720,6 +728,11 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           <h1 data-testid="module-editor-title" className="min-w-0 flex-1 truncate font-display text-[17px] font-bold">
             <span className="font-normal text-muted">Editing module: </span>
             {meta.data?.layout.title ?? '…'}
+            {creditLabel(moduleInfo.data?.module.credit) && (
+              <span data-testid="credit" className="ml-2 hidden text-xs font-normal text-muted sm:inline">
+                {creditLabel(moduleInfo.data?.module.credit)}
+              </span>
+            )}
           </h1>
           <SavePill status={status} />
           {role === 'viewer' ? <ViewOnlyPill /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
@@ -842,6 +855,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           <AppMark />
           <LayoutNameMenu
             title={meta.data?.layout.title ?? 'Untitled'}
+            credit={creditLabel(meta.data?.layout.credit)}
             onNew={isViewer ? undefined : leaveLayout}
             onOpen={isViewer ? undefined : leaveLayout}
           >

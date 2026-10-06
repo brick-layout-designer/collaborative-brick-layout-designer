@@ -51,11 +51,14 @@ const MENU_ITEM = 'block w-full px-3.5 py-2 text-left hover:bg-soft';
 /** The layout's name, opening a menu of the whole-layout actions. */
 export function LayoutNameMenu({
   title,
+  credit,
   onNew,
   onOpen,
   children,
 }: {
   title: string;
+  /** "by Sam · in ArkLUG · based on …", shown at the top of the menu. */
+  credit?: string | null | undefined;
   onNew?: (() => void) | undefined;
   onOpen?: (() => void) | undefined;
   /** Extra items (e.g. the existing Save). */
@@ -78,6 +81,11 @@ export function LayoutNameMenu({
       </button>
       {open && (
         <div role="menu" className={MENU} onClick={() => setOpen(false)}>
+          {credit && (
+            <p data-testid="credit" className="max-w-72 break-words px-3.5 pb-1 pt-1.5 text-xs text-muted">
+              {credit}
+            </p>
+          )}
           <Link role="menuitem" to="/" className={MENU_ITEM}>
             Home
           </Link>
