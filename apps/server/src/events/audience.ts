@@ -13,7 +13,7 @@
 //
 // Anyone else gets nothing.
 
-import { eq, inArray, or } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { connectedUserIds, deliver, type Hint } from './hub.js';
 
@@ -151,11 +151,4 @@ export async function ownerOfResource(
 export async function orgIdBySlug(slug: string): Promise<string | null> {
   const row = await db.select({ id: schema.orgs.id }).from(schema.orgs).where(eq(schema.orgs.slug, slug)).get();
   return row?.id ?? null;
-}
-
-/** Club ids for slugs, in one query. */
-export async function orgIdsBySlugs(slugs: string[]): Promise<Map<string, string>> {
-  if (slugs.length === 0) return new Map();
-  const rows = await db.select({ id: schema.orgs.id, slug: schema.orgs.slug }).from(schema.orgs).where(inArray(schema.orgs.slug, slugs)).all();
-  return new Map(rows.map((r) => [r.slug, r.id]));
 }

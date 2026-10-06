@@ -1,4 +1,4 @@
-// Who owns a layout, room or module, for the lists that show the user's
+// Who owns a layout, venue or module, for the lists that show the user's
 // own things next to their clubs' things.
 //
 // Every list endpoint (/api/layouts, /api/modules, /api/venues) gathers

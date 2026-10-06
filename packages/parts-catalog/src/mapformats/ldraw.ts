@@ -257,7 +257,7 @@ export function readLDrawMap(text: string, lib: MapLibrary, opts: LDrawReadOptio
       const point2 = readPoint(t[k++]);
       k += 2; // attached brick ids: bricks get new ids on load, as in BlueBrick
       const allowOffset = t[k++] === 'true';
-      const offsetDistance = f(toDouble(t[k++]));
+      const offsetDistance = f(toDouble(t[k]));
       const x = Math.min(point1.x, point2.x);
       const y = Math.min(point1.y, point2.y);
       item = {
@@ -273,7 +273,7 @@ export function readLDrawMap(text: string, lib: MapLibrary, opts: LDrawReadOptio
       };
     } else {
       const center = readPoint(t[k++]);
-      const radius = f(toDouble(t[k++]));
+      const radius = f(toDouble(t[k]));
       item = {
         ...common,
         kind: 'circular',

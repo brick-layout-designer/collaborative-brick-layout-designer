@@ -2,7 +2,6 @@ import type {
   BbmMap,
   Brick,
   CircularRulerItem,
-  ColorSpec,
   Connexion,
   ExportInfo,
   FontSpec,

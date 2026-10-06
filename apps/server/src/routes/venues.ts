@@ -48,7 +48,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     for (const { venue, memberRole } of orgOwned) {
       if (seen.has(venue.id)) continue;
       seen.add(venue.id);
-      // Same rights as PATCH / DELETE: a club's rooms are its managers' and admins' to change.
+      // Same rights as PATCH / DELETE: a club's venues are its managers' and admins' to change.
       all.push({ ...venue, canManage: atLeast(memberRole, 'manager') });
     }
     const shown = all.filter((v) => matchesOwner(v, filter, user.id));
@@ -196,8 +196,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     await db.delete(schema.venueLibrary).where(eq(schema.venueLibrary.id, req.params.id));
     return { ok: true };
   });
-  // ---- copy a room to yourself or a club ----------------------------------
-  // Anyone who can open the room can copy it, into their own rooms or a
+  // ---- copy a venue to yourself or a club ---------------------------------
+  // Anyone who can open the venue can copy it, into their own venues or a
   // club they're in. The copy is the new owner's to change.
   app.post<{ Params: { id: string }; Body: { orgSlug?: string } }>(
     '/api/venues/:id/copy',
@@ -231,10 +231,10 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ---- move a room to a club ------------------------------------------------
-  // Like a layout's transfer to a club: whoever may change the room (its
+  // ---- move a venue to a club -----------------------------------------------
+  // Like a layout's transfer to a club: whoever may change the venue (its
   // owner, or an admin of the club holding it) can hand it to a club they're
-  // in. A club's room never moves back out to one person; copy it instead.
+  // in. A club's venue never moves back out to one person; copy it instead.
   app.post<{ Params: { id: string }; Body: { orgSlug?: string } }>(
     '/api/venues/:id/move',
     { config: TOKEN_WRITE },

@@ -87,8 +87,6 @@ export interface DeletionSummary {
   erasedAs: string;
 }
 
-const LIST_MAX = 20;
-
 function named(rows: { id: string; name: string }[]): Named[] {
   return rows;
 }
@@ -147,12 +145,6 @@ export async function deletionSummary(user: User): Promise<DeletionSummary> {
     pending: user.deletionDueAt ? { requestedAt: user.deletionRequestedAt?.getTime() ?? 0, dueAt: user.deletionDueAt.getTime() } : null,
     erasedAs: erasedLabel(uid),
   };
-}
-
-/** The first few names in a list, for plain sentences. */
-export function someNames(list: Named[]): string {
-  const shown = list.slice(0, LIST_MAX).map((n) => `“${n.name}”`);
-  return list.length > LIST_MAX ? `${shown.join(', ')} and ${list.length - LIST_MAX} more` : shown.join(', ');
 }
 
 async function siteAdminCount(): Promise<number> {

@@ -253,9 +253,6 @@ export interface OwnerInfo {
   slug: string | null;
 }
 
-/** `?owner=` on the list endpoints: everything, only mine, or one club's (by slug). */
-export type OwnerQuery = 'all' | 'me' | string;
-
 /**
  * Author credit (newer servers): "by Sam · in ArkLUG", "based on Yard by
  * Sam", and whether you may take it back or give it back to its author.
@@ -1191,8 +1188,6 @@ export interface AdminStats {
 }
 
 export type CatalogKind = 'module' | 'part' | 'layout' | 'venue';
-/** What a library (my modules, my parts) holds: what collections take as their own entries. */
-export type LibraryKind = 'module' | 'part';
 
 /** What a layout's or venue's public page shows without opening it. */
 export interface CatalogSummary {

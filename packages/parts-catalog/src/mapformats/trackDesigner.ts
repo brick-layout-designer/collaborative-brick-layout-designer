@@ -13,7 +13,7 @@
 import type { BbmMap, Brick } from '@cld/model';
 import { rebuildConnectivity } from '../connectivity.js';
 import type { PartMetadata } from '../types.js';
-import { MapLibrary, newBrickLayer, newMap, partNumberOf, rotated, type MapReadResult } from './library.js';
+import { MapLibrary, newBrickLayer, newMap, rotated, type MapReadResult } from './library.js';
 
 const f = Math.fround;
 const FILE_VERSION = 20;

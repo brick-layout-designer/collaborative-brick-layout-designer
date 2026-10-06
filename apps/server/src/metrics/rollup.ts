@@ -194,7 +194,6 @@ export function flushRollup(now: number = Date.now()): void {
     rollup.flush(now);
     usage.flush();
   } catch (err) {
-     
     console.error('[metrics] rollup flush failed:', err);
   }
 }
