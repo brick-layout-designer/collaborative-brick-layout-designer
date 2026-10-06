@@ -73,7 +73,19 @@ export function ModuleOverlay({ map: committed, modules }: Props) {
   // and names move and turn with them, every frame.
   const map = usePosedMap(committed, (pose) => modules.some((m) => dragsAny(pose, m.members)));
 
-  const layouts = useMemo(() => moduleLabelLayouts(map, modules, labelPercent, measureBold), [map, modules, labelPercent]);
+  // Where the names go, worked out on the layout as it is; while parts are
+  // dragged, each name keeps that place round its module (no jumping sides).
+  const settled = useMemo(() => moduleLabelLayouts(committed, modules, labelPercent, measureBold), [committed, modules, labelPercent]);
+  const layouts = useMemo(() => {
+    if (map === committed) return settled;
+    // Its colours stay too, until the drop.
+    const before = new Map(settled.map((l) => [l.id, l]));
+    const keep = new Map(settled.flatMap((l) => (l.slot ? [[l.id, l.slot] as const] : [])));
+    return moduleLabelLayouts(map, modules, labelPercent, measureBold, keep).map((l) => {
+      const was = before.get(l.id);
+      return was ? { ...l, frameStroke: was.frameStroke, nameFill: was.nameFill } : l;
+    });
+  }, [map, committed, settled, modules, labelPercent]);
   const cut = useMemo(() => layouts.filter((l) => l.text?.truncated), [layouts]);
   // The shortened name under the pointer (only watched while there is one).
   const hovered = useEditorStore((s) => {

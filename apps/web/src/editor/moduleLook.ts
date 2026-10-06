@@ -16,9 +16,9 @@ export function coloursLinked(m: SidecarModule): boolean {
   return m.sameColor !== false;
 }
 
-/** The colour a picker shows for one part: the chosen one, or the default. */
-export function moduleColour(m: SidecarModule, part: ModuleColourPart): string {
-  return (part === 'outline' ? m.outlineColor : m.nameColor) ?? MODULE_DEFAULT_COLOUR;
+/** The colour a picker shows for one part: the chosen one, or the module's own default (moduleColours). */
+export function moduleColour(m: SidecarModule, part: ModuleColourPart, fallback: string = MODULE_DEFAULT_COLOUR): string {
+  return (part === 'outline' ? m.outlineColor : m.nameColor) ?? fallback.toLowerCase();
 }
 
 /** Whether either colour was chosen (so "Reset to default" has something to do). */
@@ -50,7 +50,7 @@ export function withSameColour(m: SidecarModule, on: boolean): SidecarModule {
   return m.outlineColor !== undefined ? { ...linked, nameColor: m.outlineColor } : linked;
 }
 
-/** Back to the default look: both colours the default light blue, linked. */
+/** Back to the default look: both colours the module's own default colour, linked. */
 export function withDefaultColours(m: SidecarModule): SidecarModule {
   return omit(m, 'outlineColor', 'nameColor', 'sameColor');
 }

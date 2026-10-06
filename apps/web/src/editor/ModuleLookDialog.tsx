@@ -10,6 +10,8 @@ import { readSidecarFromDoc } from '@cld/ydoc';
 import { useYjsSnapshot } from './useYjsSnapshot';
 import { HelpButton } from '../help/HelpButton';
 import { updateSidecarModule } from './mutations';
+import { projectDoc } from './useDocMap';
+import { layoutModuleColours } from './render/moduleLabels';
 import {
   coloursLinked,
   hasCustomColours,
@@ -33,7 +35,11 @@ const COLOUR_WRITE_MS = 120;
 export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
   // Follows the module as it changes, here or from someone else.
   useYjsSnapshot(doc);
-  const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId) ?? null;
+  const modules = readSidecarFromDoc(doc)?.modules ?? [];
+  const mod = modules.find((m) => m.id === moduleId) ?? null;
+  // Its own default colour, as the map draws it when none is chosen.
+  const map = projectDoc(doc);
+  const ownDefault = (map && layoutModuleColours(map, modules).get(moduleId)) || undefined;
   const pending = useRef<{ part: ModuleColourPart; hex: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -76,7 +82,7 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
         type="color"
         aria-label={label}
         data-testid={`module-${part}-colour`}
-        value={moduleColour(mod, part)}
+        value={moduleColour(mod, part, ownDefault)}
         onChange={(e) => pick(part, e.target.value)}
         className="h-9 w-16 cursor-pointer rounded-lg border border-border bg-transparent"
       />

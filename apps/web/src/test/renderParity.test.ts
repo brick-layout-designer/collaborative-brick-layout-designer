@@ -18,10 +18,15 @@ import {
   MODULE_NAME_LINE_HEIGHT,
   MODULE_NAME_MIN_PX,
   MODULE_NAME_STROKE,
+  MODULE_NEIGHBOUR_STUDS,
+  MODULE_PALETTE,
   fitModuleName,
+  moduleColours,
+  moduleIdHash,
   moduleLabelLayouts,
   moduleLook,
   moduleNameStrokePx,
+  placeModuleNames,
 } from '../editor/render/moduleLabels';
 
 const fixedWidth = (t: string) => (f: number) => t.length * SPEC.charWidth * f;
@@ -39,6 +44,67 @@ describe('render parity: modules', () => {
     expect(got).toEqual(c.expect);
     // Never longer than the side.
     for (const line of got.lines) expect(fixedWidth(line)(got.fontPx)).toBeLessThanOrEqual(c.side);
+  });
+
+  it.each(SPEC.placement)('places names together: $name', (c) => {
+    const parts = c.parts.map((r) => ({ x: r.x * 8, y: r.y * 8, width: r.w * 8, height: r.h * 8 }));
+    const got = placeModuleNames(c.modules.map((m) => ({ ...m, showName: true })), parts, c.labelPercent, fixedWidth);
+    expect(got.map((g) => g.id)).toEqual(c.expect.map((e) => e.id));
+    got.forEach((g, i) => {
+      const e = c.expect[i]!;
+      expect(g.side).toBe(e.side);
+      expect({ ...g.text!, x: 0, y: 0 }).toEqual({ ...e.text, x: 0, y: 0 });
+      expect(g.text!.x).toBeCloseTo(e.text.x, 2);
+      expect(g.text!.y).toBeCloseTo(e.text.y, 2);
+    });
+  });
+
+  it('places the Fordyce ring as Aaron asked: outside, readable, clear of parts and of each other', () => {
+    const c = SPEC.placement[0]!;
+    const byId = Object.fromEntries(c.expect.map((e) => [e.id, e]));
+    // Top row: level text above. Right edge: turned to read top to bottom. Left edge: bottom to top.
+    expect(['ninjago', 'nicki'].map((id) => [byId[id]!.side, byId[id]!.text.rotation])).toEqual([['top', 0], ['top', 0]]);
+    expect(['desert', 'bridge'].map((id) => [byId[id]!.side, byId[id]!.text.rotation])).toEqual([['right', 90], ['right', 90]]);
+    expect([byId.aaron!.side, byId.aaron!.text.rotation]).toEqual(['left', -90]);
+    // No name over a part, and no two names over each other.
+    const boxes = c.expect.map((e) => {
+      const t = e.text;
+      const w = Math.max(...t.lines.map((l) => fixedWidth(l)(t.fontPx)));
+      if (t.rotation === 0) return { x: t.x + (t.width - w) / 2, y: t.y, width: w, height: t.height };
+      const y = t.rotation === -90 ? t.y - t.width : t.y;
+      const x = t.rotation === -90 ? t.x : t.x - t.height;
+      return { x, y: y + (t.width - w) / 2, width: t.height, height: w };
+    });
+    const hit = (a: (typeof boxes)[number], b: (typeof boxes)[number]) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    for (const [i, a] of boxes.entries()) {
+      for (const r of c.parts) expect(hit(a, { x: r.x * 8 + 1, y: r.y * 8 + 1, width: r.w * 8 - 2, height: r.h * 8 - 2 }), `${c.expect[i]!.id} ${JSON.stringify(a)} ${JSON.stringify(r)}`).toBe(false);
+      for (const b of boxes.slice(i + 1)) expect(hit(a, b)).toBe(false);
+    }
+  });
+
+  it('keeps a name in its place while its module is dragged (keep), and places it afresh otherwise', () => {
+    const c = SPEC.placement[1]!; // a part right above: the name goes below
+    const parts = c.parts.map((r) => ({ x: r.x * 8, y: r.y * 8, width: r.w * 8, height: r.h * 8 }));
+    const mods = c.modules.map((m) => ({ ...m, showName: true }));
+    const [settled] = placeModuleNames(mods, parts, c.labelPercent, fixedWidth);
+    expect(settled!.slot).toBe('bottom:0');
+    // Dragged up past the part: on its own it would go on top, but it keeps its place below.
+    const moved = mods.map((m) => ({ ...m, studs: { ...m.studs, y: m.studs.y - 400 } }));
+    expect(placeModuleNames(moved, parts, c.labelPercent, fixedWidth)[0]!.slot).toBe('top:0');
+    const kept = placeModuleNames(moved, parts, c.labelPercent, fixedWidth, new Map([[settled!.id, settled!.slot!]]))[0]!;
+    expect(kept.slot).toBe('bottom:0');
+    expect(kept.text!.y - settled!.text!.y).toBeCloseTo(-400 * 8, 6);
+  });
+
+  it.each(SPEC.colours.cases)('gives each module its own default colour: $name', (c) => {
+    expect(Object.fromEntries(moduleColours(c.modules))).toEqual(c.expect);
+  });
+
+  it('hashes ids, and keeps neighbours apart, as the shared description says', () => {
+    expect([...MODULE_PALETTE]).toEqual(SPEC.colours.palette);
+    expect(MODULE_NEIGHBOUR_STUDS).toBe(SPEC.colours.neighbourStuds);
+    for (const h of SPEC.colours.hashes) expect(moduleIdHash(h.id)).toBe(h.hash);
   });
 
   it.each(SPEC.looks)('draws a module with $module in the shared colours', (c) => {
