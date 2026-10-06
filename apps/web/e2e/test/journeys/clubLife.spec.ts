@@ -92,6 +92,9 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
   await move.getByRole('radio', { name: /^Move to a club/ }).check();
   await move.getByRole('combobox').selectOption({ label: CLUB });
   await move.getByRole('button', { name: /^Move/ }).click();
+  // Moving her own layout in says what that means first: the club owns it, she stays its author.
+  await expect(page.getByTestId('confirm-dialog')).toContainText(`${CLUB} will own this.`);
+  await confirmInDialog(page);
   await expect(move).toHaveCount(0);
 
   // ── Rita sees both under the club; copies the show layout to herself. ──
