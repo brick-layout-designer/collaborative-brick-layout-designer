@@ -18,6 +18,7 @@ import { registerLimitHooks } from './limits/hooks.js';
 import { registerRequestMetrics } from './metrics/activity.js';
 import { startRollup, stopRollup } from './metrics/rollup.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
+import { failInterruptedExports } from './privacy/exports.js';
 import { registerSecurityHeaders } from './utils/securityHeaders.js';
 import { registerApiRoutes } from './routes/all.js';
 import { registerChangeHints } from './events/routeHints.js';
@@ -28,6 +29,8 @@ async function main() {
   // Run pending migrations on boot. Idempotent.
   migrate(db, { migrationsFolder: resolve('./migrations') });
   await ensureBootstrapAdmin();
+  // Data downloads that were building when the server stopped can be asked for again.
+  await failInterruptedExports();
   await syncLibrariesFromDisk(env.partsDir, console);
 
   // 10MB body limit — large `.bbm` imports (XML payload) routinely exceed

@@ -27,6 +27,7 @@ import { canModerate } from './catalog.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { sendWarningEmail } from '../email/sendWarning.js';
 import { publicName } from '../utils/publicName.js';
+import { publish } from '../events/audience.js';
 
 export const SEVERITIES = ['note', 'warning', 'final'] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -186,6 +187,38 @@ export async function postClubNote(orgId: string, actorId: string, reason: strin
     acknowledgedAt: null,
     acknowledgedBy: null,
   });
+  return id;
+}
+
+/**
+ * A note to one person (their data download is ready, their account was
+ * kept, their club is being deleted). It shows with their notices, to
+ * read and acknowledge, and arrives live; it's not a warning, and the
+ * caller sends any email itself. `clubOrgId` makes it "From ‹club›";
+ * otherwise it is from the site. Returns its id.
+ */
+export async function postPersonalNote(
+  userId: string,
+  reason: string,
+  link: string | null,
+  opts: { clubOrgId?: string | null; issuedBy?: string | null } = {},
+): Promise<string> {
+  const id = randomUUID();
+  await db.insert(schema.warnings).values({
+    id,
+    scope: opts.clubOrgId ? 'club' : 'site',
+    clubOrgId: opts.clubOrgId ?? null,
+    subjectUserId: userId,
+    subjectOrgId: null,
+    severity: 'note',
+    reason: reason.slice(0, MAX_REASON),
+    link: link && link.length <= MAX_LINK ? link : null,
+    issuedBy: opts.issuedBy ?? null,
+    createdAt: new Date(),
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+  });
+  void publish({ kind: 'warning', id, action: 'create' }, { ownerless: true, users: [userId] });
   return id;
 }
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AppHeader } from '../AppHeader';
 import { DevicesSection } from './DevicesSection';
+import { MyDataSection } from '../privacy/MyDataSection';
 import { HelpButton } from '../help/HelpButton';
 import { useHashScroll } from '../ui/useHashScroll';
 
@@ -134,6 +135,8 @@ export function ProfilePage() {
         )}
 
         {!user.isDemoAccount && <DevicesSection />}
+
+        {!user.isDemoAccount && <MyDataSection />}
       </main>
     </div>
   );

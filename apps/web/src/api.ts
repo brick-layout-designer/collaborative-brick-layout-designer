@@ -113,6 +113,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   demo_account_cannot_link: 'The demo can’t be linked to another sign-in.',
 };
 
+/** Errors whose server message is the sentence to show (privacy: "You can ask again after …"). */
+const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account']);
+
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
 export const FIREWALL_BLOCKED =
   "The site's firewall blocked this request. Please tell the site admin (what you were doing, and the time).";
@@ -148,7 +151,11 @@ async function friendlyErrorMessage(res: Response, method = 'GET', path = res.ur
     // Limits, suspension and rate limits come with a ready-made sentence
     // that names the limit ("Your club has used its 10 GB. …").
     if (
-      (body.error === 'limit_reached' || body.error === 'suspended' || body.error === 'rate_limited' || body.error === 'verify_email_first') &&
+      (body.error === 'limit_reached' ||
+        body.error === 'suspended' ||
+        body.error === 'rate_limited' ||
+        body.error === 'verify_email_first' ||
+        MESSAGE_ERRORS.has(body.error as string)) &&
       typeof body.message === 'string' &&
       body.message
     ) {
@@ -986,6 +993,8 @@ export const api = {
       demoEnabled?: boolean;
       demoResetEvery?: DemoResetEvery;
       collectionCoverMaxBytes?: number;
+      /** Admin › Settings › Privacy: key -> number, or null for the default. */
+      privacy?: Record<string, number | null>;
     }) => patch<{ ok: true }>('/api/admin/settings', body),
     /** Demo account › Reset now (JSON, empty object body). */
     resetDemo: () => post<{ ok: true; lastResetAt: number; items: number }>('/api/admin/demo/reset', {}),
@@ -1410,9 +1419,25 @@ export interface AdminSettings {
   };
   /** The demo account: on or off, how often it resets, and what it has now. */
   demo?: DemoStatus & { items: number };
+  /** Privacy: data downloads (and more), each with its default and whether the server forces it. */
+  privacy?: { settings: PrivacySettingState[] };
   /** The server's env-only settings, read only (never a secret's value). */
   serverSetup?: { name: string; value: string; env: string; why: ServerSetupWhy }[];
   updatedAt: number;
+}
+
+export interface PrivacySettingState {
+  key: string;
+  label: string;
+  help: string;
+  unit: 'hours' | 'days' | 'mb';
+  builtIn: number;
+  min: number;
+  max: number;
+  envVar: string;
+  value: number;
+  setting: number | null;
+  forcedBy: string | null;
 }
 
 export interface AdminJobSetting<T> {

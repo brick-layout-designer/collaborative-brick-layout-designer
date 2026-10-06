@@ -377,6 +377,7 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/auth/device/deny': me,
   'DELETE /api/tokens/:id': me,
   'PUT /api/me/preferences': me,
+  'POST /api/me/privacy/exports': me,
 
   // ---- layouts
   'POST /api/layouts': resource('layout', { reply: 'id' }),

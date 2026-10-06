@@ -27,6 +27,7 @@ import { CatalogSettingsSection, ModerationTab } from './Moderation';
 import { SubjectWarnings } from './SubjectWarnings';
 import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 import { DemoAccountSection } from './DemoAccount';
+import { PrivacySettingsSection } from '../privacy/PrivacySettings';
 import { HelpButton } from '../help/HelpButton';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 
@@ -1658,6 +1659,7 @@ function SettingsTab() {
       <DemoAccountSection />
       <CatalogSettingsSection />
       <BackgroundJobsSection />
+      <PrivacySettingsSection />
       <ServerSetupSection />
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-neutral-300">Desktop app</h2>
