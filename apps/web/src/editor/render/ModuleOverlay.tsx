@@ -16,6 +16,9 @@ import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import { useEditorStore } from '../editorStore';
 import { EXPORT_HIDE } from '../exportRender';
+import { usePosedMap } from '../liveDragPose';
+import { SELECTION } from './selectionStyle';
+import { selectionHalo } from './BrickLayer';
 import { studToPx } from './coords';
 import { MAP_FONT_STACK } from './mapText';
 import {
@@ -57,16 +60,19 @@ function over(layout: ModuleLabelLayout, x: number, y: number): boolean {
   return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
 }
 
-export function ModuleOverlay({ map, modules }: Props) {
+export function ModuleOverlay({ map: committed, modules }: Props) {
   const showModuleNames = useEditorStore((s) => s.showModuleNames);
   const frameThickness = useEditorStore((s) => s.moduleFrameThickness);
   const labelPercent = useEditorStore((s) => s.moduleLabelPercent);
   const selection = useEditorStore((s) => s.selection);
+  const editingId = useEditorStore((s) => s.editingModuleId);
+  const tint = useEditorStore((s) => s.selectionTint);
+  const snapActive = useEditorStore((s) => s.liveSnap !== null);
+  // The parts being dragged where they are now (liveDragPose.ts): outlines
+  // and names move and turn with them, every frame.
+  const map = usePosedMap(committed);
 
-  const layouts = useMemo(
-    () => (showModuleNames ? moduleLabelLayouts(map, modules, labelPercent, measureBold) : []),
-    [map, modules, labelPercent, showModuleNames],
-  );
+  const layouts = useMemo(() => moduleLabelLayouts(map, modules, labelPercent, measureBold), [map, modules, labelPercent]);
   const cut = useMemo(() => layouts.filter((l) => l.text?.truncated), [layouts]);
   // The shortened name under the pointer (only watched while there is one).
   const hovered = useEditorStore((s) => {
@@ -77,9 +83,15 @@ export function ModuleOverlay({ map, modules }: Props) {
   });
   const selected = useMemo(() => new Set(selection), [selection]);
 
-  // Names and frames share one toggle, like desktop view/moduleNames.
-  if (!showModuleNames || modules.length === 0) return null;
+  if (modules.length === 0) return null;
   const byId = new Map(modules.map((m) => [m.id, m]));
+  // A whole module picked (not the one being edited) is highlighted as one
+  // piece, its outline in the selection's look (its parts aren't, one by one).
+  const wholeSelected = (id: string) => {
+    if (id === editingId) return false;
+    const members = byId.get(id)?.members ?? [];
+    return members.length > 0 && members.every((m) => selected.has(m));
+  };
   const showsFull = (l: ModuleLabelLayout) => {
     if (!l.text?.truncated) return false;
     if (l.id === hovered) return true;
@@ -87,11 +99,14 @@ export function ModuleOverlay({ map, modules }: Props) {
     return members.length > 0 && members.every((id) => selected.has(id));
   };
 
+  // Names and frames share one toggle, like desktop view/moduleNames; a
+  // picked module is highlighted either way.
   return (
     <Group listening={false}>
-      {layouts.map((l) => (
+      {layouts.map((l) => (showModuleNames || wholeSelected(l.id)) && (
         <Group key={l.id} name={`module-label-${l.id}`}>
-          <Rect
+          {wholeSelected(l.id) && <ModuleHighlight frame={l.frame} tint={tint} snapActive={snapActive} />}
+          {showModuleNames && <Rect
             {...l.frame}
             name="module-frame"
             stroke={l.frameStroke}
@@ -100,8 +115,8 @@ export function ModuleOverlay({ map, modules }: Props) {
             dash={MODULE_FRAME_DASH}
             fillEnabled={false}
             perfectDrawEnabled={false}
-          />
-          {l.text && (
+          />}
+          {showModuleNames && l.text && (
             <Group x={l.text.x} y={l.text.y} rotation={l.text.rotation} name="module-name">
               {l.text.lines.map((line, i) => (
                 <Text
@@ -126,6 +141,21 @@ export function ModuleOverlay({ map, modules }: Props) {
           )}
         </Group>
       ))}
+    </Group>
+  );
+}
+
+/**
+ * A picked module: the selection's double outline (black, then the tint)
+ * and see-through fill round its frame, as a picked part has
+ * (selectionStyle.ts); green while a connection snap holds.
+ */
+function ModuleHighlight({ frame, tint, snapActive }: { frame: ModuleLabelLayout['frame']; tint: string; snapActive: boolean }) {
+  const halo = selectionHalo(tint, snapActive);
+  return (
+    <Group name={`module-selected ${EXPORT_HIDE}`}>
+      <Rect {...frame} stroke={SELECTION.partOuter} strokeWidth={SELECTION.partOuterWidth} strokeScaleEnabled={false} perfectDrawEnabled={false} />
+      <Rect {...frame} stroke={halo.stroke} strokeWidth={SELECTION.partInnerWidth} fill={halo.fill} strokeScaleEnabled={false} perfectDrawEnabled={false} />
     </Group>
   );
 }

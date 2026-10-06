@@ -6,7 +6,7 @@ import type Konva from 'konva';
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
-import { shapeSelectionIds, useEditorStore, type Tool } from '../editorStore';
+import { shapeSelectionIds, useEditorStore, type AnnoSelection, type Tool } from '../editorStore';
 import { groupMates } from '../sets';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
@@ -32,12 +32,38 @@ import { indexParts } from '../partIndex';
 import { drawOrder, pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
 import { SELECTION } from './selectionStyle';
+import { useLiveDragPose, type DragPose } from '../liveDragPose';
 import { isTouchEvent, tapGuard } from '../touchGesture';
 import type { SidecarModule } from '@cld/bbm';
 import { boundsOf, canDragPart, moduleByPart, outsideEdit, outsideOutline, pinnedAmong, selectionUnit, type StudRect } from '../moduleEdit';
 import { enterModuleEdit, leaveModuleEdit, takeOutOfModule, tellPinned } from '../moduleActions';
 import { askConfirm } from '../../ui/ConfirmDialog';
 import { useYjsSnapshot } from '../useYjsSnapshot';
+
+/**
+ * The picked rulers and labels a drag shifts along: not those fixed to a
+ * dragged part, which the live pose already moves.
+ */
+export function ridingAnno(
+  anno: AnnoSelection,
+  moving: ReadonlySet<string>,
+  map: BbmMap,
+  labels: readonly { id: string; kind: number; targetId: string }[],
+): AnnoSelection {
+  const fixedLabels = new Set(labels.filter((l) => l.kind === 1 && moving.has(l.targetId)).map((l) => l.id));
+  const fixedRulers = new Set<string>();
+  for (const layer of map.layers) {
+    if (layer.type !== 'ruler') continue;
+    for (const r of layer.rulerItems) {
+      const ends = r.kind === 'linear' ? [r.attachedBrick1Id, r.attachedBrick2Id] : [r.attachedBrickId];
+      if (ends.some((id) => id && moving.has(id))) fixedRulers.add(r.id);
+    }
+  }
+  return { ...anno, labels: anno.labels.filter((id) => !fixedLabels.has(id)), rulers: anno.rulers.filter((id) => !fixedRulers.has(id)) };
+}
+
+/** How long the live pose stays after a drop, while the layout redraws with the parts in place (ms). */
+const POSE_LINGER_MS = 1000;
 
 /** How long a fast drag must be still before it snaps (ms). */
 const SETTLE_MS = 120;
@@ -112,6 +138,16 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
   const modulesRef = useRef(modules);
   modulesRef.current = modules;
   const getModules = useCallback(() => modulesRef.current, []);
+  // Parts of a module picked whole: the module is highlighted as one piece
+  // (ModuleOverlay), so they don't each get their own halo.
+  const inPickedModule = useMemo(() => {
+    const out = new Set<string>();
+    for (const m of modules) {
+      if (m.id === editingModuleId || m.members.length === 0) continue;
+      if (m.members.every((id) => selectedIds.has(id))) for (const id of m.members) out.add(id);
+    }
+    return out;
+  }, [modules, editingModuleId, selectedIds]);
 
   // Glyphs read the map only inside event handlers; hand them a stable
   // getter instead of the map itself (a new object on every doc change).
@@ -146,6 +182,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   meta={partsByKey.get(lower) ?? byBarePartNumber.get(lower)}
                   isViewer={isViewer}
                   isSelected={!isViewer && selectedIds.has(brick.id)}
+                  halo={!inPickedModule.has(brick.id)}
                   tool={isViewer ? 'select' : view.tool}
                   showConnectionPoints={!isViewer && view.showConnectionPoints}
                   alwaysShowConnections={!isViewer && view.alwaysShowConnections}
@@ -181,6 +218,7 @@ const BrickGlyph = memo(function BrickGlyph({
   meta,
   isViewer,
   isSelected,
+  halo,
   tool,
   showConnectionPoints,
   alwaysShowConnections,
@@ -204,6 +242,8 @@ const BrickGlyph = memo(function BrickGlyph({
   isViewer: boolean;
   meta: PartWire | undefined;
   isSelected: boolean;
+  /** Draw its own selection halo (not when its whole module is picked: the module is highlighted instead). */
+  halo: boolean;
   tool: Tool;
   showConnectionPoints: boolean;
   alwaysShowConnections: boolean;
@@ -471,6 +511,9 @@ const BrickGlyph = memo(function BrickGlyph({
 
   /** A group snap's turn, and the leader's raw centre it was made from (for the drop). */
   const groupTurnRef = useRef<{ turn: GroupTurn; raw: { x: number; y: number } } | null>(null);
+  /** The dragged parts and where they were, for the live pose. */
+  const poseStartRef = useRef<{ ids: ReadonlySet<string>; startAreas: ReadonlyMap<string, Brick['displayArea']> } | null>(null);
+
   /** This drag's snap state (held join, pointer speed). */
   const snapSessionRef = useRef<SnapSession | null>(null);
   /** The leader's centre where the pointer has it, before any snap (studs). */
@@ -518,13 +561,29 @@ const BrickGlyph = memo(function BrickGlyph({
     const { selection, annoSelection } = useEditorStore.getState();
     // Selected rulers and labels move with the bricks (mixed selection,
     // MapViewDrag.cpp:124-153); only when this brick is part of it.
+    // Labels and rulers fixed to the dragged parts follow them through the
+    // live pose (liveDragPose.ts); shifting them as well would move them twice.
     annoNodesRef.current = selection.includes(brick.id)
-      ? collectNodes(e.target.getStage(), annoNodeNames(annoSelection))
+      ? collectNodes(
+          e.target.getStage(),
+          annoNodeNames(ridingAnno(annoSelection, new Set(selection.length > 1 ? selection : [brick.id]), map, readSidecarFromDoc(doc)?.anchoredLabels ?? [])),
+        )
       : [];
     // Only the brick under the cursor fires its own onDragStart in
     // Konva; the rest of the selection isn't dragged by Konva itself —
     // we translate them by hand on dragmove.
     const isMulti = selection.length > 1 && selection.includes(brick.id);
+    // Where the dragged parts were, for the live pose (module outlines and
+    // names follow the drag from it: liveDragPose.ts).
+    {
+      const moving = new Set(isMulti ? selection : [brick.id]);
+      const startAreas = new Map<string, Brick['displayArea']>();
+      for (const layer of map.layers) {
+        if (layer.type !== 'brick') continue;
+        for (const b of layer.bricks) if (moving.has(b.id)) startAreas.set(b.id, b.displayArea);
+      }
+      poseStartRef.current = { ids: moving, startAreas };
+    }
     if (!isMulti) {
       dragStartRef.current = null;
       return;
@@ -734,6 +793,28 @@ const BrickGlyph = memo(function BrickGlyph({
       }
     }
 
+    // Publish the pose (one shared source for everything drawn from the
+    // layout that follows these parts: module outlines and names).
+    const poseStart = poseStartRef.current;
+    if (poseStart) {
+      const leaderStart = isMulti ? dragStart.leaderStartCentre : pivot;
+      const pose: DragPose =
+        isMulti && turn
+          ? {
+              ...poseStart,
+              about: { x: turn.pivotX - (raw.x - leaderStart.x), y: turn.pivotY - (raw.y - leaderStart.y) },
+              to: { x: turn.toX, y: turn.toY },
+              degrees: turn.degrees,
+            }
+          : {
+              ...poseStart,
+              about: leaderStart,
+              to: { x: result.centreX, y: result.centreY },
+              degrees: isMulti ? 0 : (result.newOrientation ?? brick.orientation + (turn?.degrees ?? 0)) - brick.orientation,
+            };
+      useLiveDragPose.getState().setPose(pose);
+    }
+
     if (annoNodesRef.current.length > 0) {
       const startX = isMulti ? dragStart.leaderStartCentre.x : pivot.x;
       const startY = isMulti ? dragStart.leaderStartCentre.y : pivot.y;
@@ -801,6 +882,7 @@ const BrickGlyph = memo(function BrickGlyph({
         deleteMixedSelection(doc, map, [brick.id], { rulers: [], labels: [], texts: [] });
       }
       useEditorStore.getState().setSelection([]);
+      endPose(true);
       // Snap the visible Group back to its original position so it
       // doesn't briefly render at the off-stage drop coords before the
       // Yjs delete propagates.
@@ -863,6 +945,9 @@ const BrickGlyph = memo(function BrickGlyph({
     }
     // Desktop confirms the commit in the status bar (MapViewDrag.cpp:594-597).
     useEditorStore.getState().showStatusMessage(wasSnapped ? 'Connection snap' : 'Moved', 1500);
+    // The layout has the parts in their new place now; the pose stops
+    // applying by itself (poseMoves), and goes once the drawing caught up.
+    endPose(false);
 
     // Editing a module: parts dragged clear of its outline may leave it.
     const edit = moduleOutlineRef.current;
@@ -877,6 +962,20 @@ const BrickGlyph = memo(function BrickGlyph({
       const leaving = left.filter((id) => members.has(id));
       if (leaving.length > 0) void askTakeOut(edit.moduleId, edit.name, leaving);
     }
+  }
+
+  /** The drag is over: the pose goes at once (nothing moved) or once the layout has redrawn. */
+  function endPose(now: boolean) {
+    poseStartRef.current = null;
+    const pose = useLiveDragPose.getState().pose;
+    if (!pose) return;
+    if (now) {
+      useLiveDragPose.getState().setPose(null);
+      return;
+    }
+    setTimeout(() => {
+      if (useLiveDragPose.getState().pose === pose) useLiveDragPose.getState().setPose(null);
+    }, POSE_LINGER_MS);
   }
 
   async function askTakeOut(moduleId: string, name: string, ids: string[]) {
@@ -993,7 +1092,7 @@ const BrickGlyph = memo(function BrickGlyph({
           />
         );
       })}
-      {isSelected && (
+      {isSelected && halo && (
         // Two-stroke gold halo, port of SelectionOverlay::paint
         // (ui/SelectionOverlay.cpp:21-48):
         //   - 5px black outer outline (visible on light backgrounds)
