@@ -106,7 +106,8 @@ interface Common {
 function useOwner(layoutOwnerOrgId: string | null | undefined) {
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const [picked, setPicked] = useState<string | null>(null);
-  const layoutClub = orgs.data?.orgs.find((o) => o.id === layoutOwnerOrgId)?.slug ?? '';
+  // Not a club that keeps adding to its admins, for one of its members.
+  const layoutClub = orgs.data?.orgs.find((o) => o.id === layoutOwnerOrgId && o.canAdd !== false)?.slug ?? '';
   const slug = picked ?? layoutClub;
   const clubName = slug ? (orgs.data?.orgs.find((o) => o.slug === slug)?.name ?? slug) : null;
   return { slug, setSlug: setPicked, orgs: orgs.data?.orgs, clubName };

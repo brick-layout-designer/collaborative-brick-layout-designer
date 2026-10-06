@@ -3,7 +3,7 @@
 // picker used wherever something is created or saved, and the Move or
 // copy dialog.
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Credit, type OrgSummary, type OwnableKind } from '../api';
 import { creditText, moveToClubWording, ownerLabel, type OwnedItem, type OwnerFilter } from './owners';
@@ -135,9 +135,16 @@ export function OwnerFilterBar({
   );
 }
 
+/** The clubs I may save new things to (a club that keeps adding to its admins is left out for its members). */
+export function clubsICanAddTo<T extends Pick<OrgSummary, 'canAdd'>>(orgs: readonly T[] | undefined): T[] {
+  return (orgs ?? []).filter((o) => o.canAdd !== false);
+}
+
 /**
- * "Save to: Me / <club>…". The value is '' for Me or a club's slug. With
- * no clubs there is nothing to pick, so it shows nothing.
+ * "Save to: Me / <club>…". The value is '' for Me or a club's slug. Only
+ * clubs that will take it are offered; a starting value that isn't one of
+ * them (e.g. Home showing a club that keeps adding to its admins) falls
+ * back to Me. With no clubs there is nothing to pick, so it shows nothing.
  */
 export function SaveToPicker({
   value,
@@ -155,10 +162,17 @@ export function SaveToPicker({
   exclude?: readonly string[];
   className?: string;
 }) {
-  if (!orgs || orgs.length === 0) return null;
-  const options = [{ value: '', label: 'Me' }, ...orgs.map((o) => ({ value: o.slug, label: o.name }))].filter(
+  const options = [{ value: '', label: 'Me' }, ...clubsICanAddTo(orgs).map((o) => ({ value: o.slug, label: o.name }))].filter(
     (o) => !exclude?.includes(o.value),
   );
+  const offered = options.some((o) => o.value === value);
+  const first = options[0]?.value;
+  useEffect(() => {
+    // Only once the clubs are in: before that every club looks missing.
+    if (orgs && !offered && first !== undefined) onChange(first);
+  }, [orgs, offered, first, onChange]);
+  // Nothing to choose: no clubs, or only Me.
+  if (!orgs || options.length === 0 || (options.length === 1 && first === '')) return null;
   return (
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-muted">{label}</span>
@@ -204,10 +218,10 @@ export function MoveCopyDialog({
 }) {
   const qc = useQueryClient();
   const currentSlug = item.ownerOrgId ? (orgs.find((o) => o.id === item.ownerOrgId)?.slug ?? null) : '';
-  const moveTargets = orgs.filter((o) => o.slug !== currentSlug);
+  const moveTargets = clubsICanAddTo(orgs).filter((o) => o.slug !== currentSlug);
   const moveAllowed = canMove && moveTargets.length > 0;
   const [mode, setMode] = useState<'copy' | 'move'>('copy');
-  const [dest, setDest] = useState(() => (item.ownerOrgId ? '' : (orgs[0]?.slug ?? '')));
+  const [dest, setDest] = useState(() => (item.ownerOrgId ? '' : (clubsICanAddTo(orgs)[0]?.slug ?? '')));
   const [error, setError] = useState<string | null>(null);
   const word = KIND_WORD[kind];
 
@@ -345,7 +359,7 @@ export function SaveToDialog({
   onConfirm: (slug: string) => void;
   onClose: () => void;
 }) {
-  const [dest, setDest] = useState(() => (orgs.some((o) => o.slug === initial) ? initial : ''));
+  const [dest, setDest] = useState(() => (clubsICanAddTo(orgs).some((o) => o.slug === initial) ? initial : ''));
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
       <form

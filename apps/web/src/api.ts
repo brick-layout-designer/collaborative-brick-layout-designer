@@ -1731,6 +1731,8 @@ export interface OrgSummary {
   myRole: ClubRole;
   /** A trusted club reviews what's published under its name (older servers leave it out). */
   trusted?: boolean;
+  /** May I save new things to it? False when only its admins and managers may add (older servers leave it out). */
+  canAdd?: boolean;
 }
 
 export interface ModerationClub {

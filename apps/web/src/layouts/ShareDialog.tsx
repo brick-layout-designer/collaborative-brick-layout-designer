@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type InviteSummary } from '../api';
+import { clubsICanAddTo } from '../owners/OwnerControls';
 import { HelpButton } from '../help/HelpButton';
 import { CatalogBadge, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { askConfirm, confirmDelete, showToast } from '../ui/ConfirmDialog';
@@ -529,7 +530,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             className="w-full rounded-lg border border-border bg-soft px-2 py-1.5"
           >
             <option value="">Choose a club…</option>
-            {orgs.data.orgs.map((o) => (
+            {clubsICanAddTo(orgs.data.orgs).map((o) => (
               <option key={o.slug} value={o.slug}>
                 {o.name} ({o.myRole})
               </option>
