@@ -74,6 +74,7 @@ export const NO_PERSONAL_DATA: Record<string, string> = {
   layout_updates: 'Recent edits to a layout, waiting to be folded into it: part of the layout file, which is included.',
   orgs: 'Clubs: the club’s own data. A person’s memberships are listed under clubs.',
   platform_settings: 'Site settings. Only "who last changed them" points at a person, and that is listed under audit-log.',
+  erasures: 'The record that an account or club was erased: a pseudonym ("Deleted user #abc123"), when, and how many things went. No personal data.',
   __drizzle_migrations: 'The database’s own record of its upgrades.',
 };
 

@@ -38,6 +38,9 @@ export async function createSession(userId: string): Promise<{ token: string; ex
   const id = hashToken(token);
   const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
   await db.insert(schema.sessions).values({ id, userId, expiresAt });
+  // Signing in keeps an account that was waiting to be deleted.
+  const { cancelDeletionOnSignIn } = await import('../privacy/accountDeletion.js');
+  await cancelDeletionOnSignIn(userId);
   return { token, expiresAt };
 }
 

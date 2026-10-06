@@ -4,14 +4,18 @@
 // a fake "now".
 //
 //   - data downloads past their keep-by date: file and row deleted
+//   - accounts whose waiting time is over: erased (accountDeletion.ts)
 
 import { purgeExpiredExports } from './exports.js';
+import { eraseDueAccounts } from './accountDeletion.js';
 
 export interface PrivacyTickResult {
   exportsPurged: number;
+  accountsErased: number;
 }
 
 export async function privacyTick(now: Date = new Date()): Promise<PrivacyTickResult> {
+  const accountsErased = await eraseDueAccounts(now);
   const exportsPurged = await purgeExpiredExports(now);
-  return { exportsPurged };
+  return { exportsPurged, accountsErased };
 }

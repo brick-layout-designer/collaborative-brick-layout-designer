@@ -79,6 +79,8 @@ export async function resolveOauthUser(
     emailVerified: true,
     createdAt: new Date(),
     lastSeenAt: null,
+    deletionRequestedAt: null,
+    deletionDueAt: null,
   };
   await db.insert(schema.users).values(created);
   await db.insert(schema.oauthAccounts).values({

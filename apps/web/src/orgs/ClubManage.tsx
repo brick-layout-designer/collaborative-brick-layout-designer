@@ -34,14 +34,17 @@ export function Section({
   children,
   hint,
   help,
+  id,
 }: {
   title: string;
   hint?: string | undefined;
   help?: HelpKey | undefined;
+  /** An anchor (/orgs/x/admin#hand-over), opened by useHashScroll. */
+  id?: string | undefined;
   children: ReactNode;
 }) {
   return (
-    <section className={card} aria-label={title}>
+    <section id={id} className={`${card} scroll-mt-6`} aria-label={title}>
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           {title}
@@ -740,6 +743,7 @@ export function HandOverSection({ slug, myUserId, members }: { slug: string; myU
   });
   return (
     <Section
+      id="hand-over"
       title="Hand over the club"
       hint="Make someone else an admin and become a member yourself. Use this when you step down."
     >

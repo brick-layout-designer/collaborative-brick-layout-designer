@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
+import { DeletingNotice } from '../privacy/DeleteAccount';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { HelpButton } from '../help/HelpButton';
@@ -20,11 +21,13 @@ export function LoginPage() {
   const providers = useQuery({ queryKey: ['providers'], queryFn: api.providers });
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
+  const deleting = Number(params.get('deleting') ?? '');
   if (me.data?.user) return <Navigate to={next} replace />;
 
   return (
     <div className="grid min-h-screen place-items-center px-4 py-6">
       <div className="w-full max-w-sm space-y-4">
+        {deleting > 0 && <DeletingNotice dueAt={deleting} />}
         <div className="space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
           <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
           <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>

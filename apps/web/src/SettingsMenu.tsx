@@ -70,6 +70,7 @@ export function settingsMenuGroups(
       { label: 'Sign-in methods', to: '/profile#sign-in' },
       { label: 'Devices', to: '/profile#devices' },
       { label: 'Your data', to: '/profile#my-data' },
+      { label: 'Delete my account', to: '/profile#delete-account' },
     );
   }
   const look: Entry[] = [

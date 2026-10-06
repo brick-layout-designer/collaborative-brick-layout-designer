@@ -105,7 +105,7 @@ describe('Settings menu by role', () => {
     expect(groupsOf(openMenu())).toEqual([
       {
         title: 'Account',
-        entries: ['Profile and name /profile#name', 'Sign-in methods /profile#sign-in', 'Devices /profile#devices', 'Your data /profile#my-data', 'Sign out (button)'],
+        entries: ['Profile and name /profile#name', 'Sign-in methods /profile#sign-in', 'Devices /profile#devices', 'Your data /profile#my-data', 'Delete my account /profile#delete-account', 'Sign out (button)'],
       },
       {
         title: 'Look',

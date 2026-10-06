@@ -10,7 +10,7 @@
 
 import { getPlatformSettings } from '../auth/platformSettings.js';
 
-export type PrivacyKey = 'exportEveryHours' | 'exportMaxMb' | 'exportKeepDays';
+export type PrivacyKey = 'exportEveryHours' | 'exportMaxMb' | 'exportKeepDays' | 'deletionGraceDays';
 
 export interface PrivacySettingInfo {
   key: PrivacyKey;
@@ -54,6 +54,16 @@ export const PRIVACY_SETTINGS: readonly PrivacySettingInfo[] = [
     min: 1,
     max: 30,
     envVar: 'PRIVACY_EXPORT_KEEP_DAYS',
+  },
+  {
+    key: 'deletionGraceDays',
+    label: 'Wait before deleting an account',
+    help: 'When someone deletes their account (or a club), it waits this long first. Signing back in (or Restore, for a club) cancels it.',
+    unit: 'days',
+    builtIn: 14,
+    min: 7,
+    max: 30,
+    envVar: 'PRIVACY_DELETION_GRACE_DAYS',
   },
 ];
 

@@ -80,6 +80,14 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
       reply.header('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${anyOf.join(' ')}"`);
       return reply.code(403).send({ error: 'insufficient_scope' });
     }
+    // An account waiting to be deleted: the desktop says why, instead of failing.
+    if (result.user.deletionDueAt) {
+      return reply.code(403).send({
+        error: 'account_pending_deletion',
+        deletionDueAt: result.user.deletionDueAt.getTime(),
+        message: `This account is being deleted on ${result.user.deletionDueAt.toUTCString()}. To keep it, sign in on the website before then.`,
+      });
+    }
     req.user = result.user;
     req.apiToken = { id: result.token.id, scopes: result.scopes };
     return;

@@ -114,7 +114,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /** Errors whose server message is the sentence to show (privacy: "You can ask again after …"). */
-const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account']);
+const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion']);
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
 export const FIREWALL_BLOCKED =

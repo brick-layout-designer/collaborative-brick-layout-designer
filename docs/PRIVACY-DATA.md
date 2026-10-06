@@ -99,3 +99,28 @@ The desktop app keeps its layouts on the computer. On the server it has
 only its sign-in (`api_tokens`, and the `device_codes` row it was approved
 with) and whatever it publishes, which is stored like anything made on the
 website. "Download my data" includes all of it.
+
+## Deleting an account
+
+"Delete my account" (Profile) waits first: 14 days by default, 7 to 30
+in Admin › Settings › Privacy (`PRIVACY_DELETION_GRACE_DAYS` forces it).
+The person is signed out of every browser; desktop sign-ins are refused
+with `403 account_pending_deletion` (the desktop shows why). Signing back
+in cancels it. An admin's "Delete" in Admin › Users erases at once.
+
+When the account is erased (`privacy/accountDeletion.ts`):
+
+| Data | What happens |
+|---|---|
+| `users`, `sessions`, `api_tokens`, `device_codes`, `oauth_accounts`, `email_verifications`, `user_preferences` | deleted |
+| `org_members`, `org_join_requests` | deleted. A club they were the **last admin** of gets a new admin (its longest-standing manager, else member), who gets a note. A club with **nobody else** in it is deleted. |
+| `layouts`, `modules`, `custom_parts`, `venue_library`, `catalog_items`, personal `catalog_collections` they own alone | deleted (with their background pictures and data downloads on disk). Copies other people added from the catalog are theirs and stay. |
+| Club things they made | stay with the club: `created_by` moves to a club admin (it must name an account), `deleted_author_id` keeps the credit "Builder #…". A club collection they curate moves to a club admin. |
+| `layout_collaborators`, `module_collaborators`, `custom_part_collaborators` | deleted: they leave share lists. Their edits to other people's layouts stay. |
+| Invites and transfers they sent, or addressed to their email | deleted |
+| `warnings` to them | deleted; warnings they sent keep `issued_by` empty |
+| `usage_daily`, `limit_overrides` about them | deleted |
+| `audit_events` | kept, pseudonymised: their rows get `actor_label` "Deleted user #abc123" and `user_id` empty; their email is replaced by "(erased)" in every payload, and their name in their own rows |
+| `erasures` | a new row: kind, the pseudonym, how (self / admin / request), when, and counts only |
+
+The last site admin can never be deleted.
