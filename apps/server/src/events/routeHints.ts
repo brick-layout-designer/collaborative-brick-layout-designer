@@ -379,6 +379,11 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'PUT /api/me/preferences': me,
   'POST /api/me/privacy/exports': me,
   'POST /api/me/deletion': adminOnly('admin', (c) => c.userId),
+  'POST /api/admin/privacy/requests': adminOnly('admin'),
+  'PATCH /api/admin/privacy/requests/:id': adminOnly('admin'),
+  'POST /api/admin/privacy/requests/:id/export': adminOnly('admin'),
+  'POST /api/admin/privacy/requests/:id/erase': adminOnly('admin'),
+  'POST /api/admin/privacy/requests/:id/restrict': adminOnly('admin'),
 
   // ---- layouts
   'POST /api/layouts': resource('layout', { reply: 'id' }),

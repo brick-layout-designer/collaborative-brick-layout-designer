@@ -2,9 +2,9 @@
 // entry per tab) without loading the admin page itself. The tab is in
 // the address (/admin?tab=users) so links and back/forward work.
 
-export type AdminTab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'audit' | 'settings';
+export type AdminTab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'parts' | 'libraries' | 'moderation' | 'privacy' | 'audit' | 'settings';
 
-export const ADMIN_TABS: readonly AdminTab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'audit', 'settings'];
+export const ADMIN_TABS: readonly AdminTab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'privacy', 'audit', 'settings'];
 
 /** The tab button's words (shown capitalised). */
 export function adminTabText(t: AdminTab): string {
@@ -21,6 +21,7 @@ export const ADMIN_MENU_LABELS: Record<AdminTab, string> = {
   parts: 'Parts',
   libraries: 'Part libraries',
   moderation: 'Moderation',
+  privacy: 'Privacy requests',
   audit: 'Audit log',
   settings: 'Site settings',
 };

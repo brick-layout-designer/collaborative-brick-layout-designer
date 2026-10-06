@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 import { AppHeader } from './AppHeader';
 import { LayoutsPage } from './layouts/LayoutsPage';
+import { SiteFooter } from './privacy/SiteFooter';
 
 export function App() {
   const { data, isLoading } = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -15,6 +16,7 @@ export function App() {
       <main className="mt-8">
         <LayoutsPage />
       </main>
+      <SiteFooter />
     </div>
   );
 }

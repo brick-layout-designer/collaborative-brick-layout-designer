@@ -30,6 +30,7 @@ import { safeFetch } from '../utils/safeFetch.js';
 import { env } from '../env.js';
 import { backgroundJobs } from '../workers/jobs.js';
 import { EraseRefused, eraseUser } from '../privacy/accountDeletion.js';
+import { NOTICE_MAX, privacyContact, validContact } from '../privacy/page.js';
 import { invalidatePrivacyCache, mergePrivacyPatch, privacySettingStates } from '../privacy/settings.js';
 import { DEMO_RESET_CHOICES, demoStatus, ensureDemoUser, isDemoUser, signOutDemo, type DemoResetEvery } from '../demo/demoAccount.js';
 import { demoItemCount, runDemoReset } from '../demo/reset.js';
@@ -1134,7 +1135,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       demo: { ...demoStatus(settings), items: await demoItemCount() },
       // Privacy: data downloads (and, later, deleting accounts and keeping
       // records), each with where its value comes from.
-      privacy: { settings: await privacySettingStates() },
+      privacy: {
+        settings: await privacySettingStates(),
+        notice: settings.privacyNotice ?? '',
+        contact: await privacyContact(),
+      },
       // The server's own settings that can't be changed from this page,
       // with why: secrets, things read once at start, the deployment's own
       // paths and ports, and the first admin (needed before there is a DB).
@@ -1164,6 +1169,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       collectionCoverMaxBytes?: number;
       /** Admin › Settings › Privacy: key -> number, or null for the default (privacy/settings.ts). */
       privacy?: Record<string, number | null>;
+      /** The privacy page: a notice (markdown) and a contact (email or web address); "" clears. */
+      privacyNotice?: string | null;
+      privacyContact?: string | null;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1227,6 +1235,18 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       if ('error' in merged) return reply.code(400).send({ error: 'invalid_input', detail: merged.error });
       patch.privacy = merged.json;
     }
+    if ('privacyNotice' in body) {
+      const v = body.privacyNotice;
+      if (v !== null && (typeof v !== 'string' || v.length > NOTICE_MAX)) return reply.code(400).send({ error: 'invalid_input' });
+      patch.privacyNotice = v && v.trim() ? v : null;
+    }
+    if ('privacyContact' in body) {
+      const v = typeof body.privacyContact === 'string' ? body.privacyContact.trim() : body.privacyContact;
+      if (v !== null && v !== '' && (typeof v !== 'string' || !validContact(v))) {
+        return reply.code(400).send({ error: 'invalid_contact', message: 'Use an email address or a web address (https://…).' });
+      }
+      patch.privacyContact = v || null;
+    }
     if ('catalogReview' in body) {
       if (body.catalogReview !== 'moderators' && body.catalogReview !== 'none') return reply.code(400).send({ error: 'invalid_input' });
       patch.catalogReview = body.catalogReview;
@@ -1260,7 +1280,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       userId: me.id,
       eventType: 'admin_settings_patch',
       // Never audit the password value itself.
-      payload: { patch: { ...patch, smtpPass: patch.smtpPass !== undefined ? '(redacted)' : undefined } },
+      payload: {
+        patch: {
+          ...patch,
+          smtpPass: patch.smtpPass !== undefined ? '(redacted)' : undefined,
+          // The notice can be long: the log says it changed, not what it says.
+          privacyNotice: patch.privacyNotice !== undefined ? '(changed)' : undefined,
+        },
+      },
     });
     return { ok: true };
   });

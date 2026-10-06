@@ -24,6 +24,7 @@ import { CollectionPage } from './catalog/Collections';
 import { OrgInvitePage } from './orgs/OrgInvitePage';
 import { TransferPage } from './layouts/TransferPage';
 import { AboutPage } from './AboutPage';
+import { PrivacyPage } from './privacy/PrivacyPage';
 import { SiteVersionBar } from './SiteVersionBar';
 import { DemoBanner } from './demo/DemoBanner';
 import { NamePrompt } from './auth/NamePrompt';
@@ -184,6 +185,7 @@ createRoot(root).render(
           <Route path="/about" element={<AboutPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/notices" element={<NoticesPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/p/:token" element={<PublicLayoutPage />} />
         </Routes>
         </Suspense>

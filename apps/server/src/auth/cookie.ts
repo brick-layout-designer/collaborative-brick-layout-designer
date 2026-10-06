@@ -90,7 +90,7 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
     }
     req.user = result.user;
     req.apiToken = { id: result.token.id, scopes: result.scopes };
-    return;
+    return refuseIfRestricted(req, reply);
   }
 
   const token = req.cookies[SESSION_COOKIE];
@@ -106,6 +106,38 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
   }
   if (result.refreshed) setSessionCookie(reply, token, result.session.expiresAt);
   req.user = result.user;
+  return refuseIfRestricted(req, reply);
+}
+
+/**
+ * What a restricted account may still change: signing in and out, the
+ * client beacon, reading a notice, and asking for (or deleting) its data:
+ * restriction stops other changes, not the person's own privacy rights.
+ */
+function allowedWhileRestricted(url: string): boolean {
+  return (
+    url.startsWith('/api/auth/') ||
+    url.startsWith('/api/metrics/') ||
+    url.startsWith('/api/notices/') ||
+    url.startsWith('/api/me/privacy/') ||
+    url.startsWith('/api/me/deletion')
+  );
+}
+
+/**
+ * A restricted account (Admin › Privacy requests › Restrict) is read only,
+ * whatever the usage-limit switch says: every change is refused with a
+ * reason the web and the desktop show.
+ */
+function refuseIfRestricted(req: FastifyRequest, reply: FastifyReply): FastifyReply | undefined {
+  const u = req.user;
+  if (!u?.restrictedAt) return undefined;
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return undefined;
+  if (allowedWhileRestricted(req.url)) return undefined;
+  return reply.code(403).send({
+    error: 'account_restricted',
+    message: 'Your account is on hold (read only) while a privacy request is looked at. You can still see and download your things. Ask the site admin.',
+  });
 }
 
 export function requireUser(req: FastifyRequest): User {

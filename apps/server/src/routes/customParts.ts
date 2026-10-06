@@ -27,7 +27,7 @@ import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
-import { nameFor, publicName } from '../utils/publicName.js';
+import { emailsVisible, nameFor, publicName } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
 
 interface CreatePartBody {
@@ -392,7 +392,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
           userId: c.userId,
           role: c.role,
           addedAt: c.addedAt.getTime(),
-          email: c.email,
+          // Addresses: the person themselves, the owners (who manage sharing) and site admins.
+          email: emailsVisible(user, role) || c.userId === user.id ? c.email : '',
           displayName: nameFor(user, c.userId, c.displayName),
           avatarUrl: c.avatarUrl,
         })),

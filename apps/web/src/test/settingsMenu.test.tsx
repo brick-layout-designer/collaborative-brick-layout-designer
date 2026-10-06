@@ -138,6 +138,7 @@ describe('Settings menu by role', () => {
         'Parts /admin?tab=parts',
         'Part libraries /admin?tab=libraries',
         'Moderation /admin?tab=moderation',
+        'Privacy requests /admin?tab=privacy',
         'Audit log /admin?tab=audit',
         'Site settings /admin?tab=settings',
       ],

@@ -28,6 +28,8 @@ import { SubjectWarnings } from './SubjectWarnings';
 import { BackgroundJobsSection, ServerSetupSection } from './ServerSetup';
 import { DemoAccountSection } from './DemoAccount';
 import { PrivacySettingsSection } from '../privacy/PrivacySettings';
+import { PrivacyDashboardCard, PrivacyRequestsTab } from '../privacy/PrivacyRequests';
+import { usePrivacyDue } from '../SettingsMenu';
 import { HelpButton } from '../help/HelpButton';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 
@@ -55,6 +57,7 @@ export function AdminPage() {
   const setTab = (t: Tab) => setParams({ tab: t });
   // Its tables become cards on a phone.
   const pageRef = useCardTables();
+  const privacyDue = usePrivacyDue({ isGlobalAdmin: !!me.data?.user?.isGlobalAdmin });
 
   if (me.isLoading) return <Loading />;
   if (!me.data?.user) return <Navigate to="/login" replace />;
@@ -90,15 +93,24 @@ export function AdminPage() {
             }
           >
             {adminTabText(t)}
+            {t === 'privacy' && privacyDue > 0 && (
+              <span className="ml-1 rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink" aria-label={`${privacyDue} due soon or overdue`}>
+                {privacyDue}
+              </span>
+            )}
           </button>
         ))}
       </nav>
       <main className="mt-6">
         {tab === 'dashboard' && (
-          <Suspense fallback={<Loading />}>
-            <Dashboard />
-          </Suspense>
+          <div className="space-y-6">
+            <PrivacyDashboardCard />
+            <Suspense fallback={<Loading />}>
+              <Dashboard />
+            </Suspense>
+          </div>
         )}
+        {tab === 'privacy' && <PrivacyRequestsTab />}
         {tab === 'heavy' && <HeavyUse />}
         {tab === 'users' && <UsersTab selfId={me.data.user.id} />}
         {tab === 'orgs' && <OrgsTab />}

@@ -72,8 +72,12 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   me: () => [['me'], ['preferences'], ['api-tokens'], ['providers'], ['my-exports'], ['my-deletion']],
   transfer: () => [['layouts'], ['modules'], ['transfer-preview']],
   // …and the demo account's last reset (Admin › Settings and the dashboard).
-  admin: () => [...ADMIN_LISTS, ['admin-audit'], ['admin-abuse'], ['admin-settings'], ['admin-people']],
-  settings: () => [['admin-settings'], ['catalog-settings'], ['providers'], ['admin-alerts']],
+  admin: () => [
+    ...ADMIN_LISTS, ['admin-audit'], ['admin-abuse'], ['admin-settings'], ['admin-people'],
+    // Admin › Privacy requests, and its badge.
+    ['admin-privacy'], ['admin-privacy-summary'], ['admin-privacy-request'],
+  ],
+  settings: () => [['admin-settings'], ['catalog-settings'], ['providers'], ['admin-alerts'], ['privacy-page'], ['admin-privacy-summary']],
   limits: () => [['admin-limits'], ['admin-usage'], ['admin-abuse'], ['admin-user-detail'], ['admin-org-detail']],
   'parts-library': () => [['parts-catalog'], ['custom-parts'], ['admin-global-parts'], ['admin-part-libraries'], ['org-part-libraries']],
   warning: () => [['notices'], ['warnings'], ['admin-user-detail'], ['admin-org-detail'], ['org-warnings']],
@@ -152,6 +156,7 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/admin\/orgs\b/, ['admin', 'club']],
   [/^\/api\/admin\/layouts\b/, ['admin', 'layout']],
   [/^\/api\/admin\/users\b/, ['admin']],
+  [/^\/api\/admin\/privacy\b/, ['admin']],
   [/^\/api\/admin\/(global-parts|part-libraries|reload-parts)\b/, ['parts-library']],
   [/^\/api\/admin\/settings\b/, ['settings']],
   [/^\/api\/admin\/demo\b/, ['admin', 'settings']],

@@ -287,7 +287,8 @@ function CollaboratorRow({
           {collaborator.displayName}{' '}
           {isSelf && <span className="text-xs text-muted">(you)</span>}
         </p>
-        <p className="break-all text-xs text-muted">{collaborator.email}</p>
+        {/* Only the person, the owners and site admins get the address (the server leaves it empty for others). */}
+        {collaborator.email && <p className="break-all text-xs text-muted">{collaborator.email}</p>}
       </div>
       <div className="flex items-center gap-2">
         {isOwner && collaborator.role !== 'owner' ? (

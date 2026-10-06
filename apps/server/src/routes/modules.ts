@@ -27,7 +27,7 @@ import { clubModuleRole } from '../access/resolveResourceRole.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { dropModuleFromCollections } from './collections.js';
 import type { User } from '../db/schema.js';
-import { nameFor } from '../utils/publicName.js';
+import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
 
 type ModuleRow = typeof schema.modules.$inferSelect;
@@ -548,7 +548,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
           userId: c.userId,
           role: c.role,
           addedAt: c.addedAt.getTime(),
-          email: c.email,
+          // Addresses: the person themselves, the owners (who manage sharing) and site admins.
+          email: emailsVisible(user, role) || c.userId === user.id ? c.email : '',
           displayName: nameFor(user, c.userId, c.displayName),
           avatarUrl: c.avatarUrl,
         })),

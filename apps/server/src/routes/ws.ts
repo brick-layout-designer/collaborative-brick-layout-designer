@@ -197,7 +197,8 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         const credential: Credential = token
           ? { kind: 'token', id: token.id }
           : { kind: 'session', id: sessionIdForToken(req.cookies[SESSION_COOKIE] ?? '') };
-        const readOnly = suspended || (token !== null && !hasScope(token.scopes, 'layouts:write'));
+        // A restricted account (privacy) only looks; its own layouts are already viewer-only (resolveResourceRole).
+        const readOnly = suspended || !!req.user.restrictedAt || (token !== null && !hasScope(token.scopes, 'layouts:write'));
         let detach: () => Promise<void>;
         try {
           detach = await attachWsHandlers(ws, layoutId, userId, role.role!, { credential, readOnly });

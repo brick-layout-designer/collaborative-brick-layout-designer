@@ -10,7 +10,15 @@
 
 import { getPlatformSettings } from '../auth/platformSettings.js';
 
-export type PrivacyKey = 'exportEveryHours' | 'exportMaxMb' | 'exportKeepDays' | 'deletionGraceDays';
+export type PrivacyKey =
+  | 'exportEveryHours'
+  | 'exportMaxMb'
+  | 'exportKeepDays'
+  | 'deletionGraceDays'
+  | 'requestDueDays'
+  | 'auditPersonalDays'
+  | 'expiredSignInDays'
+  | 'recordsKeepDays';
 
 export interface PrivacySettingInfo {
   key: PrivacyKey;
@@ -64,6 +72,46 @@ export const PRIVACY_SETTINGS: readonly PrivacySettingInfo[] = [
     min: 7,
     max: 30,
     envVar: 'PRIVACY_DELETION_GRACE_DAYS',
+  },
+  {
+    key: 'requestDueDays',
+    label: 'Answer a privacy request within',
+    help: 'When you log a request in Admin › Privacy requests, it is due this long after it arrived. The law in many places gives one month.',
+    unit: 'days',
+    builtIn: 30,
+    min: 7,
+    max: 90,
+    envVar: 'PRIVACY_REQUEST_DUE_DAYS',
+  },
+  {
+    key: 'auditPersonalDays',
+    label: 'Keep email addresses in the audit log for',
+    help: 'The audit log keeps what happened for as long as the site runs. Email addresses in it (invites, admin actions) are removed after this. It never records IP addresses or browsers.',
+    unit: 'days',
+    builtIn: 365,
+    min: 30,
+    max: 3650,
+    envVar: 'PRIVACY_AUDIT_PERSONAL_DAYS',
+  },
+  {
+    key: 'expiredSignInDays',
+    label: 'Keep expired sign-ins and invites for',
+    help: 'Expired or signed-out browser sessions, revoked desktop sign-ins, and invites and offers nobody accepted are deleted this long after they ended.',
+    unit: 'days',
+    builtIn: 30,
+    min: 1,
+    max: 365,
+    envVar: 'PRIVACY_EXPIRED_SIGN_IN_DAYS',
+  },
+  {
+    key: 'recordsKeepDays',
+    label: 'Keep erasure records and closed requests for',
+    help: 'The record that an account or club was erased (no personal data), and privacy requests once closed, so you can show what you did. Deleted after this.',
+    unit: 'days',
+    builtIn: 1095,
+    min: 365,
+    max: 3650,
+    envVar: 'PRIVACY_RECORDS_KEEP_DAYS',
   },
 ];
 

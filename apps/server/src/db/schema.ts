@@ -44,6 +44,12 @@ export const users = sqliteTable('users', {
    */
   deletionRequestedAt: integer('deletion_requested_at', { mode: 'timestamp_ms' }),
   deletionDueAt: integer('deletion_due_at', { mode: 'timestamp_ms' }),
+  /**
+   * Restricted (0027), answering a privacy request: the account and what
+   * it owns alone are frozen (read only) without being deleted. Null when
+   * not restricted.
+   */
+  restrictedAt: integer('restricted_at', { mode: 'timestamp_ms' }),
 }, (t) => ({
   // The admin "new users" graph and the active-user counts.
   createdIdx: index('users_created_at_idx').on(t.createdAt),
@@ -247,6 +253,13 @@ export const platformSettings = sqliteTable('platform_settings', {
    * Keys left out use the built-in default; a PRIVACY_* env var forces one.
    */
   privacy: text('privacy'),
+  /**
+   * The site's privacy notice (markdown) and who to ask about personal
+   * data (an email address or a web address), shown on /privacy (0027).
+   * Null until an admin writes them; PRIVACY_CONTACT forces the contact.
+   */
+  privacyNotice: text('privacy_notice'),
+  privacyContact: text('privacy_contact'),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
@@ -1235,3 +1248,56 @@ export const erasures = sqliteTable(
   }),
 );
 export type Erasure = typeof erasures.$inferSelect;
+
+/**
+ * Admin › Privacy requests (0027): requests that arrive by email or
+ * letter (access, erasure, rectification, restriction, objection, other),
+ * with their due date and what was done. `subjectUserId` is the account
+ * it's about, when there is one; `subjectText` says who asked, in the
+ * admin's words, when there isn't (after an erasure it becomes the
+ * pseudonym). Closed requests are kept for the Privacy setting's
+ * "records" days, then deleted.
+ */
+export const privacyRequests = sqliteTable(
+  'privacy_requests',
+  {
+    id: text('id').primaryKey(),
+    type: text('type', { enum: ['access', 'erasure', 'rectification', 'restriction', 'objection', 'other'] }).notNull(),
+    subjectUserId: text('subject_user_id').references(() => users.id, { onDelete: 'set null' }),
+    subjectText: text('subject_text'),
+    receivedVia: text('received_via', { enum: ['email', 'letter', 'in_person', 'other'] }).notNull(),
+    receivedAt: integer('received_at', { mode: 'timestamp_ms' }).notNull(),
+    dueAt: integer('due_at', { mode: 'timestamp_ms' }).notNull(),
+    status: text('status', { enum: ['open', 'waiting', 'done', 'refused'] }).notNull(),
+    notes: text('notes').notNull().default(''),
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    closedAt: integer('closed_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => ({
+    statusDueIdx: index('privacy_requests_status_due_idx').on(t.status, t.dueAt),
+    subjectIdx: index('privacy_requests_subject_idx').on(t.subjectUserId),
+  }),
+);
+export type PrivacyRequest = typeof privacyRequests.$inferSelect;
+
+/** What happened on a privacy request, oldest first (its history). */
+export const privacyRequestEvents = sqliteTable(
+  'privacy_request_events',
+  {
+    id: text('id').primaryKey(),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => privacyRequests.id, { onDelete: 'cascade' }),
+    at: integer('at', { mode: 'timestamp_ms' }).notNull(),
+    by: text('by').references(() => users.id, { onDelete: 'set null' }),
+    /** 'logged', 'status', 'note', 'edit', 'export', 'erase', 'restrict', 'unrestrict'. */
+    kind: text('kind').notNull(),
+    text: text('text').notNull().default(''),
+  },
+  (t) => ({
+    requestIdx: index('privacy_request_events_request_idx').on(t.requestId, t.at),
+  }),
+);
+export type PrivacyRequestEvent = typeof privacyRequestEvents.$inferSelect;

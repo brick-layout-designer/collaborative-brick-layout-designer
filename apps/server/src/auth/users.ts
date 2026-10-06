@@ -81,6 +81,7 @@ export async function resolveOauthUser(
     lastSeenAt: null,
     deletionRequestedAt: null,
     deletionDueAt: null,
+    restrictedAt: null,
   };
   await db.insert(schema.users).values(created);
   await db.insert(schema.oauthAccounts).values({
