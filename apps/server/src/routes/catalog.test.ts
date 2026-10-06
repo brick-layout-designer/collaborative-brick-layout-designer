@@ -229,6 +229,25 @@ describe('public catalogs', () => {
     expect(((await list(alice)).json() as { items: unknown[] }).items).toHaveLength(0);
   });
 
+  it('lists give a picture address only for a version that has one (no 404s to ask for)', async () => {
+    await settings({ moduleCatalogEnabled: true, catalogReview: 'none' });
+    const bare = (await share(alice)).json() as { id: string };
+    type Out = { id: string; previewUrl: string; coverUrl: string };
+    const out = async () => ((await list()).json() as { items: Out[] }).items.find((i) => i.id === bare.id)!;
+    expect(await out()).toMatchObject({ previewUrl: '', coverUrl: '' });
+    // A picture arrives with the next version.
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    expect((await app.inject({ method: 'PUT', url: `/api/modules/${moduleId}/thumbnail`, headers: { cookie: alice }, payload: { mime: 'image/png', data: png } })).statusCode).toBe(200);
+    await share(alice);
+    const pictured = await out();
+    expect(pictured.previewUrl).toMatch(new RegExp(`^/api/catalog/items/${bare.id}/preview\\?v=2$`));
+    expect(pictured.coverUrl).toBe(pictured.previewUrl);
+    expect((await app.inject({ method: 'GET', url: pictured.previewUrl })).statusCode).toBe(200);
+    // Its owner's list says the same.
+    const mine = (await app.inject({ method: 'GET', url: '/api/catalog/mine', headers: { cookie: alice } })).json() as { items: { id: string; drawnUrl: string }[] };
+    expect(mine.items.find((i) => i.id === bare.id)!.drawnUrl).toBe(pictured.previewUrl);
+  });
+
   it('parts: share a custom part and add a copy; a taken part number is refused', async () => {
     await settings({ partsCatalogEnabled: true, catalogReview: 'none' });
     const now = new Date();

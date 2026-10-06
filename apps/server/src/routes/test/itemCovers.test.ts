@@ -84,6 +84,9 @@ describe('catalog item covers', () => {
   const share = async (cookie: string, publicNow: boolean, orgSlug?: string) => {
     if (publicNow) await settings({ catalogReview: 'none' });
     const m = ((await req('POST', '/api/modules', cookie, { title: 'Station', ...(orgSlug ? { orgSlug } : {}) })).json() as { id: string }).id;
+    // Its drawn picture (lists only point at a picture that exists).
+    const thumb = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    expect((await req('PUT', `/api/modules/${m}/thumbnail`, cookie, { mime: 'image/png', data: thumb })).statusCode).toBe(200);
     const r = await req('POST', '/api/catalog/submissions', cookie, { kind: 'module', sourceId: m, title: 'Station' });
     expect(r.statusCode).toBe(201);
     await settings({ catalogReview: 'moderators' });

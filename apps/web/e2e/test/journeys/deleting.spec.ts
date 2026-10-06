@@ -9,6 +9,7 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { signIn } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
+import { watch4xx } from '../../quietNetwork';
 
 const ts = Date.now();
 test.setTimeout(180_000);
@@ -54,6 +55,8 @@ test('a layout, a module, a venue, a part and a collection are deleted through t
       audience: 'private',
     });
 
+    // Neither browser asks again for what was deleted (a 404 burst a WAF would ban).
+    const net = [watch4xx(one.ctx), watch4xx(two.ctx)];
     for (const p of [one.page, two.page]) {
       await p.goto('/');
       await streamOpen(p);
@@ -99,6 +102,8 @@ test('a layout, a module, a venue, a part and a collection are deleted through t
     await deleteIt(fromMenu(MODULE), MODULE, 'Layouts that already use it don’t change.');
     await deleteIt(fromMenu(VENUE), VENUE, 'Layouts made from it keep their own copy');
     await deleteIt(fromMenu(PART), PART, 'show a placeholder');
+    await one.page.waitForTimeout(1000);
+    for (const n of net) n.expectQuiet();
   } finally {
     await one.ctx.close();
     await two.ctx.close();

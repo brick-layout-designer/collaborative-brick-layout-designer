@@ -26,6 +26,7 @@ import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { clubModuleRole } from '../access/resolveResourceRole.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { dropModuleFromCollections } from './collections.js';
+import { canModerate } from './catalog.js';
 import type { User } from '../db/schema.js';
 import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
@@ -86,6 +87,17 @@ interface CreateModuleBody {
 interface InviteBody {
   email: string;
   role: 'viewer' | 'editor';
+}
+
+/** Whether a module is in any collection (a moderator may see its picture). */
+async function inACollection(moduleId: string): Promise<boolean> {
+  const hit = await db
+    .select({ id: schema.catalogCollectionModules.collectionId })
+    .from(schema.catalogCollectionModules)
+    .where(eq(schema.catalogCollectionModules.moduleId, moduleId))
+    .limit(1)
+    .get();
+  return !!hit;
 }
 
 export async function moduleRoutes(app: FastifyInstance): Promise<void> {
@@ -406,7 +418,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string }; Querystring: { size?: string } }>('/api/modules/:id/thumbnail', { config: TOKEN_READ }, async (req, reply) => {
     const user = requireUser(req);
     const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
-    if (role === null) return reply.code(404).send({ error: 'not_found' });
+    // Moderators review collections, which show their modules' pictures.
+    if (role === null && !(canModerate(user) && (await inACollection(req.params.id)))) return reply.code(404).send({ error: 'not_found' });
     const row = await db
       .select({ thumbnail: schema.modules.thumbnail, mime: schema.modules.thumbnailMime, at: schema.modules.thumbnailAt })
       .from(schema.modules)

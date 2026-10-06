@@ -51,7 +51,11 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
         <ul className="space-y-2">
           {d.items.map((q) => (
             <li key={q.versionId} data-testid="club-review-item" className="flex flex-wrap gap-3 rounded-lg border border-line p-3 text-sm">
-              <img src={q.previewUrl} alt="" className="size-20 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+              {q.previewUrl ? (
+                <img src={q.previewUrl} alt="" className="size-20 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+              ) : (
+                <span aria-hidden className="block size-20 shrink-0 rounded-lg border border-line bg-soft" />
+              )}
               <div className="min-w-[10rem] flex-1 space-y-1">
                 <p className="font-semibold">
                   {q.title} <span className="font-normal text-muted">({q.kind}, {q.isUpdate ? `update, version ${q.version}` : 'new'})</span>

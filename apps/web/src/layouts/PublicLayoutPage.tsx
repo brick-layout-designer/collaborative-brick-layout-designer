@@ -51,10 +51,12 @@ function Viewer({ token }: { token: string }) {
     queryFn: () => api.publicLayouts.get(token),
     retry: false,
   });
+  // Only for a link that still shows a layout: an old one asks for nothing more.
   const snapshot = useQuery({
     queryKey: ['public-layout-snapshot', token],
     queryFn: () => api.publicLayouts.snapshot(token),
     retry: false,
+    enabled: !!meta.data?.layout,
   });
 
   // Decode the snapshot into a one-shot Y.Doc once the bytes arrive. We
@@ -69,7 +71,7 @@ function Viewer({ token }: { token: string }) {
     }
   }, [snapshot.data]);
 
-  if (meta.error || snapshot.error) {
+  if (meta.error || snapshot.error || (meta.data && !meta.data.layout)) {
     return (
       <div className="grid min-h-screen place-items-center p-8 text-center">
         <div>
@@ -88,7 +90,7 @@ function Viewer({ token }: { token: string }) {
     );
   }
 
-  if (!meta.data || !doc) {
+  if (!meta.data?.layout || !doc) {
     return (
       <div className="grid min-h-screen place-items-center text-muted">
         Loading…

@@ -8,7 +8,7 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { api, onApiWrite } from '../api';
-import { focusKeys, hintsForWrite, isHintKind, keysFor, refetchKey, type Hint } from './invalidate';
+import { deletedId, focusKeys, hintsForWrite, isHintKind, keysFor, refetchKey, type Hint } from './invalidate';
 
 /** Fired on window for every hint, for parts of the page that react to one (notices). */
 export const HINT_EVENT = 'cld-live-hint';
@@ -37,8 +37,8 @@ export function backoffMs(n: number, rand: number = Math.random()): number {
   return Math.min(30_000, 1000 * 2 ** n) * (0.8 + 0.4 * rand);
 }
 
-function invalidateKeys(qc: QueryClient, keys: Iterable<QueryKey>): void {
-  for (const queryKey of keys) void refetchKey(qc, queryKey);
+function invalidateKeys(qc: QueryClient, keys: Iterable<QueryKey>, gone?: ReadonlySet<string>): void {
+  for (const queryKey of keys) void refetchKey(qc, queryKey, gone);
 }
 
 function setStatus(s: 'open' | 'connecting' | 'off'): void {
@@ -48,22 +48,29 @@ function setStatus(s: 'open' | 'connecting' | 'off'): void {
 /** Collects the keys of hints that arrive together and refetches them once. */
 export function createBatcher(qc: QueryClient, ms: number = BATCH_MS) {
   const pending = new Map<string, QueryKey>();
+  // Ids of things the hints say were deleted: their own queries aren't refetched.
+  const gone = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
     timer = undefined;
     const keys = [...pending.values()];
+    const deleted = new Set(gone);
     pending.clear();
-    invalidateKeys(qc, keys);
+    gone.clear();
+    invalidateKeys(qc, keys, deleted);
   };
   return {
     add(hint: Hint) {
       for (const k of keysFor(hint)) pending.set(JSON.stringify(k), k);
+      const id = deletedId(hint);
+      if (id) gone.add(id);
       timer ??= setTimeout(flush, ms);
     },
     cancel() {
       clearTimeout(timer);
       timer = undefined;
       pending.clear();
+      gone.clear();
     },
   };
 }

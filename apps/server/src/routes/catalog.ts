@@ -17,7 +17,7 @@ import { coverMaxBytes } from '../images/covers.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
@@ -256,7 +256,35 @@ function parseTags(json: string): string[] {
   }
 }
 
-export function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string) {
+/**
+ * The versions among `pairs` that have a picture (a module's, layout's or
+ * venue's thumbnail, a part's sprite), as `<itemId>:<version>`. Lists give
+ * a preview address only for these: asking for a picture that isn't there
+ * is a 404, and a page of them is a burst a firewall bans (README,
+ * "Operations: the 4xx profile").
+ */
+export async function picturedVersions(pairs: readonly { id: string; version: number }[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const ids = [...new Set(pairs.filter((p) => p.version > 0).map((p) => p.id))];
+  const v = schema.catalogItemVersions;
+  for (let i = 0; i < ids.length; i += 500) {
+    const rows = await db
+      .select({ itemId: v.itemId, version: v.version })
+      .from(v)
+      .where(and(inArray(v.itemId, ids.slice(i, i + 500)), or(isNotNull(v.thumbnail), isNotNull(v.spriteBlob))));
+    for (const r of rows) out.add(`${r.itemId}:${r.version}`);
+  }
+  return out;
+}
+
+/** A version's picture address, or '' when it has none (the card draws a blank). */
+export function previewUrlOf(itemId: string, version: number, pictured: ReadonlySet<string>): string {
+  return pictured.has(`${itemId}:${version}`) ? `/api/catalog/items/${itemId}/preview?v=${version}` : '';
+}
+
+/** `pictured`: from picturedVersions, for the items' public versions. */
+export function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string, pictured: ReadonlySet<string>) {
+  const preview = previewUrlOf(i.id, i.publicVersion, pictured);
   return {
     id: i.id,
     kind: i.kind,
@@ -267,9 +295,9 @@ export function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string) 
     uses: i.uses,
     version: i.publicVersion,
     updatedAt: i.updatedAt.getTime(),
-    previewUrl: `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`,
-    /** The card's picture: one its owner uploaded (cropped to the card), else the drawn one. */
-    coverUrl: i.coverImageId ? itemCoverUrl(i.id, i.coverImageId) : `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`,
+    previewUrl: preview,
+    /** The card's picture: one its owner uploaded (cropped to the card), else the drawn one ('' for none). */
+    coverUrl: i.coverImageId ? itemCoverUrl(i.id, i.coverImageId) : preview,
     customCover: !!i.coverImageId,
   };
 }
@@ -606,7 +634,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       const name = await ownerNames(rows);
       const trusted = await trustedClubs(rows.map((r) => r.ownerOrgId));
       const sums = await catalogSummaries(rows);
-      return { items: rows.map((r) => ({ ...itemOut(r, name(r)), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId), summary: sums.get(r.id) ?? null })) };
+      const pictured = await picturedVersions(rows.map((r) => ({ id: r.id, version: r.publicVersion })));
+      return { items: rows.map((r) => ({ ...itemOut(r, name(r), pictured), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId), summary: sums.get(r.id) ?? null })) };
     },
   );
 
@@ -629,9 +658,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(schema.catalogItemVersions.version));
     const name = await ownerNames([item]);
     const club = item.ownerOrgId ? await db.select({ slug: schema.orgs.slug, name: schema.orgs.name }).from(schema.orgs).where(eq(schema.orgs.id, item.ownerOrgId)).get() : null;
+    const pictured = await picturedVersions([{ id: item.id, version: item.publicVersion }]);
     return {
       item: {
-        ...itemOut(item, name(item)),
+        ...itemOut(item, name(item), pictured),
         status: item.status,
         reason: mine ? item.reason : null,
         trustedClub: await isTrustedClub(item.ownerOrgId),
@@ -639,7 +669,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         /** The club it's shared under, for "in ‹club›" with a link. */
         club: club ? { slug: club.slug, name: club.name } : null,
         /** The full-size picture (the public page). */
-        coverLargeUrl: item.coverImageId ? itemCoverUrl(item.id, item.coverImageId, false) : `/api/catalog/items/${item.id}/preview?v=${item.publicVersion}`,
+        coverLargeUrl: item.coverImageId ? itemCoverUrl(item.id, item.coverImageId, false) : previewUrlOf(item.id, item.publicVersion, pictured),
       },
       versions: versions
         .filter((v) => mine || v.status === 'public')
@@ -650,10 +680,12 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // A version's picture: a module's thumbnail, or a part's sprite.
   app.get<{ Params: { id: string }; Querystring: { v?: string } }>('/api/catalog/items/:id/preview', { config: TOKEN_READ }, async (req, reply) => {
     const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();
-    if (!item || !(await catalogOn(item.kind))) return reply.code(404).send({ error: 'not_found' });
+    if (!item) return reply.code(404).send({ error: 'not_found' });
     const n = req.query.v ? Number(req.query.v) : item.publicVersion;
-    const isPublic = item.status === 'public' && n === item.publicVersion && n > 0;
     const mine = req.user ? (await manages(req.user.id, item)) || canModerate(req.user) : false;
+    // Its owners and the moderators see it with that catalog off too (their
+    // lists still show it: a picture they can't load would only be a 404).
+    const isPublic = item.status === 'public' && n === item.publicVersion && n > 0 && (await catalogOn(item.kind));
     if (!isPublic && !mine) return reply.code(404).send({ error: 'not_found' });
     if (!(await mayBrowse(req))) return reply.code(401).send({ error: 'unauthorized' });
     const v = await db
@@ -714,6 +746,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       : [];
     const waiting = new Map(pending.map((p) => [p.itemId, p.version]));
     const inCollections = await collectionCounts(ids);
+    // The drawn picture: the public version's, else the one waiting.
+    const drawnVersion = (r: (typeof rows)[number]) => r.publicVersion || (waiting.get(r.id) ?? 0);
+    const pictured = await picturedVersions(rows.map((r) => ({ id: r.id, version: drawnVersion(r) })));
     return {
       items: rows.map((r) => ({
         id: r.id,
@@ -724,6 +759,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         reason: r.reason,
         version: r.publicVersion,
         pendingVersion: waiting.get(r.id) ?? null,
+        /** Its drawn picture (the public version's, else the one waiting); '' when it has none. */
+        drawnUrl: previewUrlOf(r.id, drawnVersion(r), pictured),
         /** How many public collections it's in. */
         collections: inCollections.get(r.id) ?? 0,
         /** Its uploaded picture, one waiting for review, and why the last was declined. */
@@ -891,6 +928,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     // A trusted club reviews what's published under its name: those wait in
     // its own queue (moderators can still see them, and act on them).
     const trusted = await trustedClubs([...queue, ...items].map((q) => q.ownerOrgId));
+    const pictured = await picturedVersions([...queue.map((q) => ({ id: q.itemId, version: q.version })), ...items.map((i) => ({ id: i.id, version: i.publicVersion }))]);
     const entry = (q: (typeof queue)[number]) => ({
         versionId: q.versionId,
         itemId: q.itemId,
@@ -911,7 +949,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             }
           : null,
         createdAt: q.createdAt.getTime(),
-        previewUrl: `/api/catalog/items/${q.itemId}/preview?v=${q.version}`,
+        previewUrl: previewUrlOf(q.itemId, q.version, pictured),
         /** Its uploaded picture, when it has one (reviewed with it). */
         coverUrl: q.coverImageId ? itemCoverUrl(q.itemId, q.coverImageId) : null,
         // Whom a moderator would warn about it.
@@ -926,7 +964,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       queue: queue.filter((q) => !(q.ownerOrgId && trusted.has(q.ownerOrgId))).map(entry),
       /** Waiting in trusted clubs' own queues. */
       trustedQueue: queue.filter((q) => q.ownerOrgId && trusted.has(q.ownerOrgId)).map(entry),
-      items: items.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason, owner: ownerRef(i), trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId) })),
+      items: items.map((i) => ({ ...itemOut(i, name(i), pictured), status: i.status, reason: i.reason, owner: ownerRef(i), trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId) })),
     };
   });
 

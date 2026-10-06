@@ -132,9 +132,13 @@ describe('public-share — disable', () => {
     const del = await app.inject({ method: 'DELETE', url: `/api/layouts/${id}/public-share`, headers: { cookie } });
     expect(del.statusCode).toBe(200);
 
-    // Anonymous access must now return 404.
+    // Anonymous access now finds nothing: an old link is normal use, so
+    // it answers 200 with no layout rather than a 404 (no WAF bursts).
     const anon = await app.inject({ method: 'GET', url: `/api/public-layouts/${token}` });
-    expect(anon.statusCode).toBe(404);
+    expect(anon.statusCode).toBe(200);
+    expect(anon.json()).toEqual({ layout: null });
+    // The snapshot is gone too.
+    expect((await app.inject({ method: 'GET', url: `/api/public-layouts/${token}/snapshot` })).statusCode).toBe(404);
   });
 
   it('rejects a non-owner with 403', async () => {
@@ -170,9 +174,15 @@ describe('public-share — anonymous viewer', () => {
     expect((body.layout as Record<string, unknown>).ownerUserId).toBeUndefined();
   });
 
-  it('returns 404 for an unknown or revoked token', async () => {
+  it('returns 404 for something that is not a share token', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/public-layouts/totally-made-up-token' });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('answers a well-formed but unknown token with no layout, not a 404', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/public-layouts/${'ab'.repeat(16)}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ layout: null });
   });
 
   it('GET /api/public-layouts/:token/snapshot returns octet-stream', async () => {

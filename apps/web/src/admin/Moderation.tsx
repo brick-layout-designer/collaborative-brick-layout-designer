@@ -17,7 +17,7 @@ const KIND_WORD: Record<CatalogKind, string> = { module: 'module', part: 'part',
 /** An entry's picture, or a plain tile when it has none (or it can't load). */
 function Thumb({ src, className }: { src: string; className: string }) {
   const [failed, setFailed] = useState(false);
-  return failed ? (
+  return failed || !src ? (
     <span aria-hidden className={`${className} block`} />
   ) : (
     <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} className={className} />
@@ -265,7 +265,11 @@ export function CoverReviewList({ list, decide, warn = true }: { list: CoverRevi
             <div className="flex flex-wrap gap-3">
               <figure data-testid="review-old" className="min-w-[8rem] flex-1 space-y-1">
                 <figcaption className="text-xs font-semibold uppercase tracking-wide text-muted">Now</figcaption>
-                <img src={q.oldUrl} alt="Cover now" className="aspect-[4/3] w-full max-w-48 rounded-lg border border-line bg-soft object-contain" />
+                {q.oldUrl ? (
+                  <img src={q.oldUrl} alt="Cover now" className="aspect-[4/3] w-full max-w-48 rounded-lg border border-line bg-soft object-contain" />
+                ) : (
+                  <span aria-label="No picture now" role="img" className="block aspect-[4/3] w-full max-w-48 rounded-lg border border-line bg-soft" />
+                )}
               </figure>
               <figure data-testid="review-new" className="min-w-[8rem] flex-1 space-y-1">
                 <figcaption className="text-xs font-semibold uppercase tracking-wide text-muted">Proposed</figcaption>

@@ -546,7 +546,8 @@ export const api = {
 
   publicLayouts: {
     get: (token: string) =>
-      get<{ layout: PublicLayoutSummary }>(`/api/public-layouts/${token}`),
+      // `layout: null`: the link was switched off, or its layout deleted.
+      get<{ layout: PublicLayoutSummary | null }>(`/api/public-layouts/${token}`),
     snapshot: (token: string) => getBytes(`/api/public-layouts/${token}/snapshot`),
   },
 
@@ -1207,6 +1208,7 @@ export interface CatalogItem {
   /** The public version. */
   version: number;
   updatedAt: number;
+  /** Its drawn picture; '' when it has none (nothing to ask the server for). */
   previewUrl: string;
   /** A layout or venue: its size, and a layout's parts list. */
   summary?: CatalogSummary | null;
@@ -1234,8 +1236,8 @@ export interface CoverReviewEntry {
   kind: CatalogKind;
   title: string;
   by: string;
-  /** What shows now (an uploaded picture, or the drawn one). */
-  oldUrl: string;
+  /** What shows now (an uploaded picture, or the drawn one); null: no picture. */
+  oldUrl: string | null;
   newUrl: string;
   submitter: string | null;
   createdAt: number;
@@ -1261,6 +1263,8 @@ export interface MyCatalogItem {
   reason: string | null;
   version: number;
   pendingVersion: number | null;
+  /** Its drawn picture; '' when it has none. Older servers leave it out. */
+  drawnUrl?: string;
   /** How many public collections it's in. */
   collections?: number;
   customCoverUrl?: string | null;

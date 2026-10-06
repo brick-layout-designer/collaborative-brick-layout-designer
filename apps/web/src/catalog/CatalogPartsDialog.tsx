@@ -48,7 +48,7 @@ export function CatalogPartsDialog({ onClose }: { onClose: () => void }) {
         <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-lg border border-line">
           {items.data?.items.map((it) => (
             <li key={it.id} className="flex items-center gap-3 px-3 py-2">
-              <img src={it.previewUrl} alt="" loading="lazy" className="size-12 shrink-0 object-contain" />
+              {it.previewUrl ? <img src={it.previewUrl} alt="" loading="lazy" className="size-12 shrink-0 object-contain" /> : <span aria-hidden className="block size-12 shrink-0" />}
               <div className="min-w-0 flex-1">
                 <p className="break-words">{it.title}</p>
                 <p className="text-xs text-muted">by {it.by} · {it.uses} uses</p>

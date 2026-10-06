@@ -110,9 +110,21 @@ export function invalidateFor(qc: QueryClient, kind: HintKind, extra: Omit<Hint,
  * for a minute, so a refetch of it first says parts changed (see
  * markPartsChanged), or it would bring back the list from before.
  */
-export function refetchKey(qc: QueryClient, queryKey: QueryKey): Promise<void> {
+export function refetchKey(qc: QueryClient, queryKey: QueryKey, gone: ReadonlySet<string> = NONE_GONE): Promise<void> {
   if (queryKey[0] === 'parts-catalog') markPartsChanged();
-  return qc.invalidateQueries({ queryKey });
+  if (gone.size === 0) return qc.invalidateQueries({ queryKey });
+  // A deleted thing's own queries (['layout', id], ['module', id, 'info'] …)
+  // keep what they showed: asking again would only bring a 404, and a
+  // burst of 404s from one address is what a firewall bans (README,
+  // "Operations: the 4xx profile"). The lists drop it on their refetch.
+  return qc.invalidateQueries({ queryKey, predicate: (q) => !q.queryKey.some((k) => typeof k === 'string' && gone.has(k)) });
+}
+
+const NONE_GONE: ReadonlySet<string> = new Set();
+
+/** The id of the thing a hint says was deleted, if it says so. */
+export function deletedId(hint: Hint): string | null {
+  return hint.action === 'delete' && hint.id ? hint.id : null;
 }
 
 /**
@@ -167,11 +179,16 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/admin\/demo\b/, ['admin', 'settings']],
 ];
 
+/** Deleting one of these by its own address: DELETE /api/<kind>s/<id>. */
+const DELETE_ONE = /^\/api\/(layouts|modules|venues|custom-parts)\/([^/]+)$/;
+
 export function hintsForWrite(method: string, rawPath: string): Hint[] {
   if (method === 'GET' || method === 'HEAD') return [];
   const path = rawPath.split('?')[0] ?? '';
+  // This tab deleted it: its own queries aren't asked again (see refetchKey).
+  const deleted = method === 'DELETE' ? DELETE_ONE.exec(path)?.[2] : undefined;
   for (const [re, kinds] of WRITE_RULES) {
-    if (re.test(path)) return kinds.map((kind) => ({ kind, action: path }));
+    if (re.test(path)) return kinds.map((kind): Hint => (deleted ? { kind, action: 'delete', id: decodeURIComponent(deleted) } : { kind, action: path }));
   }
   return [];
 }

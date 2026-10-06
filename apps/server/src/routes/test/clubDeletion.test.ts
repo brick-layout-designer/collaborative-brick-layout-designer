@@ -145,7 +145,10 @@ describe('deleting a club', () => {
     expect((await call(ben, 'GET', '/api/orgs')).json().orgs).toEqual([]);
     expect((await call(ben, 'GET', '/api/orgs/train-club')).statusCode).toBe(404);
     expect((await call(ben, 'GET', `/api/layouts/${yard}`)).statusCode).toBe(404);
-    expect((await call(null, 'GET', `/api/public-layouts/${token}`)).statusCode).toBe(404);
+    // An old share link answers "no layout" (200, not a 404 a firewall would count).
+    const shared = await call(null, 'GET', `/api/public-layouts/${token}`);
+    expect(shared.statusCode).toBe(200);
+    expect(shared.json()).toEqual({ layout: null });
     // Each member got a notice naming who, when it goes, and that it can be restored.
     const notes = await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, ben.id)).all();
     expect(notes).toHaveLength(1);

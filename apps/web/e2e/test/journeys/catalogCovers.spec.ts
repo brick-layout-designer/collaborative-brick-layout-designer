@@ -12,6 +12,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { ensureUser, signIn } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
+import { watch4xx } from '../../quietNetwork';
 
 test.setTimeout(180_000);
 const ts = Date.now();
@@ -58,6 +59,8 @@ async function pixel(page: Page, src: string, x: number, y: number): Promise<num
 }
 
 test('an owner uploads a cover with a background colour; it is reviewed, then shows to everyone', async ({ page }) => {
+  // Nothing here asks for a picture that isn't there (a WAF bans bursts of 404s).
+  const net = watch4xx(page);
   for (const [e, n] of [[ADMIN, 'Site Admin'], [MOD, 'Mo Derator'], [OWNER, 'Owner Olive']] as const) await ensureUser(e, n);
   makeGlobalAdmin(ADMIN);
   await as(page, ADMIN, 'Site Admin');
@@ -68,6 +71,9 @@ test('an owner uploads a cover with a background colour; it is reviewed, then sh
   // 1. Olive's module goes public (review off for the moment), then review is back on.
   await as(page, OWNER, 'Owner Olive');
   const moduleId = ((await (await page.request.post('/api/modules', { data: { title: TITLE } })).json()) as { id: string }).id;
+  // Its drawn picture (the editor makes one when the module is saved).
+  const drawn = (await halfClearPng(page)).toString('base64');
+  expect((await page.request.put(`/api/modules/${moduleId}/thumbnail`, { data: { mime: 'image/png', data: drawn } })).ok()).toBe(true);
   expect((await page.request.post('/api/catalog/submissions', { data: { kind: 'module', sourceId: moduleId, title: TITLE } })).status()).toBe(201);
   await as(page, ADMIN, 'Site Admin');
   expect((await page.request.patch('/api/admin/settings', { data: { catalogReview: 'moderators' } })).ok()).toBe(true);
@@ -131,4 +137,5 @@ test('an owner uploads a cover with a background colour; it is reviewed, then sh
   // Leave the catalog as other specs expect it: without this item.
   const item = ((await (await page.request.get('/api/catalog/mine')).json()) as { items: { id: string; title: string }[] }).items.find((i) => i.title === TITLE)!;
   expect((await page.request.post(`/api/catalog/items/${item.id}/withdraw`)).ok()).toBe(true);
+  net.expectQuiet();
 });

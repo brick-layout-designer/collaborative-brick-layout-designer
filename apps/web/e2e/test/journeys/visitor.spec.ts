@@ -11,6 +11,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
+import { watch4xx } from '../../quietNetwork';
 
 const ts = Date.now();
 const ADMIN = `j-visitor-admin-${ts}@example.com`;
@@ -30,6 +31,8 @@ test('a visitor follows a shared link, finds the catalog, and is asked to sign i
     const { token } = (await (await builder.request.post(`/api/layouts/${shared.id}/public-share`, { data: {} })).json()) as { token: string };
 
     const visitor = await (await browser.newContext()).newPage();
+    // A visitor's normal use draws no 4xx (a WAF bans bursts of them).
+    const net = watch4xx(visitor);
     // ── 1. The shared link, then Home. ──
     await visitor.goto(`/p/${token}`);
     await expect(visitor.getByText(`Harbour ${ts}`)).toBeVisible();
@@ -41,6 +44,7 @@ test('a visitor follows a shared link, finds the catalog, and is asked to sign i
     await expect(visitor).toHaveURL(/\/catalog/);
     await expect(visitor.getByRole('heading', { name: 'Catalog' })).toBeVisible();
 
+    net.expectQuiet();
     // ── 3. A private layout: Sign in, and back to it. ──
     await visitor.goto(`/editor/${priv.id}`);
     await expect(visitor.getByText('Sign in to open this layout')).toBeVisible({ timeout: 15_000 });

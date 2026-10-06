@@ -171,4 +171,28 @@ describe('live stream helpers', () => {
     expect(keys).toContain('["venues"]');
     vi.useRealTimers();
   });
+
+  it('a deleted thing\'s own queries are not asked again (a 404), the lists are', async () => {
+    vi.useFakeTimers();
+    const qc = new QueryClient();
+    const fetched: string[] = [];
+    for (const key of [['layout', 'gone-1'], ['layout', 'kept-2'], ['layouts']]) {
+      qc.getQueryCache().build(qc, { queryKey: key, queryFn: () => fetched.push(JSON.stringify(key)) });
+      qc.setQueryData(key, 1);
+    }
+    const watch = (key: string[]) => qc.getQueryCache().find({ queryKey: key })!.state.isInvalidated;
+    const b = createBatcher(qc, 100);
+    b.add({ kind: 'layout', id: 'gone-1', action: 'delete' });
+    vi.advanceTimersByTime(100);
+    expect(watch(['layout', 'gone-1'])).toBe(false);
+    expect(watch(['layout', 'kept-2'])).toBe(true);
+    expect(watch(['layouts'])).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it('this tab\'s own delete names what it deleted', () => {
+    expect(hintsForWrite('DELETE', '/api/layouts/L1')).toEqual([{ kind: 'layout', action: 'delete', id: 'L1' }]);
+    expect(hintsForWrite('DELETE', '/api/modules/M1')).toEqual([{ kind: 'module', action: 'delete', id: 'M1' }]);
+    expect(hintsForWrite('DELETE', '/api/layouts/L1/public-share')[0]).toEqual({ kind: 'layout', action: '/api/layouts/L1/public-share' });
+  });
 });

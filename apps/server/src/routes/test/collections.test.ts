@@ -54,7 +54,7 @@ describe('catalog collections', () => {
   let shed: string;
   let signal: string; // a public part item
 
-  const req = (method: 'GET' | 'POST' | 'PATCH', url: string, cookie?: string, payload?: unknown) =>
+  const req = (method: 'GET' | 'POST' | 'PATCH' | 'PUT', url: string, cookie?: string, payload?: unknown) =>
     app.inject({ method, url, headers: cookie ? { cookie } : {}, ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}) });
   const list = async (cookie?: string) => (await req('GET', '/api/catalog/collections', cookie)).json() as { collections: Listed[] };
   const mine = async (cookie: string) =>
@@ -67,6 +67,9 @@ describe('catalog collections', () => {
 
   async function shareModule(cookie: string, title: string): Promise<string> {
     const m = (await req('POST', '/api/modules', cookie, { title })).json() as { id: string };
+    // Its picture: lists give a preview address only for one that exists.
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    expect((await req('PUT', `/api/modules/${m.id}/thumbnail`, cookie, { mime: 'image/png', data: png })).statusCode).toBe(200);
     const r = await req('POST', '/api/catalog/submissions', cookie, { kind: 'module', sourceId: m.id, title });
     return (r.json() as { id: string }).id;
   }
@@ -100,6 +103,18 @@ describe('catalog collections', () => {
   });
   afterEach(async () => {
     await app.close();
+  });
+
+  it('a moderator sees the pictures of the modules a collection holds (no 404 while reviewing it)', async () => {
+    const m = (await req('POST', '/api/modules', alice, { title: 'Bridge' })).json() as { id: string };
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    expect((await req('PUT', `/api/modules/${m.id}/thumbnail`, alice, { mime: 'image/png', data: png })).statusCode).toBe(200);
+    const pic = `/api/modules/${m.id}/thumbnail`;
+    expect((await req('GET', pic, mod)).statusCode).toBe(404);
+    expect((await create(alice, { title: 'Bridges', entries: [{ source: 'library', kind: 'module', id: m.id }] })).statusCode).toBe(201);
+    expect((await req('GET', pic, mod)).statusCode).toBe(200);
+    // Nobody else gains anything.
+    expect((await req('GET', pic, bob)).statusCode).toBe(404);
   });
 
   it('with both catalogs off, collections are off too', async () => {
