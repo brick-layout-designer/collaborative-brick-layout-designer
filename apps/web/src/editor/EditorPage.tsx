@@ -108,7 +108,7 @@ import {
   makeSetsOfModules,
   type ModuleBatch,
 } from './mutations';
-import { cloneGroups, expandSet, expandToGroups, findSetModules, groupChain, ungroupState } from './sets';
+import { cloneGroups, expandSet, expandToGroups, findSetModules, groupChain, selectedSet, setAnchorOrder, ungroupState } from './sets';
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
@@ -194,6 +194,15 @@ const VenueDimensionsDialog = lazy(() => import('./VenueDimensionsDialog').then(
 const BudgetDialog = lazy(() => import('./BudgetDialog').then((m) => ({ default: m.BudgetDialog })));
 const VenueLibraryPanel = lazy(() => import('./VenueLibraryPanel').then((m) => ({ default: m.VenueLibraryPanel })));
 const VenueSaveLibraryDialog = lazy(() => import('./VenueSaveLibraryDialog').then((m) => ({ default: m.VenueSaveLibraryDialog })));
+
+/** A part from the parts list being dragged over the map: where it would land (a set: its parts, placed). */
+interface DropPart {
+  key: string;
+  studX: number;
+  studY: number;
+  snapped?: SnapResult;
+  setBricks?: ModuleBatch['bricks'];
+}
 
 export function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -1644,7 +1653,7 @@ function Canvas({
   // dragover; we render the same PlaceGhost as the place tool so the
   // user sees a live preview with snap-to-connection. Mirrors desktop
   // `MapView::dragMoveEvent` + `updateDragPreview` (MapView.cpp:1678-1761).
-  const [dropPart, setDropPart] = useState<{ key: string; studX: number; studY: number; snapped?: SnapResult } | null>(null);
+  const [dropPart, setDropPart] = useState<DropPart | null>(null);
   // Same for a module dragged from the Module library: cursor position
   // plus the module's snapshot, fetched once per drag (MapView.cpp:1796-1900).
   const [dropModule, setDropModule] = useState<
@@ -2004,7 +2013,7 @@ function Canvas({
       };
     }
 
-    function updateDropPart(next: { key: string; studX: number; studY: number; snapped?: SnapResult } | null) {
+    function updateDropPart(next: DropPart | null) {
       dropPartRef.current = next;
       setDropPart(next);
     }
@@ -2118,6 +2127,15 @@ function Canvas({
       // to the most-recently-stored key from a previous dragover.
       const partKey = key || dropPartRef.current?.key || '';
       placeSnapRef.current.sample(e.clientX, e.clientY, now);
+      const dragged = partKey ? partsByKey.get(partKey.toLowerCase()) : undefined;
+      if (dragged?.kind === 'group' && dragged.subparts.length > 0) {
+        // A set: all its parts as one ghost, snapped as the drop will.
+        const layout = map ? setDropLayout(dragged, studs.x, studs.y, { session: placeSnapRef.current, bypass: e.altKey }) : null;
+        const ring = layout?.drop.ringStudX !== undefined ? { x: layout.drop.ringStudX, y: layout.drop.ringStudY! } : null;
+        showDropSnap(ring);
+        updateDropPart({ key: partKey, studX: studs.x, studY: studs.y, ...(layout ? { setBricks: layout.placed } : {}) });
+        return;
+      }
       const snapped = ghostSnap(partKey, studs.x, studs.y, e.altKey);
       showDropSnap(snapped?.ringStudX !== undefined ? { x: snapped.ringStudX, y: snapped.ringStudY! } : null);
       updateDropPart({
@@ -3149,16 +3167,30 @@ function Canvas({
     // a free connection compatible with the new part, lock onto that
     // connection. Takes priority over cursor-proximity snap. Port of
     // MapView::resolvePartPlacement lines 1147-1202 (MapView.cpp).
+    // One placed set selected (flex track...): its free ends in the set's
+    // GroupConnectionPreferenceList order (desktop edit::setAnchorOrder).
     let snapped = null as import('./snap').SnapResult | null;
+    const metaOf = (pn: string) => partsByKey.get(pn.toLowerCase()) ?? partsByKey.get(pn.toLowerCase().split('.')[0] ?? '');
     if (map && selection.length === 1 && meta.kind !== 'group') {
       for (const layer of map.layers) {
         if (layer.type !== 'brick') continue;
         const anchorBrick = layer.bricks.find((b) => b.id === selection[0]);
         if (!anchorBrick) continue;
-        const anchorMeta = partsByKey.get(anchorBrick.partNumber.toLowerCase())
-          ?? partsByKey.get(anchorBrick.partNumber.toLowerCase().split('.')[0] ?? '');
+        const anchorMeta = metaOf(anchorBrick.partNumber);
         if (anchorMeta) {
           snapped = snapToAnchorBrick(anchorBrick, anchorMeta, meta, widthStuds, heightStuds);
+        }
+        break;
+      }
+    } else if (map && selection.length > 1 && meta.kind !== 'group') {
+      for (const layer of map.layers) {
+        if (layer.type !== 'brick') continue;
+        const set = selectedSet(layer, selection);
+        if (!set) continue;
+        for (const end of setAnchorOrder(partsByKey, set.setKey, set.bricks)) {
+          const anchorMeta = metaOf(end.brick.partNumber);
+          snapped = anchorMeta ? snapToAnchorBrick(end.brick, anchorMeta, meta, widthStuds, heightStuds, [end.connection]) : null;
+          if (snapped) break;
         }
         break;
       }
@@ -3229,6 +3261,45 @@ function Canvas({
    * constructor); its free ends snap like a module drop, and its own
    * joints are linked straight away. One undo step.
    */
+  /**
+   * Where a set put at (studX, studY) lands: its parts expanded there, then
+   * its free ends snapped like a module drop's (no grid: the set sits where
+   * it was put). Shared by the drop and the ghost shown while dragging, so
+   * the ghost lands exactly where the set will. Parts without a footprint
+   * take their picture's size (`natural`, else the loaded picture, else 2x2).
+   */
+  function setDropLayout(
+    group: PartWire,
+    studX: number,
+    studY: number,
+    snapOpts: { session?: SnapSession; bypass?: boolean; final?: boolean },
+    natural?: ReadonlyMap<string, { width: number; height: number }>,
+  ) {
+    const pictureSize = (part: PartWire) => {
+      const known = natural?.get(part.key);
+      if (known) return known;
+      const img = getSpriteSync(spriteUrlFor(part));
+      return img ? { width: img.naturalWidth / part.pxPerStud, height: img.naturalHeight / part.pxPerStud } : null;
+    };
+    const set = expandSet(partsByKey, group.key, { x: studX, y: studY }, 0, makeId, (part, angle) =>
+      part?.spriteSize ? areaSize(part, angle) : (part && pictureSize(part)) ?? { width: 2, height: 2 },
+    );
+    if (set.bricks.length === 0) return null;
+    const centre = set.bricks.reduce(
+      (acc, b) => ({ x: acc.x + (b.displayArea.x + b.displayArea.width / 2) / set.bricks.length, y: acc.y + (b.displayArea.y + b.displayArea.height / 2) / set.bricks.length }),
+      { x: 0, y: 0 },
+    );
+    const batch: ModuleBatch = { layerName: '', bricks: set.bricks };
+    const drop = moduleDropTranslation([batch], centre, 0, map, partsByKey, {
+      reach: liveSnapReach(),
+      ...(snapOpts.session ? { session: snapOpts.session } : {}),
+      ...(snapOpts.bypass !== undefined ? { bypass: snapOpts.bypass } : {}),
+      final: snapOpts.final ?? false,
+    });
+    const placed = placedModuleBatches([batch], drop, partsByKey)[0]!.bricks.map((b, i) => ({ ...b, myGroup: set.bricks[i]!.myGroup }));
+    return { set, drop, placed };
+  }
+
   async function placeSetAt(
     group: PartWire,
     studX: number,
@@ -3260,23 +3331,9 @@ function Canvas({
       }
     };
     await visit(group, 0);
-    const set = expandSet(partsByKey, group.key, { x: studX, y: studY }, 0, makeId, (part, angle) =>
-      part?.spriteSize ? areaSize(part, angle) : (part && natural.get(part.key)) ?? { width: 2, height: 2 },
-    );
-    if (set.bricks.length === 0) return;
-    // Its free ends snap like a module drop's (no grid: the set sits where it was put).
-    const centre = set.bricks.reduce(
-      (acc, b) => ({ x: acc.x + (b.displayArea.x + b.displayArea.width / 2) / set.bricks.length, y: acc.y + (b.displayArea.y + b.displayArea.height / 2) / set.bricks.length }),
-      { x: 0, y: 0 },
-    );
-    const batch: ModuleBatch = { layerName: '', bricks: set.bricks };
-    const drop = moduleDropTranslation([batch], centre, 0, map, partsByKey, {
-      reach: liveSnapReach(),
-      ...(snapOpts.session ? { session: snapOpts.session } : {}),
-      ...(snapOpts.bypass !== undefined ? { bypass: snapOpts.bypass } : {}),
-      final: snapOpts.final ?? true,
-    });
-    const placed = placedModuleBatches([batch], drop, partsByKey)[0]!.bricks.map((b, i) => ({ ...b, myGroup: set.bricks[i]!.myGroup }));
+    const layout = setDropLayout(group, studX, studY, { ...snapOpts, final: snapOpts.final ?? true }, natural);
+    if (!layout) return;
+    const { set, placed } = layout;
     const setName = group.description || group.key;
     const newIds = insertSet(doc, layerId, { bricks: placed.map((b) => ({ ...b, orientation: b.orientation ?? 0 })), groups: set.groups });
     recomputeConnectivity(doc, linkCatalog);
@@ -3682,7 +3739,10 @@ function Canvas({
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
           snap ring, ruler/venue drafts, remote cursors. */}
       <KonvaLayer ref={hudLayerRef} listening={false} perfectDrawEnabled={false}>
-        {dropPart && (() => {
+        {dropPart?.setBricks && (
+          <ModuleGhost batches={[{ layerName: '', bricks: dropPart.setBricks }]} offset={{ dx: 0, dy: 0 }} partsByKey={partsByKey} />
+        )}
+        {dropPart && !dropPart.setBricks && (() => {
           // Snapped in the dragover handler, which keeps the drag's snap
           // session (hold, speed gate).
           const part = partsByKey.get(dropPart.key.toLowerCase()) ?? null;
@@ -3701,6 +3761,7 @@ function Canvas({
         )}
         <MarqueeOverlay marquee={marquee} />
         <SnapRing />
+        <HingeLimits />
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
         {venueDraft && <VenueDraftPreview draft={venueDraft} />}
         <RemoteCursors awareness={awareness} map={map} />
@@ -4140,6 +4201,32 @@ function CanvasContextMenu({
  * SnapMarks in SelectionStyle.h). Driven by editor-store `liveSnap` and
  * `snapMoving`.
  */
+/** While bending flex track: an amber ring on each joint at its hinge limit (desktop paintBendHandles). */
+function HingeLimits() {
+  const points = useEditorStore((s) => s.hingeLimits);
+  const zoom = useEditorStore((s) => s.zoom);
+  if (points.length === 0) return null;
+  const px = (n: number) => n / (zoom > 0 ? zoom : 1);
+  return (
+    <>
+      {points.map((p, i) => (
+        <Circle
+          key={i}
+          name="hinge-limit"
+          x={studToPx(p.studX)}
+          y={studToPx(p.studY)}
+          radius={px(9)}
+          stroke="#f59e0b"
+          strokeWidth={px(2.5)}
+          fill="rgba(245, 158, 11, 0.35)"
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      ))}
+    </>
+  );
+}
+
 function SnapRing() {
   const live = useEditorStore((s) => s.liveSnap);
   const moving = useEditorStore((s) => s.snapMoving);

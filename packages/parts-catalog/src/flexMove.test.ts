@@ -144,6 +144,24 @@ describe('flex move on a synthetic chain (always runs)', () => {
     }
   });
 
+  it('reports the joints at their hinge limit (drawn amber while bending)', () => {
+    const layer = chain();
+    const flex = FlexMove.start(layer, new Set(layer.bricks.map((b) => b.id)), 'f3', { x: 14, y: 0 }, catalog)!;
+    expect(flex.hingesAtLimit()).toEqual([]);
+    // Far to the side: more than three 10° joints allow.
+    flex.moveTo({ x: 4, y: 12 }, 0, false);
+    const limits = flex.hingesAtLimit();
+    expect(limits.length).toBeGreaterThan(0);
+    // Each is at a joint: the end of one piece.
+    for (const p of limits) {
+      const near = layer.bricks.some((b) => {
+        const r = (b.orientation * Math.PI) / 180;
+        return [-1, 1].some((k) => Math.hypot(centre(b).x + k * 2 * Math.cos(r) - p.x, centre(b).y + k * 2 * Math.sin(r) - p.y) < 1e-3);
+      });
+      expect(near, `${p.x},${p.y}`).toBe(true);
+    }
+  });
+
   it('a selection without a hinge is not flexible; restore undoes the bend', () => {
     const layer = chain();
     expect(FlexMove.start(layer, new Set(['s']), 's', { x: 0, y: 0 }, catalog)).toBeNull();

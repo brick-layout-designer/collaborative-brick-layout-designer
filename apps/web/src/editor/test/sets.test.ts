@@ -21,7 +21,7 @@ import {
 import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { buildPartList } from '../partList';
-import { cloneGroups, expandSet, expandToGroups, findSetModules, libraryItems, ungroupState } from '../sets';
+import { cloneGroups, expandSet, expandToGroups, findSetModules, libraryItems, selectedSet, setAnchorOrder, ungroupState } from '../sets';
 
 const part = (key: string, connections: unknown[], extra: Partial<PartWire> = {}) =>
   ({
@@ -50,6 +50,7 @@ const FLEX = part('flex.group', [], {
   kind: 'group',
   description: 'Flex Track',
   canUngroup: false,
+  groupNextPreferred: { 0: 2, 2: 0 },
   subparts: [
     { subKey: '88492.8', x: -0.8, y: 0, angle: 0 },
     { subKey: '88493.8', x: 0.8, y: 0, angle: 0 },
@@ -157,6 +158,34 @@ describe('group and ungroup around sets', () => {
     expect(copy.groups).toHaveLength(1);
     expect(copy.groups[0]!.id).not.toBe(L.groups[0]!.id);
     expect(copy.bricks.map((b) => b.myGroup)).toEqual([copy.groups[0]!.id, copy.groups[0]!.id]);
+  });
+});
+
+describe('the next part beside a selected set', () => {
+  it("tries the set's free ends in its preference order (flex: rail end 0, then 2)", () => {
+    const { doc, layerId } = newDoc();
+    place(doc, layerId, 'flex.group', { x: 0, y: 0 });
+    const L = layerOf(doc);
+    const ids = L.bricks.map((b) => b.id);
+    const set = selectedSet(L, ids)!;
+    expect(set.setKey).toBe('FLEX.GROUP');
+    const order = setAnchorOrder(PARTS, set.setKey, [...set.bricks].reverse());
+    expect(order.map((e) => [e.brick.partNumber, e.connection])).toEqual([
+      ['88492.8', 0],
+      ['88493.8', 0],
+      ['88492.8', 1],
+      ['88493.8', 1],
+    ]);
+  });
+
+  it('is only for exactly one whole set', () => {
+    const { doc, layerId } = newDoc();
+    place(doc, layerId, 'flex.group', { x: 0, y: 0 });
+    place(doc, layerId, 'flex.group', { x: 0, y: 20 });
+    const L = layerOf(doc);
+    expect(selectedSet(L, [L.bricks[0]!.id])).toBeNull();
+    expect(selectedSet(L, L.bricks.map((b) => b.id))).toBeNull();
+    expect(selectedSet(L, [L.bricks[0]!.id, L.bricks[1]!.id])).not.toBeNull();
   });
 });
 

@@ -155,6 +155,25 @@ describe('parsePartXml — group composites', () => {
       angle: 0,
     });
     expect(grp.subparts[1]?.angle).toBe(90);
+    expect(grp.groupNextPreferred).toBeUndefined();
+  });
+
+  it("reads a set's connection preferences (flex.group)", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<group>
+  <CanUngroup>false</CanUngroup>
+  <SubPartList>
+    <SubPart id="88492.8"><position><x>-0.8</x><y>0</y></position><angle>0</angle></SubPart>
+    <SubPart id="88493.8"><position><x>0.8</x><y>0</y></position><angle>0</angle></SubPart>
+  </SubPartList>
+  <GroupConnectionPreferenceList>
+    <nextIndex from="0">2</nextIndex>
+    <nextIndex from="2">0</nextIndex>
+  </GroupConnectionPreferenceList>
+</group>`;
+    const grp = parsePartXml(xml, { partNumber: 'flex', colorCode: 'group', spritePath: '' });
+    expect(grp.canUngroup).toBe(false);
+    expect(grp.groupNextPreferred).toEqual({ 0: 2, 2: 0 });
   });
 });
 

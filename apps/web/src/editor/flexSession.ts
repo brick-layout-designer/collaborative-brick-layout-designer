@@ -114,6 +114,7 @@ export function startFlexSession(opts: {
     const snapped = flex.moveTo(m, liveSnapReach(), !snapBypassed(e?.evt));
     moved = true;
     useEditorStore.getState().setLiveSnap(snapped ? { studX: snapped.x, studY: snapped.y } : null);
+    useEditorStore.getState().setHingeLimits(flex.hingesAtLimit().map((p) => ({ studX: p.x, studY: p.y })));
     draw();
   };
   let done = false;
@@ -124,6 +125,7 @@ export function startFlexSession(opts: {
     stage.off('mouseup.flex touchend.flex');
     window.removeEventListener('mouseup', onUp);
     useEditorStore.getState().setLiveSnap(null);
+    useEditorStore.getState().setHingeLimits([]);
     if (moved) {
       commitFlex(doc, layerId, flex.currentState());
       useEditorStore.getState().showStatusMessage(opts.label ?? 'Flex move', 1500);

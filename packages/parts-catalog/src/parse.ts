@@ -66,6 +66,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
 
   const connections = kind === 'leaf' ? readConnexionList(root.ConnexionList) : [];
   const subparts = kind === 'group' ? readSubPartList(root.SubPartList) : [];
+  const groupNextPreferred = kind === 'group' ? readGroupNextPreferred(root.GroupConnectionPreferenceList) : undefined;
   const hullPts = readHull(root.hull);
   const oldNames = readOldNames(root.OldNameList);
   const ldraw = readLDraw(root.LDraw);
@@ -92,6 +93,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     connections,
     subparts,
     canUngroup,
+    ...(groupNextPreferred ? { groupNextPreferred } : {}),
     hullPts,
     oldNames,
     ...(ldraw ? { ldraw } : {}),
@@ -230,6 +232,24 @@ function readSubPartList(node: unknown): SubPart[] {
   if (raw === undefined) return [];
   const list = Array.isArray(raw) ? raw : [raw];
   return list.map((s) => readSubPart(s as RawNode));
+}
+
+/**
+ * A set's `<GroupConnectionPreferenceList>` (BlueBrick's
+ * readGroupConnectionPreferenceListTag): `<nextIndex from="i">j</nextIndex>`.
+ * Undefined when there is none.
+ */
+function readGroupNextPreferred(node: unknown): Record<number, number> | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const raw = (node as RawNode).nextIndex;
+  if (raw === undefined) return undefined;
+  const out: Record<number, number> = {};
+  for (const n of Array.isArray(raw) ? raw : [raw]) {
+    const from = Number.parseInt(stringAttr(n as RawNode, 'from', ''), 10);
+    const to = Number.parseInt(typeof n === 'object' && n ? String((n as RawNode)['#text'] ?? '') : String(n), 10);
+    if (from >= 0 && to >= 0) out[from] = to;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function readSubPart(n: RawNode): SubPart {

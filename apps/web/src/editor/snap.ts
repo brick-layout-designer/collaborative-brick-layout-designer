@@ -100,6 +100,8 @@ export function snapToAnchorBrick(
   newPart: PartWire,
   _newWidth: number,
   _newHeight: number,
+  /** The anchor's connections to try, in order (a set's preference order); all of them when left out. */
+  only?: readonly number[],
 ): AnchorSnapResult | null {
   if (newPart.connections.length === 0) return null;
 
@@ -113,8 +115,10 @@ export function snapToAnchorBrick(
   // free one with a compatible connection on the new part
   // (MapView.cpp:1226-1258). Links are current: placement rebuilds
   // connectivity straight away.
-  for (let i = 0; i < anchorMeta.connections.length; i++) {
-    const ac = anchorMeta.connections[i]!;
+  const order = only ?? anchorMeta.connections.map((_, i) => i);
+  for (const i of order) {
+    const ac = anchorMeta.connections[i];
+    if (!ac) continue;
     if (!ac.type) continue;
     const link = anchorBrick.connexions[i];
     if (link && link.linkedTo !== '') continue;

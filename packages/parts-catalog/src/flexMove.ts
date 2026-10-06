@@ -213,6 +213,22 @@ export class FlexMove {
     return this.chainBricks.map((b) => ({ id: b.id, orientation: b.orientation, displayArea: { ...b.displayArea } }));
   }
 
+  /**
+   * The joints bent as far as their hinge allows (studs, where the joint
+   * is): shown while bending, so it's clear why the end stops following.
+   * The desktop's FlexMove::hingesAtLimit.
+   */
+  hingesAtLimit(): Pt[] {
+    const out: Pt[] = [];
+    // The last bone is the chain's end: the solver never turns it.
+    for (let i = 0; i + 1 < this.bones.length; i++) {
+      const b = this.bones[i]!;
+      if (isNull(b.conn) || b.maxAngle <= 0) continue;
+      if (Math.abs(b.localAngle) >= b.maxAngle - 1e-6) out.push({ x: b.worldX, y: -b.worldY });
+    }
+    return out;
+  }
+
   /** Put the chain back as it was. */
   restore(): void {
     for (const s of this.initial) {

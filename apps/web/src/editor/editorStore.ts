@@ -129,6 +129,8 @@ export interface EditorState {
    * SelectionOverlay::setSnapState — SelectionOverlay.cpp:63-68).
    */
   liveSnap: { studX: number; studY: number } | null;
+  /** While bending flex track: the joints at their hinge limit (studs), drawn amber. */
+  hingeLimits: { studX: number; studY: number }[];
   /**
    * The moving connection that joins (or would join) during a drag, in
    * world studs: drawn as a small dot so people see which end will
@@ -261,6 +263,7 @@ export interface EditorState {
   setSnapStep: (studs: number) => void;
   setRotationStep: (degrees: number) => void;
   setLiveSnap: (p: { studX: number; studY: number } | null) => void;
+  setHingeLimits: (points: { studX: number; studY: number }[]) => void;
   setSnapMoving: (p: { studX: number; studY: number } | null) => void;
   setConnectionSnap: (v: SnapStrength) => void;
   setPaintColor: (argbHex: string) => void;
@@ -332,6 +335,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     return Number.isFinite(n) && n > 0 ? n : 90;
   })(),
   liveSnap: null,
+  hingeLimits: [],
   snapMoving: null,
   connectionSnap: DEFAULT_SNAP_STRENGTH,
   hudMapWidthStuds: null,
@@ -526,6 +530,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set({ rotationStepDegrees: v });
   },
   setLiveSnap: (liveSnap) => set({ liveSnap }),
+  setHingeLimits: (hingeLimits) => set({ hingeLimits }),
   setSnapMoving: (snapMoving) => set({ snapMoving }),
   setConnectionSnap: (connectionSnap) => set({ connectionSnap }),
   setEditingModule: (editingModuleId) =>

@@ -54,6 +54,8 @@ interface PartWire {
   subparts: SubPartWire[];
   /** Group-only: false when the set may never be split (<CanUngroup>, flex.group); absent otherwise. */
   canUngroup?: false;
+  /** Group-only: the set's <GroupConnectionPreferenceList> (connection index -> next); absent when none. */
+  groupNextPreferred?: Record<number, number>;
   /**
    * UI category — the parent folder of the part's XML file inside the
    * parts library. Matches desktop's PartsBrowser::categoryForPath
@@ -394,6 +396,7 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
     })),
     hullPts: p.hullPts,
     ...(p.kind === 'group' && p.canUngroup === false ? { canUngroup: false as const } : {}),
+    ...(p.kind === 'group' && p.groupNextPreferred ? { groupNextPreferred: p.groupNextPreferred } : {}),
     ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
     ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
     ...remapsOf(p),
