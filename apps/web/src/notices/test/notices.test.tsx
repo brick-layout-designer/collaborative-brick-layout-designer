@@ -47,11 +47,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function show(ui: React.ReactNode) {
+function show(ui: React.ReactNode, at = '/') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={[at]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
   );
   return qc;
@@ -79,6 +79,13 @@ describe('NoticeBanner', () => {
   it('shows nothing when everything was read', async () => {
     notices = [{ ...base, acknowledgedAt: 5 }];
     show(<NoticeBanner />);
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/notices')).toBe(true));
+    expect(screen.queryByTestId('notice-banner')).toBeNull();
+  });
+
+  it('stays off the Notices page, which lists them with their own I understand', async () => {
+    notices = [base];
+    show(<NoticeBanner />, '/notices');
     await waitFor(() => expect(calls.some((c) => c.path === '/api/notices')).toBe(true));
     expect(screen.queryByTestId('notice-banner')).toBeNull();
   });

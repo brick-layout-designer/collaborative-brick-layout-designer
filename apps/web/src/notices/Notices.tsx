@@ -8,7 +8,7 @@
 // refetches ['notices'] (live/invalidate.ts).
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { SignInFirst } from '../auth/signIn';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, type WarningInput, type WarningSeverity, type WarningSummary } from '../api';
@@ -51,7 +51,9 @@ export function NoticeBanner() {
   const ack = useAcknowledge();
   const open = (notices.data?.notices ?? []).filter((n) => n.acknowledgedAt === null);
   const w = open[0];
-  if (!w) return null;
+  // /notices lists them all, each with its own I understand: no banner over its heading.
+  const onNoticesPage = useLocation().pathname === '/notices';
+  if (!w || onNoticesPage) return null;
   const to = toLabel(w);
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
