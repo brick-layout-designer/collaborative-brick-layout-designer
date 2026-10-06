@@ -96,7 +96,19 @@ function Viewer({ token }: { token: string }) {
     );
   }
 
-  return <LayoutViewer doc={doc} title={meta.data.layout.title} />;
+  return (
+    <LayoutViewer
+      doc={doc}
+      title={meta.data.layout.title}
+      // Somewhere to go from a shared link: the app (its sign-in page, with
+      // the demo and the catalog, for a visitor).
+      topRight={
+        <Link to="/" title="Brick Layout Designer" className="rounded-lg border border-border bg-panel/95 px-3 py-1.5 text-sm shadow hover:bg-soft">
+          Home
+        </Link>
+      }
+    />
+  );
 }
 
 /**

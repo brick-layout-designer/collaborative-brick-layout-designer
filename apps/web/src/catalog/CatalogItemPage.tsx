@@ -101,8 +101,9 @@ function InfoPanel({ item, signedIn }: { item: CatalogItem & { club?: { slug: st
   return (
     <>
       <div
-        className="absolute z-10 w-[min(22rem,calc(100%-1.5rem))] rounded-section border border-line bg-panel/95 text-sm shadow"
-        style={{ left: 'max(0.75rem, env(safe-area-inset-left))', bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        // On a phone it sits above the zoom buttons, which share the bottom row.
+        className="absolute z-10 w-[min(22rem,calc(100%-1.5rem))] rounded-section border border-line bg-panel/95 text-sm shadow [--zoom-row:3.5rem] sm:[--zoom-row:0px]"
+        style={{ left: 'max(0.75rem, env(safe-area-inset-left))', bottom: 'calc(max(0.75rem, env(safe-area-inset-bottom)) + var(--zoom-row))' }}
         data-testid="catalog-item-panel"
       >
         <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center justify-between px-3 py-2 font-semibold">
