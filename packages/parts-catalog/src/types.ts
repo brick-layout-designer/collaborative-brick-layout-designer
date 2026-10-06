@@ -86,6 +86,12 @@ export interface PartMetadata {
    */
   canUngroup: boolean;
   /**
+   * A set's `<GroupConnectionPreferenceList>`: from a connection of the set
+   * (its parts' connections, numbered in sub-part order) to the one to add
+   * the next part at (flex.group: 0 <-> 2). Groups only; absent when none.
+   */
+  groupNextPreferred?: Record<number, number>;
+  /**
    * Optional hull polygon from `<hull>` in the XML. Points are in **pixel
    * space** relative to the sprite's top-left corner (not studs). Empty
    * array means "use the sprite bounding rect as proxy" (desktop behaviour

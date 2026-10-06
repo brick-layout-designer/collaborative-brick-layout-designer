@@ -174,6 +174,64 @@ export function expandSet(
   return out;
 }
 
+/** A connection of a placed set's part. */
+export interface SetEnd<B> {
+  brick: B;
+  connection: number;
+}
+
+/**
+ * Where to add the next part beside a placed set `setKey` made of `bricks`
+ * (the desktop's edit::setAnchorOrder): every connection of its parts, in
+ * the order to try them. The set's connections are numbered in sub-part
+ * order, as BlueBrick counts them, and its GroupConnectionPreferenceList is
+ * followed from connection 0 (flex.group: 0, then 2, its two rail ends);
+ * the rest follow in order.
+ */
+export function setAnchorOrder<B extends Pick<Brick, 'partNumber'>>(parts: Parts, setKey: string, bricks: readonly B[]): SetEnd<B>[] {
+  // The parts in sub-part order: each takes the first free slot with its
+  // part number; any left over (not the set's) come last.
+  let n = 0;
+  const leaves = expandSet(parts, setKey, { x: 0, y: 0 }, 0, () => `slot${n++}`).bricks;
+  const ordered: (B | undefined)[] = leaves.map(() => undefined);
+  const extra: B[] = [];
+  for (const b of bricks) {
+    const i = leaves.findIndex((l, k) => !ordered[k] && l.partNumber.toLowerCase() === b.partNumber.toLowerCase());
+    if (i >= 0) ordered[i] = b;
+    else extra.push(b);
+  }
+  const all: SetEnd<B>[] = [];
+  for (const b of [...ordered, ...extra]) {
+    if (!b) continue;
+    const count = parts.get(b.partNumber.toLowerCase())?.connections.length ?? 0;
+    for (let c = 0; c < count; c++) all.push({ brick: b, connection: c });
+  }
+  const next = partOf(parts, setKey)?.groupNextPreferred ?? {};
+  const taken = new Set<number>();
+  const out: SetEnd<B>[] = [];
+  for (let i: number | undefined = 0; i !== undefined && i >= 0 && i < all.length && !taken.has(i); i = next[i]) {
+    taken.add(i);
+    out.push(all[i]!);
+  }
+  all.forEach((e, i) => {
+    if (!taken.has(i)) out.push(e);
+  });
+  return out;
+}
+
+/** The set (a named outermost group) that `ids` are exactly the parts of, in `layer`; null otherwise. */
+export function selectedSet(layer: Pick<LayerBrick, 'bricks' | 'groups'>, ids: readonly string[]): { setKey: string; bricks: Brick[] } | null {
+  if (ids.length < 2) return null;
+  const chosen = layer.bricks.filter((b) => ids.includes(b.id));
+  if (chosen.length !== ids.length) return null;
+  const top = topGroupId(layer.groups, chosen[0]!.myGroup);
+  const set = top ? layer.groups?.find((g) => g.id === top) : undefined;
+  if (!set?.partNumber) return null;
+  if (chosen.some((b) => topGroupId(layer.groups, b.myGroup) !== top)) return null;
+  if (layer.bricks.filter((b) => topGroupId(layer.groups, b.myGroup) === top).length !== chosen.length) return null;
+  return { setKey: set.partNumber, bricks: chosen };
+}
+
 /** A module that is exactly one placed set. */
 export interface SetModule {
   moduleId: string;

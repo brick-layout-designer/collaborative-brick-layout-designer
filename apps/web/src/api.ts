@@ -386,6 +386,8 @@ export interface PartWire {
   subparts: SubPartWire[];
   /** Group-only: false when the set may never be split (<CanUngroup>, flex.group); absent otherwise. */
   canUngroup?: false;
+  /** Group-only: the set's <GroupConnectionPreferenceList> (connection index -> next); absent when none. */
+  groupNextPreferred?: Record<number, number>;
   /** Hull polygon in pixel space (relative to sprite top-left). Empty = use bounding rect. */
   hullPts: { x: number; y: number }[];
   source: 'bundled' | 'custom';
