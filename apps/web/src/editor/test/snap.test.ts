@@ -596,14 +596,13 @@ describe('liveDragSnap — grab anchor lead', () => {
     expect(r.centreX).toBeCloseTo(6);
   });
 
-  it('falls back to the other connections when the lead has nothing in reach', () => {
-    const r = liveDragSnap({ ...base, snapStepStuds: 1, reach: 3, leadConnIndex: 1 }, map, partsByKey);
-    expect(r.snappedToConnection).toBe(true);
-    expect(r.ringStudX).toBeCloseTo(-4);
-    expect(r.centreX).toBeCloseTo(0);
+  it('only the grabbed end snaps, even when another end is in reach (BlueBrick)', () => {
+    const r = liveDragSnap({ ...base, snapStepStuds: 0, reach: 3, leadConnIndex: 1 }, map, partsByKey);
+    expect(r.snappedToConnection).toBe(false);
+    expect(r.centreX).toBeCloseTo(0.5);
   });
 
-  it('is ignored for a multi-brick drag', () => {
+  it('leads a multi-brick drag too', () => {
     const r = liveDragSnap(
       {
         ...base, snapStepStuds: 8, reach: 10, leadConnIndex: 1,
@@ -611,7 +610,7 @@ describe('liveDragSnap — grab anchor lead', () => {
       },
       map, partsByKey,
     );
-    expect(r.ringStudX).toBeCloseTo(-4);
+    expect(r.ringStudX).toBeCloseTo(10);
   });
 });
 
@@ -883,12 +882,14 @@ describe('liveDragSnap — group of curves at an angle', () => {
     });
   }
 
-  it('a join needing more than a quarter turn is not offered: no crooked half-snap', () => {
-    const { map } = scene(112.5);
+  it('joins at any angle: a 112.5 degree turn too (BlueBrick has no angle window)', () => {
+    const { map, p } = scene(112.5);
     const session = new SnapSession();
-    for (let i = 0; i <= 12; i++) {
-      expect(drag(map, i * 0.25, session, i === 12).snappedToConnection, `frame ${i}`).toBe(false);
-    }
+    let r = drag(map, 0, session);
+    for (let i = 0; i <= 12; i++) r = drag(map, i * 0.25, session, i === 12);
+    expect(r.snappedToConnection).toBe(true);
+    expect(r.ringStudX).toBeCloseTo(p.x, 6);
+    expect(r.groupTurn?.degrees).toBeCloseTo(112.5, 6);
   });
 });
 
@@ -915,4 +916,67 @@ describe('liveDragSnap — level targets prefer the smaller turn', () => {
     expect(r.ringStudX).toBeCloseTo(-4);
     expect(r.newOrientation).toBeCloseTo(0);
   });
+});
+
+// ---- the grabbed end alone snaps, at any angle, steady under jitter --------
+
+describe('liveDragSnap — big angles, a jittering pointer', () => {
+  const conn = (x: number, y: number, angle: number) => ({ type: '1', x, y, angle, electricPlug: 0 });
+  const track = makePart({ connections: [conn(-4, 0, 180), conn(4, 0, 0)] });
+  const partsByKey = new Map<string, PartWire>([['test.0', track]]);
+  const P = { x: 20, y: 4 };
+  const rad = (d: number) => (d * Math.PI) / 180;
+  // T turned `turn`: its first end on P, facing turn + 180, so the dragged
+  // right end (facing 0) must turn `turn` to face it. U: a second free end
+  // 2 studs below, a different way.
+  const scene = (turn: number) =>
+    brickLayerMap([
+      makeBrick({ id: 'T', x: P.x + 4 * Math.cos(rad(turn)) - 4, y: P.y + 4 * Math.sin(rad(turn)) - 4, w: 8, h: 8, orientation: turn }),
+      makeBrick({ id: 'U', x: P.x + 4 * Math.cos(rad(turn + 30)) - 4, y: P.y + 2 + 4 * Math.sin(rad(turn + 30)) - 4, w: 8, h: 8, orientation: turn + 30 }),
+    ]);
+  // The dragged right end, where the pointer has it: an approach, then a
+  // jittering hand near P, all inside the hold distance.
+  const path = [
+    ...[-3, -2.5, -2, -1.5, -1.25, -1, -0.75, -0.5].map((dx) => ({ x: dx, y: 0.2 })),
+    { x: 0.6, y: 0.3 }, { x: -0.4, y: 0.9 }, { x: 0.3, y: -0.5 }, { x: 0.9, y: 0.6 }, { x: -0.2, y: 0.2 },
+    { x: 1.1, y: -0.4 }, { x: -0.9, y: -0.7 }, { x: 0.1, y: 0.05 },
+  ];
+  const run = (turn: number, multi: boolean) => {
+    const map = scene(turn);
+    const session = new SnapSession();
+    const frames = path.map((o, i) =>
+      liveDragSnap(
+        {
+          part: track, movingId: 'D', movingLinks: [{ id: 'd0', linkedTo: multi ? 's1' : '' }, { id: 'd1', linkedTo: '' }],
+          ...(multi ? { siblings: [{ id: 'S', part: track, links: [{ id: 's0', linkedTo: '' }, { id: 's1', linkedTo: 'd0' }], offsetX: -8, offsetY: 0, orientation: 0 }] } : {}),
+          centreX: P.x + o.x - 4, centreY: P.y + o.y, mouseStudX: P.x + o.x - 1, mouseStudY: P.y + o.y,
+          orientation: 0, snapStepStuds: 0, reach: 1, leadConnIndex: 1, session,
+          ...(i === path.length - 1 ? { final: true } : {}),
+        },
+        map, partsByKey,
+      ),
+    );
+    return frames;
+  };
+
+  for (const turn of [45, 90, 135, 180]) {
+    for (const multi of [false, true]) {
+      it(`${multi ? 'two parts picked together' : 'one part'}, a ${turn} degree turn: snaps once, then never flickers or lets go`, () => {
+        const frames = run(turn, multi);
+        const first = frames.findIndex((r) => r.snappedToConnection);
+        expect(first).toBeGreaterThanOrEqual(0);
+        expect(first).toBeLessThanOrEqual(7); // during the approach
+        frames.slice(first).forEach((r, k) => {
+          expect(r.snappedToConnection, `frame ${first + k}`).toBe(true);
+          expect(r.ringStudX).toBeCloseTo(P.x, 9);
+          expect(r.ringStudY).toBeCloseTo(P.y, 9);
+          if (multi) expect(Math.abs(r.groupTurn!.degrees)).toBeCloseTo(turn, 6);
+          else expect(r.newOrientation).toBeCloseTo(turn % 360, 6);
+          // The grabbed end sits exactly on P: the centre is 4 studs back along the turn.
+          expect(r.centreX).toBeCloseTo(P.x - 4 * Math.cos(rad(turn)), 6);
+          expect(r.centreY).toBeCloseTo(P.y - 4 * Math.sin(rad(turn)), 6);
+        });
+      });
+    }
+  }
 });

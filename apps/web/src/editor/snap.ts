@@ -17,7 +17,7 @@
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import type { PartWire } from '../api';
 import { pivotOf } from './brickGeometry';
-import { applyGroupTurn, facingTurn, groupTurnAllowed, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
+import { applyGroupTurn, facingTurn, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
 
 export interface PlaceCandidate {
   part: PartWire;
@@ -700,12 +700,13 @@ export function liveDragSnap(
     addConns(s.id, false, s.part, s.links, drag.centreX + s.offsetX, drag.centreY + s.offsetY, s.orientation);
   }
 
-  // The grab anchor leads a single-brick drag: its targets are tried on
-  // their own first, the other free connections only when it has none.
-  const lead =
-    single && drag.leadConnIndex !== undefined && drag.leadConnIndex >= 0
-      ? movingConns.find((m) => m.leader && m.index === drag.leadConnIndex)
-      : undefined;
+  // As in BlueBrick (LayerBrick.getMovedSnapPoint), the active connection
+  // is the grabbed part's end nearest the grab, picked on the press and
+  // kept for the whole drag: it alone snaps, for one part or a selection.
+  // Taken (joined inside the moving set), nothing snaps. Without a grab
+  // anchor (a programmatic snap), every free moving end is tried.
+  const hasLead = drag.leadConnIndex !== undefined && drag.leadConnIndex >= 0;
+  const lead = hasLead ? movingConns.find((m) => m.leader && m.index === drag.leadConnIndex) : undefined;
 
   interface Pair extends SnapCandidate {
     mc: MovingConn;
@@ -722,10 +723,8 @@ export function liveDragSnap(
         const dy = tc.y - mc.worldY;
         const sq = dx * dx + dy * dy;
         if (sq > limitSq) continue;
-        // A single part turns freely; a group turns at most a quarter,
-        // and a join needing more isn't offered (no crooked half-snap).
+        // Any angle: the part or selection turns to make the ends face.
         const delta = facingTurn(tc.angle, mc.worldAngle);
-        if (!single && !groupTurnAllowed(delta)) continue;
         out.push({
           movingKey: mc.key,
           targetKey: connKey(tc.brickId, tc.index),
@@ -747,11 +746,9 @@ export function liveDragSnap(
 
   let best: Pair | null = null;
   if (reach > 0 && movingConns.length > 0 && targets.length > 0) {
-    const leadPairs = lead ? pairs([lead]) : [];
-    const held = drag.session?.lock;
-    // A join held on another connection stays in the running.
-    const leadHasNew = leadPairs.some((p) => p.dist <= reach) || (!!held && held.movingKey === lead?.key);
-    best = choose(leadHasNew ? leadPairs : pairs(movingConns));
+    // Measured from where the pointer has the parts (never the snapped
+    // pose), so the hold and switch rules see a steady end.
+    best = choose(pairs(hasLead ? (lead ? [lead] : []) : movingConns));
   } else if (drag.session) {
     drag.session.lock = null;
   }

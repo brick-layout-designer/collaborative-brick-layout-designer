@@ -33,14 +33,14 @@ const rot = (p: { x: number; y: number }, deg: number) => {
  * C's free first end sits `gap` studs right of it and faces -90 degrees,
  * so the group must turn 45 degrees to join it.
  */
-function scene(gap: number) {
+function scene(gap: number, turn = 45) {
   const a = { x: 100, y: 60, o: 0 };
   const aEnd = rot(C1, 0);
   const bOff = rot(C0, 22.5);
   const b = { x: a.x + aEnd.x - bOff.x, y: a.y + aEnd.y - bOff.y, o: 22.5 };
   const bFree = rot(C1, 22.5);
   const p = { x: b.x + bFree.x + gap, y: b.y + bFree.y };
-  const oc = 90; // C0 faces 180 + 90 = 270 = -90
+  const oc = turn - 135 - 180; // C's first end faces turn - 135: the pair turns `turn`
   const cOff = rot(C0, oc);
   const c = { x: p.x - cOff.x, y: p.y - cOff.y, o: oc };
   return { a, b, c, p };
@@ -100,9 +100,9 @@ const zoom = (page: Page) =>
 
 const byTurn = (all: Shown[], o: number) => all.find((b) => Math.abs((((b.rot - o) % 360) + 360) % 360) < 0.01);
 
-async function open(page: Page, who: string, gap: number) {
+async function open(page: Page, who: string, gap: number, turn = 45) {
   await signIn(page, `snapgroup-${who}-${ts}-${seq++}@example.com`, 'Group Snapper');
-  const s = scene(gap);
+  const s = scene(gap, turn);
   const res = await page.request.post('/api/layouts', { data: { title: 'Group snap', bbm: bbmWith([s.a, s.b, s.c]) } });
   expect(res.ok()).toBe(true);
   const { id } = (await res.json()) as { id: string };
@@ -112,20 +112,20 @@ async function open(page: Page, who: string, gap: number) {
   return s;
 }
 
-/** The group landed turned 45 degrees, joined to C, and A and B still joined. */
-async function expectJoined(page: Page, s: ReturnType<typeof scene>) {
-  await expect.poll(async () => byTurn(await shown(page), 45) !== undefined, { timeout: 5000 }).toBe(true);
+/** The group landed turned `turn` degrees, joined to C, and A and B still joined. */
+async function expectJoined(page: Page, s: ReturnType<typeof scene>, turn = 45) {
+  await expect.poll(async () => byTurn(await shown(page), turn) !== undefined, { timeout: 5000 }).toBe(true);
   const all = await shown(page);
-  const a = byTurn(all, 45)!;
-  const b = byTurn(all, 67.5)!;
+  const a = byTurn(all, turn)!;
+  const b = byTurn(all, 22.5 + turn)!;
   expect(b).toBeDefined();
   // B's free end is on C's free end.
-  const bEnd = rot(C1, 67.5);
+  const bEnd = rot(C1, 22.5 + turn);
   expect(b.x + bEnd.x).toBeCloseTo(s.p.x, 1);
   expect(b.y + bEnd.y).toBeCloseTo(s.p.y, 1);
   // A's end still meets B's.
-  const aEnd = rot(C1, 45);
-  const bStart = rot(C0, 67.5);
+  const aEnd = rot(C1, turn);
+  const bStart = rot(C0, 22.5 + turn);
   expect(a.x + aEnd.x).toBeCloseTo(b.x + bStart.x, 1);
   expect(a.y + aEnd.y).toBeCloseTo(b.y + bStart.y, 1);
 }
@@ -142,13 +142,15 @@ test.describe('a group of curves snaps at an angle', () => {
     await page.keyboard.up('Shift');
     await expect(page.locator('footer')).toContainText('selected: 2');
     const px = 8 * (await zoom(page));
-    // Slowly, so the snap is live; B's free end ends 0.4 studs short of C's.
+    // Grabbed by B (its free end is the one nearest the grab, as in
+    // BlueBrick), slowly, so the snap is live; B's free end ends 0.4 studs
+    // short of C's.
     const dx = (6 - 0.4) * px;
-    await page.mouse.move(a.sx, a.sy);
+    await page.mouse.move(b.sx, b.sy);
     await page.mouse.down();
     const steps = Math.max(8, Math.ceil(dx / 4));
     for (let i = 1; i <= steps; i++) {
-      await page.mouse.move(a.sx + (dx * i) / steps, a.sy);
+      await page.mouse.move(b.sx + (dx * i) / steps, b.sy);
       await page.waitForTimeout(16);
     }
     // The live preview already shows the group turned.
@@ -179,18 +181,63 @@ test.describe('a group of curves snaps at an angle', () => {
       await touch('touchEnd', []);
       await expect(bar).toHaveAttribute('aria-label', '2 picked');
       all = await shown(page);
-      const a = byTurn(all, 0)!;
+      const b = byTurn(all, 22.5)!;
       const px = 8 * (await zoom(page));
       const dx = (6 - 0.4) * px;
-      await touch('touchStart', [{ x: a.sx, y: a.sy }]);
+      // By B: its free end is nearest the finger, so it leads.
+      await touch('touchStart', [{ x: b.sx, y: b.sy }]);
       const steps = Math.max(8, Math.ceil(dx / 4));
       for (let i = 1; i <= steps; i++) {
-        await touch('touchMove', [{ x: a.sx + (dx * i) / steps, y: a.sy }]);
+        await touch('touchMove', [{ x: b.sx + (dx * i) / steps, y: b.sy }]);
         await page.waitForTimeout(16);
       }
       await expect.poll(async () => byTurn(await shown(page), 45) !== undefined).toBe(true);
       await touch('touchEnd', []);
       await expectJoined(page, s);
+    });
+  });
+
+  test.describe('by touch, far off the angle, with a shaky finger', () => {
+    test.use(pixel7);
+    test('turns 135 degrees to join, and stays joined while the finger wobbles', async ({ page, browserName }) => {
+      test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+      // C lies back along its end here, so it starts 20 studs off (clear of B).
+      const s = await open(page, 'touch135', 20, 135);
+      const cdp = await page.context().newCDPSession(page);
+      const touch = (type: string, pts: { x: number; y: number }[]) =>
+        cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, id) => ({ x: p.x, y: p.y, id })) });
+      await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
+      const bar = page.getByTestId('touch-bar');
+      let all = await shown(page);
+      const a0 = byTurn(all, 0)!;
+      const b0 = byTurn(all, 22.5)!;
+      await touch('touchStart', [{ x: a0.sx, y: a0.sy }]);
+      await touch('touchEnd', []);
+      await expect(bar).toHaveAttribute('aria-label', '1 picked');
+      await touch('touchStart', [{ x: b0.sx, y: b0.sy }]);
+      await page.waitForTimeout(800);
+      await touch('touchEnd', []);
+      await expect(bar).toHaveAttribute('aria-label', '2 picked');
+      all = await shown(page);
+      const b = byTurn(all, 22.5)!;
+      const px = 8 * (await zoom(page));
+      const dx = (20 - 0.3) * px;
+      await touch('touchStart', [{ x: b.sx, y: b.sy }]);
+      const steps = Math.max(8, Math.ceil(dx / 4));
+      for (let i = 1; i <= steps; i++) {
+        await touch('touchMove', [{ x: b.sx + (dx * i) / steps, y: b.sy }]);
+        await page.waitForTimeout(16);
+      }
+      await expect.poll(async () => byTurn(await shown(page), 135) !== undefined).toBe(true);
+      // A wobbling finger, up to 1.1 studs off, inside the hold: it stays put.
+      const wobble = [[0.6, 0.3], [-0.4, 0.9], [0.3, -0.5], [0.9, 0.6], [-0.2, 0.2], [1.1, -0.4], [-0.9, -0.7], [0.1, 0.05]];
+      for (const [ox, oy] of wobble) {
+        await touch('touchMove', [{ x: b.sx + dx + ox! * px, y: b.sy + oy! * px }]);
+        await page.waitForTimeout(16);
+        expect(byTurn(await shown(page), 135)).toBeDefined();
+      }
+      await touch('touchEnd', []);
+      await expectJoined(page, s, 135);
     });
   });
 });

@@ -10,7 +10,6 @@ import {
   SpeedMeter,
   applyGroupTurn,
   facingTurn,
-  groupTurnAllowed,
   holdReach,
   isSnapStrength,
   pickSnap,
@@ -63,7 +62,6 @@ describe('snap feel: shared cases (snap-vectors.json)', () => {
   for (const c of VEC.turns) {
     it(`turn: ${c.name}`, () => {
       expect(facingTurn(c.target, c.moving)).toBeCloseTo(c.turn, 9);
-      expect(groupTurnAllowed(facingTurn(c.target, c.moving))).toBe(c.groupMay);
     });
   }
 

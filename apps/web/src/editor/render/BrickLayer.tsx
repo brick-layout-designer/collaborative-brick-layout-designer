@@ -694,7 +694,7 @@ const BrickGlyph = memo(function BrickGlyph({
         ...(session ? { session } : {}),
         ...(bypass ? { bypass: true } : {}),
         ...(final ? { final: true } : {}),
-        ...(!isMulti && grabConnRef.current >= 0 ? { leadConnIndex: grabConnRef.current } : {}),
+        ...(grabConnRef.current >= 0 ? { leadConnIndex: grabConnRef.current } : {}),
       },
       getMap(),
       partsByKey,

@@ -197,7 +197,7 @@ describe('module drop placement (E)', () => {
     expect(t.dy).toBeCloseTo(1);
   });
 
-  it('turns a module as a whole to face an end at an angle, and refuses more than a quarter turn', () => {
+  it('turns a module as a whole to face an end at any angle', () => {
     const trk = part([{ type: '1', x: -4, y: 0, angle: 180, electricPlug: 0 }, { type: '1', x: 4, y: 0, angle: 0, electricPlug: 0 }]);
     const partsByKey = new Map([['trk.0', trk]]);
     const host = (orientation: number) => {
@@ -219,11 +219,11 @@ describe('module drop placement (E)', () => {
     const c = { x: placed.displayArea.x + placed.displayArea.width / 2, y: placed.displayArea.y + placed.displayArea.height / 2 };
     expect(c.x - 4 * Math.cos(r(45))).toBeCloseTo(end45.x);
     expect(c.y - 4 * Math.sin(r(45))).toBeCloseTo(end45.y);
-    // Host turned 135: a 135 degree turn; not offered.
+    // Host turned 135: a 135 degree turn joins too.
     const end135 = { x: 4 + 4 * Math.cos(r(135)), y: 1 + 4 * Math.sin(r(135)) };
     const far = moduleDropTranslation(batches, { x: end135.x + 4.3, y: end135.y }, 0, host(135), partsByKey, { reach: 1 });
-    expect(far.turn).toBeUndefined();
-    expect(far.ringStudX).toBeUndefined();
+    expect(far.turn?.degrees).toBeCloseTo(135);
+    expect(far.ringStudX).toBeCloseTo(end135.x);
   });
 
   it('snaps a module with the same feel: reach, hold, Alt, the drop', () => {

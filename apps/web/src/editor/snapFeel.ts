@@ -20,10 +20,12 @@
 //     few moves) no new snap starts; one already made holds. The drop
 //     always runs one last snap at the normal reach.
 //   - Alt (Option on a Mac) while dragging places without connection snap.
-//   - A group or module turns as a whole about the joined connection so the
-//     two ends face each other, as a single part does; it turns at most
-//     90 degrees, and a join that needs more isn't offered at all.
-//     Level targets prefer the smaller turn.
+//   - As in BlueBrick, the active connection is the grabbed part's end
+//     nearest the grab, kept for the whole drag; it snaps to the nearest
+//     free end in reach at ANY angle, the part or the whole selection
+//     (group, module) turning about it so the two ends face each other.
+//     Distances are measured from where the pointer has the parts, never
+//     the snapped pose. Level targets prefer the smaller turn.
 
 export const SNAP_FEEL = {
   /** Reach on screen, CSS px. */
@@ -44,8 +46,6 @@ export const SNAP_FEEL = {
   speedSamples: 4,
   /** Older moves than this (ms) don't count towards the speed. */
   speedWindowMs: 200,
-  /** The most a group or module turns to join (degrees). */
-  maxGroupTurnDeg: 90,
   /** Turns closer than this (degrees) count as the same. */
   turnTieDeg: 1,
 } as const;
@@ -239,11 +239,6 @@ export function wrap180(deg: number): number {
  */
 export function facingTurn(targetAngle: number, movingAngle: number): number {
   return wrap180(targetAngle + 180 - movingAngle);
-}
-
-/** A group or module may join with this turn (degrees). */
-export function groupTurnAllowed(turn: number): boolean {
-  return Math.abs(turn) <= SNAP_FEEL.maxGroupTurnDeg + 1e-9;
 }
 
 /** A turn of a whole group about the joined connection, then onto the target. */
