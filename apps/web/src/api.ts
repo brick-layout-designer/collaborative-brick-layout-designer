@@ -1140,6 +1140,8 @@ export const api = {
   warnings: {
     notices: () => get<{ notices: WarningSummary[] }>('/api/notices'),
     acknowledge: (id: string) => post<{ ok: true; acknowledgedAt: number }>(`/api/notices/${encodeURIComponent(id)}/acknowledge`, {}),
+    /** "Dismiss all": every unread note (never a warning). */
+    acknowledgeAllNotes: () => post<{ ok: true; acknowledged: string[] }>('/api/notices/acknowledge-all', {}),
     /** Site admins and moderators: a person's or club's history. */
     history: (subject: WarningSubject) =>
       get<{ warnings: WarningSummary[] }>(`/api/admin/warnings?subjectKind=${subject.kind}&subjectId=${encodeURIComponent(subject.id)}`),

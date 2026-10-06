@@ -97,7 +97,7 @@ test('a club warning comes from the club, and only its people see it', async ({ 
     // Bob sees it live, from the club, and reads it.
     const banner = bob.page.getByTestId('notice-banner');
     await expect(banner).toContainText(`Note · From Warn club ${ts}`, { timeout: 10000 });
-    await banner.getByRole('button', { name: 'I understand' }).click();
+    await banner.getByRole('button', { name: 'Dismiss', exact: true }).click();
     await expect(banner).toHaveCount(0);
     await expect(sent).toContainText('Acknowledged', { timeout: 10000 });
 

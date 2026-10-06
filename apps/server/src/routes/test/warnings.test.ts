@@ -163,6 +163,26 @@ describe('warnings', () => {
     });
   });
 
+  describe('Dismiss all', () => {
+    it('acknowledges every unread note, never a warning, and only the person’s own', async () => {
+      const note = ((await post(mod, '/api/admin/warnings', { subjectKind: 'user', subjectId: cat.id, severity: 'note', reason: 'Your download is ready' })).json() as { id: string }).id;
+      const warning = ((await post(mod, '/api/admin/warnings', { subjectKind: 'user', subjectId: cat.id, severity: 'warning', reason: 'Spam in the catalog' })).json() as { id: string }).id;
+      const other = ((await post(mod, '/api/admin/warnings', { subjectKind: 'user', subjectId: dan.id, severity: 'note', reason: 'Someone else’s' })).json() as { id: string }).id;
+      const res = await post(cat, '/api/notices/acknowledge-all');
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { acknowledged: string[] }).acknowledged).toEqual([note]);
+      const mine = new Map((await notices(cat)).notices.map((n) => [n.id, n.acknowledgedAt]));
+      expect(mine.get(note)).toEqual(expect.any(Number));
+      expect(mine.get(warning)).toBeNull();
+      expect((await notices(dan)).notices.find((n) => n.id === other)?.acknowledgedAt).toBeNull();
+      // Nothing left: still fine.
+      expect(((await post(cat, '/api/notices/acknowledge-all')).json() as { acknowledged: string[] }).acknowledged).toEqual([]);
+      // The same people hear it as for one "I understand".
+      const out = await ROUTE_HINTS['POST /api/notices/acknowledge-all']!.after({ req: { routeOptions: { url: '/api/notices/acknowledge-all' }, method: 'POST' } as never, params: {}, body: {}, reply: { acknowledged: [note] }, userId: cat.id, before: {} });
+      expect(new Set(out.flatMap((o) => o.reach?.users ?? []))).toEqual(new Set([cat.id, admin.id, mod.id]));
+    });
+  });
+
   describe('the live hint goes to exactly who may see it', () => {
     async function audienceOf(route: string, ctx: Partial<HintCtx>): Promise<Set<string>> {
       const out = await ROUTE_HINTS[route]!.after({ req: { routeOptions: { url: route.split(' ')[1] }, method: 'POST' } as never, params: {}, body: {}, reply: null, userId: null, before: {}, ...ctx });

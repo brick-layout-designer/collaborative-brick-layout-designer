@@ -44,43 +44,104 @@ function useAcknowledge() {
   return useMutation({ mutationFn: (id: string) => api.warnings.acknowledge(id) });
 }
 
-/** The newest warning not yet acknowledged, on every page, until "I understand". */
+/**
+ * What you haven't read yet, on every page. A warning waits at the top
+ * until "I understand". Notes (a club deleted or restored, a download
+ * ready…) don't stand in the way: a small card at the bottom, with
+ * Dismiss and, for more than one, Dismiss all.
+ */
 export function NoticeBanner() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const notices = useNotices(!!me.data?.user);
   const ack = useAcknowledge();
+  const all = useMutation({ mutationFn: api.warnings.acknowledgeAllNotes });
   const open = (notices.data?.notices ?? []).filter((n) => n.acknowledgedAt === null);
-  const w = open[0];
+  const warnings = open.filter((n) => n.severity !== 'note');
+  const notes = open.filter((n) => n.severity === 'note');
   // /notices lists them all, each with its own I understand: no banner over its heading.
   const onNoticesPage = useLocation().pathname === '/notices';
-  if (!w || onNoticesPage) return null;
-  const to = toLabel(w);
+  if (onNoticesPage) return null;
+  const w = warnings[0];
+  if (w) {
+    const to = toLabel(w);
+    return (
+      <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
+        <section
+          role="alertdialog"
+          aria-labelledby="notice-title"
+          aria-describedby="notice-reason"
+          data-testid="notice-banner"
+          className={`pointer-events-auto w-full max-w-xl rounded-card border-2 bg-panel p-4 text-ink shadow-pop ${SEVERITY_STYLE[w.severity]}`}
+        >
+          <p id="notice-title" className="text-sm font-semibold">
+            {SEVERITY_LABEL[w.severity]} · {fromLabel(w)}
+            {warnings.length > 1 && <span className="font-normal text-muted"> (1 of {warnings.length})</span>}
+          </p>
+          {to && <p className="text-xs text-muted">{to}</p>}
+          <p id="notice-reason" className="mt-2 whitespace-pre-wrap text-sm">{w.reason}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={ack.isPending}
+              onClick={() => ack.mutate(w.id)}
+              className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+            >
+              I understand
+            </button>
+            {w.link && (
+              <Link to={w.link} className="text-sm text-accent-text hover:underline">
+                See what it's about
+              </Link>
+            )}
+            <Link to="/notices" className="text-sm text-muted hover:underline">
+              All notices
+            </Link>
+          </div>
+          {ack.isError && <p className="mt-2 text-xs text-danger">{(ack.error as Error).message}</p>}
+        </section>
+      </div>
+    );
+  }
+  const n = notes[0];
+  if (!n) return null;
+  const to = toLabel(n);
+  const error = (ack.error ?? all.error) as Error | null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[60] flex justify-center px-4 sm:justify-end">
       <section
-        role="alertdialog"
+        role="status"
         aria-labelledby="notice-title"
-        aria-describedby="notice-reason"
         data-testid="notice-banner"
-        className={`pointer-events-auto w-full max-w-xl rounded-card border-2 bg-panel p-4 text-ink shadow-pop ${SEVERITY_STYLE[w.severity]}`}
+        data-kind="note"
+        className="pointer-events-auto w-full max-w-md rounded-card border border-line bg-panel p-3 text-ink shadow-pop"
       >
         <p id="notice-title" className="text-sm font-semibold">
-          {SEVERITY_LABEL[w.severity]} · {fromLabel(w)}
-          {open.length > 1 && <span className="font-normal text-muted"> (1 of {open.length})</span>}
+          {SEVERITY_LABEL.note} · {fromLabel(n)}
+          {notes.length > 1 && <span className="font-normal text-muted"> (1 of {notes.length})</span>}
         </p>
         {to && <p className="text-xs text-muted">{to}</p>}
-        <p id="notice-reason" className="mt-2 whitespace-pre-wrap text-sm">{w.reason}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+        <p className="mt-1 whitespace-pre-wrap text-sm">{n.reason}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <button
             type="button"
-            disabled={ack.isPending}
-            onClick={() => ack.mutate(w.id)}
-            className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+            disabled={ack.isPending || all.isPending}
+            onClick={() => ack.mutate(n.id)}
+            className="tap-target rounded-lg border border-border px-3 py-1 text-sm font-semibold hover:bg-soft disabled:opacity-60"
           >
-            I understand
+            Dismiss
           </button>
-          {w.link && (
-            <Link to={w.link} className="text-sm text-accent-text hover:underline">
+          {notes.length > 1 && (
+            <button
+              type="button"
+              disabled={ack.isPending || all.isPending}
+              onClick={() => all.mutate()}
+              className="tap-target rounded-lg border border-border px-3 py-1 text-sm font-semibold hover:bg-soft disabled:opacity-60"
+            >
+              Dismiss all
+            </button>
+          )}
+          {n.link && (
+            <Link to={n.link} className="text-sm text-accent-text hover:underline">
               See what it's about
             </Link>
           )}
@@ -88,7 +149,7 @@ export function NoticeBanner() {
             All notices
           </Link>
         </div>
-        {ack.isError && <p className="mt-2 text-xs text-danger">{(ack.error as Error).message}</p>}
+        {error && <p className="mt-2 text-xs text-danger">{error.message}</p>}
       </section>
     </div>
   );

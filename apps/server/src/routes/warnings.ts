@@ -6,6 +6,7 @@
 //   GET  /api/orgs/:slug/warnings         the club's own warnings (its admins and managers)
 //   GET  /api/notices                     the warnings I (or a club I run) received
 //   POST /api/notices/:id/acknowledge     "I understand"
+//   POST /api/notices/acknowledge-all     "Dismiss all": every unread note (never a warning)
 //
 // Who sees what:
 //   - a site warning to a person: that person, site admins and moderators
@@ -17,7 +18,7 @@
 // steps (read-only, limits) stay with site admins, on the same pages.
 
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
@@ -310,27 +311,31 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
   // ---- what I received ----------------------------------------------------
   app.get('/api/notices', { config: TOKEN_NOTICES }, async (req) => {
     const user = requireUser(req);
-    const run = await db
-      .select({ o: schema.orgMembers.orgId })
-      .from(schema.orgMembers)
-      .where(and(eq(schema.orgMembers.userId, user.id), inArray(schema.orgMembers.role, ['admin', 'manager'])))
-      .all();
-    const clubs = run.map((r) => r.o);
-    const rows = await db
-      .select()
-      .from(schema.warnings)
-      .where(
-        or(
-          eq(schema.warnings.subjectUserId, user.id),
-          // Site warnings to a club I run, and the club's own notes to its runners (postClubNote).
-          clubs.length ? inArray(schema.warnings.subjectOrgId, clubs) : undefined,
-        ),
-      )
-      .orderBy(desc(schema.warnings.createdAt))
-      .limit(200)
-      .all();
     // Who sent it stays with the site team or the club's runners.
-    return { notices: await describe(rows, false) };
+    return { notices: await describe(await noticesFor(user.id), false) };
+  });
+
+  // "Dismiss all": the notes (club deleted or restored, a download ready…)
+  // go at once. Warnings are never dismissed this way: each needs its own
+  // "I understand".
+  app.post('/api/notices/acknowledge-all', { config: { ...TOKEN_NOTICES, rateLimit: { max: 10, timeWindow: '1 minute', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } }, async (req) => {
+    const user = requireUser(req);
+    const rows = (await noticesFor(user.id)).filter((r) => r.severity === 'note' && !r.acknowledgedAt);
+    if (rows.length === 0) return { ok: true, acknowledged: [] as string[] };
+    const now = new Date();
+    const ids = rows.map((r) => r.id);
+    await db
+      .update(schema.warnings)
+      .set({ acknowledgedAt: now, acknowledgedBy: user.id })
+      .where(and(inArray(schema.warnings.id, ids), isNull(schema.warnings.acknowledgedAt), eq(schema.warnings.severity, 'note')));
+    await writeAuditEvent({
+      resourceKind: 'user',
+      resourceId: user.id,
+      userId: user.id,
+      eventType: 'warn_ack_all',
+      payload: { warningIds: ids },
+    });
+    return { ok: true, acknowledged: ids };
   });
 
   app.post<{ Params: { id: string } }>('/api/notices/:id/acknowledge', { config: TOKEN_NOTICES }, async (req, reply) => {
@@ -352,6 +357,29 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
     });
     return { ok: true, acknowledgedAt: now.getTime() };
   });
+}
+
+/** What I received: my own, and those to a club I run (newest first). */
+async function noticesFor(userId: string) {
+  const run = await db
+    .select({ o: schema.orgMembers.orgId })
+    .from(schema.orgMembers)
+    .where(and(eq(schema.orgMembers.userId, userId), inArray(schema.orgMembers.role, ['admin', 'manager'])))
+    .all();
+  const clubs = run.map((r) => r.o);
+  return db
+    .select()
+    .from(schema.warnings)
+    .where(
+      or(
+        eq(schema.warnings.subjectUserId, userId),
+        // Site warnings to a club I run, and the club's own notes to its runners (postClubNote).
+        clubs.length ? inArray(schema.warnings.subjectOrgId, clubs) : undefined,
+      ),
+    )
+    .orderBy(desc(schema.warnings.createdAt))
+    .limit(200)
+    .all();
 }
 
 /** Managers warn members; admins warn members and managers; nobody warns an admin from inside the club. */
