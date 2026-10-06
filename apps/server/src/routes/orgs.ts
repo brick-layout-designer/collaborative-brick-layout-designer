@@ -28,6 +28,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
+import { clubReviewCount } from './clubReview.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
 
@@ -105,6 +106,9 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
 
+    // A trusted club's admins and managers see what waits in its review queue.
+    const reviews = new Map<string, number>();
+    for (const r of rows) if (r.trusted && atLeast(r.myRole, 'manager')) reviews.set(r.id, await clubReviewCount(r.id));
     return {
       orgs: rows.map((r) => ({
         id: r.id,
@@ -117,6 +121,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         // The same rule as destinationOrg (owners.ts), so "Save to" only
         // offers the clubs that will take it.
         canAdd: r.membersCanCreate || atLeast(r.myRole, 'manager'),
+        ...(reviews.has(r.id) ? { pendingReviews: reviews.get(r.id) } : {}),
       })),
     };
   });
@@ -221,12 +226,14 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       joinPolicy: org.joinPolicy,
       trusted: org.trusted,
       listed: org.listed,
-      // Admins see how many people are waiting to be let in.
+      // Admins see how many people are waiting to be let in, and (a
+      // trusted club) how many shares wait in its review queue.
       ...(atLeast(myMembership.role, 'manager')
         ? {
             pendingRequests: (
               await db.select({ id: schema.orgJoinRequests.id }).from(schema.orgJoinRequests).where(eq(schema.orgJoinRequests.orgId, org.id))
             ).length,
+            ...(org.trusted ? { pendingReviews: await clubReviewCount(org.id) } : {}),
           }
         : {}),
     };

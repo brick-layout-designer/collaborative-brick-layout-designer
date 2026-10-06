@@ -114,6 +114,15 @@ function OrgAdmin({ slug }: { slug: string }) {
               }`}
             >
               {t.label}
+              {t.id === 'review' && (org.pendingReviews ?? 0) > 0 && (
+                <span
+                  data-testid="review-count"
+                  className="ml-2 rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink"
+                  aria-label={`${org.pendingReviews} waiting`}
+                >
+                  {org.pendingReviews}
+                </span>
+              )}
             </button>
           ))}
         </nav>

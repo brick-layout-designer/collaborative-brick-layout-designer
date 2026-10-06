@@ -129,9 +129,20 @@ describe('trusted clubs', () => {
     const club = (await clubQueue()).json() as { items: { itemId: string; versionId: string; submitter: string }[]; published: { id: string }[] };
     expect(club.items).toEqual([expect.objectContaining({ itemId: melItem.id, submitter: 'mel' })]);
     expect(club.published.map((p) => p.id)).toEqual([byMax.id]);
+    // Its admins and managers see how much waits, on the club and in their Clubs list; members don't.
+    const waiting = async (cookie: string) => ({
+      detail: ((await req('GET', '/api/orgs/arklug', cookie)).json() as { pendingReviews?: number }).pendingReviews,
+      list: ((await req('GET', '/api/orgs', cookie)).json() as { orgs: { pendingReviews?: number }[] }).orgs[0]!.pendingReviews,
+    });
+    expect(await waiting(max)).toEqual({ detail: 1, list: 1 });
+    expect(await waiting(ada)).toEqual({ detail: 1, list: 1 });
+    expect(await waiting(mel)).toEqual({ detail: undefined, list: undefined });
     // The public catalog says it's a trusted club's.
     const listed = ((await req('GET', '/api/catalog/items?kind=module', out)).json() as { items: { id: string; trustedClub: boolean }[] }).items;
     expect(listed).toEqual([expect.objectContaining({ id: byMax.id, trustedClub: true })]);
+    // Worked: nothing waits.
+    await req('POST', `/api/orgs/arklug/review/versions/${club.items[0]!.versionId}/approve`, max, {});
+    expect(await waiting(max)).toEqual({ detail: 0, list: 0 });
   });
 
   it('a member can’t work the club’s queue; outsiders don’t see it; the club only acts on its own', async () => {

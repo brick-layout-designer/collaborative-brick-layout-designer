@@ -65,6 +65,15 @@ export function OrgsPage() {
                       {waitingIn(o.slug) === 1 ? '1 request to join' : `${waitingIn(o.slug)} requests to join`}
                     </Link>
                   )}
+                  {(o.pendingReviews ?? 0) > 0 && (
+                    <Link
+                      to={`/orgs/${o.slug}/admin?tab=review`}
+                      data-testid="club-review-waiting"
+                      className="ml-1 mt-1 inline-flex rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent-text hover:underline"
+                    >
+                      {o.pendingReviews === 1 ? '1 share to review' : `${o.pendingReviews} shares to review`}
+                    </Link>
+                  )}
                 </div>
                 <Link
                   to={`/orgs/${o.slug}`}
