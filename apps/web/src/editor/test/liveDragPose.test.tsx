@@ -37,7 +37,7 @@ vi.mock('../render/electricCircuits', async (orig) => ({
   },
 }));
 
-import { posedMap, posedPoint, useLiveDragPose, type DragPose } from '../liveDragPose';
+import { posedMap, posedPoint, useLiveDragPose, usePosedMap, type DragPose } from '../liveDragPose';
 import { ModuleOverlay } from '../render/ModuleOverlay';
 import { AnchoredLabels } from '../render/AnchoredLabels';
 import { RulerLayers } from '../render/RulerLayer';
@@ -119,6 +119,23 @@ describe('the live pose', () => {
   it('stops once the drop is in the layout (or another edit moved the part)', () => {
     const dropped = posedMap(MAP, { ...SHIFT, startAreas: new Map([['a', { x: 1, y: 0, width: 4, height: 2 }]]) });
     expect(dropped).toBe(MAP);
+  });
+
+  it('an overlay that doesn’t follow the dragged parts isn’t drawn again', () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders++;
+      return usePosedMap(MAP, (pose) => pose.ids.has('c'));
+    });
+    const before = renders;
+    act(() => useLiveDragPose.getState().setPose(SHIFT));
+    expect(renders).toBe(before);
+    expect(result.current).toBe(MAP);
+    const { result: r2 } = renderHook(() => usePosedMap(MAP, (pose) => pose.ids.has('a')));
+    expect(r2.current).not.toBe(MAP);
+    // Asked twice for the same frame: the same posed layout.
+    const { result: r3 } = renderHook(() => usePosedMap(MAP));
+    expect(r3.current).toBe(r2.current);
   });
 
   it('rulers and labels fixed to a dragged part ride the pose, not the shift', () => {

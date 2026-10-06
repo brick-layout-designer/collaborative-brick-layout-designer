@@ -20,7 +20,8 @@ export function RemoteCursors({
 }) {
   // The parts being dragged where they are now (liveDragPose.ts), so this
   // follows the drag every frame, not only the drop.
-  const map = usePosedMap(committedMap);
+  // Only with others here to draw.
+  const map = usePosedMap(committedMap, () => !!awareness && [...awareness.getStates().keys()].some((c) => c !== awareness.clientID));
   const peers = useRemotePeers(awareness);
   // Index every brick by id once per map (not per peer cursor move) so the
   // per-peer selection lookup is O(selection-size).

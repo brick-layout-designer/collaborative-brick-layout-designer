@@ -135,6 +135,7 @@ import { useLiveVenueReadout } from './liveVenueReadout';
 import { ModuleEditBar } from './ModuleEditBar';
 import { withShowName } from './moduleLook';
 import { ModuleEditDim, editedModuleFrame } from './render/ModuleEditDim';
+import { DRAG_LAYER } from './render/BrickLayer';
 import { fetchModuleBatches } from './moduleSnapshot';
 import { moduleDropTranslation, placedModuleBatches } from './moduleDrop';
 import type { GroupTurn } from './snapFeel';
@@ -3659,7 +3660,7 @@ function Canvas({
 
       {/* Layer 2 — interactive content: bricks, text, rulers, labels.
           Hit-testing is enabled so clicks/drags on bricks and text work. */}
-      <KonvaLayer perfectDrawEnabled={false}>
+      <KonvaLayer name="parts-layer" perfectDrawEnabled={false}>
         <BrickLayer
           map={shown}
           doc={doc}
@@ -3718,10 +3719,6 @@ function Canvas({
                 onSelect={(id, additive) => selectAnno('labels', id, additive)}
                 {...(tool === 'select' ? { drag: annoDrag } : {})}
               />}
-          <ModuleOverlay
-            map={shown}
-            modules={readSidecarFromDoc(doc)?.modules ?? []}
-          />
         </Group>
         {!isViewer && tool === 'select' && (
           <BendHandles
@@ -3736,6 +3733,16 @@ function Canvas({
           />
         )}
       </KonvaLayer>
+
+      {/* Module outlines and names: a layer of their own, so a drag that
+          moves them every frame (liveDragPose.ts) redraws only them, not
+          every part on the map. */}
+      <KonvaLayer name="module-layer" listening={false} perfectDrawEnabled={false}>
+        <ModuleOverlay map={shown} modules={readSidecarFromDoc(doc)?.modules ?? []} />
+      </KonvaLayer>
+      {/* The parts being dragged move here for the drag (BrickLayer), so
+          only they are drawn again every frame. */}
+      <KonvaLayer name={DRAG_LAYER} perfectDrawEnabled={false} />
 
       {/* Layer 3 — HUD overlays (no hit-testing): drag ghost, marquee,
           snap ring, ruler/venue drafts, remote cursors. */}

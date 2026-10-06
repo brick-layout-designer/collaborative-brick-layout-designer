@@ -67,7 +67,7 @@ export function AnchoredLabels({
 }: Props) {
   // The parts being dragged where they are now (liveDragPose.ts), so this
   // follows the drag every frame, not only the drop.
-  const map = usePosedMap(committedMap);
+  const map = usePosedMap(committedMap, (pose) => labels.some((l) => l.kind === 1 && pose.ids.has(l.targetId)));
   const minTextPx = useEditorStore((s) => s.minTextPx);
   if (!labels || labels.length === 0) return null;
 

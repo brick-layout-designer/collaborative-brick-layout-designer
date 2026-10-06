@@ -62,6 +62,34 @@ export function ridingAnno(
   return { ...anno, labels: anno.labels.filter((id) => !fixedLabels.has(id)), rulers: anno.rulers.filter((id) => !fixedRulers.has(id)) };
 }
 
+/** The Konva layer the dragged parts move to for the drag (EditorPage). */
+export const DRAG_LAYER = 'drag-layer';
+
+/**
+ * Lifts the dragged parts' nodes onto the drag layer, so a drag frame
+ * redraws only them (a big layout has a thousand parts on its layer).
+ * Returns how to put them back where they were, in their order.
+ */
+export function liftForDrag(nodes: readonly Konva.Node[]): () => void {
+  const stage = nodes[0]?.getStage();
+  const layer = stage?.findOne(`.${DRAG_LAYER}`) as Konva.Layer | undefined;
+  if (!layer) return () => undefined;
+  const was = nodes
+    .map((node) => ({ node, parent: node.getParent(), z: node.zIndex() }))
+    .filter((w): w is { node: Konva.Node; parent: NonNullable<typeof w.parent>; z: number } => !!w.parent);
+  const layers = new Set(was.map((w) => w.node.getLayer()).filter((l): l is Konva.Layer => !!l));
+  for (const w of was) w.node.moveTo(layer);
+  return () => {
+    for (const w of [...was].sort((a, b) => a.z - b.z)) {
+      if (w.node.getParent() !== layer) continue; // gone meanwhile
+      w.node.moveTo(w.parent);
+      w.node.zIndex(Math.min(w.z, w.parent.getChildren().length - 1));
+    }
+    for (const l of layers) l.batchDraw();
+    layer.batchDraw();
+  };
+}
+
 /** How long the live pose stays after a drop, while the layout redraws with the parts in place (ms). */
 const POSE_LINGER_MS = 1000;
 
@@ -511,6 +539,10 @@ const BrickGlyph = memo(function BrickGlyph({
 
   /** A group snap's turn, and the leader's raw centre it was made from (for the drop). */
   const groupTurnRef = useRef<{ turn: GroupTurn; raw: { x: number; y: number } } | null>(null);
+  /** Puts the parts lifted onto the drag layer back (liftForDrag). */
+  const putBackRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => putBackRef.current?.(), []);
+
   /** The dragged parts and where they were, for the live pose. */
   const poseStartRef = useRef<{ ids: ReadonlySet<string>; startAreas: ReadonlyMap<string, Brick['displayArea']> } | null>(null);
 
@@ -586,6 +618,7 @@ const BrickGlyph = memo(function BrickGlyph({
     }
     if (!isMulti) {
       dragStartRef.current = null;
+      putBackRef.current = liftForDrag([e.target]);
       return;
     }
     const sel = new Set(selection);
@@ -614,6 +647,7 @@ const BrickGlyph = memo(function BrickGlyph({
       leaderStartCentre: leaderStart,
       siblings,
     };
+    putBackRef.current = liftForDrag([e.target, ...siblings.map((s) => s.node).filter((n): n is Konva.Node => !!n)]);
     void e;
   }
 
@@ -832,6 +866,9 @@ const BrickGlyph = memo(function BrickGlyph({
       finalSnap = snapLeader(e.target, rawCentreRef.current, snapBypassed(e.evt), true);
     }
     const wasSnapped = finalSnap ? finalSnap.snappedToConnection : useEditorStore.getState().liveSnap !== null;
+    // Back from the drag layer, where they were in their sheets.
+    putBackRef.current?.();
+    putBackRef.current = null;
     clearSettle();
     snapSessionRef.current = null;
     rawCentreRef.current = null;
@@ -990,6 +1027,28 @@ const BrickGlyph = memo(function BrickGlyph({
     if (ok) takeOutOfModule(doc, moduleId, ids);
   }
 
+  /**
+   * A double click or double tap: a module's part opens Edit module; a
+   * double click on any other part opens its properties.
+   */
+  function onDoubleClick(e: KonvaEventObject<MouseEvent | TouchEvent>, byTouch = false) {
+    e.cancelBubble = true;
+    // A double-click that bent a flex chain doesn't open properties.
+    if (flexMovedRef.current) {
+      flexMovedRef.current = false;
+      return;
+    }
+    if (isViewer || outside) return;
+    // A module's part opens Edit module (the part picked); inside the
+    // module being edited it opens the part's properties as usual.
+    const mod = moduleByPart(getModules()).get(brick.id);
+    if (mod && mod.id !== useEditorStore.getState().editingModuleId) {
+      enterModuleEdit(mod.id, brick.id);
+      return;
+    }
+    if (!byTouch && onEditBrick) onEditBrick(brick, layerId, meta);
+  }
+
   return (
     <Group
       ref={groupRef}
@@ -1005,23 +1064,8 @@ const BrickGlyph = memo(function BrickGlyph({
       onTouchStart={handleTouchStart}
       onClick={handleClick}
       onTap={handleClick}
-      onDblClick={(e) => {
-        e.cancelBubble = true;
-        // A double-click that bent a flex chain doesn't open properties.
-        if (flexMovedRef.current) {
-          flexMovedRef.current = false;
-          return;
-        }
-        if (isViewer || outside) return;
-        // A module's part opens Edit module (the part picked); inside the
-        // module being edited it opens the part's properties as usual.
-        const mod = moduleByPart(getModules()).get(brick.id);
-        if (mod && mod.id !== useEditorStore.getState().editingModuleId) {
-          enterModuleEdit(mod.id, brick.id);
-          return;
-        }
-        if (onEditBrick) onEditBrick(brick, layerId, meta);
-      }}
+      onDblTap={(e) => onDoubleClick(e, true)}
+      onDblClick={(e) => onDoubleClick(e)}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}

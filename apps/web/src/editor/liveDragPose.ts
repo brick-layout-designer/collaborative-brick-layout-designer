@@ -77,10 +77,32 @@ export function posedMap(map: BbmMap, pose: DragPose | null): BbmMap {
   return changed ? { ...map, layers } : map;
 }
 
-/** `map` with the live drag applied (see posedMap); re-renders the caller as the drag moves. */
-export function usePosedMap(map: BbmMap): BbmMap;
-export function usePosedMap(map: BbmMap | null): BbmMap | null;
-export function usePosedMap(map: BbmMap | null): BbmMap | null {
-  const pose = useLiveDragPose((s) => s.pose);
-  return useMemo(() => (map ? posedMap(map, pose) : map), [map, pose]);
+/** The last posed layout (several overlays ask for the same one each frame). */
+let lastPosed: { map: BbmMap; pose: DragPose; out: BbmMap } | null = null;
+
+function posedMapCached(map: BbmMap, pose: DragPose | null): BbmMap {
+  if (!pose) return map;
+  if (lastPosed && lastPosed.map === map && lastPosed.pose === pose) return lastPosed.out;
+  const out = posedMap(map, pose);
+  lastPosed = { map, pose, out };
+  return out;
+}
+
+/**
+ * `map` with the live drag applied (see posedMap); re-renders the caller
+ * as the drag moves, but only while `relevant(pose)` (say, a module or a
+ * ruler of its is among the dragged parts), so overlays that don't follow
+ * these parts aren't drawn again every frame.
+ */
+export function usePosedMap(map: BbmMap, relevant?: (pose: DragPose) => boolean): BbmMap;
+export function usePosedMap(map: BbmMap | null, relevant?: (pose: DragPose) => boolean): BbmMap | null;
+export function usePosedMap(map: BbmMap | null, relevant?: (pose: DragPose) => boolean): BbmMap | null {
+  const pose = useLiveDragPose((s) => (s.pose && (!relevant || relevant(s.pose)) ? s.pose : null));
+  return useMemo(() => (map ? posedMapCached(map, pose) : map), [map, pose]);
+}
+
+/** Whether any of `ids` is being dragged. */
+export function dragsAny(pose: DragPose, ids: Iterable<string>): boolean {
+  for (const id of ids) if (pose.ids.has(id)) return true;
+  return false;
 }

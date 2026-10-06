@@ -16,7 +16,7 @@ import type { BbmMap } from '@cld/model';
 import type { SidecarModule } from '@cld/bbm';
 import { useEditorStore } from '../editorStore';
 import { EXPORT_HIDE } from '../exportRender';
-import { usePosedMap } from '../liveDragPose';
+import { dragsAny, usePosedMap } from '../liveDragPose';
 import { SELECTION } from './selectionStyle';
 import { selectionHalo } from './BrickLayer';
 import { studToPx } from './coords';
@@ -70,7 +70,7 @@ export function ModuleOverlay({ map: committed, modules }: Props) {
   const snapActive = useEditorStore((s) => s.liveSnap !== null);
   // The parts being dragged where they are now (liveDragPose.ts): outlines
   // and names move and turn with them, every frame.
-  const map = usePosedMap(committed);
+  const map = usePosedMap(committed, (pose) => modules.some((m) => dragsAny(pose, m.members)));
 
   const layouts = useMemo(() => moduleLabelLayouts(map, modules, labelPercent, measureBold), [map, modules, labelPercent]);
   const cut = useMemo(() => layouts.filter((l) => l.text?.truncated), [layouts]);
