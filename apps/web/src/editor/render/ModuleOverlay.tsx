@@ -23,6 +23,7 @@ import { studToPx } from './coords';
 import { MAP_FONT_STACK } from './mapText';
 import {
   MODULE_FRAME_DASH,
+  MODULE_FRAME_PARTLY_HIDDEN_DASH,
   MODULE_FULL_NAME_BG,
   MODULE_NAME_STROKE,
   moduleFullNamePill,
@@ -112,7 +113,7 @@ export function ModuleOverlay({ map: committed, modules }: Props) {
             stroke={l.frameStroke}
             strokeWidth={frameThickness}
             strokeScaleEnabled={false}
-            dash={MODULE_FRAME_DASH}
+            dash={l.partlyHidden ? MODULE_FRAME_PARTLY_HIDDEN_DASH : MODULE_FRAME_DASH}
             fillEnabled={false}
             perfectDrawEnabled={false}
           />}

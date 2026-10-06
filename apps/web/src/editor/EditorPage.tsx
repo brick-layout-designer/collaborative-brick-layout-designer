@@ -56,6 +56,7 @@ import { useTouchView } from './useTouchView';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { SheetsSheet, TextEditSheet } from './TouchSheets';
+import { placeModuleAsking, SheetChoiceHost } from './SheetChoiceDialog';
 import { editAnchoredLabel, editTextCell, setExportElectricCircuit, updateSidecarModule } from './mutations';
 import { parseTextKey } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
@@ -91,7 +92,6 @@ import {
   bricksByLayer,
   deleteBricksAcrossLayers,
   groupBricksAcrossLayers,
-  importBricksAsModule,
   insertBricksAcrossLayers,
   insertBricks,
   insertSet,
@@ -1181,6 +1181,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           </FloatingPanel>
         );
       })}
+      <SheetChoiceHost />
       {touchText && (
         <TextEditSheet title={touchText.title} initial={touchText.text} onSave={touchText.save} onClose={() => setTouchText(null)} />
       )}
@@ -2208,7 +2209,7 @@ function Canvas({
               : { dx: 0, dy: 0 };
             // Bricks go to host layers named like the module's layers and
             // are registered as a sidecar module in the same undo step.
-            const res = importBricksAsModule(doc, placedModuleBatches(batches, offset, catalog), { name: moduleName });
+            const res = await placeModuleAsking(doc, placedModuleBatches(batches, offset, catalog), { name: moduleName });
             if (res) {
               absorbIntoEditedModule(doc, res.ids);
               setSelection(res.ids);

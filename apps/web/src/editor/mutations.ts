@@ -9,13 +9,14 @@
 // y-websocket clientID; for Phase 3 single-user, LOCAL_ORIGIN is enough.
 
 import * as Y from 'yjs';
-import type { ColorSpec, FontSpec, Group, RectangleF } from '@cld/model';
+import type { ColorSpec, FontSpec, Group, Layer, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SavedView, SidecarModule } from '@cld/bbm';
 import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
 import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
 import { cloneGroups, topGroupId, type ExpandedSet, type SetModule } from './sets';
+import { findPartsSheet, type SheetChoices } from './moduleSheets';
 
 export interface BrickInsertSpec {
   partNumber: string;
@@ -1995,15 +1996,18 @@ export interface ModuleBatch {
 /**
  * Insert a module's bricks and register them as a sidecar module in ONE
  * transaction — desktop `ImportBbmAsModuleCommand` (ModuleCommands.cpp:451-506).
- * Each batch lands on the host brick layer with the same name, or on a
- * new brick layer with that name when none exists, so the module keeps
- * its layering (tracks stay above scenery). Returns the module id and
- * the new brick ids.
+ * Each batch lands on the host brick layer with the same name (ignoring
+ * case and spaces at either end), so the module keeps its layering
+ * (tracks stay above scenery). A batch with no such sheet goes where
+ * `opts.sheets` says (the answer to "Where should these go?",
+ * moduleSheets.ts): an existing sheet, or a new one by a given name.
+ * Without an answer it gets a new sheet with its own name. Returns the
+ * module id and the new brick ids.
  */
 export function importBricksAsModule(
   doc: Y.Doc,
   batches: ModuleBatch[],
-  opts: { name: string; offset?: { dx: number; dy: number }; sourceFile?: string },
+  opts: { name: string; offset?: { dx: number; dy: number }; sourceFile?: string; sheets?: SheetChoices },
 ): { moduleId: string; ids: string[] } | null {
   const nonEmpty = batches.filter((b) => b.bricks.length > 0);
   if (nonEmpty.length === 0) return null;
@@ -2011,19 +2015,27 @@ export function importBricksAsModule(
   const ids: string[] = [];
   doc.transact(() => {
     const layerData = doc.getMap('layerData');
-    const findByName = (name: string): string | null => {
-      for (const lid of doc.getArray<string>('layers').toArray()) {
-        const l = layerData.get(lid);
-        if (l instanceof Y.Map && l.get('type') === 'brick' && l.get('name') === name) return lid;
-      }
-      return null;
+    const sheets = () =>
+      doc
+        .getArray<string>('layers')
+        .toArray()
+        .map((id) => layerData.get(id))
+        .filter((l): l is Y.Map<unknown> => l instanceof Y.Map)
+        .map((l) => ({ id: l.get('id') as string, name: (l.get('name') as string) ?? '', type: l.get('type') as Layer['type'] }));
+    const findOrMake = (name: string): string => {
+      const found = findPartsSheet(sheets(), name);
+      if (found) return found;
+      const id = addLayer(doc, 'brick');
+      renameLayer(doc, id, name);
+      return id;
     };
     for (const batch of nonEmpty) {
       const name = batch.layerName || 'Module';
-      let layerId = findByName(name);
+      let layerId = findPartsSheet(sheets(), name);
       if (!layerId) {
-        layerId = addLayer(doc, 'brick');
-        renameLayer(doc, layerId, name);
+        const choice = opts.sheets?.[name];
+        if (choice && 'layerId' in choice && layerData.get(choice.layerId) instanceof Y.Map) layerId = choice.layerId;
+        else layerId = findOrMake(choice && 'newName' in choice ? choice.newName : name);
       }
       const copied = cloneGroups(batch.groups ?? [], batch.bricks, makeId);
       ids.push(...insertBricks(doc, layerId, copied.bricks, opts.offset, copied.groups));

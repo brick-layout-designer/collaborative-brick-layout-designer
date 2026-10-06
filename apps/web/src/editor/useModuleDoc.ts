@@ -7,6 +7,7 @@ import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { canReadDoc, createDefaultLayoutDoc, docToBbm } from '@cld/ydoc';
 import { api } from '../api';
+import { repairModuleSheets } from './moduleSheets';
 import { UNREADABLE_LAYOUT, type LayoutDocState, type SaveResult, type SaveStatus } from './useLayoutDoc';
 
 /** Whether a module doc has nothing to put parts on (a blank module from before modules opened). */
@@ -63,6 +64,8 @@ export function useModuleDoc(moduleId: string): LayoutDocState {
           d.destroy();
           d = createDefaultLayoutDoc();
         }
+        // Sheets an older web build saved see-through come back solid.
+        repairModuleSheets(d);
         loaded = d;
         aw = new Awareness(d);
         d.on('update', onUpdate);

@@ -14,7 +14,7 @@ import type * as Y from 'yjs';
 import { api } from '../api';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { useEditorStore } from './editorStore';
-import { importBricksAsModule } from './mutations';
+import { placeModuleAsking } from './SheetChoiceDialog';
 import { fetchModuleBatches } from './moduleSnapshot';
 
 interface Props {
@@ -41,10 +41,14 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
       const copy = await api.catalog.add(item.id);
       void qc.invalidateQueries({ queryKey: ['modules'] });
       const batches = await fetchModuleBatches(copy.id);
-      const res = importBricksAsModule(doc, batches, { name: item.title });
+      const res = await placeModuleAsking(doc, batches, { name: item.title });
       if (res) useEditorStore.getState().setSelection(res.ids);
+      return !!res;
     },
-    onSuccess: () => onClose(),
+    // Cancel in "Where should these go?" keeps this dialog open.
+    onSuccess: (placed) => {
+      if (placed) onClose();
+    },
     onError: (e: Error) => setError(e.message),
   });
 
@@ -56,10 +60,13 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
       // Bricks keep their source layer names and become a sidecar module
       // in the same undo step (desktop ImportBbmAsModuleCommand).
       const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';
-      const res = importBricksAsModule(doc, batches, { name: title });
+      const res = await placeModuleAsking(doc, batches, { name: title });
       if (res) useEditorStore.getState().setSelection(res.ids);
+      return !!res;
     },
-    onSuccess: () => onClose(),
+    onSuccess: (placed) => {
+      if (placed) onClose();
+    },
     onError: (e: Error) => setError(e.message),
   });
 

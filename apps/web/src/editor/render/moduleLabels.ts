@@ -12,6 +12,8 @@ import { studToPx } from './coords';
 /** The module look both apps draw (packages/bbm/tests/fixtures/render-parity/modules.json). */
 export const MODULE_FRAME_STROKE = 'rgba(100,180,255,0.8)';
 export const MODULE_FRAME_DASH: [number, number] = [6, 4];
+/** A module with some parts on hidden sheets: short, far-apart dashes ("there's more you can't see"). */
+export const MODULE_FRAME_PARTLY_HIDDEN_DASH: [number, number] = [2, 6];
 export const MODULE_NAME_FILL = 'rgba(100,180,255,0.9)';
 export const MODULE_NAME_STROKE = 'rgba(0,0,0,0.6)';
 /** A chosen colour is drawn at the default look's opacity: 0.8 for the outline, 0.9 for the name. */
@@ -176,6 +178,8 @@ export interface ModuleLabelLayout {
   };
   /** Frame and name together. */
   bounds: { x: number; y: number; width: number; height: number };
+  /** Some of its parts are on hidden sheets: the frame fits the rest, drawn with sparser dashes. */
+  partlyHidden: boolean;
   frameStroke: string;
   nameFill: string;
 }
@@ -197,8 +201,13 @@ export function moduleLabelLayouts(
   // Index brick positions by id.
   const brickById = new Map<string, { x: number; y: number; w: number; h: number }>();
   // Bricks on hidden sheets don't frame or name their module.
+  const hidden = new Set<string>();
   for (const layer of map.layers) {
-    if (layer.type !== 'brick' || !layer.visible) continue;
+    if (layer.type !== 'brick') continue;
+    if (!layer.visible) {
+      for (const b of layer.bricks) hidden.add(b.id);
+      continue;
+    }
     for (const b of layer.bricks) {
       brickById.set(b.id, { x: b.displayArea.x, y: b.displayArea.y, w: b.displayArea.width, h: b.displayArea.height });
     }
@@ -208,7 +217,8 @@ export function moduleLabelLayouts(
   for (const mod of modules) {
     const box = moduleStudBox(mod, brickById);
     if (!box) continue;
-    out.push(moduleLabelLayout(mod, box, pxPerStud, labelPercent, measure));
+    const partlyHidden = hidden.size > 0 && mod.members.some((id) => hidden.has(id));
+    out.push({ ...moduleLabelLayout(mod, box, pxPerStud, labelPercent, measure), partlyHidden });
   }
   return out;
 }
@@ -236,7 +246,7 @@ function moduleLabelLayout(
   pxPerStud: number,
   labelPercent: number,
   measure: TextMeasure,
-): ModuleLabelLayout {
+): Omit<ModuleLabelLayout, 'partlyHidden'> {
   const px = box.x * pxPerStud;
   const py = box.y * pxPerStud;
   const pw = box.w * pxPerStud;
