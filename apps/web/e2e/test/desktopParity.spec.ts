@@ -290,6 +290,13 @@ test.describe('module drag ghost', () => {
     await shot(page, 'module-ghost.png');
     await page.mouse.up();
 
+    // The module's two sheets aren't in the empty layout: the drop asks
+    // where they go, the picked sheet by default.
+    const where = page.getByTestId('sheet-choice-dialog');
+    await expect(where).toContainText('Where should these go?');
+    await expect(where).toContainText('“Fordyce Loop” uses 2 sheets.');
+    await where.getByRole('button', { name: 'Place' }).click();
+
     // The drop selects the imported bricks. (The "Imported …" status
     // message fades after a moment, so it is not a reliable check.)
     await expect(page.locator('footer')).toContainText(/selected: \d{3,}/);
@@ -779,7 +786,7 @@ test.describe('chained placement', () => {
 });
 
 test.describe('placing a set', () => {
-  test('a set lands as a module named after it, its pieces linked', async ({ page }) => {
+  test('a set lands as one BlueBrick group named after it, its pieces linked and picked whole', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
     await page.getByPlaceholder(/Fuzzy filter/).fill('rail_yard_left_turn');
@@ -789,20 +796,33 @@ test.describe('placing a set', () => {
     await tile.focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('footer')).toContainText('Placed set: Rail yard on the right (12 parts)');
+    await expect(page.locator('footer')).toContainText('selected: 12');
 
-    const sidecar = async () =>
-      (await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as { modules?: { name: string; members: string[] }[] };
-    await expect.poll(async () => (await sidecar()).modules?.map((m) => [m.name, m.members.length])).toEqual([['Rail yard on the right', 12]]);
-    // Module names (and frames) are on by default, like desktop view/moduleNames.
-    const moduleLabels = () =>
-      page.evaluate(() => {
-        const K = (window as unknown as { Konva: { stages: { find: (s: string) => { text: () => string }[] }[] } }).Konva;
-        return K.stages.flatMap((st) => st.find('Text')).map((t) => t.text()).filter((t) => t === 'Rail yard on the right').length;
-      });
-    await expect.poll(moduleLabels).toBeGreaterThan(0);
+    // Saved the way desktop's Group(string) builds it: one <Group> whose
+    // PartNumber is the set, every piece's <MyGroup> naming it, no module.
+    const bbm = async () => (await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text());
+    const groupsOf = (xml: string) => [...xml.matchAll(/<Group id="([^"]+)">\s*<PartNumber>([^<]+)<\/PartNumber>/g)].map((m) => ({ id: m[1]!, part: m[2]! }));
+    await expect.poll(async () => groupsOf(await bbm()).map((g) => g.part)).toEqual(['RAIL_YARD_LEFT_TURN']);
+    const xml = await bbm();
+    const groupId = groupsOf(xml)[0]!.id;
+    expect(xml.split(`<MyGroup>${groupId}</MyGroup>`).length - 1).toBe(12);
+    const sidecar = (await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json()) as { modules?: unknown[] };
+    expect(sidecar.modules ?? []).toEqual([]);
     // Set files carry positions only; the pieces are linked on placement.
-    const links = async () => ((await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<LinkedTo>[^<]+<\/LinkedTo>/g) ?? []).length;
-    await expect.poll(links).toBeGreaterThanOrEqual(22);
+    await expect.poll(async () => ((await bbm()).match(/<LinkedTo>[^<]+<\/LinkedTo>/g) ?? []).length).toBeGreaterThanOrEqual(22);
+
+    // A click on one piece picks the whole set.
+    const first = /<Brick id="[^"]+">[\s\S]*?<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>\s*<Width>([^<]+)<\/Width>\s*<Height>([^<]+)<\/Height>/.exec(xml)!;
+    const centre = { x: +first[1]! + +first[3]! / 2, y: +first[2]! + +first[4]! / 2 };
+    const stage = page.locator('.konvajs-content').first();
+    await stage.click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('footer')).not.toContainText('selected:');
+    const t = await page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { x: () => number; y: () => number; scaleX: () => number }[] } }).Konva.stages[0]!;
+      return { x: st.x(), y: st.y(), z: st.scaleX() };
+    });
+    await stage.click({ position: { x: t.x + centre.x * 8 * t.z, y: t.y + centre.y * 8 * t.z } });
+    await expect(page.locator('footer')).toContainText('selected: 12');
   });
 });
 
@@ -1210,15 +1230,17 @@ test.describe('grid origin drag', () => {
 });
 
 test.describe('flex track', () => {
-  test('double-click-drag bends a selected flex chain like vanilla BlueBrick (flex-a)', async ({ page }) => {
+  test('a selected flex chain bends like vanilla BlueBrick: by its end\'s handle (flex-a) or a double-click-drag (flex-c)', async ({ page }) => {
     test.slow();
     const fixtures = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/oracle');
-    const flexIn = readFileSync(join(fixtures, 'flex-in.bbm'), 'utf-8');
-    const flexA = readFileSync(join(fixtures, 'flex-a.bbm'), 'utf-8');
-    const id = await createLayout(page, flexIn);
+    const oracle = (name: string) => readFileSync(join(fixtures, name), 'utf-8');
+    const id = await createLayout(page, oracle('flex-in.bbm'));
     await openEditor(page, id);
-    await page.keyboard.press('Control+a');
-    await expect(page.locator('footer')).toContainText(/selected: \d+/);
+    const selectAll = async () => {
+      await page.keyboard.press('Control+a');
+      await expect(page.locator('footer')).toContainText(/selected: \d+/);
+    };
+    await selectAll();
 
     const toScreen = async (sx: number, sy: number) => {
       const t = await page.evaluate(() => {
@@ -1228,28 +1250,17 @@ test.describe('flex track', () => {
       const box = (await page.locator('.konvajs-content').first().boundingBox())!;
       return { x: box.x + t.x + sx * 8 * t.z, y: box.y + t.y + sy * 8 * t.z };
     };
-    // Grab the free flex end at (68, 40) studs and drag it to (62, 30): a
-    // double-click whose second press drags.
-    const from = await toScreen(68, 40);
-    const to = await toScreen(62, 30);
-    await page.mouse.click(from.x, from.y);
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    // In one go: the solve depends on the path (vanilla's flex-b), and
-    // flex-a is a single move.
-    await page.mouse.move(to.x, to.y, { steps: 1 });
-    await page.mouse.up();
-    await expect(page.locator('footer')).toContainText('Flex move');
-
     const poses = (xml: string) =>
       new Map(
         [...xml.matchAll(/<Brick id="([^"]+)">[\s\S]*?<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>\s*<Width>([^<]+)<\/Width>\s*<Height>([^<]+)<\/Height>[\s\S]*?<Orientation>([^<]+)<\/Orientation>/g)].map(
           (m) => [m[1]!, { cx: +m[2]! + +m[4]! / 2, cy: +m[3]! + +m[5]! / 2, o: +m[6]! }],
         ),
       );
-    const vanilla = poses(flexA);
-    await expect.poll(async () => {
-      const ours = poses(await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text());
+    const exported = async () => (await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text());
+    /** The worst difference from vanilla's result, studs (and tenths of a degree). */
+    const offVanilla = (name: string) => async () => {
+      const vanilla = poses(oracle(name));
+      const ours = poses(await exported());
       let worst = 0;
       for (const [bid, v] of vanilla) {
         const o = ours.get(bid);
@@ -1257,14 +1268,43 @@ test.describe('flex track', () => {
         worst = Math.max(worst, Math.abs(o.cx - v.cx), Math.abs(o.cy - v.cy), Math.abs(((o.o - v.o) % 360 + 540) % 360 - 180) / 10);
       }
       return worst;
-    }).toBeLessThan(0.05);
+    };
+    const undoToStraight = async () => {
+      await page.getByRole('button', { name: 'Undo' }).click();
+      await expect.poll(async () => (await offVanilla('flex-in.bbm')())).toBeLessThan(0.05);
+    };
+
+    // The free flex end at (68, 40) studs carries a bend handle: dragging it
+    // to (62, 30) in one go is vanilla's flex-a (a double-click-drag there).
+    const end = await toScreen(68, 40);
+    const to = await toScreen(62, 30);
+    await page.mouse.move(end.x, end.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 1 }); // the solve depends on the path (flex-b)
+    await page.mouse.up();
+    await expect(page.locator('footer')).toContainText('Bend flex track');
+    await expect.poll(offVanilla('flex-a.bbm')).toBeLessThan(0.05);
     // One undo step puts it all back.
-    await page.getByRole('button', { name: 'Undo' }).click();
-    await expect.poll(async () => (await (await page.request.get(`/api/layouts/${id}/export.bbm`)).text()).match(/<Orientation>0<\/Orientation>/g)?.length ?? 0)
-      .toBeGreaterThan(5);
+    await undoToStraight();
+
+    // Off the handles, a double-click whose second press drags grabs that
+    // piece: vanilla's flex-c grabs the middle piece 5048093428964172125 at
+    // (61.25, 40) and drags it to (61, 35). Where it overlaps the next piece
+    // that one is on top, so grab it a stud left, clear of it: the same move.
+    await selectAll();
+    const mid = await toScreen(60.25, 40);
+    const midTo = await toScreen(60, 35);
+    await page.mouse.click(mid.x, mid.y);
+    await page.mouse.move(mid.x, mid.y);
+    await page.mouse.down();
+    await page.mouse.move(midTo.x, midTo.y, { steps: 1 });
+    await page.mouse.up();
+    await expect(page.locator('footer')).toContainText('Flex move');
+    await expect.poll(offVanilla('flex-c.bbm')).toBeLessThan(0.05);
+    await undoToStraight();
 
     // A double-click without moving opens the brick's properties as usual.
-    await page.mouse.dblclick(from.x, from.y);
+    await page.mouse.dblclick(mid.x, mid.y);
     await expect(page.getByRole('dialog')).toBeVisible();
   });
 });
