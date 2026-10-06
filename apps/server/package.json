@@ -30,7 +30,7 @@
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.3",
     "fastify": "5.12.5",
-    "lib0": "0.2.117",
+    "lib0": "0.2.119",
     "nodemailer": "10.0.11",
     "openid-client": "6.8.8",
     "sharp": "0.35.5",
