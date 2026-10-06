@@ -62,3 +62,32 @@ export async function coverMaxBytes(): Promise<CoverMax> {
   const forced = env.collectionCoverMaxBytesForced;
   return forced === null ? { value: setting, setting, forcedBy: null } : { value: forced, setting, forcedBy: 'COLLECTION_COVER_MAX_BYTES' };
 }
+
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+export type CoverRead =
+  | { ok: true; bytes: Buffer; image: Buffer; small: Buffer }
+  | { ok: false; code: number; body: { error: string; maxBytes?: number } };
+
+/**
+ * A cover upload's JSON body, `{mime, data}` with the picture as base64
+ * (never an octet-stream body): PNG, JPEG or WebP by its first bytes, no
+ * bigger than Admin › Settings allows, and readable. The re-encoded picture
+ * and its card copy, or the refusal to send. Collections and catalog items
+ * both take covers this way.
+ */
+export async function readCoverBody(body: { mime?: unknown; data?: unknown } | undefined): Promise<CoverRead> {
+  const mime = body?.mime;
+  const data = body?.data;
+  const bad = { ok: false as const, code: 400, body: { error: 'invalid_cover' } };
+  if (!COVER_MIMES.includes(mime as CoverMime) || typeof data !== 'string' || !BASE64_RE.test(data)) return bad;
+  const max = (await coverMaxBytes()).value;
+  const tooBig = { ok: false as const, code: 413, body: { error: 'cover_too_large', maxBytes: max } };
+  if (Math.floor((data.length * 3) / 4) - 2 > max) return tooBig;
+  const bytes = Buffer.from(data, 'base64');
+  if (bytes.length > max) return tooBig;
+  if (!sniffCover(bytes)) return bad;
+  const enc = await encodeCover(bytes);
+  if (!enc) return bad;
+  return { ok: true, bytes, image: enc.image, small: enc.small };
+}

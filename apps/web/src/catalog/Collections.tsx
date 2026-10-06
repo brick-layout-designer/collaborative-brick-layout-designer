@@ -12,7 +12,7 @@
 // and your own; a collection's page shows its items with Add all and a
 // per-item Add.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -38,6 +38,7 @@ import { AddDialog, CatalogPreview } from './CatalogPage';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { TrustedBadge } from './TrustedBadge';
 import { askConfirm, askReason, confirmDelete, deleteOptions, toastDeleted, type DeleteWording } from '../ui/ConfirmDialog';
+import { CoverPicker, type CoverMode, type CoverPickerHandle } from '../ui/CoverPicker';
 
 /** Who sees it, in a few words. */
 export function audienceLabel(audience: CollectionAudience | undefined, clubName?: string | null): string {
@@ -368,48 +369,7 @@ export function MyCollections() {
   );
 }
 
-const COVER_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
-
-/** "5 MB", "300 KB". */
-export const sizeText = (bytes: number) => (bytes >= 1024 * 1024 ? `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-
-/** A picture to upload as a cover, as the route takes it, and a preview. */
-export interface CoverUpload {
-  mime: string;
-  data: string;
-  previewUrl: string;
-}
-
-const dataUrlOf = (blob: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('That picture couldn’t be read.'));
-    r.readAsDataURL(blob);
-  });
-
-/**
- * Read a chosen picture. One bigger than `max` (a phone photo, often) is
- * made smaller here first, as a JPEG, so it fits.
- */
-export async function readCover(file: File, max: number): Promise<CoverUpload> {
-  if (!COVER_TYPES.includes(file.type)) throw new Error('Choose a PNG, JPEG or WebP picture.');
-  let blob: Blob = file;
-  if (file.size > max) {
-    const bmp = await createImageBitmap(file).catch(() => null);
-    if (!bmp) throw new Error('That picture couldn’t be read.');
-    const scale = Math.min(1, 2400 / bmp.width);
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bmp.width * scale);
-    canvas.height = Math.round(bmp.height * scale);
-    canvas.getContext('2d')?.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    const smaller = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-    if (!smaller || smaller.size > max) throw new Error(`That picture is too big. Choose one under ${sizeText(max)}.`);
-    blob = smaller;
-  }
-  const url = await dataUrlOf(blob);
-  return { mime: blob.type || file.type, data: url.slice(url.indexOf(',') + 1), previewUrl: url };
-}
+export { sizeText } from '../ui/CoverPicker';
 
 /** One item in the editor's list. */
 export interface Picked {
@@ -462,10 +422,10 @@ export function CollectionEditor({
   const [q, setQ] = useState('');
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [error, setError] = useState<string | null>(null);
-  // The cover: an item's picture, or one they upload.
-  const [coverMode, setCoverMode] = useState<'item' | 'upload'>('item');
+  // The cover: an item's picture, or one they upload (CoverPicker places it).
+  const [coverMode, setCoverMode] = useState<CoverMode>('drawn');
   const [hadUpload, setHadUpload] = useState<string | null>(null);
-  const [upload, setUpload] = useState<CoverUpload | null>(null);
+  const picker = useRef<CoverPickerHandle | null>(null);
   const [coverError, setCoverError] = useState<string | null>(null);
 
   // Start from the change waiting for review, if any, else what's there.
@@ -482,7 +442,7 @@ export function CollectionEditor({
     setCover(text.coverModuleId ? `library:module:${text.coverModuleId}` : coverItem);
     const uploaded = (c.pending ? c.pending.coverImageId : c.coverImageId) ? (c.pending?.coverUrl ?? c.coverUrl) : null;
     setHadUpload(uploaded);
-    setCoverMode(uploaded ? 'upload' : 'item');
+    setCoverMode(uploaded ? 'upload' : 'drawn');
     setAudience(c.audience ?? 'everyone');
   }
 
@@ -521,8 +481,9 @@ export function CollectionEditor({
       let saved = id ? await api.catalog.updateCollection(id, body) : await api.catalog.createCollection({ ...body, ...(owner ? { clubSlug: owner.slug } : {}) });
       // The collection is saved; a picture that fails says so without losing it.
       try {
+        const upload = await picker.current?.compose();
         if (coverMode === 'upload' && upload) saved = { ...saved, ...(await api.catalog.uploadCollectionCover(saved.id, { mime: upload.mime, data: upload.data })) };
-        else if (hadUpload && coverMode === 'item') saved = { ...saved, ...(await api.catalog.removeCollectionCover(saved.id)) };
+        else if (hadUpload && coverMode === 'drawn') saved = { ...saved, ...(await api.catalog.removeCollectionCover(saved.id)) };
       } catch (e) {
         setCoverError(`Saved, but the cover picture wasn’t: ${(e as Error).message}`);
       }
@@ -633,7 +594,7 @@ export function CollectionEditor({
                       <span className="min-w-[8rem] flex-1">
                         {it.title} <span className="text-xs text-muted">({it.kind})</span>
                       </span>
-                      {coverMode === 'item' && !(it.source === 'library' && it.kind === 'part') && (
+                      {coverMode === 'drawn' && !(it.source === 'library' && it.kind === 'part') && (
                         <label className="flex items-center gap-1 text-xs">
                           <input
                             type="radio"
@@ -672,62 +633,19 @@ export function CollectionEditor({
                   ))}
                 </ol>
               )}
-              {coverMode === 'item' && <p className="text-xs text-muted">Without a chosen cover, the first module’s picture is used.</p>}
+              {coverMode === 'drawn' && <p className="text-xs text-muted">Without a chosen cover, the first module’s picture is used.</p>}
             </div>
-            <fieldset className="space-y-2">
-              <legend className="mb-1 text-muted">Cover</legend>
-              <label className="flex min-h-9 items-center gap-2">
-                <input type="radio" name="cover-mode" checked={coverMode === 'item'} onChange={() => setCoverMode('item')} />
-                Use an item’s picture
-              </label>
-              <label className="flex min-h-9 items-center gap-2">
-                <input type="radio" name="cover-mode" checked={coverMode === 'upload'} onChange={() => setCoverMode('upload')} />
-                Upload your own picture
-              </label>
-              {coverMode === 'upload' && (
-                <div className="space-y-2 rounded-lg border border-line p-3">
-                  {upload || hadUpload ? (
-                    <Cover url={upload?.previewUrl ?? hadUpload} className="aspect-[4/3] w-full max-w-60" />
-                  ) : (
-                    <p className="text-xs text-muted">No picture yet. Until you choose one, the items’ pictures are used.</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="tap-target inline-flex cursor-pointer items-center rounded-lg border border-border px-3 py-1.5 font-semibold hover:bg-soft focus-within:ring-2 focus-within:ring-accent">
-                      {upload || hadUpload ? 'Choose another picture' : 'Choose a picture'}
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        aria-label="Cover picture"
-                        className="sr-only"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = '';
-                          if (!f) return;
-                          setError(null);
-                          readCover(f, settings.data?.coverMaxBytes ?? 5 * 1024 * 1024).then(setUpload, (err: Error) => setError(err.message));
-                        }}
-                      />
-                    </label>
-                    {(upload || hadUpload) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUpload(null);
-                          setCoverMode('item');
-                        }}
-                        className="tap-target rounded-lg px-3 py-1.5 text-danger hover:bg-soft"
-                      >
-                        Remove custom cover
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted">
-                    A PNG, JPEG or WebP photo{settings.data?.coverMaxBytes ? `, up to ${sizeText(settings.data.coverMaxBytes)}` : ''}. Cards show it cropped like this.
-                    {audience === 'everyone' ? ' A moderator checks it before everyone sees it.' : ''}
-                  </p>
-                </div>
-              )}
-            </fieldset>
+            <CoverPicker
+              mode={coverMode}
+              onModeChange={setCoverMode}
+              drawnLabel="Use an item’s picture"
+              drawnUrl={(items.find((i) => pickedKey(i) === cover) ?? items.find((i) => i.kind === 'module') ?? items[0])?.previewUrl || null}
+              drawnHint={<p className="text-xs text-muted">Pick which item with “Cover” in the list below.</p>}
+              currentUrl={hadUpload}
+              maxBytes={settings.data?.coverMaxBytes ?? 5 * 1024 * 1024}
+              reviewNote={audience === 'everyone' ? 'A moderator checks it before everyone sees it.' : undefined}
+              handle={picker}
+            />
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
                 <input

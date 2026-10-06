@@ -169,6 +169,7 @@ export async function collectUserData(userId: string): Promise<DataSection[]> {
   );
   add('catalog-copies', 'Catalog items you added to your things.', await select(s.catalogCopies, eq(s.catalogCopies.userId, userId)));
   add('collections', 'Collections you curate.', await select(s.catalogCollections, eq(s.catalogCollections.ownerUserId, userId)));
+  add('catalog-item-covers', 'Cover pictures you uploaded for catalog items (the pictures are in the covers folder).', await select(s.catalogItemCovers, eq(s.catalogItemCovers.createdBy, userId)));
   add('collection-covers', 'Cover pictures you uploaded (the pictures are in the covers folder).', await select(s.catalogCollectionCovers, eq(s.catalogCollectionCovers.createdBy, userId)));
 
   // ---- moderation, limits, records -------------------------------------------
@@ -242,6 +243,7 @@ export const READ_TABLES = [
   'catalog_copies',
   'catalog_collections',
   'catalog_collection_covers',
+  'catalog_item_covers',
   'warnings',
   'limit_overrides',
   'usage_daily',

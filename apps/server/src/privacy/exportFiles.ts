@@ -2,7 +2,7 @@
 // formats the apps open. Layouts and modules as .bld-layout files (the
 // one-file layout format both apps open, references/LAYOUT-FILE.md), with
 // their background picture inside; custom parts as their XML and picture;
-// venues as JSON; collection covers as pictures.
+// venues as JSON; collection and catalog item covers as pictures.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -218,6 +218,20 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
     const covers = await db.select().from(s.catalogCollectionCovers).where(eq(s.catalogCollectionCovers.collectionId, c.id)).all();
     for (const cover of covers) {
       zip.add(`covers/${fileTitle(c.title, 'collection')}.webp`, cover.image as Uint8Array);
+      counts.covers++;
+    }
+  }
+
+  // Catalog items' uploaded pictures (modules and parts shared to the catalog).
+  const items = await db
+    .select({ id: s.catalogItems.id, title: s.catalogItems.title })
+    .from(s.catalogItems)
+    .where(owner.kind === 'user' ? eq(s.catalogItems.ownerUserId, owner.id) : eq(s.catalogItems.ownerOrgId, owner.id))
+    .all();
+  for (const i of items) {
+    const covers = await db.select().from(s.catalogItemCovers).where(eq(s.catalogItemCovers.itemId, i.id)).all();
+    for (const cover of covers) {
+      zip.add(`covers/${fileTitle(i.title, 'catalog item')}.webp`, cover.image as Uint8Array);
       counts.covers++;
     }
   }

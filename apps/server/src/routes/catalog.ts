@@ -31,6 +31,7 @@ import { recordVersion } from './modules.js';
 import { collectionCounts, dropFromCollections } from './collections.js';
 import { publicName } from '../utils/publicName.js';
 import { creditLookup } from './credits.js';
+import { coverQueue, coverState, itemCoverUrl } from './itemCovers.js';
 
 type Kind = 'module' | 'part';
 // The desktop app (an API token) browses the catalog and adds from it:
@@ -108,7 +109,7 @@ export async function isTrustedClub(orgId: string | null | undefined): Promise<b
 }
 
 /** Whether `user` manages things owned by this person or club: the person themselves, or a club admin / manager. */
-async function manages(userId: string, owner: { ownerUserId: string | null; ownerOrgId: string | null }): Promise<boolean> {
+export async function manages(userId: string, owner: { ownerUserId: string | null; ownerOrgId: string | null }): Promise<boolean> {
   if (owner.ownerUserId) return owner.ownerUserId === userId;
   if (owner.ownerOrgId) return atLeast(await clubRole(userId, owner.ownerOrgId), 'manager');
   return false;
@@ -214,6 +215,9 @@ export function itemOut(i: typeof schema.catalogItems.$inferSelect, by: string) 
     version: i.publicVersion,
     updatedAt: i.updatedAt.getTime(),
     previewUrl: `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`,
+    /** The card's picture: one its owner uploaded (cropped to the card), else the drawn one. */
+    coverUrl: i.coverImageId ? itemCoverUrl(i.id, i.coverImageId) : `/api/catalog/items/${i.id}/preview?v=${i.publicVersion}`,
+    customCover: !!i.coverImageId,
   };
 }
 
@@ -620,6 +624,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         pendingVersion: waiting.get(r.id) ?? null,
         /** How many public collections it's in. */
         collections: inCollections.get(r.id) ?? 0,
+        /** Its uploaded picture, one waiting for review, and why the last was declined. */
+        ...coverState(r),
       })),
     };
   });
@@ -758,6 +764,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         description: schema.catalogItems.description,
         tags: schema.catalogItems.tags,
         publicVersion: schema.catalogItems.publicVersion,
+        coverImageId: schema.catalogItems.coverImageId,
         submitterName: schema.users.displayName,
         submitterEmail: schema.users.email,
         ownerUserId: schema.catalogItems.ownerUserId,
@@ -792,11 +799,17 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         submitter: q.submitterEmail ? { name: q.submitterName || q.submitterEmail, email: q.submitterEmail } : null,
         createdAt: q.createdAt.getTime(),
         previewUrl: `/api/catalog/items/${q.itemId}/preview?v=${q.version}`,
+        /** Its uploaded picture, when it has one (reviewed with it). */
+        coverUrl: q.coverImageId ? itemCoverUrl(q.itemId, q.coverImageId) : null,
         // Whom a moderator would warn about it.
         owner: ownerRef(q),
         trustedClub: !!q.ownerOrgId && trusted.has(q.ownerOrgId),
       });
+    const covers = await coverQueue();
     return {
+      /** New pictures for public items, waiting for review: what shows now beside the new one. */
+      covers: covers.filter((c) => !c.trustedClub),
+      trustedCovers: covers.filter((c) => c.trustedClub),
       queue: queue.filter((q) => !(q.ownerOrgId && trusted.has(q.ownerOrgId))).map(entry),
       /** Waiting in trusted clubs' own queues. */
       trustedQueue: queue.filter((q) => q.ownerOrgId && trusted.has(q.ownerOrgId)).map(entry),

@@ -24,6 +24,7 @@ import { atLeast } from '../access/clubRoles.js';
 import { canModerate, decideVersion, itemOut, ownerNames, unpublishItem } from './catalog.js';
 import { decideCollection, textQueue, unpublishCollection, collectionOwnerNames, shownForQueue } from './collections.js';
 import { publicName } from '../utils/publicName.js';
+import { coverQueue, decideCover } from './itemCovers.js';
 
 type Org = typeof schema.orgs.$inferSelect;
 type Outcome = { code: number; body: unknown };
@@ -142,6 +143,8 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
         previewUrl: `/api/catalog/items/${w.item.id}/preview?v=${w.version}`,
       })),
       collections: [...texts.queue, ...texts.trustedQueue],
+      /** New pictures for the club's public items: what shows now beside the new one. */
+      covers: await coverQueue(org.id),
       published: published.map((i) => ({ ...itemOut(i, name(i)), status: i.status, reason: i.reason })),
       publicCollections: publicColls.map((c) => ({ id: c.id, title: c.title, status: c.status, reason: c.reason })),
     };
@@ -157,6 +160,8 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
   type ActReq = { Params: { slug: string; id: string }; Body: { reason?: unknown } };
   app.post<ActReq>('/api/orgs/:slug/review/versions/:id/approve', act((u, o, req) => decideVersion(u, req.params.id, true, req.body?.reason, o.id)));
   app.post<ActReq>('/api/orgs/:slug/review/versions/:id/decline', act((u, o, req) => decideVersion(u, req.params.id, false, req.body?.reason, o.id)));
+  app.post<ActReq>('/api/orgs/:slug/review/items/:id/cover/approve', act((u, o, req) => decideCover(u, req.params.id, true, req.body?.reason, o.id)));
+  app.post<ActReq>('/api/orgs/:slug/review/items/:id/cover/decline', act((u, o, req) => decideCover(u, req.params.id, false, req.body?.reason, o.id)));
   app.post<ActReq>('/api/orgs/:slug/review/items/:id/unpublish', act((u, o, req) => unpublishItem(u, req.params.id, req.body?.reason, o.id)));
   app.post<ActReq>('/api/orgs/:slug/review/collections/:id/approve', act((u, o, req) => decideCollection(u, req.params.id, true, req.body?.reason, o.id)));
   app.post<ActReq>('/api/orgs/:slug/review/collections/:id/decline', act((u, o, req) => decideCollection(u, req.params.id, false, req.body?.reason, o.id)));

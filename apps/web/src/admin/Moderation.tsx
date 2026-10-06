@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type AdminJobSetting, type CatalogReview, type CollectionReviewEntry, type ModerationClub, type WarningSubject } from '../api';
+import { api, type AdminJobSetting, type CatalogReview, type CollectionReviewEntry, type CoverReviewEntry, type ModerationClub, type WarningSubject } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import { WarnForm } from '../notices/Notices';
 import { invalidateFor } from '../live/invalidate';
@@ -24,17 +24,22 @@ export function ModerationTab() {
   const approve = useMutation({ mutationFn: api.moderation.approve, onSuccess: done, onError: fail });
   const decline = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.decline(a.id, a.reason), onSuccess: done, onError: fail });
   const unpublish = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.unpublish(a.id, a.reason), onSuccess: done, onError: fail });
+  const cover = useMutation({ mutationFn: (a: { id: string; ok: boolean; reason?: string }) => api.moderation.decideCover(a.id, a.ok, a.reason), onSuccess: done, onError: fail });
+  const decideCover = (id: string, ok: boolean, reason?: string) => cover.mutate({ id, ok, ...(reason !== undefined ? { reason } : {}) });
 
   if (data.isLoading) return <p className="text-muted">Loading…</p>;
   if (data.isError) return <p className="text-danger">{(data.error as Error).message}</p>;
   const queue = data.data?.queue ?? [];
   const trustedQueue = data.data?.trustedQueue ?? [];
   const items = data.data?.items ?? [];
+  const covers = data.data?.covers ?? [];
+  const trustedCovers = data.data?.trustedCovers ?? [];
   const renderQueue = (list: typeof queue) => (
           <ul className="space-y-2">
               {list.map((q) => (
                 <li key={q.versionId} data-testid="moderation-entry" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
                   <img src={q.previewUrl} alt="" className="size-24 shrink-0 rounded-lg border border-line bg-soft object-contain" />
+                  {q.coverUrl && <img src={q.coverUrl} alt="Its cover picture" className="aspect-[4/3] w-32 shrink-0 rounded-lg border border-line bg-soft object-cover" />}
                   <div className="min-w-[12rem] flex-1 space-y-1">
                     <p className="font-semibold">
                       {q.title} <span className="font-normal text-muted">({q.kind === 'module' ? 'module' : 'part'}, {q.isUpdate ? `update, version ${q.version}` : 'new'})</span>
@@ -89,6 +94,18 @@ export function ModerationTab() {
           renderQueue(queue)
         )}
       </section>
+      {covers.length > 0 && (
+        <section className="space-y-3" aria-labelledby="mod-covers">
+          <h2 id="mod-covers" className="text-sm font-semibold">New cover pictures ({covers.length})</h2>
+          <CoverReviewList list={covers} decide={decideCover} />
+        </section>
+      )}
+      {trustedCovers.length > 0 && (
+        <section className="space-y-3" aria-labelledby="mod-trusted-covers">
+          <h2 id="mod-trusted-covers" className="text-sm font-semibold">New cover pictures in trusted clubs’ own queues ({trustedCovers.length})</h2>
+          <CoverReviewList list={trustedCovers} decide={decideCover} />
+        </section>
+      )}
       {trustedQueue.length > 0 && (
         <section className="space-y-3" aria-labelledby="mod-trusted-queue">
           <h2 id="mod-trusted-queue" className="text-sm font-semibold">Waiting in trusted clubs’ own queues ({trustedQueue.length})</h2>
@@ -215,6 +232,65 @@ export function TrustedClubsSection() {
       {more.length > 0 && <ul aria-label="Clubs found" className="divide-y divide-line rounded-lg border border-line bg-panel">{more.map(row)}</ul>}
       {error && <p className="text-danger">{error}</p>}
     </section>
+  );
+}
+
+/** New pictures for public catalog items: what shows now beside the new one, approve or decline. */
+export function CoverReviewList({ list, decide, warn = true }: { list: CoverReviewEntry[]; decide: (itemId: string, ok: boolean, reason?: string) => void; warn?: boolean }) {
+  return (
+    <ul className="space-y-2">
+      {list.map((q) => (
+        <li key={q.itemId} data-testid="cover-review" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
+          <div className="min-w-[12rem] flex-1 space-y-2">
+            <p className="font-semibold">
+              {q.title} <span className="font-normal text-muted">({q.kind}, a new cover picture)</span>
+            </p>
+            <p className="text-xs text-muted">
+              From {q.by}
+              {q.submitter ? `, sent by ${q.submitter}` : ''} · {new Date(q.createdAt).toLocaleString()}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <figure data-testid="review-old" className="min-w-[8rem] flex-1 space-y-1">
+                <figcaption className="text-xs font-semibold uppercase tracking-wide text-muted">Now</figcaption>
+                <img src={q.oldUrl} alt="Cover now" className="aspect-[4/3] w-full max-w-48 rounded-lg border border-line bg-soft object-contain" />
+              </figure>
+              <figure data-testid="review-new" className="min-w-[8rem] flex-1 space-y-1">
+                <figcaption className="text-xs font-semibold uppercase tracking-wide text-muted">Proposed</figcaption>
+                <img src={q.newUrl} alt="Proposed cover" className="aspect-[4/3] w-full max-w-48 rounded-lg border border-line bg-soft object-cover" />
+              </figure>
+            </div>
+          </div>
+          <div className="flex basis-full flex-wrap justify-end gap-2 sm:basis-auto sm:flex-col">
+            <button
+              type="button"
+              onClick={() => decide(q.itemId, true)}
+              aria-label={`Approve the new picture for ${q.title}`}
+              className="tap-target rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-ink hover:bg-accent-hover"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const reason = await askReason({
+                  title: `Decline the new picture for “${q.title}”?`,
+                  removes: 'The new picture is deleted.',
+                  keeps: 'The picture showing now stays; they can send another.',
+                  confirmLabel: 'Decline',
+                  reason: { label: 'Why? (optional; the owner sees this)' },
+                });
+                if (reason !== null) decide(q.itemId, false, reason);
+              }}
+              aria-label={`Decline the new picture for ${q.title}`}
+              className="tap-target rounded-lg border border-border px-3 py-1.5 hover:bg-soft"
+            >
+              Decline…
+            </button>
+          </div>
+          {warn && q.owner && <WarnOwner owner={q.owner} title={q.title} by={q.by} link="/catalog" />}
+        </li>
+      ))}
+    </ul>
   );
 }
 

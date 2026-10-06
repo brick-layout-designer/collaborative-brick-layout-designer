@@ -12,6 +12,7 @@ import { SaveToPicker } from '../owners/OwnerControls';
 import { CollectionsSection } from './Collections';
 import { TrustedBadge } from './TrustedBadge';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
+import { ItemCoverDialog } from './ItemCover';
 
 export function CatalogPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
@@ -31,6 +32,10 @@ export function CatalogPage() {
     enabled: kinds.length > 0 && (!!user || !!s?.anonymousBrowse),
   });
   const [adding, setAdding] = useState<CatalogItem | null>(null);
+  // What I (or my clubs) shared: those cards offer "Cover picture…".
+  const mine = useQuery({ queryKey: ['catalog-mine'], queryFn: api.catalog.mine, enabled: !!user && kinds.length > 0 });
+  const mineIds = new Set((mine.data?.items ?? []).map((i) => i.id));
+  const [coverFor, setCoverFor] = useState<string | null>(null);
   const [toCollection, setToCollection] = useState<CollectionTarget | null>(null);
 
   return (
@@ -162,6 +167,16 @@ export function CatalogPage() {
                       >
                         Add to a collection…
                       </button>
+                      {mineIds.has(it.id) && (
+                        <button
+                          type="button"
+                          onClick={() => setCoverFor(it.id)}
+                          aria-label={`${it.title}: cover picture`}
+                          className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
+                        >
+                          Cover picture…
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <Link to="/login" className="tap-target rounded-lg border border-border px-3 py-1.5 text-center text-sm font-semibold hover:bg-soft">
@@ -176,22 +191,25 @@ export function CatalogPage() {
       </main>
       {adding && <AddDialog item={adding} onClose={() => setAdding(null)} />}
       {toCollection && <AddToCollectionDialog target={toCollection} onClose={() => setToCollection(null)} />}
+      {coverFor && <ItemCoverDialog itemId={coverFor} onClose={() => setCoverFor(null)} />}
     </div>
   );
 }
 
-export function CatalogPreview({ item }: { item: Pick<CatalogItem, 'previewUrl' | 'title'> }) {
+/** The card's picture: its owner's own fills the card (it was cropped to it); the drawn one fits inside. */
+export function CatalogPreview({ item }: { item: Pick<CatalogItem, 'previewUrl' | 'title' | 'coverUrl' | 'customCover'> }) {
   const [failed, setFailed] = useState(false);
+  const custom = !!item.customCover && !!item.coverUrl;
   return failed ? (
     <span aria-hidden className="block aspect-[4/3] w-full rounded-lg border border-line bg-soft" />
   ) : (
     <img
-      src={item.previewUrl}
+      src={custom ? item.coverUrl : item.previewUrl}
       alt=""
       loading="lazy"
       data-testid="catalog-preview"
       onError={() => setFailed(true)}
-      className="aspect-[4/3] w-full rounded-lg border border-line bg-soft object-contain"
+      className={`aspect-[4/3] w-full rounded-lg border border-line bg-soft ${custom ? 'object-cover' : 'object-contain'}`}
     />
   );
 }

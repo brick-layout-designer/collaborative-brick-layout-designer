@@ -68,6 +68,9 @@ export type AuditEventType =
   // the catalog item (`resourceKind: 'catalog_item'`).
   | 'catalog_submit'
   | 'catalog_approve'
+  | 'catalog_cover'
+  | 'catalog_cover_approve'
+  | 'catalog_cover_decline'
   | 'catalog_decline'
   | 'catalog_unpublish'
   | 'catalog_withdraw'

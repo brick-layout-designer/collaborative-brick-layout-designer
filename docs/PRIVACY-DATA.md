@@ -65,6 +65,7 @@ host's to keep or not.
 | `catalog_copies` | who added which item | yes | |
 | `catalog_collections` | curator, title, description, notes | yes | |
 | `catalog_collection_covers` | uploaded cover pictures, uploader | yes, pictures in `covers/` | Re-encoded, no picture metadata. |
+| `catalog_item_covers` | uploaded cover pictures for catalog items, uploader | yes, pictures in `covers/` | Re-encoded, no picture metadata. Deleted with the item. |
 | `catalog_collection_items`, `catalog_collection_modules`, `catalog_collection_parts` | none | no | Which things are in a collection. |
 
 ## Moderation, limits and records
