@@ -87,6 +87,14 @@ describe('DevicePage', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/invalid or has expired/);
   });
 
+  it('tells the demo account it can’t connect the desktop app, with a way out', async () => {
+    routes['GET /api/auth/me'] = () => ({ body: { user: { id: 'd', email: 'demo@x', displayName: 'Demo', isDemoAccount: true } } });
+    renderAt(<DevicePage />, '/device?user_code=BCDF-GHJK');
+    expect(await screen.findByText(/The desktop app can’t sign in to the demo/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign out of the demo' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
   it('asks a signed-out user to sign in, returning to the same code', async () => {
     routes['GET /api/auth/me'] = () => ({ body: { user: null } });
     renderAt(<DevicePage />, '/device?user_code=BCDF-GHJK');

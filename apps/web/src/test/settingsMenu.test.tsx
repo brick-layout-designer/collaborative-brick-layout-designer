@@ -269,3 +269,13 @@ describe('the pages the menu links to', () => {
     expect(screen.queryByRole('button', { name: 'users' })).toBeNull();
   });
 });
+
+describe('Settings › Back', () => {
+  it('goes back only to a page of this site (React Router numbers its entries)', async () => {
+    const { backWithinSite } = await import('../settings/SettingsPage');
+    expect(backWithinSite({ idx: 3, key: 'k', usr: null })).toBe(true);
+    // Opened straight from a link, or the tab's earlier pages are another site's.
+    expect(backWithinSite({ idx: 0, key: 'k', usr: null })).toBe(false);
+    expect(backWithinSite(null)).toBe(false);
+  });
+});

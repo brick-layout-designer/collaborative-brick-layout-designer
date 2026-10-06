@@ -42,7 +42,7 @@ export function SignInLink(props: Omit<LinkProps, 'to'>) {
  * else's account (an invite, a transfer). Signs out, then the sign-in
  * page comes straight back to the link.
  */
-export function SwitchAccountButton({ className = '' }: { className?: string }) {
+export function SwitchAccountButton({ className = '', label = 'Sign out and use that account' }: { className?: string; label?: string }) {
   const here = useHere();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -60,7 +60,7 @@ export function SwitchAccountButton({ className = '' }: { className?: string }) 
       disabled={out.isPending}
       className={`tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft disabled:opacity-50 ${className}`}
     >
-      {out.isPending ? 'Signing out…' : 'Sign out and use that account'}
+      {out.isPending ? 'Signing out…' : label}
     </button>
   );
 }

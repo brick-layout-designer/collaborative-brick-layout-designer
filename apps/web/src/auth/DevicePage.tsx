@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, type ApiScope, type DeviceRequest } from '../api';
+import { SwitchAccountButton } from './signIn';
 
 /** What each scope lets the device do, in the user's terms. */
 export const SCOPE_LABELS: Record<ApiScope, string> = {
@@ -94,6 +95,18 @@ export function DevicePage() {
     );
   }
 
+  // The shared demo account can't sign the desktop app in (the server
+  // says no): say so up front, with a way to switch accounts.
+  if (me.data?.user?.isDemoAccount) {
+    return (
+      <Centered>
+        <h1 className="text-lg font-semibold">Connect a device</h1>
+        <p className="text-sm text-muted">The desktop app can’t sign in to the demo. Sign in with your own account to connect it.</p>
+        <SwitchAccountButton label="Sign out of the demo" />
+      </Centered>
+    );
+  }
+
   if (request) {
     return (
       <Centered>
@@ -102,6 +115,7 @@ export function DevicePage() {
           Signed in as <span className="text-ink">{me.data!.user!.email}</span>. Only approve
           if the app is showing the code <span className="font-mono text-ink">{code.toUpperCase()}</span>.
         </p>
+        <SwitchAccountButton label="Use another account" />
         <div className="text-left">
           <p className="text-sm text-neutral-300">It will be able to:</p>
           <ul className="mt-1 list-disc pl-5 text-sm text-neutral-300">

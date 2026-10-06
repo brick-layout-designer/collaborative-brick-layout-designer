@@ -365,6 +365,12 @@ function SnapTraceRow() {
   );
 }
 
+/** Is there a page of this site to go back to? React Router numbers its own entries (`idx`). */
+export function backWithinSite(state: unknown = window.history.state): boolean {
+  const idx = (state as { idx?: unknown } | null)?.idx;
+  return typeof idx === 'number' && idx > 0;
+}
+
 /** /settings as its own page. */
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -375,7 +381,9 @@ export function SettingsPage() {
       <div className="mx-auto max-w-5xl">
         <button
           type="button"
-          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+          // Back within this site; opened straight from a link (or after
+          // another site in the same tab), Home instead of leaving.
+          onClick={() => (backWithinSite() ? navigate(-1) : navigate('/'))}
           className="mb-6 text-sm font-semibold text-muted hover:text-ink"
         >
           ← Back
