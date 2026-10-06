@@ -120,8 +120,19 @@ export function DesignerCanvas({
     setSize({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, []);
+  // Fit the venue on open, and again when the space for it changes (the
+  // panels settle, a tablet turns) until someone pans, zooms or draws: the
+  // first size measured can be before the layout settles, which left a
+  // tablet showing one corner of the room.
+  const autoFit = useRef<{ view: View; venue: Venue; w: number; h: number } | null>(null);
   useEffect(() => {
-    if (!view && size.w > 0) setView(fitView(venue, size.w, size.h));
+    if (size.w <= 0) return;
+    const auto = autoFit.current;
+    const untouched = !!auto && view === auto.view && venue === auto.venue;
+    if (view && !(untouched && (auto.w !== size.w || auto.h !== size.h))) return;
+    const next = fitView(venue, size.w, size.h);
+    autoFit.current = { view: next, venue, w: size.w, h: size.h };
+    setView(next);
   }, [view, size, venue, setView]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => e.code === 'Space' && !(e.target instanceof HTMLInputElement) && setSpace(true);
