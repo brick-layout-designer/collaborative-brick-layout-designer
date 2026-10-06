@@ -25,6 +25,7 @@ import {
   MODULE_FRAME_DASH,
   MODULE_FRAME_PARTLY_HIDDEN_DASH,
   MODULE_FULL_NAME_BG,
+  moduleHoverName,
   MODULE_NAME_STROKE,
   moduleFullNamePill,
   moduleLabelLayouts,
@@ -86,7 +87,8 @@ export function ModuleOverlay({ map: committed, modules }: Props) {
       return was ? { ...l, frameStroke: was.frameStroke, nameFill: was.nameFill } : l;
     });
   }, [map, committed, settled, modules, labelPercent]);
-  const cut = useMemo(() => layouts.filter((l) => l.text?.truncated), [layouts]);
+  // Names hover adds to: shortened, or with parts on a hidden sheet.
+  const cut = useMemo(() => layouts.filter((l) => moduleHoverName(l) !== null), [layouts]);
   // The shortened name under the pointer (only watched while there is one).
   const hovered = useEditorStore((s) => {
     if (cut.length === 0 || s.hudMouseStudX === null || s.hudMouseStudY === null) return null;
@@ -106,7 +108,7 @@ export function ModuleOverlay({ map: committed, modules }: Props) {
     return members.length > 0 && members.every((m) => selected.has(m));
   };
   const showsFull = (l: ModuleLabelLayout) => {
-    if (!l.text?.truncated) return false;
+    if (moduleHoverName(l) === null) return false;
     if (l.id === hovered) return true;
     const members = byId.get(l.id)?.members ?? [];
     return members.length > 0 && members.every((id) => selected.has(id));
@@ -176,7 +178,8 @@ function ModuleHighlight({ frame, tint, snapActive }: { frame: ModuleLabelLayout
 /** The whole name in a dark pill over the shortened one. */
 function FullName({ layout }: { layout: ModuleLabelLayout }) {
   const text = layout.text!;
-  const pill = moduleFullNamePill(text, layout.name, measureBold);
+  const name = moduleHoverName(layout) ?? layout.name;
+  const pill = moduleFullNamePill(text, name, measureBold);
   return (
     <Group name={`module-full-name ${EXPORT_HIDE}`}>
       <Rect
@@ -191,7 +194,7 @@ function FullName({ layout }: { layout: ModuleLabelLayout }) {
       <Text
         x={pill.textX}
         y={pill.textY}
-        text={layout.name}
+        text={name}
         wrap="none"
         fontSize={text.fontPx}
         fontStyle="bold"

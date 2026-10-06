@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { useEditorStore } from './editorStore';
 import { isEditableTarget } from './keyboardGuard';
+import { brickIdsInDoc } from './mixedSelection';
 
 export interface UndoState {
   manager: Y.UndoManager | null;
@@ -42,6 +43,18 @@ export function createUndoManager(doc: Y.Doc): Y.UndoManager {
   );
 }
 
+/**
+ * Undo or redo, then pick the parts it brought back (an undone Delete, a
+ * redone paste), as BlueBrick does. Nothing came back: the selection stays.
+ */
+export function undoAndPick(doc: Y.Doc, manager: Y.UndoManager, which: 'undo' | 'redo'): void {
+  const before = brickIdsInDoc(doc);
+  if (which === 'undo') manager.undo();
+  else manager.redo();
+  const back = [...brickIdsInDoc(doc)].filter((id) => !before.has(id));
+  if (back.length > 0) useEditorStore.getState().setSelection(back);
+}
+
 export function useUndoManager(doc: Y.Doc | null): UndoState {
   const [state, setState] = useState<UndoState>({
     manager: null,
@@ -57,6 +70,7 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
     }
 
     const manager = createUndoManager(doc);
+    const d = doc;
 
     const updateState = () => {
       // Prune undo stack to configured depth (0 = unlimited, default 100).
@@ -68,8 +82,8 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
         manager,
         canUndo: manager.canUndo(),
         canRedo: manager.canRedo(),
-        undo: () => manager.undo(),
-        redo: () => manager.redo(),
+        undo: () => undoAndPick(d, manager, 'undo'),
+        redo: () => undoAndPick(d, manager, 'redo'),
       });
     };
 
@@ -83,10 +97,10 @@ export function useUndoManager(doc: Y.Doc | null): UndoState {
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        manager.undo();
+        undoAndPick(d, manager, 'undo');
       } else if ((key === 'z' && e.shiftKey) || key === 'y') {
         e.preventDefault();
-        manager.redo();
+        undoAndPick(d, manager, 'redo');
       }
     }
     window.addEventListener('keydown', onKey);

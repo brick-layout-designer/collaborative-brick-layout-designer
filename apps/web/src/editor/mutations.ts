@@ -12,6 +12,7 @@ import * as Y from 'yjs';
 import type { ColorSpec, FontSpec, Group, Layer, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SavedView, SidecarModule } from '@cld/bbm';
 import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
+import { moduleCopy } from './moduleCopy';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
 import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
@@ -2086,6 +2087,30 @@ export function deleteSidecarModule(doc: Y.Doc, id: string): void {
 }
 
 /**
+ * Delete a module and its parts on every sheet, in one undo step (the
+ * Modules panel's Delete; Ungroup keeps the parts).
+ */
+export function deleteModuleWithParts(doc: Y.Doc, id: string): void {
+  const module = getSidecarModules(readSidecarCache(doc)).find((m) => m.id === id);
+  if (!module) return;
+  const members = new Set(module.members);
+  doc.transact(() => {
+    for (const layerId of doc.getArray<string>('layers').toArray()) {
+      const layerData = doc.getMap('layerData').get(layerId);
+      if (!(layerData instanceof Y.Map)) continue;
+      const bricks = layerData.get('bricks');
+      if (!(bricks instanceof Y.Array)) continue;
+      const ids: string[] = [];
+      bricks.forEach((b) => {
+        if (b instanceof Y.Map && members.has(b.get('id') as string)) ids.push(b.get('id') as string);
+      });
+      if (ids.length > 0) deleteBricks(doc, layerId, ids);
+    }
+    deleteSidecarModule(doc, id);
+  }, LOCAL_ORIGIN);
+}
+
+/**
  * Replace the member list for a sidecar module — used after Flatten
  * removes bricks or Rescan re-discovers them.
  */
@@ -2271,12 +2296,7 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
     }
 
     const cache = readSidecarCache(doc);
-    const cloned: SidecarModule = {
-      id: makeId(),
-      name: module.name ? `${module.name} (copy)` : '(copy)',
-      members: newMemberIds,
-      transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    };
+    const cloned = moduleCopy(module, newMemberIds);
     writeSidecarCache(doc, { ...cache, modules: [...getSidecarModules(cache), cloned] });
   }, LOCAL_ORIGIN);
 }

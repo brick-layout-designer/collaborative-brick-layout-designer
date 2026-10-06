@@ -37,6 +37,8 @@ export interface MenuProps {
   buttonContent?: ReactNode;
   /** Width of each list with a mouse, px. */
   width?: number;
+  /** Opened from elsewhere (another menu's entry): each new number opens it. No button is shown. */
+  openRequest?: number;
 }
 
 const POPOVER_ITEM =
@@ -44,7 +46,7 @@ const POPOVER_ITEM =
 const SHEET_ITEM =
   'flex w-full min-h-11 items-center gap-3 px-4 py-2 text-left text-sm text-ink outline-none hover:bg-soft focus-visible:bg-soft disabled:opacity-40';
 
-export function Menu({ label, entries, mode = 'auto', buttonClassName, buttonTitle, buttonContent, width = 224 }: MenuProps) {
+export function Menu({ label, entries, mode = 'auto', buttonClassName, buttonTitle, buttonContent, width = 224, openRequest }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
   /** Ids of the open submenus, outermost first. */
@@ -82,6 +84,15 @@ export function Menu({ label, entries, mode = 'auto', buttonClassName, buttonTit
     setOpen(true);
     setFocusReq({ level: 0 });
   };
+
+  // Opened from elsewhere.
+  const lastRequest = useRef(openRequest ?? 0);
+  useEffect(() => {
+    if (!openRequest || openRequest === lastRequest.current) return;
+    lastRequest.current = openRequest;
+    openMenu();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest]);
 
   // Click or tap outside, or the window changes size: close.
   useEffect(() => {
@@ -263,7 +274,8 @@ export function Menu({ label, entries, mode = 'auto', buttonClassName, buttonTit
             openMenu();
           }
         }}
-        className={buttonClassName}
+        className={openRequest !== undefined ? 'sr-only' : buttonClassName}
+        {...(openRequest !== undefined ? { tabIndex: -1, 'aria-hidden': true } : {})}
       >
         {buttonContent ?? label}
       </button>

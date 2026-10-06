@@ -152,3 +152,31 @@ export function mapMenuEntries(a: MapMenuActions, t: MapMenuToggles, mod = modKe
     { kind: 'item', id: 'preferences', label: 'Preferences…', shortcut: `${mod}+,`, onSelect: a.preferences },
   ];
 }
+
+/** What a phone's Map menu does: a few of the Map menu's actions. */
+export type PhoneMapActions = Pick<MapMenuActions, 'downloadLayout' | 'downloadAs' | 'exportImage' | 'insertText' | 'insertLabel' | 'venueDesigner'>;
+
+/**
+ * The phone's Map menu (from the layout-name menu): Download & export ▸,
+ * Insert ▸ and the venue designer, in the Map menu's own words. Insert and
+ * the venue designer only while editing (`editing`).
+ */
+export function phoneMapEntries(a: PhoneMapActions, editing: boolean): MenuEntry<MapMenuContext>[] {
+  const viewing = () => !editing;
+  return [
+    {
+      kind: 'submenu', id: 'export', label: 'Download & export', items: [
+        { kind: 'item', id: 'download-layout', label: 'Download layout (.bld-layout)', hidden: notInModule, onSelect: a.downloadLayout },
+        { kind: 'item', id: 'download-as', label: 'Download as…', onSelect: a.downloadAs },
+        { kind: 'item', id: 'export-image', label: 'Export as image…', onSelect: a.exportImage },
+      ],
+    },
+    {
+      kind: 'submenu', id: 'insert', label: 'Insert', hidden: viewing, items: [
+        { kind: 'item', id: 'insert-text', label: 'Text…', onSelect: a.insertText },
+        { kind: 'item', id: 'insert-label', label: 'Anchored label…', onSelect: a.insertLabel },
+      ],
+    },
+    { kind: 'item', id: 'venue-designer', label: 'Venue designer…', hidden: (c) => viewing() || c.moduleMode, onSelect: a.venueDesigner },
+  ];
+}

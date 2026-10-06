@@ -145,11 +145,18 @@ describe('ruler distance labels (desktop formatDistance)', () => {
 });
 
 describe('moduleLabelFontPx', () => {
-  it('is percent of the long axis, clamped to 16..400 px', () => {
-    expect(moduleLabelFontPx(400, 100, 35)).toBe(140);
-    expect(moduleLabelFontPx(100, 400, 35)).toBe(140);
+  it('is percent of the long axis, at most half the short axis, clamped to 16..400 px', () => {
+    expect(moduleLabelFontPx(400, 300, 35)).toBe(140);
+    expect(moduleLabelFontPx(300, 400, 35)).toBe(140);
     expect(moduleLabelFontPx(20, 10, 35)).toBe(16);
-    expect(moduleLabelFontPx(4000, 10, 100)).toBe(400);
+    expect(moduleLabelFontPx(4000, 1000, 100)).toBe(400);
+  });
+
+  it('is never taller than half a long, thin module', () => {
+    expect(moduleLabelFontPx(400, 100, 35)).toBe(50);
+    expect(moduleLabelFontPx(100, 400, 35)).toBe(50);
+    expect(moduleLabelFontPx(384, 48, 35)).toBe(24);
+    expect(moduleLabelFontPx(4000, 10, 100)).toBe(16);
   });
 });
 
