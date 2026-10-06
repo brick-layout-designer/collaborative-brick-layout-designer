@@ -27,6 +27,7 @@ import { chooseModuleSheets, closeSheetQuestion, placeModuleAsking, SheetChoiceH
 import { useEditorStore } from '../editorStore';
 import { moduleLabelLayouts } from '../render/moduleLabels';
 import { ModuleEditBar } from '../ModuleEditBar';
+import { canDragPart, pinnedAmong, withPinned } from '../moduleEdit';
 
 afterEach(() => {
   act(() => closeSheetQuestion());
@@ -244,5 +245,17 @@ describe('a module with parts on hidden sheets', () => {
     expect(hint.textContent).toContain('1 of its sheets is hidden.');
     fireEvent.click(within(hint).getByRole('button', { name: 'Show it' }));
     expect(map().layers.find((l) => l.id === ids.Buildings)!.visible).toBe(true);
+  });
+
+  it('Pin in place holds every part of a module, whatever sheet it is on', () => {
+    const { doc } = layout(['Track', 'Buildings']);
+    const res = importBricksAsModule(doc, [batch('Track'), batch('Buildings')], { name: 'Yard' })!;
+    const mod = withPinned(readSidecarFromDoc(doc)!.modules!.find((m) => m.id === res.moduleId)!, true);
+    const m = docToBbm(doc);
+    expect(new Set(res.ids.map((id) => sheetOf(m, id).name))).toEqual(new Set(['Track', 'Buildings']));
+    for (const id of res.ids) {
+      expect(pinnedAmong([id], [mod], null)?.id).toBe(res.moduleId);
+      expect(canDragPart(id, [mod], null)).toBe(false);
+    }
   });
 });
