@@ -589,6 +589,8 @@ export const api = {
     get: (slug: string) => get<ClubReview>(`/api/orgs/${encodeURIComponent(slug)}/review`),
     decideVersion: (slug: string, versionId: string, approve: boolean, reason = '') =>
       post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/versions/${encodeURIComponent(versionId)}/${approve ? 'approve' : 'decline'}`, approve ? {} : { reason }),
+    decideCover: (slug: string, itemId: string, approve: boolean, reason = '') =>
+      post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/items/${encodeURIComponent(itemId)}/cover/${approve ? 'approve' : 'decline'}`, approve ? {} : { reason }),
     unpublishItem: (slug: string, id: string, reason: string) =>
       post<{ ok: true }>(`/api/orgs/${encodeURIComponent(slug)}/review/items/${encodeURIComponent(id)}/unpublish`, { reason }),
     decideCollection: (slug: string, id: string, approve: boolean, reason = '') =>
@@ -1059,6 +1061,16 @@ export const api = {
       noteWrite('DELETE', path);
       return res.json() as Promise<CollectionSaved>;
     },
+    /** A catalog item's own picture: JSON {mime, data} (base64), never an octet-stream body. */
+    uploadItemCover: (id: string, body: { mime: string; data: string }) => put<ItemCoverState>(`/api/catalog/items/${encodeURIComponent(id)}/cover`, body),
+    /** Back to the drawn picture (a waiting one goes too). */
+    removeItemCover: async (id: string): Promise<ItemCoverState> => {
+      const path = `/api/catalog/items/${encodeURIComponent(id)}/cover`;
+      const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
+      noteWrite('DELETE', path);
+      return res.json() as Promise<ItemCoverState>;
+    },
     dismissCollectionNote: (id: string) => post<{ ok: true }>(`/api/catalog/collections/${encodeURIComponent(id)}/dismiss-note`, {}),
     addCollection: (id: string, orgSlug?: string) =>
       post<CollectionAddResult>(`/api/catalog/collections/${encodeURIComponent(id)}/add`, orgSlug ? { orgSlug } : {}),
@@ -1070,6 +1082,9 @@ export const api = {
         queue: ModerationEntry[];
         /** Waiting in trusted clubs' own queues (older servers leave it out). */
         trustedQueue?: ModerationEntry[];
+        /** New pictures for public items (older servers leave these out). */
+        covers?: CoverReviewEntry[];
+        trustedCovers?: CoverReviewEntry[];
         items: (CatalogItem & { status: CatalogStatus; reason: string | null; owner: WarningSubject | null })[];
       }>('/api/moderation/items'),
     /** Trusted clubs, or (with `q`) clubs to trust. */
@@ -1079,6 +1094,8 @@ export const api = {
     decline: (versionId: string, reason: string) =>
       post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/decline`, { reason }),
     unpublish: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/unpublish`, { reason }),
+    decideCover: (itemId: string, approve: boolean, reason = '') =>
+      post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(itemId)}/cover/${approve ? 'approve' : 'decline'}`, approve ? {} : { reason }),
     collections: () =>
       get<{ queue: CollectionReviewEntry[]; trustedQueue?: CollectionReviewEntry[]; collections: ModeratedCollection[]; clubCollections?: ModeratedCollection[] }>(
         '/api/moderation/collections',
@@ -1177,8 +1194,37 @@ export interface CatalogItem {
   version: number;
   updatedAt: number;
   previewUrl: string;
+  /** The card's picture: its owner's own (cropped to the card), else the drawn one. Older servers leave it out. */
+  coverUrl?: string;
+  /** `coverUrl` is a picture its owner uploaded. */
+  customCover?: boolean;
   /** Shared by a trusted club (it reviews its own). */
   trustedClub?: boolean;
+}
+
+/** A catalog item's own picture, as its owner sees it. */
+export interface ItemCoverState {
+  /** Set when the change shows at once ('public'), or waits for review. */
+  status?: 'public' | 'in_review';
+  customCoverUrl: string | null;
+  pendingCoverUrl: string | null;
+  /** Why the last uploaded picture was declined. */
+  coverReason: string | null;
+}
+
+/** A new picture for a public catalog item, waiting for review. */
+export interface CoverReviewEntry {
+  itemId: string;
+  kind: CatalogKind;
+  title: string;
+  by: string;
+  /** What shows now (an uploaded picture, or the drawn one). */
+  oldUrl: string;
+  newUrl: string;
+  submitter: string | null;
+  createdAt: number;
+  owner: WarningSubject | null;
+  trustedClub: boolean;
 }
 
 export interface CatalogVersion {
@@ -1201,6 +1247,9 @@ export interface MyCatalogItem {
   pendingVersion: number | null;
   /** How many public collections it's in. */
   collections?: number;
+  customCoverUrl?: string | null;
+  pendingCoverUrl?: string | null;
+  coverReason?: string | null;
 }
 
 /** Who sees a collection: everyone (its text reviewed first), or only its curator or club. */
@@ -1371,6 +1420,8 @@ export interface ModerationEntry {
   submitter: { name: string; email: string } | null;
   createdAt: number;
   previewUrl: string;
+  /** Its uploaded picture, reviewed with it. */
+  coverUrl?: string | null;
   /** Who it belongs to, for a warning. */
   owner: WarningSubject | null;
   /** From a trusted club: its own admins and managers review it. */
@@ -1668,6 +1719,8 @@ export interface ClubReview {
     previewUrl: string;
   }[];
   collections: CollectionReviewEntry[];
+  /** New pictures for the club's public items (older servers leave it out). */
+  covers?: CoverReviewEntry[];
   published: (CatalogItem & { status: CatalogStatus; reason: string | null })[];
   publicCollections: { id: string; title: string; status: CatalogStatus; reason: string | null }[];
 }

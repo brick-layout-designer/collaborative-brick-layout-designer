@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CatalogKind, type MyCatalogItem } from '../api';
+import { ItemCoverDialog } from './ItemCover';
 
 /** What the catalogs know about your things: shared items by source, and copies by id. */
 export function useCatalogStatus() {
@@ -97,6 +98,7 @@ export function ShareToCatalogDialog({
   const [note, setNote] = useState('');
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coverOpen, setCoverOpen] = useState(false);
   const share = useMutation({
     mutationFn: () =>
       api.catalog.share({
@@ -140,7 +142,11 @@ export function ShareToCatalogDialog({
                   ? `Sent to ${clubReview}’s own review: its admins and managers check it before it appears in the catalog.`
                   : 'Sent for review. A moderator looks at it before it appears in the catalog.'}
             </p>
-            <div className="flex justify-end">
+            <p className="text-muted">Cards show its drawn picture. You can upload your own instead, like a photo of the real thing.</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setCoverOpen(true)} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">
+                Choose a cover picture…
+              </button>
               <button type="button" onClick={onClose} className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink">
                 Done
               </button>
@@ -170,6 +176,13 @@ export function ShareToCatalogDialog({
                 <input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} className="w-full rounded-lg border border-border bg-soft px-3 py-2" />
               </label>
             )}
+            {existing && (
+              <p>
+                <button type="button" onClick={() => setCoverOpen(true)} className="text-accent-text hover:underline">
+                  Change its cover picture…
+                </button>
+              </p>
+            )}
             <label className="flex items-start gap-2">
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1" />
               <span>Anyone can copy this into their own layouts.</span>
@@ -190,6 +203,9 @@ export function ShareToCatalogDialog({
           </>
         )}
       </form>
+      {coverOpen && (share.data?.id ?? existing?.id) && (
+        <ItemCoverDialog itemId={(share.data?.id ?? existing?.id)!} clubReview={clubReview} onClose={() => setCoverOpen(false)} />
+      )}
     </div>
   );
 }

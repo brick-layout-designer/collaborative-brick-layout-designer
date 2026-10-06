@@ -46,7 +46,7 @@ import { destinationOrg } from './owners.js';
 import { canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
-import { COVER_BODY_LIMIT, COVER_MIMES, coverMaxBytes, encodeCover, sniffCover, type CoverMime } from '../images/covers.js';
+import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
 
 type Kind = 'module' | 'part';
 type Audience = 'everyone' | 'private';
@@ -909,8 +909,6 @@ export async function shownForQueue(rows: readonly Collection[]): Promise<Map<st
   return shownOf(rows, await kindsOn(), () => true);
 }
 
-const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
-
 export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // ---- browse --------------------------------------------------------------
   // Public collections with at least one item showing, featured first.
@@ -1306,23 +1304,13 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       const refused = await refuseEdit(user, c);
       if (refused) return reply.code(refused.code).send(refused.body);
       if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_submit' });
-      const mime = req.body?.mime;
-      const data = req.body?.data;
-      if (!COVER_MIMES.includes(mime as CoverMime) || typeof data !== 'string' || !BASE64_RE.test(data)) {
-        return reply.code(400).send({ error: 'invalid_cover' });
-      }
-      const max = (await coverMaxBytes()).value;
-      if (Math.floor((data.length * 3) / 4) - 2 > max) return reply.code(413).send({ error: 'cover_too_large', maxBytes: max });
-      const bytes = Buffer.from(data, 'base64');
-      if (bytes.length > max) return reply.code(413).send({ error: 'cover_too_large', maxBytes: max });
-      if (!sniffCover(bytes)) return reply.code(400).send({ error: 'invalid_cover' });
-      const enc = await encodeCover(bytes);
-      if (!enc) return reply.code(400).send({ error: 'invalid_cover' });
+      const read = await readCoverBody(req.body);
+      if (!read.ok) return reply.code(read.code).send(read.body);
       const owner: Subject = c.orgId ? { kind: 'org', id: c.orgId } : { kind: 'user', id: c.ownerUserId ?? user.id };
-      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: enc.image.length + enc.small.length }, uploadBytes: bytes.length });
+      const refusal = await checkGrowth({ actor: user, owner, add: { bytes: read.image.length + read.small.length }, uploadBytes: read.bytes.length });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
       const imageId = randomUUID();
-      await db.insert(schema.catalogCollectionCovers).values({ id: imageId, collectionId: c.id, image: enc.image, small: enc.small, createdBy: user.id, createdAt: new Date() });
+      await db.insert(schema.catalogCollectionCovers).values({ id: imageId, collectionId: c.id, image: read.image, small: read.small, createdBy: user.id, createdAt: new Date() });
       const r = await editCollection(user, c, {}, { coverImageId: imageId });
       if (r.code !== 200) await pruneCovers(c.id);
       return reply.code(r.code).send(r.code === 200 ? { ...(r.body as object), coverImageId: imageId } : r.body);

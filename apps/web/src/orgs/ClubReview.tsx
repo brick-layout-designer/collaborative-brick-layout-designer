@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { invalidateFor } from '../live/invalidate';
-import { TextReview } from '../admin/Moderation';
+import { CoverReviewList, TextReview } from '../admin/Moderation';
 import { HelpButton } from '../help/HelpButton';
 import { askReason } from '../ui/ConfirmDialog';
 
@@ -27,11 +27,13 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
   const version = useMutation({ mutationFn: (a: { id: string; ok: boolean; reason?: string }) => api.clubReview.decideVersion(slug, a.id, a.ok, a.reason), ...opts });
   const unpublishItem = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.clubReview.unpublishItem(slug, a.id, a.reason), ...opts });
   const text = useMutation({ mutationFn: (a: { id: string; ok: boolean; reason?: string }) => api.clubReview.decideCollection(slug, a.id, a.ok, a.reason), ...opts });
+  const cover = useMutation({ mutationFn: (a: { id: string; ok: boolean; reason?: string }) => api.clubReview.decideCover(slug, a.id, a.ok, a.reason), ...opts });
   const unpublishColl = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.clubReview.unpublishCollection(slug, a.id, a.reason), ...opts });
   if (data.isLoading) return <p className="text-muted">Loading…</p>;
   if (data.isError) return <p className="text-danger">{(data.error as Error).message}</p>;
   const d = data.data!;
   const card = 'space-y-3 rounded-section border border-line bg-panel p-4';
+  const covers = d.covers ?? [];
   return (
     <div className="space-y-5">
       <p className="flex items-center gap-2 text-sm text-muted">
@@ -40,9 +42,12 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
       </p>
       <section className={card} aria-labelledby="club-review-queue">
         <h2 id="club-review-queue" className="text-lg font-semibold">
-          Waiting for you ({d.items.length + d.collections.length})
+          Waiting for you ({d.items.length + d.collections.length + covers.length})
         </h2>
-        {d.items.length + d.collections.length === 0 && <p className="text-sm text-muted">Nothing waiting.</p>}
+        {d.items.length + d.collections.length + covers.length === 0 && <p className="text-sm text-muted">Nothing waiting.</p>}
+        {covers.length > 0 && (
+          <CoverReviewList list={covers} warn={false} decide={(id, ok, reason) => cover.mutate({ id, ok, ...(reason !== undefined ? { reason } : {}) })} />
+        )}
         <ul className="space-y-2">
           {d.items.map((q) => (
             <li key={q.versionId} data-testid="club-review-item" className="flex flex-wrap gap-3 rounded-lg border border-line p-3 text-sm">

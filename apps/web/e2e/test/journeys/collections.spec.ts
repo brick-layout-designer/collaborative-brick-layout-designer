@@ -107,7 +107,7 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
     await expect(edit.getByLabel('Title')).toHaveValue(TITLE);
     await edit.getByLabel('Upload your own picture').check();
     await edit.getByLabel('Cover picture').setInputFiles({ name: 'yard.png', mimeType: 'image/png', buffer: Buffer.from(PNG, 'base64') });
-    await expect(edit.getByRole('button', { name: 'Remove custom cover' })).toBeVisible();
+    await expect(edit.getByRole('button', { name: 'Remove custom picture' })).toBeVisible();
     await edit.getByRole('button', { name: 'Save changes' }).click();
     await expect(edit.getByRole('status')).toContainText('Sent for review');
     await edit.getByRole('button', { name: 'Done' }).click();

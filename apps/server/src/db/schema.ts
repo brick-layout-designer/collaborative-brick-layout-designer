@@ -955,6 +955,15 @@ export const catalogItems = sqliteTable(
     publicVersion: integer('public_version').notNull().default(0),
     /** How many times it was added to someone's modules or parts. */
     uses: integer('uses').notNull().default(0),
+    /**
+     * A picture its owner uploaded (catalog_item_covers.id); when set, the
+     * catalog shows it instead of the drawn one. Null: the drawn picture.
+     */
+    coverImageId: text('cover_image_id'),
+    /** A new uploaded picture waiting for review while the item is public; the old one stays up. */
+    pendingCoverImageId: text('pending_cover_image_id'),
+    /** Why the last uploaded picture was declined, until a new one is sent. */
+    coverReason: text('cover_reason'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -1100,6 +1109,29 @@ export const catalogCollectionCovers = sqliteTable(
   },
   (t) => ({
     collectionIdx: index('catalog_collection_covers_collection_idx').on(t.collectionId),
+  }),
+);
+
+/**
+ * Catalog items' own cover pictures, the same as collections': WebP at most
+ * 1200 px wide with no metadata, and a small copy for cards. At most two
+ * per item: the one showing, and one waiting for review. Counted in the
+ * item owner's (or club's) space.
+ */
+export const catalogItemCovers = sqliteTable(
+  'catalog_item_covers',
+  {
+    id: text('id').primaryKey(),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => catalogItems.id, { onDelete: 'cascade' }),
+    image: blob('image').notNull(),
+    small: blob('small').notNull(),
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    itemIdx: index('catalog_item_covers_item_idx').on(t.itemId),
   }),
 );
 

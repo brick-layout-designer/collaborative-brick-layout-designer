@@ -327,6 +327,13 @@ export function usageOf(subject: Subject): Usage {
     .innerJoin(schema.catalogCollections, eq(schema.catalogCollections.id, schema.catalogCollectionCovers.collectionId))
     .where(isUser ? and(eq(schema.catalogCollections.ownerUserId, subject.id), isNull(schema.catalogCollections.orgId)) : eq(schema.catalogCollections.orgId, subject.id))
     .get();
+  // Catalog items' uploaded pictures: what they (or the club) shared.
+  const itemCovers = db
+    .select({ bytes: sql<number>`coalesce(sum(length(${schema.catalogItemCovers.image}) + length(${schema.catalogItemCovers.small})), 0)`.mapWith(Number) })
+    .from(schema.catalogItemCovers)
+    .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemCovers.itemId))
+    .where(eq(cCol, subject.id))
+    .get();
   const members = isUser
     ? 0
     : db.select({ n: count() }).from(schema.orgMembers).where(eq(schema.orgMembers.orgId, subject.id)).get()?.n ?? 0;
@@ -342,7 +349,7 @@ export function usageOf(subject: Subject): Usage {
     members,
     clubsCreated,
     storageBytes:
-      layouts.reduce((a, l) => a + l.bytes, 0) + pending + (parts?.bytes ?? 0) + (mods?.bytes ?? 0) + (shared?.bytes ?? 0) + (rooms?.bytes ?? 0) + (covers?.bytes ?? 0) + bgImageBytes(ids),
+      layouts.reduce((a, l) => a + l.bytes, 0) + pending + (parts?.bytes ?? 0) + (mods?.bytes ?? 0) + (shared?.bytes ?? 0) + (rooms?.bytes ?? 0) + (covers?.bytes ?? 0) + (itemCovers?.bytes ?? 0) + bgImageBytes(ids),
   };
 }
 
