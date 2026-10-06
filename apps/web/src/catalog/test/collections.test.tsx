@@ -390,7 +390,7 @@ describe('club collections and Home', () => {
     expect(screen.queryByText('Not featured')).toBeNull();
     expect((await screen.findByTestId('home-club-collection')).textContent).toContain('Show standards');
     expect((await screen.findByTestId('home-my-collection')).textContent).toContain('My picks');
-    expect(screen.getByRole('link', { name: 'Browse all' }).getAttribute('href')).toBe('/catalog');
+    expect(screen.getByRole('link', { name: 'Browse all' }).getAttribute('href')).toBe('/catalog?kind=collections');
     expect(screen.getByRole('button', { name: 'New collection' })).toBeTruthy();
     cleanup();
     routes['GET /api/catalog/settings'] = { modules: false, parts: false, review: 'moderators', anonymousBrowse: true, canModerate: false };

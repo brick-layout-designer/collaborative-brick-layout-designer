@@ -844,7 +844,7 @@ export function CollectionPage() {
   const gone = () => {
     void invalidateFor(qc, 'catalog');
     const club = data.data?.collection.clubInfo;
-    navigate(club ? `/orgs/${club.slug}` : '/catalog');
+    navigate(club ? `/orgs/${club.slug}` : '/catalog?kind=collections');
   };
   const withdraw = useMutation({ mutationFn: () => api.catalog.withdrawCollection(id), onSuccess: gone });
   const remove = useMutation({ mutationFn: () => api.catalog.deleteCollection(id), onSuccess: gone });
@@ -866,14 +866,14 @@ export function CollectionPage() {
         <AppHeader user={user} />
       ) : (
         <header className="flex items-center justify-between gap-3">
-          <Link to="/" className="font-display text-lg font-bold">Brick Layout Designer</Link>
+          <Link to="/" className="tap-target inline-flex items-center font-display text-lg font-bold">Brick Layout Designer</Link>
           <SignInLink className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
             Sign in
           </SignInLink>
         </header>
       )}
       <main className="mx-auto mt-6 max-w-5xl space-y-5">
-        <Link to="/catalog" className="text-sm text-accent-text hover:underline">‹ Catalog</Link>
+        <Link to="/catalog?kind=collections" className="text-sm text-accent-text hover:underline">‹ Catalog</Link>
         {data.isLoading ? (
           <p className="text-muted">Loading…</p>
         ) : !c ? (
@@ -1074,7 +1074,7 @@ export function HomeCollections() {
           <HelpButton helpKey="catalog.collections" />
         </h2>
         <div className="flex flex-wrap gap-2">
-          <Link to="/catalog" className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft">
+          <Link to="/catalog?kind=collections" className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft">
             Browse all
           </Link>
           {!demo && (

@@ -77,7 +77,7 @@ function ItemPage({ id }: { id: string }) {
       badge={item.kind === 'layout' ? 'Catalog layout · view only' : 'Catalog venue · view only'}
       fitBounds={v?.bounds ? { x: v.bounds.x, y: v.bounds.y, width: v.bounds.w, height: v.bounds.h } : null}
       topRight={
-        <Link to={`/catalog?kind=${item.kind}`} className="rounded-lg border border-border bg-panel/95 px-3 py-1.5 text-sm shadow hover:bg-soft">
+        <Link to={`/catalog?kind=${item.kind}`} className="tap-target inline-flex items-center rounded-lg border border-border bg-panel/95 px-3 py-1.5 text-sm shadow hover:bg-soft">
           Catalog
         </Link>
       }
