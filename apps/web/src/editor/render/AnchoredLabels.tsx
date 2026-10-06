@@ -30,6 +30,7 @@ import { useEditorStore } from '../editorStore';
 import { textReadable } from '../textLegibility';
 import { tapGuard } from '../touchGesture';
 import { TEXT_GLOW } from './selectionStyle';
+import { usePosedMap } from '../liveDragPose';
 
 interface Props {
   map: BbmMap;
@@ -54,7 +55,7 @@ interface Props {
 }
 
 export function AnchoredLabels({
-  map,
+  map: committedMap,
   labels,
   zoom,
   modules = [],
@@ -64,6 +65,9 @@ export function AnchoredLabels({
   drag,
   partsByKey,
 }: Props) {
+  // The parts being dragged where they are now (liveDragPose.ts), so this
+  // follows the drag every frame, not only the drop.
+  const map = usePosedMap(committedMap);
   const minTextPx = useEditorStore((s) => s.minTextPx);
   if (!labels || labels.length === 0) return null;
 

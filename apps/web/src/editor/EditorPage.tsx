@@ -69,7 +69,7 @@ import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
 import { imageOffset } from '@cld/parts-catalog/browser';
 import { canAddToBudget, countUsage, overBudgetCount, withinBudget } from './budgetUsage';
 import { BudgetReachedDialog, BUDGET_REFUSED_STATUS } from './BudgetReachedDialog';
-import { validateVenue, venueAfterDraw, venueStatus, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
+import { venueAfterDraw, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
 import { docToBbm } from '@cld/ydoc';
 import {
   addCircularRuler,
@@ -131,6 +131,7 @@ import { PresencePanel } from './PresencePanel';
 import { RemoteCursors } from './render/RemoteCursors';
 import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { moduleByPart, shapeSelection } from './moduleEdit';
+import { useLiveVenueReadout } from './liveVenueReadout';
 import { ModuleEditBar } from './ModuleEditBar';
 import { withShowName } from './moduleLook';
 import { ModuleEditDim, editedModuleFrame } from './render/ModuleEditDim';
@@ -4609,10 +4610,9 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
   const activeLayer = activeLayerId ? budgetMap?.layers.find((l) => l.id === activeLayerId) : null;
   // The status bar re-renders on every HUD mouse update; keep the
   // venue validation and the budget tally off that path.
-  const venueReadout = useMemo(
-    () => venueStatus(venue, validateVenue(venue, budgetMap)),
-    [venue, budgetMap],
-  );
+  // Checked against the parts where a drag has them now (liveDragPose.ts),
+  // so a warning shows (or clears) before the drop.
+  const venueReadout = useLiveVenueReadout(venue, budgetMap ?? null);
   const budgetOver = useMemo(() => overBudgetCount(budgetMap, budgetLimits), [budgetMap, budgetLimits]);
   // 1 stud = 8mm for standard LEGO; display in m when ≥100 studs
   function studDisplay(studs: number): string {

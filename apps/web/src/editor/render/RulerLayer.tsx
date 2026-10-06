@@ -42,6 +42,7 @@ import { fontStack } from './fontStack';
 import { colorSpecToCss } from '../layerOptions';
 import { pivotOf } from '../brickGeometry';
 import type { PartWire } from '../../api';
+import { usePosedMap } from '../liveDragPose';
 import { SELECTION, rulerHaloWidth } from './selectionStyle';
 
 interface Props {
@@ -74,7 +75,7 @@ interface Props {
 }
 
 export function RulerLayers({
-  map,
+  map: committedMap,
   partsByKey,
   selectedRulerIds,
   handleRulerId = null,
@@ -83,6 +84,9 @@ export function RulerLayers({
   onRulerDoubleClick,
   onEndpointDrag,
 }: Props) {
+  // The parts being dragged where they are now (liveDragPose.ts), so this
+  // follows the drag every frame, not only the drop.
+  const map = usePosedMap(committedMap);
   const layers = map.layers.filter(
     (l): l is LayerRuler => l.type === 'ruler' && l.visible,
   );

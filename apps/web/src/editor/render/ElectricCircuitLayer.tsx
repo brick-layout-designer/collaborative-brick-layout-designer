@@ -8,13 +8,17 @@ import { Group, Line } from 'react-konva';
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../../api';
 import { electricOverlay } from './electricCircuits';
+import { usePosedMap } from '../liveDragPose';
 
 interface Props {
   map: BbmMap;
   partsByKey: Map<string, PartWire>;
 }
 
-export function ElectricCircuitLayer({ map, partsByKey }: Props) {
+export function ElectricCircuitLayer({ map: committedMap, partsByKey }: Props) {
+  // The parts being dragged where they are now (liveDragPose.ts), so this
+  // follows the drag every frame, not only the drop.
+  const map = usePosedMap(committedMap);
   const { strokes } = useMemo(() => electricOverlay(map, partsByKey), [map, partsByKey]);
   if (strokes.length === 0) return null;
   return (

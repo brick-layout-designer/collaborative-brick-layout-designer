@@ -4,6 +4,7 @@ import type { Awareness } from 'y-protocols/awareness';
 import type { BbmMap, Brick } from '@cld/model';
 import { useRemotePeers } from '../useAwareness';
 import { studToPx } from './coords';
+import { usePosedMap } from '../liveDragPose';
 
 /**
  * Renders remote peers' cursors + their selection outlines onto the
@@ -12,11 +13,14 @@ import { studToPx } from './coords';
  */
 export function RemoteCursors({
   awareness,
-  map,
+  map: committedMap,
 }: {
   awareness: Awareness | null;
   map: BbmMap;
 }) {
+  // The parts being dragged where they are now (liveDragPose.ts), so this
+  // follows the drag every frame, not only the drop.
+  const map = usePosedMap(committedMap);
   const peers = useRemotePeers(awareness);
   // Index every brick by id once per map (not per peer cursor move) so the
   // per-peer selection lookup is O(selection-size).
