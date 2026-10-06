@@ -51,6 +51,8 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   'custom-part': () => [['custom-parts'], ['parts-catalog'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS],
   catalog: () => [
     ['catalog-items'], ['catalog-mine'], ['catalog-copies'], ['moderation'], ['modules'], ['custom-parts'],
+    // A layout's or venue's own page: its details, and its published copy.
+    ['catalog-item'], ['catalog-item-snapshot'], ['catalog-item-venue'], ['layouts'], ['venues'],
     // Collections: an item leaving the catalog changes them too.
     ...COLLECTIONS, ['moderation-collections'],
     // A trusted club's own queue, and who's trusted.
@@ -150,7 +152,7 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/venues\b/, ['venue']],
   [/^\/api\/(custom-parts|custom-part-invites)\b/, ['custom-part']],
   // Adding or updating a catalog item puts a module or a part in your things.
-  [/^\/api\/catalog\/((items|collections)\/[^/]+\/add|copies)\b/, ['catalog', 'module', 'custom-part']],
+  [/^\/api\/catalog\/((items|collections)\/[^/]+\/add|copies)\b/, ['catalog', 'module', 'custom-part', 'layout', 'venue']],
   [/^\/api\/(catalog|moderation)\b/, ['catalog']],
   [/^\/api\/(orgs|org-invites)\b/, ['club']],
   [/^\/api\/admin\/(users|orgs)\/[^/]+\/limits$/, ['limits', 'admin']],

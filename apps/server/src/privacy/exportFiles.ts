@@ -2,7 +2,8 @@
 // formats the apps open. Layouts and modules as .bld-layout files (the
 // one-file layout format both apps open, references/LAYOUT-FILE.md), with
 // their background picture inside; custom parts as their XML and picture;
-// venues as JSON; collection and catalog item covers as pictures.
+// venues as JSON; collection and catalog item covers as pictures; the
+// layouts and venues published to the catalog, as they are there.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -129,6 +130,8 @@ export interface FileCounts {
   parts: number;
   venues: number;
   covers: number;
+  /** Layouts and venues published to the catalog (the public copies). */
+  catalog: number;
   /** Things that could not be turned into a file (kept as raw data instead). */
   raw: number;
 }
@@ -136,7 +139,7 @@ export interface FileCounts {
 /** Write everything `owner` owns into the zip's folders. */
 export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise<FileCounts> {
   const s = schema;
-  const counts: FileCounts = { layouts: 0, modules: 0, parts: 0, venues: 0, covers: 0, raw: 0 };
+  const counts: FileCounts = { layouts: 0, modules: 0, parts: 0, venues: 0, covers: 0, catalog: 0, raw: 0 };
 
   // Layouts: one at a time, so a big library never sits in memory at once.
   const layouts = await db.select({ id: s.layouts.id, title: s.layouts.title }).from(s.layouts).where(ownerWhere(s.layouts, owner)).all();
@@ -222,9 +225,10 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
     }
   }
 
-  // Catalog items' uploaded pictures (modules and parts shared to the catalog).
+  // Catalog items' uploaded pictures, and the layouts and venues published
+  // to the catalog (each as it is in the catalog now, in catalog/).
   const items = await db
-    .select({ id: s.catalogItems.id, title: s.catalogItems.title })
+    .select({ id: s.catalogItems.id, title: s.catalogItems.title, kind: s.catalogItems.kind, publicVersion: s.catalogItems.publicVersion })
     .from(s.catalogItems)
     .where(owner.kind === 'user' ? eq(s.catalogItems.ownerUserId, owner.id) : eq(s.catalogItems.ownerOrgId, owner.id))
     .all();
@@ -233,6 +237,24 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
     for (const cover of covers) {
       zip.add(`covers/${fileTitle(i.title, 'catalog item')}.webp`, cover.image as Uint8Array);
       counts.covers++;
+    }
+    if ((i.kind === 'layout' || i.kind === 'venue') && i.publicVersion > 0) {
+      const v = await db
+        .select({ doc: s.catalogItemVersions.docSnapshot })
+        .from(s.catalogItemVersions)
+        .where(and(eq(s.catalogItemVersions.itemId, i.id), eq(s.catalogItemVersions.version, i.publicVersion)))
+        .get();
+      if (!v?.doc) continue;
+      if (i.kind === 'venue') {
+        zip.add(`catalog/${fileTitle(i.title, 'venue')}.json`, v.doc as Uint8Array);
+        counts.catalog++;
+      } else {
+        const file = layoutFileBytes(v.doc as Uint8Array, null, null, null, smallZip);
+        if (file) {
+          zip.add(`catalog/${fileTitle(i.title, 'layout')}.bld-layout`, file);
+          counts.catalog++;
+        }
+      }
     }
   }
   return counts;

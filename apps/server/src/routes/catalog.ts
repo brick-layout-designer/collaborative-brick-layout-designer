@@ -32,8 +32,15 @@ import { collectionCounts, dropFromCollections } from './collections.js';
 import { publicName } from '../utils/publicName.js';
 import { creditLookup } from './credits.js';
 import { coverQueue, coverState, itemCoverUrl } from './itemCovers.js';
+import { catalogSummaries, publicVenue, publishLayoutDoc, venuePicture, venueSummary } from './catalogDocs.js';
+import { currentDocBytes } from './layouts.js';
+import { MAX_THUMBNAIL_BYTES, reencode, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
+import { sniffCover } from '../images/covers.js';
+import type { Venue } from '@cld/bbm';
 
-type Kind = 'module' | 'part';
+/** What the catalog holds: modules and custom parts, and (when on) layouts and venues. */
+export type Kind = 'module' | 'part' | 'layout' | 'venue';
+export const CATALOG_KINDS: readonly Kind[] = ['module', 'part', 'layout', 'venue'];
 // The desktop app (an API token) browses the catalog and adds from it:
 // browsing needs layouts:read; adding a copy, layouts:write (a module) or
 // parts:write (a part).
@@ -55,12 +62,15 @@ export function canModerate(user: Pick<User, 'isGlobalAdmin' | 'isModerator'> | 
 }
 
 function isKind(v: unknown): v is Kind {
-  return v === 'module' || v === 'part';
+  return CATALOG_KINDS.includes(v as Kind);
 }
 
 export async function catalogOn(kind: Kind): Promise<boolean> {
   const s = await getPlatformSettings();
-  return kind === 'module' ? s.moduleCatalogEnabled : s.partsCatalogEnabled;
+  if (kind === 'module') return s.moduleCatalogEnabled;
+  if (kind === 'part') return s.partsCatalogEnabled;
+  if (kind === 'layout') return s.layoutCatalogEnabled;
+  return s.venueCatalogEnabled;
 }
 
 /** Lower-case, trimmed, unique tags; null when they're not acceptable. */
@@ -123,8 +133,50 @@ interface SourceSnapshot {
   values: Partial<typeof schema.catalogItemVersions.$inferInsert>;
 }
 
-/** What gets shared: a copy of the module or custom part as it is now. */
-async function snapshotSource(kind: Kind, sourceId: string): Promise<SourceSnapshot | null> {
+/** A layout's picture as the editor sends it with a share: PNG or WebP, re-encoded; null when absent, false when bad. */
+async function readThumbnail(raw: unknown): Promise<Buffer | null | false> {
+  if (raw === undefined || raw === null) return null;
+  const t = raw as { mime?: unknown; data?: unknown };
+  if ((t.mime !== 'image/png' && t.mime !== 'image/webp') || typeof t.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(t.data)) return false;
+  const bytes = Buffer.from(t.data, 'base64');
+  if (bytes.length === 0 || bytes.length > MAX_THUMBNAIL_BYTES || sniffCover(bytes) !== t.mime) return false;
+  return (await reencode(bytes)) ?? false;
+}
+
+/** What gets shared: a copy of the module, custom part, layout or venue as it is now. */
+async function snapshotSource(kind: Kind, sourceId: string, thumbnail: Buffer | null = null): Promise<SourceSnapshot | null> {
+  if (kind === 'layout') {
+    const l = await db.select().from(schema.layouts).where(eq(schema.layouts.id, sourceId)).get();
+    if (!l) return null;
+    const pub = publishLayoutDoc(await currentDocBytes(l.id, l.docSnapshot as Uint8Array), (l.sidecarSnapshot as Uint8Array | null) ?? null);
+    if (!pub) return null;
+    return {
+      ownerUserId: l.ownerUserId,
+      ownerOrgId: l.ownerOrgId,
+      title: l.title,
+      bytes: pub.doc.length + (thumbnail?.length ?? 0),
+      values: { docSnapshot: pub.doc, thumbnail, thumbnailMime: thumbnail ? 'image/webp' : null, summary: JSON.stringify(pub.summary) },
+    };
+  }
+  if (kind === 'venue') {
+    const r = await db.select().from(schema.venueLibrary).where(eq(schema.venueLibrary.id, sourceId)).get();
+    if (!r) return null;
+    let venue: Venue;
+    try {
+      venue = publicVenue(JSON.parse(r.data) as Venue);
+    } catch {
+      return null;
+    }
+    const doc = Buffer.from(JSON.stringify(venue), 'utf8');
+    const pic = await venuePicture(venue);
+    return {
+      ownerUserId: r.ownerUserId,
+      ownerOrgId: r.ownerOrgId,
+      title: r.name,
+      bytes: doc.length + (pic?.length ?? 0),
+      values: { docSnapshot: doc, thumbnail: pic, thumbnailMime: pic ? 'image/webp' : null, summary: JSON.stringify(venueSummary(venue)) },
+    };
+  }
   if (kind === 'module') {
     const m = await db.select().from(schema.modules).where(eq(schema.modules.id, sourceId)).get();
     if (!m) return null;
@@ -173,11 +225,11 @@ export async function ownerNames(
   const o = new Map(orgs.map((x) => [x.id, x.name]));
   // A club's items: who made the module or part it was shared from.
   const authorBy = new Map<string, string>();
-  for (const kind of ['module', 'part'] as const) {
+  for (const kind of CATALOG_KINDS) {
     const club = items.filter((i) => i.ownerOrgId && i.kind === kind && i.sourceId);
     if (!club.length) continue;
     const credits = await creditLookup(
-      kind === 'module' ? 'module' : 'custom-part',
+      kind === 'part' ? 'custom-part' : kind,
       club.map((i) => i.sourceId!),
       '',
     );
@@ -245,7 +297,38 @@ export async function copyItemTo(user: User, item: typeof schema.catalogItems.$i
   const owner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
   const now = new Date();
   const id = randomUUID();
-  if (item.kind === 'module') {
+  if (item.kind === 'layout') {
+    const doc = Buffer.from(v.docSnapshot as Uint8Array);
+    const refusal = await checkGrowth({ actor: user, owner, add: { layouts: 1, bytes: doc.length } });
+    if (refusal) return { ok: false, code: refusal.status, body: refusal.body };
+    await db.insert(schema.layouts).values({
+      id,
+      title: item.title,
+      ownerUserId: dest.orgId ? null : user.id,
+      ownerOrgId: dest.orgId,
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+      docSnapshot: doc,
+      docVersion: 0,
+      sidecarSnapshot: null,
+      copiedFromId: item.sourceId,
+    });
+  } else if (item.kind === 'venue') {
+    const data = Buffer.from(v.docSnapshot as Uint8Array).toString('utf8');
+    const refusal = await checkGrowth({ actor: user, owner, add: { bytes: data.length } });
+    if (refusal) return { ok: false, code: refusal.status, body: refusal.body };
+    await db.insert(schema.venueLibrary).values({
+      id,
+      ownerUserId: dest.orgId ? null : user.id,
+      ownerOrgId: dest.orgId,
+      name: item.title,
+      data,
+      createdBy: user.id,
+      copiedFromId: item.sourceId,
+      createdAt: now,
+    });
+  } else if (item.kind === 'module') {
     const doc = Buffer.from(v.docSnapshot as Uint8Array);
     const thumb = v.thumbnail ? Buffer.from(v.thumbnail as Uint8Array) : null;
     const refusal = await checkGrowth({ actor: user, owner, add: { bytes: doc.length + (thumb?.length ?? 0) } });
@@ -321,12 +404,15 @@ export async function submitToCatalog(
   user: User,
   kind: Kind,
   sourceId: string,
-  b: { title?: unknown; description?: unknown; tags?: unknown; note?: unknown },
+  b: { title?: unknown; description?: unknown; tags?: unknown; note?: unknown; thumbnail?: unknown },
 ): Promise<{ ok: boolean; code: number; body: unknown }> {
   const fail = (code: number, body: unknown) => ({ ok: false, code, body });
   if (isDemoUser(user)) return fail(403, { error: 'demo_account_cannot_submit' });
   if (!(await catalogOn(kind))) return fail(404, { error: 'catalog_off' });
-  const src = await snapshotSource(kind, sourceId);
+  // A layout's picture comes with it (the editor draws it); the others have their own.
+  const thumbnail = kind === 'layout' ? await readThumbnail(b.thumbnail) : null;
+  if (thumbnail === false) return fail(400, { error: 'invalid_thumbnail' });
+  const src = await snapshotSource(kind, sourceId, thumbnail);
   if (!src) return fail(404, { error: 'not_found' });
   // A club's things: its admins and managers share them; in a trusted club,
   // members may too (for the club's own review).
@@ -478,6 +564,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return {
       modules: s.moduleCatalogEnabled,
       parts: s.partsCatalogEnabled,
+      layouts: s.layoutCatalogEnabled,
+      venues: s.venueCatalogEnabled,
       review: s.catalogReview,
       anonymousBrowse: s.catalogAnonymousBrowse,
       canModerate: canModerate(req.user),
@@ -516,7 +604,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .limit(200);
       const name = await ownerNames(rows);
       const trusted = await trustedClubs(rows.map((r) => r.ownerOrgId));
-      return { items: rows.map((r) => ({ ...itemOut(r, name(r)), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId) })) };
+      const sums = await catalogSummaries(rows);
+      return { items: rows.map((r) => ({ ...itemOut(r, name(r)), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId), summary: sums.get(r.id) ?? null })) };
     },
   );
 
@@ -538,8 +627,19 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.catalogItemVersions.itemId, item.id))
       .orderBy(desc(schema.catalogItemVersions.version));
     const name = await ownerNames([item]);
+    const club = item.ownerOrgId ? await db.select({ slug: schema.orgs.slug, name: schema.orgs.name }).from(schema.orgs).where(eq(schema.orgs.id, item.ownerOrgId)).get() : null;
     return {
-      item: { ...itemOut(item, name(item)), status: item.status, reason: mine ? item.reason : null, trustedClub: await isTrustedClub(item.ownerOrgId) },
+      item: {
+        ...itemOut(item, name(item)),
+        status: item.status,
+        reason: mine ? item.reason : null,
+        trustedClub: await isTrustedClub(item.ownerOrgId),
+        summary: (await catalogSummaries([item])).get(item.id) ?? null,
+        /** The club it's shared under, for "in ‹club›" with a link. */
+        club: club ? { slug: club.slug, name: club.name } : null,
+        /** The full-size picture (the public page). */
+        coverLargeUrl: item.coverImageId ? itemCoverUrl(item.id, item.coverImageId, false) : `/api/catalog/items/${item.id}/preview?v=${item.publicVersion}`,
+      },
       versions: versions
         .filter((v) => mine || v.status === 'public')
         .map((v) => ({ ...v, reason: mine ? v.reason : null, createdAt: v.createdAt.getTime() })),
@@ -560,8 +660,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.catalogItemVersions)
       .where(and(eq(schema.catalogItemVersions.itemId, item.id), eq(schema.catalogItemVersions.version, n)))
       .get();
-    const bytes = item.kind === 'module' ? v?.thumbnail : v?.spriteBlob;
-    const mime = item.kind === 'module' ? v?.thumbnailMime : v?.spriteMime;
+    const bytes = item.kind === 'part' ? v?.spriteBlob : v?.thumbnail;
+    const mime = item.kind === 'part' ? v?.spriteMime : v?.thumbnailMime;
     if (!bytes || !mime) return reply.code(404).send({ error: 'no_preview' });
     reply.header('Cache-Control', 'public, max-age=86400');
     reply.header('Content-Type', mime);
@@ -571,13 +671,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- share (submit, or submit an update) --------------------------------
   app.post<{
-    Body: { kind?: unknown; sourceId?: unknown; title?: unknown; description?: unknown; tags?: unknown; note?: unknown };
+    Body: { kind?: unknown; sourceId?: unknown; title?: unknown; description?: unknown; tags?: unknown; note?: unknown; thumbnail?: unknown };
   }>(
     '/api/catalog/submissions',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
     // Ten shares an hour per person (counted after sign-in is read), not per
     // address: a whole club sharing from one venue's network isn't one person.
-    { config: { rateLimit: { max: 10, timeWindow: '1 hour', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } },
+    // A layout brings its picture (base64 JSON), hence the bigger body.
+    { bodyLimit: THUMBNAIL_BODY_LIMIT, config: { rateLimit: { max: 10, timeWindow: '1 hour', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } },
     async (req, reply) => {
       const user = requireUser(req);
       const b = req.body ?? {};
@@ -687,7 +788,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         kind: r.kind,
         version: r.version,
         latest: r.publicVersion,
-        updateAvailable: r.status === 'public' && r.publicVersion > r.version,
+        // Layouts and venues are copies to change freely: no "Get the new version".
+        updateAvailable: (r.kind === 'module' || r.kind === 'part') && r.status === 'public' && r.publicVersion > r.version,
       })),
     };
   });
@@ -699,7 +801,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const copy = await db.select().from(schema.catalogCopies).where(eq(schema.catalogCopies.copyId, req.params.copyId)).get();
     if (!copy) return reply.code(404).send({ error: 'not_found' });
     const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, copy.itemId)).get();
-    if (!item || item.status !== 'public' || item.publicVersion <= copy.version) return reply.code(409).send({ error: 'no_update' });
+    if (!item || item.status !== 'public' || item.publicVersion <= copy.version || (item.kind !== 'module' && item.kind !== 'part')) {
+      return reply.code(409).send({ error: 'no_update' });
+    }
     const v = await db
       .select()
       .from(schema.catalogItemVersions)

@@ -17,6 +17,7 @@ import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { atLeast } from '../orgs/clubRoles';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { VENUE_DELETE_WORDING } from '../ui/deleteWording';
+import { CatalogBadge, ShareToCatalogDialog, useCatalogStatus } from '../catalog/ShareToCatalog';
 
 /** May change it: the server says so; older servers: yours, or a club you manage. */
 export function canManageVenue(v: VenueSummary, orgs: readonly OrgSummary[] | undefined): boolean {
@@ -45,6 +46,8 @@ export function VenueList({
   const [asking, setAsking] = useState<'new' | 'upload' | null>(null);
   const [moving, setMoving] = useState<VenueSummary | null>(null);
   const hasClubs = (orgs?.length ?? 0) > 0;
+  const catalog = useCatalogStatus();
+  const [sharing, setSharing] = useState<VenueSummary | null>(null);
 
   const upload = useMutation({
     mutationFn: (body: { name: string; data: Venue }) =>
@@ -139,6 +142,7 @@ export function VenueList({
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="break-words font-medium">{v.name}</span>
                       <OwnerChip item={v} myUserId={myUserId} orgs={orgs} />
+                      {catalog.shared('venue', v.id) && <CatalogBadge item={catalog.shared('venue', v.id)!} />}
                     </span>
                     <CreditLine credit={v.credit} />
                   </span>
@@ -161,6 +165,11 @@ export function VenueList({
                       {hasClubs && (
                         <button role="menuitem" type="button" className={MORE_ITEM} onClick={() => setMoving(v)}>
                           Move or copy…
+                        </button>
+                      )}
+                      {manage && catalog.enabled('venue') && (
+                        <button role="menuitem" type="button" className={MORE_ITEM} onClick={() => setSharing(v)}>
+                          {catalog.shared('venue', v.id) ? 'Publish a new version to the catalog…' : 'Share to the public catalog…'}
                         </button>
                       )}
                       <ReturnMenuItems kind="venues" id={v.id} title={v.name} credit={v.credit} />
@@ -219,6 +228,9 @@ export function VenueList({
             else startUpload(slug);
           }}
         />
+      )}
+      {sharing && (
+        <ShareToCatalogDialog kind="venue" sourceId={sharing.id} title={sharing.name} existing={catalog.shared('venue', sharing.id)} onClose={() => setSharing(null)} />
       )}
       {moving && orgs && (
         <MoveCopyDialog

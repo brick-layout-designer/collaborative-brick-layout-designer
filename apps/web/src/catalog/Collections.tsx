@@ -34,7 +34,9 @@ import { AppHeader } from '../AppHeader';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { invalidateFor } from '../live/invalidate';
 import { HelpButton } from '../help/HelpButton';
-import { AddDialog, CatalogPreview } from './CatalogPage';
+import { AddDialog, CatalogPreview, kindsOn } from './CatalogPage';
+
+const KIND_NAME: Record<CatalogKind, string> = { module: 'Module', part: 'Part', layout: 'Layout', venue: 'Venue' };
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { TrustedBadge } from './TrustedBadge';
 import { askConfirm, askReason, confirmDelete, deleteOptions, toastDeleted, type DeleteWording } from '../ui/ConfirmDialog';
@@ -106,10 +108,12 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
 }
 
 /** "3 modules · 5 parts". */
-export function counts(c: Pick<CollectionSummary, 'modules' | 'parts'>): string {
+export function counts(c: Pick<CollectionSummary, 'modules' | 'parts' | 'layouts' | 'venues'>): string {
   const out: string[] = [];
   if (c.modules) out.push(`${c.modules} ${c.modules === 1 ? 'module' : 'modules'}`);
   if (c.parts) out.push(`${c.parts} ${c.parts === 1 ? 'part' : 'parts'}`);
+  if (c.layouts) out.push(`${c.layouts} ${c.layouts === 1 ? 'layout' : 'layouts'}`);
+  if (c.venues) out.push(`${c.venues} ${c.venues === 1 ? 'venue' : 'venues'}`);
   return out.join(' · ') || 'empty';
 }
 
@@ -446,7 +450,7 @@ export function CollectionEditor({
     setAudience(c.audience ?? 'everyone');
   }
 
-  const on: CatalogKind[] = [...(settings.data?.modules ? (['module'] as const) : []), ...(settings.data?.parts ? (['part'] as const) : [])];
+  const on: CatalogKind[] = kindsOn(settings.data);
   const kinds = on.filter((k) => kindFilter === 'all' || kindFilter === k);
   const found = useQuery({
     queryKey: ['catalog-items', 'picker', kinds.join(','), q],
@@ -985,7 +989,7 @@ export function CollectionPage() {
                     <div className="min-w-0 flex-1 space-y-1">
                       <h2 className="break-words font-semibold">{it.title}</h2>
                       <p className="text-xs text-muted">
-                        {it.kind === 'module' ? 'Module' : 'Part'} by {it.by}
+                        {KIND_NAME[it.kind]} by {it.by}
                         {it.source === 'library' ? '' : ` · version ${it.version}`}
                       </p>
                       {waiting && (

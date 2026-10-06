@@ -48,6 +48,7 @@ const AdminPage = lazy(() => import('./admin/AdminPage').then((m) => ({ default:
 const OrgAdminPage = lazy(() => import('./orgs/OrgAdminPage').then((m) => ({ default: m.OrgAdminPage })));
 const NewVenuePage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.NewVenuePage })));
 const VenueDesignPage = lazy(() => import('./venues/designer/VenueDesignerPage').then((m) => ({ default: m.VenueDesignPage })));
+const CatalogItemPage = lazy(() => import('./catalog/CatalogItemPage').then((m) => ({ default: m.CatalogItemPage })));
 const PublicLayoutPage = lazy(() => import('./layouts/PublicLayoutPage').then((m) => ({ default: m.PublicLayoutPage })));
 
 const queryClient = new QueryClient({
@@ -179,6 +180,7 @@ createRoot(root).render(
           <Route path="/modules/:id" element={<ModuleEditorPage />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/collections/:id" element={<CollectionPage />} />
+          <Route path="/catalog/items/:id" element={<CatalogItemPage />} />
           <Route path="/venues/new" element={<NewVenuePage />} />
           <Route path="/venues/:id/design" element={<VenueDesignPage />} />
           <Route path="/admin" element={<AdminPage />} />

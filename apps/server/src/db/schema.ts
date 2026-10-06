@@ -205,6 +205,10 @@ export const platformSettings = sqliteTable('platform_settings', {
   moduleCatalogEnabled: integer('module_catalog_enabled', { mode: 'boolean' }).notNull().default(false),
   /** The public parts catalog. Off until an admin turns it on. */
   partsCatalogEnabled: integer('parts_catalog_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** Public layouts in the catalog. Off until an admin turns it on. */
+  layoutCatalogEnabled: integer('layout_catalog_enabled', { mode: 'boolean' }).notNull().default(false),
+  /** Public venues in the catalog. Off until an admin turns it on. */
+  venueCatalogEnabled: integer('venue_catalog_enabled', { mode: 'boolean' }).notNull().default(false),
   /**
    * Review before publishing: 'moderators' (a moderator approves each
    * submission) or 'none' (published straight away).
@@ -934,8 +938,8 @@ export const catalogItems = sqliteTable(
   'catalog_items',
   {
     id: text('id').primaryKey(),
-    kind: text('kind', { enum: ['module', 'part'] }).notNull(),
-    /** The module or custom part it was shared from (no FK: the original may go). */
+    kind: text('kind', { enum: ['module', 'part', 'layout', 'venue'] }).notNull(),
+    /** The module, custom part, layout or venue it was shared from (no FK: the original may go). */
     sourceId: text('source_id').notNull(),
     /** Who the item belongs to: a person, or a club (whose admins and managers manage it). */
     ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
@@ -988,7 +992,11 @@ export const catalogItemVersions = sqliteTable(
     reason: text('reason'),
     decidedBy: text('decided_by').references(() => users.id, { onDelete: 'set null' }),
     decidedAt: integer('decided_at', { mode: 'timestamp_ms' }),
-    /** A module: its Y.Doc. */
+    /**
+     * A module or a layout: its Y.Doc (a layout's is a cleaned copy: no
+     * history, no local file paths, no background picture). A venue: its
+     * Venue JSON (UTF-8), notes left out.
+     */
     docSnapshot: blob('doc_snapshot'),
     /** A part: its XML, sprite and number. */
     partNumber: text('part_number'),
@@ -999,6 +1007,11 @@ export const catalogItemVersions = sqliteTable(
     /** The preview picture (a module's thumbnail; a part's sprite is its own). */
     thumbnail: blob('thumbnail'),
     thumbnailMime: text('thumbnail_mime'),
+    /**
+     * A layout or venue: what its public page shows without opening it, as
+     * JSON (size in studs, a layout's parts list). Null for modules and parts.
+     */
+    summary: text('summary'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => ({

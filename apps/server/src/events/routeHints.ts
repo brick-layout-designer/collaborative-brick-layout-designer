@@ -220,10 +220,11 @@ function catalog(itemFrom: (ctx: HintCtx) => Promise<string | null>, publicChang
   };
 }
 
-/** Adding a catalog item puts a module or part in your things, or your club's. */
+/** Adding a catalog item puts a module, part, layout or venue in your things, or your club's. */
 const catalogAdd: HintSpec = {
   after: async (ctx) => {
-    const kind = ctx.reply?.kind === 'part' ? 'custom-part' : 'module';
+    const k = ctx.reply?.kind;
+    const kind: ResourceKind = k === 'part' ? 'custom-part' : k === 'layout' ? 'layout' : k === 'venue' ? 'venue' : 'module';
     const id = str(ctx.reply?.id);
     if (!id) return [];
     const now = await ownerOfResource(kind, id);
@@ -289,7 +290,7 @@ const collectionAdd: HintSpec = {
     const out: Array<{ hint: Hint; reach?: Reach }> = [];
     const seen = new Set<string>();
     for (const a of added) {
-      const kind: ResourceKind = a.kind === 'part' ? 'custom-part' : 'module';
+      const kind: ResourceKind = a.kind === 'part' ? 'custom-part' : a.kind === 'layout' ? 'layout' : a.kind === 'venue' ? 'venue' : 'module';
       const id = str(a.id);
       if (!id) continue;
       const now = await ownerOfResource(kind, id);

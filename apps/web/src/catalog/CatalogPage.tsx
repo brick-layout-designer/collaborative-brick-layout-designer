@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CatalogItem, type CatalogKind } from '../api';
+import { api, type CatalogItem, type CatalogKind, type CatalogSummary } from '../api';
 import { AppHeader } from '../AppHeader';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { CollectionsSection } from './Collections';
@@ -20,9 +20,10 @@ export function CatalogPage() {
   const [params, setParams] = useSearchParams();
   const user = me.data?.user ?? null;
   const s = settings.data;
-  const kinds: CatalogKind[] = [...(s?.modules ? (['module'] as const) : []), ...(s?.parts ? (['part'] as const) : [])];
-  const wanted = params.get('kind') === 'part' ? 'part' : 'module';
+  const kinds = kindsOn(s);
+  const wanted = (params.get('kind') ?? 'module') as CatalogKind;
   const kind: CatalogKind = kinds.includes(wanted) ? wanted : (kinds[0] ?? 'module');
+  const kindParam = (k: CatalogKind): Record<string, string> => (k === 'module' ? {} : { kind: k });
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'newest' | 'popular'>('newest');
   const tag = params.get('tag') ?? '';
@@ -53,7 +54,7 @@ export function CatalogPage() {
       <main className="mx-auto mt-6 max-w-5xl space-y-5">
         <div>
           <h1 className="text-2xl font-bold">Catalog</h1>
-          <p className="text-muted">Modules and parts people have shared for everyone. Add one to copy it into your own modules or parts.</p>
+          <p className="text-muted">What people have shared for everyone. Add one to copy it into your own things.</p>
         </div>
         {settings.isLoading || me.isLoading ? (
           <p className="text-muted">Loading…</p>
@@ -82,10 +83,10 @@ export function CatalogPage() {
                       role="tab"
                       type="button"
                       aria-selected={kind === k}
-                      onClick={() => setParams(k === 'part' ? { kind: 'part' } : {})}
+                      onClick={() => setParams(kindParam(k))}
                       className={`tap-target rounded-md px-4 py-1.5 text-sm font-semibold ${kind === k ? 'bg-accent text-accent-ink' : 'hover:bg-soft'}`}
                     >
-                      {k === 'module' ? 'Modules' : 'Parts'}
+                      {KIND_LABEL[k].tab}
                     </button>
                   ))}
                 </div>
@@ -94,7 +95,7 @@ export function CatalogPage() {
                 type="search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder={kind === 'module' ? 'Search modules' : 'Search parts'}
+                placeholder={`Search ${KIND_LABEL[kind].tab.toLowerCase()}`}
                 aria-label="Search the catalog"
                 className="min-h-11 min-w-[12rem] flex-1 basis-full rounded-lg border border-border bg-soft px-3 sm:basis-auto"
               />
@@ -111,7 +112,7 @@ export function CatalogPage() {
             {tag && (
               <p className="text-sm">
                 Tagged <b>{tag}</b>{' '}
-                <button type="button" onClick={() => setParams(kind === 'part' ? { kind: 'part' } : {})} className="text-accent-text hover:underline">
+                <button type="button" onClick={() => setParams(kindParam(kind))} className="text-accent-text hover:underline">
                   Show all
                 </button>
               </p>
@@ -120,15 +121,34 @@ export function CatalogPage() {
             {items.isError && <p className="text-danger">{(items.error as Error).message}</p>}
             {items.data && items.data.items.length === 0 && (
               <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
-                Nothing here yet. Share a module or part from its ⋯ menu on Home.
+                {kind === 'layout'
+                  ? 'Nothing here yet. Share a layout from the editor’s menu, or its ⋯ menu on Home.'
+                  : kind === 'venue'
+                    ? 'Nothing here yet. Share a venue from its ⋯ menu in your venues.'
+                    : 'Nothing here yet. Share a module or part from its ⋯ menu on Home.'}
               </p>
             )}
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3">
               {items.data?.items.map((it) => (
                 <li key={it.id} data-testid="catalog-item" className="flex flex-col gap-2 rounded-section border border-line bg-panel p-3">
-                  <CatalogPreview item={it} />
+                  {hasPage(it.kind) ? (
+                    <Link to={`/catalog/items/${it.id}`} aria-label={`Open ${it.title}`}>
+                      <CatalogPreview item={it} />
+                    </Link>
+                  ) : (
+                    <CatalogPreview item={it} />
+                  )}
                   <div className="min-w-0 flex-1 space-y-1">
-                    <h2 className="break-words font-semibold">{it.title}</h2>
+                    <h2 className="break-words font-semibold">
+                      {hasPage(it.kind) ? (
+                        <Link to={`/catalog/items/${it.id}`} className="hover:underline">
+                          {it.title}
+                        </Link>
+                      ) : (
+                        it.title
+                      )}
+                    </h2>
+                    {it.summary && <p className="text-xs text-muted">{summaryText(it.summary)}</p>}
                     <p className="text-xs text-muted">
                       by {it.by}
                       {it.trustedClub && <TrustedBadge />} · version {it.version} · {it.uses} {it.uses === 1 ? 'use' : 'uses'}
@@ -140,7 +160,7 @@ export function CatalogPage() {
                           <button
                             key={t}
                             type="button"
-                            onClick={() => setParams({ ...(kind === 'part' ? { kind: 'part' } : {}), tag: t })}
+                            onClick={() => setParams({ ...kindParam(kind), tag: t })}
                             className="rounded-full bg-soft px-2 py-0.5 text-xs hover:bg-line"
                           >
                             {t}
@@ -157,7 +177,7 @@ export function CatalogPage() {
                         aria-label={`Add ${it.title}`}
                         className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
                       >
-                        {kind === 'module' ? 'Add to my modules' : 'Add to my parts'}
+                        {KIND_LABEL[kind].add}
                       </button>
                       <button
                         type="button"
@@ -197,6 +217,31 @@ export function CatalogPage() {
 }
 
 /** The card's picture: its owner's own fills the card (it was cropped to it); the drawn one fits inside. */
+/** What each kind is called on tabs and buttons. */
+export const KIND_LABEL: Record<CatalogKind, { tab: string; add: string; mine: string }> = {
+  module: { tab: 'Modules', add: 'Add to my modules', mine: 'modules' },
+  part: { tab: 'Parts', add: 'Add to my parts', mine: 'parts' },
+  layout: { tab: 'Layouts', add: 'Copy to my layouts', mine: 'layouts' },
+  venue: { tab: 'Venues', add: 'Copy to my venues', mine: 'venues' },
+};
+
+/** The catalogs that are on, in tab order. */
+export function kindsOn(s: { modules?: boolean; parts?: boolean; layouts?: boolean; venues?: boolean } | undefined): CatalogKind[] {
+  if (!s) return [];
+  return (['module', 'part', 'layout', 'venue'] as const).filter((k) => (k === 'module' ? s.modules : k === 'part' ? s.parts : k === 'layout' ? s.layouts : s.venues));
+}
+
+/** Layouts and venues have their own page (a viewer). */
+export const hasPage = (k: CatalogKind) => k === 'layout' || k === 'venue';
+
+/** "960 × 480 studs (7.7 × 3.8 m) · 1,204 parts". */
+export function summaryText(s: CatalogSummary): string {
+  const m = (studs: number) => (studs * 0.008).toFixed(1);
+  const size = s.widthStuds && s.heightStuds ? `${s.widthStuds} × ${s.heightStuds} studs (${m(s.widthStuds)} × ${m(s.heightStuds)} m)` : '';
+  const parts = s.partCount !== undefined ? `${s.partCount.toLocaleString()} ${s.partCount === 1 ? 'part' : 'parts'}` : '';
+  return [size, parts].filter(Boolean).join(' · ');
+}
+
 export function CatalogPreview({ item }: { item: Pick<CatalogItem, 'previewUrl' | 'title' | 'coverUrl' | 'customCover'> }) {
   const [failed, setFailed] = useState(false);
   const custom = !!item.customCover && !!item.coverUrl;
@@ -223,7 +268,7 @@ export function AddDialog({ item, onClose, onAdded }: { item: CatalogItem; onClo
   const add = useMutation({
     mutationFn: () => api.catalog.add(item.id, owner || undefined),
     onSuccess: (r) => {
-      void qc.invalidateQueries({ queryKey: [r.kind === 'module' ? 'modules' : 'custom-parts'] });
+      void qc.invalidateQueries({ queryKey: [r.kind === 'module' ? 'modules' : r.kind === 'part' ? 'custom-parts' : r.kind === 'layout' ? 'layouts' : 'venues'] });
       if (r.kind === 'part') void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 }).catch(() => undefined);
       void qc.invalidateQueries({ queryKey: ['catalog-items'] });
       onAdded?.(r.id);
@@ -231,19 +276,28 @@ export function AddDialog({ item, onClose, onAdded }: { item: CatalogItem; onClo
     onError: (e: Error) => setError(e.message),
   });
   const isModule = item.kind === 'module';
+  const label = KIND_LABEL[item.kind];
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
       <div role="dialog" aria-modal="true" aria-label={`Add ${item.title}`} className="w-full max-w-md space-y-4 rounded-section border border-line bg-panel p-5 text-sm">
-        <h3 className="text-lg font-semibold">{isModule ? 'Add to my modules' : 'Add to my parts'}</h3>
+        <h3 className="text-lg font-semibold">{label.add}</h3>
         {add.data ? (
           <>
             <p role="status">
-              “{item.title}” is now in your {isModule ? 'modules' : 'parts'}. It’s your own copy: change it as you like.
+              “{item.title}” is now in your {label.mine}. It’s your own copy: change it as you like.
             </p>
             <div className="flex justify-end gap-2">
-              {isModule && (
-                <Link to={`/modules/${add.data.id}`} className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
+              {(isModule || item.kind === 'layout') && (
+                <Link
+                  to={isModule ? `/modules/${add.data.id}` : `/editor/${add.data.id}`}
+                  className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover"
+                >
                   Open it
+                </Link>
+              )}
+              {item.kind === 'venue' && (
+                <Link to={`/?newLayoutVenue=${encodeURIComponent(add.data.id)}`} className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
+                  Start a layout in it
                 </Link>
               )}
               <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">

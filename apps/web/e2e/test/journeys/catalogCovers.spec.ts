@@ -127,4 +127,8 @@ test('an owner uploads a cover with a background colour; it is reviewed, then sh
   await expect(dlg.getByRole('status')).toContainText('Back to the drawn picture');
   await dlg.getByRole('button', { name: 'Done' }).click();
   await expect(card.locator('img[src*="/cover?"]')).toHaveCount(0);
+
+  // Leave the catalog as other specs expect it: without this item.
+  const item = ((await (await page.request.get('/api/catalog/mine')).json()) as { items: { id: string; title: string }[] }).items.find((i) => i.title === TITLE)!;
+  expect((await page.request.post(`/api/catalog/items/${item.id}/withdraw`)).ok()).toBe(true);
 });

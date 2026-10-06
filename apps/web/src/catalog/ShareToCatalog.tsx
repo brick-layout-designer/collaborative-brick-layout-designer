@@ -10,13 +10,14 @@ import { ItemCoverDialog } from './ItemCover';
 /** What the catalogs know about your things: shared items by source, and copies by id. */
 export function useCatalogStatus() {
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
-  const on = !!(settings.data?.modules || settings.data?.parts);
+  const on = !!(settings.data?.modules || settings.data?.parts || settings.data?.layouts || settings.data?.venues);
   const mine = useQuery({ queryKey: ['catalog-mine'], queryFn: api.catalog.mine, enabled: on });
   const copies = useQuery({ queryKey: ['catalog-copies'], queryFn: api.catalog.copies, enabled: on });
   const bySource = new Map((mine.data?.items ?? []).map((i) => [`${i.kind}:${i.sourceId}`, i]));
   const byCopy = new Map((copies.data?.copies ?? []).map((c) => [c.copyId, c]));
   return {
-    enabled: (kind: CatalogKind) => (kind === 'module' ? !!settings.data?.modules : !!settings.data?.parts),
+    enabled: (kind: CatalogKind) =>
+      kind === 'module' ? !!settings.data?.modules : kind === 'part' ? !!settings.data?.parts : kind === 'layout' ? !!settings.data?.layouts : !!settings.data?.venues,
     review: settings.data?.review ?? 'moderators',
     shared: (kind: CatalogKind, sourceId: string) => bySource.get(`${kind}:${sourceId}`),
     copy: (id: string) => byCopy.get(id),
@@ -80,6 +81,7 @@ export function ShareToCatalogDialog({
   existing,
   onClose,
   clubReview,
+  makeThumbnail,
 }: {
   kind: CatalogKind;
   sourceId: string;
@@ -89,6 +91,8 @@ export function ShareToCatalogDialog({
   onClose: () => void;
   /** A trusted club's name, when its own admins and managers review this. */
   clubReview?: string | undefined;
+  /** A layout's picture for its card (the editor draws it). */
+  makeThumbnail?: () => Promise<{ mime: string; data: string } | null>;
 }) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
@@ -100,8 +104,11 @@ export function ShareToCatalogDialog({
   const [error, setError] = useState<string | null>(null);
   const [coverOpen, setCoverOpen] = useState(false);
   const share = useMutation({
-    mutationFn: () =>
-      api.catalog.share({
+    mutationFn: async () => {
+      // A picture that can't be drawn doesn't stop the share: cards show a placeholder.
+      const thumbnail = makeThumbnail ? await makeThumbnail().catch(() => null) : null;
+      return api.catalog.share({
+        ...(thumbnail ? { thumbnail } : {}),
         kind,
         sourceId,
         title: title.trim(),
@@ -109,7 +116,8 @@ export function ShareToCatalogDialog({
         ...(description.trim() || !existing ? { description: description.trim() } : {}),
         ...(tags.trim() || !existing ? { tags: tags.split(',').map((t) => t.trim()).filter(Boolean) } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
-      }),
+      });
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['catalog-mine'] });
       void qc.invalidateQueries({ queryKey: ['catalog-items'] });
@@ -156,6 +164,8 @@ export function ShareToCatalogDialog({
           <>
             <p className="text-muted">
               A copy of it as it is now goes to the catalog. Later changes stay yours until you publish an update.
+              {kind === 'layout' ? ' Collaborators, comments, chat, file paths, the background picture and the venue’s notes stay private.' : ''}
+              {kind === 'venue' ? ' Notes on the plan stay private.' : ''}
               {review ? ' A moderator reviews it first.' : ''}
             </p>
             <label className="block">

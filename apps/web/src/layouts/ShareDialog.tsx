@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type InviteSummary } from '../api';
 import { HelpButton } from '../help/HelpButton';
+import { CatalogBadge, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { askConfirm, confirmDelete, showToast } from '../ui/ConfirmDialog';
 
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   onClose: () => void;
   /** The editor's "Share a picture" (pictures need the open map). */
   onSharePicture?: () => void;
+  /** The editor's "Share to the public catalog" (its picture needs the open map). */
+  onShareToCatalog?: () => void;
 }
 
 /**
@@ -29,7 +32,10 @@ export function ShareDialog({
   myUserId,
   onClose,
   onSharePicture,
+  onShareToCatalog,
 }: Props) {
+  const catalog = useCatalogStatus();
+  const shared = catalog.shared('layout', layoutId);
   const qc = useQueryClient();
   const list = useQuery({
     queryKey: ['collaborators', layoutId],
@@ -73,6 +79,18 @@ export function ShareDialog({
           >
             <span className="font-semibold">Share a picture</span>
             <span className="text-xs text-muted">Send a picture of the layout to anyone, no account needed</span>
+          </button>
+        )}
+
+        {isOwner && onShareToCatalog && catalog.enabled('layout') && (
+          <button
+            type="button"
+            onClick={onShareToCatalog}
+            className="flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line px-3 py-2 text-left hover:bg-soft"
+          >
+            <span className="font-semibold">{shared ? 'Publish a new version to the catalog' : 'Share to the public catalog'}</span>
+            <span className="text-xs text-muted">Everyone can look at a copy of it and copy it; this layout stays private</span>
+            {shared && <CatalogBadge item={shared} />}
           </button>
         )}
 
