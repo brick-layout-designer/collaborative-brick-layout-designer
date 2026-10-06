@@ -16,7 +16,6 @@ import { db, schema } from '../db/index.js';
 import { requireGlobalAdmin } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { invalidateAllSessions } from '../auth/session.js';
-import { notifyCredentialRevoked } from '../auth/revocation.js';
 import { revokeAllApiTokens } from '../auth/apiTokens.js';
 import { DESKTOP_MINIMUM, compareVersions, resetDesktopPolicy, resolvePolicy } from '../compat.js';
 import { parsePartXml } from '@cld/parts-catalog';
@@ -30,45 +29,13 @@ import { docHub } from '../ws/docHub.js';
 import { safeFetch } from '../utils/safeFetch.js';
 import { env } from '../env.js';
 import { backgroundJobs } from '../workers/jobs.js';
+import { EraseRefused, eraseUser } from '../privacy/accountDeletion.js';
 import { invalidatePrivacyCache, mergePrivacyPatch, privacySettingStates } from '../privacy/settings.js';
 import { DEMO_RESET_CHOICES, demoStatus, ensureDemoUser, isDemoUser, signOutDemo, type DemoResetEvery } from '../demo/demoAccount.js';
 import { demoItemCount, runDemoReset } from '../demo/reset.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
-}
-
-/**
- * Delete a user, first clearing the foreign keys that reference them
- * WITHOUT an ON DELETE action (0000_init: layouts / custom_parts /
- * modules.created_by, layout_transfers / module_transfers.initiated_by,
- * org_invites.invited_by). Without this, deleting anyone who ever created
- * an org-owned layout, sent an org invite or started a transfer failed
- * with a FOREIGN KEY constraint error (500).
- *
- * - created_by is NOT NULL, so it is re-attributed to the resource's
- *   current personal owner, or the acting admin for org-owned / global
- *   resources. Resources the user personally owns cascade away anyway.
- * - Transfers they initiated and org invites they sent are deleted: they
- *   carry the deleted user's authority (see the accept-time checks).
- *
- * Runs in one transaction so a failure leaves nothing half-done.
- */
-function deleteUserAndReassign(userId: string, actingAdminId: string): void {
-  db.transaction((tx) => {
-    for (const table of [schema.layouts, schema.customParts, schema.modules]) {
-      // created_by must name an account (FK), so it moves to the owner or the
-      // admin; the credit keeps reading "Builder #…" from deleted_author_id.
-      tx.update(table)
-        .set({ createdBy: sql`coalesce(${table.ownerUserId}, ${actingAdminId})`, deletedAuthorId: userId })
-        .where(eq(table.createdBy, userId))
-        .run();
-    }
-    tx.delete(schema.layoutTransfers).where(eq(schema.layoutTransfers.initiatedBy, userId)).run();
-    tx.delete(schema.moduleTransfers).where(eq(schema.moduleTransfers.initiatedBy, userId)).run();
-    tx.delete(schema.orgInvites).where(eq(schema.orgInvites.invitedBy, userId)).run();
-    tx.delete(schema.users).where(eq(schema.users.id, userId)).run();
-  });
 }
 
 interface UserListQuery {
@@ -269,25 +236,22 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.users.id, req.params.id))
       .get();
     if (!target) return reply.code(404).send({ error: 'not_found' });
-    // Their personal layouts go with them (ON DELETE CASCADE); remember
-    // which so open editor sockets on those layouts can be shut.
-    const ownedLayouts = await db
-      .select({ id: schema.layouts.id })
-      .from(schema.layouts)
-      .where(eq(schema.layouts.ownerUserId, target.id));
-    deleteUserAndReassign(target.id, me.id);
-    // Their sessions cascaded away; drop any open realtime sockets too.
-    notifyCredentialRevoked({ userId: target.id });
-    await docHub.closeMany(ownedLayouts.map((l) => l.id));
-    // Cascade handles sessions, oauth_accounts, org_members,
-    // owner_user_id columns (SET NULL or CASCADE per schema).
-    await writeAuditEvent({
-      resourceKind: 'user',
-      resourceId: target.id,
-      userId: me.id,
-      eventType: 'admin_user_delete',
-      payload: { targetEmail: target.email },
-    });
+    // Erased for good, the same as a person's own deletion after its wait:
+    // what they own alone goes, club things stay credited "Builder #…", the
+    // audit log keeps what happened without who (privacy/accountDeletion.ts).
+    try {
+      const done = await eraseUser(target.id, 'admin', me.id);
+      await writeAuditEvent({
+        resourceKind: 'user',
+        resourceId: target.id,
+        userId: me.id,
+        eventType: 'admin_user_delete',
+        payload: { ref: done?.ref ?? null },
+      });
+    } catch (err) {
+      if (err instanceof EraseRefused) return reply.code(409).send({ error: err.message });
+      throw err;
+    }
     return { ok: true };
   });
 
@@ -640,7 +604,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
           resourceKind: r.resourceKind,
           resourceId: r.resourceId,
           userId: r.userId,
-          userName: r.userId ? (names.get(r.userId) ?? null) : null,
+          userName: r.userId ? (names.get(r.userId) ?? null) : r.actorLabel,
           eventType: r.eventType,
           payload: safeParse(r.payload),
           createdAt: r.createdAt.getTime(),

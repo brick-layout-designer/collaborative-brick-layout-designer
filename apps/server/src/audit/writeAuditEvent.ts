@@ -108,7 +108,14 @@ export type AuditEventType =
   // Privacy: a data download was asked for ('data_export', payload.reason
   // 'self' | 'admin' | 'club') or downloaded. Subject is the person or club.
   | 'data_export'
-  | 'data_export_download';
+  | 'data_export_download'
+  // Deleting an account: asked for (the waiting time starts), cancelled
+  // by signing back in, and erased for good (payload.ref is the
+  // "Deleted user #…" the site shows from then on; the erased account's
+  // own rows carry it in actor_label).
+  | 'deletion_request'
+  | 'deletion_cancel'
+  | 'account_erased';
 
 export type AuditResourceKind =
   | 'layout'

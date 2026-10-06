@@ -42,6 +42,9 @@ describe('DELETE /api/admin/users/:id', () => {
     const h = { cookie: u.cookie };
 
     await app.inject({ method: 'POST', url: '/api/orgs', headers: h, payload: { name: 'Org' } });
+    // Bob is in the club too, so it carries on without u.
+    const org = await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'org')).get();
+    await db.insert(schema.orgMembers).values({ orgId: org!.id, userId: bob.id, role: 'member', joinedAt: new Date() });
     const orgLayout = (
       await app.inject({ method: 'POST', url: '/api/layouts', headers: h, payload: { orgSlug: 'org' } })
     ).json().id as string;
@@ -65,11 +68,15 @@ describe('DELETE /api/admin/users/:id', () => {
     expect(res.statusCode).toBe(200);
 
     expect(await db.select().from(schema.users).where(eq(schema.users.id, u.id)).get()).toBeUndefined();
-    // Org-owned content survives, re-attributed to the acting admin.
+    // Org-owned content survives, credited to the deleted author ("Builder #…")
+    // and standing in under the club's remaining member, now its admin.
     const ol = await db.select().from(schema.layouts).where(eq(schema.layouts.id, orgLayout)).get();
-    expect(ol!.createdBy).toBe(admin.id);
+    expect(ol!.createdBy).toBe(bob.id);
+    expect(ol!.deletedAuthorId).toBe(u.id);
     const om = await db.select().from(schema.modules).where(eq(schema.modules.id, orgModule)).get();
-    expect(om!.createdBy).toBe(admin.id);
+    expect(om!.createdBy).toBe(bob.id);
+    const bobRole = await db.select().from(schema.orgMembers).where(eq(schema.orgMembers.userId, bob.id)).get();
+    expect(bobRole!.role).toBe('admin');
     // Personally-owned content goes to its current owner.
     const gl = await db.select().from(schema.layouts).where(eq(schema.layouts.id, given)).get();
     expect(gl!.createdBy).toBe(bob.id);

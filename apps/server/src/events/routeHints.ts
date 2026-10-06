@@ -378,6 +378,7 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'DELETE /api/tokens/:id': me,
   'PUT /api/me/preferences': me,
   'POST /api/me/privacy/exports': me,
+  'POST /api/me/deletion': adminOnly('admin', (c) => c.userId),
 
   // ---- layouts
   'POST /api/layouts': resource('layout', { reply: 'id' }),

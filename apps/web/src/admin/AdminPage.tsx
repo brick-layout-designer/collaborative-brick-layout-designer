@@ -264,9 +264,10 @@ function UsersTab({ selfId }: { selfId: string }) {
                           disabled={isSelf}
                           onClick={async () => {
                             const ok = await confirmDelete(u.email, {
-                              title: `Delete the account ${u.email}?`,
-                              removes: 'The account and everything it owns (layouts, parts, modules, venues) are deleted.',
-                              keeps: 'Clubs keep their own things.',
+                              title: `Erase the account ${u.email} now?`,
+                              removes:
+                                'The account and everything it owns alone (layouts, parts, modules, venues, collections) are erased now, with no waiting time. A club it was the last admin of gets a new admin; a club with nobody else in it goes too.',
+                              keeps: 'Clubs keep the things it made, credited “Builder #…”. The audit log keeps what happened, as “Deleted user #…”.',
                               typeName: true,
                             });
                             if (ok) removeUser.mutate(u.id, { onSuccess: () => toastDeleted(u.email) });

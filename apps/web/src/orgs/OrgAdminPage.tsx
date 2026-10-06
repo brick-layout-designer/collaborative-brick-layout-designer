@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { useHashScroll } from '../ui/useHashScroll';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type OrgPartLibrary } from '../api';
 import {
@@ -30,9 +31,13 @@ export function OrgAdminPage() {
 }
 
 type Tab = 'people' | 'settings' | 'parts' | 'review' | 'activity';
+const TAB_IDS: readonly Tab[] = ['people', 'settings', 'parts', 'review', 'activity'];
 
 function OrgAdmin({ slug }: { slug: string }) {
-  const [tab, setTab] = useState<Tab>('people');
+  // ?tab=settings#hand-over (the "Delete my account" guide links there).
+  const [search] = useSearchParams();
+  const asked = search.get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(asked && TAB_IDS.includes(asked) ? asked : 'people');
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const detail = useQuery({ queryKey: ['org', slug], queryFn: () => api.orgs.get(slug) });
   const members = useQuery({ queryKey: ['org-members', slug], queryFn: () => api.orgs.members(slug) });
@@ -45,6 +50,7 @@ function OrgAdmin({ slug }: { slug: string }) {
   const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
   const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
   const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
+  useHashScroll(!!detail.data && !!members.data);
 
   if (me.isLoading || detail.isLoading) {
     return <div className="grid h-screen place-items-center text-muted">Loading…</div>;

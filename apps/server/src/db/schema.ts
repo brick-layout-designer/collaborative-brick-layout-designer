@@ -37,6 +37,13 @@ export const users = sqliteTable('users', {
    * after this column was added.
    */
   lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }),
+  /**
+   * "Delete my account" (0026): when they asked, and when the account is
+   * erased for good (privacy/accountDeletion.ts). Both null unless a
+   * deletion is waiting. Signing in before `deletionDueAt` cancels it.
+   */
+  deletionRequestedAt: integer('deletion_requested_at', { mode: 'timestamp_ms' }),
+  deletionDueAt: integer('deletion_due_at', { mode: 'timestamp_ms' }),
 }, (t) => ({
   // The admin "new users" graph and the active-user counts.
   createdIdx: index('users_created_at_idx').on(t.createdAt),
@@ -505,6 +512,11 @@ export const auditEvents = sqliteTable(
   payload: text('payload').notNull(), // JSON string
   docVersion: integer('doc_version'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  /**
+   * Who did it, once their account is erased (0026): "Deleted user #abc123"
+   * (user_id is then null). Null while the account exists.
+   */
+  actorLabel: text('actor_label'),
   },
   (t) => ({
     // The two audit read paths: per-layout and per-(kind, id), newest first.
@@ -1198,3 +1210,28 @@ export const dataExports = sqliteTable(
   }),
 );
 export type DataExport = typeof dataExports.$inferSelect;
+
+/**
+ * Erased accounts and clubs (0026): the minimal record that an erasure
+ * happened, with no personal data. `ref` is the pseudonym the rest of the
+ * site now shows ("Deleted user #abc123"); `how` says who asked; `counts`
+ * is how many things went (numbers only). Kept for the Privacy setting's
+ * "erasure records" days.
+ */
+export const erasures = sqliteTable(
+  'erasures',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind', { enum: ['user', 'org'] }).notNull(),
+    ref: text('ref').notNull(),
+    /** 'self' (Delete my account, after the waiting time), 'admin' (Admin › Users), 'request' (a logged privacy request). */
+    how: text('how', { enum: ['self', 'admin', 'request'] }).notNull(),
+    requestedAt: integer('requested_at', { mode: 'timestamp_ms' }),
+    erasedAt: integer('erased_at', { mode: 'timestamp_ms' }).notNull(),
+    counts: text('counts').notNull().default('{}'),
+  },
+  (t) => ({
+    erasedIdx: index('erasures_erased_at_idx').on(t.erasedAt),
+  }),
+);
+export type Erasure = typeof erasures.$inferSelect;

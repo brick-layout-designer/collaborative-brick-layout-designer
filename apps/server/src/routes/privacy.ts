@@ -3,6 +3,8 @@
 //   GET  /api/me/privacy/exports                 my data downloads, and when I may ask again
 //   POST /api/me/privacy/exports                 build a new one (one per Privacy setting's hours)
 //   GET  /api/privacy/exports/:id/download       the zip (binary): only whoever asked for it
+//   GET  /api/me/deletion                        what deleting my account would do, and what to do first
+//   POST /api/me/deletion                        delete my account (typed email or name); it waits first
 //
 // Downloads are built in the background (privacy/exports.ts); the person
 // gets a notice and an email when theirs is ready.
@@ -11,11 +13,12 @@ import { createReadStream, existsSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { describeExport, exportPath, listExports, nextExportAllowedAt, startExport } from '../privacy/exports.js';
 import { privacySettings } from '../privacy/settings.js';
+import { clearSessionCookie, requireUser } from '../auth/cookie.js';
+import { confirmMatches, deletionSummary, requestDeletion } from '../privacy/accountDeletion.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -49,6 +52,28 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
     const row = await startExport({ subject, requestedBy: user.id, reason: 'self' });
     await writeAuditEvent({ resourceKind: 'user', resourceId: user.id, userId: user.id, eventType: 'data_export', payload: { exportId: row.id, reason: 'self' } });
     return reply.code(202).send({ export: describeExport(row) });
+  });
+
+  // ---- Delete my account ----------------------------------------------------
+  app.get('/api/me/deletion', async (req) => {
+    const user = requireUser(req);
+    return deletionSummary(user);
+  });
+
+  app.post<{ Body: { confirm?: unknown } }>('/api/me/deletion', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const user = requireUser(req);
+    if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account', message: 'The demo account belongs to everyone, so it can’t be deleted.' });
+    if (!confirmMatches(user, req.body?.confirm)) {
+      return reply.code(400).send({ error: 'confirm_mismatch', message: 'Type your email address (or your name) exactly to confirm.' });
+    }
+    const summary = await deletionSummary(user);
+    if (summary.blockers.length) {
+      return reply.code(409).send({ error: 'deletion_blocked', message: summary.blockers.map((b) => b.text).join(' '), blockers: summary.blockers });
+    }
+    if (summary.pending) return { ok: true, dueAt: summary.pending.dueAt };
+    const { dueAt } = await requestDeletion(user);
+    clearSessionCookie(reply);
+    return reply.code(202).send({ ok: true, dueAt: dueAt.getTime() });
   });
 
   app.get<{ Params: { id: string } }>(
