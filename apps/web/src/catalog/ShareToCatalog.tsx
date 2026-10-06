@@ -8,16 +8,28 @@ import { api, type CatalogKind, type MyCatalogItem } from '../api';
 import { ItemCoverDialog } from './ItemCover';
 
 /** What the catalogs know about your things: shared items by source, and copies by id. */
+/**
+ * The shared demo account may look and add, but not share to the catalog
+ * or make collections (the server refuses), so those aren't offered to it.
+ */
+export function useIsDemo(): boolean {
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  return !!me.data?.user?.isDemoAccount;
+}
+
 export function useCatalogStatus() {
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
+  const demo = useIsDemo();
   const on = !!(settings.data?.modules || settings.data?.parts || settings.data?.layouts || settings.data?.venues);
   const mine = useQuery({ queryKey: ['catalog-mine'], queryFn: api.catalog.mine, enabled: on });
   const copies = useQuery({ queryKey: ['catalog-copies'], queryFn: api.catalog.copies, enabled: on });
   const bySource = new Map((mine.data?.items ?? []).map((i) => [`${i.kind}:${i.sourceId}`, i]));
   const byCopy = new Map((copies.data?.copies ?? []).map((c) => [c.copyId, c]));
   return {
+    /** Sharing this kind to the catalog, and collections of it, are on (and not for the demo account). */
     enabled: (kind: CatalogKind) =>
-      kind === 'module' ? !!settings.data?.modules : kind === 'part' ? !!settings.data?.parts : kind === 'layout' ? !!settings.data?.layouts : !!settings.data?.venues,
+      !demo &&
+      (kind === 'module' ? !!settings.data?.modules : kind === 'part' ? !!settings.data?.parts : kind === 'layout' ? !!settings.data?.layouts : !!settings.data?.venues),
     review: settings.data?.review ?? 'moderators',
     shared: (kind: CatalogKind, sourceId: string) => bySource.get(`${kind}:${sourceId}`),
     copy: (id: string) => byCopy.get(id),

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type InviteSummary } from '../api';
 import { clubsICanAddTo } from '../owners/OwnerControls';
 import { HelpButton } from '../help/HelpButton';
-import { CatalogBadge, useCatalogStatus } from '../catalog/ShareToCatalog';
+import { CatalogBadge, useCatalogStatus, useIsDemo } from '../catalog/ShareToCatalog';
 import { askConfirm, confirmDelete, showToast } from '../ui/ConfirmDialog';
 
 interface Props {
@@ -44,6 +44,10 @@ export function ShareDialog({
   });
 
   const isOwner = myRole === 'owner';
+  // The shared demo account can't invite, hand over or make a link (the
+  // server says no): it gets a picture to share, and a word on why.
+  const demo = useIsDemo();
+  const canShare = isOwner && !demo;
 
   return (
     <div className="fixed inset-0 grid place-items-center bg-black/60 p-3 sm:p-4">
@@ -58,7 +62,9 @@ export function ShareDialog({
           <div className="min-w-0">
             <h3 className="break-words text-lg font-semibold">Share "{layoutTitle}"</h3>
             <p className="text-xs text-muted">
-              {isOwner
+              {demo
+                ? 'The demo account can’t invite people or make a share link. Make your own account to share layouts.'
+                : isOwner
                 ? 'Invite people by email or manage existing access.'
                 : `You have ${myRole} access. Only the owner can change sharing.`}
             </p>
@@ -95,16 +101,16 @@ export function ShareDialog({
           </button>
         )}
 
-        {isOwner && (
+        {canShare && (
           <InviteForm
             layoutId={layoutId}
             onInvited={() => qc.invalidateQueries({ queryKey: ['collaborators', layoutId] })}
           />
         )}
 
-        {isOwner && <TransferSection layoutId={layoutId} />}
+        {canShare && <TransferSection layoutId={layoutId} />}
 
-        {isOwner && <PublicShareSection layoutId={layoutId} />}
+        {canShare && <PublicShareSection layoutId={layoutId} />}
 
         <AuditPanel layoutId={layoutId} />
 

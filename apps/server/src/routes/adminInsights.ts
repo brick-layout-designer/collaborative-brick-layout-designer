@@ -14,7 +14,7 @@
 // the numbers come from the daily rollup (metrics/rollup.ts), and each
 // response says since when it has been collecting.
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { existsSync, readdirSync, statSync, statfsSync } from 'node:fs';
@@ -747,7 +747,9 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.post<{ Body: { display?: unknown } }>(
     '/api/metrics/client',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    // Per person (else per address): a club on one show Wi-Fi shares an
+    // address, and refusing their beacons raised "refused requests" alerts.
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } },
     async (req, reply) => {
       const user = req.user;
       const display = req.body?.display;

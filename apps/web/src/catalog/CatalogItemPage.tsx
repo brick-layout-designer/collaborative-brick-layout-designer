@@ -17,6 +17,7 @@ import { AddDialog, KIND_LABEL, summaryText } from './CatalogPage';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { ItemCoverDialog } from './ItemCover';
 import { TrustedBadge } from './TrustedBadge';
+import { useIsDemo } from './ShareToCatalog';
 
 const btn = 'tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft';
 const primary = 'tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover';
@@ -88,6 +89,7 @@ function ItemPage({ id }: { id: string }) {
 /** The details card: who, how big, what's in it, and what you can do. */
 function InfoPanel({ item, signedIn }: { item: CatalogItem & { club?: { slug: string; name: string } | null }; signedIn: boolean }) {
   const navigate = useNavigate();
+  const demo = useIsDemo();
   const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 640);
   const [adding, setAdding] = useState(false);
   const [toCollection, setToCollection] = useState<CollectionTarget | null>(null);
@@ -143,9 +145,11 @@ function InfoPanel({ item, signedIn }: { item: CatalogItem & { club?: { slug: st
                       Start a layout in this venue
                     </button>
                   )}
-                  <button type="button" className={btn} onClick={() => setToCollection({ kind: 'catalog', item })}>
-                    Add to a collection…
-                  </button>
+                  {!demo && (
+                    <button type="button" className={btn} onClick={() => setToCollection({ kind: 'catalog', item })}>
+                      Add to a collection…
+                    </button>
+                  )}
                   {isMine && (
                     <button type="button" className={btn} onClick={() => setCover(true)}>
                       Cover picture…

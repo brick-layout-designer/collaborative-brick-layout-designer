@@ -168,6 +168,22 @@ export function CoverPicker({
     composeCover(ctx, pic.src, pic.size, crop, background, c.width, c.height);
   }, [pic, crop, background]);
 
+  // The mouse wheel zooms the preview, and only that: a listener React
+  // would add is passive, so the dialog behind it scrolled too.
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c || !pic) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = c.getBoundingClientRect();
+      const at = { x: ((e.clientX - r.left) / r.width) * CARD_W, y: ((e.clientY - r.top) / r.height) * CARD_H };
+      setCrop((cr) => zoomAbout(cr, cr.zoom * Math.exp(-e.deltaY / 500), at.x, at.y, pic.size));
+    };
+    c.addEventListener('wheel', onWheel, { passive: false });
+    return () => c.removeEventListener('wheel', onWheel);
+    // The canvas comes and goes with the mode.
+  }, [pic, mode]);
+
   handle.current = {
     hasNew: () => mode === 'upload' && !!pic,
     compose: async () => {
@@ -280,10 +296,6 @@ export function CoverPicker({
                 }}
                 onPointerUp={(e) => pointers.current.delete(e.pointerId)}
                 onPointerCancel={(e) => pointers.current.delete(e.pointerId)}
-                onWheel={(e) => {
-                  const at = toCard(e.clientX, e.clientY);
-                  setCrop((c) => zoomAbout(c, c.zoom * Math.exp(-e.deltaY / 500), at.x, at.y, pic.size));
-                }}
                 onKeyDown={(e) => {
                   const step = e.shiftKey ? 60 : 15;
                   const move: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };

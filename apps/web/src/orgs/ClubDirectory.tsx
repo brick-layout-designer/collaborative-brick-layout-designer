@@ -45,6 +45,7 @@ export function JoinControls({ club }: { club: ClubSummary }) {
     onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
 
   let controls;
   if (club.myStatus !== null && club.myStatus !== 'requested') {
@@ -53,6 +54,10 @@ export function JoinControls({ club }: { club: ClubSummary }) {
         Open
       </Link>
     );
+  } else if (me.data?.user?.isDemoAccount) {
+    // The shared demo account can't join (the server says no): say so
+    // instead of offering a button that fails.
+    controls = <p className="text-xs text-muted">The demo account can’t join clubs. Make your own account to join one.</p>;
   } else if (club.myStatus === 'requested') {
     controls = (
       <div className="flex flex-wrap items-center gap-2">

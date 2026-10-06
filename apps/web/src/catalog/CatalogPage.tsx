@@ -17,6 +17,7 @@ import { ItemCoverDialog } from './ItemCover';
 
 export function CatalogPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const demo = !!me.data?.user?.isDemoAccount;
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
   const [params, setParams] = useSearchParams();
   const user = me.data?.user ?? null;
@@ -182,14 +183,16 @@ export function CatalogPage() {
                       >
                         {KIND_LABEL[kind].add}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setToCollection({ kind: 'catalog', item: it })}
-                        aria-label={`${it.title}: add to a collection`}
-                        className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
-                      >
-                        Add to a collection…
-                      </button>
+                      {!demo && (
+                        <button
+                          type="button"
+                          onClick={() => setToCollection({ kind: 'catalog', item: it })}
+                          aria-label={`${it.title}: add to a collection`}
+                          className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-soft"
+                        >
+                          Add to a collection…
+                        </button>
+                      )}
                       {mineIds.has(it.id) && (
                         <button
                           type="button"

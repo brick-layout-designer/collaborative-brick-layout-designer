@@ -17,6 +17,7 @@ import { ModuleThumb } from '../modules/ModuleThumb';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { CreditLine, ReturnMenuItems } from '../owners/OwnerControls';
 import { AddToCollectionDialog } from '../catalog/AddToCollection';
+import { useIsDemo } from '../catalog/ShareToCatalog';
 import { IconSizeSlider, useListIconSize, useResizeGestures } from './listIconSize';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { MODULE_DELETE_WORDING } from '../ui/deleteWording';
@@ -37,7 +38,9 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
   const [inserting, setInserting] = useState<string | null>(null);
   const [toCollection, setToCollection] = useState<ModuleSummary | null>(null);
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
-  const collectionsOn = !!settings.data && (settings.data.modules || settings.data.parts);
+  const demo = useIsDemo();
+  // Not for the demo account: the server keeps collections to real accounts.
+  const collectionsOn = !!settings.data && (settings.data.modules || settings.data.parts) && !demo;
 
   // Picture size, shared with the Parts list: slider, Ctrl/⌘ + wheel or pinch.
   const [iconSize, setIconSize] = useListIconSize();
