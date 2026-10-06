@@ -110,12 +110,14 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   await page.goto('/catalog');
   await expect(page.getByText('Nothing here yet.')).toBeVisible();
 
-  // The moderator sees who sent it and approves it.
+  // The moderator sees who sent it, by their public name (only site
+  // admins see the address), and approves it.
   await as(page, MOD, 'Mo Derator');
   await page.goto('/');
   await fromSettingsMenu(page, /^Moderation/);
   const entry = page.getByTestId('moderation-entry').filter({ hasText: 'Coal stage' });
-  await expect(entry).toContainText(OWNER);
+  await expect(entry).toContainText('From Owner Olive, sent by Owner Olive');
+  await expect(entry).not.toContainText(OWNER);
   await expect(page.getByRole('button', { name: 'users' })).toHaveCount(0);
   await entry.getByRole('button', { name: 'Approve Coal stage' }).click();
   await expect(entry).toHaveCount(0);

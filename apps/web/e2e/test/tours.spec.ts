@@ -10,7 +10,11 @@ import { signIn } from '../helpers';
 import catalogue from '../../src/tours/tours.json' with { type: 'json' };
 
 const ts = Date.now();
-const tour = (id: string) => catalogue.tours.find((t) => t.id === id)!;
+/** A tour as the web app shows it: without its desktop-only steps (tours.ts). */
+const tour = (id: string) => {
+  const t = catalogue.tours.find((x) => x.id === id)!;
+  return { ...t, steps: t.steps.filter((s) => !('apps' in s) || (s.apps as string[]).includes('web')) };
+};
 const card = (page: Page) => page.getByTestId('tour').getByRole('dialog');
 
 async function prefs(page: Page): Promise<string[]> {
