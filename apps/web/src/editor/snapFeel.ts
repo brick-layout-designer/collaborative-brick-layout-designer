@@ -6,7 +6,7 @@
 // (test/fixtures/snap-vectors.json).
 //
 // The rules:
-//   - Reach is a distance on screen (about 14 px), turned into studs with
+//   - Reach is a distance on screen (about 14 px; 28 px for a finger), turned into studs with
 //     the current zoom and kept between 0.5 and 4 studs. It no longer
 //     depends on the grid. The Snap strength setting scales it.
 //   - Once snapped, a part stays on that target until its connection is
@@ -28,8 +28,10 @@
 //     the snapped pose. Level targets prefer the smaller turn.
 
 export const SNAP_FEEL = {
-  /** Reach on screen, CSS px. */
+  /** Reach on screen, CSS px, for a mouse or pen. */
   reachScreenPx: 14,
+  /** Reach on screen, CSS px, for a finger (a coarse pointer). */
+  reachScreenPxCoarse: 28,
   minReachStuds: 0.5,
   maxReachStuds: 4,
   /** Stay snapped until the connection is this many reaches away. */
@@ -66,10 +68,15 @@ export function isSnapStrength(v: unknown): v is SnapStrength {
  * screen pixels per stud: the screen reach in studs, kept between the
  * limits, times the strength. 0 when snapping is off.
  */
-export function snapReachStuds(screenPxPerStud: number, strength: SnapStrength = DEFAULT_SNAP_STRENGTH): number {
+export function snapReachStuds(
+  screenPxPerStud: number,
+  strength: SnapStrength = DEFAULT_SNAP_STRENGTH,
+  coarse = false,
+): number {
   const scale = SNAP_STRENGTH_SCALE[strength] ?? 1;
   if (scale <= 0) return 0;
-  const raw = screenPxPerStud > 0 && Number.isFinite(screenPxPerStud) ? SNAP_FEEL.reachScreenPx / screenPxPerStud : SNAP_FEEL.maxReachStuds;
+  const px = coarse ? SNAP_FEEL.reachScreenPxCoarse : SNAP_FEEL.reachScreenPx;
+  const raw = screenPxPerStud > 0 && Number.isFinite(screenPxPerStud) ? px / screenPxPerStud : SNAP_FEEL.maxReachStuds;
   const base = Math.min(SNAP_FEEL.maxReachStuds, Math.max(SNAP_FEEL.minReachStuds, raw));
   return base * scale;
 }

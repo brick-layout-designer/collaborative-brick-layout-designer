@@ -5,7 +5,8 @@ import { useEditorStore } from './editorStore';
 import { studToPx } from './render/coords';
 import { snapReachStuds } from './snapFeel';
 
-export function liveSnapReach(): number {
+/** `coarse`: a finger is dragging (it gets the bigger reach). */
+export function liveSnapReach(coarse = false): number {
   const { zoom, connectionSnap } = useEditorStore.getState();
-  return snapReachStuds(studToPx() * zoom, connectionSnap);
+  return snapReachStuds(studToPx() * zoom, connectionSnap, coarse);
 }

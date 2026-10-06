@@ -25,7 +25,8 @@ import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
 import { linkKeys, liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
-import { SnapSession, applyGroupTurn, snapBypassed, type GroupTurn } from '../snapFeel';
+import { SnapSession, applyGroupTurn, holdReach, snapBypassed, type GroupTurn } from '../snapFeel';
+import { snapTraceEnabled, traceFrame, traceStart } from '../snapTrace';
 import { liveSnapReach } from '../liveSnapReach';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
@@ -431,22 +432,26 @@ const BrickGlyph = memo(function BrickGlyph({
   /** A finger on the part: grab the connection nearest it, as a mouse press does. */
   function handleTouchStart(e: KonvaEventObject<TouchEvent>) {
     grabConnRef.current = -1;
+    pointerKindRef.current = 'touch';
     if (isViewer || tool !== 'select' || e.evt.touches.length !== 1) return;
     const stage = e.target.getStage();
     const ptr = stage?.getPointerPosition();
     if (!stage || !ptr) return;
     const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+    holdAt(p);
     const idx = nearestConnectionIndex(brick, meta, p.x / studToPx(), p.y / studToPx(), grabKeys());
     if (idx >= 0) grabConnRef.current = idx;
   }
 
   function handleMouseDown(e: KonvaEventObject<MouseEvent>) {
     grabConnRef.current = -1;
+    pointerKindRef.current = 'mouse';
     if (isViewer || tool !== 'select' || e.evt.button !== 0 || outside) return;
     const stage = e.target.getStage();
     const ptr = stage?.getPointerPosition();
     if (!stage || !ptr) return;
     const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+    holdAt(p);
 
     // The second press of a double-click on a hinged chain starts a flex
     // move (desktop MapView::mouseDoubleClickEvent → startFlexMove).
@@ -551,11 +556,42 @@ const BrickGlyph = memo(function BrickGlyph({
   const snapSessionRef = useRef<SnapSession | null>(null);
   /** The leader's centre where the pointer has it, before any snap (studs). */
   const rawCentreRef = useRef<{ x: number; y: number } | null>(null);
+  /**
+   * Pointer minus the leader's centre at the press (studs). The raw centre
+   * is the pointer less this, every frame: never read back from the node,
+   * which stands where the last snap put (and turned) it. Konva leaves the
+   * node there when a touchmove brings no new position (a finger's
+   * pressure changing), and reading that as the pointer's place made the
+   * snap let go and take hold again on every such move.
+   */
+  const grabOffsetRef = useRef<{ x: number; y: number } | null>(null);
+
+  /** The press: remember where the pointer holds the part (stage px `p`). */
+  function holdAt(p: { x: number; y: number }) {
+    const at = pivotOf(brick, meta);
+    grabOffsetRef.current = { x: p.x / studToPx() - at.x, y: p.y / studToPx() - at.y };
+  }
+
+  /** The pointer on the map in studs, or null. */
+  function pointerStuds(stage: Konva.Stage | null | undefined): { x: number; y: number } | null {
+    const ptr = stage?.getPointerPosition();
+    if (!stage || !ptr) return null;
+    const p = stage.getAbsoluteTransform().copy().invert().point(ptr);
+    return { x: p.x / studToPx(), y: p.y / studToPx() };
+  }
 
   function handleDragStart(e: KonvaEventObject<DragEvent>) {
     snapOrientRef.current = null;
     snapSessionRef.current = new SnapSession();
     rawCentreRef.current = null;
+    traceStart(performance.now());
+    // Where the pointer held the leader: taken on the press (as Konva
+    // takes its drag offset), else now.
+    if (!grabOffsetRef.current) {
+      const p = pointerStuds(e.target.getStage());
+      const at = pivotOf(brick, meta);
+      grabOffsetRef.current = p ? { x: p.x - at.x, y: p.y - at.y } : null;
+    }
     moduleOutlineRef.current = null;
     if (isViewer) return;
     if (tool !== 'select') return;
@@ -660,17 +696,55 @@ const BrickGlyph = memo(function BrickGlyph({
    * rest of the map; for a multi-brick drag, every other selected
    * brick gets translated by the SAME delta so the group moves rigidly.
    */
+  /** The pointer that is dragging: a finger snaps from a bigger reach. */
+  const pointerKindRef = useRef<'mouse' | 'touch'>('mouse');
+
+  /** Record this drag frame for the snap trace (snapTrace.ts; off unless switched on). */
+  function trace(node: Konva.Node, raw: { x: number; y: number }, result: DragSnapResult, drop = false) {
+    if (!snapTraceEnabled()) return;
+    const ptr = node.getStage()?.getPointerPosition();
+    const session = snapSessionRef.current;
+    const reach = liveSnapReach(pointerKindRef.current === 'touch');
+    traceFrame(
+      performance.now(),
+      {
+        kind: 'drag',
+        pointer: pointerKindRef.current,
+        px: ptr?.x ?? NaN,
+        py: ptr?.y ?? NaN,
+        rawX: raw.x,
+        rawY: raw.y,
+        drawnX: node.x() / studToPx(),
+        drawnY: node.y() / studToPx(),
+        rot: node.rotation(),
+        speed: session ? Math.round(session.meter.speed()) : 0,
+        fast: session ? session.meter.isFast() : false,
+        reach,
+        hold: holdReach(reach),
+        target: session?.lock?.targetKey ?? null,
+        dist: result.snapDist,
+      },
+      drop,
+    );
+  }
+
   function handleDragMove(e: KonvaEventObject<DragEvent>) {
     if (isViewer) return;
     if (tool !== 'select') return;
 
     const node = e.target;
-    // Konva has just put the node where the pointer has it.
-    rawCentreRef.current = { x: node.x() / studToPx(), y: node.y() / studToPx() };
+    // Where the pointer has the leader: the pointer less the grab offset.
+    const p = pointerStuds(node.getStage());
+    const off = grabOffsetRef.current;
+    rawCentreRef.current =
+      p && off ? { x: p.x - off.x, y: p.y - off.y } : { x: node.x() / studToPx(), y: node.y() / studToPx() };
+    if (isTouchEvent(e.evt)) pointerKindRef.current = 'touch';
     const ptr = node.getStage()?.getPointerPosition();
     if (ptr) {
       if (!snapSessionRef.current) snapSessionRef.current = new SnapSession();
-      snapSessionRef.current.sample(ptr.x, ptr.y, performance.now());
+      // The event's own time: a slow page handles several moves at once,
+      // which must not look like a burst of speed.
+      snapSessionRef.current.sample(ptr.x, ptr.y, e.evt.timeStamp || performance.now());
     }
     dragFrame(node, snapBypassed(e.evt));
   }
@@ -689,6 +763,7 @@ const BrickGlyph = memo(function BrickGlyph({
     const stage = node.getStage();
     const ptr = stage?.getPointerPosition();
     const result = snapLeader(node, raw, bypass, false);
+    trace(node, raw, result);
     // Too fast to snap: if the pointer stops here, snap shortly after.
     clearSettle();
     const session = snapSessionRef.current;
@@ -784,7 +859,8 @@ const BrickGlyph = memo(function BrickGlyph({
         mouseStudY,
         orientation: brick.orientation,
         snapStepStuds: useEditorStore.getState().snapStepStuds,
-        reach: liveSnapReach(),
+        // A finger gets the bigger reach (and with it the bigger hold).
+        reach: liveSnapReach(pointerKindRef.current === 'touch'),
         ...(session ? { session } : {}),
         ...(bypass ? { bypass: true } : {}),
         ...(final ? { final: true } : {}),
@@ -865,6 +941,7 @@ const BrickGlyph = memo(function BrickGlyph({
     let finalSnap: DragSnapResult | null = null;
     if (!isViewer && tool === 'select' && rawCentreRef.current) {
       finalSnap = snapLeader(e.target, rawCentreRef.current, snapBypassed(e.evt), true);
+      trace(e.target, rawCentreRef.current, finalSnap, true);
     }
     const wasSnapped = finalSnap ? finalSnap.snappedToConnection : useEditorStore.getState().liveSnap !== null;
     // Back from the drag layer, where they were in their sheets.
@@ -873,6 +950,7 @@ const BrickGlyph = memo(function BrickGlyph({
     clearSettle();
     snapSessionRef.current = null;
     rawCentreRef.current = null;
+    grabOffsetRef.current = null;
     useEditorStore.getState().setLiveSnap(null);
     useEditorStore.getState().setSnapMoving(null);
     snapHintRef.current = null;

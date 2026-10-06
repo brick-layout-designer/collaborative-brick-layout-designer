@@ -448,3 +448,88 @@ test.describe('bending flex track by touch', () => {
     await other.close();
   });
 });
+
+test.describe('bending flex track with a real, shaky finger', () => {
+  test.use(pixel7);
+
+  test('near the loose set the join takes hold once and never flickers off and on', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'uses CDP touch emulation');
+    test.slow(); // a slowed CPU
+    await page.addInitScript(() => localStorage.setItem('cld:snapTrace', '1'));
+    await signIn(page, `flextouch-shaky-${ts}-${seq++}@example.com`, 'Flex Toucher');
+    const sets = 4;
+    const bend = 5;
+    const last = String(900 + 2 * sets - 1);
+    const probe = await newLayout(page, flexRow(sets, 100, 60));
+    await page.goto(`/editor/${probe}`);
+    await expect.poll(() => shown(page).then((b) => b.size)).toBe(2 * sets);
+    const flat = await shown(page);
+    const fOff = sub({ x: flat.get('900')!.x, y: flat.get('900')!.y }, { x: 99.2, y: 60 });
+    const mOff = sub({ x: flat.get('901')!.x, y: flat.get('901')!.y }, { x: 100.8, y: 60 });
+    let at = connAt(flat.get('900')!, FEMALE.rail);
+    let turn = 0;
+    for (let k = 0; k < sets; k++) {
+      const joint = add(sub(at, rot(FEMALE.rail, turn)), rot(FEMALE.pivot, turn));
+      at = add(sub(joint, rot(MALE.pivot, turn + bend)), rot(MALE.rail, turn + bend));
+      turn += bend;
+    }
+    const fPivot = sub(at, rot(FEMALE.rail, turn));
+    const mPivot = sub(add(fPivot, rot(FEMALE.pivot, turn)), rot(MALE.pivot, turn));
+    const bricks = [...flexRow(sets, 100, 60), ...turnedSet([sub(fPivot, rot(fOff, turn)), sub(mPivot, rot(mOff, turn))], turn)];
+    const id = await newLayout(page, bricks);
+    const touch = await openAt(page, id, bricks.length, { x: 108, y: 61 });
+    const target = connAt((await shown(page)).get(String(900 + 2 * sets))!, FEMALE.rail);
+    await tap(page, touch, { x: 104, y: 60 });
+    await expect.poll(() => handleCount(page)).toBe(2);
+    const [, end] = await runEnds(page, '900', last);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    // A seeded wobble with uneven gaps and pressure-only moves (as Android
+    // Chrome sends them, at the same point).
+    let seed = 99;
+    const r = () => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed / 2147483648);
+    const samePoint = (p: Pt) =>
+      page.evaluate((q) => {
+        const target = document.querySelector('.konvajs-content canvas') ?? document.body;
+        const t = new Touch({ identifier: 0, target, clientX: q.x, clientY: q.y, force: 0.7 });
+        target.dispatchEvent(new TouchEvent('touchmove', { touches: [t], changedTouches: [t], targetTouches: [t], bubbles: true, cancelable: true }));
+      }, p);
+    const from = await toScreen(page, end);
+    const near = await toScreen(page, add(target, { x: -0.3, y: 0.2 }));
+    await touch('touchStart', [from]);
+    for (let i = 1; i <= 30; i++) {
+      const p = { x: from.x + ((near.x - from.x) * i) / 30 + (r() - 0.5) * 2, y: from.y + ((near.y - from.y) * i) / 30 + (r() - 0.5) * 2 };
+      await touch('touchMove', [p]);
+      if (i % 3 === 0) await samePoint(p);
+      await page.waitForTimeout(8 + Math.floor(r() * 33));
+    }
+    // Then out to the edge of the finger's reach (28 px) and hovering there,
+    // across that edge and back: the hold (1.6x) keeps it joined.
+    const z = await page.evaluate(() => (window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX());
+    const reach = Math.min(4, Math.max(0.5, 28 / (8 * z)));
+    const edge = await toScreen(page, add(target, { x: -reach, y: 0 }));
+    for (let i = 1; i <= 8; i++) {
+      await touch('touchMove', [{ x: near.x + ((edge.x - near.x) * i) / 8, y: near.y + ((edge.y - near.y) * i) / 8 }]);
+      await page.waitForTimeout(8 + Math.floor(r() * 33));
+    }
+    for (let i = 0; i < 30; i++) {
+      const p = { x: edge.x + (r() - 0.5) * 6, y: edge.y + (r() - 0.5) * 6 };
+      await touch('touchMove', [p]);
+      if (r() < 0.4) await samePoint(p);
+      await page.waitForTimeout(i % 15 === 14 ? 220 : 8 + Math.floor(r() * 33));
+    }
+    await touch('touchEnd', []);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
+    type F = { decision: string; target: string | null; kind: string };
+    const frames = (await page.evaluate(() => (window as unknown as { __cldSnapTrace: () => unknown[] }).__cldSnapTrace())) as F[];
+    expect(frames.every((f) => f.kind === 'flex')).toBe(true);
+    const dropTarget = frames.at(-1)!.target;
+    expect(dropTarget, 'joined on release').not.toBeNull();
+    const first = frames.findIndex((f) => f.target === dropTarget);
+    const flickers = frames.slice(first + 1).filter((f) => f.decision === 'release').length;
+    if (flickers > 0) console.log(JSON.stringify(frames));
+    expect(flickers, 'no release while the finger stays close').toBe(0);
+  });
+});
+
