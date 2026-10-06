@@ -172,3 +172,16 @@ export async function mapMenu(page: Page, ...path: string[]): Promise<void> {
       .click();
   }
 }
+
+/**
+ * Map ▸ Modules & sets ▸ Make a module…: names the picked parts' module
+ * (in this layout only), or with `alsoSave` saves it to your Module library too.
+ */
+export async function makeModule(page: Page, name: string, opts: { alsoSave?: boolean } = {}): Promise<void> {
+  await mapMenu(page, 'Modules & sets', 'Make a module…');
+  const dialog = page.getByRole('dialog', { name: 'Make a module' });
+  await dialog.getByLabel('Module name').fill(name);
+  if (opts.alsoSave) await dialog.getByTestId('make-module-also-save').check();
+  await dialog.getByRole('button', { name: opts.alsoSave ? 'Make and save' : 'Make module' }).click();
+  await expect(dialog).toHaveCount(0, { timeout: 15000 });
+}

@@ -6,6 +6,7 @@ import * as Y from 'yjs';
 import { docToBbm } from '@cld/ydoc';
 import type { ModuleBatch } from './mutations';
 import { moduleBatchesFromMap } from './moduleDrop';
+import { api } from '../api';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -26,5 +27,17 @@ export async function fetchModuleBatches(moduleId: string): Promise<ModuleBatch[
     throw new Error('module snapshot is empty or invalid', { cause: e });
   } finally {
     moduleDoc.destroy();
+  }
+}
+
+/**
+ * The library module's newest version number, for linking a placed copy
+ * to it (Update from library); undefined when it can't be told.
+ */
+export async function libraryVersionOf(moduleId: string): Promise<number | undefined> {
+  try {
+    return (await api.modules.get(moduleId)).module.latestVersion || undefined;
+  } catch {
+    return undefined;
   }
 }

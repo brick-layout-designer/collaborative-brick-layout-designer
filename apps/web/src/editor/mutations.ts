@@ -2007,7 +2007,14 @@ export interface ModuleBatch {
 export function importBricksAsModule(
   doc: Y.Doc,
   batches: ModuleBatch[],
-  opts: { name: string; offset?: { dx: number; dy: number }; sourceFile?: string; sheets?: SheetChoices },
+  opts: {
+    name: string;
+    offset?: { dx: number; dy: number };
+    sourceFile?: string;
+    sheets?: SheetChoices;
+    /** From the library: the module is linked to it (Update from library, Update library version). */
+    library?: { id: string; version?: number };
+  },
 ): { moduleId: string; ids: string[] } | null {
   const nonEmpty = batches.filter((b) => b.bricks.length > 0);
   if (nonEmpty.length === 0) return null;
@@ -2048,6 +2055,8 @@ export function importBricksAsModule(
       transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       importedAt: new Date().toISOString(),
       ...(opts.sourceFile ? { sourceFile: opts.sourceFile } : {}),
+      ...(opts.library ? { libraryModuleId: opts.library.id } : {}),
+      ...(opts.library?.version ? { libraryVersion: opts.library.version } : {}),
     };
     writeSidecarCache(doc, { ...cache, modules: [...getSidecarModules(cache), mod] });
   }, LOCAL_ORIGIN);
@@ -2287,71 +2296,48 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
 }
 
 /**
- * Replace the member bricks of a module with a fresh set (Re-scan).
- * Removes old member bricks across all layers, inserts fresh bricks into
- * `targetLayerId`, and updates the module's member list. Mirrors
- * RescanModuleCommand (ModuleCommands.cpp:346-410).
+ * Update from library: the module's parts are replaced by a library
+ * version's (`batches`, already placed where the module is), in ONE
+ * transaction (one undo step). The module keeps its id, name, look and
+ * pin; `patch` sets its link (`libraryVersion`). Each batch goes on the
+ * sheet `sheetFor` picks for its sheet name, so parts stay on their sheets.
+ * Returns the new part ids, or null for an unknown module.
  */
-export function rescanModuleFromBricks(
+export function replaceModuleParts(
   doc: Y.Doc,
-  module: SidecarModule,
-  freshBricks: Array<{
-    partNumber: string;
-    displayArea: RectangleF;
-    orientation?: number;
-    altitude?: number;
-  }>,
-  targetLayerId: string,
-): void {
-  if (freshBricks.length === 0) return;
-  const oldIdSet = new Set(module.members);
-  const layerOrder = doc.getArray<string>('layers');
-  const newIds: string[] = [];
-
+  moduleId: string,
+  batches: readonly ModuleBatch[],
+  sheetFor: (sheetName: string) => string,
+  patch: Partial<SidecarModule> = {},
+): string[] | null {
+  const mod = getSidecarModules(readSidecarCache(doc)).find((m) => m.id === moduleId);
+  if (!mod) return null;
+  const old = new Set(mod.members);
+  const ids: string[] = [];
   doc.transact(() => {
-    // Remove old members from all layers.
-    for (const layerId of layerOrder.toArray()) {
-      const layerData = doc.getMap('layerData').get(layerId);
-      if (!(layerData instanceof Y.Map)) continue;
-      const bricks = layerData.get('bricks');
+    const layerData = doc.getMap('layerData');
+    for (const layerId of doc.getArray<string>('layers').toArray()) {
+      const l = layerData.get(layerId);
+      if (!(l instanceof Y.Map)) continue;
+      const bricks = l.get('bricks');
       if (!(bricks instanceof Y.Array)) continue;
       for (let i = bricks.length - 1; i >= 0; i--) {
         const b = bricks.get(i);
-        if (b instanceof Y.Map && oldIdSet.has(b.get('id') as string)) {
-          bricks.delete(i, 1);
-        }
+        if (b instanceof Y.Map && old.has(b.get('id') as string)) bricks.delete(i, 1);
       }
     }
-
-    // Insert fresh bricks into target layer.
-    const layerData = doc.getMap('layerData').get(targetLayerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const bricks = layerData.get('bricks');
-    if (!(bricks instanceof Y.Array)) return;
-    for (const b of freshBricks) {
-      const newId = makeId();
-      newIds.push(newId);
-      const yBrick = new Y.Map<unknown>();
-      yBrick.set('id', newId);
-      yBrick.set('displayArea', b.displayArea);
-      yBrick.set('partNumber', b.partNumber);
-      yBrick.set('orientation', b.orientation ?? 0);
-      yBrick.set('altitude', b.altitude ?? 0);
-      yBrick.set('activeConnectionPointIndex', 0);
-      yBrick.set('myGroup', '');
-      yBrick.set('connexions', []);
-      bricks.push([yBrick]);
+    for (const batch of batches) {
+      if (batch.bricks.length === 0) continue;
+      const copied = cloneGroups(batch.groups ?? [], batch.bricks, makeId);
+      ids.push(...insertBricks(doc, sheetFor(batch.layerName || 'Module'), copied.bricks, undefined, copied.groups));
     }
-
-    // Update module member list.
     const cache = readSidecarCache(doc);
     writeSidecarCache(doc, {
       ...cache,
-      modules: getSidecarModules(cache).map((m) =>
-        m.id === module.id ? { ...m, members: newIds } : m,
-      ),
+      modules: getSidecarModules(cache).map((m) => (m.id === moduleId ? { ...m, ...patch, members: ids } : m)),
     });
   }, LOCAL_ORIGIN);
+  return ids;
 }
 
 // Sidecar — venue

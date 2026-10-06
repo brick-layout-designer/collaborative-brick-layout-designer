@@ -85,6 +85,8 @@ export function shapeSelectionIds(ids: string[]): string[] {
   return selectionShaper(ids);
 }
 
+export type ModuleDialog = { kind: 'make' } | { kind: 'save' | 'publish'; moduleId: string };
+
 export interface EditorState {
   tool: Tool;
   /**
@@ -94,6 +96,12 @@ export interface EditorState {
   editingModuleId: string | null;
   /** Enter (an id) or leave (null) Edit module. Leaving clears the selection. */
   setEditingModule: (id: string | null) => void;
+  /**
+   * The module dialog open over the editor: Make a module (from the picked
+   * parts), Save to library… or Update library version (a placed module).
+   */
+  moduleDialog: ModuleDialog | null;
+  setModuleDialog: (d: ModuleDialog | null) => void;
   /** Brick ids currently selected. */
   selection: string[];
   /** Rulers / labels / text cells selected alongside `selection`. */
@@ -311,6 +319,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selection: [],
   editingModuleId: null,
+  moduleDialog: null,
+  setModuleDialog: (moduleDialog) => set({ moduleDialog }),
   annoSelection: EMPTY_ANNO,
   touchSelectMore: false,
   touchSelectArea: false,

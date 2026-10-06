@@ -1,7 +1,7 @@
 // Journey — the site keeps itself up to date, without reloading.
 //
-//   1. In the editor, Save Selection as Module and the Modules panel's
-//      Save to Module library both show the module in the open Module
+//   1. In the editor, Make a module with "Also save to my Module library" and the
+//      Modules panel's Save to Module library… both show the module in the open Module
 //      library panel straight away (this tab's own change; the live
 //      stream is blocked here, so it isn't what makes it work).
 //   2. Two members of a club, each in their own browser: what one adds to
@@ -10,7 +10,7 @@
 //   3. Someone outside the club gets no hint of it, and sees nothing new.
 
 import { test, expect, type Page, type BrowserContext, type Browser } from '@playwright/test';
-import { signIn, mapMenu } from '../../helpers';
+import { signIn, makeModule } from '../../helpers';
 
 const ts = Date.now();
 const PART = 'ts_narrowgauge_straight.8';
@@ -67,29 +67,27 @@ test('saving a module shows it in the open Module library at once', async ({ pag
   for (let i = 0; i < 2; i++) await placePart(page);
   await expect.poll(() => brickCount(page)).toBe(2);
 
-  // Map > Save Selection as Module…
+  // Map > Make a module, and save it to the Module library in one go.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
-  await mapMenu(page, 'Modules & sets', 'Save selection as module…');
-  await page.getByLabel('Module name').fill(`Crossing ${ts}`);
-  page.once('dialog', (d) => void d.accept());
-  await page.getByRole('button', { name: 'Save', exact: true }).last().click();
+  await makeModule(page, `Crossing ${ts}`, { alsoSave: true });
   await expect(libraryRow(page, `Crossing ${ts}`)).toBeVisible({ timeout: 10000 });
-  // The live list can show it before the save finishes: wait for the dialog
-  // to close (and its "saved" alert) so the next step's dialog handler
-  // doesn't meet that alert.
-  await expect(page.getByLabel('Module name')).toHaveCount(0);
 
-  // Map > Group Selection as Module, then Modules panel > Save to Module library.
+  // New parts: Map > Make a module, then Modules panel > Save to Module library…
+  await page.keyboard.press('Delete');
+  await expect.poll(() => brickCount(page)).toBe(0);
+  for (let i = 0; i < 2; i++) await placePart(page);
+  await expect.poll(() => brickCount(page)).toBe(2);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
-  page.once('dialog', (d) => void d.accept(`Siding ${ts}`));
-  await mapMenu(page, 'Modules & sets', 'Group selection as module');
+  await makeModule(page, `Siding ${ts}`);
   await page.getByRole('button', { name: 'Panels', exact: true }).click();
   await page.getByLabel('Modules', { exact: true }).check();
   await page.mouse.click(400, 400);
   await page.getByText(`Siding ${ts}`, { exact: true }).first().click({ button: 'right' });
-  await page.getByRole('button', { name: 'Save to Module library' }).click();
-  await expect(page.getByText(`Saved “Siding ${ts}” to your Module library`)).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Save to Module library…' }).click();
+  await page.getByRole('dialog', { name: `Save “Siding ${ts}” to the Module library` }).getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(`Saved “Siding ${ts}” to the Module library`)).toBeVisible({ timeout: 15000 });
   await expect(libraryRow(page, `Siding ${ts}`)).toBeVisible({ timeout: 10000 });
   // Still the same page: nothing reloaded it.
   await expect(page).toHaveURL(new RegExp(`/editor/${id}$`));

@@ -15,7 +15,7 @@ import { api } from '../api';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { useEditorStore } from './editorStore';
 import { placeModuleAsking } from './SheetChoiceDialog';
-import { fetchModuleBatches } from './moduleSnapshot';
+import { fetchModuleBatches, libraryVersionOf } from './moduleSnapshot';
 
 interface Props {
   doc: Y.Doc;
@@ -40,8 +40,9 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
     mutationFn: async (item: { id: string; title: string }) => {
       const copy = await api.catalog.add(item.id);
       void qc.invalidateQueries({ queryKey: ['modules'] });
-      const batches = await fetchModuleBatches(copy.id);
-      const res = await placeModuleAsking(doc, batches, { name: item.title });
+      const [batches, version] = await Promise.all([fetchModuleBatches(copy.id), libraryVersionOf(copy.id)]);
+      // Linked to your copy: Update from Module library follows it.
+      const res = await placeModuleAsking(doc, batches, { name: item.title, library: { id: copy.id, ...(version ? { version } : {}) } });
       if (res) useEditorStore.getState().setSelection(res.ids);
       return !!res;
     },
@@ -55,12 +56,13 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
   const insert = useMutation({
     mutationFn: async (moduleId: string) => {
       const batches = await fetchModuleBatches(moduleId);
+      const version = list.data?.modules.find((m) => m.id === moduleId)?.latestVersion;
       // Modules are saved centred on the origin, so the block lands at
       // (0,0); drag from the Module library to drop it at the cursor.
       // Bricks keep their source layer names and become a sidecar module
       // in the same undo step (desktop ImportBbmAsModuleCommand).
       const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';
-      const res = await placeModuleAsking(doc, batches, { name: title });
+      const res = await placeModuleAsking(doc, batches, { name: title, library: { id: moduleId, ...(version ? { version } : {}) } });
       if (res) useEditorStore.getState().setSelection(res.ids);
       return !!res;
     },
@@ -141,7 +143,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         {tab === 'mine' && list.isLoading && <p className="text-muted">Loading…</p>}
         {tab === 'mine' && list.data && list.data.modules.length === 0 && (
           <p className="rounded-lg border border-dashed border-line p-4 text-muted">
-            No saved modules yet. Pick some parts and choose <em>Map ▸ Modules &amp; sets ▸ Save selection as module</em>, or use <em>New module</em> on Home.
+            No saved modules yet. Pick some parts, make them a module (<em>Map ▸ Modules &amp; sets ▸ Make a module</em>), then choose <em>Save to Module library…</em> from its ⋯ menu. Or use <em>New module</em> on Home.
           </p>
         )}
         {tab === 'mine' && list.data && list.data.modules.length > 0 && (

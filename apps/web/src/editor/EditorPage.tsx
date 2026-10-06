@@ -12,6 +12,8 @@ import { useModuleDoc } from './useModuleDoc';
 import { ShareToCatalogDialog, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { makeModuleThumbnail, makeRegionThumbnail, waitForPartPictures } from './moduleThumbnail';
 import { getSpriteProgress } from './render/spriteCache';
+import { useLibraryEntries } from './moduleLibraryMenu';
+import { TouchModuleSheet } from './TouchModuleSheet';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
 import { setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
@@ -136,10 +138,10 @@ import { ModuleEditBar } from './ModuleEditBar';
 import { withShowName } from './moduleLook';
 import { ModuleEditDim, editedModuleFrame } from './render/ModuleEditDim';
 import { DRAG_LAYER } from './render/BrickLayer';
-import { fetchModuleBatches } from './moduleSnapshot';
+import { fetchModuleBatches, libraryVersionOf } from './moduleSnapshot';
 import { moduleDropTranslation, placedModuleBatches } from './moduleDrop';
 import type { GroupTurn } from './snapFeel';
-import { absorbIntoEditedModule, createModuleFromSelection, enterModuleEdit, leaveModuleEdit, selectionMayMove, setModulePinned } from './moduleActions';
+import { absorbIntoEditedModule, openMakeModule, enterModuleEdit, leaveModuleEdit, selectionMayMove, setModulePinned } from './moduleActions';
 import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, viewRegionStuds, type PictureSpec } from './savedViews';
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
@@ -176,7 +178,7 @@ const SharePictureDialog = lazy(() => import('./SharePictureDialog').then((m) =>
 const ShareDialog = lazy(() => import('../layouts/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 const InsertModuleDialog = lazy(() => import('./InsertModuleDialog').then((m) => ({ default: m.InsertModuleDialog })));
 const ModuleLookDialog = lazy(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
-const SaveModuleDialog = lazy(() => import('./SaveModuleDialog').then((m) => ({ default: m.SaveModuleDialog })));
+const ModuleDialogHost = lazy(() => import('./ModuleDialogs').then((m) => ({ default: m.ModuleDialogHost })));
 const EditBrickDialog = lazy(() => import('./EditBrickDialog').then((m) => ({ default: m.EditBrickDialog })));
 const EditRulerDialog = lazy(() => import('./EditRulerDialog').then((m) => ({ default: m.EditRulerDialog })));
 const GeneralInfoDialog = lazy(() => import('./GeneralInfoDialog').then((m) => ({ default: m.GeneralInfoDialog })));
@@ -379,7 +381,8 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   const activeViewId = useEditorStore((s) => s.activeViewId);
   const showGridNow = useEditorStore((s) => s.showGrid);
   const [showInsertModule, setShowInsertModule] = useState(false);
-  const [showSaveModule, setShowSaveModule] = useState(false);
+  // The picked module's menu on a phone (the touch bar's Module button).
+  const [touchModuleId, setTouchModuleId] = useState<string | null>(null);
   const [showGeneralInfo, setShowGeneralInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [task, setTask] = useState<EditorTask>('build');
@@ -994,9 +997,8 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               onFind={() => setShowFind(true)}
               onExportImage={onExportImage}
               onExportCsv={() => setShowPartList(true)}
-              onSaveModule={() => setShowSaveModule(true)}
               onImportBbm={() => setShowImportBbm(true)}
-              onCreateModule={() => createModuleFromSelection(doc)}
+              onCreateModule={() => openMakeModule(doc)}
               onSaveAsSet={() => setShowSaveAsSet(true)}
               onInsertLabel={() => setShowAddLabel(true)}
               onInsertText={() => canvasActionsRef.current?.insertText()}
@@ -1140,9 +1142,19 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             onAddPart={() => setShowAddPart(true)}
             onSheets={() => setShowTouchSheets(true)}
             onEditText={openTouchText}
+            onModule={isViewer || !doc ? undefined : () => {
+              // One whole module picked: its menu. Otherwise make one.
+              const sel = useEditorStore.getState().selection;
+              const byPart = moduleByPart(readSidecarFromDoc(doc)?.modules ?? []);
+              const first = sel[0] ? byPart.get(sel[0]) : undefined;
+              const whole = first && first.members.length === sel.length && sel.every((id) => byPart.get(id)?.id === first.id);
+              if (whole && !useEditorStore.getState().editingModuleId) setTouchModuleId(first.id);
+              else openMakeModule(doc);
+            }}
           />
         )}
-        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onSaveModule={() => setShowSaveModule(true)} />
+        {touchModuleId && doc && <TouchModuleSheet doc={doc} moduleId={touchModuleId} onClose={() => setTouchModuleId(null)} />}
+        <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onMakeModule={() => openMakeModule(doc)} />
       </main>
       {showRight && (
         <DockColumn
@@ -1267,18 +1279,14 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       {showInsertModule && (
         <InsertModuleDialog doc={doc} onClose={() => setShowInsertModule(false)} />
       )}
-      {showSaveModule && docMap && (
-        <SaveModuleDialog
-          map={docMap}
-          selection={useEditorStore.getState().selection}
-          layoutOwnerOrgId={meta.data?.layout.ownerOrgId ?? null}
-          onClose={() => setShowSaveModule(false)}
-          makeThumbnail={(region) => makeRegionThumbnail(exportImageRef.current, region)}
-          onSaved={(_id, title, version) => {
-            setShowSaveModule(false);
-            alert(version ? `Module "${title}" updated: this is version ${version}.` : `Module "${title}" saved.`);
-          }}
-        />
+      {doc && !isViewer && (
+        <Suspense fallback={null}>
+          <ModuleDialogHost
+            doc={doc}
+            layoutOwnerOrgId={meta.data?.layout.ownerOrgId ?? null}
+            makeThumbnail={(region) => makeRegionThumbnail(exportImageRef.current, region)}
+          />
+        </Suspense>
       )}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       {showGeneralInfo && docMap && (
@@ -1427,7 +1435,7 @@ function Canvas({
   canvasActionsRef,
   undo,
   onOpenVenueProps,
-  onSaveModule,
+  onMakeModule,
 }: {
   doc: import('yjs').Doc;
   awareness: import('y-protocols/awareness').Awareness | null;
@@ -1445,7 +1453,8 @@ function Canvas({
   canvasActionsRef: React.MutableRefObject<CanvasActions | null>;
   undo: { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void };
   onOpenVenueProps: () => void;
-  onSaveModule: () => void;
+  /** Make a module from the picked parts. */
+  onMakeModule: () => void;
 }) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const hudLayerRef = useRef<Konva.Layer | null>(null);
@@ -2191,6 +2200,7 @@ function Canvas({
           try {
             // Reuse the snapshot the ghost was drawn from, so the drop
             // lands exactly on the ghost.
+            const version = libraryVersionOf(moduleId);
             const batches = await (dragged && dragged.key === `${activeModuleDrag.session}:${moduleId}`
               ? dragged.batches
               : fetchModuleBatches(moduleId));
@@ -2209,7 +2219,11 @@ function Canvas({
               : { dx: 0, dy: 0 };
             // Bricks go to host layers named like the module's layers and
             // are registered as a sidecar module in the same undo step.
-            const res = await placeModuleAsking(doc, placedModuleBatches(batches, offset, catalog), { name: moduleName });
+            const v = await version;
+            const res = await placeModuleAsking(doc, placedModuleBatches(batches, offset, catalog), {
+              name: moduleName,
+              library: { id: moduleId, ...(v ? { version: v } : {}) },
+            });
             if (res) {
               absorbIntoEditedModule(doc, res.ids);
               setSelection(res.ids);
@@ -3985,7 +3999,7 @@ function Canvas({
               }
             }
           }}
-          onSaveModule={onSaveModule}
+          onMakeModule={onMakeModule}
           module={ctxModule}
           editingModuleId={editingModuleId}
           onEditModule={(id) => enterModuleEdit(id)}
@@ -4051,11 +4065,11 @@ function ScaleBarHud({ zoom }: { zoom: number }) {
  * and receive keyboard focus for accessibility.
  */
 function CanvasContextMenu({
-  x, y, onBrick, selection, map, undo,
+  x, y, onBrick, selection, map, doc, undo,
   textCellRef, onEditText, rulerRef, brickIdUnderCursor, selectedRulerId, onAttachRuler,
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
   onRotateCCW, onRotateCW, onBringToFront, onSendToBack,
-  onGroup, onUngroup, ungroup, onSelectConnected, onAddTextHere, onProperties, onSaveModule,
+  onGroup, onUngroup, ungroup, onSelectConnected, onAddTextHere, onProperties, onMakeModule,
   module, editingModuleId, onEditModule, onDoneEditing, onPinModule, onModuleShowName, onModuleLook,
 }: {
   module: import('@cld/bbm').SidecarModule | null;
@@ -4082,8 +4096,9 @@ function CanvasContextMenu({
   onGroup: () => void; onUngroup: () => void; onSelectConnected: () => void;
   /** What Ungroup would do: nothing grouped (hidden), split, or only sets always used whole (greyed out). */
   ungroup: 'nothing' | 'splits' | 'whole';
-  onAddTextHere: () => void; onProperties: () => void; onSaveModule: () => void;
+  onAddTextHere: () => void; onProperties: () => void; onMakeModule: () => void;
 }) {
+  const libraryEntries = useLibraryEntries(doc);
   const hasSel = selection.length > 0;
   const singleSel = selection.length === 1;
   const multiSel = selection.length >= 2;
@@ -4145,6 +4160,8 @@ function CanvasContextMenu({
     entries.push(item(module.showName === false ? 'Show name' : 'Hide name', () => onModuleShowName(module.id, module.showName === false)));
     entries.push(item('Colours…', () => onModuleLook(module.id)));
     entries.push(sep('sm1'));
+    for (const e of libraryEntries(module)) entries.push(item(e.label, e.onSelect, !!e.disabled));
+    entries.push(sep('sm2'));
   }
 
   // Ruler-attach flow: when a ruler is selected and the cursor is on a
@@ -4191,8 +4208,11 @@ function CanvasContextMenu({
     else if (ungroup === 'whole') entries.push(item('Ungroup (this set is always used whole)', onUngroup, true));
     entries.push(item('Select Connected', onSelectConnected));
     entries.push(sep('s3'));
-    entries.push(item('Save as Module…', onSaveModule));
-    entries.push(sep('s3b'));
+    // Already one whole module: its own entries are above.
+    if (!module || editingModuleId) {
+      entries.push(item('Make a module…', onMakeModule));
+      entries.push(sep('s3b'));
+    }
     entries.push(item('Cut', onCut));
     entries.push(item('Copy', onCopy));
     entries.push(item('Duplicate', onDuplicate));
@@ -4761,7 +4781,6 @@ function MapMenu({
   onFind,
   onExportImage,
   onExportCsv,
-  onSaveModule,
   onImportBbm,
   onCreateModule,
   onSaveAsSet,
@@ -4790,7 +4809,6 @@ function MapMenu({
   onFind: () => void;
   onExportImage: () => void;
   onExportCsv: () => void;
-  onSaveModule: () => void;
   onImportBbm: () => void;
   onCreateModule: () => void;
   onSaveAsSet: () => void;
@@ -4842,7 +4860,6 @@ function MapMenu({
         insertText: onInsertText,
         insertLabel: onInsertLabel,
         createModule: onCreateModule,
-        saveModule: onSaveModule,
         saveAsSet: onSaveAsSet,
         importBbm: onImportBbm,
         venueDesigner: onVenueDesigner,

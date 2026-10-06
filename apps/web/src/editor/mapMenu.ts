@@ -20,8 +20,8 @@ export interface MapMenuActions {
   find: () => void;
   insertText: () => void;
   insertLabel: () => void;
+  /** Make a module from the picked parts (saving one to the library is in its ⋯ menu). */
   createModule: () => void;
-  saveModule: () => void;
   saveAsSet: () => void;
   importBbm: () => void;
   venueDesigner: () => void;
@@ -92,8 +92,7 @@ export function mapMenuEntries(a: MapMenuActions, t: MapMenuToggles, mod = modKe
     },
     {
       kind: 'submenu', id: 'modules', label: 'Modules & sets', items: [
-        { kind: 'item', id: 'group-module', label: 'Group selection as module', onSelect: a.createModule },
-        { kind: 'item', id: 'save-module', label: 'Save selection as module…', onSelect: a.saveModule },
+        { kind: 'item', id: 'make-module', label: 'Make a module…', onSelect: a.createModule },
         { kind: 'item', id: 'save-set', label: 'Save selection as set…', onSelect: a.saveAsSet },
         { kind: 'item', id: 'import-bbm', label: 'Import .bbm as module…', onSelect: a.importBbm },
       ],

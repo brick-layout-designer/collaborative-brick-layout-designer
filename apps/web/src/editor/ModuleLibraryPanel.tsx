@@ -57,8 +57,11 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
       // Bricks land on host layers matching the module's layer names and
       // are registered as a sidecar module in the same undo step
       // (desktop ImportBbmAsModuleCommand).
-      const title = list.data?.modules.find((m) => m.id === moduleId)?.title ?? 'Module';
-      const res = await placeModuleAsking(doc, batches, { name: title });
+      const found = list.data?.modules.find((m) => m.id === moduleId);
+      const title = found?.title ?? 'Module';
+      // Linked to the Module library module: Update from Module library follows it.
+      const version = found?.latestVersion;
+      const res = await placeModuleAsking(doc, batches, { name: title, library: { id: moduleId, ...(version ? { version } : {}) } });
       if (res) useEditorStore.getState().setSelection(res.ids);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -82,7 +85,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
         {list.isLoading && <p className="p-3 text-xs text-muted">Loading…</p>}
         {!list.isLoading && modules.length === 0 && (
           <p className="p-3 text-xs text-muted">
-            {filter ? 'No modules match.' : 'No saved modules yet.'}
+            {filter ? 'No modules match.' : 'No saved modules yet. Make a module in this layout, then choose Save to Module library… from its ⋯ menu.'}
           </p>
         )}
         {error && (

@@ -1,28 +1,28 @@
-// Modules ▸ Create from Selection — desktop MainWindow::onCreateModuleFromSelection
-// (MainWindow.cpp:1056-1077): ask for a name (default "New Module") and
-// register the selected bricks as a sidecar module. Shared by the Map menu
-// and the Modules panel.
+// Make a module (Map ▸ Modules & sets, the context menu, the Modules panel
+// and the phone's touch bar): the picked parts become a module in this
+// layout. The dialog names it (ModuleDialogs.tsx); saving it to the Module library
+// is a separate step, from the placed module's ⋯ menu (or the dialog's
+// "Also save to my Module library").
 
 import type * as Y from 'yjs';
 import type { SidecarModule } from '@cld/bbm';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { useEditorStore } from './editorStore';
-import { bricksByLayer, createSidecarModule, deleteSidecarModule, updateSidecarModule } from './mutations';
+import { bricksByLayer, deleteSidecarModule, updateSidecarModule } from './mutations';
 import { pinnedAmong, withMembersAdded, withMembersRemoved, withPinned } from './moduleEdit';
 import { projectDoc } from './useDocMap';
 
-export function createModuleFromSelection(doc: Y.Doc): void {
+/** Opens Make a module for the picked parts (says so when none are picked). */
+export function openMakeModule(doc: Y.Doc): void {
   const { selection } = useEditorStore.getState();
-  // Only bricks can be module members; drop ids that aren't bricks.
+  // Only parts can be in a module.
   const map = projectDoc(doc);
   const members = map ? [...bricksByLayer(map, selection).values()].flat() : [];
   if (members.length === 0) {
-    window.alert('Select one or more parts first.');
+    useEditorStore.getState().showNotice('Select one or more parts first, then choose Make a module.');
     return;
   }
-  const name = window.prompt('Module name:', 'New Module');
-  if (name === null || name.trim() === '') return;
-  if (createSidecarModule(doc, name, members)) useEditorStore.getState().showNotice(`Grouped “${name}” as a module`);
+  useEditorStore.getState().setModuleDialog({ kind: 'make' });
 }
 
 // ---------------------------------------------------------------------------
