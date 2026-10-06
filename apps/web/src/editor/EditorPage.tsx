@@ -60,7 +60,7 @@ import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './Touch
 import { SheetsSheet, TextEditSheet } from './TouchSheets';
 import { placeModuleAsking, SheetChoiceHost } from './SheetChoiceDialog';
 import { editAnchoredLabel, editTextCell, setExportElectricCircuit, updateSidecarModule } from './mutations';
-import { parseTextKey } from './mixedSelection';
+import { brickIdsInDoc, parseTextKey, stillPicked } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
 import { layoutFileDownload, layoutSourceHere, type LayoutImage } from '../layoutFile';
@@ -1958,6 +1958,13 @@ function Canvas({
     // editor/snap.ts `lookupPart`.
     return indexParts(catalog.data?.parts);
   }, [catalog.data]);
+  // A picked part deleted by someone else (live) or by an undo leaves the
+  // selection. Checked against the doc itself, which is never behind a pick.
+  useEffect(() => {
+    if (!map) return;
+    const kept = stillPicked(brickIdsInDoc(doc), useEditorStore.getState().selection);
+    if (kept) useEditorStore.setState({ selection: kept });
+  }, [map, doc]);
   // Older versions kept a placed set (flex track, a train set...) as a
   // module. Once the layout and the parts are in, a module that is still
   // exactly that set becomes a set again, one undo step, with a notice.

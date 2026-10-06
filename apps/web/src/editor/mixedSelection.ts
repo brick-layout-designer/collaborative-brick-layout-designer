@@ -408,3 +408,29 @@ export function deleteMixedSelection(
     for (const c of cells) deleteTextCell(doc, c.layerId, c.cellIndex);
   }, LOCAL_ORIGIN);
 }
+
+/**
+ * The picked parts that are still on the map, or null when all are: someone
+ * else deleted one (live), or an undo took it away. Without this the touch
+ * bar went on saying "1 picked" and offered Rotate and Duplicate for a part
+ * that was gone.
+ */
+export function stillPicked(present: ReadonlySet<string>, selection: readonly string[]): string[] | null {
+  if (selection.length === 0) return null;
+  const kept = selection.filter((id) => present.has(id));
+  return kept.length === selection.length ? null : kept;
+}
+
+/** Every brick id in the doc, on any sheet. */
+export function brickIdsInDoc(doc: Y.Doc): Set<string> {
+  const ids = new Set<string>();
+  doc.getMap('layerData').forEach((layer) => {
+    if (!(layer instanceof Y.Map)) return;
+    const bricks = layer.get('bricks');
+    if (!(bricks instanceof Y.Array)) return;
+    bricks.forEach((b) => {
+      if (b instanceof Y.Map) ids.add(b.get('id') as string);
+    });
+  });
+  return ids;
+}
