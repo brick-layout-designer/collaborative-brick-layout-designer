@@ -203,6 +203,21 @@ describe('CoverPicker', () => {
     expect(h.current!.hasNew()).toBe(false);
   });
 
+  it('the mouse wheel zooms the preview without scrolling the page behind it', async () => {
+    render(<Harness onHandle={() => undefined} />);
+    fireEvent.click(screen.getByLabelText('Upload your own picture'));
+    await pick('image/jpeg');
+    const preview = await waitFor(() => screen.getByTestId('cover-preview'));
+    const zoom = screen.getByLabelText('Zoom') as HTMLInputElement;
+    const before = Number(zoom.value);
+    const wheel = new WheelEvent('wheel', { deltaY: -200, clientX: 10, clientY: 10, bubbles: true, cancelable: true });
+    act(() => {
+      preview.dispatchEvent(wheel);
+    });
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(Number(zoom.value)).toBeGreaterThan(before);
+  });
+
   it('says so when even the smallest version is over the limit', async () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb: BlobCallback, type?: string) {
       cb(new Blob([new Uint8Array(4096)], { type: type ?? 'image/png' }));

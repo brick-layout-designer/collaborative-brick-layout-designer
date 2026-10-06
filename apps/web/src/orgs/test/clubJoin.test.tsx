@@ -39,15 +39,19 @@ const REQUESTS: JoinRequestSummary[] = [
 
 let calls: { method: string; path: string; body: unknown }[];
 let directory: ClubSummary[];
+let demo = false;
 beforeEach(() => {
   calls = [];
   directory = [CLUB];
+  demo = false;
   vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     calls.push({ method, path: input, body: init?.body ? JSON.parse(init.body as string) : undefined });
     const body =
       method === 'GET' && input.startsWith('/api/club-directory')
         ? { clubs: directory }
+        : method === 'GET' && input === '/api/auth/me'
+          ? { user: { id: 'u1', displayName: 'Demo', isDemoAccount: demo } }
         : method === 'POST' && input.endsWith('/join')
           ? { status: (init?.body ? 'requested' : 'member'), slug: 'arklug' }
           : method === 'PATCH'
@@ -194,5 +198,14 @@ describe('activity', () => {
     expect(describeEvent(ev('join'), name)).toBe('Sam joined the club');
     expect(describeEvent(ev('join_approve', { targetUserId: 'u9' }), name)).toBe('Sam let Rita join');
     expect(describeEvent(ev('join_decline', { targetUserId: 'u9' }), name)).toBe('Sam declined a request to join');
+  });
+});
+
+describe('the demo account', () => {
+  it('is told it can’t join, instead of a Join button the server refuses', async () => {
+    demo = true;
+    show(<JoinControls club={{ ...CLUB, joinPolicy: 'request' }} />);
+    expect(await screen.findByText('The demo account can’t join clubs. Make your own account to join one.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ask to join' })).toBeNull();
   });
 });

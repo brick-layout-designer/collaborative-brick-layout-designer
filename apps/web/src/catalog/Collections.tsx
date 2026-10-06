@@ -40,6 +40,7 @@ import { AddDialog, CatalogPreview, kindsOn } from './CatalogPage';
 const KIND_NAME: Record<CatalogKind, string> = { module: 'Module', part: 'Part', layout: 'Layout', venue: 'Venue' };
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { TrustedBadge } from './TrustedBadge';
+import { useIsDemo } from './ShareToCatalog';
 import { askConfirm, askReason, confirmDelete, deleteOptions, toastDeleted, type DeleteWording } from '../ui/ConfirmDialog';
 import { CoverPicker, type CoverMode, type CoverPickerHandle } from '../ui/CoverPicker';
 
@@ -185,6 +186,7 @@ function CollectionGrid({ rows, label }: { rows: CollectionSummary[]; label: str
 
 /** The Catalog page's Collections: public ones (featured first), your clubs' and your own. */
 export function CollectionsSection({ signedIn }: { signedIn: boolean }) {
+  const demo = useIsDemo();
   const list = useQuery({ queryKey: ['catalog-collections'], queryFn: api.catalog.collections });
   const rows = list.data?.collections ?? [];
   const featured = rows.filter((c) => c.featured);
@@ -198,10 +200,10 @@ export function CollectionsSection({ signedIn }: { signedIn: boolean }) {
       {featured.length > 0 && <CollectionGrid rows={featured} label="Featured collections" />}
       {rest.length > 0 && <CollectionGrid rows={rest} label="More collections" />}
       {list.isSuccess && rows.length === 0 && (
-        <p className="text-sm text-muted">No public collections yet.{signedIn ? ' Make the first one under Your collections.' : ''}</p>
+        <p className="text-sm text-muted">No public collections yet.{signedIn && !demo ? ' Make the first one under Your collections.' : ''}</p>
       )}
       {signedIn && <ClubCollectionsSection />}
-      {signedIn && <MyCollections />}
+      {signedIn && !demo && <MyCollections />}
     </section>
   );
 }
@@ -1012,7 +1014,7 @@ export function CollectionPage() {
                             Add
                           </button>
                         )}
-                        {it.source !== 'library' && (
+                        {it.source !== 'library' && !me.data?.user?.isDemoAccount && (
                           <button
                             type="button"
                             onClick={() => setToCollection({ kind: 'catalog', item: it })}
@@ -1041,6 +1043,7 @@ export function CollectionPage() {
 
 /** The Home page's collections: featured ones, your clubs', your own; hidden while the catalogs are off. */
 export function HomeCollections() {
+  const demo = useIsDemo();
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
   const on = !!settings.data && (settings.data.modules || settings.data.parts);
   const pub = useQuery({ queryKey: ['catalog-collections'], queryFn: api.catalog.collections, enabled: on });
@@ -1074,18 +1077,20 @@ export function HomeCollections() {
           <Link to="/catalog" className="tap-target inline-flex items-center rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft">
             Browse all
           </Link>
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
-          >
-            New collection
-          </button>
+          {!demo && (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+            >
+              New collection
+            </button>
+          )}
         </div>
       </div>
       {empty ? (
         <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-          Collections are sets of modules and parts that go well together. Browse the catalog’s, or make your own.
+          Collections are sets of modules and parts that go well together. Browse the catalog’s{demo ? '.' : ', or make your own.'}
         </p>
       ) : (
         <>

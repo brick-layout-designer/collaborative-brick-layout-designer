@@ -107,6 +107,16 @@ test('an admin turns on the demo, a visitor tries it, and Reset now puts the sam
     // The demo can't share: the server says so in plain words.
     const share = await visitor.request.post(`/api/layouts/${after[0]!.id}/public-share`);
     expect(share.status()).toBe(403);
+    // …and the pages don't offer what it would refuse: Share… says why and
+    // keeps only the picture; Clubs explains instead of a failing Ask to join.
+    await visitor.getByRole('button', { name: `More for ${SAMPLE}` }).click();
+    await visitor.getByRole('menuitem', { name: 'Share…' }).click();
+    const dialog = visitor.getByRole('dialog', { name: `Share ${SAMPLE}` });
+    await expect(dialog).toContainText('The demo account can’t invite people or make a share link.');
+    await expect(dialog.getByPlaceholder(/email/i)).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await visitor.goto('/orgs');
+    await expect(visitor.getByText(/The demo account can’t make or join clubs\./)).toBeVisible();
   } finally {
     // ── 4. Off again (the journeys share one server). ──
     await admin.request.patch('/api/admin/settings', { data: { demoEnabled: false } });

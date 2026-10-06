@@ -6,7 +6,7 @@
 // stream out. The response is never compressed or buffered
 // (X-Accel-Buffering: no, Cache-Control: no-transform).
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { env } from '../env.js';
 import { requireUser } from '../auth/cookie.js';
 import { API_SCOPES } from '../auth/apiTokens.js';
@@ -37,7 +37,15 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/api/events',
     // Opening the stream is rate-limited; the stream itself is one request.
-    { config: { apiToken: API_SCOPES, rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    // Counted per person, not per address: a club at a show shares one
+    // Wi-Fi address, and each phone reopens its stream on every page load
+    // and every wake-up, so a per-address count cut their live updates.
+    {
+      config: {
+        apiToken: API_SCOPES,
+        rateLimit: { max: 30, timeWindow: '1 minute', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip },
+      },
+    },
     async (req, reply) => {
       const user = requireUser(req);
       reply.hijack();

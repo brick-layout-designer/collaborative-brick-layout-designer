@@ -23,7 +23,7 @@ export function OrgsPage() {
   if (!me.data?.user) return <SignInFirst />;
 
   return (
-    <div className="h-full overflow-y-auto p-8">
+    <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
       <AppHeader user={me.data.user} />
       <main className="mx-auto mt-8 max-w-3xl space-y-4">
         <div className="flex items-center justify-between">
@@ -42,7 +42,9 @@ export function OrgsPage() {
         {list.isLoading && <p className="text-muted">Loading…</p>}
         {list.data && (list.data.orgs.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
-            You’re not in a club yet. Find one below, make one, or ask a club’s admin to invite you.
+            {me.data.user.isDemoAccount
+              ? 'The demo account can’t make or join clubs. Make your own account for that; until then, have a look at the clubs below.'
+              : 'You’re not in a club yet. Find one below, make one, or ask a club’s admin to invite you.'}
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line">
