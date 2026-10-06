@@ -6,7 +6,8 @@ import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
 import type { ModuleBatch } from './mutations';
 import { connKey, freeConnectionsCached, lookupPart } from './snap';
-import { holdReach, pickSnap, type SnapCandidate, type SnapSession } from './snapFeel';
+import { applyGroupTurn, facingTurn, groupTurnAllowed, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
+import { areaForPivot, pivotOf } from './brickGeometry';
 
 /**
  * One batch per non-empty brick layer of a module file, named after the
@@ -55,7 +56,7 @@ export function moduleDropTranslation(
   host: BbmMap | null,
   partsByKey: Map<string, PartWire> | null,
   snap: ModuleSnapOptions = { reach: 0 },
-): { dx: number; dy: number; ringStudX?: number; ringStudY?: number } {
+): { dx: number; dy: number; ringStudX?: number; ringStudY?: number; turn?: GroupTurn } {
   let cx = 0;
   let cy = 0;
   let n = 0;
@@ -95,6 +96,9 @@ export function moduleDropTranslation(
       ey: number;
       tx: number;
       ty: number;
+      wx: number;
+      wy: number;
+      delta: number;
     }
     const pairs: Pair[] = [];
     if (targets.length > 0) {
@@ -104,9 +108,9 @@ export function moduleDropTranslation(
           const bi = brickIndex++;
           const meta = lookupPart(partsByKey, b.partNumber);
           if (!meta || meta.connections.length === 0) continue;
-          const a = b.displayArea;
-          const bx = a.x + a.width / 2 + dx;
-          const by = a.y + a.height / 2 + dy;
+          const at = pivotOf(b as { displayArea: typeof b.displayArea; orientation: number }, meta);
+          const bx = at.x + dx;
+          const by = at.y + dy;
           const t = ((b.orientation ?? 0) * Math.PI) / 180;
           const cos = Math.cos(t);
           const sin = Math.sin(t);
@@ -121,15 +125,22 @@ export function moduleDropTranslation(
               const ey = tc.y - wy;
               const sq = ex * ex + ey * ey;
               if (sq > limitSq) continue;
+              // The module turns as a whole to face the end, at most a quarter.
+              const delta = facingTurn(tc.angle, c.angle + (b.orientation ?? 0));
+              if (!groupTurnAllowed(delta)) continue;
               pairs.push({
                 movingKey: `module#${bi}#${ci}`,
                 targetKey: connKey(tc.brickId, tc.index),
                 dist: Math.sqrt(sq),
                 mouseDist: Math.hypot(wx - target.x, wy - target.y),
+                turn: Math.abs(delta),
                 ex,
                 ey,
                 tx: tc.x,
                 ty: tc.y,
+                wx,
+                wy,
+                delta,
               });
             }
           }
@@ -139,9 +150,39 @@ export function moduleDropTranslation(
     const best = snap.session
       ? snap.session.step(pairs, reach, { ...(snap.final ? { final: true } : {}) })
       : pickSnap(pairs, null, reach);
-    if (best) return { dx: dx + best.ex, dy: dy + best.ey, ringStudX: best.tx, ringStudY: best.ty };
+    if (best) {
+      const out = { dx: dx + best.ex, dy: dy + best.ey, ringStudX: best.tx, ringStudY: best.ty };
+      if (Math.abs(best.delta) <= 1e-6) return out;
+      // Turned about the joined connection (where the drop put it, before
+      // the snap), then onto the target.
+      return { ...out, dx, dy, turn: { degrees: best.delta, pivotX: best.wx, pivotY: best.wy, toX: best.tx, toY: best.ty } };
+    }
   } else if (snap.session) {
     snap.session.lock = null;
   }
   return { dx, dy };
+}
+
+/**
+ * The module's batches where a drop puts them: moved by `offset` and, when
+ * the snap turned the module, turned about the joined connection
+ * (moduleDropTranslation). Insert the result with no further offset.
+ */
+export function placedModuleBatches(
+  batches: ModuleBatch[],
+  drop: { dx: number; dy: number; turn?: GroupTurn },
+  partsByKey: Map<string, PartWire> | null,
+): ModuleBatch[] {
+  return batches.map((batch) => ({
+    ...batch,
+    bricks: batch.bricks.map((b) => {
+      const area = { ...b.displayArea, x: b.displayArea.x + drop.dx, y: b.displayArea.y + drop.dy };
+      if (!drop.turn) return { ...b, displayArea: area };
+      const part = partsByKey ? lookupPart(partsByKey, b.partNumber) : undefined;
+      const orientation = (b.orientation ?? 0) + drop.turn.degrees;
+      const p = pivotOf({ displayArea: area, orientation: b.orientation ?? 0 }, part);
+      const to = applyGroupTurn(drop.turn, p.x, p.y);
+      return { ...b, orientation: ((orientation % 360) + 360) % 360, displayArea: areaForPivot(part, orientation, to, area) };
+    }),
+  }));
 }

@@ -10,6 +10,7 @@ import { shapeSelectionIds, useEditorStore, type Tool } from '../editorStore';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import {
+  bricksByLayer,
   deleteBricks,
   moveBrick,
   moveBrickAndOrient,
@@ -22,7 +23,7 @@ import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
 import { linkKeys, liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
-import { SnapSession, snapBypassed } from '../snapFeel';
+import { SnapSession, applyGroupTurn, snapBypassed, type GroupTurn } from '../snapFeel';
 import { liveSnapReach } from '../liveSnapReach';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
@@ -467,6 +468,8 @@ const BrickGlyph = memo(function BrickGlyph({
   /** Editing a module: its outline when this drag started, to tell when a part leaves it. */
   const moduleOutlineRef = useRef<{ moduleId: string; name: string; outline: StudRect; areas: Map<string, StudRect> } | null>(null);
 
+  /** A group snap's turn, and the leader's raw centre it was made from (for the drop). */
+  const groupTurnRef = useRef<{ turn: GroupTurn; raw: { x: number; y: number } } | null>(null);
   /** This drag's snap state (held join, pointer speed). */
   const snapSessionRef = useRef<SnapSession | null>(null);
   /** The leader's centre where the pointer has it, before any snap (studs). */
@@ -706,22 +709,27 @@ const BrickGlyph = memo(function BrickGlyph({
       y: result.centreY * studToPx(),
     });
     snapOrientRef.current = result.newOrientation;
-    node.rotation(result.newOrientation ?? brick.orientation);
+    const turn = result.groupTurn;
+    groupTurnRef.current = turn ? { turn, raw } : null;
+    node.rotation(result.newOrientation ?? brick.orientation + (turn?.degrees ?? 0));
 
-    // Translate every other selected brick by the same delta so the
-    // group moves rigidly. Match desktop's MapViewDrag.cpp:386-395 —
-    // shiftPx applied to every item in dragStart_.
+    // Move every other selected brick with the leader so the group moves
+    // rigidly (desktop MapViewDrag.cpp, shiftPx on every item in
+    // dragStart_); when the snap turns the group, each turns about the
+    // joined connection too, in the live preview.
     if (isMulti && stage) {
+      const rawDx = raw.x - dragStart.leaderStartCentre.x;
+      const rawDy = raw.y - dragStart.leaderStartCentre.y;
       const dxStud = result.centreX - dragStart.leaderStartCentre.x;
       const dyStud = result.centreY - dragStart.leaderStartCentre.y;
       for (const sib of dragStart.siblings) {
         const sibNode = sib.node;
-        if (sibNode) {
-          sibNode.position({
-            x: (sib.startCentre.x + dxStud) * studToPx(),
-            y: (sib.startCentre.y + dyStud) * studToPx(),
-          });
-        }
+        if (!sibNode) continue;
+        const at = turn
+          ? applyGroupTurn(turn, sib.startCentre.x + rawDx, sib.startCentre.y + rawDy)
+          : { x: sib.startCentre.x + dxStud, y: sib.startCentre.y + dyStud };
+        sibNode.position({ x: at.x * studToPx(), y: at.y * studToPx() });
+        sibNode.rotation(sib.orientation + (turn?.degrees ?? 0));
       }
     }
 
@@ -754,6 +762,8 @@ const BrickGlyph = memo(function BrickGlyph({
     // starts clean.
     const dragStart = dragStartRef.current;
     const snappedOrientation = snapOrientRef.current;
+    const groupTurn = groupTurnRef.current;
+    groupTurnRef.current = null;
     dragStartRef.current = null;
     snapOrientRef.current = null;
     const annoNodes = annoNodesRef.current;
@@ -808,7 +818,30 @@ const BrickGlyph = memo(function BrickGlyph({
     const labels = sidecar?.anchoredLabels ?? [];
     const modules = sidecar?.modules ?? [];
 
-    if (inSelection && selection.length > 1) {
+    if (inSelection && selection.length > 1 && groupTurn && dragStart) {
+      // A group snap that turned the group: every selected brick turns
+      // about the joined connection and lands with it, rulers / labels
+      // follow the leader, all one undo step.
+      const rawDx = groupTurn.raw.x - dragStart.leaderStartCentre.x;
+      const rawDy = groupTurn.raw.y - dragStart.leaderStartCentre.y;
+      doc.transact(() => {
+        for (const [lid, ids] of bricksByLayer(map, selection)) {
+          const layer = map.layers.find((l) => l.id === lid);
+          if (!layer || layer.type !== 'brick') continue;
+          const want = new Set(ids);
+          for (const b of layer.bricks) {
+            if (!want.has(b.id)) continue;
+            const part = partsByKey.get(b.partNumber.toLowerCase());
+            const p = pivotOf(b, part);
+            const to = applyGroupTurn(groupTurn.turn, p.x + rawDx, p.y + rawDy);
+            moveBrickAndOrient(doc, lid, b.id, to.x, to.y, b.orientation + groupTurn.turn.degrees, part);
+          }
+        }
+        if (annoCount(anno) > 0) {
+          translateMixedSelection(doc, map, labels, modules, { bricks: [], anno, dx, dy, movedBricks: selection });
+        }
+      }, LOCAL_ORIGIN);
+    } else if (inSelection && selection.length > 1) {
       // Multi-select drag: translate every selected brick (and ruler /
       // label) by the same delta, across ALL layers in one transaction
       // so undo is one step.

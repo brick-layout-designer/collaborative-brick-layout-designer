@@ -8,6 +8,9 @@ import {
   SNAP_STRENGTH_SCALE,
   SnapSession,
   SpeedMeter,
+  applyGroupTurn,
+  facingTurn,
+  groupTurnAllowed,
   holdReach,
   isSnapStrength,
   pickSnap,
@@ -23,9 +26,10 @@ interface VecCand {
   t: string;
   d: number;
   c: number;
+  u?: number;
 }
 const cands = (list: VecCand[]): SnapCandidate[] =>
-  list.map((c) => ({ movingKey: c.m, targetKey: c.t, dist: c.d, mouseDist: c.c }));
+  list.map((c) => ({ movingKey: c.m, targetKey: c.t, dist: c.d, mouseDist: c.c, ...(c.u !== undefined ? { turn: c.u } : {}) }));
 const lockOf = (s: string | null): SnapLock | null => {
   if (!s) return null;
   const [movingKey, targetKey] = s.split('>') as [string, string];
@@ -53,6 +57,13 @@ describe('snap feel: shared cases (snap-vectors.json)', () => {
         ...('bypass' in c && c.bypass ? { bypass: true } : {}),
       };
       expect(name(pickSnap(cands(c.candidates), lockOf(c.lock), c.reach, opts))).toBe(c.expect);
+    });
+  }
+
+  for (const c of VEC.turns) {
+    it(`turn: ${c.name}`, () => {
+      expect(facingTurn(c.target, c.moving)).toBeCloseTo(c.turn, 9);
+      expect(groupTurnAllowed(facingTurn(c.target, c.moving))).toBe(c.groupMay);
     });
   }
 
@@ -115,5 +126,15 @@ describe('snap feel', () => {
     s.reset();
     expect(s.lock).toBeNull();
     expect(s.meter.speed()).toBe(0);
+  });
+});
+
+describe('group turn', () => {
+  it('turns a point about the pivot and lands the pivot on the target', () => {
+    const t = { degrees: 90, pivotX: 1, pivotY: 1, toX: 10, toY: 0 };
+    expect(applyGroupTurn(t, 1, 1)).toEqual({ x: 10, y: 0 });
+    const p = applyGroupTurn(t, 3, 1);
+    expect(p.x).toBeCloseTo(10);
+    expect(p.y).toBeCloseTo(2);
   });
 });
