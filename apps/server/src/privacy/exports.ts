@@ -18,7 +18,7 @@ import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 import type { DataExport } from '../db/schema.js';
-import { collectUserData, type DataSection } from './collect.js';
+import { collectOrgData, collectUserData, type DataSection } from './collect.js';
 import { writeOwnedFiles, type FileCounts, type Owner } from './exportFiles.js';
 import { privacySettings } from './settings.js';
 import { ZipFileWriter, ZipTooBigError } from './zipWriter.js';
@@ -156,6 +156,7 @@ const SECTION_README = (sections: DataSection[]) =>
   sections.map((s) => `  data/${s.name}.json  (${s.rows.length})  ${s.about}`).join('\n');
 
 function readme(args: {
+  club: boolean;
   about: string;
   sections: DataSection[];
   counts: FileCounts;
@@ -166,7 +167,7 @@ function readme(args: {
   const site = siteUrl('/');
   const c = args.counts;
   return [
-    `Your data from Brick Layout Designer`,
+    args.club ? `Your club's data from Brick Layout Designer` : `Your data from Brick Layout Designer`,
     `====================================`,
     ``,
     `This is a copy of ${args.about} on ${site}`,
@@ -192,11 +193,20 @@ function readme(args: {
     `What is not in here`,
     `-------------------`,
     ``,
-    `- Your password and sign-in keys. They are secrets: anyone holding them could sign in`,
-    `  as you. The files say where one exists.`,
-    `- Things that belong to a club. Club layouts and modules you made are listed in data/,`,
-    `  but the files belong to the club. A club admin can download the club's data.`,
-    `- Other people's layouts that were shared with you. data/ lists which ones.`,
+    ...(args.club
+      ? [
+          `- Members' own things: their personal layouts and modules stay theirs.`,
+          `- Invite links: they are secrets. data/invites.json says which invites exist.`,
+          `- The member list holds email addresses: keep this file as carefully as the club's`,
+          `  own records.`,
+        ]
+      : [
+          `- Your password and sign-in keys. They are secrets: anyone holding them could sign in`,
+          `  as you. The files say where one exists.`,
+          `- Things that belong to a club. Club layouts and modules you made are listed in data/,`,
+          `  but the files belong to the club. A club admin can download the club's data.`,
+          `- Other people's layouts that were shared with you. data/ lists which ones.`,
+        ]),
     ``,
     `This download is kept on the server for ${args.keepDays} day(s), then deleted.`,
     ...(args.contact ? [``, `Questions about your data: ${args.contact}`] : []),
@@ -218,7 +228,7 @@ async function buildExport(id: string): Promise<void> {
   let failure: string | null = null;
   try {
     const subject: Owner = { kind: row.subjectKind, id: row.subjectId };
-    const sections = subject.kind === 'user' ? await collectUserData(subject.id) : await exportSectionsFor(subject);
+    const sections = subject.kind === 'user' ? await collectUserData(subject.id) : await collectOrgData(subject.id);
     if (sections.length === 0) throw new Error('gone');
     // Files first, so the README can say how many of each.
     const counts = await writeOwnedFiles(zip, subject);
@@ -226,7 +236,8 @@ async function buildExport(id: string): Promise<void> {
     zip.add(
       'README.txt',
       readme({
-        about: subject.kind === 'user' ? 'everything about your account' : 'everything about the club',
+        club: subject.kind === 'org',
+        about: subject.kind === 'user' ? 'everything about your account' : 'everything the club holds',
         sections,
         counts,
         when: new Date(),
@@ -262,9 +273,6 @@ async function buildExport(id: string): Promise<void> {
   await tellRequester(id, !failure);
 }
 
-/** Sections for a club download; filled in by the club feature (clubs.ts). */
-export const exportSectionsFor = async (subject: Owner): Promise<DataSection[]> => orgSections.fn(subject.id);
-export const orgSections: { fn: (orgId: string) => Promise<DataSection[]> } = { fn: async () => [] };
 
 /** Where the person who asked finds it. */
 function pageFor(row: DataExport): string {

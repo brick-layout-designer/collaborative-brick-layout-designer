@@ -297,6 +297,18 @@ export const orgs = sqliteTable('orgs', {
   trusted: integer('trusted', { mode: 'boolean' }).notNull().default(false),
   /** When it was last trusted (null: never, or not now). */
   trustedAt: integer('trusted_at', { mode: 'timestamp_ms' }),
+  /**
+   * Deleting the club (0028): it waits first (the Privacy setting's days),
+   * hidden from everyone: its memberships are set aside in
+   * `deletionPlan` (JSON: members, whether it was listed, and what
+   * happens to its public catalog items) so Restore puts them back. All
+   * null unless a deletion is waiting.
+   */
+  deletionRequestedAt: integer('deletion_requested_at', { mode: 'timestamp_ms' }),
+  deletionDueAt: integer('deletion_due_at', { mode: 'timestamp_ms' }),
+  /** Who deleted it (no FK: the club's members see the name in their notice; an erased account's id stays). */
+  deletedBy: text('deleted_by'),
+  deletionPlan: text('deletion_plan'),
 });
 
 export const orgMembers = sqliteTable(

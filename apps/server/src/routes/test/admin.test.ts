@@ -14,6 +14,7 @@ import { sessionRoutes } from '../auth/session.js';
 import { layoutRoutes } from '../layouts.js';
 import { orgRoutes } from '../orgs.js';
 import { adminRoutes } from '../admin.js';
+import { clubDeletionRoutes } from '../clubDeletion.js';
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 10 * 1024 * 1024 });
@@ -24,6 +25,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(layoutRoutes);
   await app.register(orgRoutes);
   await app.register(adminRoutes);
+  await app.register(clubDeletionRoutes);
   return app;
 }
 
@@ -348,8 +350,15 @@ describe('admin orgs', () => {
     });
     const orgId = (create.json() as { id: string }).id;
 
+    // Deleting waits first (hidden, restorable)...
     const del = await app.inject({ method: 'DELETE', url: `/api/admin/orgs/${orgId}`, headers: { cookie: adminCookie } });
     expect(del.statusCode).toBe(200);
+    const waiting = await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
+    expect(waiting!.deletionDueAt).not.toBeNull();
+    // ...and "Erase now" skips the wait, after typing its name.
+    expect((await app.inject({ method: 'POST', url: `/api/admin/orgs/${orgId}/erase`, headers: { cookie: adminCookie }, payload: { confirm: 'nope' } })).statusCode).toBe(400);
+    const erase = await app.inject({ method: 'POST', url: `/api/admin/orgs/${orgId}/erase`, headers: { cookie: adminCookie }, payload: { confirm: 'delete me' } });
+    expect(erase.statusCode).toBe(200);
 
     const org = await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
     expect(org).toBeUndefined();

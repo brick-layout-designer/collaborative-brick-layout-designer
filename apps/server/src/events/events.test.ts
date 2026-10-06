@@ -196,8 +196,9 @@ describe('GET /api/events', () => {
     const sb = await stream({ cookie: b.cookie });
     const res = await app.inject({ method: 'DELETE', url: `/api/orgs/${slug}`, headers: { cookie: a.cookie }, payload: { confirm: 'Train Club' } });
     expect(res.statusCode).toBeLessThan(300);
-    await until(() => sb.hints().length > 0);
-    expect(sb.hints()[0]).toMatchObject({ kind: 'club', id: orgId, action: 'delete' });
+    // The club drops off their screens (a notice about it arrives too).
+    await until(() => sb.hints().some((h) => h.kind === 'club'));
+    expect(sb.hints().find((h) => h.kind === 'club')).toMatchObject({ kind: 'club', id: orgId, action: 'delete' });
   });
 
   it('a member removed from a club hears it; the club then goes quiet for them', async () => {

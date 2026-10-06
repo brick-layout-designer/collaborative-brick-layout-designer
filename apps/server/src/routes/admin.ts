@@ -31,6 +31,8 @@ import { env } from '../env.js';
 import { backgroundJobs } from '../workers/jobs.js';
 import { EraseRefused, eraseUser } from '../privacy/accountDeletion.js';
 import { NOTICE_MAX, privacyContact, validContact } from '../privacy/page.js';
+import { readPlan, requestClubDeletion } from '../privacy/clubDeletion.js';
+import { catalogChoice } from './orgs.js';
 import { invalidatePrivacyCache, mergePrivacyPatch, privacySettingStates } from '../privacy/settings.js';
 import { DEMO_RESET_CHOICES, demoStatus, ensureDemoUser, isDemoUser, signOutDemo, type DemoResetEvery } from '../demo/demoAccount.js';
 import { demoItemCount, runDemoReset } from '../demo/reset.js';
@@ -302,6 +304,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         name: schema.orgs.name,
         slug: schema.orgs.slug,
         createdAt: schema.orgs.createdAt,
+        deletionDueAt: schema.orgs.deletionDueAt,
+        deletionPlan: schema.orgs.deletionPlan,
       })
       .from(schema.orgs)
       .where(where)
@@ -331,9 +335,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     ]);
     const byId = new Map(memberCounts.map((r) => [r.orgId, r.n]));
     return {
-      orgs: rows.map((r) => ({
+      orgs: rows.map(({ deletionPlan: _plan, ...r }) => ({
         ...r,
-        memberCount: byId.get(r.id) ?? 0,
+        // Waiting to be deleted (hidden; Restore or Erase now). Its members are set aside meanwhile.
+        deletionDueAt: r.deletionDueAt?.getTime() ?? null,
+        memberCount: byId.get(r.id) ?? (r.deletionDueAt ? (readPlan({ deletionPlan: _plan })?.members.length ?? 0) : 0),
         layoutCount: layoutStats.get(r.id)?.layoutCount ?? 0,
         layoutSizeBytes: layoutStats.get(r.id)?.sizeBytes ?? 0,
       })),
@@ -378,24 +384,26 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.delete<{ Params: { id: string } }>('/api/admin/orgs/:id', async (req, reply) => {
+  // Deleting a club waits first, hidden, like a club admin's delete
+  // (privacy/clubDeletion.ts); "Erase now" (/api/admin/orgs/:id/erase)
+  // skips the wait. Public catalog items go to the club's longest admin
+  // unless the body says otherwise.
+  app.delete<{ Params: { id: string }; Body: { catalog?: unknown; heirUserId?: unknown } }>('/api/admin/orgs/:id', async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const target = await db.select().from(schema.orgs).where(eq(schema.orgs.id, req.params.id)).get();
     if (!target) return reply.code(404).send({ error: 'not_found' });
-    const orgLayouts = await db
-      .select({ id: schema.layouts.id })
-      .from(schema.layouts)
-      .where(eq(schema.layouts.ownerOrgId, target.id));
-    await db.delete(schema.orgs).where(eq(schema.orgs.id, target.id));
-    await docHub.closeMany(orgLayouts.map((l) => l.id));
+    if (target.deletionDueAt) return { ok: true, dueAt: target.deletionDueAt.getTime() };
+    const choice = await catalogChoice(target.id, req.body?.catalog, req.body?.heirUserId, null);
+    if ('error' in choice) return reply.code(400).send(choice);
+    const { dueAt } = await requestClubDeletion(target, me, choice);
     await writeAuditEvent({
       resourceKind: 'org',
       resourceId: target.id,
       userId: me.id,
       eventType: 'admin_org_delete',
-      payload: { name: target.name, slug: target.slug },
+      payload: { name: target.name, slug: target.slug, dueAt: dueAt.getTime() },
     });
-    return { ok: true };
+    return { ok: true, dueAt: dueAt.getTime() };
   });
 
   // -----------------------------------------------------------------

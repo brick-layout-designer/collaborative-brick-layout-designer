@@ -787,47 +787,6 @@ export function HandOverSection({ slug, myUserId, members }: { slug: string; myU
   );
 }
 
-/** Delete the club and everything it owns, after typing its name. */
-export function DeleteClubSection({ org, counts }: { org: OrgDetail; counts: string }) {
-  const qc = useQueryClient();
-  const navigate = useNavigate();
-  const [typed, setTyped] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const remove = useMutation({
-    mutationFn: () => api.orgs.remove(org.slug, typed),
-    onSuccess: async () => {
-      await qc.invalidateQueries();
-      navigate('/orgs', { replace: true });
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-  const ok = typed.trim().toLowerCase() === org.name.trim().toLowerCase();
-  return (
-    <section className="space-y-3 rounded-section border border-red-900 bg-panel p-4" aria-label="Delete the club">
-      <h2 className="text-lg font-semibold text-danger">Delete the club</h2>
-      <p className="text-sm text-muted">
-        This deletes {org.name} for everyone, with {counts}. People keep their own things. It can’t be undone.
-      </p>
-      <form
-        className="flex flex-col gap-3 text-sm sm:flex-row sm:items-end"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          remove.mutate();
-        }}
-      >
-        <label className="block flex-1">
-          <span className="mb-1 block text-muted">Type the club’s name, {org.name}, to confirm</span>
-          <input value={typed} onChange={(e) => setTyped(e.target.value)} className={field} autoComplete="off" />
-        </label>
-        <button type="submit" disabled={!ok || remove.isPending} className={danger}>
-          Delete club
-        </button>
-      </form>
-      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
-    </section>
-  );
-}
 
 /** "Leave the club", with the last-admin rule explained up front. */
 export function LeaveClubButton({ org, myUserId }: { org: OrgDetail; myUserId: string }) {

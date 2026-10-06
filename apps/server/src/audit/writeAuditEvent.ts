@@ -119,7 +119,12 @@ export type AuditEventType =
   // Admin › Privacy requests: logged, changed, and each one-click answer
   // (payload.action: log, update, erase, restrict, unrestrict). Subject is
   // the person (or "request:<id>" when there is no account).
-  | 'privacy_request';
+  | 'privacy_request'
+  // Deleting a club: asked for (hidden, waiting), restored, and deleted for
+  // good (payload.ref "Deleted club #…", what happened to its public items).
+  | 'club_delete_request'
+  | 'club_restore'
+  | 'club_erased';
 
 export type AuditResourceKind =
   | 'layout'

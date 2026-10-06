@@ -6,7 +6,6 @@ import { api, type OrgPartLibrary } from '../api';
 import {
   ActivitySection,
   ClubWarningsSection,
-  DeleteClubSection,
   HandOverSection,
   InviteSection,
   JoinRequestsSection,
@@ -21,6 +20,7 @@ import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
 import { aRole, atLeast } from './clubRoles';
 import { ClubReviewTab } from './ClubReview';
+import { DeleteClubSection } from './DeleteClub';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
 
@@ -47,9 +47,6 @@ function OrgAdmin({ slug }: { slug: string }) {
     queryFn: () => api.orgs.joinRequests(slug),
     enabled: isAdmin,
   });
-  const layouts = useQuery({ queryKey: ['layouts'], queryFn: api.layouts.list });
-  const venues = useQuery({ queryKey: ['venues'], queryFn: api.venues.list });
-  const modules = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   useHashScroll(!!detail.data && !!members.data);
 
   if (me.isLoading || detail.isLoading) {
@@ -74,9 +71,6 @@ function OrgAdmin({ slug }: { slug: string }) {
   const isClubAdmin = org.myRole === 'admin';
   const myUserId = me.data.user.id;
   const memberList = members.data?.members ?? [];
-  const count = (items: readonly { ownerOrgId: string | null }[] | undefined) => items?.filter((i) => i.ownerOrgId === org.id).length ?? 0;
-  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-  const things = `its ${plural(count(layouts.data?.layouts), 'layout')}, ${plural(count(venues.data?.venues), 'venue')}, ${plural(count(modules.data?.modules), 'module')} and custom parts`;
 
   const requestList = requests.data?.requests ?? [];
   const waiting = requestList.length;
@@ -141,7 +135,7 @@ function OrgAdmin({ slug }: { slug: string }) {
             <Section title="Leave the club">
               <LeaveClubButton org={org} myUserId={myUserId} />
             </Section>
-            <DeleteClubSection org={org} counts={things} />
+            <DeleteClubSection org={org} myUserId={myUserId} />
           </div>
         )}
         {tab === 'parts' && (
