@@ -10,6 +10,7 @@
 
 import { useMemo } from 'react';
 import { create } from 'zustand';
+import type Konva from 'konva';
 import type { BbmMap } from '@cld/model';
 
 export interface DragPose {
@@ -105,4 +106,34 @@ export function usePosedMap(map: BbmMap | null, relevant?: (pose: DragPose) => b
 export function dragsAny(pose: DragPose, ids: Iterable<string>): boolean {
   for (const id of ids) if (pose.ids.has(id)) return true;
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// The pose of one part as drawn this frame: its Konva node (`.brick-<id>`).
+// The drag pose above is rigid and set by a drag of parts; a part also
+// moves before anything is committed while a flex run bends (each part on
+// its own) and as a rotation snaps. Something attached to one part's own
+// point (a bend handle on its free end) reads the part's node as Konva
+// draws it, so it follows all of those, frame by frame, without a React
+// render.
+
+type Pt = { x: number; y: number };
+const PX = 8; // studs → px
+
+/**
+ * Where the point `local` (studs, in the part's own frame: from its sprite
+ * centre, before its turn, as a connection's position) is drawn now, in the
+ * stage's absolute (container) pixels. Null when the part has no node.
+ */
+export function nodePoint(stage: Konva.Stage | null | undefined, brickId: string, local: Pt): Pt | null {
+  const node = stage?.findOne(`.brick-${brickId}`);
+  if (!node) return null;
+  return node.getAbsoluteTransform().point({ x: local.x * PX, y: local.y * PX });
+}
+
+/** The same point in `shape`'s own drawing frame (what a sceneFunc or hitFunc draws in); the shape's origin when the part has no node. */
+export function nodePointIn(shape: Pick<Konva.Node, 'getStage' | 'getAbsoluteTransform'>, brickId: string, local: Pt): Pt {
+  const abs = nodePoint(shape.getStage(), brickId, local);
+  if (!abs) return { x: 0, y: 0 };
+  return shape.getAbsoluteTransform().copy().invert().point(abs);
 }

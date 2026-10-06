@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { shapeSelectionIds, useEditorStore, type AnnoSelection, type Tool } from '../editorStore';
 import { groupMates } from '../sets';
+import { connectionHingeAngle } from '@cld/parts-catalog/browser';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import {
@@ -1049,6 +1050,12 @@ const BrickGlyph = memo(function BrickGlyph({
     if (!byTouch && onEditBrick) onEditBrick(brick, layerId, meta);
   }
 
+  // A picked flex track (or other hinged part) shows bend handles on its
+  // free ends (BendHandles), not connection dots under them.
+  const handlesInstead =
+    isSelected && !isViewer && tool === 'select' && !!meta && meta.connections.length <= 2 &&
+    meta.connections.some((c) => connectionHingeAngle(c.type) !== 0);
+
   return (
     <Group
       ref={groupRef}
@@ -1109,7 +1116,7 @@ const BrickGlyph = memo(function BrickGlyph({
         (Connectivity.cpp) links coincident CPs, preventing stacked dots
         at shared edges. The active CP gets bigger + gold when selected.
       */}
-      {(showConnectionPoints || isSelected || alwaysShowConnections) && meta && meta.connections.map((cp, ci) => {
+      {(showConnectionPoints || isSelected || alwaysShowConnections) && meta && !(handlesInstead) && meta.connections.map((cp, ci) => {
         // Skip non-numeric "type" values (custom non-snap joints) — same
         // gate desktop applies at SceneBuilder.cpp:262-267.
         if (!cp.type || !/^\d+$/.test(cp.type)) return null;
