@@ -66,7 +66,11 @@ export function settingsMenuGroups(
   const account: Entry[] = [{ label: 'Profile and name', to: '/profile#name' }];
   // The shared demo account can't change its sign-in or connect a desktop app.
   if (!user.isDemoAccount) {
-    account.push({ label: 'Sign-in methods', to: '/profile#sign-in' }, { label: 'Devices', to: '/profile#devices' });
+    account.push(
+      { label: 'Sign-in methods', to: '/profile#sign-in' },
+      { label: 'Devices', to: '/profile#devices' },
+      { label: 'Your data', to: '/profile#my-data' },
+    );
   }
   const look: Entry[] = [
     { label: 'Light or dark', to: '/settings#look' },

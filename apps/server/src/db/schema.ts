@@ -233,6 +233,13 @@ export const platformSettings = sqliteTable('platform_settings', {
    * COLLECTION_COVER_MAX_BYTES env var, when set, overrides it.
    */
   collectionCoverMaxBytes: integer('collection_cover_max_bytes').notNull().default(5 * 1024 * 1024),
+  /**
+   * Admin › Settings › Privacy (0025): a JSON object of privacy setting
+   * key -> number (see privacy/settings.ts): how often people may
+   * download their data, the biggest download, how long it is kept.
+   * Keys left out use the built-in default; a PRIVACY_* env var forces one.
+   */
+  privacy: text('privacy'),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
 });
@@ -1156,3 +1163,38 @@ export const warnings = sqliteTable(
   }),
 );
 export type Warning = typeof warnings.$inferSelect;
+
+/**
+ * "Download my data" (0025): one zip of everything about a person (or a
+ * club), built in the background and kept on disk next to the database
+ * (exports/<id>.zip) until `expiresAt`. Only `requestedBy` may download
+ * it: the person themselves, a club admin for a club's, or a site admin
+ * answering a privacy request. Rows and files go when they expire (the
+ * privacy clean-up), and when the account they are about is erased.
+ */
+export const dataExports = sqliteTable(
+  'data_exports',
+  {
+    id: text('id').primaryKey(),
+    /** What it is about: a person, or a club. */
+    subjectKind: text('subject_kind', { enum: ['user', 'org'] }).notNull(),
+    subjectId: text('subject_id').notNull(),
+    /** Who asked, and the only one who may download it. */
+    requestedBy: text('requested_by').references(() => users.id, { onDelete: 'cascade' }),
+    /** 'self' (Profile), 'admin' (a privacy request), 'club' (a club's admins). */
+    reason: text('reason', { enum: ['self', 'admin', 'club'] }).notNull(),
+    status: text('status', { enum: ['building', 'ready', 'failed'] }).notNull(),
+    sizeBytes: integer('size_bytes'),
+    /** Why it failed, in plain words. */
+    error: text('error'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    readyAt: integer('ready_at', { mode: 'timestamp_ms' }),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+    downloadedAt: integer('downloaded_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => ({
+    requesterIdx: index('data_exports_requested_by_idx').on(t.requestedBy, t.createdAt),
+    subjectIdx: index('data_exports_subject_idx').on(t.subjectKind, t.subjectId),
+  }),
+);
+export type DataExport = typeof dataExports.$inferSelect;

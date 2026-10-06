@@ -104,7 +104,11 @@ export type AuditEventType =
   // them ('take_back') or by the club's admins and managers ('give_back').
   // The club keeps a copy (payload.keptCopyId). Subject is the original.
   | 'take_back'
-  | 'give_back';
+  | 'give_back'
+  // Privacy: a data download was asked for ('data_export', payload.reason
+  // 'self' | 'admin' | 'club') or downloaded. Subject is the person or club.
+  | 'data_export'
+  | 'data_export_download';
 
 export type AuditResourceKind =
   | 'layout'

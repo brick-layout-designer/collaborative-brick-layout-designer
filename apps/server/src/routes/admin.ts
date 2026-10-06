@@ -30,6 +30,7 @@ import { docHub } from '../ws/docHub.js';
 import { safeFetch } from '../utils/safeFetch.js';
 import { env } from '../env.js';
 import { backgroundJobs } from '../workers/jobs.js';
+import { invalidatePrivacyCache, mergePrivacyPatch, privacySettingStates } from '../privacy/settings.js';
 import { DEMO_RESET_CHOICES, demoStatus, ensureDemoUser, isDemoUser, signOutDemo, type DemoResetEvery } from '../demo/demoAccount.js';
 import { demoItemCount, runDemoReset } from '../demo/reset.js';
 
@@ -1167,6 +1168,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       // The demo account: on or off, how often it resets, when it last
       // did and how many things it has now.
       demo: { ...demoStatus(settings), items: await demoItemCount() },
+      // Privacy: data downloads (and, later, deleting accounts and keeping
+      // records), each with where its value comes from.
+      privacy: { settings: await privacySettingStates() },
       // The server's own settings that can't be changed from this page,
       // with why: secrets, things read once at start, the deployment's own
       // paths and ports, and the first admin (needed before there is a DB).
@@ -1194,6 +1198,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       demoEnabled?: boolean;
       demoResetEvery?: string;
       collectionCoverMaxBytes?: number;
+      /** Admin › Settings › Privacy: key -> number, or null for the default (privacy/settings.ts). */
+      privacy?: Record<string, number | null>;
     };
   }>('/api/admin/settings', async (req, reply) => {
     const me = requireGlobalAdmin(req);
@@ -1252,6 +1258,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       if (typeof n !== 'number' || !Number.isInteger(n) || n < COVER_MAX_FLOOR || n > COVER_MAX_CEILING) return reply.code(400).send({ error: 'invalid_input' });
       patch.collectionCoverMaxBytes = n;
     }
+    if ('privacy' in body) {
+      const merged = mergePrivacyPatch((await getPlatformSettings()).privacy, body.privacy);
+      if ('error' in merged) return reply.code(400).send({ error: 'invalid_input', detail: merged.error });
+      patch.privacy = merged.json;
+    }
     if ('catalogReview' in body) {
       if (body.catalogReview !== 'moderators' && body.catalogReview !== 'none') return reply.code(400).send({ error: 'invalid_input' });
       patch.catalogReview = body.catalogReview;
@@ -1269,6 +1280,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     invalidateTransporter();
     resetDesktopPolicy();
     invalidateLimitCaches(); // the limits switch takes effect at once
+    invalidatePrivacyCache();
     // Turning the demo on makes (or re-enables) its account with fresh
     // samples; turning it off signs every visitor out.
     if (patch.demoEnabled === true && !before.demoEnabled) {

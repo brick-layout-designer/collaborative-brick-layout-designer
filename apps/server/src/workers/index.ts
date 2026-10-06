@@ -37,11 +37,15 @@ import { sweepUsage } from '../metrics/usage.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { demoResetDue } from '../demo/demoAccount.js';
 import { runDemoReset } from '../demo/reset.js';
+import { privacyTick } from '../privacy/tick.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let demoTimer: ReturnType<typeof setInterval> | null = null;
+let privacyTimer: ReturnType<typeof setInterval> | null = null;
+/** How often the privacy clean-up runs (expired downloads, and the rest of privacy/tick.ts). */
+const PRIVACY_CHECK_MS = 60 * 60 * 1000;
 /** How often the demo timer looks whether a reset is due. */
 const DEMO_CHECK_MS = 5 * 60 * 1000;
 
@@ -49,6 +53,8 @@ export function startWorkers(): void {
   if (env.nodeEnv === 'test') return;
   if (timer) return;
   demoTimer = setInterval(() => void safeRun('demoReset', async () => void (await demoTick())), DEMO_CHECK_MS);
+  privacyTimer = setInterval(() => void safeRun('privacy', async () => void (await privacyTick())), PRIVACY_CHECK_MS);
+  setTimeout(() => void safeRun('privacy', async () => void (await privacyTick())), 90_000);
   // Run on first tick after 60s (so a server crash-restart loop doesn't
   // hammer the DB) and every 24h thereafter.
   setTimeout(() => {
@@ -65,6 +71,10 @@ export function stopWorkers(): void {
   if (demoTimer) {
     clearInterval(demoTimer);
     demoTimer = null;
+  }
+  if (privacyTimer) {
+    clearInterval(privacyTimer);
+    privacyTimer = null;
   }
 }
 
