@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
-import { signIn } from '../helpers';
+import { signIn, mapMenu } from '../helpers';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures');
 const TIGHT_CORNER = readFileSync(join(FIXTURES, 'tight-corner.bbm'), 'utf-8');
@@ -73,9 +73,8 @@ test.describe('layout file', () => {
     const id = await layoutWithImage(page);
     await openEditor(page, id);
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
     const dl = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download Layout (.bld-layout)' }).click();
+    await mapMenu(page, 'Download & export', 'Download layout (.bld-layout)');
     const download = await dl;
     expect(download.suggestedFilename()).toBe('File Test.bld-layout');
 
@@ -141,8 +140,7 @@ test.describe('layout file', () => {
   test('Download As .bbm says what BlueBrick leaves out and gives the bare map', async ({ page }) => {
     const id = await layoutWithImage(page);
     await openEditor(page, id);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Download As...' }).click();
+    await mapMenu(page, 'Download & export', 'Download as…');
     const dialog = page.getByRole('dialog', { name: 'Download As' });
     await expect(dialog.getByLabel('Brick Layout Designer layout (.bld-layout)')).toBeChecked();
     await dialog.getByLabel('BlueBrick map (.bbm)').check();
@@ -175,9 +173,8 @@ test.describe('layout file', () => {
     // Downloaded again, the layout carries it.
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
     const dl = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download Layout (.bld-layout)' }).click();
+    await mapMenu(page, 'Download & export', 'Download layout (.bld-layout)');
     const entries = unzip(readFileSync(await (await dl).path()));
     expect([...entries.keys()].filter((n) => n.startsWith('parts/'))).toEqual(['parts/CLDTEST.1.png', 'parts/CLDTEST.1.xml']);
 

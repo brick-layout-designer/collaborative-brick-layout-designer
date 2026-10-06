@@ -31,6 +31,14 @@ describe('isEditableTarget', () => {
     }
   });
 
+  it('flags entries of an open menu', () => {
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    const item = document.createElement('button');
+    menu.appendChild(item);
+    expect(isEditableTarget(item)).toBe(true);
+  });
+
   it('lets canvas / body keystrokes through', () => {
     expect(isEditableTarget(document.body)).toBe(false);
     expect(isEditableTarget(document.createElement('canvas'))).toBe(false);

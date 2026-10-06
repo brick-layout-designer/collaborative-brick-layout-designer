@@ -9,7 +9,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { signIn } from '../helpers';
+import { signIn, mapMenu } from '../helpers';
 
 const FORDYCE_BBM = readFileSync(
   join(
@@ -177,24 +177,21 @@ test.describe('toolbar and menus', () => {
 
     const before = await zoomText();
     await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.getByRole('menu', { name: 'Map' }).getByRole('menuitem', { name: 'View' }).hover();
     await shot(page, 'map-menu.png');
-    await page.getByRole('button', { name: /^Zoom In/ }).click();
+    await page.getByRole('menu', { name: 'View' }).getByRole('menuitem', { name: 'Zoom in' }).click();
     await expect.poll(zoomText).not.toBe(before);
     const zoomed = await zoomText();
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: /^Zoom Out/ }).click();
+    await mapMenu(page, 'View', 'Zoom out');
     await expect.poll(zoomText).not.toBe(zoomed);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: /^Fit to View/ }).click();
+    await mapMenu(page, 'View', 'Fit to view');
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: /^Insert Text/ }).click();
+    await mapMenu(page, 'Insert', 'Text…');
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
     const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download Layout (.bld-layout)' }).click();
+    await mapMenu(page, 'Download & export', 'Download layout (.bld-layout)');
     // The whole layout in one file (layoutFile.spec.ts looks inside).
     expect((await download).suggestedFilename()).toBe('Parity Test.bld-layout');
   });
@@ -202,8 +199,7 @@ test.describe('toolbar and menus', () => {
   test('Export Image offers size, JPEG quality and antialias', async ({ page }) => {
     const id = await createLayout(page, FORDYCE_BBM);
     await openEditor(page, id);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Export as Image...' }).click();
+    await mapMenu(page, 'Download & export', 'Export as image…');
 
     const width = page.getByLabel('Width (px)');
     const height = page.getByLabel('Height (px)');
@@ -352,8 +348,7 @@ test.describe('insert text', () => {
     });
     const centre = { x: iw / 2 / 8, y: ih / 2 / 8 };
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: /^Insert Text/ }).click();
+    await mapMenu(page, 'Insert', 'Text…');
     const dialog = page.getByRole('dialog');
     await dialog.locator('input[type="text"], textarea').first().fill('Centred');
     await dialog.getByRole('button', { name: 'OK' }).click();
@@ -435,8 +430,7 @@ test.describe('budget limits', () => {
     const id = await createLayout(page, FORDYCE_BBM);
     await openEditor(page, id);
     const openBudget = async (p: Page) => {
-      await p.getByRole('button', { name: 'Map', exact: true }).click();
-      await p.getByRole('button', { name: 'Edit Budget...' }).click();
+      await mapMenu(p, 'Budget', 'Edit budget…');
     };
     // The Budget table's first row (the Parts filter also uses a '—' placeholder).
     const budgetRow = (p: Page) => p.locator('tbody tr').filter({ has: p.locator('input[placeholder="—"]') }).first();
@@ -498,15 +492,18 @@ test.describe('header dropdowns at a narrow viewport', () => {
     };
 
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    const mapMenu = page.locator('ul', { has: page.getByRole('button', { name: 'General info...' }) });
-    await inside(mapMenu);
+    const mapList = page.getByRole('menu', { name: 'Map' });
+    await inside(mapList);
+    await expect(page.getByRole('menuitem', { name: 'Preferences…' })).toBeInViewport();
+    // A submenu opens beside its entry and stays inside the window too.
+    await mapList.getByRole('menuitem', { name: 'Download & export' }).hover();
+    await expect(page.getByRole('menu', { name: 'Download & export' })).toBeVisible();
+    const sub = (await page.getByRole('menu', { name: 'Download & export' }).boundingBox())!;
+    expect(sub.x + sub.width).toBeLessThanOrEqual(1024);
+    expect(sub.y + sub.height).toBeLessThanOrEqual(700);
     await shot(page, 'map-menu-1024.png');
-    // The last entry is reachable (the menu scrolls instead of overflowing).
-    const prefs = page.getByRole('button', { name: /^Preferences/ });
-    await prefs.scrollIntoViewIfNeeded();
-    await expect(prefs).toBeInViewport();
     await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await expect(mapMenu).toHaveCount(0);
+    await expect(mapList).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Panels', exact: true }).click();
     const panelsMenu = page.locator('ul', { has: page.getByLabel('Module library') });
@@ -547,8 +544,7 @@ test.describe('venue drawing', () => {
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
     const at = (dx: number, dy: number) => page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy);
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Venue → Draw Outline...' }).click();
+    await mapMenu(page, 'Venue', 'Draw outline…');
     await at(-40, -40);
     await at(40, -40);
     await page.keyboard.press('Enter');
@@ -640,15 +636,12 @@ test.describe('use budget limitation', () => {
     const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
 
     // Budget 3857.0 at exactly its 72 uses, and turn the limitation on.
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Edit Budget...' }).click();
+    await mapMenu(page, 'Budget', 'Edit budget…');
     const row = page.locator('tbody tr', { hasText: '3857.0' });
     await row.locator('input[placeholder="—"]').fill('72');
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Stop at the Budget Limits' }).click();
+    await mapMenu(page, 'Budget', 'Stop at the budget limits');
     // Close the Budget panel so it doesn't cover the Find panel.
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Edit Budget...' }).click();
+    await mapMenu(page, 'Budget', 'Edit budget…');
 
     // Select one 3857.0 through Find, then duplicate it.
     await page.keyboard.press('Control+f');
@@ -686,26 +679,21 @@ test.describe('budget in the parts panel', () => {
     await expect(tiles.first()).toBeVisible({ timeout: 10000 });
     const allTiles = await tiles.count();
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Edit Budget...' }).click();
+    await mapMenu(page, 'Budget', 'Edit budget…');
     await page.locator('tbody tr', { hasText: '3857.0' }).locator('input[placeholder="—"]').fill('10');
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Edit Budget...' }).click(); // close the panel
+    await mapMenu(page, 'Budget', 'Edit budget…'); // close the panel
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Show Only Parts in the Budget' }).click();
+    await mapMenu(page, 'Budget', 'Show only parts in the budget');
     // Only parts with a limit above 0 remain: 3857.0.
     await expect(tiles).toHaveCount(1);
     await expect(tiles.first()).toHaveAttribute('title', /3857\.0/);
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Show Budget Numbers' }).click();
+    await mapMenu(page, 'Budget', 'Show budget numbers');
     await expect(tiles.first().getByTestId('budget-numbers')).toHaveText('72/10');
     await expect(tiles.first()).toHaveClass(/bg-red-900/);
     await shot(page, 'parts-budget.png');
 
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Budget → Show Only Parts in the Budget' }).click();
+    await mapMenu(page, 'Budget', 'Show only parts in the budget');
     await expect(tiles).toHaveCount(allTiles);
     // Unbudgeted parts read "used/?".
     await expect(page.getByTestId('budget-numbers').filter({ hasText: /\/\?$/ }).first()).toBeVisible();
@@ -934,8 +922,7 @@ test.describe('venue obstacles', () => {
     await openEditor(page, id);
     const footer = page.locator('footer');
     const drawObstacle = async () => {
-      await page.getByRole('button', { name: 'Map', exact: true }).click();
-      await page.getByRole('button', { name: 'Venue → Draw Obstacle...' }).click();
+      await mapMenu(page, 'Venue', 'Add obstacle…');
     };
 
     let message = '';
@@ -948,8 +935,7 @@ test.describe('venue obstacles', () => {
     await expect(footer).toContainText('Tool: select');
 
     // Draw an outline, then the obstacle tool is allowed.
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Venue → Draw Outline...' }).click();
+    await mapMenu(page, 'Venue', 'Draw outline…');
     await expect(footer).toContainText('Click points to outline the venue.');
     const box = (await page.locator('.konvajs-content').first().boundingBox())!;
     for (const [dx, dy] of [[-60, -60], [60, -60], [0, 60]] as const) {
@@ -1007,8 +993,7 @@ test.describe('fit to view', () => {
         `<Font><FontFamily>Arial</FontFamily><Size>12</Size><Style>Regular</Style></Font><TextAlignment>Center</TextAlignment></TextCell>${b}`);
     const id = await createLayout(page, withText);
     await openEditor(page, id);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: /^Fit to View/ }).click();
+    await mapMenu(page, 'View', 'Fit to view');
     const view = await page.evaluate(() => {
       type Stage = { x: () => number; y: () => number; scaleX: () => number; width: () => number; height: () => number };
       const K = (window as unknown as { Konva: { stages: Stage[] } }).Konva;
@@ -1116,8 +1101,7 @@ test.describe('part list export', () => {
     const id = await createLayout(page, FORDYCE_BBM);
     await openEditor(page, id);
     const openDialog = async () => {
-      await page.getByRole('button', { name: 'Map', exact: true }).click();
-      await page.getByRole('button', { name: 'Export Part List...' }).click();
+      await mapMenu(page, 'Download & export', 'Export part list…');
       return page.getByRole('dialog', { name: 'Export Part List' });
     };
 

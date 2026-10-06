@@ -163,6 +163,10 @@ import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
 import { askConfirm, askLeaveUnsaved } from '../ui/ConfirmDialog';
 import { creditText } from '../owners/owners';
 import type { Credit } from '../api';
+import { useShallow } from 'zustand/react/shallow';
+import { Menu } from '../ui/menu/Menu';
+import { resolveMenu } from '../ui/menu/menuModel';
+import { mapMenuEntries } from './mapMenu';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -4606,8 +4610,9 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
 }
 
 /**
- * Header dropdown combining Map, View and File-export actions.
- * Port of MainWindowMapMenu.cpp + MainWindowMenus.cpp View/File sections.
+ * The Map menu: the layout, then Insert ▸, Modules & sets ▸, Venue ▸,
+ * View ▸, Budget ▸, Download & export ▸ and Preferences (mapMenu.ts).
+ * Grouped like desktop's menu bar (MainWindowMenus.cpp, MainWindowMapMenu.cpp).
  */
 function MapMenu({
   moduleMode = false,
@@ -4671,129 +4676,73 @@ function MapMenu({
   /** The module editor: no venue, budget or layout download. */
   moduleMode?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [anchor, setAnchor] = useState<React.CSSProperties>({});
-  const showConnectionPoints = useEditorStore((s) => s.showConnectionPoints);
-  const showGrid = useEditorStore((s) => s.showGrid);
-  const showBrickHulls = useEditorStore((s) => s.showBrickHulls);
-  const showBrickElevation = useEditorStore((s) => s.showBrickElevation);
-  const showRulerAttachPoints = useEditorStore((s) => s.showRulerAttachPoints);
-  const alwaysShowConnections = useEditorStore((s) => s.alwaysShowConnections);
-  const setShowConnectionPoints = useEditorStore((s) => s.setShowConnectionPoints);
-  const setShowGrid = useEditorStore((s) => s.setShowGrid);
-  const setShowBrickHulls = useEditorStore((s) => s.setShowBrickHulls);
-  const setShowBrickElevation = useEditorStore((s) => s.setShowBrickElevation);
-  const setShowRulerAttachPoints = useEditorStore((s) => s.setShowRulerAttachPoints);
-  const setAlwaysShowConnections = useEditorStore((s) => s.setAlwaysShowConnections);
-  const showModuleNames = useEditorStore((s) => s.showModuleNames);
-  const setShowModuleNames = useEditorStore((s) => s.setShowModuleNames);
-  const showStatusBar = useEditorStore((s) => s.showStatusBar);
-  const setShowStatusBar = useEditorStore((s) => s.setShowStatusBar);
-
-  const useBudgetLimitation = useEditorStore((s) => s.useBudgetLimitation);
-  const setUseBudgetLimitation = useEditorStore((s) => s.setUseBudgetLimitation);
-  const showOnlyBudgetedParts = useEditorStore((s) => s.showOnlyBudgetedParts);
-  const setShowOnlyBudgetedParts = useEditorStore((s) => s.setShowOnlyBudgetedParts);
-  const showBudgetNumbers = useEditorStore((s) => s.showBudgetNumbers);
-  const setShowBudgetNumbers = useEditorStore((s) => s.setShowBudgetNumbers);
-
-  const allItems: ({ label: string; action: () => void; checked?: undefined } | { label: string; action: () => void; checked: boolean })[] = [
-    { label: 'General info...', action: onGeneralInfo },
-    { label: 'Background colour...', action: onBackgroundColor },
-    { label: 'Background image...', action: onBackgroundImage },
-    { label: 'Find...  Ctrl+F', action: onFind },
-    { label: '—', action: () => {} },
-    { label: 'Venue → Open Venue Designer...', action: onVenueDesigner },
-    { label: 'Venue → Draw Outline...', action: onVenueDrawOutline },
-    { label: 'Venue → Draw Obstacle...', action: onVenueDrawObstacle },
-    { label: 'Venue → Draw by Dimensions...', action: onVenueDimensions },
-    { label: 'Venue → Edit Properties...', action: onVenueProps },
-    { label: 'Venue → Save to Venue library...', action: onVenueSaveToLibrary },
-    { label: 'Venue → Export as File...', action: onVenueExportFile },
-    { label: 'Venue → Load from File...', action: onVenueLoadFromFile },
-    { label: 'Venue → Clear', action: onVenueClear },
-    { label: '—', action: () => {} },
-    { label: 'Group Selection as Module', action: onCreateModule },
-    { label: 'Save Selection as Module...', action: onSaveModule },
-    { label: 'Import .bbm as Module...', action: onImportBbm },
-    { label: 'Save Selection as Set...', action: onSaveAsSet },
-    { label: 'Insert Text...  Ctrl+T', action: onInsertText },
-    { label: 'Insert Anchored Label...  Ctrl+L', action: onInsertLabel },
-    { label: '—', action: () => {} },
-    { label: 'Download Layout (.bld-layout)', action: onDownloadLayout },
-    { label: 'Download As...', action: onDownloadAs },
-    { label: 'Export as Image...', action: onExportImage },
-    { label: 'Export Part List...', action: onExportCsv },
-    { label: '—', action: () => {} },
-    { label: 'Zoom In  Ctrl+=', action: onZoomIn },
-    { label: 'Zoom Out  Ctrl+-', action: onZoomOut },
-    { label: 'Fit to View  F', action: onFit },
-    { label: 'Show Grid', action: () => setShowGrid(!showGrid), checked: showGrid },
-    { label: 'Show Connection Points', action: () => setShowConnectionPoints(!showConnectionPoints), checked: showConnectionPoints },
-    { label: 'Show Brick Hulls', action: () => setShowBrickHulls(!showBrickHulls), checked: showBrickHulls },
-    { label: 'Show Brick Elevation', action: () => setShowBrickElevation(!showBrickElevation), checked: showBrickElevation },
-    { label: 'Show Ruler Attach Points', action: () => setShowRulerAttachPoints(!showRulerAttachPoints), checked: showRulerAttachPoints },
-    { label: 'Always Show Connections', action: () => setAlwaysShowConnections(!alwaysShowConnections), checked: alwaysShowConnections },
-    { label: 'Show Module Names', action: () => setShowModuleNames(!showModuleNames), checked: showModuleNames },
-    { label: 'Show Status Bar', action: () => setShowStatusBar(!showStatusBar), checked: showStatusBar },
-    { label: '—', action: () => {} },
-    { label: 'Edit Budget...', action: onBudget },
-    { label: 'Budget → Stop at the Budget Limits', action: () => setUseBudgetLimitation(!useBudgetLimitation), checked: useBudgetLimitation },
-    { label: 'Budget → Show Only Parts in the Budget', action: () => setShowOnlyBudgetedParts(!showOnlyBudgetedParts), checked: showOnlyBudgetedParts },
-    { label: 'Budget → Show Budget Numbers', action: () => setShowBudgetNumbers(!showBudgetNumbers), checked: showBudgetNumbers },
-    { label: 'Preferences...  Ctrl+,', action: onPreferences },
-  ];
-  const items = moduleMode
-    ? allItems.filter(
-        (it, i, all) =>
-          !/^(Venue|Budget)|^Download Layout/.test(it.label) &&
-          // No two separators in a row once the venue items are gone.
-          !(it.label === '—' && all.slice(0, i).reverse().find((p) => !/^(Venue|Budget)|^Download Layout/.test(p.label))?.label === '—'),
-      )
-    : allItems;
-
-  return (
-    <div className="relative">
-      <button
-        onClick={(e) => {
-          setAnchor(dropdownAnchor(e.currentTarget));
-          setOpen((v) => !v);
-        }}
-        className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft"
-      >
-        Map
-      </button>
-      {open && (
-        <ul
-          // Fixed, not absolute: the header row scrolls horizontally, which
-          // would clip an absolutely positioned dropdown. Above the modeless
-          // Find / Budget panels (z-40), below modal dialogs (z-50).
-          className="fixed z-[45] w-52 overflow-y-auto rounded-lg border border-border bg-panel text-xs shadow-sm"
-          // Fill the space below the button and scroll past that.
-          style={{ ...anchor, maxHeight: `calc(100vh - ${Number(anchor.top ?? 64) + 8}px)` }}
-          onClick={() => setOpen(false)}
-        >
-          {items.map((it, i) =>
-            it.label === '—' ? (
-              <li key={i} className="mx-2 my-0.5 border-t border-border" />
-            ) : (
-              <li key={it.label}>
-                <button
-                  onClick={it.action}
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-soft"
-                >
-                  <span className="w-3 text-center text-muted">
-                    {it.checked === true ? '✓' : it.checked === false ? '' : ''}
-                  </span>
-                  {it.label}
-                </button>
-              </li>
-            )
-          )}
-        </ul>
-      )}
-    </div>
+  const store = useEditorStore(
+    useShallow((s) => ({
+      showGrid: s.showGrid, setShowGrid: s.setShowGrid,
+      showConnectionPoints: s.showConnectionPoints, setShowConnectionPoints: s.setShowConnectionPoints,
+      showBrickHulls: s.showBrickHulls, setShowBrickHulls: s.setShowBrickHulls,
+      showBrickElevation: s.showBrickElevation, setShowBrickElevation: s.setShowBrickElevation,
+      showRulerAttachPoints: s.showRulerAttachPoints, setShowRulerAttachPoints: s.setShowRulerAttachPoints,
+      alwaysShowConnections: s.alwaysShowConnections, setAlwaysShowConnections: s.setAlwaysShowConnections,
+      showModuleNames: s.showModuleNames, setShowModuleNames: s.setShowModuleNames,
+      showElectricCircuits: s.showElectricCircuits, setShowElectricCircuits: s.setShowElectricCircuits,
+      showStatusBar: s.showStatusBar, setShowStatusBar: s.setShowStatusBar,
+      useBudgetLimitation: s.useBudgetLimitation, setUseBudgetLimitation: s.setUseBudgetLimitation,
+      showOnlyBudgetedParts: s.showOnlyBudgetedParts, setShowOnlyBudgetedParts: s.setShowOnlyBudgetedParts,
+      showBudgetNumbers: s.showBudgetNumbers, setShowBudgetNumbers: s.setShowBudgetNumbers,
+    })),
   );
+  const toggle = (on: boolean, set: (v: boolean) => void) => ({ on, set });
+  const entries = resolveMenu(
+    mapMenuEntries(
+      {
+        generalInfo: onGeneralInfo,
+        backgroundColor: onBackgroundColor,
+        backgroundImage: onBackgroundImage,
+        find: onFind,
+        insertText: onInsertText,
+        insertLabel: onInsertLabel,
+        createModule: onCreateModule,
+        saveModule: onSaveModule,
+        saveAsSet: onSaveAsSet,
+        importBbm: onImportBbm,
+        venueDesigner: onVenueDesigner,
+        venueDrawOutline: onVenueDrawOutline,
+        venueDrawObstacle: onVenueDrawObstacle,
+        venueDimensions: onVenueDimensions,
+        venueProps: onVenueProps,
+        venueSaveToLibrary: onVenueSaveToLibrary,
+        venueExportFile: onVenueExportFile,
+        venueLoadFromFile: onVenueLoadFromFile,
+        venueClear: onVenueClear,
+        zoomIn: onZoomIn,
+        zoomOut: onZoomOut,
+        fit: onFit,
+        budget: onBudget,
+        downloadLayout: onDownloadLayout,
+        downloadAs: onDownloadAs,
+        exportImage: onExportImage,
+        exportCsv: onExportCsv,
+        preferences: onPreferences,
+      },
+      {
+        grid: toggle(store.showGrid, store.setShowGrid),
+        connectionPoints: toggle(store.showConnectionPoints, store.setShowConnectionPoints),
+        brickHulls: toggle(store.showBrickHulls, store.setShowBrickHulls),
+        brickElevation: toggle(store.showBrickElevation, store.setShowBrickElevation),
+        rulerAttachPoints: toggle(store.showRulerAttachPoints, store.setShowRulerAttachPoints),
+        alwaysShowConnections: toggle(store.alwaysShowConnections, store.setAlwaysShowConnections),
+        moduleNames: toggle(store.showModuleNames, store.setShowModuleNames),
+        electricCircuits: toggle(store.showElectricCircuits, store.setShowElectricCircuits),
+        statusBar: toggle(store.showStatusBar, store.setShowStatusBar),
+        budgetLimit: toggle(store.useBudgetLimitation, store.setUseBudgetLimitation),
+        budgetOnly: toggle(store.showOnlyBudgetedParts, store.setShowOnlyBudgetedParts),
+        budgetNumbers: toggle(store.showBudgetNumbers, store.setShowBudgetNumbers),
+      },
+    ),
+    { moduleMode },
+  );
+  return <Menu label="Map" entries={entries} buttonClassName="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft" />;
 }
 
 function LayersPanelHost({ doc, isViewer }: { doc: import('yjs').Doc; isViewer: boolean }) {

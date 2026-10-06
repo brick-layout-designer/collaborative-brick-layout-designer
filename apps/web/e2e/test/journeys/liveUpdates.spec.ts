@@ -10,7 +10,7 @@
 //   3. Someone outside the club gets no hint of it, and sees nothing new.
 
 import { test, expect, type Page, type BrowserContext, type Browser } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, mapMenu } from '../../helpers';
 
 const ts = Date.now();
 const PART = 'ts_narrowgauge_straight.8';
@@ -70,18 +70,20 @@ test('saving a module shows it in the open Module library at once', async ({ pag
   // Map > Save Selection as Module…
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
-  await page.getByText('Save Selection as Module...').click();
+  await mapMenu(page, 'Modules & sets', 'Save selection as module…');
   await page.getByLabel('Module name').fill(`Crossing ${ts}`);
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Save', exact: true }).last().click();
   await expect(libraryRow(page, `Crossing ${ts}`)).toBeVisible({ timeout: 10000 });
+  // The live list can show it before the save finishes: wait for the dialog
+  // to close (and its "saved" alert) so the next step's dialog handler
+  // doesn't meet that alert.
+  await expect(page.getByLabel('Module name')).toHaveCount(0);
 
   // Map > Group Selection as Module, then Modules panel > Save to Module library.
   await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
   page.once('dialog', (d) => void d.accept(`Siding ${ts}`));
-  await page.getByRole('button', { name: 'Group Selection as Module' }).click();
+  await mapMenu(page, 'Modules & sets', 'Group selection as module');
   await page.getByRole('button', { name: 'Panels', exact: true }).click();
   await page.getByLabel('Modules', { exact: true }).check();
   await page.mouse.click(400, 400);

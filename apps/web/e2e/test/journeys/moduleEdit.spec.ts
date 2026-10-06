@@ -7,7 +7,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ensureUser, signIn } from '../../helpers';
+import { ensureUser, signIn, mapMenu } from '../../helpers';
 
 const ts = Date.now();
 const SAM = `modedit-sam-${ts}@example.com`;
@@ -82,9 +82,8 @@ test('a module is one piece, opens with Edit module, and its new colour reaches 
   await expect.poll(async () => (await bricks(page)).length).toBe(3);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
   page.once('dialog', (d) => void d.accept(NAME));
-  await page.getByRole('button', { name: 'Group Selection as Module' }).click();
+  await mapMenu(page, 'Modules & sets', 'Group selection as module');
   await expect(page.getByText(`Grouped “${NAME}” as a module`)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(footer(page)).toContainText('no selection');

@@ -14,7 +14,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { signIn } from '../../helpers';
+import { signIn, mapMenu } from '../../helpers';
 
 const ts = Date.now();
 const TITLE = `Files ${ts}`;
@@ -40,8 +40,7 @@ async function openAsNewLayout(page: Page, file: string, name: string): Promise<
 }
 
 async function openBudget(page: Page) {
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit Budget...' }).click();
+  await mapMenu(page, 'Budget', 'Edit budget…');
 }
 
 test('a layout, a budget and a venue go out as files and come back', async ({ page }) => {
@@ -73,9 +72,8 @@ test('a layout, a budget and a venue go out as files and come back', async ({ pa
   await expect(page.getByTestId('save-status')).toHaveText('Saved', { timeout: 15000 });
 
   // ── Download Layout, and open it as a new layout. ──
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
   const layoutDl = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download Layout (.bld-layout)' }).click();
+  await mapMenu(page, 'Download & export', 'Download layout (.bld-layout)');
   const layoutFile = await (await layoutDl).path();
   await openAsNewLayout(page, layoutFile, `${TITLE}.bld-layout`);
   await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(2);
@@ -83,8 +81,7 @@ test('a layout, a budget and a venue go out as files and come back', async ({ pa
   await expect(page.getByRole('region', { name: 'Views' }).getByRole('button', { name: /^Overview/ })).toBeVisible();
 
   // ── Download As .bbm, and open that. ──
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
-  await page.getByRole('button', { name: 'Download As...' }).click();
+  await mapMenu(page, 'Download & export', 'Download as…');
   const as = page.getByRole('dialog', { name: 'Download As' });
   await as.getByLabel('BlueBrick map (.bbm)').check();
   const bbmDl = page.waitForEvent('download');

@@ -7,7 +7,7 @@
 // SHOTS_DIR=<dir> saves a screenshot of each.
 
 import { test, expect, request as playwrightRequest, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../helpers';
+import { ensureUser, signIn, mapMenu } from '../helpers';
 import { DEVICES, findOverflow, findSmallTargets } from '../mobileChecks';
 
 const SHOTS = process.env.SHOTS_DIR;
@@ -70,10 +70,7 @@ const more = (title: string, item?: string) => async (page: Page) => {
   await page.getByRole('button', { name: `More for ${title}` }).click();
   if (item) await page.getByRole('menuitem', { name: item }).click();
 };
-const mapItem = (label: string) => async (page: Page) => {
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
-  await page.getByRole('button', { name: label }).click();
-};
+const mapItem = (path: string[]) => (page: Page) => mapMenu(page, ...path);
 const editor = () => `/editor/${layoutId}`;
 
 const DIALOGS: DialogCase[] = [
@@ -89,19 +86,21 @@ const DIALOGS: DialogCase[] = [
   { name: 'editor share picture', path: editor, open: (p) => p.getByRole('button', { name: 'Share picture' }).first().click() },
   { name: 'editor help menu', path: editor, open: (p) => p.getByRole('button', { name: 'Help', exact: true }).click() },
   { name: 'editor layout menu', path: editor, on: 'phone', open: (p) => p.getByRole('button', { name: /Dialog Layout/ }).click() },
+  { name: 'editor map menu', path: editor, on: 'tablet', open: (p) => p.getByRole('button', { name: 'Map', exact: true }).click() },
+  { name: 'editor map menu venue page', path: editor, on: 'tablet', open: mapItem(['Venue']) },
   ...[
-    'General info...',
-    'Background colour...',
-    'Background image...',
-    'Find...',
-    'Venue → Draw by Dimensions...',
-    'Venue → Edit Properties...',
-    'Import .bbm as Module...',
-    'Insert Anchored Label...',
-    'Download As...',
-    'Export as Image...',
-    'Export Part List...',
-  ].map((label): DialogCase => ({ name: `editor ${label.replace(/\.\.\.|Venue → /g, '')}`, path: editor, on: 'tablet', open: mapItem(label) })),
+    ['General info…'],
+    ['Background colour…'],
+    ['Background image…'],
+    ['Find…'],
+    ['Venue', 'Draw outline by dimensions…'],
+    ['Venue', 'Edit venue properties…'],
+    ['Modules & sets', 'Import .bbm as module…'],
+    ['Insert', 'Anchored label…'],
+    ['Download & export', 'Download as…'],
+    ['Download & export', 'Export as image…'],
+    ['Download & export', 'Export part list…'],
+  ].map((path): DialogCase => ({ name: `editor ${path.at(-1)!.replace(/…/g, '')}`, path: editor, on: 'tablet', open: mapItem(path) })),
 ];
 
 for (const device of DEVICES.filter((d) => ['360x740', '360x740-landscape', 'tablet-ipad-mini', 'tablet-ipad-mini-landscape'].includes(d.name))) {

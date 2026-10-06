@@ -5,7 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { signIn } from '../helpers';
+import { signIn, mapMenu } from '../helpers';
 
 const FORDYCE_BBM = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/fordyce-2026.bbm'),
@@ -87,11 +87,9 @@ test.describe('status bar', () => {
     const id = await createLayout(page);
     await openEditor(page, id);
     await expect(page.locator('footer')).toBeVisible();
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Show Status Bar' }).click();
+    await mapMenu(page, 'View', 'Status bar');
     await expect(page.locator('footer')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Map', exact: true }).click();
-    await page.getByRole('button', { name: 'Show Status Bar' }).click();
+    await mapMenu(page, 'View', 'Status bar');
     await expect(page.locator('footer')).toBeVisible();
   });
 
