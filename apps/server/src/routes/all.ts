@@ -23,6 +23,7 @@ import { moduleRoutes } from './modules.js';
 import { catalogRoutes } from './catalog.js';
 import { collectionRoutes } from './collections.js';
 import { itemCoverRoutes } from './itemCovers.js';
+import { catalogDocRoutes } from './catalogDocs.js';
 import { clubReviewRoutes } from './clubReview.js';
 import { moduleTransferRoutes } from './moduleTransfers.js';
 import { venueRoutes } from './venues.js';
@@ -63,6 +64,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(catalogRoutes);
   await app.register(collectionRoutes);
   await app.register(itemCoverRoutes);
+  await app.register(catalogDocRoutes);
   await app.register(clubReviewRoutes);
   await app.register(moduleTransferRoutes);
   await app.register(venueRoutes);

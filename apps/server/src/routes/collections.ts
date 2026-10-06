@@ -43,12 +43,12 @@ import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { destinationOrg } from './owners.js';
-import { canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, submitToCatalog, trustedClubs } from './catalog.js';
+import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
 
-type Kind = 'module' | 'part';
+type Kind = CatalogKind;
 type Audience = 'everyone' | 'private';
 type Collection = typeof schema.catalogCollections.$inferSelect;
 type Item = typeof schema.catalogItems.$inferSelect;
@@ -113,6 +113,8 @@ async function kindsOn(): Promise<Set<Kind>> {
   const on = new Set<Kind>();
   if (s.moduleCatalogEnabled) on.add('module');
   if (s.partsCatalogEnabled) on.add('part');
+  if (s.layoutCatalogEnabled) on.add('layout');
+  if (s.venueCatalogEnabled) on.add('venue');
   return on;
 }
 
@@ -513,6 +515,8 @@ function listOut(c: Collection, shown: Shown[], by: string) {
     itemCount: shown.length,
     modules: shown.filter((i) => i.kind === 'module').length,
     parts: shown.filter((i) => i.kind === 'part').length,
+    layouts: shown.filter((i) => i.kind === 'layout').length,
+    venues: shown.filter((i) => i.kind === 'venue').length,
     coverUrl: coverFrom(c, shown, true),
     updatedAt: c.updatedAt.getTime(),
   };

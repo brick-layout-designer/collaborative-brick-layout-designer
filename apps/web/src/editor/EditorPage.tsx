@@ -360,6 +360,8 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   // 0 until measured, so the first fit waits for the real size.
   const [canvasBoxRef, canvasSize, canvasBox] = useElementSize({ width: 0, height: 0 });
   const [showShare, setShowShare] = useState(false);
+  // "Share to the public catalog" (a layout): from the Share dialog, or Home's ⋯ menu (?catalog=share).
+  const [sharingLayout, setSharingLayout] = useState(() => new URLSearchParams(location.search).get('catalog') === 'share');
   // "Share picture", with the picture picked when it opens (a saved view's id).
   const [sharePicture, setSharePicture] = useState<{ choice?: string } | null>(null);
   const [exportingViews, setExportingViews] = useState<string | null>(null);
@@ -1194,6 +1196,28 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           onSharePicture={() => {
             setShowShare(false);
             setSharePicture({});
+          }}
+          {...(!moduleMode
+            ? {
+                onShareToCatalog: () => {
+                  setShowShare(false);
+                  setSharingLayout(true);
+                },
+              }
+            : {})}
+        />
+      )}
+      {sharingLayout && !moduleMode && meta.data && catalogStatus.enabled('layout') && (
+        <ShareToCatalogDialog
+          kind="layout"
+          sourceId={layoutId}
+          title={meta.data.layout.title}
+          existing={catalogStatus.shared('layout', layoutId)}
+          onClose={() => setSharingLayout(false)}
+          makeThumbnail={async () => {
+            if (!doc) return null;
+            await waitForPartPictures(() => catalogReadyRef.current, getSpriteProgress);
+            return makeModuleThumbnail(exportImageRef.current, projectDoc(doc), readSidecarFromDoc(doc));
           }}
         />
       )}

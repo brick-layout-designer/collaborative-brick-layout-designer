@@ -73,7 +73,7 @@ describe('hintsForWrite', () => {
     expect(kindsOfWrite('DELETE', '/api/layouts/l1/collaborators/u1')).toEqual(['layout']);
     expect(kindsOfWrite('POST', '/api/orgs/club/join')).toEqual(['club']);
     expect(kindsOfWrite('POST', '/api/org-invites/tok')).toEqual(['club']);
-    expect(kindsOfWrite('POST', '/api/catalog/items/i1/add')).toEqual(['catalog', 'module', 'custom-part']);
+    expect(kindsOfWrite('POST', '/api/catalog/items/i1/add')).toEqual(['catalog', 'module', 'custom-part', 'layout', 'venue']);
     expect(kindsOfWrite('POST', '/api/moderation/versions/v1/approve')).toEqual(['catalog']);
     expect(kindsOfWrite('PUT', '/api/admin/users/u1/limits')).toEqual(['limits', 'admin']);
     expect(kindsOfWrite('PATCH', '/api/admin/settings')).toEqual(['settings']);

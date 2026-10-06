@@ -546,7 +546,7 @@ export function CatalogSettingsSection() {
     <section className="space-y-3" aria-labelledby="catalog-settings">
       <h2 id="catalog-settings" className="text-sm font-semibold text-neutral-300">Public catalogs</h2>
       <p className="text-xs text-muted">
-        People can share modules and custom parts for everyone, and add what others shared to their own. Both are off until you turn them on.
+        People can share modules, custom parts, layouts and venues for everyone, and add what others shared to their own. Each is off until you turn it on.
       </p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={c.modules} onChange={(e) => save.mutate({ moduleCatalogEnabled: e.target.checked })} />
@@ -555,6 +555,14 @@ export function CatalogSettingsSection() {
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={c.parts} onChange={(e) => save.mutate({ partsCatalogEnabled: e.target.checked })} />
         Public parts catalog
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={!!c.layouts} onChange={(e) => save.mutate({ layoutCatalogEnabled: e.target.checked })} />
+        Public layouts (people share a copy of a whole layout; it opens read-only, and others can copy it)
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={!!c.venues} onChange={(e) => save.mutate({ venueCatalogEnabled: e.target.checked })} />
+        Public venues (floor plans others can copy and start a layout in)
       </label>
       <fieldset className="space-y-1 text-sm">
         <legend className="mb-1 text-xs text-muted">Review before publishing</legend>

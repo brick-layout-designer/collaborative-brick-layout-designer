@@ -40,6 +40,8 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     minDesktopVersion: null,
     moduleCatalogEnabled: false,
     partsCatalogEnabled: false,
+    layoutCatalogEnabled: false,
+    venueCatalogEnabled: false,
     catalogReview: 'moderators',
     catalogAnonymousBrowse: true,
     limitsEnforced: true,

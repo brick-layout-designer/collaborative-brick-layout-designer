@@ -470,6 +470,7 @@ function LayoutRow({
 }) {
   // Older servers don't send the role: their list held only your own layouts.
   const isOwner = layout.role === undefined || layout.role === 'owner';
+  const catalog = useCatalogStatus();
   // New layouts can start as a copy of this one (desktop's File > New template).
   const [isTemplate, setIsTemplate] = useState(() => getNewLayoutTemplate()?.id === layout.id);
   useEffect(() => {
@@ -485,6 +486,7 @@ function LayoutRow({
         <p className="flex flex-wrap items-center gap-2">
           <span className="break-words font-medium">{layout.title}</span>
           {chip}
+          {catalog.shared('layout', layout.id) && <CatalogBadge item={catalog.shared('layout', layout.id)!} />}
         </p>
         <p className="text-xs text-muted">
           updated {new Date(layout.updatedAt).toLocaleString()}
@@ -518,6 +520,12 @@ function LayoutRow({
           >
             Download for BlueBrick (.zip)
           </a>
+          {isOwner && catalog.enabled('layout') && (
+            // Its picture is drawn in the editor, so the share opens there.
+            <Link role="menuitem" to={`/editor/${layout.id}?catalog=share`} className={MORE_ITEM}>
+              {catalog.shared('layout', layout.id) ? 'Publish a new version to the catalog…' : 'Share to the public catalog…'}
+            </Link>
+          )}
           <label role="menuitemcheckbox" aria-checked={isTemplate} data-keep-open className={MORE_ITEM} title="New layouts start as a copy of this one">
             <input
               type="checkbox"

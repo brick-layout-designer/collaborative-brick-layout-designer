@@ -1130,6 +1130,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       catalog: {
         modules: settings.moduleCatalogEnabled,
         parts: settings.partsCatalogEnabled,
+        layouts: settings.layoutCatalogEnabled,
+        venues: settings.venueCatalogEnabled,
         review: settings.catalogReview,
         anonymousBrowse: settings.catalogAnonymousBrowse,
         // The biggest collection cover upload (an env var may force it).
@@ -1168,6 +1170,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       moduleCatalogEnabled?: boolean;
       limitsEnforced?: boolean;
       partsCatalogEnabled?: boolean;
+      layoutCatalogEnabled?: boolean;
+      venueCatalogEnabled?: boolean;
       catalogReview?: string;
       catalogAnonymousBrowse?: boolean;
       backupsEnabled?: boolean;
@@ -1225,6 +1229,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (typeof body.moduleCatalogEnabled === 'boolean') patch.moduleCatalogEnabled = body.moduleCatalogEnabled;
     if (typeof body.limitsEnforced === 'boolean') patch.limitsEnforced = body.limitsEnforced;
     if (typeof body.partsCatalogEnabled === 'boolean') patch.partsCatalogEnabled = body.partsCatalogEnabled;
+    if (typeof body.layoutCatalogEnabled === 'boolean') patch.layoutCatalogEnabled = body.layoutCatalogEnabled;
+    if (typeof body.venueCatalogEnabled === 'boolean') patch.venueCatalogEnabled = body.venueCatalogEnabled;
     if (typeof body.catalogAnonymousBrowse === 'boolean') patch.catalogAnonymousBrowse = body.catalogAnonymousBrowse;
     if (typeof body.backupsEnabled === 'boolean') patch.backupsEnabled = body.backupsEnabled;
     if (typeof body.dailyCompactionEnabled === 'boolean') patch.dailyCompactionEnabled = body.dailyCompactionEnabled;

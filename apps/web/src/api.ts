@@ -1,5 +1,6 @@
 import type { FourDBrixRemap, LDrawRemap, TrackDesignerRemap } from '@cld/parts-catalog/browser';
 import type { ClubRole } from './orgs/clubRoles';
+import type { Venue } from '@cld/bbm';
 
 export type ProviderId = 'google' | 'github' | 'oidc';
 
@@ -999,6 +1000,8 @@ export const api = {
       minDesktopVersion?: string | null;
       moduleCatalogEnabled?: boolean;
       partsCatalogEnabled?: boolean;
+      layoutCatalogEnabled?: boolean;
+      venueCatalogEnabled?: boolean;
       catalogReview?: CatalogReview;
       catalogAnonymousBrowse?: boolean;
       limitsEnforced?: boolean;
@@ -1027,10 +1030,26 @@ export const api = {
       return get<{ items: CatalogItem[] }>(`/api/catalog/items?${p.toString()}`);
     },
     item: (id: string) =>
-      get<{ item: CatalogItem & { status: CatalogStatus; reason: string | null }; versions: CatalogVersion[] }>(
-        `/api/catalog/items/${encodeURIComponent(id)}`,
-      ),
-    share: (body: { kind: CatalogKind; sourceId: string; title: string; description?: string; tags?: string[]; note?: string }) =>
+      get<{
+        item: CatalogItem & { status: CatalogStatus; reason: string | null; club?: { slug: string; name: string } | null; coverLargeUrl?: string };
+        versions: CatalogVersion[];
+      }>(`/api/catalog/items/${encodeURIComponent(id)}`),
+    /** A published layout's document, for the viewer. */
+    itemSnapshot: (id: string, v?: number) => getBytes(`/api/catalog/items/${encodeURIComponent(id)}/snapshot${v ? `?v=${v}` : ''}`),
+    /** A published venue's plan. */
+    itemVenue: (id: string, v?: number) => get<{ name: string; venue: Venue }>(`/api/catalog/items/${encodeURIComponent(id)}/venue${v ? `?v=${v}` : ''}`),
+    /** Where "Download .bld-layout" / ".bbm" points. */
+    downloadUrl: (id: string, format: 'bld-layout' | 'bbm') => `/api/catalog/items/${encodeURIComponent(id)}/download${format === 'bbm' ? '?format=bbm' : ''}`,
+    share: (body: {
+      kind: CatalogKind;
+      sourceId: string;
+      title: string;
+      description?: string;
+      tags?: string[];
+      note?: string;
+      /** A layout's picture, drawn by the editor. */
+      thumbnail?: { mime: string; data: string };
+    }) =>
       post<{ id: string; version: number; status: 'in_review' | 'public' }>('/api/catalog/submissions', body),
     mine: () => get<{ items: MyCatalogItem[] }>('/api/catalog/mine'),
     withdraw: (id: string) => post<{ ok: true }>(`/api/catalog/items/${encodeURIComponent(id)}/withdraw`, {}),
@@ -1169,13 +1188,27 @@ export interface AdminStats {
   activeSessions: number;
 }
 
-export type CatalogKind = 'module' | 'part';
+export type CatalogKind = 'module' | 'part' | 'layout' | 'venue';
+/** What a library (my modules, my parts) holds: what collections take as their own entries. */
+export type LibraryKind = 'module' | 'part';
+
+/** What a layout's or venue's public page shows without opening it. */
+export interface CatalogSummary {
+  widthStuds: number;
+  heightStuds: number;
+  partCount?: number;
+  parts?: { partNumber: string; count: number }[];
+  venue?: string | null;
+}
 export type CatalogReview = 'moderators' | 'none';
 export type CatalogStatus = 'in_review' | 'public' | 'declined' | 'unpublished' | 'withdrawn';
 
 export interface CatalogSettings {
   modules: boolean;
   parts: boolean;
+  /** Layouts and venues in the catalog (older servers leave them out: off). */
+  layouts?: boolean;
+  venues?: boolean;
   review: CatalogReview;
   anonymousBrowse: boolean;
   canModerate: boolean;
@@ -1196,6 +1229,8 @@ export interface CatalogItem {
   version: number;
   updatedAt: number;
   previewUrl: string;
+  /** A layout or venue: its size, and a layout's parts list. */
+  summary?: CatalogSummary | null;
   /** The card's picture: its owner's own (cropped to the card), else the drawn one. Older servers leave it out. */
   coverUrl?: string;
   /** `coverUrl` is a picture its owner uploaded. */
@@ -1274,6 +1309,9 @@ export interface CollectionSummary {
   itemCount: number;
   modules: number;
   parts: number;
+  /** Layouts and venues in it (older servers leave them out). */
+  layouts?: number;
+  venues?: number;
   coverUrl: string | null;
   updatedAt: number;
   /** A trusted club's. */
@@ -1476,7 +1514,7 @@ export interface AdminSettings {
     codeMinimum: string;
   };
   /** Public catalogs: off until turned on. */
-  catalog?: { modules: boolean; parts: boolean; review: CatalogReview; anonymousBrowse: boolean; coverMaxBytes?: AdminJobSetting<number> };
+  catalog?: { modules: boolean; parts: boolean; layouts?: boolean; venues?: boolean; review: CatalogReview; anonymousBrowse: boolean; coverMaxBytes?: AdminJobSetting<number> };
   /** Background jobs: the switch, what applies, and the env var forcing it if any. */
   jobs?: {
     backups: AdminJobSetting<boolean>;

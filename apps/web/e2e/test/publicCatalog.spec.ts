@@ -53,7 +53,7 @@ test.afterAll(async ({ browser }) => {
 });
 
 test('off by default: no Catalog link, no Share item, and /catalog says it is closed', async ({ page }) => {
-  await setSettings(page, { moduleCatalogEnabled: false, partsCatalogEnabled: false });
+  await setSettings(page, { moduleCatalogEnabled: false, partsCatalogEnabled: false, layoutCatalogEnabled: false, venueCatalogEnabled: false });
   await as(page, OWNER, 'Owner Olive');
   await page.request.post('/api/modules', { data: { title: 'Closed shed' } });
   await page.goto('/');

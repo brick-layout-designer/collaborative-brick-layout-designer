@@ -9,13 +9,13 @@
 // pinch, or the -, + and Fit buttons. No selection, no tools, no parts
 // panel.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer } from 'react-konva';
 import * as Y from 'yjs';
 import type Konva from 'konva';
-import { decodeDoc, docToBbm } from '@cld/ydoc';
+import { decodeDoc, docToBbm, readSidecarFromDoc } from '@cld/ydoc';
 import { api } from '../api';
 import '../konvaSetup';
 import type { LayerGrid } from '@cld/model';
@@ -24,7 +24,7 @@ import { useElementSize } from '../editor/useElementSize';
 import { useTouchView } from '../editor/useTouchView';
 import type { View } from '../editor/touchGesture';
 import { fitView, isUntouchedFit, withGridLabels, type ViewInsets } from '../editor/viewFit';
-import { contentBoundsStuds } from '../editor/exportRender';
+import { contentBoundsStuds, type StudRect } from '../editor/exportRender';
 import { drawnGridLayer } from '../editor/render/gridIndex';
 import { MIN_ZOOM, MAX_ZOOM, useEditorStore } from '../editor/editorStore';
 import { PHONE_MIN_TEXT_PX } from '../editor/textLegibility';
@@ -34,6 +34,10 @@ import { AreaLayers } from '../editor/render/AreaLayer';
 import { TextLayers } from '../editor/render/TextLayer';
 import { RulerLayers } from '../editor/render/RulerLayer';
 import { pxToStud } from '../editor/render/coords';
+import { VenueOverlay } from '../editor/render/VenueOverlay';
+import { AnchoredLabels } from '../editor/render/AnchoredLabels';
+import { ModuleOverlay } from '../editor/render/ModuleOverlay';
+import { applyViewSheets, viewRegionStuds } from '../editor/savedViews';
 
 export function PublicLayoutPage() {
   const params = useParams<{ token: string }>();
@@ -92,10 +96,31 @@ function Viewer({ token }: { token: string }) {
     );
   }
 
-  return <ViewerCanvas doc={doc} title={meta.data.layout.title} />;
+  return <LayoutViewer doc={doc} title={meta.data.layout.title} />;
 }
 
-function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
+/**
+ * The read-only layout viewer: the editor's own renderer (parts, text,
+ * rulers, areas, the venue, module outlines and names, anchored labels),
+ * pan and zoom, and the layout's saved views. Used by public share links
+ * and by the catalog's layout pages (`badge`, and `side` for the panel).
+ */
+export function LayoutViewer({
+  doc,
+  title,
+  badge = 'Public · view only',
+  side,
+  topRight,
+  fitBounds,
+}: {
+  doc: Y.Doc;
+  title: string;
+  badge?: string;
+  side?: ReactNode;
+  topRight?: ReactNode;
+  /** What "Fit" shows when not the drawn content (a venue's floor). */
+  fitBounds?: StudRect | null;
+}) {
   // The real size of the canvas box (dvh-sized, so the browser bars on a
   // phone are taken into account), not the window's.
   const [boxRef, { width, height }, box] = useElementSize({ width: 0, height: 0 });
@@ -119,6 +144,11 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
       return null;
     }
   }, [doc]);
+  const sidecar = useMemo(() => readSidecarFromDoc(doc), [doc]);
+  const views = sidecar?.views ?? [];
+  const [viewId, setViewId] = useState('');
+  const activeView = views.find((v) => v.id === viewId) ?? null;
+  const shown = useMemo(() => (map && activeView ? applyViewSheets(map, activeView.sheets) : map), [map, activeView]);
 
   // The shared text renderers hide unreadable text from the editor
   // store's zoom and threshold (textLegibility.ts); mirror ours into it.
@@ -137,18 +167,20 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
   const lastFitRef = useRef<View | null>(null);
   const fit = useCallback(() => {
     if (!map || width <= 0 || height <= 0) return;
-    const bounds = withGridLabels(contentBoundsStuds(map, null), drawnGridLayer(map.layers) as LayerGrid | undefined);
+    // A saved view shows its own area; otherwise everything.
+    const region = activeView ? viewRegionStuds(activeView, map, sidecar) : null;
+    const bounds = region ?? fitBounds ?? withGridLabels(contentBoundsStuds(map, null), drawnGridLayer(map.layers) as LayerGrid | undefined);
     const next = fitView(bounds, width, height, ZOOM_RANGE, isMobile ? PHONE_INSETS : DESKTOP_INSETS);
     if (!next) return;
     lastFitRef.current = next;
     setView(next);
-  }, [map, width, height, isMobile]);
+  }, [map, width, height, isMobile, activeView, sidecar, fitBounds]);
   useEffect(() => {
     if (lastFitRef.current && !isUntouchedFit(viewRef.current, lastFitRef.current)) return;
     fit();
   }, [fit]);
 
-  if (!map) {
+  if (!map || !shown) {
     return (
       <div className="grid min-h-screen place-items-center text-muted">
         Failed to render layout.
@@ -194,8 +226,26 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
       >
         <span className="min-w-0 truncate font-semibold text-ink">{title}</span>
         <span className="whitespace-nowrap rounded-lg bg-accent-soft px-1.5 py-0.5 text-xs text-accent-text">
-          Public · view only
+          {badge}
         </span>
+        {views.length > 0 && (
+          <select
+            value={viewId}
+            onChange={(e) => {
+              lastFitRef.current = null;
+              setViewId(e.target.value);
+            }}
+            aria-label="Saved view"
+            className="min-h-8 rounded-lg border border-border bg-soft px-2 text-xs"
+          >
+            <option value="">Whole layout</option>
+            {views.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div
@@ -223,15 +273,26 @@ function ViewerCanvas({ doc, title }: { doc: Y.Doc; title: string }) {
           }}
         >
           <KonvaLayer listening={false}>
-            <GridLayer map={map} viewport={viewport} showGrid={true} />
-            <AreaLayers map={map} />
-            <BrickLayer map={map} doc={doc} isViewer />
-            <TextLayers map={map} />
-            <RulerLayers map={map} />
+            <GridLayer map={map} viewport={viewport} showGrid={activeView ? activeView.grid : true} />
+            <VenueOverlay venue={sidecar?.venue ?? null} />
+            <AreaLayers map={shown} />
+            <BrickLayer map={shown} doc={doc} isViewer />
+            <TextLayers map={shown} />
+            <RulerLayers map={shown} />
+            {activeView && !activeView.labels ? null : (
+              <AnchoredLabels map={map} labels={sidecar?.anchoredLabels ?? []} modules={sidecar?.modules ?? []} zoom={view.zoom} />
+            )}
+            <ModuleOverlay map={shown} modules={sidecar?.modules ?? []} />
           </KonvaLayer>
         </Stage>
       </div>
 
+      {topRight && (
+        <div className="absolute z-10 flex flex-wrap justify-end gap-1.5" style={{ right: 'max(0.75rem, env(safe-area-inset-right))', top: 'max(0.75rem, env(safe-area-inset-top))' }}>
+          {topRight}
+        </div>
+      )}
+      {side}
       <div
         className="absolute z-10 flex items-center gap-1.5"
         style={{ right: 'max(0.75rem, env(safe-area-inset-right))', bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}

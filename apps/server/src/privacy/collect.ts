@@ -161,7 +161,7 @@ export async function collectUserData(userId: string): Promise<DataSection[]> {
   );
 
   // ---- the public catalog ---------------------------------------------------
-  add('catalog-items', 'Modules and parts you shared in the public catalog.', await select(s.catalogItems, eq(s.catalogItems.ownerUserId, userId)));
+  add('catalog-items', 'Modules, parts, layouts and venues you shared in the public catalog.', await select(s.catalogItems, eq(s.catalogItems.ownerUserId, userId)));
   add(
     'catalog-item-versions',
     'Versions you sent for review, or reviewed.',
