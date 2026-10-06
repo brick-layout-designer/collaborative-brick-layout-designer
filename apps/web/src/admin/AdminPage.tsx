@@ -203,11 +203,12 @@ function UsersTab({ selfId }: { selfId: string }) {
                 return (
                   <tr key={u.id} className="border-t border-line">
                     <Td>
-                      <button onClick={() => setDetailId(u.id)} className="text-accent-text hover:underline">
+                      {/* A long address wraps, so the table fits a tablet. */}
+                      <button onClick={() => setDetailId(u.id)} className="text-left text-accent-text wrap-anywhere hover:underline">
                         {u.email}
                       </button>
                     </Td>
-                    <Td>
+                    <Td className="wrap-anywhere">
                       {u.displayName}
                       {u.isDemoAccount && <span className="ml-2 rounded bg-soft px-1.5 py-0.5 text-xs text-muted">Demo</span>}
                     </Td>
