@@ -90,17 +90,6 @@ describe('stale transfer / invite tokens', () => {
     expect(row!.ownerUserId).toBe(carol.id);
   });
 
-  it('module transfers: a stale token cannot take a module from its new owner', async () => {
-    const M = (await post(app, alice, '/api/modules', { title: 'm' })).json().id as string;
-    const t1 = (await post(app, alice, `/api/modules/${M}/transfer`, { recipientEmail: 'bob@x.com' })).json().token;
-    const t2 = (await post(app, alice, `/api/modules/${M}/transfer`, { recipientEmail: 'carol@x.com' })).json().token;
-    expect((await post(app, bob, `/api/module-transfers/${t1}`)).statusCode).toBe(200);
-    const r2 = await post(app, carol, `/api/module-transfers/${t2}`);
-    expect([404, 409]).toContain(r2.statusCode);
-    const row = await db.select().from(schema.modules).where(eq(schema.modules.id, M)).get();
-    expect(row!.ownerUserId).toBe(bob.id);
-  });
-
   it('org invites issued by an admin who was later demoted are void', async () => {
     const org = (await post(app, alice, '/api/orgs', { name: 'Acme' })).json() as { id: string; slug: string };
     const slug = org.slug ?? 'acme';

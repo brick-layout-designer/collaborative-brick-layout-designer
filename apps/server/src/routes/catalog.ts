@@ -37,6 +37,7 @@ import { currentDocBytes } from './layouts.js';
 import { MAX_THUMBNAIL_BYTES, reencode, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { sniffCover } from '../images/covers.js';
 import type { Venue } from '@cld/bbm';
+import { perPerson } from '../utils/rateLimits.js';
 
 /** What the catalog holds: modules and custom parts, and (when on) layouts and venues. */
 export type Kind = 'module' | 'part' | 'layout' | 'venue';
@@ -678,7 +679,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     // Ten shares an hour per person (counted after sign-in is read), not per
     // address: a whole club sharing from one venue's network isn't one person.
     // A layout brings its picture (base64 JSON), hence the bigger body.
-    { bodyLimit: THUMBNAIL_BODY_LIMIT, config: { rateLimit: { max: 10, timeWindow: '1 hour', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } },
+    { bodyLimit: THUMBNAIL_BODY_LIMIT, config: { rateLimit: perPerson(10, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const b = req.body ?? {};
@@ -751,7 +752,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { orgSlug?: unknown } }>(
     '/api/catalog/items/:id/add',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' }, apiToken: TOKEN_ADD } },
+    { config: { rateLimit: perPerson(60, '1 minute'), apiToken: TOKEN_ADD } },
     async (req, reply) => {
       const user = requireUser(req);
       const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();

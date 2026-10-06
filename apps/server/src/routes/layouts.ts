@@ -24,6 +24,7 @@ import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from '.
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { creditLookup, withCredits } from './credits.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -311,7 +312,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // current document, live edits included, its sidecar and its background.
   app.post<{ Params: { id: string }; Body: { orgSlug?: string; title?: string } }>(
     '/api/layouts/:id/copy',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(30, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
@@ -345,7 +346,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     Body: { base?: { bbm?: unknown; sidecar?: unknown }; mine?: { bbm?: unknown; sidecar?: unknown } };
   }>(
     '/api/layouts/:id/compare',
-    { config: { ...TOKEN_READ, rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { ...TOKEN_READ, rateLimit: perPerson(30, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const role = await resolveResourceRole(user.id, 'layout', req.params.id);
@@ -647,7 +648,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // 10 MB ceiling; accepted types: image/jpeg, image/png, image/gif, image/webp.
   app.post<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/layouts/:id/background-image',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(30, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const layoutId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(req.params.id)?.[1];
@@ -722,7 +723,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // ---- background image: serve --------------------------------------------
   app.get<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/layouts/:id/background-image',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(30, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const layoutId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(req.params.id)?.[1];
@@ -747,7 +748,7 @@ export async function layoutRoutes(app: FastifyInstance) {
   // ---- background image: delete -------------------------------------------
   app.delete<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/layouts/:id/background-image',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(30, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const layoutId = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(req.params.id)?.[1];

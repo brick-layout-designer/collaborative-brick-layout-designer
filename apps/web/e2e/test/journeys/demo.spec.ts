@@ -66,7 +66,7 @@ test('an admin turns on the demo, a visitor tries it, and Reset now puts the sam
     // ── 2. A visitor tries it. ──
     await visitor.goto('/login');
     await visitor.getByRole('button', { name: 'Try the demo' }).click();
-    await expect(visitor.getByTestId('demo-banner')).toHaveText(/^This is a demo\. Everything resets every day \(next reset in \d+ h( \d+ min)?\)\.$/);
+    await expect(visitor.getByTestId('demo-banner')).toContainText(/This is a demo\. Everything resets every day \(next reset in \d+ h( \d+ min)?\)\./);
     await expect(visitor.getByText(SAMPLE, { exact: true }).first()).toBeVisible();
     const [sample] = await myLayouts(visitor);
     expect(sample!.title).toBe(SAMPLE);

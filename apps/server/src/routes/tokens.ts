@@ -12,6 +12,7 @@ import { requireUser } from '../auth/cookie.js';
 import { listApiTokens, revokeApiToken, scopesOf } from '../auth/apiTokens.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import type { ApiToken } from '../db/schema.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 function toListItem(t: ApiToken) {
   return {
@@ -43,7 +44,7 @@ export async function tokenRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>(
     '/api/tokens/:id',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(30, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const revoked = await revokeApiToken(user.id, req.params.id);

@@ -5,6 +5,8 @@
 // either. Settings › Show tours again brings it back.
 
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../api';
 import { usePreferences } from '../theme/PrefsProvider';
 import { useTours } from './TourProvider';
 import { markSeen, WELCOME, WELCOME_ID } from './tours';
@@ -13,6 +15,9 @@ export function WelcomeCard({ name, onLayout }: { name: string | undefined; onLa
   const { prefs, setPrefs, ready } = usePreferences();
   const { startTour } = useTours();
   const navigate = useNavigate();
+  // Already in a club (an invite brought them here): no "Join a club".
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
+  const inAClub = (orgs.data?.orgs?.length ?? 0) > 0;
   if (!ready || prefs.toursSeen.includes(WELCOME_ID)) return null;
 
   const done = () => setPrefs({ toursSeen: markSeen(prefs.toursSeen, WELCOME_ID) });
@@ -47,15 +52,17 @@ export function WelcomeCard({ name, onLayout }: { name: string | undefined; onLa
           {WELCOME.dismiss}
         </button>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={`grid gap-3 ${inAClub ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
         <button type="button" onClick={choose(onLayout)} className={`${tile} border-2 border-accent bg-panel hover:bg-soft`}>
           <span className="font-display text-lg font-bold">{WELCOME.actions.layout.label}</span>
           <span className="text-sm text-muted">{WELCOME.actions.layout.text}</span>
         </button>
-        <button type="button" onClick={choose(() => navigate('/orgs'))} className={`${tile} border-line bg-panel hover:bg-soft`}>
-          <span className="font-display text-lg font-bold">{WELCOME.actions.club.label}</span>
-          <span className="text-sm text-muted">{WELCOME.actions.club.text}</span>
-        </button>
+        {!inAClub && (
+          <button type="button" onClick={choose(() => navigate('/orgs'))} className={`${tile} border-line bg-panel hover:bg-soft`}>
+            <span className="font-display text-lg font-bold">{WELCOME.actions.club.label}</span>
+            <span className="text-sm text-muted">{WELCOME.actions.club.text}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={choose(() => startTour('editor'))}

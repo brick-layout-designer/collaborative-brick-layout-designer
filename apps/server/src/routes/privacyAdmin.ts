@@ -29,6 +29,7 @@ import { EraseRefused, eraseUser, erasedLabel } from '../privacy/accountDeletion
 import { privacySettings } from '../privacy/settings.js';
 import { privacyContact } from '../privacy/page.js';
 import { postPersonalNote } from './warnings.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** "Due soon": within this many days. */
@@ -152,7 +153,7 @@ export async function privacyAdminRoutes(app: FastifyInstance): Promise<void> {
     return privacySummary();
   });
 
-  app.post('/api/admin/privacy/requests', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/api/admin/privacy/requests', { config: { rateLimit: perPerson(30, '1 minute') } }, async (req, reply) => {
     const admin = requireGlobalAdmin(req);
     const b = (req.body ?? {}) as Body;
     const type = oneOf(b.type, TYPES);
@@ -255,7 +256,7 @@ export async function privacyAdminRoutes(app: FastifyInstance): Promise<void> {
     return { request: await wire((await load(r.id))!) };
   });
 
-  app.post<{ Params: { id: string } }>('/api/admin/privacy/requests/:id/export', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/admin/privacy/requests/:id/export', { config: { rateLimit: perPerson(10, '1 minute') } }, async (req, reply) => {
     const admin = requireGlobalAdmin(req);
     const r = await load(req.params.id);
     if (!r) return reply.code(404).send({ error: 'not_found' });
@@ -268,7 +269,7 @@ export async function privacyAdminRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(202).send({ export: describeExport(row) });
   });
 
-  app.post<{ Params: { id: string } }>('/api/admin/privacy/requests/:id/erase', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/admin/privacy/requests/:id/erase', { config: { rateLimit: perPerson(10, '1 minute') } }, async (req, reply) => {
     const admin = requireGlobalAdmin(req);
     const r = await load(req.params.id);
     if (!r) return reply.code(404).send({ error: 'not_found' });
@@ -322,7 +323,7 @@ export async function privacyAdminRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- the privacy page (everyone) ------------------------------------------
-  app.get('/api/privacy', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async () => {
+  app.get('/api/privacy', { config: { rateLimit: perPerson(60, '1 minute') } }, async () => {
     const s = await getPlatformSettings();
     const contact = await privacyContact();
     return { notice: s.privacyNotice?.trim() ? s.privacyNotice : null, contact: contact.value };

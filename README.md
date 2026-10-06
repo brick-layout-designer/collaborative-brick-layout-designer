@@ -159,6 +159,14 @@ Cloudflare Tunnel in front, and then set:
 - `TRUST_PROXY` to `true` or to the proxy's address, so rate limits and
   logs see the real client IPs.
 
+The server's own rate limits count **per person** for anything signed
+in (a club at a show shares one Wi-Fi address), and per address only for
+signing in, signing up and other signed-out requests. A proxy or WAF
+that limits by IP on top should allow for many people behind one
+address: don't limit `/api/events` (the live stream, reopened on every
+page load and wake-up) or `/api/metrics/client` more tightly than the
+server does.
+
 The proxy must pass **WebSocket upgrades** on `/ws/layout/:id` (live
 editing) and allow these **request body sizes**. A web application
 firewall (WAF) needs the same exceptions:

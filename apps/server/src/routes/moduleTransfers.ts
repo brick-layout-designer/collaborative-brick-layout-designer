@@ -1,32 +1,22 @@
-// Module ownership transfer (v1.x). Mirrors routes/transfers.ts for
-// layouts: org-recipient transfers commit immediately, user→user
-// transfers go through a pending-accept token. The previous owner
-// is added back as an editor on user→user accept so they keep
-// access to their own work after handing it off.
+// Module ownership transfer: to a club you're in, at once (Move to a
+// club). Older servers also offered a person-to-person transfer by an
+// emailed link; nothing offered it and it had no page, so it's gone. Any
+// such transfer still pending is cleared when the module changes hands.
 
-import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { sendInviteEmail } from '../email/sendInvite.js';
-import { env } from '../env.js';
-import { hasVerifiedEmail } from '../auth/users.js';
-import { sameEmail } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
-import { publicName } from '../utils/publicName.js';
 
 interface InitiateTransferBody {
-  recipientEmail?: string;
   recipientOrgSlug?: string;
 }
-
-const TRANSFER_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: InitiateTransferBody }>(
@@ -40,11 +30,8 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         return reply.code(403).send({ error: 'forbidden' });
       }
 
-      const recipientEmail = req.body.recipientEmail?.trim().toLowerCase();
       const recipientOrgSlug = req.body.recipientOrgSlug?.trim().toLowerCase();
-      if (!!recipientEmail === !!recipientOrgSlug) {
-        return reply.code(400).send({ error: 'specify_recipient_email_xor_org' });
-      }
+      if (!recipientOrgSlug) return reply.code(400).send({ error: 'transfer_to_club_only' });
 
       // Org recipient → immediate.
       if (recipientOrgSlug) {
@@ -115,180 +102,10 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         return reply.send({ transferred: true, ownerKind: 'org', ownerSlug: dest.slug });
       }
 
-      // User recipient → pending acceptance.
-      const module = await db
-        .select()
-        .from(schema.modules)
-        .where(eq(schema.modules.id, req.params.id))
-        .get();
-      if (!module) return reply.code(404).send({ error: 'not_found' });
-      if (!module.ownerUserId) {
-        return reply
-          .code(400)
-          .send({ error: 'org_owned_modules_can_only_transfer_to_orgs' });
-      }
-      // Only the personal owner can hand a personal module away.
-      if (module.ownerUserId !== user.id) {
-        return reply.code(403).send({ error: 'forbidden' });
-      }
-      if (!recipientEmail || !recipientEmail.includes('@')) {
-        return reply.code(400).send({ error: 'invalid_email' });
-      }
-      if (recipientEmail === user.email.toLowerCase()) {
-        return reply.code(400).send({ error: 'cannot_transfer_to_self' });
-      }
-
-      const token = randomBytes(24).toString('hex');
-      const id = randomUUID();
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + TRANSFER_TTL_MS);
-      await db.insert(schema.moduleTransfers).values({
-        id,
-        moduleId: req.params.id,
-        initiatedBy: user.id,
-        recipientEmail,
-        token,
-        expiresAt,
-        acceptedAt: null,
-        createdAt: now,
-      });
-
-      const transferUrl = `${env.publicUrl}/module-transfer/${token}`;
-      let emailDelivered = false;
-      try {
-        emailDelivered = await sendInviteEmail({
-          to: recipientEmail,
-          inviteUrl: transferUrl,
-          inviterName: publicName(user.id, user.displayName),
-        });
-      } catch {
-        /* ignored — caller hand-delivers the URL */
-      }
-
-      return reply.send({
-        id,
-        token,
-        transferUrl,
-        emailDelivered,
-        expiresAt: expiresAt.getTime(),
-      });
-    },
-  );
-
-  app.get<{ Params: { token: string } }>(
-    '/api/module-transfers/:token',
-    async (req, reply) => {
-      const transfer = await db
-        .select()
-        .from(schema.moduleTransfers)
-        .where(eq(schema.moduleTransfers.token, req.params.token))
-        .get();
-      if (!transfer) return reply.code(404).send({ error: 'transfer_not_found' });
-      if (transfer.acceptedAt) {
-        return reply.code(410).send({ error: 'transfer_already_accepted' });
-      }
-      if (transfer.expiresAt.getTime() < Date.now()) {
-        return reply.code(410).send({ error: 'transfer_expired' });
-      }
-      const module = await db
-        .select({ title: schema.modules.title })
-        .from(schema.modules)
-        .where(eq(schema.modules.id, transfer.moduleId))
-        .get();
-      if (!module) return reply.code(404).send({ error: 'module_not_found' });
-      return {
-        recipientEmail: transfer.recipientEmail,
-        moduleId: transfer.moduleId,
-        moduleTitle: module.title,
-        expiresAt: transfer.expiresAt.getTime(),
-      };
-    },
-  );
-
-  app.post<{ Params: { token: string } }>(
-    '/api/module-transfers/:token',
-    async (req, reply) => {
-      const user = requireUser(req);
-      const transfer = await db
-        .select()
-        .from(schema.moduleTransfers)
-        .where(eq(schema.moduleTransfers.token, req.params.token))
-        .get();
-      if (!transfer) return reply.code(404).send({ error: 'transfer_not_found' });
-      if (transfer.acceptedAt) {
-        return reply.code(410).send({ error: 'transfer_already_accepted' });
-      }
-      if (transfer.expiresAt.getTime() < Date.now()) {
-        return reply.code(410).send({ error: 'transfer_expired' });
-      }
-      if (!sameEmail(transfer.recipientEmail, user.email)) {
-        return reply.code(403).send({ error: 'email_mismatch' });
-      }
-      // The email match only proves anything if the account has proven
-      // it controls that mailbox.
-      if (!(await hasVerifiedEmail(user))) {
-        return reply.code(403).send({ error: 'email_not_verified' });
-      }
-
-      const incoming = await db
-        .select({ bytes: sql<number>`length(${schema.modules.docSnapshot}) + coalesce(length(${schema.modules.sidecarSnapshot}), 0)`.mapWith(Number) })
-        .from(schema.modules)
-        .where(eq(schema.modules.id, transfer.moduleId))
-        .get();
-      const refusal = await checkGrowth({ actor: user, owner: { kind: 'user', id: user.id }, add: { bytes: incoming?.bytes ?? 0 } });
-      if (refusal) return reply.code(refusal.status).send(refusal.body);
-
-      const now = new Date();
-      // Only valid while the initiator still personally owns the module
-      // (see the matching comment in routes/transfers.ts).
-      const flipped = await db
-        .update(schema.modules)
-        .set({ ownerUserId: user.id, ownerOrgId: null, updatedAt: now })
-        .where(
-          and(
-            eq(schema.modules.id, transfer.moduleId),
-            eq(schema.modules.ownerUserId, transfer.initiatedBy),
-            isNull(schema.modules.ownerOrgId),
-          ),
-        )
-        .returning({ id: schema.modules.id });
-      if (flipped.length === 0) {
-        await db.delete(schema.moduleTransfers).where(eq(schema.moduleTransfers.id, transfer.id));
-        return reply.code(409).send({ error: 'transfer_stale' });
-      }
-
-      await db
-        .update(schema.moduleTransfers)
-        .set({ acceptedAt: now })
-        .where(eq(schema.moduleTransfers.id, transfer.id));
-      await deletePendingModuleTransfers(transfer.moduleId, transfer.id);
-
-      // Keep the previous owner as an editor (same as layout transfer).
-      if (transfer.initiatedBy && transfer.initiatedBy !== user.id) {
-        await db
-          .insert(schema.moduleCollaborators)
-          .values({
-            moduleId: transfer.moduleId,
-            userId: transfer.initiatedBy,
-            role: 'editor',
-            addedAt: now,
-          })
-          .onConflictDoNothing();
-      }
-
-      await writeAuditEvent({
-        resourceKind: 'module',
-        resourceId: transfer.moduleId,
-        userId: user.id,
-        eventType: 'transfer',
-        payload: {
-          from: { kind: 'user', userId: transfer.initiatedBy },
-          to: { kind: 'user', userId: user.id, email: user.email },
-          accepted: true,
-        },
-      });
-
-      return { moduleId: transfer.moduleId };
+      // Only to a club. Handing a module to one person by email had no
+      // page to accept it on (and nothing offered it): it's gone; a copy
+      // or a club does the job.
+      return reply.code(400).send({ error: 'transfer_to_club_only' });
     },
   );
 }

@@ -25,9 +25,15 @@ export function DemoBanner() {
       <p
         role="status"
         data-testid="demo-banner"
-        className="rounded-full border border-line bg-panel/95 px-3 py-1 text-xs text-ink shadow-pop"
+        className="whitespace-nowrap rounded-full border border-line bg-panel/95 px-3 py-1 text-xs text-ink shadow-pop"
       >
-        This is a demo. Everything resets {RESET_EVERY_TEXT[demo.resetEvery]}{next}.
+        {/* A phone gets one short line, so the header stays readable. */}
+        <span className="sm:hidden" data-testid="demo-banner-short">
+          Demo · resets {demo.nextResetAt === null ? RESET_EVERY_TEXT[demo.resetEvery] : `in ${timeUntil(demo.nextResetAt, now)}`}
+        </span>
+        <span className="hidden sm:inline">
+          This is a demo. Everything resets {RESET_EVERY_TEXT[demo.resetEvery]}{next}.
+        </span>
       </p>
     </div>
   );

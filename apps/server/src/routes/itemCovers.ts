@@ -29,6 +29,7 @@ import { publicName } from '../utils/publicName.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
 import { canModerate, catalogOn, cleanText, clubRole, isTrustedClub, manages, mayBrowse, ownerNames, trustedClubs } from './catalog.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 type Item = typeof schema.catalogItems.$inferSelect;
 type Outcome = { code: number; body: unknown };
@@ -156,7 +157,7 @@ export async function itemCoverRoutes(app: FastifyInstance): Promise<void> {
   app.put<{ Params: { id: string }; Body: { mime?: unknown; data?: unknown } }>(
     '/api/catalog/items/:id/cover',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { bodyLimit: COVER_BODY_LIMIT, config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { bodyLimit: COVER_BODY_LIMIT, config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const item = await loadItem(req.params.id);
@@ -193,7 +194,7 @@ export async function itemCoverRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>(
     '/api/catalog/items/:id/cover',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const item = await loadItem(req.params.id);

@@ -10,7 +10,7 @@
 // Sharing tiers mirror layouts: owner / editor / viewer; org ownership
 // available; explicit collaborators via `custom_part_collaborators`.
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
@@ -20,14 +20,12 @@ import { recordUpload } from '../metrics/usage.js';
 import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
-import { sendInviteEmail } from '../email/sendInvite.js';
-import { env } from '../env.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
-import { emailsVisible, nameFor, publicName } from '../utils/publicName.js';
+import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
 
 interface CreatePartBody {
@@ -49,7 +47,6 @@ interface InviteBody {
   role: 'viewer' | 'editor';
 }
 
-const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 // 4MB cap on a sprite + XML (combined) — generous for legitimate parts,
 // still bounded so a malicious user can't bloat the database.
 const MAX_PART_BLOB_BYTES = 4 * 1024 * 1024;
@@ -422,56 +419,15 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'invalid_role' });
       }
 
-      // For now custom-part invites are immediate add (recipient must
-      // already have an account). A token-based flow can land later if
-      // we want feature parity with layout invites; the MVP for v1 is
-      // "share with someone you know".
+      // Sharing a part adds someone who already has an account. (An
+      // emailed link for someone without one had no page to open on,
+      // so there's none.)
       const recipient = await db
         .select()
         .from(schema.users)
         .where(sql`lower(${schema.users.email}) = ${email}`)
         .get();
-      if (!recipient) {
-        // Persist the invite as a pending row; once the recipient
-        // registers + hits POST /api/custom-part-invites/:token they
-        // get added to custom_part_collaborators.
-        const token = randomBytes(24).toString('hex');
-        const inviteId = randomUUID();
-        const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
-        await db.insert(schema.customPartInvites).values({
-          id: inviteId,
-          customPartId: req.params.id,
-          invitedEmail: email,
-          role: inviteRole,
-          token,
-          expiresAt,
-          acceptedAt: null,
-        });
-        const inviteUrl = `${env.publicUrl}/custom-part-invite/${token}`;
-        let emailDelivered = false;
-        try {
-          emailDelivered = await sendInviteEmail({
-            to: email,
-            inviteUrl,
-            inviterName: publicName(user.id, user.displayName),
-          });
-        } catch {
-          /* ignored — caller can hand-deliver the URL */
-        }
-        await writeAuditEvent({
-          resourceKind: 'custom_part',
-          resourceId: req.params.id,
-          userId: user.id,
-          eventType: 'share',
-          payload: { invitedEmail: email, role: inviteRole, inviteId, pending: true },
-        });
-        return reply.code(202).send({
-          pending: true,
-          inviteUrl,
-          emailDelivered,
-          expiresAt: expiresAt.getTime(),
-        });
-      }
+      if (!recipient) return reply.code(404).send({ error: 'recipient_has_no_account' });
 
       await db
         .insert(schema.customPartCollaborators)

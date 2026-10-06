@@ -36,6 +36,7 @@ import { catalogChoice } from './orgs.js';
 import { invalidatePrivacyCache, mergePrivacyPatch, privacySettingStates } from '../privacy/settings.js';
 import { DEMO_RESET_CHOICES, demoStatus, ensureDemoUser, isDemoUser, signOutDemo, type DemoResetEvery } from '../demo/demoAccount.js';
 import { demoItemCount, runDemoReset } from '../demo/reset.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 function safeParse(json: string): unknown {
   try { return JSON.parse(json); } catch { return { _raw: json }; }
@@ -666,7 +667,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // them up. We count XMLs found and store the count in the DB row.
   app.post<{ Body: InstallLibraryBody }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const body = req.body ?? ({} as InstallLibraryBody);
@@ -752,7 +753,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // `source` can be 'official', 'nonlego', or any https:// URL.
   app.get<{ Querystring: { source?: string } }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/search',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
       requireGlobalAdmin(req);
       const source = (req.query.source ?? '').trim();
@@ -861,7 +862,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Body: DownloadLibraryBody }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/download',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
       const body = req.body ?? ({} as DownloadLibraryBody);
@@ -962,7 +963,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Re-fetch from sourceUrl and replace directory contents in-place.
   app.post<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/:id/update',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
       const lib = await db
@@ -1020,7 +1021,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { id: string } }>( // codeql[js/missing-rate-limiting]
     '/api/admin/part-libraries/:id',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const lib = await db
@@ -1310,7 +1311,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Demo account › "Reset now": wipe its things and put the samples
   // back, the same as the timer does. JSON, no body (or `{}`).
   // -----------------------------------------------------------------
-  app.post('/api/admin/demo/reset', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/api/admin/demo/reset', { config: { rateLimit: perPerson(10, '1 minute') } }, async (req, reply) => {
     const me = requireGlobalAdmin(req);
     if (!(await getPlatformSettings()).demoEnabled) return reply.code(409).send({ error: 'demo_off' });
     const result = await runDemoReset();
