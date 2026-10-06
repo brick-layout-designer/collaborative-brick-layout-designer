@@ -11,6 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { CURRENT_SCHEMA_VERSION as SIDECAR_SCHEMA_VERSION } from '@cld/bbm';
 import { DOC_MIN_READABLE, DOC_SCHEMA_VERSION } from '@cld/ydoc';
 import { DESKTOP_DOWNLOAD_URL, FEATURES, desktopPolicy } from '../compat.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 /** Realtime protocols served at /ws/layout/:id. */
 export const PROTOCOLS = ['y-websocket/1'] as const;
@@ -48,7 +49,7 @@ export async function versionRoutes(app: FastifyInstance) {
   // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
   app.get(
     '/api/version',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' }, apiToken: 'layouts:read' } },
+    { config: { rateLimit: perPerson(120, '1 minute'), apiToken: 'layouts:read' } },
     async () => {
       const policy = await desktopPolicy();
       return { ...fixed, desktop: { ...policy, downloadUrl: DESKTOP_DOWNLOAD_URL } };

@@ -88,7 +88,10 @@ describe('the demo banner', () => {
     vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     routes['GET /api/auth/me'] = () => ({ body: demoUser({ enabled: true, resetEvery: '6h', lastResetAt: NOW - 3600_000, nextResetAt: NOW + 5 * 3600_000 + 12 * 60_000 }) });
     renderAt(<DemoBanner />);
-    expect((await screen.findByTestId('demo-banner')).textContent).toBe('This is a demo. Everything resets every 6 hours (next reset in 5 h 12 min).');
+    const banner = await screen.findByTestId('demo-banner');
+    expect(banner.textContent).toContain('This is a demo. Everything resets every 6 hours (next reset in 5 h 12 min).');
+    // A phone gets one short line.
+    expect(screen.getByTestId('demo-banner-short').textContent).toBe('Demo · resets in 5 h 12 min');
   });
 
   it('is not shown to anyone else', async () => {

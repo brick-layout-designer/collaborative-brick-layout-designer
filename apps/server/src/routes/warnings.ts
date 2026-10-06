@@ -18,7 +18,7 @@
 // steps (read-only, limits) stay with site admins, on the same pages.
 
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
@@ -29,13 +29,14 @@ import { getMembership, loadOrgBySlug } from './orgs.js';
 import { sendWarningEmail } from '../email/sendWarning.js';
 import { publicName } from '../utils/publicName.js';
 import { publish } from '../events/audience.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 export const SEVERITIES = ['note', 'warning', 'final'] as const;
 export type Severity = (typeof SEVERITIES)[number];
 const MAX_REASON = 2000;
 const MAX_LINK = 500;
 /** Warnings one person may send in a minute (both kinds together). */
-const RATE = { max: 20, timeWindow: '1 minute' } as const;
+const RATE = perPerson(20, '1 minute');
 // The desktop app (an API token, any layouts scope) shows your warnings and
 // lets you acknowledge them, as the web's banner does.
 const TOKEN_NOTICES = { apiToken: 'layouts:read' } as const;
@@ -318,7 +319,7 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
   // "Dismiss all": the notes (club deleted or restored, a download ready…)
   // go at once. Warnings are never dismissed this way: each needs its own
   // "I understand".
-  app.post('/api/notices/acknowledge-all', { config: { ...TOKEN_NOTICES, rateLimit: { max: 10, timeWindow: '1 minute', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } }, async (req) => {
+  app.post('/api/notices/acknowledge-all', { config: { ...TOKEN_NOTICES, rateLimit: perPerson(10, '1 minute') } }, async (req) => {
     const user = requireUser(req);
     const rows = (await noticesFor(user.id)).filter((r) => r.severity === 'note' && !r.acknowledgedAt);
     if (rows.length === 0) return { ok: true, acknowledged: [] as string[] };

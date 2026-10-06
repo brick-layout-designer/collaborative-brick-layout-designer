@@ -19,6 +19,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { env } from '../env.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { emailsVisible, nameFor, publicName } from '../utils/publicName.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 interface InviteBody {
   email: string;
@@ -99,7 +100,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
   // ---- create invite -------------------------------------------------------
   app.post<{ Params: { id: string }; Body: InviteBody }>(
     '/api/layouts/:id/invites',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       if (isDemoUser(user)) {

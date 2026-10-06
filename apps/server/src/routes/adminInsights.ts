@@ -14,7 +14,7 @@
 // the numbers come from the daily rollup (metrics/rollup.ts), and each
 // response says since when it has been collecting.
 
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { existsSync, readdirSync, statSync, statfsSync } from 'node:fs';
@@ -32,6 +32,7 @@ import { appVersion } from './version.js';
 import { bundledPartKeys } from './parts.js';
 import { currentDocBytes } from './layouts.js';
 import { type DesktopPolicy, desktopPolicy, desktopStanding, resolvePolicy } from '../compat.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -749,7 +750,7 @@ export async function adminInsightsRoutes(app: FastifyInstance): Promise<void> {
     '/api/metrics/client',
     // Per person (else per address): a club on one show Wi-Fi shares an
     // address, and refusing their beacons raised "refused requests" alerts.
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = req.user;
       const display = req.body?.display;

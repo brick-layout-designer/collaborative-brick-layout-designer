@@ -390,11 +390,25 @@ describe('the welcome card', () => {
     expect(screen.queryByTestId('welcome')).toBeNull();
     cleanup();
     render(
-      <PrefsContext.Provider value={{ prefs: DEFAULT_PREFERENCES, mode: 'light', setPrefs: () => {}, syncedToAccount: true, updatedAt: null, ready: false }}>
-        <MemoryRouter>{home()}</MemoryRouter>
-      </PrefsContext.Provider>,
+      <QueryClientProvider client={new QueryClient()}>
+        <PrefsContext.Provider value={{ prefs: DEFAULT_PREFERENCES, mode: 'light', setPrefs: () => {}, syncedToAccount: true, updatedAt: null, ready: false }}>
+          <MemoryRouter>{home()}</MemoryRouter>
+        </PrefsContext.Provider>
+      </QueryClientProvider>,
     );
     expect(screen.queryByTestId('welcome')).toBeNull();
+  });
+
+  it('someone already in a club isn’t offered "Join a club"', async () => {
+    vi.stubGlobal('fetch', async (input: string) =>
+      new Response(JSON.stringify(input === '/api/orgs' ? { orgs: [{ id: 'o1', slug: 'ark', name: 'ArkLUG', createdAt: 1, myRole: 'member' }] } : {}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderApp('/', [], home());
+    expect(screen.getByRole('button', { name: new RegExp(WELCOME.actions.layout.label) })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: new RegExp(WELCOME.actions.club.label) })).toBeNull());
   });
 
   it('each way in goes somewhere and puts the card away', async () => {

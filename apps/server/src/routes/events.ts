@@ -6,10 +6,11 @@
 // stream out. The response is never compressed or buffered
 // (X-Accel-Buffering: no, Cache-Control: no-transform).
 
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { env } from '../env.js';
 import { requireUser } from '../auth/cookie.js';
 import { API_SCOPES } from '../auth/apiTokens.js';
+import { perPerson } from '../utils/rateLimits.js';
 import {
   HEARTBEAT_MS,
   addConnection,
@@ -43,7 +44,7 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
     {
       config: {
         apiToken: API_SCOPES,
-        rateLimit: { max: 30, timeWindow: '1 minute', hook: 'preHandler', keyGenerator: (req: FastifyRequest) => req.user?.id ?? req.ip },
+        rateLimit: perPerson(30, '1 minute'),
       },
     },
     async (req, reply) => {

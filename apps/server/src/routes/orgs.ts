@@ -31,6 +31,7 @@ import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
 import { clubReviewCount } from './clubReview.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 interface CreateOrgBody {
   name: string;
@@ -418,7 +419,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // ---- invite member ------------------------------------------------------
   app.post<{ Params: { slug: string }; Body: OrgMemberInviteBody }>(
     '/api/orgs/:slug/invites',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       if (isDemoUser(user)) {
@@ -531,7 +532,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // oracle and should stay hard to use for enumeration.
   app.get<{ Params: { slug: string }; Querystring: { q?: string } }>(
     '/api/orgs/:slug/user-search',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);
@@ -619,7 +620,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // Sends the same link again and gives it a fresh expiry.
   app.post<{ Params: { slug: string; inviteId: string }; Body: { expiresInDays?: unknown } }>(
     '/api/orgs/:slug/invites/:inviteId/resend',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);

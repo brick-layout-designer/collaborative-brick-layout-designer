@@ -31,8 +31,23 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../pack
 export const DEMO_SAMPLES = {
   layout: { file: 'tight-corner.bbm', title: 'Sample layout' },
   module: { file: 'oracle/flex-a.bbm', title: 'Sample module' },
-  venue: { file: 'grand-lobby.bld-venue' },
+  /** A hall, named as one would be (an install without the file gets an empty one by this name). */
+  venue: { file: 'grand-lobby.bld-venue', name: 'Community Hall' },
 } as const;
+
+/** The sample venue's data from its file (its own name, else "Community Hall"); an empty hall when it's missing or unreadable. */
+export function sampleVenue(text: string | null): Record<string, unknown> & { name: string } {
+  const empty = { name: DEMO_SAMPLES.venue.name, edges: [] };
+  if (!text) return empty;
+  try {
+    const { schema: _format, ...data } = JSON.parse(text) as Record<string, unknown>;
+    const name = typeof data.name === 'string' && data.name.trim() ? data.name : DEMO_SAMPLES.venue.name;
+    return { ...data, name };
+  } catch (err) {
+    console.warn('[demo] could not read the sample venue', err);
+    return empty;
+  }
+}
 
 /** A sample file's text, or null (logged) when this install doesn't have it. */
 function sample(file: string): string | null {
@@ -92,22 +107,13 @@ async function deleteDemoThings(): Promise<string[]> {
 async function seedSamples(now: Date): Promise<void> {
   const layoutDoc = docFromBbm(sample(DEMO_SAMPLES.layout.file));
   const moduleDoc = docFromBbm(sample(DEMO_SAMPLES.module.file));
-  let venue: Record<string, unknown> = { name: 'Sample room', edges: [] };
-  const venueText = sample(DEMO_SAMPLES.venue.file);
-  if (venueText) {
-    try {
-      const { schema: _format, ...data } = JSON.parse(venueText) as Record<string, unknown>;
-      venue = data;
-    } catch (err) {
-      console.warn('[demo] could not read the sample room', err);
-    }
-  }
+  const venue = sampleVenue(sample(DEMO_SAMPLES.venue.file));
   const base = { ownerUserId: DEMO_USER_ID, ownerOrgId: null, createdBy: DEMO_USER_ID, createdAt: now, updatedAt: now, docVersion: 0, sidecarSnapshot: null };
   db.transaction((tx) => {
     tx.insert(schema.layouts).values({ ...base, id: randomUUID(), title: DEMO_SAMPLES.layout.title, docSnapshot: Buffer.from(layoutDoc) }).run();
     tx.insert(schema.modules).values({ ...base, id: randomUUID(), title: DEMO_SAMPLES.module.title, docSnapshot: Buffer.from(moduleDoc) }).run();
     tx.insert(schema.venueLibrary)
-      .values({ id: randomUUID(), ownerUserId: DEMO_USER_ID, ownerOrgId: null, name: String(venue.name ?? 'Sample room'), data: JSON.stringify(venue), createdBy: DEMO_USER_ID, createdAt: now })
+      .values({ id: randomUUID(), ownerUserId: DEMO_USER_ID, ownerOrgId: null, name: String(venue.name), data: JSON.stringify(venue), createdBy: DEMO_USER_ID, createdAt: now })
       .run();
   });
 }

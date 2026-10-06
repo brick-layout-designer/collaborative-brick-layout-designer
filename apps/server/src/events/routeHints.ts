@@ -418,7 +418,6 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/modules/:id/invites': resource('module'),
   'DELETE /api/modules/:id/collaborators/:userId': resource('module', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'POST /api/modules/:id/transfer': resource('module'),
-  'POST /api/module-transfers/:token': resource('module', { reply: 'moduleId' }),
   'POST /api/modules/:id/take-back': returned('module'),
   'POST /api/modules/:id/give-back': returned('module'),
 
@@ -438,7 +437,6 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/custom-parts/:id/invites': resource('custom-part'),
   'PATCH /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'DELETE /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
-  'POST /api/custom-part-invites/:token': resource('custom-part', { reply: 'customPartId' }),
   'POST /api/custom-parts/:id/move': resource('custom-part'),
   'POST /api/custom-parts/:id/copy': resource('custom-part', { reply: 'id' }),
   'POST /api/custom-parts/:id/take-back': returned('custom-part'),

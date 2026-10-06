@@ -186,6 +186,16 @@ describe('audit endpoints', () => {
       headers: { cookie: aliceCookie },
       payload: { email: 'bob@example.com', role: 'editor' },
     });
+    // Someone without an account isn't sent a link (it had no page): they need one first.
+    const nobody = await app.inject({
+      method: 'POST',
+      url: `/api/custom-parts/${id}/invites`,
+      headers: { cookie: aliceCookie },
+      payload: { email: 'nobody@example.com', role: 'viewer' },
+    });
+    expect(nobody.statusCode).toBe(404);
+    expect(nobody.json()).toEqual({ error: 'recipient_has_no_account' });
+    expect(await db.select().from(schema.customPartInvites).all()).toHaveLength(0);
     const bob = await db
       .select()
       .from(schema.users)

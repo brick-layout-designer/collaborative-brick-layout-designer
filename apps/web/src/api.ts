@@ -92,6 +92,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   rate_limited: 'Too many requests at once. Please wait a minute and try again.',
   verify_email_first: 'Please confirm your email address first.',
   demo_off: 'The demo isn’t available right now.',
+  recipient_has_no_account: 'There’s no account with that email address on this site. Ask them to sign up first.',
+  transfer_to_club_only: 'A module can only be moved to a club you’re in. Make a copy for one person instead.',
   demo_account_cannot_invite: 'The demo can’t invite people. Sign up to share with others.',
   demo_account_cannot_share: 'The demo can’t share or hand things over. Sign up to share with others.',
   demo_account_cannot_create_org: 'The demo can’t make clubs. Sign up to start one.',
@@ -889,42 +891,12 @@ export const api = {
       ),
   },
 
-  customPartInvites: {
-    preview: (token: string) =>
-      get<{
-        invitedEmail: string;
-        role: 'viewer' | 'editor';
-        customPartId: string;
-        partNumber: string;
-        displayName: string;
-        expiresAt: number;
-      }>(`/api/custom-part-invites/${token}`),
-    accept: (token: string) =>
-      post<{ customPartId: string; role: 'viewer' | 'editor' }>(
-        `/api/custom-part-invites/${token}`,
-      ),
-  },
-
+  /** Move a module to a club you're in (at once). */
   moduleTransfers: {
-    initiate: (
-      moduleId: string,
-      recipient: { email: string } | { orgSlug: string },
-    ) =>
-      post<
-        | { transferred: true; ownerKind: 'org'; ownerSlug: string }
-        | { id: string; token: string; transferUrl: string; emailDelivered: boolean; expiresAt: number }
-      >(`/api/modules/${moduleId}/transfer`, {
-        recipientEmail: 'email' in recipient ? recipient.email : undefined,
-        recipientOrgSlug: 'orgSlug' in recipient ? recipient.orgSlug : undefined,
+    initiate: (moduleId: string, recipient: { orgSlug: string }) =>
+      post<{ transferred: true; ownerKind: 'org'; ownerSlug: string }>(`/api/modules/${moduleId}/transfer`, {
+        recipientOrgSlug: recipient.orgSlug,
       }),
-    preview: (token: string) =>
-      get<{
-        recipientEmail: string;
-        moduleId: string;
-        moduleTitle: string;
-        expiresAt: number;
-      }>(`/api/module-transfers/${token}`),
-    accept: (token: string) => post<{ moduleId: string }>(`/api/module-transfers/${token}`),
   },
 
   // ---------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 import { onPartsCacheInvalidated, visibleCustomParts } from './parts.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 export interface LibraryFile {
   /** Path inside the library, `/`-separated. */
@@ -144,7 +145,7 @@ async function customPartHashes(ids: readonly { id: string; updatedAt: Date }[])
 onPartsCacheInvalidated(invalidateManifestCache);
 
 export async function partsManifestRoutes(app: FastifyInstance): Promise<void> {
-  const config = { apiToken: 'parts:read', rateLimit: { max: 60, timeWindow: '1 minute' } } as const;
+  const config = { apiToken: 'parts:read', rateLimit: perPerson(60, '1 minute') } as const;
 
   app.get('/api/parts/manifest', { config }, async (req) => {
     const libs = await libraries();

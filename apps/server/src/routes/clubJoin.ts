@@ -32,6 +32,7 @@ import { escapeLike } from '../utils/validate.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 /** The longest note someone can send with a request. */
 export const JOIN_MESSAGE_MAX = 300;
@@ -100,7 +101,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- the directory ---------------------------------------------------------
   app.get<{ Querystring: { q?: string } }>(
     '/api/club-directory',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(60, '1 minute') } },
     async (req) => {
       const user = requireUser(req);
       const needle = (req.query.q ?? '').trim().slice(0, 80);
@@ -147,7 +148,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- one club's public summary ---------------------------------------------
   app.get<{ Params: { slug: string } }>(
     '/api/orgs/:slug/summary',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(60, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);
@@ -162,7 +163,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- join, or ask to join ----------------------------------------------------
   app.post<{ Params: { slug: string }; Body: { message?: unknown } }>(
     '/api/orgs/:slug/join',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_join_clubs' });
@@ -216,7 +217,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- take back your request ------------------------------------------------
   app.delete<{ Params: { slug: string } }>(
     '/api/orgs/:slug/join',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);
@@ -261,7 +262,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- approve (admins) --------------------------------------------------------
   app.post<{ Params: { slug: string; id: string } }>(
     '/api/orgs/:slug/join-requests/:id/approve',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(60, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await asManager(req.params.slug, user.id, reply);
@@ -295,7 +296,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- decline (admins); the person isn't told ---------------------------------
   app.post<{ Params: { slug: string; id: string } }>(
     '/api/orgs/:slug/join-requests/:id/decline',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(60, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await asManager(req.params.slug, user.id, reply);

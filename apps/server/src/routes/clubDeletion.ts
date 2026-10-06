@@ -28,6 +28,7 @@ import { catalogChoice, getMembership, loadOrgBySlug } from './orgs.js';
 import { dropModuleFromCollections } from './collections.js';
 import { clubDeletionSummary, deletingClubsFor, eraseClub, mayRestore, restoreClub } from '../privacy/clubDeletion.js';
 import { describeExport, listExports, nextExportAllowedAt, startExport } from '../privacy/exports.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/orgs/deleting', async (req) => {
@@ -57,7 +58,7 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
     return { exports: await listExports(user.id, subject), nextAllowedAt: await nextExportAllowedAt(user.id, subject) };
   });
 
-  app.post<{ Params: { slug: string } }>('/api/orgs/:slug/exports', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Params: { slug: string } }>('/api/orgs/:slug/exports', { config: { rateLimit: perPerson(10, '1 minute') } }, async (req, reply) => {
     const user = requireUser(req);
     const org = await loadOrgBySlug(req.params.slug);
     if (!org) return reply.code(404).send({ error: 'not_found' });
@@ -77,7 +78,7 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
   // ---- move everything out first ---------------------------------------------
   app.post<{ Params: { slug: string }; Body: { kind?: unknown; toUserId?: unknown; toOrgSlug?: unknown } }>(
     '/api/orgs/:slug/move-all',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);
@@ -148,7 +149,7 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Params: { id: string }; Body: { confirm?: unknown; catalog?: unknown; heirUserId?: unknown } }>(
     '/api/admin/orgs/:id/erase',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(10, '1 minute') } },
     async (req, reply) => {
       const admin = requireGlobalAdmin(req);
       const org = await db.select().from(schema.orgs).where(eq(schema.orgs.id, req.params.id)).get();

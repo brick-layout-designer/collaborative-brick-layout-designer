@@ -47,6 +47,7 @@ import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, isTrusted
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 type Kind = CatalogKind;
 type Audience = 'everyone' | 'private';
@@ -1073,7 +1074,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: Record<string, unknown> }>(
     '/api/catalog/collections',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(10, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_submit' });
@@ -1137,7 +1138,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>(
     '/api/catalog/collections/:id',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);
@@ -1155,7 +1156,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { itemId?: unknown; source?: unknown; kind?: unknown; id?: unknown } }>(
     '/api/catalog/collections/:id/items',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(60, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);
@@ -1175,7 +1176,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>(
     '/api/catalog/collections/:id/withdraw',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);
@@ -1196,7 +1197,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>(
     '/api/catalog/collections/:id',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);
@@ -1231,7 +1232,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { orgSlug?: unknown } }>(
     '/api/catalog/collections/:id/add',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, apiToken: ['layouts:write', 'parts:write'] as const } },
+    { config: { rateLimit: perPerson(10, '1 minute'), apiToken: ['layouts:write', 'parts:write'] as const } },
     async (req, reply) => {
       const user = requireUser(req);
       const on = await kindsOn();
@@ -1300,7 +1301,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.put<{ Params: { id: string }; Body: { mime?: unknown; data?: unknown } }>(
     '/api/catalog/collections/:id/cover',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { bodyLimit: COVER_BODY_LIMIT, config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { bodyLimit: COVER_BODY_LIMIT, config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);
@@ -1324,7 +1325,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>(
     '/api/catalog/collections/:id/cover',
     // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
-    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    { config: { rateLimit: perPerson(30, '1 hour') } },
     async (req, reply) => {
       const user = requireUser(req);
       const c = await getCollection(req.params.id);

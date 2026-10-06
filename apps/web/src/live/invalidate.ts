@@ -148,10 +148,10 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/[^/]+\/[^/]+\/(take|give)-back$/, ['layout', 'module', 'venue', 'custom-part', 'warning']],
   [/^\/api\/layouts\/[^/]+\/transfer\b|^\/api\/transfers\b/, ['layout', 'transfer']],
   [/^\/api\/(layouts|invites)\b/, ['layout']],
-  [/^\/api\/modules\/[^/]+\/transfer\b|^\/api\/module-transfers\b/, ['module', 'transfer']],
+  [/^\/api\/modules\/[^/]+\/transfer\b/, ['module', 'transfer']],
   [/^\/api\/modules\b/, ['module']],
   [/^\/api\/venues\b/, ['venue']],
-  [/^\/api\/(custom-parts|custom-part-invites)\b/, ['custom-part']],
+  [/^\/api\/custom-parts\b/, ['custom-part']],
   // Adding or updating a catalog item puts a module or a part in your things.
   [/^\/api\/catalog\/((items|collections)\/[^/]+\/add|copies)\b/, ['catalog', 'module', 'custom-part', 'layout', 'venue']],
   [/^\/api\/(catalog|moderation)\b/, ['catalog']],

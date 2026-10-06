@@ -19,6 +19,7 @@ import { describeExport, exportPath, listExports, nextExportAllowedAt, startExpo
 import { privacySettings } from '../privacy/settings.js';
 import { clearSessionCookie, requireUser } from '../auth/cookie.js';
 import { confirmMatches, deletionSummary, requestDeletion } from '../privacy/accountDeletion.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -36,7 +37,7 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post('/api/me/privacy/exports', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/api/me/privacy/exports', { config: { rateLimit: perPerson(10, '1 minute') } }, async (req, reply) => {
     const user = requireUser(req);
     if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account', message: 'The demo account has no data of its own to download.' });
     const subject = { kind: 'user' as const, id: user.id };
@@ -60,7 +61,7 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
     return deletionSummary(user);
   });
 
-  app.post<{ Body: { confirm?: unknown } }>('/api/me/deletion', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Body: { confirm?: unknown } }>('/api/me/deletion', { config: { rateLimit: perPerson(10, '1 minute') } }, async (req, reply) => {
     const user = requireUser(req);
     if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account', message: 'The demo account belongs to everyone, so it can’t be deleted.' });
     if (!confirmMatches(user, req.body?.confirm)) {
@@ -78,7 +79,7 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { id: string } }>(
     '/api/privacy/exports/:id/download',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: perPerson(20, '1 minute') } },
     async (req, reply) => {
       const user = requireUser(req);
       if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'not_found' });

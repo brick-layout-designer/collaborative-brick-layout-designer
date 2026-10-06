@@ -36,6 +36,7 @@ import { creditRows, isKeptCopy, type CreditKind } from './credits.js';
 import { prepareLayoutCopy } from './layouts.js';
 import { copyPartTo, dropModuleFromCollections } from './collections.js';
 import { postClubNote } from './warnings.js';
+import { perPerson } from '../utils/rateLimits.js';
 
 const KINDS: { kind: CreditKind; path: string; token: 'layouts:write' | 'parts:write' | 'venues:write'; word: string }[] = [
   { kind: 'layout', path: 'layouts', token: 'layouts:write', word: 'layout' },
@@ -287,7 +288,7 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
     for (const mode of ['take', 'give'] as const) {
       app.post<{ Params: { id: string } }>(
         `/api/${k.path}/:id/${mode}-back`,
-        { config: { apiToken: k.token, rateLimit: { max: 30, timeWindow: '1 minute' } } },
+        { config: { apiToken: k.token, rateLimit: perPerson(30, '1 minute') } },
         async (req, reply) => {
           const user = requireUser(req);
           const done = await returnToAuthor(k.kind, req.params.id, user, mode, reply);
