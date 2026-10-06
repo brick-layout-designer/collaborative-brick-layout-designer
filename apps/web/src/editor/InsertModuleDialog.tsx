@@ -16,6 +16,7 @@ import { ModuleThumb } from '../modules/ModuleThumb';
 import { useEditorStore } from './editorStore';
 import { placeModuleAsking } from './SheetChoiceDialog';
 import { fetchModuleBatches, libraryVersionOf } from './moduleSnapshot';
+import { useEscape } from './useEscape';
 
 interface Props {
   doc: Y.Doc;
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export function InsertModuleDialog({ doc, onClose }: Props) {
+  useEscape(onClose);
   const list = useQuery({ queryKey: ['modules'], queryFn: api.modules.list });
   const [error, setError] = useState<string | null>(null);
   // Your modules, or the public catalog (when it's on).
@@ -73,7 +75,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
   });
 
   return (
-    <div className="fixed inset-0 grid place-items-center bg-black/60 p-4">
+    <div role="dialog" aria-label="Insert module" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <div className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm">
         <div className="flex items-start justify-between">
           <div>

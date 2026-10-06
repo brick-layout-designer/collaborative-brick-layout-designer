@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { useEditorStore, SNAP_STEPS, ROTATION_STEPS } from './editorStore';
+import { useEscape } from './useEscape';
 
 type Tab = 'general' | 'editing' | 'appearance';
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function PreferencesDialog({ onClose }: Props) {
+  useEscape(onClose);
   const [tab, setTab] = useState<Tab>('editing');
 
   const snapStepStuds = useEditorStore((s) => s.snapStepStuds);
@@ -78,7 +80,7 @@ export function PreferencesDialog({ onClose }: Props) {
   const checkRowCls = 'flex items-center gap-2 py-1';
 
   return (
-    <div
+    <div role="dialog" aria-label="Preferences" aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
     >

@@ -19,6 +19,7 @@ import { addAnchoredLabel, deleteAnchoredLabel, editAnchoredLabel, makeId } from
 import { labelColorHex, labelColorToSave } from './labelColor';
 import { DEFAULT_LABEL_FONT, labelFontStyle } from './mixedSelection';
 import { HelpButton } from '../help/HelpButton';
+import { useEscape } from './useEscape';
 
 interface Props {
   doc: Y.Doc;
@@ -35,6 +36,7 @@ interface Props {
 const BRICK_OFFSET = { x: 2, y: -2 };
 
 export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, viewCentre, onClose }: Props) {
+  useEscape(onClose);
   const isEdit = !!initialLabel;
   const initStyle = (initialLabel?.font.style ?? '').toLowerCase();
   const [text, setText] = useState(initialLabel?.text ?? '');
@@ -90,7 +92,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
 
   return (
     <div
-      role="dialog"
+      role="dialog" aria-label="Anchored label"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}

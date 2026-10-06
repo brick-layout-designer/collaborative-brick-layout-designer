@@ -7,6 +7,7 @@ import type * as Y from 'yjs';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { setVenue } from './mutations';
 import { venueAfterDraw } from './venueValidator';
+import { useEscape } from './useEscape';
 
 const STUDS_PER_FOOT = 38.09814081;
 const STUDS_PER_INCH = STUDS_PER_FOOT / 12;
@@ -46,6 +47,7 @@ function parseDeg(angle: string): number {
 }
 
 export function VenueDimensionsDialog({ doc, onClose }: Props) {
+  useEscape(onClose);
   const [unit, setUnit] = useState<'ft' | 'in'>('ft');
   const [originX, setOriginX] = useState('0.00');
   const [originY, setOriginY] = useState('0.00');
@@ -122,7 +124,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
+    <div role="dialog" aria-label="Draw venue outline by dimensions" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
       <form
         onSubmit={submit}
         className="w-full max-w-2xl space-y-4 rounded-lg border border-line bg-panel p-6 text-sm"

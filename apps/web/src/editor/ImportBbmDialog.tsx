@@ -10,6 +10,7 @@ import { readBbm } from '@cld/bbm';
 import { useEditorStore } from './editorStore';
 import { placeModuleAsking } from './SheetChoiceDialog';
 import { moduleBatchesFromMap } from './moduleDrop';
+import { useEscape } from './useEscape';
 
 interface Props {
   doc: Y.Doc;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function ImportBbmDialog({ doc, onClose }: Props) {
+  useEscape(onClose);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -66,7 +68,7 @@ export function ImportBbmDialog({ doc, onClose }: Props) {
   }
 
   return (
-    <div
+    <div role="dialog" aria-label="Import .bbm as module" aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
     >

@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import { docToBbm } from '@cld/ydoc';
 import { noticeDownloaded, useEditorStore } from './editorStore';
 import type { LayerBrick } from '@cld/model';
+import { useEscape } from './useEscape';
 
 interface Props {
   doc: Y.Doc;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function SaveAsSetDialog({ doc, onClose }: Props) {
+  useEscape(onClose);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const selection = useEditorStore((s) => s.selection);
@@ -59,7 +61,7 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div role="dialog" aria-label="Save selection as set" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <form
         onSubmit={submit}
         className="w-80 space-y-3 rounded-lg border border-border bg-panel p-5 text-sm shadow-xl"

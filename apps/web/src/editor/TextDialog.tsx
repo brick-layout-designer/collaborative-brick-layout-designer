@@ -9,6 +9,7 @@ import { useState } from 'react';
 import type { TextCell } from '@cld/model';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { colorSpecToArgb } from './layerOptions';
+import { useEscape } from './useEscape';
 
 export interface TextDialogResult {
   text: string;
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
+  useEscape(onClose);
   const [text, setText] = useState(initial?.text ?? '');
   const [fontFamily, setFontFamily] = useState(initial?.font.family ?? 'Arial');
   // New text: Arial 12 pt, like desktop (MapView::addTextAtScenePos).
@@ -47,6 +49,7 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
   return (
     <div
       role="dialog"
+      aria-label={initial ? 'Edit text' : 'Add text'}
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}

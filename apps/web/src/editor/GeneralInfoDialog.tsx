@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type * as Y from 'yjs';
 import type { BbmMap } from '@cld/model';
 import { setGeneralInfo } from './mutations';
+import { useEscape } from './useEscape';
 
 interface Props {
   map: BbmMap;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function GeneralInfoDialog({ map, doc, onClose }: Props) {
+  useEscape(onClose);
   const [author, setAuthor] = useState(map.author);
   const [lug, setLug] = useState(map.lug);
   const [event, setEventValue] = useState(map.event);
@@ -34,7 +36,7 @@ export function GeneralInfoDialog({ map, doc, onClose }: Props) {
 
   return (
     <div
-      role="dialog"
+      role="dialog" aria-label="General info"
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}

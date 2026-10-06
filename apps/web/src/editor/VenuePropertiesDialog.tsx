@@ -8,6 +8,7 @@ import type { Venue, VenueEdge } from '@cld/bbm';
 import { setVenue } from './mutations';
 import { newVenue } from './venueValidator';
 import { askConfirm } from '../ui/ConfirmDialog';
+import { useEscape } from './useEscape';
 
 const STUDS_PER_FOOT = 38.09814081;
 
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
+  useEscape(onClose);
   const initial = venue ?? newVenue();
 
   const [name, setName] = useState(initial.name);
@@ -60,7 +62,7 @@ export function VenuePropertiesDialog({ doc, venue, onClose }: Props) {
   const labelCls = 'block text-xs text-muted mb-0.5';
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
+    <div role="dialog" aria-label="Venue properties" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
       <form
         onSubmit={submit}
         className="w-full max-w-2xl space-y-4 rounded-lg border border-line bg-panel p-6 text-sm"

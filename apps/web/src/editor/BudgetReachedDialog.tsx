@@ -4,10 +4,12 @@
 
 import { useState } from 'react';
 import { useEditorStore } from './editorStore';
+import { useEscape } from './useEscape';
 
 export const BUDGET_REFUSED_STATUS = 'Budget reached: part not added';
 
 export function BudgetReachedDialog({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   const setWarn = useEditorStore((s) => s.setWarnBudgetLimitation);
   const [dontShow, setDontShow] = useState(false);
   const close = () => {

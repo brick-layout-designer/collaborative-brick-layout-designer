@@ -12,6 +12,7 @@ import type { Sidecar } from '@cld/bbm';
 import type { PartWire } from '../api';
 import { LOSSY_FORMAT_WARNING, MAP_FORMATS, mapDownload, type MapFormat } from '../mapFormats';
 import { HelpButton } from '../help/HelpButton';
+import { useEscape } from './useEscape';
 
 const WARN_KEY = 'cld:warnNonBbmSave';
 
@@ -65,6 +66,7 @@ interface Props {
 }
 
 export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownloadBbm, blueBrickLeavesOut: lost, onClose }: Props) {
+  useEscape(onClose);
   const [format, setFormat] = useState<MapFormat | 'bbm' | 'layout'>('layout');
   const [warn] = useState(warnsOnNonBbmSave);
   const [dontShow, setDontShow] = useState(false);

@@ -11,6 +11,7 @@ import { noticeDownloaded, useEditorStore } from './editorStore';
 import { buildPartList, partListCsv, partListHtml, partListText } from './partList';
 import { ensureSprite } from './render/spriteCache';
 import { HelpButton } from '../help/HelpButton';
+import { useEscape } from './useEscape';
 
 type Format = 'html' | 'txt' | 'csv';
 
@@ -69,6 +70,7 @@ interface Props {
 }
 
 export function PartListDialog({ map, parts, limits, layoutTitle, onClose }: Props) {
+  useEscape(onClose);
   const [format, setFormat] = useState<Format>('html');
   const [split, setSplit] = useState(() => read('cld:partListSplitPerLayer', false));
   const [hidden, setHidden] = useState(() => read('cld:partListIncludeHiddenLayers', true));
