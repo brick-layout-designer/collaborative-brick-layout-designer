@@ -41,7 +41,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
       const copy = await api.catalog.add(item.id);
       void qc.invalidateQueries({ queryKey: ['modules'] });
       const [batches, version] = await Promise.all([fetchModuleBatches(copy.id), libraryVersionOf(copy.id)]);
-      // Linked to your copy: Update from library follows it.
+      // Linked to your copy: Update from Module library follows it.
       const res = await placeModuleAsking(doc, batches, { name: item.title, library: { id: copy.id, ...(version ? { version } : {}) } });
       if (res) useEditorStore.getState().setSelection(res.ids);
       return !!res;
@@ -143,7 +143,7 @@ export function InsertModuleDialog({ doc, onClose }: Props) {
         {tab === 'mine' && list.isLoading && <p className="text-muted">Loading…</p>}
         {tab === 'mine' && list.data && list.data.modules.length === 0 && (
           <p className="rounded-lg border border-dashed border-line p-4 text-muted">
-            No saved modules yet. Pick some parts, make them a module (<em>Map ▸ Modules &amp; sets ▸ Make a module</em>), then choose <em>Save to library…</em> from its ⋯ menu. Or use <em>New module</em> on Home.
+            No saved modules yet. Pick some parts, make them a module (<em>Map ▸ Modules &amp; sets ▸ Make a module</em>), then choose <em>Save to Module library…</em> from its ⋯ menu. Or use <em>New module</em> on Home.
           </p>
         )}
         {tab === 'mine' && list.data && list.data.modules.length > 0 && (

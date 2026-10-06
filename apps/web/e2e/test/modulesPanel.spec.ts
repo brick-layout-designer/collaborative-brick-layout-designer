@@ -1,6 +1,6 @@
 // The Modules panel, as a club member uses it: make some parts a module in
-// this layout, then save it to the library from its menu. The save says
-// so, the row says it's in the library, and the module is on Home where it
+// this layout, then save it to the Module library from its menu. The save says
+// so, the row says it's in the Module library, and the module is on Home where it
 // opens with its parts.
 
 import { test, expect, type Page } from '@playwright/test';
@@ -17,7 +17,7 @@ function brickCount(page: Page): Promise<number> {
   });
 }
 
-test('make a module, save it to the library, find it on Home', async ({ page }) => {
+test('make a module, save it to the Module library, find it on Home', async ({ page }) => {
   await signIn(page, `modpanel-${ts}@example.com`, 'Panel User');
   const res = await page.request.post('/api/layouts', { data: { title: 'Panel layout' } });
   const { id } = (await res.json()) as { id: string };
@@ -36,17 +36,17 @@ test('make a module, save it to the library, find it on Home', async ({ page }) 
   await expect(page.getByText(`“Siding ${ts}” is a module in this layout`)).toBeVisible();
   expect(((await (await page.request.get('/api/modules')).json()) as { modules: { title: string }[] }).modules.some((m) => m.title === `Siding ${ts}`)).toBe(false);
 
-  // Modules panel: right-click it > Save to library…
+  // Modules panel: right-click it > Save to Module library…
   await page.getByRole('button', { name: 'Panels', exact: true }).click();
   await page.getByLabel('Modules', { exact: true }).check();
   await page.mouse.click(400, 400);
   await page.getByText(`Siding ${ts}`, { exact: true }).click({ button: 'right' });
   await expect(page.getByText(`Siding ${ts}`, { exact: true }).locator('..')).toContainText('2 parts');
   await expect(page.getByRole('button', { name: 'Ungroup (keep the parts)' })).toBeVisible();
-  await page.getByRole('button', { name: 'Save to library…' }).click();
-  await page.getByRole('dialog', { name: `Save “Siding ${ts}” to the library` }).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText(`Saved “Siding ${ts}” to the library`)).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText(`Siding ${ts}`, { exact: true }).locator('..')).toContainText('in the library v1');
+  await page.getByRole('button', { name: 'Save to Module library…' }).click();
+  await page.getByRole('dialog', { name: `Save “Siding ${ts}” to the Module library` }).getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(`Saved “Siding ${ts}” to the Module library`)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(`Siding ${ts}`, { exact: true }).locator('..')).toContainText('in the Module library v1');
 
   // Home lists it; it opens with both parts.
   await page.goto('/');

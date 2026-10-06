@@ -1,8 +1,8 @@
 // Modules panel — port of desktop's ModulesPanel (`src/ui/ModulesPanel.cpp`).
 // Lists sidecar modules: name, member count, optional sourceFile.
 // Click → toggle member-brick selection.
-// Right-click or ⋯ → its menu, with the library entries (Save to library…,
-// Update library version…, Update from library: moduleLibraryMenu.ts).
+// Right-click or ⋯ → its menu, with the Module library entries (Save to Module library…,
+// Update Module library version…, Update from Module library: moduleLibraryMenu.ts).
 // Make a module opens ModuleDialogs.tsx; Import… is ImportBbmDialog.
 
 import { useOnScreen } from './menuPosition';
@@ -57,7 +57,7 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   if (modules.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-neutral-600">
-        No modules in this layout yet. Pick some parts, then make them a module. To use one in other layouts, save it to your library from its ⋯ menu.
+        No modules in this layout yet. Pick some parts, then make them a module. To use one in other layouts, save it to your Module library from its ⋯ menu.
         {createButton}
       </div>
     );
@@ -102,9 +102,9 @@ function ModuleRow({
   isViewer: boolean;
   /** Some or all of its parts are on hidden sheets: says so. */
   hiddenNote: string | null;
-  /** "in the library v3 · v4 is newer", or null when not linked. */
+  /** "in the Module library v3 · v4 is newer", or null when not linked. */
   libraryLine: string | null;
-  /** Save to library…, Update library version…, Update from library. */
+  /** Save to Module library…, Update Module library version…, Update from Module library. */
   libraryEntries: ModuleMenuEntry[];
 }) {
   const selection = useEditorStore((s) => s.selection);

@@ -1,4 +1,4 @@
-// Modules and sheets, end to end: Make a module (saved to the library) says which
+// Modules and sheets, end to end: Make a module (saved to the Module library) says which
 // sheets the module uses and keeps them (solid, so the module editor shows
 // its parts); adding it to a layout without one of its sheets asks "Where
 // should these go?" (the picked sheet, or a new sheet by that name), and
@@ -73,7 +73,7 @@ test('a module keeps its sheets, and adding it asks where a missing sheet goes',
   await placePart(page);
   await expect.poll(async () => (await bricks(page)).length).toBe(3);
 
-  // Make a module and save it to the library: it says which sheets, and keeps them.
+  // Make a module and save it to the Module library: it says which sheets, and keeps them.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
   await mapMenu(page, 'Modules & sets', 'Make a module…');

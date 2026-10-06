@@ -1,13 +1,13 @@
-// A placed module and its copy in the library, both ways.
+// A placed module and its copy in the Module library, both ways.
 //
 // Make a module: the picked parts become a module in this layout only.
-// Save to library…: a copy goes to your modules or a club's, and the placed
+// Save to Module library…: a copy goes to your modules or a club's, and the placed
 // module is linked to it (`libraryModuleId`, `libraryVersion` in the
-// sidecar; BlueBrick never sees them). Modules added from the library are
+// sidecar; BlueBrick never sees them). Modules added from the Module library are
 // linked the same way. A linked module can then:
-//   - Update library version: its parts in this layout become the
+//   - Update Module library version: its parts in this layout become the
 //     library's next version, with a "What changed?" note;
-//   - Update from library: a newer library version replaces its parts,
+//   - Update from Module library: a newer library version replaces its parts,
 //     where the module sits now, each part on its sheet. It asks first when
 //     the module was changed in this layout.
 // The desktop does the same (edit/ModuleLibraryLink.cpp).
@@ -34,7 +34,7 @@ export interface LibraryLink {
 }
 
 /**
- * The placed module's link to the library. Older builds kept the library
+ * The placed module's link to the Module library. Older builds kept the Module library
  * id (web) or the module's page on the server (desktop) in `sourceFile`;
  * those count as linked, at an unknown version.
  */
@@ -46,10 +46,10 @@ export function libraryLink(m: Pick<SidecarModule, 'libraryModuleId' | 'libraryV
   return legacy && UUID_RE.test(legacy) ? { id: legacy, version: null } : null;
 }
 
-/** What the module's menus offer about its library copy. */
+/** What the module's menus offer about its Module library copy. */
 export type LibraryState =
   | { kind: 'unlinked' }
-  /** Linked, but the library module isn't one you can see (deleted, or not shared with you). */
+  /** Linked, but the Module library module isn't one you can see (deleted, or not shared with you). */
   | { kind: 'missing'; id: string }
   | {
       kind: 'linked';
@@ -57,11 +57,11 @@ export type LibraryState =
       title: string;
       /** The version this layout's copy matches; null when not known. */
       version: number | null;
-      /** The library's newest version (0: none yet). */
+      /** The Module library's newest version (0: none yet). */
       latest: number;
       /** You may save new versions of it (its owner, or an editor). */
       canPublish: boolean;
-      /** The library has a version this layout's copy doesn't. */
+      /** The Module library has a version this layout's copy doesn't. */
       newer: boolean;
     };
 
@@ -89,9 +89,9 @@ export function libraryState(
 /** The line the Modules panel shows under a linked module. */
 export function libraryNote(state: LibraryState): string | null {
   if (state.kind === 'unlinked') return null;
-  if (state.kind === 'missing') return 'its library copy is gone';
+  if (state.kind === 'missing') return 'its Module library copy is gone';
   const v = state.version ? ` v${state.version}` : '';
-  return state.newer ? `in the library${v} · v${state.latest} is newer` : `in the library${v}`;
+  return state.newer ? `in the Module library${v} · v${state.latest} is newer` : `in the Module library${v}`;
 }
 
 // ---- Saving ---------------------------------------------------------------
@@ -152,9 +152,9 @@ export interface SaveToLibraryOptions {
 }
 
 /**
- * Save to library…: the placed module's parts go to the library (a new
+ * Save to Module library…: the placed module's parts go to the Module library (a new
  * module, or a new version of one you can change), and the placed module
- * is linked to it. Returns the library module and its version.
+ * is linked to it. Returns the Module library module and its version.
  */
 export async function saveModuleToLibrary(
   doc: Y.Doc,
@@ -189,7 +189,7 @@ export async function saveModuleToLibrary(
   return { id, title, version };
 }
 
-/** Update library version: the placed module's parts become the library's next version. */
+/** Update Module library version: the placed module's parts become the Module library's next version. */
 export async function publishModuleVersion(
   doc: Y.Doc,
   moduleId: string,
@@ -197,7 +197,7 @@ export async function publishModuleVersion(
 ): Promise<{ id: string; version: number | undefined }> {
   const mod = findModule(doc, moduleId);
   const link = libraryLink(mod);
-  if (!link) throw new Error('Save this module to the library first.');
+  if (!link) throw new Error('Save this module to the Module library first.');
   const map = projectDoc(doc);
   const contents = map ? moduleContents(map, mod.members, o.oneSheet) : null;
   if (!contents) throw new Error('This module has no parts to save.');
@@ -216,13 +216,13 @@ export function batchesFromBytes(bytes: Uint8Array): ModuleBatch[] {
     Y.applyUpdate(d, bytes);
     return moduleBatchesFromMap(docToBbm(d));
   } catch (e) {
-    throw new Error('The library module couldn’t be read.', { cause: e });
+    throw new Error('The module from the Module library couldn’t be read.', { cause: e });
   } finally {
     d.destroy();
   }
 }
 
-/** The library's newest version of a module (`version` absent), or one version. */
+/** The Module library's newest version of a module (`version` absent), or one version. */
 export async function fetchLibraryVersion(id: string, version?: number): Promise<{ batches: ModuleBatch[]; version: number }> {
   if (!UUID_RE.test(id)) throw new Error('invalid module id');
   if (version) return { batches: batchesFromBytes(await api.modules.versionSnapshot(id, version)), version };
@@ -338,7 +338,7 @@ export function alignToPlaced(
       return { degrees: turn.v, toX: e.sum.x / e.n, toY: e.sum.y / e.n, matched: shift.n };
     }
   }
-  // Nothing alike: the library version's middle on the module's middle.
+  // Nothing alike: the Module library version's middle on the module's middle.
   const mid = (xs: readonly Item[]) =>
     xs.length === 0 ? { x: 0, y: 0 } : { x: xs.reduce((n, i) => n + i.p.x, 0) / xs.length, y: xs.reduce((n, i) => n + i.p.y, 0) / xs.length };
   const a = mid(lib);
@@ -356,7 +356,7 @@ export function placeVersion(batches: readonly ModuleBatch[], placement: Placeme
 }
 
 /**
- * Whether the placed module's parts are exactly the library version's
+ * Whether the placed module's parts are exactly the Module library version's
  * (same parts, same places and turns, within a hair): false when it was
  * changed in this layout.
  */
@@ -401,7 +401,7 @@ export function sheetForUpdate(map: BbmMap, members: readonly string[], activeLa
 export type PullResult = 'updated' | 'up-to-date' | 'cancelled';
 
 /**
- * Update from library: the library's newest version replaces the module's
+ * Update from Module library: the Module library's newest version replaces the module's
  * parts, where the module sits now, each on its sheet (one undo step). When
  * the module was changed in this layout (or that can't be told), `confirm`
  * asks first.
@@ -417,7 +417,7 @@ export async function pullFromLibrary(
 ): Promise<PullResult> {
   const mod = findModule(doc, moduleId);
   const link = libraryLink(mod);
-  if (!link) throw new Error('This module isn’t in the library yet.');
+  if (!link) throw new Error('This module isn’t in the Module library yet.');
   const latest = await fetchLibraryVersion(link.id);
   if (link.version !== null && latest.version <= link.version) return 'up-to-date';
   const map = projectDoc(doc);
@@ -435,7 +435,7 @@ export async function pullFromLibrary(
   if (changed) {
     const ok = await (o.confirm ?? askConfirm)({
       title: `Replace “${mod.name || 'this module'}” with version ${latest.version}?`,
-      removes: 'This module was changed in this layout. Those changes are replaced by the library’s version.',
+      removes: 'This module was changed in this layout. Those changes are replaced by the Module library’s version.',
       keeps: 'Its name, colours and place on the map stay. You can undo this.',
       confirmLabel: 'Update',
       danger: false,
@@ -444,7 +444,7 @@ export async function pullFromLibrary(
   }
   const placement = alignToPlaced(latest.batches, placed, o.parts);
   const batches = placeVersion(latest.batches, placement, o.parts);
-  // The map may have changed while the library answered.
+  // The map may have changed while the Module library answered.
   const now = projectDoc(doc) ?? map;
   const current = findModule(doc, moduleId);
   replaceModuleParts(doc, moduleId, batches, sheetForUpdate(now, current.members, o.activeLayerId), {

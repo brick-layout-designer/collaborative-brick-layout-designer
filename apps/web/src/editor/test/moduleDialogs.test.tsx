@@ -1,6 +1,6 @@
 // The module dialogs: Make a module makes an in-layout module only (and,
-// with "Also save to my library", saves and links it too); Save to
-// library… saves a placed module to you or a club, removes the library
+// with "Also save to my Module library", saves and links it too); Save to
+// library… saves a placed module to you or a club, removes the Module library
 // module again when its contents fail, and links the placed module; Update
 // library version saves the next version of the linked library module.
 
@@ -82,7 +82,7 @@ function showSave(doc: Y.Doc, layoutOwnerOrgId: string | null) {
   return { onClose };
 }
 
-describe('Save to library…', () => {
+describe('Save to Module library…', () => {
   it("starts Save to at the layout's club, and at Me for a personal layout", async () => {
     showSave(layout().doc, 'org1');
     expect(((await screen.findByRole('combobox')) as HTMLSelectElement).value).toBe('arklug');
@@ -176,7 +176,7 @@ describe('Make a module', () => {
     return { onClose };
   }
 
-  it('makes a module in this layout only: nothing goes to the library', async () => {
+  it('makes a module in this layout only: nothing goes to the Module library', async () => {
     const doc = new Y.Doc();
     const layer = ensureBrickLayer(doc);
     const id = placeBrick(doc, layer, { partNumber: '3001', x: 0, y: 0, width: 4, height: 2 });
@@ -198,7 +198,7 @@ describe('Make a module', () => {
     expect(readSidecarFromDoc(doc)?.modules ?? []).toHaveLength(0);
   });
 
-  it('with "Also save to my library", makes it, saves it and links it in one go', async () => {
+  it('with "Also save to my Module library", makes it, saves it and links it in one go', async () => {
     const doc = new Y.Doc();
     const id = placeBrick(doc, ensureBrickLayer(doc), { partNumber: '3001', x: 0, y: 0, width: 4, height: 2 });
     const { onClose } = showMake(doc, [id]);
@@ -233,7 +233,7 @@ describe('Make a module, saved into a club', () => {
   });
 });
 
-describe('Update library version', () => {
+describe('Update Module library version', () => {
   it('saves the next version of the linked library module, with the note, and moves the link on', async () => {
     const { doc } = layout(true);
     const onClose = vi.fn();

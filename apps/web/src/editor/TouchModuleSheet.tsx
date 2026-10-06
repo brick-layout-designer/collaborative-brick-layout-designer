@@ -1,6 +1,6 @@
 // A picked module's menu on a phone or tablet (the touch bar's Module
-// button): Edit module, Pin in place and the library entries (Save to
-// library…, Update library version…, Update from library), as the map's
+// button): Edit module, Pin in place and the Module library entries (Save to
+// library…, Update Module library version…, Update from Module library), as the map's
 // right-click menu has them.
 
 import { useEffect, useState } from 'react';

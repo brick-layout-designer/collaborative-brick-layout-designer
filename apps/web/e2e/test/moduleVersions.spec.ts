@@ -1,6 +1,6 @@
 // Module versions: each save is a version with an optional "What changed"
 // note; the history on Home's ⋯ menu shows them, restores one (as a new
-// version) and downloads one. Save to library… can update an
+// version) and downloads one. Save to Module library… can update an
 // existing module instead of making a new one.
 
 import { test, expect, type Page } from '@playwright/test';
@@ -101,14 +101,14 @@ test.describe('module versions', () => {
     await expect(history.getByRole('button', { name: 'Download version 2' })).toBeVisible();
   });
 
-  test('Save to library… can save a module as a new version of a library module', async ({ page }) => {
+  test('Save to Module library… can save a module as a new version of a library module', async ({ page }) => {
     await signIn(page, `ver-upd-${ts}-${seq++}@example.com`, 'Updater');
     const id = await newModule(page, 'Passing loop');
     await placePart(page);
     await expect.poll(() => brickCount(page)).toBe(1);
     await saveWithNote(page, 'Start');
 
-    // A layout with three parts, made a module; save it over the library module.
+    // A layout with three parts, made a module; save it over the Module library module.
     const res = await page.request.post('/api/layouts', { data: { title: 'Club layout' } });
     const { id: layoutId } = (await res.json()) as { id: string };
     await page.goto(`/editor/${layoutId}`);
@@ -122,13 +122,13 @@ test.describe('module versions', () => {
     await page.getByLabel('Modules', { exact: true }).check();
     await page.mouse.click(400, 400);
     await page.getByRole('button', { name: 'More for Loop' }).click();
-    await page.getByRole('button', { name: 'Save to library…' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Save “Loop” to the library' });
-    await dialog.getByLabel(/New version of a library module/).check();
+    await page.getByRole('button', { name: 'Save to Module library…' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Save “Loop” to the Module library' });
+    await dialog.getByLabel(/New version of a module in the Module library/).check();
     await dialog.getByRole('radiogroup', { name: 'Module to update' }).getByText('Passing loop').click();
     await dialog.getByLabel('What changed? (optional)').fill('Longer loop');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByText('Saved “Passing loop” to the library as version 2')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Saved “Passing loop” to the Module library as version 2')).toBeVisible({ timeout: 15000 });
 
     const v = (await (await page.request.get(`/api/modules/${id}/versions`)).json()) as { versions: { version: number; note: string; hasThumbnail: boolean }[] };
     expect(v.versions[0]).toMatchObject({ version: 2, note: 'Longer loop', hasThumbnail: true });

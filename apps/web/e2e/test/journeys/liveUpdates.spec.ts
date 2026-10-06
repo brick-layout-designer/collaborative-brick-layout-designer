@@ -1,7 +1,7 @@
 // Journey — the site keeps itself up to date, without reloading.
 //
-//   1. In the editor, Make a module with "Also save to my library" and the
-//      Modules panel's Save to library… both show the module in the open Module
+//   1. In the editor, Make a module with "Also save to my Module library" and the
+//      Modules panel's Save to Module library… both show the module in the open Module
 //      library panel straight away (this tab's own change; the live
 //      stream is blocked here, so it isn't what makes it work).
 //   2. Two members of a club, each in their own browser: what one adds to
@@ -67,13 +67,13 @@ test('saving a module shows it in the open Module library at once', async ({ pag
   for (let i = 0; i < 2; i++) await placePart(page);
   await expect.poll(() => brickCount(page)).toBe(2);
 
-  // Map > Make a module, and save it to the library in one go.
+  // Map > Make a module, and save it to the Module library in one go.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
   await makeModule(page, `Crossing ${ts}`, { alsoSave: true });
   await expect(libraryRow(page, `Crossing ${ts}`)).toBeVisible({ timeout: 10000 });
 
-  // New parts: Map > Make a module, then Modules panel > Save to library…
+  // New parts: Map > Make a module, then Modules panel > Save to Module library…
   await page.keyboard.press('Delete');
   await expect.poll(() => brickCount(page)).toBe(0);
   for (let i = 0; i < 2; i++) await placePart(page);
@@ -85,9 +85,9 @@ test('saving a module shows it in the open Module library at once', async ({ pag
   await page.getByLabel('Modules', { exact: true }).check();
   await page.mouse.click(400, 400);
   await page.getByText(`Siding ${ts}`, { exact: true }).first().click({ button: 'right' });
-  await page.getByRole('button', { name: 'Save to library…' }).click();
-  await page.getByRole('dialog', { name: `Save “Siding ${ts}” to the library` }).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText(`Saved “Siding ${ts}” to the library`)).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Save to Module library…' }).click();
+  await page.getByRole('dialog', { name: `Save “Siding ${ts}” to the Module library` }).getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(`Saved “Siding ${ts}” to the Module library`)).toBeVisible({ timeout: 15000 });
   await expect(libraryRow(page, `Siding ${ts}`)).toBeVisible({ timeout: 10000 });
   // Still the same page: nothing reloaded it.
   await expect(page).toHaveURL(new RegExp(`/editor/${id}$`));

@@ -1,10 +1,10 @@
 // The module dialogs (moduleLibrary.ts has the rules):
 //   - Make a module: the picked parts become a module in this layout. "Also
-//     save to my library" saves it there too, in one go.
-//   - Save to library…: a placed module goes to your modules or a club's (a
+//     save to my Module library" saves it there too, in one go.
+//   - Save to Module library…: a placed module goes to your modules or a club's (a
 //     new library module, or a new version of one you can change), and is
 //     linked to it.
-//   - Update library version: a linked module's parts become the library's
+//   - Update Module library version: a linked module's parts become the Module library's
 //     next version, with a "What changed?" note.
 // ModuleDialogHost shows whichever one the editor store asks for.
 
@@ -113,10 +113,10 @@ function useOwner(layoutOwnerOrgId: string | null | undefined) {
 }
 
 function savedMessage(title: string, version: number | undefined): string {
-  return version && version > 1 ? `Saved “${title}” to the library as version ${version}` : `Saved “${title}” to the library`;
+  return version && version > 1 ? `Saved “${title}” to the Module library as version ${version}` : `Saved “${title}” to the Module library`;
 }
 
-/** Make a module from the picked parts; "Also save to my library" saves it there too. */
+/** Make a module from the picked parts; "Also save to my Module library" saves it there too. */
 export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail, selection }: Common & { selection: readonly string[] }) {
   const map = useDocMap(doc);
   const [name, setName] = useState('');
@@ -137,8 +137,8 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
         const saved = await saveModuleToLibrary(doc, id, { title, ownerSlug: owner.slug, oneSheet, makeThumbnail });
         return { id, saved };
       } catch (e) {
-        // The module stays in the layout; only the library copy failed.
-        throw new Error(`“${title}” is a module in this layout, but it couldn’t be saved to the library: ${(e as Error).message}`, { cause: e });
+        // The module stays in the layout; only the Module library copy failed.
+        throw new Error(`“${title}” is a module in this layout, but it couldn’t be saved to the Module library: ${(e as Error).message}`, { cause: e });
       }
     },
     onSuccess: (r, title) => {
@@ -148,7 +148,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
         void qc.invalidateQueries({ queryKey: ['modules'] });
         showStatusMessage(savedMessage(r.saved.title, r.saved.version), 5000);
       } else {
-        showNotice(`“${title}” is a module in this layout. To use it in other layouts, choose Save to library… from its ⋯ menu.`);
+        showNotice(`“${title}” is a module in this layout. To use it in other layouts, choose Save to Module library… from its ⋯ menu.`);
       }
       onClose();
     },
@@ -185,7 +185,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
         </div>
         <label className="flex items-center gap-2 text-xs">
           <input type="checkbox" checked={alsoSave} onChange={(e) => setAlsoSave(e.target.checked)} data-testid="make-module-also-save" />
-          Also save to my library, to use it in other layouts
+          Also save to my Module library, to use it in other layouts
         </label>
         {alsoSave && (
           <>
@@ -200,7 +200,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
   );
 }
 
-/** Save to library…: a placed module to your modules or a club's, then linked to it. */
+/** Save to Module library…: a placed module to your modules or a club's, then linked to it. */
 export function SaveToLibraryDialog({ doc, moduleId, onClose, layoutOwnerOrgId, makeThumbnail }: Common & { moduleId: string }) {
   const map = useDocMap(doc);
   const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId);
@@ -240,24 +240,24 @@ export function SaveToLibraryDialog({ doc, moduleId, onClose, layoutOwnerOrgId, 
   if (!mod) return null;
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (mode === 'update' && !target) return setError('Pick the library module to update.');
+    if (mode === 'update' && !target) return setError('Pick the Module library module to update.');
     if (mode === 'new' && !title.trim()) return setError('Module name is required');
     save.mutate();
   }
 
   return (
-    <Shell title={`Save “${mod.name || 'module'}” to the library`} help="module.library">
+    <Shell title={`Save “${mod.name || 'module'}” to the Module library`} help="module.library">
       <form onSubmit={submit} className="flex flex-col gap-3">
-        <p className="text-xs text-muted">A copy goes to your library, so you and your club can use it in other layouts. This module stays linked to it.</p>
+        <p className="text-xs text-muted">A copy goes to your Module library, so you and your club can use it in other layouts. This module stays linked to it.</p>
         <fieldset className="flex flex-col gap-1 text-xs">
           <legend className="sr-only">Save as</legend>
           <label className="flex items-center gap-2">
             <input type="radio" name="save-module-mode" checked={mode === 'new'} onChange={() => setMode('new')} />
-            New library module
+            New module in the Module library
           </label>
           <label className="flex items-center gap-2">
             <input type="radio" name="save-module-mode" checked={mode === 'update'} disabled={editable.length === 0} onChange={() => setMode('update')} />
-            New version of a library module{editable.length === 0 ? ' (none you can change yet)' : ''}
+            New version of a module in the Module library{editable.length === 0 ? ' (none you can change yet)' : ''}
           </label>
         </fieldset>
         {mode === 'new' ? (
@@ -302,7 +302,7 @@ export function SaveToLibraryDialog({ doc, moduleId, onClose, layoutOwnerOrgId, 
   );
 }
 
-/** Update library version: this layout's copy becomes the library's next version. */
+/** Update Module library version: this layout's copy becomes the Module library's next version. */
 export function PublishModuleDialog({ doc, moduleId, onClose, makeThumbnail }: Common & { moduleId: string }) {
   const map = useDocMap(doc);
   const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId);
@@ -325,7 +325,7 @@ export function PublishModuleDialog({ doc, moduleId, onClose, makeThumbnail }: C
   if (!mod) return null;
   const linked = state?.kind === 'linked' ? state : null;
   return (
-    <Shell title="Update library version" help="module.library">
+    <Shell title="Update Module library version" help="module.library">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -335,20 +335,20 @@ export function PublishModuleDialog({ doc, moduleId, onClose, makeThumbnail }: C
       >
         {linked ? (
           <p className="text-xs">
-            This module’s parts in this layout become version {linked.latest + 1} of <b>{linked.title}</b> in the library. Layouts that use it can then update to it.
+            This module’s parts in this layout become version {linked.latest + 1} of <b>{linked.title}</b> in the Module library. Layouts that use it can then update to it.
           </p>
         ) : state?.kind === 'missing' ? null : (
-          <p className="text-xs text-muted">Loading the library…</p>
+          <p className="text-xs text-muted">Loading the Module library…</p>
         )}
         {linked && !linked.canPublish && (
-          <p className="text-xs text-danger">You can’t change “{linked.title}” in the library. Use Save to library… to save your own copy instead.</p>
+          <p className="text-xs text-danger">You can’t change “{linked.title}” in the Module library. Use Save to Module library… to save your own copy instead.</p>
         )}
         {state?.kind === 'missing' && (
-          <p className="text-xs text-danger">Its library copy is gone, or isn’t shared with you. Use Save to library… to save it again.</p>
+          <p className="text-xs text-danger">Its Module library copy is gone, or isn’t shared with you. Use Save to Module library… to save it again.</p>
         )}
         {linked && linked.newer && linked.version !== null && (
           <p data-testid="publish-newer" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-2 text-xs">
-            The library has version {linked.latest}, newer than the version {linked.version} this layout has. Saving puts your copy on top; what changed in version {linked.latest} isn’t in it. To keep those changes, use Update from library first.
+            The Module library has version {linked.latest}, newer than the version {linked.version} this layout has. Saving puts your copy on top; what changed in version {linked.latest} isn’t in it. To keep those changes, use Update from Module library first.
           </p>
         )}
         <div>

@@ -175,7 +175,7 @@ export async function mapMenu(page: Page, ...path: string[]): Promise<void> {
 
 /**
  * Map ▸ Modules & sets ▸ Make a module…: names the picked parts' module
- * (in this layout only), or with `alsoSave` saves it to your library too.
+ * (in this layout only), or with `alsoSave` saves it to your Module library too.
  */
 export async function makeModule(page: Page, name: string, opts: { alsoSave?: boolean } = {}): Promise<void> {
   await mapMenu(page, 'Modules & sets', 'Make a module…');

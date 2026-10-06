@@ -59,7 +59,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
       // (desktop ImportBbmAsModuleCommand).
       const found = list.data?.modules.find((m) => m.id === moduleId);
       const title = found?.title ?? 'Module';
-      // Linked to the library module: Update from library follows it.
+      // Linked to the Module library module: Update from Module library follows it.
       const version = found?.latestVersion;
       const res = await placeModuleAsking(doc, batches, { name: title, library: { id: moduleId, ...(version ? { version } : {}) } });
       if (res) useEditorStore.getState().setSelection(res.ids);
@@ -85,7 +85,7 @@ export function ModuleLibraryPanel({ doc, isViewer, editingModuleId = null }: Pr
         {list.isLoading && <p className="p-3 text-xs text-muted">Loading…</p>}
         {!list.isLoading && modules.length === 0 && (
           <p className="p-3 text-xs text-muted">
-            {filter ? 'No modules match.' : 'No saved modules yet. Make a module in this layout, then choose Save to library… from its ⋯ menu.'}
+            {filter ? 'No modules match.' : 'No saved modules yet. Make a module in this layout, then choose Save to Module library… from its ⋯ menu.'}
           </p>
         )}
         {error && (

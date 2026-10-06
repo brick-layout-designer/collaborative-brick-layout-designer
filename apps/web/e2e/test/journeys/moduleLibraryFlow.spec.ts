@@ -2,16 +2,16 @@
 // library, and the copies stay in step both ways.
 //
 //   1. Robin picks three parts and makes them a module, "Yard": it's in
-//      this layout only, nothing goes to the library.
-//   2. From the module's right-click menu on the map: Save to library….
-//      The Modules panel says it's in the library, version 1.
-//   3. A second layout adds Yard from the library: it's linked too.
+//      this layout only, nothing goes to the Module library.
+//   2. From the module's right-click menu on the map: Save to Module library….
+//      The Modules panel says it's in the Module library, version 1.
+//   3. A second layout adds Yard from the Module library: it's linked too.
 //   4. Back in the first layout, Robin adds a part to Yard (Edit module)
-//      and uses Update library version, with a note: version 2.
-//   5. The second layout offers Update from library (v2) and brings the
+//      and uses Update Module library version, with a note: version 2.
+//   5. The second layout offers Update from Module library (v2) and brings the
 //      new part in without asking (its copy wasn't changed).
-//   6. Robin changes the second layout's copy, the library gets version 3,
-//      and Update from library asks first; Cancel keeps the copy as it is.
+//   6. Robin changes the second layout's copy, the Module library gets version 3,
+//      and Update from Module library asks first; Cancel keeps the copy as it is.
 // SHOTS=<dir> saves pictures of the dialogs, light and dark.
 
 import { test, expect, type Page } from '@playwright/test';
@@ -84,7 +84,7 @@ async function moduleMenu(page: Page, entry: string | RegExp) {
   await page.getByRole('button', { name: entry }).click();
 }
 
-test('make a module, save it to the library, and keep the copies in step both ways', async ({ page }) => {
+test('make a module, save it to the Module library, and keep the copies in step both ways', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1400, height: 900 });
   await signIn(page, `modflow-${ts}@example.com`, 'Robin');
@@ -100,56 +100,56 @@ test('make a module, save it to the library, and keep the copies in step both wa
   const library = async () => ((await (await page.request.get('/api/modules')).json()) as { modules: { id: string; title: string; latestVersion?: number }[] }).modules;
   expect((await library()).some((m) => m.title === NAME)).toBe(false);
 
-  // 2. Right-click it on the map: Save to library….
+  // 2. Right-click it on the map: Save to Module library….
   await page.keyboard.press('Escape');
   const parts = await bricks(page);
   await page.mouse.click(parts[0]!.sx, parts[0]!.sy, { button: 'right' });
-  await page.getByRole('button', { name: 'Save to library…' }).click();
-  const save = page.getByRole('dialog', { name: `Save “${NAME}” to the library` });
+  await page.getByRole('button', { name: 'Save to Module library…' }).click();
+  const save = page.getByRole('dialog', { name: `Save “${NAME}” to the Module library` });
   await expect(save.getByLabel('Module name')).toHaveValue(NAME);
   await shot(page, 'save-to-library');
   await save.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText(`Saved “${NAME}” to the library`)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(`Saved “${NAME}” to the Module library`)).toBeVisible({ timeout: 15000 });
   const saved = (await library()).find((m) => m.title === NAME)!;
   expect(saved.latestVersion).toBe(1);
-  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the library v1');
+  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the Module library v1');
 
-  // 3. A second layout adds it from the library: linked too.
+  // 3. A second layout adds it from the Module library: linked too.
   const second = await openLayout(page, 'Club table');
   await page.getByRole('button', { name: 'Insert module' }).click();
   await page.locator('li', { hasText: NAME }).getByRole('button', { name: 'Insert' }).click();
   await expect.poll(async () => (await bricks(page)).length).toBe(3);
-  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the library v1');
+  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the Module library v1');
 
-  // 4. The first layout: a part joins Yard, then Update library version.
+  // 4. The first layout: a part joins Yard, then Update Module library version.
   await page.goto(`/editor/${first}`);
   await expect.poll(async () => (await bricks(page)).length, { timeout: 15000 }).toBe(3);
   await moduleMenu(page, 'Edit module');
   await placePart(page);
   await expect.poll(async () => (await bricks(page)).length).toBe(4);
   await page.getByTestId('module-edit-bar').getByRole('button', { name: 'Done' }).click();
-  await moduleMenu(page, 'Update library version…');
-  const publish = page.getByRole('dialog', { name: 'Update library version' });
+  await moduleMenu(page, 'Update Module library version…');
+  const publish = page.getByRole('dialog', { name: 'Update Module library version' });
   await expect(publish).toContainText(`become version 2 of ${NAME}`);
   await publish.getByLabel('What changed? (optional)').fill('A longer siding');
   await shot(page, 'update-library-version');
   await publish.getByRole('button', { name: 'Save version' }).click();
-  await expect(page.getByText(`Saved “${NAME}” to the library as version 2`)).toBeVisible({ timeout: 15000 });
-  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the library v2');
+  await expect(page.getByText(`Saved “${NAME}” to the Module library as version 2`)).toBeVisible({ timeout: 15000 });
+  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the Module library v2');
   const versions = (await (await page.request.get(`/api/modules/${saved.id}/versions`)).json()) as { versions: { version: number; note: string }[] };
   expect(versions.versions[0]).toMatchObject({ version: 2, note: 'A longer siding' });
 
-  // 5. The second layout: Update from library (v2), no question asked.
+  // 5. The second layout: Update from Module library (v2), no question asked.
   await page.goto(`/editor/${second}`);
   await expect.poll(async () => (await bricks(page)).length, { timeout: 15000 }).toBe(3);
-  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the library v1 · v2 is newer');
-  await moduleMenu(page, 'Update from library (v2)');
+  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the Module library v1 · v2 is newer');
+  await moduleMenu(page, 'Update from Module library (v2)');
   await expect.poll(async () => (await bricks(page)).length).toBe(4);
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
-  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the library v2');
+  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the Module library v2');
 
-  // 6. Its copy changes here (a part goes), the library gets version 3:
-  //    Update from library asks first, and Cancel keeps the copy.
+  // 6. Its copy changes here (a part goes), the Module library gets version 3:
+  //    Update from Module library asks first, and Cancel keeps the copy.
   await moduleMenu(page, 'Edit module');
   const now = await bricks(page);
   await page.mouse.click(now[3]!.sx, now[3]!.sy);
@@ -163,12 +163,12 @@ test('make a module, save it to the library, and keep the copies in step both wa
   })).ok()).toBe(true);
   await page.reload();
   await expect.poll(async () => (await bricks(page)).length, { timeout: 15000 }).toBe(3);
-  await moduleMenu(page, 'Update from library (v3)');
+  await moduleMenu(page, 'Update from Module library (v3)');
   const ask = page.getByRole('alertdialog', { name: `Replace “${NAME}” with version 3?` });
   await expect(ask).toBeVisible();
   await shot(page, 'update-from-library-ask');
   await ask.getByRole('button', { name: 'Cancel' }).click();
   await expect(ask).toHaveCount(0);
   expect((await bricks(page)).length).toBe(3);
-  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the library v2 · v3 is newer');
+  await expect((await moduleRow(page)).getByTestId('module-library-note')).toHaveText('in the Module library v2 · v3 is newer');
 });

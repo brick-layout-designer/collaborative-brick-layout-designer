@@ -1,8 +1,8 @@
 // Make a module (Map ▸ Modules & sets, the context menu, the Modules panel
 // and the phone's touch bar): the picked parts become a module in this
-// layout. The dialog names it (ModuleDialogs.tsx); saving it to the library
+// layout. The dialog names it (ModuleDialogs.tsx); saving it to the Module library
 // is a separate step, from the placed module's ⋯ menu (or the dialog's
-// "Also save to my library").
+// "Also save to my Module library").
 
 import type * as Y from 'yjs';
 import type { SidecarModule } from '@cld/bbm';

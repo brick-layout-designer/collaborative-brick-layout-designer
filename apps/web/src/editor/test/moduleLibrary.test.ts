@@ -1,7 +1,7 @@
-// A placed module and its library copy: the link (and older builds'
+// A placed module and its Module library copy: the link (and older builds'
 // links), what the menus offer, where a library version goes on the map
 // (turned and moved like the placed copy), whether the placed copy was
-// changed, and Update from library end to end (each part on its sheet,
+// changed, and Update from Module library end to end (each part on its sheet,
 // asking only when the module was changed in this layout).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,7 @@ const summary = (o: Partial<ModuleSummary>): ModuleSummary => ({
 });
 
 describe('libraryLink', () => {
-  it('reads the link, and the library id older builds kept in sourceFile', () => {
+  it('reads the link, and the Module library id older builds kept in sourceFile', () => {
     expect(libraryLink({ libraryModuleId: ID, libraryVersion: 3 })).toEqual({ id: ID, version: 3 });
     expect(libraryLink({ libraryModuleId: ID })).toEqual({ id: ID, version: null });
     expect(libraryLink({ sourceFile: ID })).toEqual({ id: ID, version: null });
@@ -47,13 +47,13 @@ describe('libraryState', () => {
     expect(libraryState({ libraryModuleId: ID }, [])).toEqual({ kind: 'missing', id: ID });
     const same = libraryState({ libraryModuleId: ID, libraryVersion: 3 }, [summary({ latestVersion: 3, role: 'owner' })]);
     expect(same).toMatchObject({ kind: 'linked', newer: false, canPublish: true, latest: 3 });
-    expect(libraryNote(same)).toBe('in the library v3');
+    expect(libraryNote(same)).toBe('in the Module library v3');
     const newer = libraryState({ libraryModuleId: ID, libraryVersion: 3 }, [summary({ latestVersion: 5, role: 'viewer' })]);
     expect(newer).toMatchObject({ kind: 'linked', newer: true, canPublish: false });
-    expect(libraryNote(newer)).toBe('in the library v3 · v5 is newer');
-    // An unknown version: the library's may be newer.
+    expect(libraryNote(newer)).toBe('in the Module library v3 · v5 is newer');
+    // An unknown version: the Module library's may be newer.
     expect(libraryState({ sourceFile: ID }, [summary({ latestVersion: 1 })])).toMatchObject({ newer: true });
-    expect(libraryNote({ kind: 'missing', id: ID })).toBe('its library copy is gone');
+    expect(libraryNote({ kind: 'missing', id: ID })).toBe('its Module library copy is gone');
   });
 });
 
@@ -124,7 +124,7 @@ describe('sheetForUpdate', () => {
   });
 });
 
-describe('Update from library', () => {
+describe('Update from Module library', () => {
   const v1 = version([{ pn: 'a', x: 0, y: 0 }, { pn: 'b', x: 10, y: 0 }]);
   const v2 = version([{ pn: 'a', x: 0, y: 0 }, { pn: 'b', x: 10, y: 0 }, { pn: 'c', x: 20, y: 0 }]);
   let latest: number;
@@ -192,7 +192,7 @@ describe('Update from library', () => {
     expect(mod().members).toContain(first);
   });
 
-  it('says up to date when the library has nothing newer', async () => {
+  it('says up to date when the Module library has nothing newer', async () => {
     latest = 1;
     const { doc, moduleId } = layout();
     expect(await pullFromLibrary(doc, moduleId, { parts: null, activeLayerId: null, confirm: async () => true })).toBe('up-to-date');
