@@ -48,7 +48,7 @@ export const ENV_VARS: readonly EnvVarDoc[] = [
   { name: 'PRIVACY_CONTACT', default: 'unset', inApp: 'Admin › Site settings › Privacy', notes: 'When set, forces the privacy contact (an email address or a web address) shown on the privacy page.' },
 ];
 
-const cell = (s: string) => s.replace(/\|/g, '\\|');
+const cell = (s: string) => s.replace(/[\\|]/g, (c) => `\\${c}`);
 
 function bytes(n: number): string {
   const MB = 1024 * 1024;
