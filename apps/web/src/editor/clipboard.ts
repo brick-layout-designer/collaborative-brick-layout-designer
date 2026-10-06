@@ -14,6 +14,7 @@
 // so we can refuse foreign clipboard payloads.
 
 import type { Brick, Group, RectangleF } from '@cld/model';
+import type { SidecarModule } from '@cld/bbm';
 
 const CLIPBOARD_KIND = 'cbld-bricks/v1';
 
@@ -30,16 +31,19 @@ interface ClipboardPayload {
   kind: typeof CLIPBOARD_KIND;
   version: 1;
   entries: ClipboardEntry[];
+  /** The copied parts were exactly this module: a paste makes a copy of it. */
+  module?: SidecarModule;
 }
 
 let memoryFallback: ClipboardPayload | null = null;
 
 /** Serialise a snapshot of `entries` into the OS clipboard + memory fallback. */
-export async function writeBricksToClipboard(entries: ClipboardEntry[]): Promise<void> {
+export async function writeBricksToClipboard(entries: ClipboardEntry[], module?: SidecarModule | null): Promise<void> {
   const payload: ClipboardPayload = {
     kind: CLIPBOARD_KIND,
     version: 1,
     entries,
+    ...(module ? { module } : {}),
   };
   memoryFallback = payload;
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -53,18 +57,23 @@ export async function writeBricksToClipboard(entries: ClipboardEntry[]): Promise
 
 /** Read previously-written bricks. Returns null if clipboard is empty/foreign. */
 export async function readBricksFromClipboard(): Promise<ClipboardEntry[] | null> {
+  return (await readClipboard())?.entries ?? null;
+}
+
+/** The copied bricks and, when they were exactly one module, that module. */
+export async function readClipboard(): Promise<{ entries: ClipboardEntry[]; module: SidecarModule | null } | null> {
   if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
     try {
       const raw = await navigator.clipboard.readText();
       const parsed = JSON.parse(raw) as Partial<ClipboardPayload>;
       if (parsed && parsed.kind === CLIPBOARD_KIND && Array.isArray(parsed.entries)) {
-        return parsed.entries as ClipboardEntry[];
+        return { entries: parsed.entries as ClipboardEntry[], module: parsed.module ?? null };
       }
     } catch {
       /* fall through to memory fallback */
     }
   }
-  return memoryFallback?.entries ?? null;
+  return memoryFallback ? { entries: memoryFallback.entries, module: memoryFallback.module ?? null } : null;
 }
 
 /**

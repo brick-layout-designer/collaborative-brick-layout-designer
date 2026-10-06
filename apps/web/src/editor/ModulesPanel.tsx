@@ -15,7 +15,7 @@ import { useEditorStore } from './editorStore';
 import { api } from '../api';
 import {
   cloneModuleBricks,
-  deleteSidecarModule,
+  deleteModuleWithParts,
   flattenSidecarModule,
   moveModuleBricks,
   renameSidecarModule,
@@ -388,13 +388,14 @@ function ModuleRow({
             className="block w-full px-3 py-1 text-left text-danger hover:bg-neutral-700"
             onClick={async () => {
               setCtxMenu(null);
+              const n = module.members.length;
               const ok = await confirmDelete(module.name, {
-                removes: 'The module group leaves this layout’s module list.',
-                keeps: 'Its parts stay on the map, and the Module library doesn’t change.',
+                removes: `The module and its ${n === 1 ? 'part' : `${n} parts`} leave the map.`,
+                keeps: 'The Module library doesn’t change. To keep the parts, choose Ungroup instead.',
                 undoable: 'You can undo this with Ctrl+Z.',
               });
               if (!ok) return;
-              deleteSidecarModule(doc, module.id);
+              deleteModuleWithParts(doc, module.id);
             }}
           >
             Delete

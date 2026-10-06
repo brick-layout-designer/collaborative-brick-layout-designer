@@ -59,7 +59,7 @@ import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type P
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { SheetsSheet, TextEditSheet } from './TouchSheets';
 import { placeModuleAsking, SheetChoiceHost } from './SheetChoiceDialog';
-import { editAnchoredLabel, editTextCell, setExportElectricCircuit, updateSidecarModule } from './mutations';
+import { addSidecarModule, editAnchoredLabel, editTextCell, setExportElectricCircuit, updateSidecarModule } from './mutations';
 import { brickIdsInDoc, parseTextKey, stillPicked } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
@@ -114,7 +114,8 @@ import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, 
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
-import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { hasClipboardBricks, pasteOffset, pasteTarget, readClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { moduleCopy, wholeModule } from './moduleCopy';
 import { pxToStud, studToPx } from './render/coords';
 import { SNAP_MARKS } from './render/selectionStyle';
 import { ensureSprite, getSpriteSync, resetSpriteProgress, wantSprites } from './render/spriteCache';
@@ -146,7 +147,8 @@ import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, v
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
 import { NoticeToast } from './NoticeToast';
-import { writeBbm, writeSidecar, type SavedView } from '@cld/bbm';
+import { writeBbm, writeSidecar, type SavedView, type SidecarModule } from '@cld/bbm';
+import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, unionStudRects, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
@@ -170,7 +172,7 @@ import type { Credit } from '../api';
 import { useShallow } from 'zustand/react/shallow';
 import { Menu } from '../ui/menu/Menu';
 import { resolveMenu } from '../ui/menu/menuModel';
-import { mapMenuEntries } from './mapMenu';
+import { mapMenuEntries, phoneMapEntries } from './mapMenu';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -350,6 +352,8 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   /** A tablet (full editor, touch screen): the bar for picked parts. */
   const touchTablet = !viewport.isMobile && !isViewer && coarsePointer();
   const [showAddPart, setShowAddPart] = useState(false);
+  /** The phone's Map menu, opened from the layout-name menu (a new number opens it). */
+  const [phoneMapOpen, setPhoneMapOpen] = useState(0);
   const [showTouchSheets, setShowTouchSheets] = useState(false);
   /** The one picked label or text, open in the touch text editor. */
   const [touchText, setTouchText] = useState<{ title: string; text: string; save: (t: string) => void } | null>(null);
@@ -842,10 +846,36 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                   onSharePicture={() => setSharePicture({})}
                   phone
                 />
+                {role !== 'viewer' && (
+                  <button role="menuitem" type="button" data-testid="phone-map" onClick={() => setPhoneMapOpen((n) => n + 1)} className="block w-full px-3.5 py-3 text-left hover:bg-soft">
+                    Map…
+                  </button>
+                )}
                 <button role="menuitem" type="button" onClick={() => setShowSettings(true)} className="block w-full px-3.5 py-3 text-left hover:bg-soft">
                   Settings
                 </button>
               </LayoutNameMenu>
+              {role !== 'viewer' && (
+                <Menu
+                  label="Map"
+                  mode="sheet"
+                  openRequest={phoneMapOpen}
+                  entries={resolveMenu(
+                    phoneMapEntries(
+                      {
+                        downloadLayout: () => void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', catalog.data?.parts),
+                        downloadAs: () => setShowDownloadAs(true),
+                        exportImage: onExportImage,
+                        insertText: () => canvasActionsRef.current?.insertText(),
+                        insertLabel: () => setShowAddLabel(true),
+                        venueDesigner: () => setShowVenueDesigner(true),
+                      },
+                      !isViewer,
+                    ),
+                    { moduleMode },
+                  )}
+                />
+              )}
             </div>
             {role === 'viewer' ? <ViewOnlyPill /> : <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           </div>
@@ -2973,7 +3003,20 @@ function Canvas({
         });
       }
     }
-    await writeBricksToClipboard(entries);
+    // Exactly one module picked: a paste makes a copy of the module.
+    await writeBricksToClipboard(entries, pickedWholeModule());
+  }
+
+  /** The one module the picked parts are exactly, outside Edit module (where parts join the edited module instead). */
+  function pickedWholeModule() {
+    if (useEditorStore.getState().editingModuleId) return null;
+    return wholeModule(readSidecarFromDoc(doc)?.modules ?? [], selection);
+  }
+
+  /** Register `ids` as a copy of `module` ("X (copy)", its look, unlinked, unpinned). */
+  function addModuleCopy(module: SidecarModule, ids: string[]): void {
+    if (ids.length === 0 || useEditorStore.getState().editingModuleId) return;
+    addSidecarModule(doc, moduleCopy(module, ids));
   }
 
   async function cutSelection(): Promise<void> {
@@ -3046,7 +3089,8 @@ function Canvas({
   }
 
   async function pasteAtCursor(): Promise<void> {
-    const clipped = await readBricksFromClipboard();
+    const read = await readClipboard();
+    const clipped = read?.entries;
     if (!clipped || clipped.length === 0) return;
     if (!map) return;
     // The group's centre lands under the cursor (MapViewClipboard.cpp:62-73).
@@ -3068,6 +3112,8 @@ function Canvas({
     }
 
     const newIds: string[] = [];
+    // One undo step: the parts, and the module copy when a whole module was copied.
+    doc.transact(() => {
     for (const name of layerOrder) {
       const targetLayerId = findOrCreateBrickLayerByName(name);
       if (!targetLayerId) continue;
@@ -3086,6 +3132,8 @@ function Canvas({
       const ids = insertBricks(doc, targetLayerId, copied.bricks, { dx, dy }, copied.groups);
       newIds.push(...ids);
     }
+    if (read.module && entries.length === clipped.length) addModuleCopy(read.module, newIds);
+    }, LOCAL_ORIGIN);
     absorbIntoEditedModule(doc, newIds);
     if (newIds.length > 0) setSelection(newIds);
   }
@@ -3128,7 +3176,13 @@ function Canvas({
       perLayer.set(layerId, copied.bricks);
       groupsPerLayer.set(layerId, copied.groups);
     }
-    const ids = insertBricksAcrossLayers(doc, perLayer, offset, groupsPerLayer);
+    const whole = pickedWholeModule();
+    const kept = [...perLayer.values()].reduce((n, b) => n + b.length, 0);
+    let ids: string[] = [];
+    doc.transact(() => {
+      ids = insertBricksAcrossLayers(doc, perLayer, offset, groupsPerLayer);
+      if (whole && kept === whole.members.length) addModuleCopy(whole, ids);
+    }, LOCAL_ORIGIN);
     absorbIntoEditedModule(doc, ids);
     if (ids.length > 0) setSelection(ids);
   }

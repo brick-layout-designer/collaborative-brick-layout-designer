@@ -34,14 +34,19 @@ export function moduleNameStrokePx(fontPx: number): number {
 /** Width of `text` in bold at a font size, in px. */
 export type TextMeasure = (text: string) => (fontPx: number) => number;
 
+/** A name is never taller than this share of its module's short side (a long, thin module got a name far bigger than itself). */
+export const MODULE_NAME_SHORT_SHARE = 0.5;
+
 /**
  * Module name font size in scene px: `percent`% of the frame's long axis,
- * clamped to 16..400 px like desktop.
+ * at most MODULE_NAME_SHORT_SHARE of its short axis, clamped to 16..400 px
+ * like desktop.
  */
 export function moduleLabelFontPx(frameWpx: number, frameHpx: number, percent: number): number {
   const longAxis = Math.max(frameWpx, frameHpx);
+  const shortAxis = Math.min(frameWpx, frameHpx);
   const pct = Math.max(5, Math.min(100, percent));
-  return Math.round(Math.max(16, Math.min(400, longAxis * (pct / 100))));
+  return Math.round(Math.max(16, Math.min(400, longAxis * (pct / 100), shortAxis * MODULE_NAME_SHORT_SHARE)));
 }
 
 /** A name fitted to its side: one or two lines, never wider than the side. */
@@ -557,6 +562,16 @@ export function placeModuleNames(
     const by1 = Math.max(frame.y + frame.height, nameBox.y + nameBox.height);
     return { ...base, text, side: best.side, slot: best.slot, bounds: { x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0 } };
   });
+}
+
+/**
+ * What a module's name says on hover: the whole name, and "(partly hidden)"
+ * when some of its parts are on a hidden sheet. Null when hover adds nothing.
+ */
+export function moduleHoverName(layout: Pick<ModuleLabelLayout, 'name' | 'partlyHidden' | 'text'>): string | null {
+  if (!layout.text) return null;
+  if (layout.partlyHidden) return `${layout.name} (partly hidden)`;
+  return layout.text.truncated ? layout.name : null;
 }
 
 /**
