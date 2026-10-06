@@ -249,3 +249,41 @@ export const READ_TABLES = [
   'data_exports',
   'privacy_requests',
 ];
+
+/** Every row about a club, for a club admin's "Download the club's data". */
+export async function collectOrgData(orgId: string): Promise<DataSection[]> {
+  const s = schema;
+  const org = await db.select().from(s.orgs).where(eq(s.orgs.id, orgId)).get();
+  if (!org) return [];
+  const sections: DataSection[] = [];
+  const add = (name: string, about: string, rows: Record<string, unknown>[]) => sections.push({ name, about, rows: rows.map((r) => plainRow(r)) });
+  add('club', 'The club: its name, address, description and settings.', [org as unknown as Record<string, unknown>]);
+  add(
+    'members',
+    'Its members, their roles and when they joined.',
+    (await db
+      .select({ userId: s.orgMembers.userId, name: s.users.displayName, email: s.users.email, role: s.orgMembers.role, joinedAt: s.orgMembers.joinedAt })
+      .from(s.orgMembers)
+      .innerJoin(s.users, eq(s.users.id, s.orgMembers.userId))
+      .where(eq(s.orgMembers.orgId, orgId))
+      .all()) as Record<string, unknown>[],
+  );
+  add('invites', 'Invites to join that are still open or were used.', await select(s.orgInvites, eq(s.orgInvites.orgId, orgId)));
+  add('join-requests', 'People asking to join.', await select(s.orgJoinRequests, eq(s.orgJoinRequests.orgId, orgId)));
+  add('layouts', 'The club’s layouts (the files are in the layouts folder).', await select(s.layouts, eq(s.layouts.ownerOrgId, orgId)));
+  add('modules', 'The club’s modules (the files are in the modules folder).', await select(s.modules, eq(s.modules.ownerOrgId, orgId)));
+  add('custom-parts', 'The club’s custom parts (in the parts folder).', await select(s.customParts, eq(s.customParts.ownerOrgId, orgId)));
+  add('venues', 'The club’s venues (in the venues folder).', await select(s.venueLibrary, eq(s.venueLibrary.ownerOrgId, orgId)));
+  add('catalog-items', 'What the club shared in the public catalog.', await select(s.catalogItems, eq(s.catalogItems.ownerOrgId, orgId)));
+  add('collections', 'The club’s collections.', await select(s.catalogCollections, eq(s.catalogCollections.orgId, orgId)));
+  add('part-libraries', 'Which part libraries the club switched on or off.', await select(s.orgPartLibraries, eq(s.orgPartLibraries.orgId, orgId)));
+  add(
+    'notices',
+    'Warnings to the club, and notes and warnings the club sent its members.',
+    await select(s.warnings, or(eq(s.warnings.subjectOrgId, orgId), eq(s.warnings.clubOrgId, orgId))),
+  );
+  add('usage-limits', 'Limits the site admins set for the club, if any.', await select(s.limitOverrides, and(eq(s.limitOverrides.subjectKind, 'org'), eq(s.limitOverrides.subjectId, orgId))));
+  add('usage-counts', 'Daily counts of the club’s uploads and share-link views.', await select(s.usageDaily, and(eq(s.usageDaily.subjectKind, 'org'), eq(s.usageDaily.subjectId, orgId))));
+  add('audit-log', 'The record of what happened in the club.', await select(s.auditEvents, and(eq(s.auditEvents.resourceKind, 'org'), eq(s.auditEvents.resourceId, orgId))));
+  return sections;
+}

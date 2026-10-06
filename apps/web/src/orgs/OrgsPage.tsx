@@ -5,6 +5,8 @@ import { api } from '../api';
 import { AppHeader } from '../AppHeader';
 import { FindClubSection } from './ClubDirectory';
 import { aRole } from './clubRoles';
+import { BeingDeletedSection } from './DeleteClub';
+import { useHashScroll } from '../ui/useHashScroll';
 
 /** /orgs landing: the clubs the user is in, a create button, and Find a club. */
 export function OrgsPage() {
@@ -13,6 +15,8 @@ export function OrgsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const waiting = useQuery({ queryKey: ['join-request-count'], queryFn: api.orgs.joinRequestCount, enabled: Boolean(me.data?.user) });
   const waitingIn = (slug: string) => waiting.data?.clubs.find((c) => c.slug === slug)?.count ?? 0;
+  // /orgs#being-deleted (a member's notice links there).
+  useHashScroll(!!list.data);
 
   if (me.isLoading) return <div className="p-8 text-muted">Loading…</div>;
   if (!me.data?.user) return <Navigate to="/login" replace />;
@@ -69,6 +73,8 @@ export function OrgsPage() {
             ))}
           </ul>
         ))}
+
+        <BeingDeletedSection />
 
         <div className="pt-4">
           <FindClubSection />

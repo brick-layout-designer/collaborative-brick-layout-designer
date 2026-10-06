@@ -114,7 +114,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /** Errors whose server message is the sentence to show (privacy: "You can ask again after …"). */
-const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required']);
+const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required', 'heir_not_member']);
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
 export const FIREWALL_BLOCKED =
@@ -213,7 +213,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 /** JSON request with the same friendly errors (for lazily loaded admin code). */
-export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST', path: string, body: unknown): Promise<T> {
+export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST' | 'DELETE', path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
     credentials: 'include',
@@ -647,16 +647,26 @@ export const api = {
         listed?: boolean;
       },
     ) => patch<{ ok: true; slug: string; name: string }>(`/api/orgs/${slug}`, body),
-    /** Delete the club and everything it owns; `confirm` is its name, typed out. */
-    remove: async (slug: string, confirm: string) => {
+    /**
+     * Delete the club: it's hidden now and deleted for good after the
+     * waiting time (restorable until then). `confirm` is its name, typed
+     * out; `catalog` says what happens to its public items ('hand' them to
+     * `heirUserId`, or 'takedown'). Newer servers answer `dueAt`.
+     */
+    remove: async (slug: string, confirm: string, choice: { catalog?: 'hand' | 'takedown'; heirUserId?: string | null } = {}) => {
       const res = await fetch(`/api/orgs/${slug}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirm }),
+        body: JSON.stringify({ confirm, ...choice }),
       });
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', `/api/orgs/${slug}`));
       noteWrite('DELETE', `/api/orgs/${slug}`);
+      try {
+        return (await res.json()) as { ok: true; dueAt?: number };
+      } catch {
+        return { ok: true as const };
+      }
     },
     /** Make `userId` an admin and step down to member, in one go. */
     handOver: (slug: string, userId: string) => post<{ ok: true }>(`/api/orgs/${slug}/hand-over`, { userId }),
@@ -1495,6 +1505,8 @@ export interface AdminOrg {
   memberCount: number;
   layoutCount: number;
   layoutSizeBytes: number;
+  /** Waiting to be deleted (hidden; Restore or Erase now). */
+  deletionDueAt?: number | null;
 }
 
 export interface AdminOrgDetail {

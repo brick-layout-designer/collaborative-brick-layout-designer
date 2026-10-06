@@ -58,6 +58,8 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   ],
   club: (h) => [
     ['orgs'], ['org'], ['org-members'], ['org-join-requests'], ['join-request-count'], ['org-audit'],
+    // Deleting a club: Clubs › Being deleted, and the delete screen.
+    ['clubs-deleting'], ['club-deletion'],
     ['org-part-libraries'], ['org-user-search'], ['club-summary'], ['club-directory'],
     // Joining or leaving a club changes which layouts, modules, rooms and parts you see.
     ['layouts'], ['modules'], ['venues'], ['venue-library'], ['custom-parts'],
@@ -69,7 +71,7 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
     ...(MEMBERSHIP_CHANGE.test(h.action ?? '') ? [['parts-catalog']] : []),
     ...ADMIN_LISTS,
   ],
-  me: () => [['me'], ['preferences'], ['api-tokens'], ['providers'], ['my-exports'], ['my-deletion']],
+  me: () => [['me'], ['preferences'], ['api-tokens'], ['providers'], ['my-exports'], ['my-deletion'], ['club-exports']],
   transfer: () => [['layouts'], ['modules'], ['transfer-preview']],
   // …and the demo account's last reset (Admin › Settings and the dashboard).
   admin: () => [

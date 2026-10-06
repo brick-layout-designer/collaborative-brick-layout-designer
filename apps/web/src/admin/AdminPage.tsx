@@ -20,7 +20,7 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { adminTabsFor, adminTabText, type AdminTab } from './adminTabs';
 import { AppHeader } from '../AppHeader';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
+import { api, apiSend, type AdminGlobalPart, type AdminAuditEvent, type PartLibrary, type RemotePackage, type OrgSummary } from '../api';
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { GlobalLimitsForm, HeavyUseTab, SubjectLimitsPanel } from './limits/LimitsUi';
 import { CatalogSettingsSection, ModerationTab } from './Moderation';
@@ -31,7 +31,7 @@ import { PrivacySettingsSection } from '../privacy/PrivacySettings';
 import { PrivacyDashboardCard, PrivacyRequestsTab } from '../privacy/PrivacyRequests';
 import { usePrivacyDue } from '../SettingsMenu';
 import { HelpButton } from '../help/HelpButton';
-import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { askConfirm, confirmDelete, showToast, toastDeleted } from '../ui/ConfirmDialog';
 
 type Tab = AdminTab;
 
@@ -405,6 +405,14 @@ function OrgsTab() {
     mutationFn: (id: string) => api.admin.deleteOrg(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orgs'] }),
   });
+  const restoreOrg = useMutation({
+    mutationFn: (id: string) => apiSend<{ ok: true }>('POST', `/api/admin/orgs/${id}/restore`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orgs'] }),
+  });
+  const eraseOrg = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => apiSend<{ ok: true }>('POST', `/api/admin/orgs/${id}/erase`, { confirm: name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orgs'] }),
+  });
 
   if (detailId) {
     return <OrgDetailPanel id={detailId} onBack={() => setDetailId(null)} />;
@@ -447,6 +455,11 @@ function OrgsTab() {
                     <button onClick={() => setDetailId(o.id)} className="text-accent-text hover:underline">
                       {o.name}
                     </button>
+                    {o.deletionDueAt && (
+                      <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-black" data-testid="org-being-deleted">
+                        Being deleted · {new Date(o.deletionDueAt).toLocaleDateString()}
+                      </span>
+                    )}
                   </Td>
                   <Td>{o.slug}</Td>
                   <Td>{o.memberCount}</Td>
@@ -454,19 +467,49 @@ function OrgsTab() {
                   <Td align="right" className="tabular-nums text-muted">{formatBytes(o.layoutSizeBytes)}</Td>
                   <Td>{new Date(o.createdAt).toLocaleDateString()}</Td>
                   <Td align="right">
-                    <button
-                      onClick={async () => {
-                        const ok = await confirmDelete(o.name, {
-                          removes: 'The club and everything it owns (layouts, parts, modules, venues) are deleted.',
-                          keeps: 'Members keep their own things.',
-                          typeName: true,
-                        });
-                        if (ok) removeOrg.mutate(o.id, { onSuccess: () => toastDeleted(o.name) });
-                      }}
-                      className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      {o.deletionDueAt ? (
+                        <button
+                          onClick={() => restoreOrg.mutate(o.id, { onSuccess: () => showToast(`${o.name} is back.`) })}
+                          className="rounded-lg border border-border px-2 py-0.5 text-xs hover:bg-soft"
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            const ok = await askConfirm({
+                              title: `Delete “${o.name}”?`,
+                              removes:
+                                'It’s hidden from its members now (each gets a notice) and deleted for good after the waiting time in Settings › Privacy, with its layouts, modules, parts and venues. Its public catalog items go to its longest-standing admin.',
+                              keeps: 'Members keep their own things. Until then its admins, or you, can restore it with one click.',
+                              confirmLabel: 'Delete',
+                              typeName: o.name,
+                            });
+                            if (ok) removeOrg.mutate(o.id, { onSuccess: () => showToast(`${o.name} is hidden and will be deleted after the waiting time.`) });
+                          }}
+                          className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
+                        >
+                          Delete
+                        </button>
+                      )}
+                      <button
+                        onClick={async () => {
+                          const ok = await askConfirm({
+                            title: `Erase “${o.name}” now?`,
+                            removes: 'The club and everything it owns are deleted now, with no waiting time and no restore. Its public catalog items go to its longest-standing admin.',
+                            keeps: 'Members keep their own things. Copies people added from the catalog stay theirs.',
+                            undo: 'This can’t be undone.',
+                            confirmLabel: 'Erase now',
+                            typeName: o.name,
+                          });
+                          if (ok) eraseOrg.mutate({ id: o.id, name: o.name }, { onSuccess: () => toastDeleted(o.name) });
+                        }}
+                        className="rounded-lg border border-red-900 px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40"
+                      >
+                        Erase now
+                      </button>
+                    </div>
                   </Td>
                 </tr>
               ))}

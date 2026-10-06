@@ -176,3 +176,33 @@ Privacy) and the privacy contact (an email or web address;
 your account. It is linked at the bottom of Home, on the sign-in page,
 under Help in the menu, and on sign-up. The dashboard nudges while the
 notice or contact is empty.
+
+## Deleting a club
+
+A club's admins delete it from its Settings; a site admin from Admin ›
+Clubs. Before deleting, the admin can download the club's data (the same
+zip format, about the club: members with their emails, invites, things,
+collections, notices and its audit log; club admins only) and move all its
+layouts or modules to a member or another club.
+
+The confirmation lists what goes and asks what happens to anything the
+club published in the public catalog: hand it to a member (the default;
+they become its owner and it stays up) or take it down. Copies people
+already added are theirs either way. Then the club's name is typed.
+
+The club then **waits** (the same `deletionGraceDays` as accounts):
+
+- it's hidden at once: its memberships move into `orgs.deletion_plan`
+  (with whether it was listed and the catalog choice), so lists, pages,
+  share links and access checks stop showing it; live editors close;
+- every member gets a notice saying who deleted it, when it goes for good,
+  and that its admins or a site admin can restore it;
+- **Restore** (Clubs › Being deleted, or Admin › Clubs) puts the
+  memberships back as they were.
+
+After the wait (or a site admin's **Erase now**, behind the typed name)
+the catalog choice is applied and the club goes with everything it owns
+(`layouts`, `modules`, `custom_parts`, `venue_library`, members-only
+collections, invites, join requests, notices), its background pictures and
+club data downloads, leaving an `erasures` row ("Deleted club #…", counts).
+`orgs.deleted_by` holds the id of whoever deleted it, without a foreign key.

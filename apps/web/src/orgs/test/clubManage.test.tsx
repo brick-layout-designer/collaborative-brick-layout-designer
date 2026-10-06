@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Running a club from the web: settings, invites with an expiry, resend
-// and cancel, handing over, leaving (with the last-admin rule) and
-// deleting with a typed name. The API is a stubbed fetch.
+// and cancel, handing over and leaving (with the last-admin rule).
+// Deleting is in deleteClub.test.tsx. The API is a stubbed fetch.
 
 import { autoConfirm } from '../../test/confirmHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +11,6 @@ import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { AuditEventSummary, OrgDetail, OrgMemberSummary } from '../../api';
 import {
-  DeleteClubSection,
   describeEvent,
   HandOverSection,
   InviteSection,
@@ -153,19 +152,6 @@ describe('club management', () => {
     show(<LeaveClubButton org={{ ...ORG, myRole: 'member' }} myUserId="u2" />);
     fireEvent.click(screen.getByRole('button', { name: 'Leave the club' }));
     await waitFor(() => expect(writes()[0]?.path).toBe('/api/orgs/arklug/members/u2'));
-  });
-
-  it('deleting needs the club’s name typed out', async () => {
-    show(<DeleteClubSection org={ORG} counts="its 2 layouts" />);
-    const del = screen.getByRole('button', { name: 'Delete club' }) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Type the club’s name/), { target: { value: 'arklu' } });
-    expect(del.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Type the club’s name/), { target: { value: 'arklug' } });
-    expect(del.disabled).toBe(false);
-    fireEvent.click(del);
-    await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0]).toEqual({ method: 'DELETE', path: '/api/orgs/arklug', body: { confirm: 'arklug' } });
   });
 
   it('describes activity in plain words', () => {

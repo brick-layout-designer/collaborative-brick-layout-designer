@@ -26,10 +26,10 @@ import { isDemoUser } from '../demo/demoAccount.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
-import { docHub } from '../ws/docHub.js';
 import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
 import { nameFor, publicName } from '../utils/publicName.js';
+import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
 
 interface CreateOrgBody {
   name: string;
@@ -292,9 +292,11 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- delete the club (admins, typed confirmation) -----------------------
-  // Its layouts, rooms, modules, custom parts, members and invites go with
-  // it (the foreign keys cascade), so the caller must type its name.
-  app.delete<{ Params: { slug: string }; Body: { confirm?: unknown } }>('/api/orgs/:slug', async (req, reply) => {
+  // It waits first (the Privacy setting's days), hidden, and its admins or
+  // a site admin can restore it (privacy/clubDeletion.ts). The body says
+  // what happens to its public catalog items and collections: 'hand' them
+  // to a member (heirUserId, default the admin deleting it) or 'takedown'.
+  app.delete<{ Params: { slug: string }; Body: { confirm?: unknown; catalog?: unknown; heirUserId?: unknown } }>('/api/orgs/:slug', async (req, reply) => {
     const user = requireUser(req);
     const org = await loadOrgBySlug(req.params.slug);
     if (!org) return reply.code(404).send({ error: 'not_found' });
@@ -303,19 +305,10 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
     const typed = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
     if (typed !== org.name.trim().toLowerCase()) return reply.code(400).send({ error: 'confirm_name_mismatch' });
-
-    // Close live editing sessions on the club's layouts first.
-    const layouts = await db.select({ id: schema.layouts.id }).from(schema.layouts).where(eq(schema.layouts.ownerOrgId, org.id));
-    for (const l of layouts) await docHub.close(l.id);
-    await db.delete(schema.orgs).where(eq(schema.orgs.id, org.id));
-    await writeAuditEvent({
-      resourceKind: 'org',
-      resourceId: org.id,
-      userId: user.id,
-      eventType: 'delete',
-      payload: { name: org.name, slug: org.slug, layouts: layouts.length },
-    });
-    return { ok: true };
+    const choice = await catalogChoice(org.id, req.body?.catalog, req.body?.heirUserId, user.id);
+    if ('error' in choice) return reply.code(400).send(choice);
+    const { dueAt } = await requestClubDeletion(org, user, choice);
+    return { ok: true, dueAt: dueAt.getTime() };
   });
 
   // ---- hand the club over --------------------------------------------------
@@ -974,4 +967,33 @@ async function countAdmins(orgId: string): Promise<number> {
     .from(schema.orgMembers)
     .where(eq(schema.orgMembers.orgId, orgId));
   return rows.filter((r) => r.role === 'admin').length;
+}
+
+/**
+ * The public catalog choice when deleting a club: 'hand' (the default) to
+ * a current member (the person deleting it unless they pick someone), or
+ * 'takedown'.
+ */
+export async function catalogChoice(
+  orgId: string,
+  rawChoice: unknown,
+  rawHeir: unknown,
+  fallbackHeir: string | null,
+): Promise<{ catalog: CatalogChoice; heirUserId: string | null } | { error: string; message: string }> {
+  const catalog = rawChoice === undefined || rawChoice === null ? 'hand' : rawChoice;
+  if (catalog !== 'hand' && catalog !== 'takedown') return { error: 'invalid_input', message: 'Choose to hand the public items to a member, or take them down.' };
+  if (catalog === 'takedown') return { catalog, heirUserId: null };
+  const heir = typeof rawHeir === 'string' && rawHeir ? rawHeir : fallbackHeir;
+  if (heir && (await getMembership(orgId, heir))) return { catalog, heirUserId: heir };
+  if (heir === fallbackHeir && !rawHeir) {
+    // A site admin deleting a club they're not in: its longest-standing admin.
+    const admin = await db
+      .select({ u: schema.orgMembers.userId })
+      .from(schema.orgMembers)
+      .where(and(eq(schema.orgMembers.orgId, orgId), eq(schema.orgMembers.role, 'admin')))
+      .orderBy(schema.orgMembers.joinedAt)
+      .get();
+    return { catalog, heirUserId: admin?.u ?? null };
+  }
+  return { error: 'heir_not_member', message: 'Pick someone who is in the club to look after its public items.' };
 }

@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { privacyTick } from '../../privacy/tick.js';
 import { db, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
@@ -158,8 +159,11 @@ describe('club admin', () => {
       expect((await call(admin, 'GET', '/api/orgs/arklug')).statusCode).toBe(200);
 
       expect((await call(admin, 'DELETE', '/api/orgs/arklug', { confirm: ' arklug ' })).statusCode).toBe(200);
+      // Hidden at once...
       expect((await call(admin, 'GET', '/api/orgs/arklug')).statusCode).toBe(404);
-      // Its things go with it.
+      expect(await db.select().from(schema.layouts).where(eq(schema.layouts.id, layout.id)).get()).toBeDefined();
+      // ...and its things go with it once the wait is over.
+      await privacyTick(new Date(Date.now() + 15 * DAY));
       expect(await db.select().from(schema.layouts).where(eq(schema.layouts.id, layout.id)).get()).toBeUndefined();
     });
   });

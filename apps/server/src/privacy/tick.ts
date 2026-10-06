@@ -5,21 +5,25 @@
 //
 //   - data downloads past their keep-by date: file and row deleted
 //   - accounts whose waiting time is over: erased (accountDeletion.ts)
+//   - clubs whose waiting time is over: deleted (clubDeletion.ts)
 //   - old sign-ins, invites, audit addresses, records (retention.ts)
 
 import { purgeExpiredExports } from './exports.js';
 import { eraseDueAccounts } from './accountDeletion.js';
+import { eraseDueClubs } from './clubDeletion.js';
 import { purgeRetention, type RetentionResult } from './retention.js';
 
 export interface PrivacyTickResult {
   exportsPurged: number;
   accountsErased: number;
+  clubsErased: number;
   retention: RetentionResult;
 }
 
 export async function privacyTick(now: Date = new Date()): Promise<PrivacyTickResult> {
   const accountsErased = await eraseDueAccounts(now);
+  const clubsErased = await eraseDueClubs(now);
   const exportsPurged = await purgeExpiredExports(now);
   const retention = await purgeRetention(now);
-  return { exportsPurged, accountsErased, retention };
+  return { exportsPurged, accountsErased, clubsErased, retention };
 }

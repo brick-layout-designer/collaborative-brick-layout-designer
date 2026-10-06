@@ -7,6 +7,7 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { privacyTick } from '../../privacy/tick.js';
 import { eq } from 'drizzle-orm';
 import { db, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
@@ -229,6 +230,8 @@ describe('collection covers', () => {
     await put(clubs, max, await png());
     expect(await covers(clubs)).toHaveLength(1);
     expect((await req('DELETE', '/api/orgs/arklug', ada, { confirm: 'ArkLUG' })).statusCode).toBe(200);
+    // The club waits first; its pictures go when it does.
+    await privacyTick(new Date(Date.now() + 31 * 86_400_000));
     expect(await db.select().from(schema.catalogCollectionCovers)).toHaveLength(0);
   });
 

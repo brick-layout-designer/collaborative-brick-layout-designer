@@ -87,11 +87,15 @@ test('an admin hands the club over, and the new admin deletes it with its name t
 
   await member.goto(`/orgs/${slug}/admin`);
   await member.getByRole('tab', { name: 'Settings' }).click();
-  const del = member.getByRole('button', { name: 'Delete club' });
+  await member.getByRole('button', { name: 'Delete the club…' }).click();
+  await member.getByRole('button', { name: 'Continue to delete…' }).click();
+  const del = member.getByRole('button', { name: 'Delete the club', exact: true });
   await expect(del).toBeDisabled();
   await member.getByLabel(/Type the club’s name/).fill(name);
   await del.click();
-  await expect(member).toHaveURL(/\/orgs$/);
+  await expect(member).toHaveURL(/\/orgs#being-deleted$/);
+  // Hidden at once, and restorable from Clubs › Being deleted.
   expect((await member.request.get(`/api/orgs/${slug}`)).status()).toBe(404);
+  await expect(member.getByTestId('being-deleted')).toContainText(name);
   await member.close();
 });

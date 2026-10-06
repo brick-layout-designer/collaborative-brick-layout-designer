@@ -624,7 +624,8 @@ export async function layoutRoutes(app: FastifyInstance) {
       .from(schema.layouts)
       .where(eq(schema.layouts.publicShareToken, req.params.token))
       .get();
-    if (!layout) return reply.code(404).send({ error: 'not_found' });
+    // A club waiting to be deleted is hidden, its share links too.
+    if (!layout || (await inDeletingClub(layout.ownerOrgId))) return reply.code(404).send({ error: 'not_found' });
     rollup.count('share_views');
     if (layout.ownerOrgId) usage.count('org', layout.ownerOrgId, 'share_views');
     else if (layout.ownerUserId) usage.count('user', layout.ownerUserId, 'share_views');
@@ -771,7 +772,7 @@ export async function layoutRoutes(app: FastifyInstance) {
         .from(schema.layouts)
         .where(eq(schema.layouts.publicShareToken, req.params.token))
         .get();
-      if (!layout) return reply.code(404).send({ error: 'not_found' });
+      if (!layout || (await inDeletingClub(layout.ownerOrgId))) return reply.code(404).send({ error: 'not_found' });
       reply.header('Content-Type', 'application/octet-stream');
       reply.header('X-Doc-Version', String(layout.docVersion));
       return reply.send(
@@ -784,6 +785,13 @@ export async function layoutRoutes(app: FastifyInstance) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Is this layout's club waiting to be deleted (and so hidden)? */
+async function inDeletingClub(orgId: string | null): Promise<boolean> {
+  if (!orgId) return false;
+  const org = await db.select({ due: schema.orgs.deletionDueAt }).from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
+  return !!org?.due;
+}
 
 /** Columns for list/detail responses — everything except the doc blobs. */
 export const layoutListColumns = {

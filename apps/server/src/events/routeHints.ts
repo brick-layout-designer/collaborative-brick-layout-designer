@@ -488,6 +488,26 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/orgs': club(async (c) => str(c.reply?.id)),
   'PATCH /api/orgs/:slug': club(bySlug),
   'DELETE /api/orgs/:slug': club(bySlug),
+  'POST /api/orgs/:slug/restore': {
+    after: async (c) => {
+      const orgId = await bySlug(c);
+      return orgId ? [{ hint: { kind: 'club', owner: { kind: 'org', id: orgId }, id: orgId, action: 'update:restore' }, reach: { users: [c.userId] } }] : [];
+    },
+  },
+  'POST /api/orgs/:slug/exports': me,
+  'POST /api/orgs/:slug/move-all': {
+    after: async (c) => {
+      const orgId = await bySlug(c);
+      const kind = c.body.kind === 'modules' ? 'module' : 'layout';
+      const out: Array<{ hint: Hint; reach?: Reach }> = [];
+      if (orgId) out.push({ hint: { kind, owner: { kind: 'org', id: orgId }, action: 'update:move' } });
+      const toUser = str(c.body.toUserId);
+      const toOrg = str(c.body.toOrgSlug) ? await orgIdBySlug(str(c.body.toOrgSlug)!) : null;
+      if (toUser) out.push({ hint: { kind, owner: { kind: 'user', id: toUser }, action: 'update:move' } });
+      if (toOrg) out.push({ hint: { kind, owner: { kind: 'org', id: toOrg }, action: 'update:move' } });
+      return out;
+    },
+  },
   'POST /api/orgs/:slug/hand-over': club(bySlug),
   'POST /api/orgs/:slug/invites': club(bySlug),
   'DELETE /api/orgs/:slug/invites/:inviteId': club(bySlug),
@@ -524,6 +544,13 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'DELETE /api/admin/users/:id': adminOnly('admin'),
   'POST /api/admin/users/:id/sessions/revoke-all': adminOnly('admin', param('id')),
   'DELETE /api/admin/orgs/:id': club(async (c) => c.params.id ?? null),
+  'POST /api/admin/orgs/:id/restore': {
+    after: async (c) => [
+      { hint: { kind: 'admin', action: 'update:restore' }, reach: { ownerless: true } },
+      { hint: { kind: 'club', owner: { kind: 'org', id: c.params.id ?? '' }, id: c.params.id ?? '', action: 'update:restore' }, reach: { users: [c.userId] } },
+    ],
+  },
+  'POST /api/admin/orgs/:id/erase': adminOnly('admin'),
   'DELETE /api/admin/layouts/:id': resource('layout'),
   'POST /api/admin/global-parts': everyone('parts-library'),
   'DELETE /api/admin/global-parts/:id': everyone('parts-library'),

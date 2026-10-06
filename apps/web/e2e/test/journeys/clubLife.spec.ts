@@ -121,6 +121,6 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
   await expect(page).toHaveURL(new RegExp(`/orgs/${slug}$`));
   await rita.goto(`/orgs/${slug}/admin`);
   await rita.getByRole('tab', { name: 'Settings' }).click();
-  await expect(rita.getByRole('button', { name: 'Delete club' })).toBeVisible();
+  await expect(rita.getByRole('button', { name: 'Delete the club…' })).toBeVisible();
   await rita.close();
 });
