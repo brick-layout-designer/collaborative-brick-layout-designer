@@ -231,10 +231,14 @@ async function moduleMeta(id: string): Promise<{ layout: LayoutSummary; role: 'o
   };
 }
 
-/** The credit as one line ("by Sam · in ArkLUG · based on Yard by Sam"), or null. */
+/**
+ * The credit as one line ("by Sam · in ArkLUG · based on Yard by Sam"),
+ * or null. Your own thing ("by you" and nothing more) says nothing new.
+ */
 function creditLabel(credit: Credit | null | undefined): string | null {
   const { line, basedOn } = creditText(credit);
-  return [line, basedOn].filter(Boolean).join(' · ') || null;
+  const text = [line, basedOn].filter(Boolean).join(' · ');
+  return text && text !== 'by you' ? text : null;
 }
 
 /** Panels a module has no use for (it has no venue and no saved views). */
@@ -262,6 +266,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     queryFn: () => api.modules.get(layoutId),
     enabled: moduleMode,
   });
+  const moduleCredit = creditLabel(moduleInfo.data?.module.credit);
   // The parts catalog, for Save's offline download (declared further down).
   const partsRef = useRef<readonly PartWire[] | undefined>(undefined);
   // Save / Ctrl+S: every edit is already persisted server-side while the
@@ -728,12 +733,12 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           <h1 data-testid="module-editor-title" className="min-w-0 flex-1 truncate font-display text-[17px] font-bold">
             <span className="font-normal text-muted">Editing module: </span>
             {meta.data?.layout.title ?? '…'}
-            {creditLabel(moduleInfo.data?.module.credit) && (
-              <span data-testid="credit" className="ml-2 hidden text-xs font-normal text-muted sm:inline">
-                {creditLabel(moduleInfo.data?.module.credit)}
-              </span>
-            )}
           </h1>
+          {moduleCredit && (
+            <span data-testid="credit" className="hidden min-w-0 truncate text-xs text-muted sm:inline">
+              {moduleCredit}
+            </span>
+          )}
           <SavePill status={status} />
           {role === 'viewer' ? <ViewOnlyPill /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           <div className="ml-auto flex items-center gap-2">
