@@ -56,6 +56,14 @@ export interface SidecarModule {
   sameColor?: boolean;
   /** Pinned in place: it can't be moved as a whole (Edit module still works). Absent: false. */
   pinned?: boolean;
+  /**
+   * The library module this placed module is linked to (its id on the
+   * server), set when it is saved to the library or inserted from it.
+   * Absent: not linked. BlueBrick never sees it (sidecar only).
+   */
+  libraryModuleId?: string;
+  /** The library version this placed module matches (absent: unknown). */
+  libraryVersion?: number;
   /** Fields a newer build added; kept as they are. */
   [extra: string]: unknown;
 }

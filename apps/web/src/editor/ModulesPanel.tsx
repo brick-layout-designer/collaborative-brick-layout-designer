@@ -1,30 +1,30 @@
 // Modules panel — port of desktop's ModulesPanel (`src/ui/ModulesPanel.cpp`).
 // Lists sidecar modules: name, member count, optional sourceFile.
 // Click → toggle member-brick selection.
-// Right-click → Select Members / Rename / Flatten / Delete.
-// Create / Save to Library / Import… are handled elsewhere (SaveModuleDialog,
-// ImportBbmDialog, InsertModuleDialog).
+// Right-click or ⋯ → its menu, with the library entries (Save to library…,
+// Update library version…, Update from library: moduleLibraryMenu.ts).
+// Make a module opens ModuleDialogs.tsx; Import… is ImportBbmDialog.
 
 import { useOnScreen } from './menuPosition';
 import { useEffect, useRef, useState } from 'react';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
+import { useQuery } from '@tanstack/react-query';
 import type { SidecarModule } from '@cld/bbm';
-import { docToBbm, readSidecarFromDoc } from '@cld/ydoc';
+import { readSidecarFromDoc } from '@cld/ydoc';
 import { useEditorStore } from './editorStore';
 import { api } from '../api';
 import {
   cloneModuleBricks,
   deleteSidecarModule,
-  ensureBrickLayer,
   flattenSidecarModule,
   moveModuleBricks,
-  patchSidecarModule,
   renameSidecarModule,
-  rescanModuleFromBricks,
   rotateModuleBricks,
   updateSidecarModule,
 } from './mutations';
-import { createModuleFromSelection, enterModuleEdit, leaveModuleEdit, setModulePinned } from './moduleActions';
+import { enterModuleEdit, leaveModuleEdit, openMakeModule, setModulePinned } from './moduleActions';
+import { libraryNote, libraryState } from './moduleLibrary';
+import { useLibraryEntries, type ModuleMenuEntry } from './moduleLibraryMenu';
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 import { ModuleLookDialog } from './ModuleLookDialog';
 import { withShowName } from './moduleLook';
@@ -41,22 +41,23 @@ export function ModulesPanel({ doc, isViewer }: Props) {
   const modules = sidecar?.modules ?? [];
   const map = useDocMap(doc);
 
-  // Desktop ModulesPanel's "Create from selection" (createModuleRequested
-  // → MainWindow::onCreateModuleFromSelection).
+  const library = useQuery({ queryKey: ['modules'], queryFn: api.modules.list, enabled: modules.length > 0 });
+  const libraryEntries = useLibraryEntries(doc);
+  // Desktop ModulesPanel's "Make a module" (createModuleRequested).
   const createButton = isViewer ? null : (
     <button
-      onClick={() => createModuleFromSelection(doc)}
+      onClick={() => openMakeModule(doc)}
       className="rounded-lg border border-border px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-300 hover:bg-soft"
-      title="Keep the selected parts together as a module in this layout"
+      title="Make the picked parts one module in this layout"
     >
-      + Group selection
+      + Make a module
     </button>
   );
 
   if (modules.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-neutral-600">
-        No modules in this layout
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-neutral-600">
+        No modules in this layout yet. Pick some parts, then make them a module. To use one in other layouts, save it to your library from its ⋯ menu.
         {createButton}
       </div>
     );
@@ -73,7 +74,15 @@ export function ModulesPanel({ doc, isViewer }: Props) {
       </div>
       <ul className="flex-1 min-h-0 overflow-y-auto">
         {modules.map((mod) => (
-          <ModuleRow key={mod.id} module={mod} doc={doc} isViewer={isViewer} hiddenNote={map ? hiddenSheetsNote(moduleSheetsUsed(map, mod.members)) : null} />
+          <ModuleRow
+            key={mod.id}
+            module={mod}
+            doc={doc}
+            isViewer={isViewer}
+            hiddenNote={map ? hiddenSheetsNote(moduleSheetsUsed(map, mod.members)) : null}
+            libraryLine={libraryNote(libraryState(mod, library.data?.modules))}
+            libraryEntries={libraryEntries(mod)}
+          />
         ))}
       </ul>
     </aside>
@@ -85,12 +94,18 @@ function ModuleRow({
   doc,
   isViewer,
   hiddenNote,
+  libraryLine,
+  libraryEntries,
 }: {
   module: SidecarModule;
   doc: Y.Doc;
   isViewer: boolean;
   /** Some or all of its parts are on hidden sheets: says so. */
   hiddenNote: string | null;
+  /** "in the library v3 · v4 is newer", or null when not linked. */
+  libraryLine: string | null;
+  /** Save to library…, Update library version…, Update from library. */
+  libraryEntries: ModuleMenuEntry[];
 }) {
   const selection = useEditorStore((s) => s.selection);
   const setSelection = useEditorStore((s) => s.setSelection);
@@ -101,8 +116,6 @@ function ModuleRow({
   const [showMove, setShowMove] = useState(false);
   // The Rotate submenu opens on hover with a mouse, and on a tap (no hover on a touch screen).
   const [rotateOpen, setRotateOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [rescanning, setRescanning] = useState(false);
   const [lookOpen, setLookOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuStyle = useOnScreen(menuRef, ctxMenu);
@@ -139,86 +152,6 @@ function ModuleRow({
     renameSidecarModule(doc, module.id, name);
     setRenaming(false);
     setCtxMenu(null);
-  }
-
-  async function saveToLibrary() {
-    setCtxMenu(null);
-    if (module.members.length === 0) {
-      alert('This module has no parts.');
-      return;
-    }
-    setSaving(true);
-    try {
-      // Build a Y.Doc containing only the member bricks, then encode as snapshot.
-      const moduleDoc = new Y.Doc();
-      // Seed meta so docToBbm doesn't throw.
-      moduleDoc.getMap('meta').set('author', '');
-      moduleDoc.getMap('meta').set('event', module.name || 'Module');
-      const layerId = ensureBrickLayer(moduleDoc);
-      const layerData = moduleDoc.getMap('layerData').get(layerId);
-      const idSet = new Set(module.members);
-      const layerOrder = doc.getArray<string>('layers');
-      if (layerData instanceof Y.Map) {
-        const yBricks = layerData.get('bricks') as Y.Array<Y.Map<unknown>>;
-        for (const lid of layerOrder.toArray()) {
-          const ld = doc.getMap('layerData').get(lid);
-          if (!(ld instanceof Y.Map)) continue;
-          const bs = ld.get('bricks');
-          if (!(bs instanceof Y.Array)) continue;
-          for (let i = 0; i < bs.length; i++) {
-            const b = bs.get(i);
-            if (!(b instanceof Y.Map) || !idSet.has(b.get('id') as string)) continue;
-            const copy = new Y.Map<unknown>();
-            for (const [k, v] of b.entries()) copy.set(k, v);
-            yBricks.push([copy]);
-          }
-        }
-      }
-      const bytes = Y.encodeStateAsUpdate(moduleDoc);
-      moduleDoc.destroy();
-      const res = await api.modules.create({ title: module.name || 'Module' });
-      await api.modules.saveSnapshot(res.id, bytes);
-      patchSidecarModule(doc, module.id, { sourceFile: res.id });
-      useEditorStore.getState().showStatusMessage(`Saved “${module.name || 'Module'}” to your Module library`, 4000);
-    } catch (e) {
-      alert(`Couldn’t save to the Module library: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function rescanFromSource() {
-    setCtxMenu(null);
-    if (!module.sourceFile) {
-      alert('Save this module to your Module library first.');
-      return;
-    }
-    setRescanning(true);
-    try {
-      const res = await fetch(`/api/modules/${module.sourceFile}/snapshot`, { credentials: 'include' });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      const buf = await res.arrayBuffer();
-      const moduleDoc = new Y.Doc();
-      Y.applyUpdate(moduleDoc, new Uint8Array(buf));
-      let map: ReturnType<typeof docToBbm>;
-      try { map = docToBbm(moduleDoc); } catch { moduleDoc.destroy(); throw new Error('snapshot invalid'); }
-      moduleDoc.destroy();
-      const freshBricks = map.layers
-        .filter((l): l is Extract<typeof l, { type: 'brick' }> => l.type === 'brick')
-        .flatMap((l) => l.bricks.map((b) => ({
-          partNumber: b.partNumber,
-          displayArea: b.displayArea,
-          orientation: b.orientation,
-          altitude: b.altitude ?? 0,
-        })));
-      if (freshBricks.length === 0) throw new Error('module has no bricks');
-      const targetLayerId = ensureBrickLayer(doc);
-      rescanModuleFromBricks(doc, module, freshBricks, targetLayerId);
-    } catch (e) {
-      alert(`Re-scan failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setRescanning(false);
-    }
   }
 
   return (
@@ -267,8 +200,13 @@ function ModuleRow({
             {editingId === module.id && <span className="ml-1 text-xs text-accent">editing</span>}
             <span className="ml-2 text-neutral-600">
               {module.members.length} part{module.members.length !== 1 ? 's' : ''}
-              {module.sourceFile ? ` — ${/^[0-9a-f-]{36}$/.test(module.sourceFile) ? 'in your Module library' : module.sourceFile.split(/[\\/]/).pop()}` : ''}
+              {module.sourceFile && !libraryLine && !/^[0-9a-f-]{36}$/.test(module.sourceFile) ? ` — ${module.sourceFile.split(/[\\/]/).pop()}` : ''}
             </span>
+            {libraryLine && (
+              <span data-testid="module-library-note" className="ml-2 text-xs text-muted">
+                {libraryLine}
+              </span>
+            )}
             {hiddenNote && (
               <span data-testid="module-hidden-note" className="ml-2 text-xs italic text-muted">
                 {hiddenNote}
@@ -404,24 +342,20 @@ function ModuleRow({
           >
             Duplicate
           </button>
-          <button
-            className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
-            onClick={() => void saveToLibrary()}
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Save to Module library'}
-          </button>
-          <button
-            className={
-              'block w-full px-3 py-1 text-left hover:bg-neutral-700 ' +
-              (!module.sourceFile ? 'text-neutral-600' : '')
-            }
-            onClick={() => void rescanFromSource()}
-            disabled={rescanning || !module.sourceFile}
-            title={module.sourceFile ? undefined : 'Save it to your Module library first'}
-          >
-            {rescanning ? 'Updating…' : 'Update from the Module library'}
-          </button>
+          <hr className="my-1 border-border" />
+          {libraryEntries.map((e) => (
+            <button
+              key={e.id}
+              data-testid={`module-menu-${e.id}`}
+              className="block w-full px-3 py-1 text-left hover:bg-neutral-700 disabled:cursor-default disabled:opacity-40"
+              disabled={e.disabled}
+              title={e.title}
+              onClick={() => { setCtxMenu(null); e.onSelect(); }}
+            >
+              {e.label}
+            </button>
+          ))}
+          <hr className="my-1 border-border" />
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={async () => {

@@ -198,7 +198,7 @@ export function LayoutsPage() {
           <p className="text-sm text-muted">Loading…</p>
         ) : moduleList.length === 0 ? (
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
-            {where} no saved modules yet. Click <em>New module</em> to build one from parts, or select parts in a layout and choose <em>Save as module</em>.
+            {where} no saved modules yet. Click <em>New module</em> to build one from parts, or make a module in a layout and choose <em>Save to library…</em> from its ⋯ menu.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">

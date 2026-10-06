@@ -93,6 +93,7 @@ const Check = () => (<svg {...svg}><path d="M5 12l5 5L20 7" /></svg>);
 const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
 const More = () => (<svg {...svg}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M17.5 14v7M14 17.5h7" /></svg>);
 const Area = () => (<svg {...svg}><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><path d="M9 9h6v6H9z" /></svg>);
+const ModuleIcon = () => (<svg {...svg}><rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 3" /><rect x="8" y="8" width="8" height="8" rx="1" /></svg>);
 const Layers = () => (<svg {...svg}><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></svg>);
 const Pencil = () => (<svg {...svg}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13 7l4 4" /></svg>);
 const UndoIcon = () => (<svg {...svg}><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>);
@@ -119,11 +120,13 @@ export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo
 
 /**
  * The bar along the bottom of the map while editing by touch. With parts
- * picked: Rotate left / right, Duplicate, Delete, Select more, Select area
- * and Done. With nothing picked: Add part, Select more and Select area.
+ * picked: Rotate left / right, Duplicate, Module (make one, or the picked
+ * module's menu), Delete, Select more, Select area and Done. With nothing picked: Add part, Select more and Select area.
  */
-export function TouchActionBar({ actions, onAddPart, onSheets, onEditText }: {
+export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onModule }: {
   actions: Actions;
+  /** The picked parts' module: Make a module, or the picked module's own menu. */
+  onModule?: (() => void) | undefined;
   onAddPart?: (() => void) | undefined;
   /** Opens the sheets list (add, delete, show / hide, fade, rename, reorder). */
   onSheets?: (() => void) | undefined;
@@ -166,6 +169,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText }: {
               <BarButton label="Rotate left" onClick={() => actions.rotate(false)}><RotLeft /></BarButton>
               <BarButton label="Rotate right" onClick={() => actions.rotate(true)}><RotRight /></BarButton>
               <BarButton label="Duplicate" onClick={() => actions.duplicate(true)}><Copy /></BarButton>
+              {onModule && <BarButton label="Module" onClick={onModule} testId="touch-module"><ModuleIcon /></BarButton>}
             </>
           )}
           <BarButton label="Delete" danger onClick={() => actions.delete()}><Trash /></BarButton>

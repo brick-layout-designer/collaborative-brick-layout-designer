@@ -1,7 +1,7 @@
 // Tests for mutations not yet covered:
 //   editBrick, reorderBricks, groupBricks, ungroupBricks
 //   editRulerItem (circular radius patch)
-//   cloneModuleBricks, rescanModuleFromBricks
+//   cloneModuleBricks, replaceModuleParts
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
@@ -18,7 +18,7 @@ import {
   addCircularRuler,
   editRulerItem,
   cloneModuleBricks,
-  rescanModuleFromBricks,
+  replaceModuleParts,
   addSidecarModule,
   readBudgetLimits,
   setBudgetLimits,
@@ -282,37 +282,41 @@ describe('cloneModuleBricks', () => {
 });
 
 // ---------------------------------------------------------------------------
-// rescanModuleFromBricks
+// replaceModuleParts (Update from library)
 // ---------------------------------------------------------------------------
 
-describe('rescanModuleFromBricks', () => {
-  it('is a no-op when freshBricks is empty', () => {
+describe('replaceModuleParts', () => {
+  it('is a no-op for an unknown module', () => {
     const { doc, layerId } = docWithBrickLayer();
-    const id = placeBrick(doc, layerId, { partNumber: 'p', x: 0, y: 0, width: 2, height: 2 });
-    const mod: SidecarModule = { id: 'mod1', name: 'M', members: [id], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1] };
-    rescanModuleFromBricks(doc, mod, [], layerId);
-    // Old brick should still be there.
+    placeBrick(doc, layerId, { partNumber: 'p', x: 0, y: 0, width: 2, height: 2 });
+    expect(replaceModuleParts(doc, 'nope', [], () => layerId)).toBeNull();
     expect(bricksInLayer(doc, layerId)).toHaveLength(1);
   });
 
-  it('removes old members and inserts fresh bricks', () => {
+  it('replaces the members, keeps the module and its look, and is one undo step', () => {
     const { doc, layerId } = docWithBrickLayer();
     const oldId = placeBrick(doc, layerId, { partNumber: 'old', x: 0, y: 0, width: 2, height: 2 });
-
-    addSidecarModule(doc, { id: 'mod1', name: 'M', members: [oldId], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1] });
-    const mod: SidecarModule = { id: 'mod1', name: 'M', members: [oldId], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1] };
-
-    rescanModuleFromBricks(doc, mod, [
-      { partNumber: 'new1', displayArea: { x: 5, y: 5, width: 2, height: 2 } },
-      { partNumber: 'new2', displayArea: { x: 7, y: 5, width: 2, height: 2 } },
-    ], layerId);
-
+    const other = placeBrick(doc, layerId, { partNumber: 'other', x: 40, y: 0, width: 2, height: 2 });
+    addSidecarModule(doc, { id: 'mod1', name: 'M', members: [oldId], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1], pinned: true, outlineColor: '#ff0000' });
+    const um = createUndoManager(doc);
+    const ids = replaceModuleParts(
+      doc,
+      'mod1',
+      [{ layerName: 'Track', bricks: [
+        { partNumber: 'new1', displayArea: { x: 5, y: 5, width: 2, height: 2 } },
+        { partNumber: 'new2', displayArea: { x: 7, y: 5, width: 2, height: 2 } },
+      ] }],
+      () => layerId,
+      { libraryModuleId: 'lib', libraryVersion: 4 },
+    )!;
     const bricks = bricksInLayer(doc, layerId);
-    expect(bricks).toHaveLength(2);
-    expect(bricks[0]?.get('partNumber')).toBe('new1');
-    expect(bricks[1]?.get('partNumber')).toBe('new2');
-    // Old brick removed.
+    expect(bricks.map((b) => b.get('partNumber'))).toEqual(['other', 'new1', 'new2']);
     expect(bricks.some((b) => b.get('id') === oldId)).toBe(false);
+    const mod = (doc.getMap('meta').get('cache') as { modules: SidecarModule[] }).modules[0]!;
+    expect(mod).toMatchObject({ id: 'mod1', name: 'M', pinned: true, outlineColor: '#ff0000', libraryModuleId: 'lib', libraryVersion: 4 });
+    expect(mod.members).toEqual(ids);
+    um.undo();
+    expect(bricksInLayer(doc, layerId).map((b) => b.get('id'))).toEqual([oldId, other]);
   });
 });
 

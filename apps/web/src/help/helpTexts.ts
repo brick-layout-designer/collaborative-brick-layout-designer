@@ -40,7 +40,7 @@ export const HELP_TEXTS = {
   'panel.modules': {
     title: 'Modules',
     short: 'Groups of pieces kept together, so you can move or reuse them as one.',
-    more: 'A module is like a table section: pick it to select everything in it at once. Save a module to reuse it in other layouts.',
+    more: 'A module is like a table section: pick it to select everything in it at once. Make a module from the parts you picked; it belongs to this layout. To use it in other layouts, choose Save to library… from its ⋯ menu.',
   },
   'panel.moduleLibrary': {
     title: 'Module library',
@@ -165,6 +165,16 @@ export const HELP_TEXTS = {
     title: 'Edit module',
     short: 'Change this module part by part; the rest of the layout waits, dimmed.',
     more: 'A module moves as one piece until you edit it: then new parts you drop in join it, and a part dragged outside it asks whether to leave. Done, Esc or a click outside goes back to the whole layout. Pin in place stops the whole module moving, but you can still edit it.',
+  },
+  'module.make': {
+    title: 'Make a module',
+    short: 'The parts you picked become one module in this layout.',
+    more: 'A module moves as one piece, shows its name on the map and is listed in the Modules panel. It stays in this layout only. To use it in other layouts too, tick Also save to my library, or later choose Save to library… from its ⋯ menu.',
+  },
+  'module.library': {
+    title: 'Modules in the library',
+    short: 'A module saved to the library stays linked to it.',
+    more: 'Save to library… puts a copy in your modules or a club’s; modules you add from the library are linked too. After changing it in a layout, Update library version makes that the library’s next version, with a note on what changed. When the library has a newer version, Update from library brings it in where the module sits, and asks first if you changed it here.',
   },
   'module.sheets': {
     title: 'Module sheets',

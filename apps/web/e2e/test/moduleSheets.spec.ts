@@ -1,4 +1,4 @@
-// Modules and sheets, end to end: Save selection as module says which
+// Modules and sheets, end to end: Make a module (saved to the library) says which
 // sheets the module uses and keeps them (solid, so the module editor shows
 // its parts); adding it to a layout without one of its sheets asks "Where
 // should these go?" (the picked sheet, or a new sheet by that name), and
@@ -73,16 +73,17 @@ test('a module keeps its sheets, and adding it asks where a missing sheet goes',
   await placePart(page);
   await expect.poll(async () => (await bricks(page)).length).toBe(3);
 
-  // Save selection as module: it says which sheets, and keeps them.
+  // Make a module and save it to the library: it says which sheets, and keeps them.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press('Control+a');
-  await mapMenu(page, 'Modules & sets', 'Save selection as module…');
-  await expect(page.getByTestId('module-sheets')).toContainText('This module uses 2 sheets: Layout, Buildings.');
+  await mapMenu(page, 'Modules & sets', 'Make a module…');
+  const make = page.getByRole('dialog', { name: 'Make a module' });
+  await make.getByLabel('Module name').fill('Main street');
+  await make.getByTestId('make-module-also-save').check();
+  await expect(make.getByTestId('module-sheets')).toContainText('This module uses 2 sheets: Layout, Buildings.');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/save-module-sheets.png` });
-  await page.getByPlaceholder('My module').fill('Main street');
-  const saved = page.waitForEvent('dialog');
-  await page.getByRole('button', { name: 'Save', exact: true }).last().click();
-  await (await saved).accept();
+  await make.getByRole('button', { name: 'Make and save' }).click();
+  await expect(make).toHaveCount(0, { timeout: 15000 });
   const modules = (await (await page.request.get('/api/modules')).json()) as { modules: { id: string; title: string }[] };
   const moduleId = modules.modules.find((m) => m.title === 'Main street')!.id;
 
