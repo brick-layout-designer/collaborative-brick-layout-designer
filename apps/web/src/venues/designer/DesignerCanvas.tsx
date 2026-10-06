@@ -121,17 +121,17 @@ export function DesignerCanvas({
     return () => ro.disconnect();
   }, []);
   // Fit the venue on open, and again when the space for it changes (the
-  // panels settle, a tablet turns) until someone pans or zooms: the first
-  // size measured can be before the layout settles, which left a tablet
-  // showing one corner of the room.
-  const autoFit = useRef<{ view: View; w: number; h: number } | null>(null);
+  // panels settle, a tablet turns) until someone pans, zooms or draws: the
+  // first size measured can be before the layout settles, which left a
+  // tablet showing one corner of the room.
+  const autoFit = useRef<{ view: View; venue: Venue; w: number; h: number } | null>(null);
   useEffect(() => {
     if (size.w <= 0) return;
     const auto = autoFit.current;
-    const untouched = !!auto && view === auto.view;
+    const untouched = !!auto && view === auto.view && venue === auto.venue;
     if (view && !(untouched && (auto.w !== size.w || auto.h !== size.h))) return;
     const next = fitView(venue, size.w, size.h);
-    autoFit.current = { view: next, w: size.w, h: size.h };
+    autoFit.current = { view: next, venue, w: size.w, h: size.h };
     setView(next);
   }, [view, size, venue, setView]);
   useEffect(() => {
