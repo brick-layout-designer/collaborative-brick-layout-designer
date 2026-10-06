@@ -66,6 +66,11 @@ test('a trusted club reviews its members’ shares itself; untrusted, the site r
     await ada.page.getByRole('tab', { name: 'Review' }).click();
     await expect(ada.page.getByText('Nothing waiting.')).toBeVisible();
     await streamOpen(ada.page);
+    // …and her Clubs list in another tab.
+    const adaClubs = await ada.page.context().newPage();
+    await adaClubs.goto('/orgs');
+    await streamOpen(adaClubs);
+    await expect(adaClubs.getByTestId('club-review-waiting')).toHaveCount(0);
 
     // Mel shares a club module from Home: it goes to the club's own review.
     await mel.page.goto('/');
@@ -87,8 +92,13 @@ test('a trusted club reviews its members’ shares itself; untrusted, the site r
     // Ada's open Review tab shows it, live; she approves it.
     const waiting = ada.page.getByTestId('club-review-item').filter({ hasText: `Bench ${ts}` });
     await expect(waiting).toContainText('Sent by Mel Member', { timeout: 10000 });
+    // The count shows live on the Review tab and in her Clubs list.
+    await expect(ada.page.getByTestId('review-count')).toHaveText('1');
+    await expect(adaClubs.getByTestId('club-review-waiting')).toHaveText('1 share to review');
     await waiting.getByRole('button', { name: `Approve Bench ${ts}` }).click();
     await expect(waiting).toHaveCount(0);
+    await expect(ada.page.getByTestId('review-count')).toHaveCount(0);
+    await expect(adaClubs.getByTestId('club-review-waiting')).toHaveCount(0);
     await expect(ada.page.getByTestId('club-published').filter({ hasText: `Bench ${ts}` })).toContainText('Public');
 
     // Vic sees it in the Catalog, with the badge.

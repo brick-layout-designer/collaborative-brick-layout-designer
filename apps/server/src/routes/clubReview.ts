@@ -15,7 +15,7 @@
 // All bodies are JSON. Every change is audit-logged.
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, desc, eq, inArray, isNotNull, like, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, like, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
@@ -48,6 +48,38 @@ async function reviewer(req: FastifyRequest<{ Params: { slug: string } }>): Prom
   if (!atLeast(m.role, 'manager')) return { code: 403, body: { error: 'forbidden' } };
   if (!org.trusted) return { code: 403, body: { error: 'club_not_trusted' } };
   return { user, org };
+}
+
+/**
+ * How much is waiting in a trusted club's review queue: members' shares
+ * (new versions), collection texts and new cover pictures, the same
+ * things its Review tab lists. Shown on "Manage the club", the Review tab
+ * and the Clubs list, for its admins and managers.
+ */
+export async function clubReviewCount(orgId: string): Promise<number> {
+  const versions = await db
+    .select({ n: count() })
+    .from(schema.catalogItemVersions)
+    .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
+    .where(and(eq(schema.catalogItemVersions.status, 'in_review'), eq(schema.catalogItems.ownerOrgId, orgId)))
+    .get();
+  const collections = await db
+    .select({ n: count() })
+    .from(schema.catalogCollections)
+    .where(
+      and(
+        eq(schema.catalogCollections.orgId, orgId),
+        eq(schema.catalogCollections.audience, 'everyone'),
+        or(eq(schema.catalogCollections.status, 'in_review'), and(eq(schema.catalogCollections.status, 'public'), isNotNull(schema.catalogCollections.pending))),
+      ),
+    )
+    .get();
+  const covers = await db
+    .select({ n: count() })
+    .from(schema.catalogItems)
+    .where(and(eq(schema.catalogItems.ownerOrgId, orgId), isNotNull(schema.catalogItems.pendingCoverImageId)))
+    .get();
+  return (versions?.n ?? 0) + (collections?.n ?? 0) + (covers?.n ?? 0);
 }
 
 const isOutcome = (x: unknown): x is Outcome => !!x && typeof x === 'object' && 'code' in x;

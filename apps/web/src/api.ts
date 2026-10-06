@@ -1741,6 +1741,8 @@ export interface OrgSummary {
   trusted?: boolean;
   /** May I save new things to it? False when only its admins and managers may add (older servers leave it out). */
   canAdd?: boolean;
+  /** A trusted club's admins and managers: how much waits in its review queue. */
+  pendingReviews?: number;
 }
 
 export interface ModerationClub {

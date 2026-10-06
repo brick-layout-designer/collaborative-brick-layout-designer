@@ -62,8 +62,14 @@ function OrgDetail({ slug }: { slug: string }) {
               className="tap-target inline-flex shrink-0 items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
             >
               Manage the club
-              {(org.pendingRequests ?? 0) > 0 && (
-                <span className="ml-2 rounded-full bg-accent-ink px-1.5 text-xs text-accent">{org.pendingRequests}</span>
+              {(org.pendingRequests ?? 0) + (org.pendingReviews ?? 0) > 0 && (
+                <span
+                  data-testid="manage-count"
+                  className="ml-2 rounded-full bg-accent-ink px-1.5 text-xs text-accent"
+                  aria-label={waitingWords(org.pendingRequests ?? 0, org.pendingReviews ?? 0)}
+                >
+                  {(org.pendingRequests ?? 0) + (org.pendingReviews ?? 0)}
+                </span>
               )}
             </Link>
           )}
@@ -233,4 +239,13 @@ function OutsideView({ slug, user }: { slug: string; user: Me }) {
       </main>
     </div>
   );
+}
+
+/** "2 requests to join, 1 share to review", for the badge on Manage the club. */
+export function waitingWords(requests: number, reviews: number): string {
+  const parts = [
+    requests ? `${requests} ${requests === 1 ? 'request' : 'requests'} to join` : '',
+    reviews ? `${reviews} ${reviews === 1 ? 'share' : 'shares'} to review` : '',
+  ].filter(Boolean);
+  return parts.join(', ');
 }

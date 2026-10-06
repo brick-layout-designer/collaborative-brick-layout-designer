@@ -55,8 +55,9 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
     ['catalog-item'], ['catalog-item-snapshot'], ['catalog-item-venue'], ['layouts'], ['venues'],
     // Collections: an item leaving the catalog changes them too.
     ...COLLECTIONS, ['moderation-collections'],
-    // A trusted club's own queue, and who's trusted.
-    ['club-review'], ['moderation-clubs'],
+    // A trusted club's own queue, who's trusted, and how much waits
+    // (on Manage the club and the Clubs list).
+    ['club-review'], ['moderation-clubs'], ['org'], ['orgs'],
   ],
   club: (h) => [
     ['orgs'], ['org'], ['org-members'], ['org-join-requests'], ['join-request-count'], ['org-audit'],

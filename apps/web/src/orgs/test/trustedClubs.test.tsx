@@ -103,3 +103,12 @@ describe('live updates', () => {
     expect(hintsForWrite('POST', '/api/moderation/clubs/arklug/trust').map((h) => h.kind)).toEqual(['catalog']);
   });
 });
+
+describe('Manage the club badge words', () => {
+  it('says what waits', async () => {
+    const { waitingWords } = await import('../OrgDetailPage');
+    expect(waitingWords(2, 1)).toBe('2 requests to join, 1 share to review');
+    expect(waitingWords(0, 3)).toBe('3 shares to review');
+    expect(waitingWords(1, 0)).toBe('1 request to join');
+  });
+});
