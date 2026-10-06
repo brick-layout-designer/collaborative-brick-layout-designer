@@ -162,6 +162,27 @@ describe('flex move on a synthetic chain (always runs)', () => {
     }
   });
 
+  it('ends when links go round in a circle away from the grabbed piece (the desktop crash)', () => {
+    // f2 and f3 joined at both ends to each other (one turned onto the
+    // other), entered by a stale one-way link from f1: the chain from f1
+    // went f2, f3, f2, f3... for ever. Hand-set links, as a corrupt layout
+    // would have them.
+    const layer = chain();
+    const [, f1, f2, f3] = layer.bricks;
+    for (const b of layer.bricks) for (const c of b.connexions) c.linkedTo = '';
+    f1!.connexions[1]!.linkedTo = 'f2_0';
+    f2!.connexions[0]!.linkedTo = 'f3_0';
+    f3!.connexions[0]!.linkedTo = 'f2_0';
+    f2!.connexions[1]!.linkedTo = 'f3_1';
+    f3!.connexions[1]!.linkedTo = 'f2_1';
+    const flex = FlexMove.start(layer, new Set(['f1', 'f2', 'f3']), 'f1', { x: 2, y: 0 }, catalog);
+    if (flex) {
+      expect(flex.currentState().length).toBeLessThanOrEqual(layer.bricks.length);
+      flex.moveTo({ x: 3, y: 2 }, 0, false);
+      flex.restore();
+    }
+  });
+
   it('a selection without a hinge is not flexible; restore undoes the bend', () => {
     const layer = chain();
     expect(FlexMove.start(layer, new Set(['s']), 's', { x: 0, y: 0 }, catalog)).toBeNull();
