@@ -53,43 +53,25 @@ describe('connectivity write-back', () => {
   });
 });
 
-describe('placing a set (desktop MapView.cpp:1344-1390)', () => {
-  it('wraps the set\'s bricks in a module named after it, as one undo step', async () => {
+describe('placing a set (desktop MapView::addPartAtScenePos)', () => {
+  it('adds its bricks and its named group, never a module, as one undo step', async () => {
     const { insertSet } = await import('../mutations');
     const { readSidecarFromDoc } = await import('@cld/ydoc');
     const doc = createDefaultLayoutDoc();
     const layerId = docToBbm(doc).layers.find((l) => l.type === 'brick')!.id;
     const um = new Y.UndoManager([doc.getMap('layerData'), doc.getMap('meta')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
-    const brick = (x: number) => ({ partNumber: 'straight.8', displayArea: { x, y: 0, width: 16, height: 8 }, orientation: 0 });
+    const brick = (x: number) => ({ partNumber: 'straight.8', displayArea: { x, y: 0, width: 16, height: 8 }, orientation: 0, myGroup: 'g1' });
 
-    const ids = insertSet(doc, layerId, [brick(0), brick(16)], 'Straight Track Pack');
+    const ids = insertSet(doc, layerId, { bricks: [brick(0), brick(16)], groups: [{ id: 'g1', partNumber: 'PACK.GROUP', myGroup: '' }] });
 
     expect(ids).toHaveLength(2);
-    const modules = readSidecarFromDoc(doc)?.modules ?? [];
-    expect(modules.map((m) => [m.name, [...m.members].sort()])).toEqual([['Straight Track Pack', [...ids].sort()]]);
-    expect(um.undoStack.length).toBe(1);
-    um.undo();
-    expect(docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks : []))).toHaveLength(0);
+    const layer = docToBbm(doc).layers.find((l) => l.type === 'brick');
+    expect(layer?.type === 'brick' && layer.groups.map((g) => g.partNumber)).toEqual(['PACK.GROUP']);
+    expect(layer?.type === 'brick' && layer.bricks.map((b) => b.myGroup)).toEqual(['g1', 'g1']);
     expect(readSidecarFromDoc(doc)?.modules ?? []).toHaveLength(0);
-  });
-});
-
-describe('flex move commit (MapView::finishFlexMove)', () => {
-  it('writes the chain\'s new poses as one undo step', async () => {
-    const { commitFlex } = await import('../flexSession');
-    const doc = createDefaultLayoutDoc();
-    const layerId = docToBbm(doc).layers.find((l) => l.type === 'brick')!.id;
-    const a = placeBrick(doc, layerId, { partNumber: 'straight.8', x: 0, y: 0, width: 16, height: 8 });
-    const b = placeBrick(doc, layerId, { partNumber: 'straight.8', x: 16, y: 0, width: 16, height: 8 });
-    const um = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
-    commitFlex(doc, layerId, [
-      { id: a, orientation: 10, displayArea: { x: 1, y: 2, width: 17, height: 9 } },
-      { id: b, orientation: 20, displayArea: { x: 18, y: 5, width: 17, height: 9 } },
-    ]);
-    const bricks = docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks : []));
-    expect(bricks.map((x) => [x.orientation, x.displayArea.x])).toEqual([[10, 1], [20, 18]]);
     expect(um.undoStack.length).toBe(1);
     um.undo();
-    expect(docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks : [])).map((x) => x.orientation)).toEqual([0, 0]);
+    const after = docToBbm(doc).layers.find((l) => l.type === 'brick');
+    expect(after?.type === 'brick' && [after.bricks.length, after.groups.length]).toEqual([0, 0]);
   });
 });

@@ -7,6 +7,7 @@ import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { shapeSelectionIds, useEditorStore, type Tool } from '../editorStore';
+import { groupMates } from '../sets';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import {
@@ -1117,14 +1118,12 @@ function hullColorToCss(c: import('@cld/model').ColorSpec): string {
  */
 function collectGroupMembers(map: BbmMap, groupId: string): string[] {
   if (!groupId) return [];
-  const out: string[] = [];
+  // Every brick under the same outermost group (a set inside a user's group too).
   for (const layer of map.layers) {
-    if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      if (b.myGroup === groupId) out.push(b.id);
-    }
+    if (layer.type !== 'brick' || !layer.groups.some((g) => g.id === groupId)) continue;
+    return groupMates(layer, { id: '', myGroup: groupId }).filter((id) => id !== '');
   }
-  return out;
+  return [];
 }
 
 /**

@@ -9,12 +9,13 @@
 // y-websocket clientID; for Phase 3 single-user, LOCAL_ORIGIN is enough.
 
 import * as Y from 'yjs';
-import type { ColorSpec, FontSpec, RectangleF } from '@cld/model';
+import type { ColorSpec, FontSpec, Group, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SavedView, SidecarModule } from '@cld/bbm';
 import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
 import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
+import { cloneGroups, topGroupId, type ExpandedSet, type SetModule } from './sets';
 
 export interface BrickInsertSpec {
   partNumber: string;
@@ -231,8 +232,11 @@ export function insertBricks(
     displayArea: { x: number; y: number; width: number; height: number };
     orientation?: number;
     altitude?: number;
+    /** The group (set) it is in, already in the layer or added with it. */
+    myGroup?: string;
   }>,
   offset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+  groups: readonly Group[] = [],
 ): string[] {
   if (bricks.length === 0) return [];
   const ids: string[] = [];
@@ -252,13 +256,23 @@ export function insertBricks(
         width: b.displayArea.width,
         height: b.displayArea.height,
       });
-      yBrick.set('myGroup', '');
+      yBrick.set('myGroup', b.myGroup ?? '');
       yBrick.set('partNumber', b.partNumber);
       yBrick.set('orientation', b.orientation ?? 0);
       yBrick.set('activeConnectionPointIndex', 0);
       yBrick.set('altitude', b.altitude ?? 0);
       yBrick.set('connexions', []);
       yBricks.push([yBrick]);
+    }
+    const yGroups = layerData.get('groups');
+    if (groups.length > 0 && yGroups instanceof Y.Array) {
+      for (const g of groups) {
+        const yGroup = new Y.Map<unknown>();
+        yGroup.set('id', g.id);
+        if (g.partNumber !== undefined) yGroup.set('partNumber', g.partNumber);
+        yGroup.set('myGroup', g.myGroup ?? '');
+        yGroups.push([yGroup]);
+      }
     }
   }, LOCAL_ORIGIN);
   return ids;
@@ -332,10 +346,11 @@ export function insertBricksAcrossLayers(
   doc: Y.Doc,
   perLayer: Map<string, Parameters<typeof insertBricks>[2]>,
   offset: { dx: number; dy: number } = { dx: 0, dy: 0 },
+  groupsPerLayer: ReadonlyMap<string, readonly Group[]> = new Map(),
 ): string[] {
   const ids: string[] = [];
   doc.transact(() => {
-    for (const [layerId, bricks] of perLayer) ids.push(...insertBricks(doc, layerId, bricks, offset));
+    for (const [layerId, bricks] of perLayer) ids.push(...insertBricks(doc, layerId, bricks, offset, groupsPerLayer.get(layerId) ?? []));
   }, LOCAL_ORIGIN);
   return ids;
 }
@@ -402,44 +417,113 @@ export function rotateBricksAboutCentroid(
   }, LOCAL_ORIGIN);
 }
 
+/** A layer's groups and bricks as they are in the doc. */
+function readGrouping(layerData: Y.Map<unknown>): { yBricks: Y.Array<unknown>; yGroups: Y.Array<unknown>; groups: Group[] } | null {
+  const yBricks = layerData.get('bricks');
+  const yGroups = layerData.get('groups');
+  if (!(yBricks instanceof Y.Array) || !(yGroups instanceof Y.Array)) return null;
+  const groups: Group[] = [];
+  yGroups.forEach((g) => {
+    if (!(g instanceof Y.Map)) return;
+    const partNumber = g.get('partNumber') as string | undefined;
+    groups.push({ id: g.get('id') as string, ...(partNumber ? { partNumber } : {}), myGroup: (g.get('myGroup') as string) || '' });
+  });
+  return { yBricks, yGroups, groups };
+}
+
 /**
- * Group a multi-layer selection — desktop `GroupBricksCommand` creates
- * ONE group per layer (EditCommands.cpp:298-340) and needs at least two
- * bricks in total. Returns the new group ids.
+ * Group a multi-layer selection — BlueBrick's GroupItems, the desktop's
+ * GroupBricksCommand: per layer, the selected bricks' outermost items (a
+ * set stays whole inside) go into one new group, when there are at least
+ * two items in all. Returns the new group ids.
  */
 export function groupBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string[]>): string[] {
-  let total = 0;
-  for (const ids of byLayer.values()) total += ids.length;
-  if (total < 2) return [];
   const groupIds: string[] = [];
   doc.transact(() => {
+    const layers: { g: NonNullable<ReturnType<typeof readGrouping>>; topGroups: Set<string>; loose: Y.Map<unknown>[] }[] = [];
+    let items = 0;
     for (const [layerId, ids] of byLayer) {
       const layerData = doc.getMap('layerData').get(layerId);
       if (!(layerData instanceof Y.Map)) continue;
-      const yBricks = layerData.get('bricks');
-      const yGroups = layerData.get('groups');
-      if (!(yBricks instanceof Y.Array) || !(yGroups instanceof Y.Array)) continue;
-      const groupId = makeId();
-      const g = new Y.Map<unknown>();
-      g.set('id', groupId);
-      yGroups.push([g]);
-      groupIds.push(groupId);
+      const g = readGrouping(layerData);
+      if (!g) continue;
       const idSet = new Set(ids);
-      for (let i = 0; i < yBricks.length; i++) {
-        const b = yBricks.get(i);
-        if (b instanceof Y.Map && idSet.has(b.get('id') as string)) b.set('myGroup', groupId);
-      }
+      const topGroups = new Set<string>();
+      const loose: Y.Map<unknown>[] = [];
+      g.yBricks.forEach((b) => {
+        if (!(b instanceof Y.Map) || !idSet.has(b.get('id') as string)) return;
+        const top = topGroupId(g.groups, (b.get('myGroup') as string) || '');
+        if (top) topGroups.add(top);
+        else loose.push(b);
+      });
+      items += topGroups.size + loose.length;
+      if (topGroups.size + loose.length > 0) layers.push({ g, topGroups, loose });
+    }
+    // At least two items in all (desktop: one new group per layer).
+    if (items < 2) return;
+    for (const { g, topGroups, loose } of layers) {
+      const groupId = makeId();
+      const yGroup = new Y.Map<unknown>();
+      yGroup.set('id', groupId);
+      g.yGroups.push([yGroup]);
+      groupIds.push(groupId);
+      g.yGroups.forEach((y) => {
+        if (y instanceof Y.Map && topGroups.has(y.get('id') as string)) y.set('myGroup', groupId);
+      });
+      for (const b of loose) b.set('myGroup', groupId);
     }
   }, LOCAL_ORIGIN);
   return groupIds;
 }
 
-/** Ungroup a multi-layer selection in one transaction. */
-export function ungroupBricksAcrossLayers(doc: Y.Doc, byLayer: Map<string, string[]>): void {
-  if (byLayer.size === 0) return;
+/**
+ * Ungroup a multi-layer selection in one transaction — BlueBrick's
+ * UngroupItems: the selected bricks' outermost groups that may be split
+ * are removed, their items going up a level. A set `canUngroup` refuses
+ * (flex.group's <CanUngroup>false) stays whole. Returns how many refused.
+ */
+export function ungroupBricksAcrossLayers(
+  doc: Y.Doc,
+  byLayer: Map<string, string[]>,
+  canUngroup: (group: Group) => boolean = () => true,
+): { refused: number } {
+  let refused = 0;
+  if (byLayer.size === 0) return { refused };
   doc.transact(() => {
-    for (const [layerId, ids] of byLayer) ungroupBricks(doc, layerId, ids);
+    for (const [layerId, ids] of byLayer) {
+      const layerData = doc.getMap('layerData').get(layerId);
+      if (!(layerData instanceof Y.Map)) continue;
+      const g = readGrouping(layerData);
+      if (!g) continue;
+      const idSet = new Set(ids);
+      const tops = new Set<string>();
+      g.yBricks.forEach((b) => {
+        if (b instanceof Y.Map && idSet.has(b.get('id') as string)) {
+          const top = topGroupId(g.groups, (b.get('myGroup') as string) || '');
+          if (top) tops.add(top);
+        }
+      });
+      for (const id of tops) {
+        const group = g.groups.find((x) => x.id === id)!;
+        if (!canUngroup(group)) {
+          refused++;
+          continue;
+        }
+        const up = group.myGroup ?? '';
+        g.yGroups.forEach((y) => {
+          if (y instanceof Y.Map && y.get('myGroup') === id) y.set('myGroup', up);
+        });
+        g.yBricks.forEach((b) => {
+          if (b instanceof Y.Map && b.get('myGroup') === id) b.set('myGroup', up);
+        });
+        for (let i = g.yGroups.length - 1; i >= 0; i--) {
+          const y = g.yGroups.get(i);
+          if (y instanceof Y.Map && y.get('id') === id) g.yGroups.delete(i, 1);
+        }
+      }
+    }
   }, LOCAL_ORIGIN);
+  return { refused };
 }
 
 /**
@@ -1850,22 +1934,48 @@ export function createSidecarModule(doc: Y.Doc, name: string, memberIds: string[
 }
 
 /**
- * Place a set's bricks and wrap them in a sidecar module named after the
- * set, as one undo step — desktop places a set this way so it moves as a
- * unit (MapView.cpp:1344-1390). Returns the new brick ids.
+ * Place a set as BlueBrick does: its bricks and its groups (one named
+ * group, nested sets as child groups), never a module — the desktop's
+ * MapView::addPartAtScenePos. One undo step; returns the new brick ids.
  */
-export function insertSet(
-  doc: Y.Doc,
-  layerId: string,
-  bricks: Parameters<typeof insertBricks>[2],
-  setName: string,
-): string[] {
+export function insertSet(doc: Y.Doc, layerId: string, set: ExpandedSet): string[] {
   let ids: string[] = [];
   doc.transact(() => {
-    ids = insertBricks(doc, layerId, bricks, { dx: 0, dy: 0 });
-    createSidecarModule(doc, setName, ids);
+    ids = insertBricks(doc, layerId, set.bricks, { dx: 0, dy: 0 }, set.groups);
   }, LOCAL_ORIGIN);
   return ids;
+}
+
+/**
+ * Modules older versions made of placed sets become sets again: each
+ * module is removed and its parts get the set's groups — the desktop's
+ * makeSetsCommand. One undo step.
+ */
+export function makeSetsOfModules(doc: Y.Doc, sets: readonly SetModule[]): void {
+  if (sets.length === 0) return;
+  doc.transact(() => {
+    const gone = new Set(sets.map((s) => s.moduleId));
+    const cache = readSidecarCache(doc);
+    writeSidecarCache(doc, { ...cache, modules: getSidecarModules(cache).filter((m) => !gone.has(m.id)) });
+    for (const set of sets) {
+      const layerData = doc.getMap('layerData').get(set.layerId);
+      if (!(layerData instanceof Y.Map)) continue;
+      const g = readGrouping(layerData);
+      if (!g) continue;
+      for (const group of set.groups) {
+        const yGroup = new Y.Map<unknown>();
+        yGroup.set('id', group.id);
+        if (group.partNumber !== undefined) yGroup.set('partNumber', group.partNumber);
+        yGroup.set('myGroup', group.myGroup ?? '');
+        g.yGroups.push([yGroup]);
+      }
+      g.yBricks.forEach((b) => {
+        if (!(b instanceof Y.Map)) return;
+        const to = set.parentOf.get(b.get('id') as string);
+        if (to) b.set('myGroup', to);
+      });
+    }
+  }, LOCAL_ORIGIN);
 }
 
 /** One source brick layer of a module file — desktop `LayerBatch`. */
@@ -1876,7 +1986,10 @@ export interface ModuleBatch {
     displayArea: RectangleF;
     orientation?: number;
     altitude?: number;
+    myGroup?: string;
   }>;
+  /** The source layer's groups: the sets in the module stay sets. */
+  groups?: Group[];
 }
 
 /**
@@ -1912,7 +2025,8 @@ export function importBricksAsModule(
         layerId = addLayer(doc, 'brick');
         renameLayer(doc, layerId, name);
       }
-      ids.push(...insertBricks(doc, layerId, batch.bricks, opts.offset));
+      const copied = cloneGroups(batch.groups ?? [], batch.bricks, makeId);
+      ids.push(...insertBricks(doc, layerId, copied.bricks, opts.offset, copied.groups));
     }
     const cache = readSidecarCache(doc);
     const mod: SidecarModule = {
@@ -2116,7 +2230,13 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
         const b = bricks.get(i);
         if (b instanceof Y.Map && idSet.has(b.get('id') as string)) snap.push(b);
       }
-      for (const src of snap) {
+      // The sets in the module stay sets: their groups come along.
+      const copied = cloneGroups(
+        readGrouping(layerData)?.groups ?? [],
+        snap.map((src) => ({ src, myGroup: (src.get('myGroup') as string) || '' })),
+        makeId,
+      );
+      for (const { src, myGroup } of copied.bricks) {
         const area = src.get('displayArea') as RectangleF;
         const newId = makeId();
         newMemberIds.push(newId);
@@ -2127,9 +2247,19 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
         yNew.set('orientation', src.get('orientation') ?? 0);
         yNew.set('altitude', src.get('altitude') ?? 0);
         yNew.set('activeConnectionPointIndex', 0);
-        yNew.set('myGroup', '');
+        yNew.set('myGroup', myGroup);
         yNew.set('connexions', []);
         bricks.push([yNew]);
+      }
+      const yGroups = layerData.get('groups');
+      if (yGroups instanceof Y.Array) {
+        for (const g of copied.groups) {
+          const yGroup = new Y.Map<unknown>();
+          yGroup.set('id', g.id);
+          if (g.partNumber !== undefined) yGroup.set('partNumber', g.partNumber);
+          yGroup.set('myGroup', g.myGroup ?? '');
+          yGroups.push([yGroup]);
+        }
       }
     }
 

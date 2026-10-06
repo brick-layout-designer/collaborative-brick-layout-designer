@@ -15,7 +15,7 @@ export type PartGeom = Pick<PartWire, 'pxPerStud' | 'hullPts' | 'spriteSize'> & 
   connections?: PartWire['connections'];
 };
 
-type Pt = { x: number; y: number };
+export type Pt = { x: number; y: number };
 
 export function rotated(v: Pt, degrees: number): Pt {
   const r = (degrees * Math.PI) / 180;

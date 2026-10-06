@@ -103,8 +103,12 @@ import {
   rotateBricksAboutCentroid,
   ungroupBricksAcrossLayers,
   setVenue,
+  makeId,
+  makeSetsOfModules,
   type ModuleBatch,
 } from './mutations';
+import { cloneGroups, expandSet, expandToGroups, findSetModules, groupChain, ungroupState } from './sets';
+import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
 import { hasClipboardBricks, pasteOffset, pasteTarget, readBricksFromClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
@@ -1586,7 +1590,10 @@ function Canvas({
   // Modules are picked as one piece, and while one is edited only its
   // parts can be picked (moduleEdit.ts shapeSelection).
   useEffect(() => {
-    setSelectionShaper((ids) => shapeSelection(ids, readSidecarFromDoc(doc)?.modules ?? [], useEditorStore.getState().editingModuleId));
+    // A set (or a user's group) picks whole, then modules as before.
+    setSelectionShaper((ids) =>
+      shapeSelection(expandToGroups(ids, mapRef.current), readSidecarFromDoc(doc)?.modules ?? [], useEditorStore.getState().editingModuleId),
+    );
     return () => setSelectionShaper(null);
   }, [doc]);
   // The module being edited was deleted (here or by someone else), or the
@@ -1897,6 +1904,25 @@ function Canvas({
     // editor/snap.ts `lookupPart`.
     return indexParts(catalog.data?.parts);
   }, [catalog.data]);
+  // Older versions kept a placed set (flex track, a train set...) as a
+  // module. Once the layout and the parts are in, a module that is still
+  // exactly that set becomes a set again, one undo step, with a notice.
+  const setsCheckedRef = useRef<Y.Doc | null>(null);
+  useEffect(() => {
+    if (isViewer || !map || partsByKey.size === 0 || setsCheckedRef.current === doc) return;
+    if (!map.layers.some((l) => l.type === 'brick' && l.bricks.length > 0)) return;
+    setsCheckedRef.current = doc;
+    const sets = findSetModules(map, readSidecarFromDoc(doc)?.modules ?? [], partsByKey, makeId);
+    if (sets.length === 0) return;
+    makeSetsOfModules(doc, sets);
+    useEditorStore
+      .getState()
+      .showNotice(
+        `${sets.length === 1 ? 'A set such as flex track was' : `${sets.length} sets such as flex track were`} kept as ${sets.length === 1 ? 'a module' : 'modules'} by an older version. ${sets.length === 1 ? 'It is now a set' : 'They are now sets'}: each one selects, moves and counts as one part, as in BlueBrick. Undo (Ctrl+Z) puts the modules back.`,
+        'done',
+        12000,
+      );
+  }, [doc, map, partsByKey, isViewer]);
   const partOf = (partNumber: string) => partsByKey.get(partNumber.toLowerCase());
   // Ask for every picture the shown layout needs at once, so the loading
   // card counts against the real total ("132 of 480") from the start.
@@ -2401,7 +2427,7 @@ function Canvas({
       if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
         e.preventDefault();
         if (isViewer) return;
-        if (e.shiftKey) ungroupBricksAcrossLayers(doc, selectionByLayer());
+        if (e.shiftKey) ungroupSelection();
         else groupBricksAcrossLayers(doc, selectionByLayer());
         return;
       }
@@ -2869,7 +2895,10 @@ function Canvas({
             orientation: b.orientation,
             altitude: b.altitude,
             activeConnectionPointIndex: b.activeConnectionPointIndex,
+            myGroup: b.myGroup,
           },
+          // The sets (groups) it is in, so a pasted set stays a set.
+          groups: groupChain(layer.groups, b.myGroup),
         });
       }
     }
@@ -2881,6 +2910,17 @@ function Canvas({
     if (selection.length === 0) return;
     deleteBricksAcrossLayers(doc, selectionByLayer());
     setSelection([]);
+  }
+
+  /** A set may be split unless its <CanUngroup> is false (flex track). */
+  function canUngroupSet(g: BrickGroup): boolean {
+    return !g.partNumber || partsByKey.get(g.partNumber.toLowerCase())?.canUngroup !== false;
+  }
+
+  /** Ungroup, keeping whole the sets that are always used whole (flex track). */
+  function ungroupSelection(): void {
+    const { refused } = ungroupBricksAcrossLayers(doc, selectionByLayer(), canUngroupSet);
+    if (refused > 0) useEditorStore.getState().showStatusMessage("This set is always used whole, so it can't be ungrouped", 4000);
   }
 
   /** The selection's brick ids grouped by the layer that holds them. */
@@ -2960,13 +3000,19 @@ function Canvas({
     for (const name of layerOrder) {
       const targetLayerId = findOrCreateBrickLayerByName(name);
       if (!targetLayerId) continue;
-      const bricks = byLayerName.get(name)!.map((e) => ({
-        partNumber: e.brick.partNumber,
-        displayArea: { ...e.brick.displayArea },
-        orientation: e.brick.orientation,
-        altitude: e.brick.altitude,
-      }));
-      const ids = insertBricks(doc, targetLayerId, bricks, { dx, dy });
+      const layerEntries = byLayerName.get(name)!;
+      const copied = cloneGroups(
+        layerEntries.flatMap((e) => e.groups ?? []),
+        layerEntries.map((e) => ({
+          partNumber: e.brick.partNumber,
+          displayArea: { ...e.brick.displayArea },
+          orientation: e.brick.orientation,
+          altitude: e.brick.altitude,
+          myGroup: e.brick.myGroup ?? '',
+        })),
+        makeId,
+      );
+      const ids = insertBricks(doc, targetLayerId, copied.bricks, { dx, dy }, copied.groups);
       newIds.push(...ids);
     }
     absorbIntoEditedModule(doc, newIds);
@@ -2981,6 +3027,7 @@ function Canvas({
     if (!map) return;
     const sel = new Set(selection);
     const perLayer = new Map<string, Parameters<typeof insertBricks>[2]>();
+    const groupsOf = new Map(map.layers.flatMap((l) => (l.type === 'brick' ? [[l.id, l.groups] as const] : [])));
     for (const layer of map.layers) {
       if (layer.type !== 'brick') continue;
       const bricks = layer.bricks
@@ -2990,6 +3037,7 @@ function Canvas({
           displayArea: { ...b.displayArea },
           orientation: b.orientation,
           altitude: b.altitude,
+          myGroup: b.myGroup,
         }));
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
@@ -3002,7 +3050,14 @@ function Canvas({
     for (const { layerId, brick } of keepWithinBudget(flat, (f) => f.brick.partNumber)) {
       perLayer.set(layerId, [...(perLayer.get(layerId) ?? []), brick]);
     }
-    const ids = insertBricksAcrossLayers(doc, perLayer, offset);
+    // The sets in the selection stay sets: their groups come along.
+    const groupsPerLayer = new Map<string, BrickGroup[]>();
+    for (const [layerId, bricks] of perLayer) {
+      const copied = cloneGroups(groupsOf.get(layerId) ?? [], bricks, makeId);
+      perLayer.set(layerId, copied.bricks);
+      groupsPerLayer.set(layerId, copied.groups);
+    }
+    const ids = insertBricksAcrossLayers(doc, perLayer, offset, groupsPerLayer);
     absorbIntoEditedModule(doc, ids);
     if (ids.length > 0) setSelection(ids);
   }
@@ -3040,7 +3095,7 @@ function Canvas({
     // subpart-relative offsets the .set.xml declares. Single Yjs
     // transaction so undo unwinds the whole expansion.
     if (meta.kind === 'group' && meta.subparts.length > 0) {
-      await placeSetAt(meta, studX, studY);
+      await placeSetAt(meta, studX, studY, snapOpts);
       return;
     }
 
@@ -3139,62 +3194,62 @@ function Canvas({
   }
 
   /**
-   * Place a `.set` group — port of MapView.cpp:1344-1370. The .set.xml
-   * lists SubPartList children with local positions and angles; as in
-   * BlueBrick's Group constructor each position is the subpart's
-   * displayArea centre (Brick.Center) in set-local studs, and the box is
-   * the subpart's footprint at its angle (placeByAreaCentre) — parts with
-   * an XML hull draw their sprite off that centre.
-   *
-   * Multi-brick placement is wrapped in `insertBricks` so undo unwinds
-   * the whole set as one step.
+   * Place a set as one BlueBrick group (a nested set is a child group),
+   * never a module — the desktop's MapView::addPartAtScenePos. Each
+   * sub-part's XML position is its box centre (BlueBrick's Group
+   * constructor); its free ends snap like a module drop, and its own
+   * joints are linked straight away. One undo step.
    */
-  async function placeSetAt(group: PartWire, studX: number, studY: number) {
+  async function placeSetAt(
+    group: PartWire,
+    studX: number,
+    studY: number,
+    snapOpts: { session?: SnapSession; bypass?: boolean; final?: boolean } = {},
+  ) {
     if (group.subparts.length === 0) return;
     const layerId = resolveBrickLayerForPlacement();
     if (activeLayerId !== layerId) setActiveLayer(layerId);
 
-    const bricks: Array<{
-      partNumber: string;
-      displayArea: { x: number; y: number; width: number; height: number };
-      orientation: number;
-    }> = [];
-    for (const sub of group.subparts) {
-      const subMeta = partsByKey.get(sub.subKey.toLowerCase());
-      // Normalise orientation to (-180, 180].
-      let angle = sub.angle % 360;
-      if (angle > 180) angle -= 360;
-      if (angle <= -180) angle += 360;
-      // Default to a 2×2 placeholder if the subpart isn't catalogued.
-      let wStuds = 2;
-      let hStuds = 2;
-      if (subMeta?.spriteSize) {
-        ({ width: wStuds, height: hStuds } = areaSize(subMeta, angle));
-      } else if (subMeta) {
-        const url = spriteUrlFor(subMeta);
-        if (url) {
-          try {
-            const img = await ensureSprite(url);
-            wStuds = img.naturalWidth / subMeta.pxPerStud;
-            hStuds = img.naturalHeight / subMeta.pxPerStud;
-          } catch {
-            /* missing sprite — keep 2x2 fallback */
-          }
+    // Parts without a footprint get their box from their picture.
+    const natural = new Map<string, { width: number; height: number }>();
+    const visit = async (set: PartWire, depth: number): Promise<void> => {
+      for (const sub of set.subparts) {
+        const meta = partsByKey.get(sub.subKey.toLowerCase());
+        if (!meta) continue;
+        if (meta.kind === 'group') {
+          if (depth < 16) await visit(meta, depth + 1);
+          continue;
+        }
+        const url = meta.spriteSize ? '' : spriteUrlFor(meta);
+        if (!url || natural.has(meta.key)) continue;
+        try {
+          const img = await ensureSprite(url);
+          natural.set(meta.key, { width: img.naturalWidth / meta.pxPerStud, height: img.naturalHeight / meta.pxPerStud });
+        } catch {
+          /* missing sprite — keep the 2x2 placeholder */
         }
       }
-      const cx = studX + sub.x;
-      const cy = studY + sub.y;
-      bricks.push({
-        partNumber: subMeta ? subMeta.key : sub.subKey.toLowerCase(),
-        displayArea: { x: cx - wStuds / 2, y: cy - hStuds / 2, width: wStuds, height: hStuds },
-        orientation: angle,
-      });
-    }
-    // Wrapped in a module named after the set (its English description,
-    // else its key) so it moves as a unit, and linked straight away: set
-    // files carry positions, not links.
+    };
+    await visit(group, 0);
+    const set = expandSet(partsByKey, group.key, { x: studX, y: studY }, 0, makeId, (part, angle) =>
+      part?.spriteSize ? areaSize(part, angle) : (part && natural.get(part.key)) ?? { width: 2, height: 2 },
+    );
+    if (set.bricks.length === 0) return;
+    // Its free ends snap like a module drop's (no grid: the set sits where it was put).
+    const centre = set.bricks.reduce(
+      (acc, b) => ({ x: acc.x + (b.displayArea.x + b.displayArea.width / 2) / set.bricks.length, y: acc.y + (b.displayArea.y + b.displayArea.height / 2) / set.bricks.length }),
+      { x: 0, y: 0 },
+    );
+    const batch: ModuleBatch = { layerName: '', bricks: set.bricks };
+    const drop = moduleDropTranslation([batch], centre, 0, map, partsByKey, {
+      reach: liveSnapReach(),
+      ...(snapOpts.session ? { session: snapOpts.session } : {}),
+      ...(snapOpts.bypass !== undefined ? { bypass: snapOpts.bypass } : {}),
+      final: snapOpts.final ?? true,
+    });
+    const placed = placedModuleBatches([batch], drop, partsByKey)[0]!.bricks.map((b, i) => ({ ...b, myGroup: set.bricks[i]!.myGroup }));
     const setName = group.description || group.key;
-    const newIds = insertSet(doc, layerId, bricks, setName);
+    const newIds = insertSet(doc, layerId, { bricks: placed.map((b) => ({ ...b, orientation: b.orientation ?? 0 })), groups: set.groups });
     recomputeConnectivity(doc, linkCatalog);
     absorbIntoEditedModule(doc, newIds);
     if (newIds.length > 0) setSelection(newIds);
@@ -3744,7 +3799,8 @@ function Canvas({
             if (selection.length > 0) reorderBricks(doc, selection, 'back');
           }}
           onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
-          onUngroup={() => ungroupBricksAcrossLayers(doc, selectionByLayer())}
+          onUngroup={() => ungroupSelection()}
+          ungroup={ungroupState(map, selection, canUngroupSet)}
           onSelectConnected={() => {
             if (!map) return;
             const adj = buildConnectedAdj(map);
@@ -3868,7 +3924,7 @@ function CanvasContextMenu({
   textCellRef, onEditText, rulerRef, brickIdUnderCursor, selectedRulerId, onAttachRuler,
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
   onRotateCCW, onRotateCW, onBringToFront, onSendToBack,
-  onGroup, onUngroup, onSelectConnected, onAddTextHere, onProperties, onSaveModule,
+  onGroup, onUngroup, ungroup, onSelectConnected, onAddTextHere, onProperties, onSaveModule,
   module, editingModuleId, onEditModule, onDoneEditing, onPinModule, onModuleShowName, onModuleLook,
 }: {
   module: import('@cld/bbm').SidecarModule | null;
@@ -3893,6 +3949,8 @@ function CanvasContextMenu({
   onDelete: () => void; onRotateCCW: () => void; onRotateCW: () => void;
   onBringToFront: () => void; onSendToBack: () => void;
   onGroup: () => void; onUngroup: () => void; onSelectConnected: () => void;
+  /** What Ungroup would do: nothing grouped (hidden), split, or only sets always used whole (greyed out). */
+  ungroup: 'nothing' | 'splits' | 'whole';
   onAddTextHere: () => void; onProperties: () => void; onSaveModule: () => void;
 }) {
   const hasSel = selection.length > 0;
@@ -3998,7 +4056,8 @@ function CanvasContextMenu({
     entries.push(item('Send to Back', onSendToBack));
     entries.push(sep('s2'));
     if (multiSel) entries.push(item('Group', onGroup));
-    if (hasSel) entries.push(item('Ungroup', onUngroup, !hasSel));
+    if (ungroup === 'splits') entries.push(item('Ungroup', onUngroup));
+    else if (ungroup === 'whole') entries.push(item('Ungroup (this set is always used whole)', onUngroup, true));
     entries.push(item('Select Connected', onSelectConnected));
     entries.push(sep('s3'));
     entries.push(item('Save as Module…', onSaveModule));

@@ -180,7 +180,26 @@ function writeLayerBrickBody(b: XmlBuilder, layer: LayerBrick): void {
     for (const brick of layer.bricks) writeBrick(b, brick);
     b.close('Bricks');
   }
-  writeGroups(b, layer.groups);
+  writeGroups(b, groupsInUse(layer.groups, layer.bricks));
+}
+
+/**
+ * The groups with a brick under them: a group whose parts were all deleted
+ * is left out, as BlueBrick only writes the groups of the items it has
+ * (and the desktop's LayerIO).
+ */
+function groupsInUse(groups: Group[], bricks: readonly Brick[]): Group[] {
+  if (groups.length === 0) return groups;
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const used = new Set<string>();
+  for (const brick of bricks) {
+    let id: string | undefined = brick.myGroup;
+    while (id && !used.has(id) && byId.has(id)) {
+      used.add(id);
+      id = byId.get(id)!.myGroup;
+    }
+  }
+  return used.size === groups.length ? groups : groups.filter((g) => used.has(g.id));
 }
 
 function writeBrick(b: XmlBuilder, brick: Brick): void {

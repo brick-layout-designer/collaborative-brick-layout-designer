@@ -1,12 +1,12 @@
 // A flex track set (flex.group: a female and a male half joined by a 10°
-// hinge) is placed as a module; its double-click must still bend it, unless
-// the module is pinned.
+// hinge) is placed as one group; its double-click bends it, also inside a
+// module, unless that module is pinned.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import type Konva from 'konva';
 import { createDefaultLayoutDoc, docToBbm, readSidecarFromDoc } from '@cld/ydoc';
 import type { PartWire } from '../../api';
-import { insertSet } from '../mutations';
+import { createSidecarModule, insertSet } from '../mutations';
 import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
 import { startFlexSession } from '../flexSession';
 import { useEditorStore } from '../editorStore';
@@ -37,15 +37,15 @@ function placedSet() {
   const doc = createDefaultLayoutDoc();
   const layerId = docToBbm(doc).layers.find((l) => l.type === 'brick')!.id;
   const area = (cx: number) => ({ x: cx - 1.15, y: -2, width: 2.3, height: 4 });
-  const [female, male] = insertSet(
-    doc,
-    layerId,
-    [
-      { partNumber: '88492.8', displayArea: area(-0.8), orientation: 0 },
-      { partNumber: '88493.8', displayArea: area(0.8), orientation: 0 },
+  const [female, male] = insertSet(doc, layerId, {
+    bricks: [
+      { partNumber: '88492.8', displayArea: area(-0.8), orientation: 0, myGroup: 'flex' },
+      { partNumber: '88493.8', displayArea: area(0.8), orientation: 0, myGroup: 'flex' },
     ],
-    'Flex Track',
-  );
+    groups: [{ id: 'flex', partNumber: 'FLEX.GROUP', myGroup: '' }],
+  });
+  // Someone kept it in a module of their own.
+  createSidecarModule(doc, 'My loop', [female!, male!]);
   recomputeConnectivity(doc, catalogFromParts([FEMALE, MALE]));
   return { doc, layerId, female: female!, male: male!, modules: readSidecarFromDoc(doc)?.modules ?? [] };
 }
@@ -71,7 +71,7 @@ afterEach(() => {
 });
 
 describe('flex move of a placed flex track set', () => {
-  it('starts on the set although it is a module', () => {
+  it('starts on the set, also in a module', () => {
     const s = placedSet();
     expect(s.modules).toHaveLength(1);
     expect(start(s, false)).toBe(true);

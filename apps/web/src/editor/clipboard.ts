@@ -13,7 +13,7 @@
 // Wire format: a JSON object tagged with a fixed `kind` discriminator
 // so we can refuse foreign clipboard payloads.
 
-import type { Brick, RectangleF } from '@cld/model';
+import type { Brick, Group, RectangleF } from '@cld/model';
 
 const CLIPBOARD_KIND = 'cbld-bricks/v1';
 
@@ -21,7 +21,9 @@ interface ClipboardEntry {
   /** Source layer NAME (not id) so paste finds-or-creates the same name. */
   sourceLayerName: string;
   /** Verbatim copy of the brick's serialisable fields. */
-  brick: Pick<Brick, 'partNumber' | 'displayArea' | 'orientation' | 'altitude' | 'activeConnectionPointIndex'>;
+  brick: Pick<Brick, 'partNumber' | 'displayArea' | 'orientation' | 'altitude' | 'activeConnectionPointIndex'> & { myGroup?: string };
+  /** The groups (sets) the brick is in, innermost first, so a pasted set stays a set. */
+  groups?: Group[];
 }
 
 interface ClipboardPayload {
