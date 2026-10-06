@@ -78,9 +78,13 @@ test.describe('public share — setup', () => {
     const del = await page.request.delete(`/api/layouts/${id}/public-share`);
     expect(del.ok()).toBe(true);
 
-    // Token should now return 404.
+    // The token now finds no layout: an old link is normal use, so it
+    // answers 200 with none rather than a 404 a WAF would count; the
+    // snapshot is gone.
     const after = await page.request.get(`/api/public-layouts/${token}`);
-    expect(after.status()).toBe(404);
+    expect(after.status()).toBe(200);
+    expect(await after.json()).toEqual({ layout: null });
+    expect((await page.request.get(`/api/public-layouts/${token}/snapshot`)).status()).toBe(404);
   });
 });
 
