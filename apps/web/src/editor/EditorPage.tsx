@@ -507,14 +507,29 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     void qc.invalidateQueries({ queryKey: ['modules'] });
   };
   // Save makes the module's picture before it shows "Saved" (so leaving
-  // straight after doesn't cut the picture off).
-  docState.setAfterSave?.(() => uploadModuleThumbnail());
+  // straight after doesn't cut the picture off). It is the fresh picture,
+  // so a backfill still waiting to start (below) is not needed.
+  docState.setAfterSave?.(() => {
+    const cancelBackfill = cancelBackfillRef.current;
+    const uploaded = uploadModuleThumbnail();
+    cancelBackfill?.();
+    return uploaded;
+  });
   // The module's picture, for the lists that show modules. A failed
   // picture never fails the save: the lists show a placeholder.
   // The parts list is in (until then parts draw as missing-part crosses).
   const catalogReadyRef = useRef(false);
   catalogReadyRef.current = catalog.isSuccess;
-  const uploadModuleThumbnail = async (): Promise<boolean> => {
+  // One picture upload at a time, in order: a backfill begun before a
+  // Save would otherwise land after it and put back an older picture, and
+  // "Saved" would show while a picture was still on its way.
+  const thumbnailQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const uploadModuleThumbnail = (): Promise<boolean> => {
+    const next = thumbnailQueueRef.current.then(makeAndUploadThumbnail);
+    thumbnailQueueRef.current = next;
+    return next;
+  };
+  const makeAndUploadThumbnail = async (): Promise<boolean> => {
     try {
       if (!doc) return false;
       // Let the canvas draw the latest change, with the parts list and every
@@ -538,22 +553,34 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   // and replaces any taken before the part pictures were in (which showed
   // missing-part crosses).
   const backfilledRef = useRef(false);
+  const cancelBackfillRef = useRef<(() => void) | null>(null);
   const needsBackfill = moduleMode && !!doc && !!docMap && !!moduleInfo.data && moduleInfo.data.role !== 'viewer';
   useEffect(() => {
     if (!needsBackfill || backfilledRef.current) return;
     backfilledRef.current = true;
+    const done = (ok: boolean) => {
+      if (ok) void qc.invalidateQueries({ queryKey: ['modules'] });
+      if (refreshingPicture) {
+        const { showStatusMessage, showNotice } = useEditorStore.getState();
+        if (ok) showStatusMessage('Picture refreshed', 5000);
+        else showNotice('The picture couldn’t be made. Try again once the module has loaded.', 'error', 8000);
+      }
+    };
     // Once the canvas has drawn (its export handle is set on render).
     const t = window.setTimeout(() => {
-      void uploadModuleThumbnail().then((ok) => {
-        if (ok) void qc.invalidateQueries({ queryKey: ['modules'] });
-        if (refreshingPicture) {
-          const { showStatusMessage, showNotice } = useEditorStore.getState();
-          if (ok) showStatusMessage('Picture refreshed', 5000);
-          else showNotice('The picture couldn’t be made. Try again once the module has loaded.', 'error', 8000);
-        }
-      });
+      cancelBackfillRef.current = null;
+      void uploadModuleThumbnail().then(done);
     }, 800);
-    return () => window.clearTimeout(t);
+    // A Save before then makes the picture instead (and refreshes it).
+    cancelBackfillRef.current = () => {
+      window.clearTimeout(t);
+      cancelBackfillRef.current = null;
+      void thumbnailQueueRef.current.then((ok) => done(ok === true));
+    };
+    return () => {
+      window.clearTimeout(t);
+      cancelBackfillRef.current = null;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsBackfill]);
 
