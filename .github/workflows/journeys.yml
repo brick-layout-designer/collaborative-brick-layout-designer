@@ -105,6 +105,8 @@ jobs:
           e2e/test/layouts.spec.ts
           e2e/test/editor.spec.ts
           e2e/test/flexTouch.spec.ts
+          e2e/test/snapping.spec.ts
+          e2e/test/snapTouchReplay.spec.ts
           e2e/test/layoutFile.spec.ts
           e2e/test/savedViews.spec.ts
           e2e/test/moduleEditor.spec.ts

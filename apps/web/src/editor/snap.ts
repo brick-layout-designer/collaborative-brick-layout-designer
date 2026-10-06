@@ -601,6 +601,8 @@ export interface DragSnapResult {
    * Null for a single brick (newOrientation) and for a straight join.
    */
   groupTurn: GroupTurn | null;
+  /** Studs from the raw grabbed end to the joined target; null without a connection snap. */
+  snapDist: number | null;
   /** Free connections considered on the moving set (status-bar hint). */
   movingConnCount: number;
 }
@@ -791,6 +793,7 @@ export function liveDragSnap(
       movingStudY: tc.y,
       newOrientation: null,
       groupTurn,
+      snapDist: best.dist,
       movingConnCount: movingConns.length,
     };
   }
@@ -807,6 +810,7 @@ export function liveDragSnap(
     movingStudY: tc.y,
     newOrientation,
     groupTurn: null,
+    snapDist: best.dist,
     movingConnCount: movingConns.length,
   };
 }
@@ -886,6 +890,7 @@ function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapRes
     movingStudY: null,
     newOrientation: null,
     groupTurn: null,
+    snapDist: null,
     movingConnCount,
   };
   if (drag.snapStepStuds <= 0) return { ...base, centreX: drag.centreX, centreY: drag.centreY };

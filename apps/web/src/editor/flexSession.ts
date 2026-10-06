@@ -15,6 +15,8 @@ import { useEditorStore } from './editorStore';
 import { catalogFromParts } from './useConnectivity';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { liveSnapReach } from './liveSnapReach';
+import { snapTraceEnabled, traceFrame, traceStart } from './snapTrace';
+import { isTouchEvent } from './touchGesture';
 import { holdReach, SnapSession, snapBypassed } from './snapFeel';
 import { pinnedAmong } from './moduleEdit';
 
@@ -111,11 +113,14 @@ export function startFlexSession(opts: {
   // joins the nearest free end of its type at any angle, reach measured
   // from where the pointer has it, with the calm-snap hold and switch.
   const session = new SnapSession();
+  traceStart(performance.now());
   let bypass = false;
+  // A finger bends with the bigger touch reach, as a finger drag snaps.
+  let coarse = false;
   const bend = (m: { x: number; y: number }, final: boolean) => {
     const targets = flex.snapTargets();
     const end = flex.endFor(m);
-    const reach = liveSnapReach();
+    const reach = liveSnapReach(coarse);
     const hold = holdReach(reach);
     const candidates = targets.flatMap((t, index) => {
       const dist = Math.hypot(t.world.x - end.x, t.world.y - end.y);
@@ -125,17 +130,43 @@ export function startFlexSession(opts: {
     const joined = flex.bendTo(m, pick ? pick.index : -1);
     // Out of the chain's reach (each hinge within its limit): no join.
     if (pick && !joined) session.lock = null;
+    if (snapTraceEnabled()) {
+      const screen = stage.getPointerPosition();
+      traceFrame(
+        performance.now(),
+        {
+          kind: 'flex',
+          pointer: coarse ? 'touch' : 'mouse',
+          px: screen?.x ?? NaN,
+          py: screen?.y ?? NaN,
+          rawX: end.x,
+          rawY: end.y,
+          drawnX: m.x,
+          drawnY: m.y,
+          rot: 0,
+          speed: Math.round(session.meter.speed()),
+          fast: session.meter.isFast(),
+          reach,
+          hold,
+          target: session.lock?.targetKey ?? null,
+          dist: pick && joined ? pick.dist : null,
+        },
+        final,
+      );
+    }
     moved = true;
     const at = joined && pick ? targets[pick.index]!.world : null;
     useEditorStore.getState().setLiveSnap(at ? { studX: at.x, studY: at.y } : null);
     useEditorStore.getState().setHingeLimits(flex.hingesAtLimit().map((p) => ({ studX: p.x, studY: p.y })));
     draw();
   };
-  const onMove = (e?: { evt?: { altKey?: boolean } }) => {
+  const onMove = (e?: { evt?: Event & { altKey?: boolean } }) => {
     const m = pointerStuds();
     if (!m) return;
+    if (e?.evt) coarse = isTouchEvent(e.evt);
     const screen = stage.getPointerPosition();
-    if (screen) session.sample(screen.x, screen.y, performance.now());
+    // The event's own time: a slow page handles several at once.
+    if (screen) session.sample(screen.x, screen.y, e?.evt?.timeStamp ?? performance.now());
     // Alt bends without snapping.
     bypass = snapBypassed(e?.evt);
     bend(m, false);

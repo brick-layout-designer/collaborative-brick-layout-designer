@@ -45,7 +45,7 @@ describe('snap feel: shared cases (snap-vectors.json)', () => {
 
   for (const c of VEC.reach) {
     it(`reach: ${c.name}`, () => {
-      expect(snapReachStuds(c.pxPerStud, c.strength as SnapStrength)).toBeCloseTo(c.reach, 9);
+      expect(snapReachStuds(c.pxPerStud, c.strength as SnapStrength, 'coarse' in c && c.coarse === true)).toBeCloseTo(c.reach, 9);
     });
   }
 

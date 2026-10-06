@@ -16,6 +16,7 @@ import { useHashScroll } from '../ui/useHashScroll';
 import { isPhoneScreen, useTours } from '../tours/TourProvider';
 import { toursFor } from '../tours/tours';
 import { DEFAULT_SNAP_STRENGTH, type SnapStrength } from '../editor/snapFeel';
+import { lastSnapTrace, setSnapTraceEnabled, snapTraceEnabled, snapTraceText } from '../editor/snapTrace';
 
 const SNAP_CHOICES: { id: SnapStrength; label: string; hint: string }[] = [
   { id: 'off', label: 'Off', hint: 'Parts never pull onto each other; the grid still lines them up.' },
@@ -236,6 +237,7 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
               <kbd className="rounded border border-border px-1 font-sans text-xs">⌥ Option</kbd> on a Mac) while dragging to
               place one part without snapping.
             </p>
+            <SnapTraceRow />
           </div>
         </Section>
 
@@ -313,6 +315,51 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
           )}
         </Section>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The hidden snap trace (editor/snapTrace.ts): /settings?snaptrace=1 turns
+ * it on (=0 off). On, the editor records the last drag's frames and this
+ * row copies them, to send in when snapping misbehaves.
+ */
+function SnapTraceRow() {
+  const [on, setOn] = useState(() => {
+    try {
+      const want = new URLSearchParams(window.location.search).get('snaptrace');
+      if (want === '1' || want === '0') setSnapTraceEnabled(want === '1');
+    } catch {
+      // No URL to read: keep what was set.
+    }
+    return snapTraceEnabled();
+  });
+  const [copied, setCopied] = useState(false);
+  if (!on) return null;
+  const frames = lastSnapTrace().length;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-control border border-dashed border-border p-3 text-sm" data-testid="snap-trace">
+      <span className="text-muted">Snap trace is on: {frames === 0 ? 'drag a part to record one.' : `the last drag has ${frames} frames.`}</span>
+      <button
+        type="button"
+        disabled={frames === 0}
+        onClick={() => {
+          void navigator.clipboard?.writeText(snapTraceText()).then(() => setCopied(true));
+        }}
+        className="h-9 rounded-control border border-border px-3 font-semibold hover:bg-soft disabled:opacity-50"
+      >
+        {copied ? 'Copied' : 'Copy snap trace'}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setSnapTraceEnabled(false);
+          setOn(false);
+        }}
+        className="h-9 rounded-control px-3 font-semibold text-muted hover:bg-soft"
+      >
+        Turn off
+      </button>
     </div>
   );
 }

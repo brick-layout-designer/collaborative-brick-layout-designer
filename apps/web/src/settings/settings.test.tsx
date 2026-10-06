@@ -35,3 +35,30 @@ describe('Settings', () => {
     expect(view.getByTestId('snap-strength-strong').getAttribute('aria-checked')).toBe('false');
   });
 });
+
+describe('snap trace (hidden)', () => {
+  it('stays hidden until /settings?snaptrace=1 turns it on, and Turn off hides it again', async () => {
+    const { setSnapTraceEnabled } = await import('../editor/snapTrace');
+    setSnapTraceEnabled(false);
+    const first = render(
+      <MemoryRouter>
+        <SettingsContent />
+      </MemoryRouter>,
+    );
+    expect(within(first.container).queryByTestId('snap-trace')).toBeNull();
+    first.unmount();
+    window.history.replaceState(null, '', '/settings?snaptrace=1');
+    const second = render(
+      <MemoryRouter>
+        <SettingsContent />
+      </MemoryRouter>,
+    );
+    const row = within(second.container).getByTestId('snap-trace');
+    expect(row.textContent).toContain('Snap trace is on');
+    within(row).getByRole('button', { name: 'Turn off' }).click();
+    window.history.replaceState(null, '', '/settings');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(within(second.container).queryByTestId('snap-trace')).toBeNull();
+    expect(localStorage.getItem('cld:snapTrace')).toBeNull();
+  });
+});
