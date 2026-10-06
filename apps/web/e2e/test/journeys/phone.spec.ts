@@ -99,9 +99,12 @@ test('a member uses and edits their layout on a phone at the show', async ({ bro
   await human(page);
   await page.getByRole('button', { name: 'Undo' }).tap();
   await expect.poll(() => brickCount(page)).toBe(1);
+  // Undo brings the part back picked, as BlueBrick does.
+  await expect(page.getByTestId('touch-bar')).toHaveAttribute('aria-label', '1 picked');
   await human(page);
   await page.getByRole('button', { name: 'Undo' }).tap(); // the turn
   await expect.poll(() => firstRotation(page)).toBe(before);
+  await page.getByTestId('touch-bar').getByRole('button', { name: 'Done' }).tap();
   await addPart(page);
   await expect.poll(() => brickCount(page)).toBe(2);
 
