@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CustomPartSummary, type OrgSummary } from '../api';
 import { matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
-import { OwnerChip } from '../owners/OwnerControls';
+import { CreditLine, MoveCopyDialog, OwnerChip, ReturnMenuItems } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { UploadPartDialog } from './UploadPartDialog';
@@ -43,6 +43,8 @@ export function CustomPartsSection({
   const [uploading, setUploading] = useState(false);
   const [sharing, setSharing] = useState<CustomPartSummary | null>(null);
   const [toCollection, setToCollection] = useState<CustomPartSummary | null>(null);
+  const [moving, setMoving] = useState<CustomPartSummary | null>(null);
+  const hasClubs = (orgs?.length ?? 0) > 0;
   // A member (not an admin or manager) of a trusted club shares its parts for the club's own review.
   const trustedMember = (p: CustomPartSummary) =>
     !canDeletePart(p, myUserId, orgs) && !!p.ownerOrgId && !!orgs?.find((o) => o.id === p.ownerOrgId && o.trusted);
@@ -104,6 +106,7 @@ export function CustomPartsSection({
                     <UpdateAvailable copyId={p.id} label={p.displayName || p.partNumber} />
                   </p>
                   <p className="break-all font-mono text-xs text-muted">{p.partNumber}</p>
+                  <CreditLine credit={p.credit} />
                 </div>
               </div>
               <MoreMenu label={`More for ${p.partNumber}`}>
@@ -142,6 +145,12 @@ export function CustomPartsSection({
                       Withdraw from the catalog
                     </button>
                   )}
+                {hasClubs && canUpload && (
+                  <button role="menuitem" type="button" onClick={() => setMoving(p)} className={MORE_ITEM}>
+                    Move or copy…
+                  </button>
+                )}
+                <ReturnMenuItems kind="custom-parts" id={p.id} title={p.displayName || p.partNumber} credit={p.credit} />
                 {canDeletePart(p, myUserId, orgs) && (
                   <button
                     role="menuitem"
@@ -162,6 +171,15 @@ export function CustomPartsSection({
       )}
       {/* It saves to the club being shown, like New layout. */}
       {uploading && <UploadPartDialog filter={filter} onClose={() => setUploading(false)} />}
+      {moving && orgs && (
+        <MoveCopyDialog
+          kind="part"
+          item={{ id: moving.id, title: moving.displayName || moving.partNumber, ownerOrgId: moving.ownerOrgId }}
+          canMove={moving.ownerOrgId ? canDeletePart(moving, myUserId, orgs) : moving.ownerUserId === myUserId}
+          orgs={orgs}
+          onClose={() => setMoving(null)}
+        />
+      )}
       {toCollection && <AddToCollectionDialog target={{ kind: 'part', part: toCollection }} onClose={() => setToCollection(null)} />}
       {sharing && (
         <ShareToCatalogDialog

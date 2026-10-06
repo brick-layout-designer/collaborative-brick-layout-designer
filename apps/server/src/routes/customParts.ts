@@ -28,6 +28,7 @@ import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
 import { nameFor, publicName } from '../utils/publicName.js';
+import { creditLookup, withCredits } from './credits.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -105,7 +106,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     }
     const shown = all.filter((p) => matchesOwner(p, filter, user.id));
     const ownerOf = await ownerLookup(shown);
-    return { parts: shown.map((p) => ({ ...p, owner: ownerOf(p) })) };
+    return { parts: await withCredits('custom-part', shown.map((p) => ({ ...p, owner: ownerOf(p) })), user.id) };
   });
 
   // ---- get one part (metadata + role; sprite via separate URL) -----------
@@ -119,7 +120,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.customParts.id, req.params.id))
       .get();
     if (!part) return reply.code(404).send({ error: 'not_found' });
-    return { part: toListItem(part), role };
+    const credit = (await creditLookup('custom-part', [part.id], user.id))(part.id);
+    return { part: { ...toListItem(part), credit }, role };
   });
 
   // ---- get sprite (raw bytes) --------------------------------------------

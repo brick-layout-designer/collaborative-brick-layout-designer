@@ -15,6 +15,7 @@ import { fetchModuleBatches } from './moduleSnapshot';
 import { MODULE_MIME, MODULE_NAME_MIME, activeModuleDrag } from './mime';
 import { ModuleThumb } from '../modules/ModuleThumb';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
+import { CreditLine, ReturnMenuItems } from '../owners/OwnerControls';
 import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { IconSizeSlider, useListIconSize, useResizeGestures } from './listIconSize';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
@@ -208,6 +209,7 @@ function ModuleLibraryRow({
         <p className="text-[10px] text-neutral-600">
           v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
         </p>
+        <CreditLine credit={module.credit} className="!text-[10px] truncate" />
       </div>
       {isEditingThis ? (
         <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-text" data-testid="editing-now">
@@ -238,6 +240,7 @@ function ModuleLibraryRow({
                   Add to a collection…
                 </button>
               )}
+              <ReturnMenuItems kind="modules" id={module.id} title={module.title} credit={module.credit} />
               <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
                 Delete…
               </button>

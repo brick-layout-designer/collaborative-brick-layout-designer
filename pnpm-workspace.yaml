@@ -20,6 +20,8 @@ overrides:
   # undici 8.x reorganised that internal layout and breaks jsdom
   # outright. Stay within the ^7 line jsdom actually depends on.
   undici@7.25.0: '>=7.29.0 <8.0.0'
+  # GHSA-68fv-2mgg-jv7q (high), fixed in 1.2.2; postcss and vite pin ^1.2.1.
+  source-map-js@1.2.1: '>=1.2.2 <2.0.0'
   ws: '>=8.21.0'
 # Was package.json's (now-dead, per pnpm's own warning) "pnpm.onlyBuiltDependencies".
 # Also approves esbuild's postinstall (fetches its prebuilt native binary

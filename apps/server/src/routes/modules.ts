@@ -28,6 +28,7 @@ import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBN
 import { dropModuleFromCollections } from './collections.js';
 import type { User } from '../db/schema.js';
 import { nameFor } from '../utils/publicName.js';
+import { creditLookup, withCredits } from './credits.js';
 
 type ModuleRow = typeof schema.modules.$inferSelect;
 
@@ -150,7 +151,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     }
     const shown = all.filter((m) => matchesOwner(m, filter, user.id));
     const ownerOf = await ownerLookup(shown);
-    return { modules: shown.map((m) => ({ ...m, owner: ownerOf(m) })) };
+    return { modules: await withCredits('module', shown.map((m) => ({ ...m, owner: ownerOf(m) })), user.id) };
   });
 
   // ---- get one module ---------------------------------------------------
@@ -164,7 +165,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.modules.id, req.params.id))
       .get();
     if (!module) return reply.code(404).send({ error: 'not_found' });
-    return { module: toListItem(module), role };
+    const credit = (await creditLookup('module', [module.id], user.id))(module.id);
+    return { module: { ...toListItem(module), credit }, role };
   });
 
   // ---- create -----------------------------------------------------------

@@ -30,6 +30,7 @@ import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { recordVersion } from './modules.js';
 import { collectionCounts, dropFromCollections } from './collections.js';
 import { publicName } from '../utils/publicName.js';
+import { creditLookup } from './credits.js';
 
 type Kind = 'module' | 'part';
 // The desktop app (an API token) browses the catalog and adds from it:
@@ -149,8 +150,16 @@ async function snapshotSource(kind: Kind, sourceId: string): Promise<SourceSnaps
   };
 }
 
-/** Who shared it, for the catalog: the person's or the club's name. */
-export async function ownerNames(items: readonly { ownerUserId: string | null; ownerOrgId: string | null }[]) {
+/**
+ * Who shared it, for the catalog: the person's name, or for a club's
+ * item, its author and the club ("Sam · in ArkLUG"). The author is the
+ * catalog item's source module or part's author, read through the same
+ * rules as every other credit (routes/credits.ts): a deleted account
+ * reads "Builder #…", someone who left the club "a former member".
+ */
+export async function ownerNames(
+  items: readonly { ownerUserId: string | null; ownerOrgId: string | null; kind?: Kind; sourceId?: string }[],
+) {
   const userIds = [...new Set(items.map((i) => i.ownerUserId).filter((x): x is string => !!x))];
   const orgIds = [...new Set(items.map((i) => i.ownerOrgId).filter((x): x is string => !!x))];
   const users = userIds.length
@@ -161,8 +170,27 @@ export async function ownerNames(items: readonly { ownerUserId: string | null; o
     : [];
   const u = new Map(users.map((x) => [x.id, publicName(x.id, x.name)]));
   const o = new Map(orgs.map((x) => [x.id, x.name]));
-  return (i: { ownerUserId: string | null; ownerOrgId: string | null }) =>
-    i.ownerOrgId ? (o.get(i.ownerOrgId) ?? 'A club') : (u.get(i.ownerUserId ?? '') ?? 'Someone');
+  // A club's items: who made the module or part it was shared from.
+  const authorBy = new Map<string, string>();
+  for (const kind of ['module', 'part'] as const) {
+    const club = items.filter((i) => i.ownerOrgId && i.kind === kind && i.sourceId);
+    if (!club.length) continue;
+    const credits = await creditLookup(
+      kind === 'module' ? 'module' : 'custom-part',
+      club.map((i) => i.sourceId!),
+      '',
+    );
+    for (const i of club) {
+      const by = credits(i.sourceId!)?.by;
+      if (by) authorBy.set(`${kind}:${i.sourceId}`, by);
+    }
+  }
+  return (i: { ownerUserId: string | null; ownerOrgId: string | null; kind?: Kind; sourceId?: string }) => {
+    if (!i.ownerOrgId) return u.get(i.ownerUserId ?? '') ?? 'Someone';
+    const club = o.get(i.ownerOrgId) ?? 'A club';
+    const author = i.kind && i.sourceId ? authorBy.get(`${i.kind}:${i.sourceId}`) : undefined;
+    return author ? `${author} · in ${club}` : club;
+  };
 }
 
 function parseTags(json: string): string[] {
@@ -230,6 +258,7 @@ export async function copyItemTo(user: User, item: typeof schema.catalogItems.$i
       thumbnail: thumb,
       thumbnailMime: thumb ? (v.thumbnailMime as 'image/png' | 'image/webp') : null,
       thumbnailAt: thumb ? now : null,
+      copiedFromId: item.sourceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -262,6 +291,7 @@ export async function copyItemTo(user: User, item: typeof schema.catalogItems.$i
       xmlBlob: xml,
       spriteBlob: sprite,
       spriteMime: (v.spriteMime ?? 'image/png') as 'image/gif' | 'image/png',
+      copiedFromId: item.sourceId,
       createdAt: now,
       updatedAt: now,
     });

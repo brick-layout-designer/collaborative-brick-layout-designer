@@ -12,7 +12,7 @@ import { api, type OrgSummary, type VenueSummary } from '../api';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from '../editor/venueFile';
 import { downloadText } from './venueStart';
 import { defaultSaveTo, itemOrgSlug, matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
-import { MoveCopyDialog, OwnerChip, SaveToDialog } from '../owners/OwnerControls';
+import { CreditLine, MoveCopyDialog, OwnerChip, ReturnMenuItems, SaveToDialog } from '../owners/OwnerControls';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { atLeast } from '../orgs/clubRoles';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
@@ -135,9 +135,12 @@ export function VenueList({
               const manage = canManageVenue(v, orgs);
               return (
                 <li key={v.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                  <span className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="break-words font-medium">{v.name}</span>
-                    <OwnerChip item={v} myUserId={myUserId} orgs={orgs} />
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="break-words font-medium">{v.name}</span>
+                      <OwnerChip item={v} myUserId={myUserId} orgs={orgs} />
+                    </span>
+                    <CreditLine credit={v.credit} />
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <Link
@@ -160,6 +163,7 @@ export function VenueList({
                           Move or copy…
                         </button>
                       )}
+                      <ReturnMenuItems kind="venues" id={v.id} title={v.name} credit={v.credit} />
                       {manage && (
                         <>
                           <button

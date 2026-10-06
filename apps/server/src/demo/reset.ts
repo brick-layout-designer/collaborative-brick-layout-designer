@@ -107,7 +107,7 @@ async function seedSamples(now: Date): Promise<void> {
     tx.insert(schema.layouts).values({ ...base, id: randomUUID(), title: DEMO_SAMPLES.layout.title, docSnapshot: Buffer.from(layoutDoc) }).run();
     tx.insert(schema.modules).values({ ...base, id: randomUUID(), title: DEMO_SAMPLES.module.title, docSnapshot: Buffer.from(moduleDoc) }).run();
     tx.insert(schema.venueLibrary)
-      .values({ id: randomUUID(), ownerUserId: DEMO_USER_ID, ownerOrgId: null, name: String(venue.name ?? 'Sample room'), data: JSON.stringify(venue), createdAt: now })
+      .values({ id: randomUUID(), ownerUserId: DEMO_USER_ID, ownerOrgId: null, name: String(venue.name ?? 'Sample room'), data: JSON.stringify(venue), createdBy: DEMO_USER_ID, createdAt: now })
       .run();
   });
 }

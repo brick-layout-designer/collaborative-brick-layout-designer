@@ -155,6 +155,8 @@ import { DEFAULT_SNAP_STRENGTH, SnapSession } from './snapFeel';
 import { liveSnapReach } from './liveSnapReach';
 import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
 import { askConfirm, askLeaveUnsaved } from '../ui/ConfirmDialog';
+import { creditText } from '../owners/owners';
+import type { Credit } from '../api';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -229,6 +231,16 @@ async function moduleMeta(id: string): Promise<{ layout: LayoutSummary; role: 'o
   };
 }
 
+/**
+ * The credit as one line ("by Sam · in ArkLUG · based on Yard by Sam"),
+ * or null. Your own thing ("by you" and nothing more) says nothing new.
+ */
+function creditLabel(credit: Credit | null | undefined): string | null {
+  const { line, basedOn } = creditText(credit);
+  const text = [line, basedOn].filter(Boolean).join(' · ');
+  return text && text !== 'by you' ? text : null;
+}
+
 /** Panels a module has no use for (it has no venue and no saved views). */
 const NOT_IN_MODULES = new Set(['views', 'venuelibrary', 'modules']);
 
@@ -254,6 +266,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     queryFn: () => api.modules.get(layoutId),
     enabled: moduleMode,
   });
+  const moduleCredit = creditLabel(moduleInfo.data?.module.credit);
   // The parts catalog, for Save's offline download (declared further down).
   const partsRef = useRef<readonly PartWire[] | undefined>(undefined);
   // Save / Ctrl+S: every edit is already persisted server-side while the
@@ -721,6 +734,11 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             <span className="font-normal text-muted">Editing module: </span>
             {meta.data?.layout.title ?? '…'}
           </h1>
+          {moduleCredit && (
+            <span data-testid="credit" className="hidden min-w-0 truncate text-xs text-muted sm:inline">
+              {moduleCredit}
+            </span>
+          )}
           <SavePill status={status} />
           {role === 'viewer' ? <ViewOnlyPill /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           <div className="ml-auto flex items-center gap-2">
@@ -842,6 +860,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           <AppMark />
           <LayoutNameMenu
             title={meta.data?.layout.title ?? 'Untitled'}
+            credit={creditLabel(meta.data?.layout.credit)}
             onNew={isViewer ? undefined : leaveLayout}
             onOpen={isViewer ? undefined : leaveLayout}
           >

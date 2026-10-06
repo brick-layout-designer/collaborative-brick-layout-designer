@@ -5,8 +5,71 @@
 
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type OrgSummary } from '../api';
-import { ownerLabel, type OwnedItem, type OwnerFilter } from './owners';
+import { api, type Credit, type OrgSummary, type OwnableKind } from '../api';
+import { creditText, moveToClubWording, ownerLabel, type OwnedItem, type OwnerFilter } from './owners';
+import { askConfirm, showToast } from '../ui/ConfirmDialog';
+import { invalidateFor } from '../live/invalidate';
+import { MORE_ITEM } from '../ui/MoreMenu';
+
+/** "by Sam · in ArkLUG", and for a copy "based on Yard by Sam": a small line under the name. */
+export function CreditLine({ credit, className = '' }: { credit: Credit | null | undefined; className?: string }) {
+  const { line, basedOn } = creditText(credit);
+  if (!line && !basedOn) return null;
+  return (
+    <p data-testid="credit" className={`break-words text-xs text-muted ${className}`}>
+      {[line, basedOn].filter(Boolean).join(' · ')}
+    </p>
+  );
+}
+
+const RETURN_WORD: Record<OwnableKind, string> = { layouts: 'layout', modules: 'module', venues: 'venue', 'custom-parts': 'part' };
+
+/**
+ * "Take back to mine" (the author, in the club) and "Give back to ‹author›"
+ * (the club's admins and managers), for a ⋯ menu. The club keeps its own
+ * copy, so nothing it built with it changes. Shows nothing when neither
+ * applies.
+ */
+export function ReturnMenuItems({ kind, id, title, credit }: { kind: OwnableKind; id: string; title: string; credit: Credit | null | undefined }) {
+  const qc = useQueryClient();
+  const run = useMutation({
+    mutationFn: (mode: 'take' | 'give') => (mode === 'take' ? api.ownership.takeBack(kind, id) : api.ownership.giveBack(kind, id)),
+    onSuccess: (_r, mode) => {
+      for (const k of ['layout', 'module', 'venue', 'custom-part', 'warning'] as const) void invalidateFor(qc, k);
+      showToast(mode === 'take' ? `“${title}” is yours again` : `Gave “${title}” back to ${credit?.authorName ?? 'its author'}`);
+    },
+    onError: (e: Error) => showToast(`Could not do that: ${e.message}`),
+  });
+  if (!credit || (!credit.canTakeBack && !credit.canGiveBack)) return null;
+  const word = RETURN_WORD[kind];
+  const club = credit.club ?? 'The club';
+  async function ask(mode: 'take' | 'give') {
+    const who = mode === 'take' ? 'you' : (credit?.authorName ?? 'its author');
+    const ok = await askConfirm({
+      title: mode === 'take' ? `Take “${title}” back?` : `Give “${title}” back to ${who}?`,
+      removes: mode === 'take' ? `The ${word} becomes yours again, and only yours.` : `The ${word} goes back to ${who}, who made it.`,
+      keeps: `${club} keeps its own copy, credited to ${mode === 'take' ? 'you' : who}, so nothing the club built with it changes. Its admins and managers are told.`,
+      undo: mode === 'take' ? 'To share it again, move it back to the club.' : `${who} can move it back to the club.`,
+      confirmLabel: mode === 'take' ? 'Take back' : 'Give back',
+      danger: false,
+    });
+    if (ok) run.mutate(mode);
+  }
+  return (
+    <>
+      {credit.canTakeBack && (
+        <button role="menuitem" type="button" className={MORE_ITEM} onClick={() => void ask('take')}>
+          Take back to mine
+        </button>
+      )}
+      {credit.canGiveBack && (
+        <button role="menuitem" type="button" className={MORE_ITEM} onClick={() => void ask('give')}>
+          Give back to {credit.authorName ?? 'the author'}
+        </button>
+      )}
+    </>
+  );
+}
 
 export function OwnerChip({
   item,
@@ -114,15 +177,16 @@ export function SaveToPicker({
   );
 }
 
-export type MovableKind = 'layout' | 'module' | 'room';
+export type MovableKind = 'layout' | 'module' | 'room' | 'part';
 
-const KIND_WORD: Record<MovableKind, string> = { layout: 'layout', module: 'module', room: 'venue' };
+const KIND_WORD: Record<MovableKind, string> = { layout: 'layout', module: 'module', room: 'venue', part: 'part' };
 
 /**
- * Move or copy a layout, module or venue between you and your clubs.
- * Moving uses the existing transfer (layouts, modules) or venue move; a
- * club's thing never moves back out to one person, so only Copy is
- * offered there.
+ * Move or copy a layout, module, venue or custom part between you and
+ * your clubs. Moving uses the existing transfer (layouts, modules) or the
+ * venue and part move. Moving your own thing into a club asks first: the
+ * club will own it, and you stay its author. A club's thing goes back to
+ * one person only through Take back / Give back (ReturnMenuItems).
  */
 export function MoveCopyDialog({
   kind,
@@ -153,15 +217,17 @@ export function MoveCopyDialog({
       if (mode === 'copy') {
         if (kind === 'layout') return api.layouts.copy(item.id, slug);
         if (kind === 'module') return api.modules.copy(item.id, slug);
+        if (kind === 'part') return api.customParts.copy(item.id, slug);
         return api.venues.copy(item.id, slug);
       }
       if (!slug) throw new Error(`A club's ${word} stays with the club. Make a copy for yourself instead.`);
       if (kind === 'layout') return api.transfers.initiate(item.id, { orgSlug: slug });
       if (kind === 'module') return api.moduleTransfers.initiate(item.id, { orgSlug: slug });
+      if (kind === 'part') return api.customParts.move(item.id, slug);
       return api.venues.move(item.id, slug);
     },
     onSuccess: async () => {
-      const key = kind === 'layout' ? 'layouts' : kind === 'module' ? 'modules' : 'venues';
+      const key = kind === 'layout' ? 'layouts' : kind === 'module' ? 'modules' : kind === 'part' ? 'custom-parts' : 'venues';
       await qc.invalidateQueries({ queryKey: [key] });
       onClose();
     },
@@ -175,9 +241,15 @@ export function MoveCopyDialog({
     if (m === 'move' && !moveTargets.some((o) => o.slug === dest)) setDest(moveTargets[0]?.slug ?? '');
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    // Your own thing into a club: one click, but say what that means first.
+    if (mode === 'move' && !item.ownerOrgId) {
+      const club = orgs.find((o) => o.slug === dest)?.name ?? 'The club';
+      const ok = await askConfirm({ ...moveToClubWording(club), confirmLabel: 'Move', danger: false });
+      if (!ok) return;
+    }
     run.mutate();
   }
 
@@ -188,7 +260,7 @@ export function MoveCopyDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="move-copy-title"
-        onSubmit={submit}
+        onSubmit={(e) => void submit(e)}
         className="w-full max-w-md space-y-4 rounded-section border border-line bg-panel p-5 text-sm text-ink shadow-[var(--pop-shadow)]"
       >
         <h3 id="move-copy-title" className="text-lg font-semibold">
@@ -220,7 +292,7 @@ export function MoveCopyDialog({
                     : `Only the ${word}'s owner can move it.`
                   : moveTargets.length === 0
                     ? 'You are not in another club to move it to.'
-                    : `The club keeps it, and everyone in the club can use it.`}
+                    : `The club owns it, and everyone in the club can use it. You stay credited as its author.`}
               </span>
             </span>
           </label>
@@ -234,7 +306,9 @@ export function MoveCopyDialog({
           exclude={mode === 'move' ? ['', ...(currentSlug ? [currentSlug] : [])] : []}
         />
         {item.ownerOrgId && (
-          <p className="text-xs text-muted">A club’s {word}s stay with the club. To have your own, make a copy.</p>
+          <p className="text-xs text-muted">
+            A club’s {word}s stay with the club. Its author can take one back from the ⋯ menu; anyone can make a copy.
+          </p>
         )}
 
         {error && <p className="text-danger">{error}</p>}

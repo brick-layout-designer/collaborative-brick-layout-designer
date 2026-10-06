@@ -23,6 +23,7 @@ import { touchLayoutOpened } from '../metrics/activity.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
 import { clubThingRole } from '../access/clubRoles.js';
+import { creditLookup, withCredits } from './credits.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -133,7 +134,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     }
     const shown = all.filter((l) => matchesOwner(l, filter, user.id));
     const ownerOf = await ownerLookup(shown);
-    return { layouts: shown.map((l) => ({ ...l, owner: ownerOf(l) })) };
+    return { layouts: await withCredits('layout', shown.map((l) => ({ ...l, owner: ownerOf(l) })), user.id) };
   });
 
   // ---- get -----------------------------------------------------------------
@@ -150,8 +151,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!layout) return reply.code(404).send({ error: 'not_found' });
     touchLayoutOpened(layout.id);
 
+    const credit = (await creditLookup('layout', [layout.id], user.id))(layout.id);
     return {
-      layout: toListItem(layout, role.role),
+      layout: { ...toListItem(layout, role.role), credit },
       role: role.role,
     };
   });
@@ -319,44 +321,17 @@ export async function layoutRoutes(app: FastifyInstance) {
       const dest = await destinationOrg(user.id, req.body?.orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
 
-      const id = randomUUID();
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
       const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
-      const doc = decodeDoc(await currentDocBytes(src.id, src.docSnapshot as Uint8Array));
-      // The background is served per layout: point the copy at its own.
-      const oldBg = `/api/layouts/${src.id}/background-image`;
-      const meta = doc.getMap('meta');
-      const cache = meta.get('cache') as Record<string, unknown> | undefined;
-      const bg = cache?.backgroundImage as Record<string, unknown> | undefined;
-      if (cache && bg && typeof bg.url === 'string' && bg.url.startsWith(oldBg)) {
-        meta.set('cache', { ...cache, backgroundImage: { ...bg, url: `/api/layouts/${id}/background-image` } });
-      }
       const ownerUserId = dest.orgId ? null : user.id;
       const copyOwner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
       const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
       const refusal = await checkGrowth({ actor: user, owner: copyOwner, add: { layouts: 1, bytes: copyBytes } });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
-      const now = new Date();
-      await db.insert(schema.layouts).values({
-        id,
-        title,
-        ownerUserId,
-        ownerOrgId: dest.orgId,
-        createdBy: user.id,
-        createdAt: now,
-        updatedAt: now,
-        docSnapshot: Buffer.from(encodeDoc(doc)),
-        docVersion: 0,
-        sidecarSnapshot: src.sidecarSnapshot,
-      });
-      const bgDir = join(dirname(env.dbPath), 'bgimages');
-      for (const ext of BG_EXTS) {
-        const from = join(bgDir, `${src.id}.${ext}`);
-        if (existsSync(from)) {
-          await copyFile(from, join(bgDir, `${id}.${ext}`));
-          break;
-        }
-      }
+      const prepared = await prepareLayoutCopy(src, { title, ownerUserId, ownerOrgId: dest.orgId, createdBy: user.id });
+      await db.insert(schema.layouts).values(prepared.values);
+      await prepared.copyBackground();
+      const id = prepared.values.id;
       return reply.code(201).send({ id, title });
     },
   );
@@ -857,6 +832,54 @@ function toListItem(
     docVersion: l.docVersion,
     hasSidecar: Boolean(l.hasSidecar),
     publicShareToken: role === 'owner' ? (l.publicShareToken ?? null) : null,
+  };
+}
+
+/**
+ * A copy of layout `src` ready to insert: the current document, live
+ * edits included, its sidecar, and (after the insert) its background
+ * picture. Remembers what it was copied from. The caller checks rights
+ * and limits.
+ */
+export async function prepareLayoutCopy(
+  src: typeof schema.layouts.$inferSelect,
+  to: { title: string; ownerUserId: string | null; ownerOrgId: string | null; createdBy: string },
+): Promise<{ values: typeof schema.layouts.$inferInsert & { id: string }; copyBackground: () => Promise<void> }> {
+  const id = randomUUID();
+  const doc = decodeDoc(await currentDocBytes(src.id, src.docSnapshot as Uint8Array));
+  // The background is served per layout: point the copy at its own.
+  const oldBg = `/api/layouts/${src.id}/background-image`;
+  const meta = doc.getMap('meta');
+  const cache = meta.get('cache') as Record<string, unknown> | undefined;
+  const bg = cache?.backgroundImage as Record<string, unknown> | undefined;
+  if (cache && bg && typeof bg.url === 'string' && bg.url.startsWith(oldBg)) {
+    meta.set('cache', { ...cache, backgroundImage: { ...bg, url: `/api/layouts/${id}/background-image` } });
+  }
+  const now = new Date();
+  return {
+    values: {
+      id,
+      title: to.title,
+      ownerUserId: to.ownerUserId,
+      ownerOrgId: to.ownerOrgId,
+      createdBy: to.createdBy,
+      createdAt: now,
+      updatedAt: now,
+      docSnapshot: Buffer.from(encodeDoc(doc)),
+      docVersion: 0,
+      sidecarSnapshot: src.sidecarSnapshot,
+      copiedFromId: src.id,
+    },
+    copyBackground: async () => {
+      const bgDir = join(dirname(env.dbPath), 'bgimages');
+      for (const ext of BG_EXTS) {
+        const from = join(bgDir, `${src.id}.${ext}`);
+        if (existsSync(from)) {
+          await copyFile(from, join(bgDir, `${id}.${ext}`));
+          break;
+        }
+      }
+    },
   };
 }
 

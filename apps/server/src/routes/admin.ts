@@ -56,8 +56,10 @@ function safeParse(json: string): unknown {
 function deleteUserAndReassign(userId: string, actingAdminId: string): void {
   db.transaction((tx) => {
     for (const table of [schema.layouts, schema.customParts, schema.modules]) {
+      // created_by must name an account (FK), so it moves to the owner or the
+      // admin; the credit keeps reading "Builder #…" from deleted_author_id.
       tx.update(table)
-        .set({ createdBy: sql`coalesce(${table.ownerUserId}, ${actingAdminId})` })
+        .set({ createdBy: sql`coalesce(${table.ownerUserId}, ${actingAdminId})`, deletedAuthorId: userId })
         .where(eq(table.createdBy, userId))
         .run();
     }
