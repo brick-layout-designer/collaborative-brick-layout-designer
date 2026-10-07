@@ -486,7 +486,16 @@ const BrickGlyph = memo(function BrickGlyph({
         onEnd: (moved) => {
           group?.draggable(true);
           // Moved: the release is not a double-click that opens properties.
-          if (moved) flexMovedRef.current = true;
+          if (moved) {
+            flexMovedRef.current = true;
+            return;
+          }
+          // Not moved: a double-click, acted on here. Konva's own dblclick
+          // doesn't always come (the second press started the session and
+          // changed the pick under the pointer), so it isn't waited for;
+          // if it does come, it's this same double-click.
+          doubleClickDoneAt.current = performance.now();
+          doubleClickAction(false);
         },
       });
       if (started) {
@@ -1110,6 +1119,9 @@ const BrickGlyph = memo(function BrickGlyph({
    * A double click or double tap: a module's part opens Edit module; a
    * double click on any other part opens its properties.
    */
+  /** When a flex session's still second press acted as the double-click (see handleMouseDown). */
+  const doubleClickDoneAt = useRef(-Infinity);
+
   function onDoubleClick(e: KonvaEventObject<MouseEvent | TouchEvent>, byTouch = false) {
     e.cancelBubble = true;
     // A double-click that bent a flex chain doesn't open properties.
@@ -1117,6 +1129,13 @@ const BrickGlyph = memo(function BrickGlyph({
       flexMovedRef.current = false;
       return;
     }
+    // Already acted on by the flex session that the second press started.
+    if (performance.now() - doubleClickDoneAt.current < DOUBLE_CLICK_MS) return;
+    doubleClickAction(byTouch);
+  }
+
+  /** What a double click or double tap does: Edit module, or the part's properties. */
+  function doubleClickAction(byTouch: boolean) {
     if (isViewer || outside) return;
     // A module's part opens Edit module (the part picked); inside the
     // module being edited it opens the part's properties as usual.
