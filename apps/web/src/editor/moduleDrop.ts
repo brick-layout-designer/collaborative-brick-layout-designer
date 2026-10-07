@@ -8,6 +8,7 @@ import type { ModuleBatch } from './mutations';
 import { connKey, freeConnectionsCached, lookupPart } from './snap';
 import { applyGroupTurn, facingTurn, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
 import { areaForPivot, pivotOf } from './brickGeometry';
+import { dragShift, snapCorner } from './gridSnap';
 
 /**
  * One batch per non-empty brick layer of a module file, named after the
@@ -33,6 +34,17 @@ export function moduleBatchesFromMap(map: BbmMap): ModuleBatch[] {
   return out;
 }
 
+/** The part a dropped module snaps to the grid by, as BlueBrick drops a group: the first that has a connection, else the first. */
+function moduleSnapLead(batches: ModuleBatch[], partsByKey: Map<string, PartWire> | null): ModuleBatch['bricks'][number] | undefined {
+  for (const batch of batches) {
+    for (const b of batch.bricks) {
+      const meta = partsByKey ? lookupPart(partsByKey, b.partNumber) : undefined;
+      if (meta?.connections.some((c) => c.type)) return b;
+    }
+  }
+  return batches.find((b) => b.bricks.length > 0)?.bricks[0];
+}
+
 /** Connection snap for a module drop: reach, the drag's session, Alt, the drop. */
 export interface ModuleSnapOptions {
   /** Reach in studs (`snapReachStuds`); 0 = no connection snap. */
@@ -45,8 +57,9 @@ export interface ModuleSnapOptions {
 /**
  * Translation that drops a module onto `target` (studs) like desktop:
  *   1. the module's centroid (mean brick centre) goes under the cursor;
- *   2. with a grid step, the module's bounding-box TOP-LEFT is rounded to
- *      the grid (so its edges sit on studs, matching the ghost);
+ *   2. with a grid step, its lead part (the first with a connection, else
+ *      the first) puts its snap corner on the grid, as BlueBrick drops a
+ *      group (gridSnap.ts);
  *   3. connection-snap pass: if any free connection of the placed module
  *      lands within reach of a free compatible connection in the host,
  *      shift the whole module by the smallest such gap. No rotation —
@@ -63,15 +76,11 @@ export function moduleDropTranslation(
   let cx = 0;
   let cy = 0;
   let n = 0;
-  let minX = Infinity;
-  let minY = Infinity;
   for (const batch of batches) {
     for (const b of batch.bricks) {
       const a = b.displayArea;
       cx += a.x + a.width / 2;
       cy += a.y + a.height / 2;
-      minX = Math.min(minX, a.x);
-      minY = Math.min(minY, a.y);
       n++;
     }
   }
@@ -80,11 +89,15 @@ export function moduleDropTranslation(
   cy /= n;
   let tx = target.x;
   let ty = target.y;
-  if (snapStepStuds > 0) {
-    const offX = minX - cx;
-    const offY = minY - cy;
-    tx = Math.round((tx + offX) / snapStepStuds) * snapStepStuds - offX;
-    ty = Math.round((ty + offY) / snapStepStuds) * snapStepStuds - offY;
+  const lead = moduleSnapLead(batches, partsByKey);
+  if (snapStepStuds > 0 && lead) {
+    const corner = snapCorner(
+      { displayArea: lead.displayArea, orientation: lead.orientation ?? 0 },
+      partsByKey ? lookupPart(partsByKey, lead.partNumber) : undefined,
+    );
+    const shift = dragShift(target, { x: corner.x + tx - cx, y: corner.y + ty - cy }, snapStepStuds);
+    tx += shift.x;
+    ty += shift.y;
   }
   const dx = tx - cx;
   const dy = ty - cy;

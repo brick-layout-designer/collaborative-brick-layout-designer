@@ -374,6 +374,14 @@ export interface SubPartWire {
   angle: number;
 }
 
+/** A part's `<SnapMargin>`, in studs (a 9V straight's half stud each side of the rails). */
+export interface SnapMarginWire {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 export interface PartWire {
   key: string;
   partNumber: string;
@@ -395,6 +403,8 @@ export interface PartWire {
   groupNextPreferred?: Record<number, number>;
   /** Hull polygon in pixel space (relative to sprite top-left). Empty = use bounding rect. */
   hullPts: { x: number; y: number }[];
+  /** `<SnapMargin>` in studs: what grid snapping leaves out of the sprite; absent when none. */
+  snapMargin?: SnapMarginWire;
   source: 'bundled' | 'custom';
   /** Set on source: 'custom' so the editor can build the sprite URL. */
   customPartId: string | null;

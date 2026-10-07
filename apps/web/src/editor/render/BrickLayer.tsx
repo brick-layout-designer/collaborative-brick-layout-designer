@@ -25,6 +25,7 @@ import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
 import { linkKeys, liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
+import { grabSnapCorner } from '../gridSnap';
 import { SnapSession, applyGroupTurn, holdReach, snapBypassed, type GroupTurn } from '../snapFeel';
 import { snapTraceEnabled, traceFrame, traceStart } from '../snapTrace';
 import { liveSnapReach } from '../liveSnapReach';
@@ -413,6 +414,8 @@ const BrickGlyph = memo(function BrickGlyph({
    * and used as the snap lead of a single-brick drag.
    */
   const grabConnRef = useRef<number>(-1);
+  /** This drag's snap corner when it started (gridSnap.ts grabSnapCorner), studs. */
+  const snapCornerRef = useRef<{ x: number; y: number } | null>(null);
 
   /**
    * What the grabbed part's links may point at and still hold during the
@@ -591,6 +594,10 @@ const BrickGlyph = memo(function BrickGlyph({
 
   function handleDragStart(e: KonvaEventObject<DragEvent>) {
     snapOrientRef.current = null;
+    {
+      const layer = getMap().layers.find((l) => l.id === layerId);
+      snapCornerRef.current = layer && layer.type === 'brick' ? grabSnapCorner(layer, brick, partsByKey) : null;
+    }
     snapSessionRef.current = new SnapSession();
     rawCentreRef.current = null;
     traceStart(performance.now());
@@ -864,6 +871,9 @@ const BrickGlyph = memo(function BrickGlyph({
         height: brick.displayArea.height,
         pivotOffsetX: pivotOff.x,
         pivotOffsetY: pivotOff.y,
+        ...(snapCornerRef.current
+          ? { snapCornerX: snapCornerRef.current.x + raw.x - pivot.x, snapCornerY: snapCornerRef.current.y + raw.y - pivot.y }
+          : {}),
         mouseStudX,
         mouseStudY,
         orientation: brick.orientation,

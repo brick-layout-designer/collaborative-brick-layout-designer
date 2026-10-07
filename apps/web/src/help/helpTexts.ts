@@ -81,7 +81,7 @@ export const HELP_TEXTS = {
   'toolbar.snap': {
     title: 'Snap',
     short: 'Pieces jump to the nearest grid line, so rows stay straight.',
-    more: 'The number is how far apart the grid lines are, in studs. Pick “off” to place something exactly where you drop it. Track ends still click together.',
+    more: 'The number is how far apart the grid lines are, in studs; rulers, labels, text and venue corners land on it too. Hold Alt (⌥ on a Mac) to put those exactly where you let go, or pick “off” to place everything where you drop it. Track ends still click together.',
   },
   'toolbar.rotateStep': {
     title: 'Turn step',

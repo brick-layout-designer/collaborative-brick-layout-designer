@@ -8,15 +8,15 @@
 //      offset that would put the candidate's matching point exactly on
 //      the existing point. Mirrors desktop's `applyLiveConnectionSnap`.
 //
-//   2. Grid snap. If no connection snap fired, round the candidate's
-//      centre to the nearest grid intersection (`GRID_SNAP_STUDS`).
-//      Matches the desktop's "Snap to grid" toggle behaviour.
+//   2. Grid snap. If no connection snap fired, the part's snap corner
+//      lands on the grid (gridSnap.ts, as BlueBrick), like the desktop.
 //
 // All inputs are in stud-space.
 
 import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import type { PartWire } from '../api';
 import { pivotOf } from './brickGeometry';
+import { dragShift, snapOffset } from './gridSnap';
 import { applyGroupTurn, facingTurn, holdReach, pickSnap, type GroupTurn, type SnapCandidate, type SnapSession } from './snapFeel';
 
 export interface PlaceCandidate {
@@ -189,11 +189,9 @@ export function snapPlacement(
     }
   }
 
-  // Desktop rounds the brick's TOP-LEFT corner of displayArea, not the
-  // centre — see MapView.cpp:1244-1248. For odd-stud-wide bricks this
-  // matters: a 3-stud brick centred at 0 snaps to displayArea.x=-1.5
-  // → rounded to -2 → centre = -2 + 1.5 = -0.5, NOT 0.
-  // When snap step is 0 ("off") the desktop skips this rounding entirely.
+  // The grid, as BlueBrick drops a part from the library (and the desktop's
+  // resolvePartPlacement): held by the middle of its box, its snap corner
+  // (box top-left plus its <SnapMargin> offset) lands on the grid.
   if (candidate.snapStepStuds <= 0) {
     return {
       centreX: candidate.centreX,
@@ -202,11 +200,16 @@ export function snapPlacement(
       newOrientation: null,
     };
   }
-  const ox = (candidate.pivotOffsetX ?? 0) + candidate.width / 2;
-  const oy = (candidate.pivotOffsetY ?? 0) + candidate.height / 2;
+  const cursor = { x: candidate.centreX, y: candidate.centreY };
+  const off = snapOffset(candidate.part.snapMargin, candidate.orientation);
+  const shift = dragShift(
+    cursor,
+    { x: cursor.x - candidate.width / 2 + off.x, y: cursor.y - candidate.height / 2 + off.y },
+    candidate.snapStepStuds,
+  );
   return {
-    centreX: roundToStep(candidate.centreX - ox, candidate.snapStepStuds) + ox,
-    centreY: roundToStep(candidate.centreY - oy, candidate.snapStepStuds) + oy,
+    centreX: cursor.x + shift.x + (candidate.pivotOffsetX ?? 0),
+    centreY: cursor.y + shift.y + (candidate.pivotOffsetY ?? 0),
     snappedToConnection: false,
     newOrientation: null,
   };
@@ -465,10 +468,6 @@ export function lookupPart(
 
 const fallbackMemo = new WeakMap<Map<string, PartWire>, Map<string, PartWire | undefined>>();
 
-function roundToStep(v: number, step: number): number {
-  return Math.round(v / step) * step;
-}
-
 function mod360(v: number): number {
   const r = v % 360;
   return r < 0 ? r + 360 : r;
@@ -538,7 +537,14 @@ export interface DragSnapInput {
   /** Leader pivot minus displayArea centre (parts with a <hull>); omitted = 0. */
   pivotOffsetX?: number;
   pivotOffsetY?: number;
-  /** Mouse position in studs — used as a tiebreaker between snap candidates. */
+  /**
+   * Where the pointer has the leader's snap corner (gridSnap.ts
+   * grabSnapCorner, moved with the drag), in studs; the grid puts it on a
+   * grid point. Omitted: the box's top-left.
+   */
+  snapCornerX?: number;
+  snapCornerY?: number;
+  /** Mouse position in studs — a tiebreaker between snap candidates, and what the grid snap follows. */
   mouseStudX: number;
   mouseStudY: number;
   /** Leader brick orientation. */
@@ -889,10 +895,10 @@ export function rotationAlignedCentre(
 }
 
 /**
- * Grid fallback: round the leader's displayArea TOP-LEFT to the grid, as
- * desktop does when committing a drag (MapViewDrag.cpp:572-580) and when
- * placing (MapView.cpp:1244-1248). For odd-sized bricks this differs from
- * rounding the centre by half a stud.
+ * Grid fallback: the leader's snap corner lands on the grid as BlueBrick's
+ * getMovedSnapPoint puts it (gridSnap.ts dragShift), as the desktop does
+ * live and on the drop (MapViewDrag.cpp brickGridShift). Without the
+ * corner, the box's top-left stands in.
  */
 function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapResult {
   const base = {
@@ -907,13 +913,12 @@ function gridFallback(drag: DragSnapInput, movingConnCount: number): DragSnapRes
     movingConnCount,
   };
   if (drag.snapStepStuds <= 0) return { ...base, centreX: drag.centreX, centreY: drag.centreY };
-  const hw = (drag.width ?? 0) / 2 + (drag.pivotOffsetX ?? 0);
-  const hh = (drag.height ?? 0) / 2 + (drag.pivotOffsetY ?? 0);
-  return {
-    ...base,
-    centreX: roundToStep(drag.centreX - hw, drag.snapStepStuds) + hw,
-    centreY: roundToStep(drag.centreY - hh, drag.snapStepStuds) + hh,
+  const corner = {
+    x: drag.snapCornerX ?? drag.centreX - (drag.width ?? 0) / 2 - (drag.pivotOffsetX ?? 0),
+    y: drag.snapCornerY ?? drag.centreY - (drag.height ?? 0) / 2 - (drag.pivotOffsetY ?? 0),
   };
+  const shift = dragShift({ x: drag.mouseStudX, y: drag.mouseStudY }, corner, drag.snapStepStuds);
+  return { ...base, centreX: drag.centreX + shift.x, centreY: drag.centreY + shift.y };
 }
 
 /**

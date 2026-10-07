@@ -39,6 +39,14 @@ export interface ConnectionPoint {
   angleToNext?: number;
 }
 
+/** A part's `<SnapMargin>`, in studs. */
+export interface SnapMargin {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 /** A child part inside a `<group>`. */
 export interface SubPart {
   /** Library key of the referenced part: `"<partNumber>.<colorCode>"` lowercased. */
@@ -98,6 +106,12 @@ export interface PartMetadata {
    * for parts without an explicit hull).
    */
   hullPts: { x: number; y: number }[];
+  /**
+   * `<SnapMargin>`: the margin inside the sprite that grid snapping leaves
+   * out, in studs (a 9V straight's half stud each side of the rails).
+   * Absent when the part has none.
+   */
+  snapMargin?: SnapMargin;
   /**
    * Earlier part numbers (`<OldNameList><OldName>`); maps and budgets
    * that use one resolve to this part (desktop PartsLibrary canonicalKey).

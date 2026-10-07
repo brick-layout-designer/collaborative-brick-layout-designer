@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../editorStore';
+import { snapBypassed } from '../snapFeel';
 import {
   Group,
   Circle as KonvaCircle,
@@ -60,9 +61,9 @@ interface Props {
   onRulerDoubleClick?: (rulerId: string) => void;
   /**
    * Called continuously while the user drags a linear-ruler endpoint
-   * handle and on release. The first call carries `which` = 0 / 1
-   * (point1 / point2); the final call carries `commit: true`.
-   * Mirrors desktop's `MoveRulerEndpointCommand` flow at MapView.cpp:
+   * handle and on release, with `which` = 0 / 1 (point1 / point2) and
+   * `free` when Alt is held (the end goes where the pointer is, not on the
+   * grid). Mirrors desktop's `MoveRulerEndpointCommand` flow at MapView.cpp:
    * 547-589 (live model mutate) + 680-724 (release commits).
    */
   onEndpointDrag?: (
@@ -70,7 +71,7 @@ interface Props {
     which: 0 | 1,
     studX: number,
     studY: number,
-    commit: boolean,
+    free: boolean,
   ) => void;
 }
 
@@ -129,7 +130,7 @@ export function RulerLayers({
                 rootProps: RulerRootProps;
                 onClick?: () => void;
                 onDoubleClick?: () => void;
-                onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, commit: boolean) => void;
+                onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, free: boolean) => void;
               } = {
                 brickCentres,
                 selected: sel,
@@ -139,8 +140,8 @@ export function RulerLayers({
               if (onRulerSelect) props.onClick = () => undefined;
               if (onRulerDoubleClick) props.onDoubleClick = () => onRulerDoubleClick(item.id);
               if (onEndpointDrag) {
-                props.onEndpointDrag = (which, sx, sy, commit) =>
-                  onEndpointDrag(item.id, which, sx, sy, commit);
+                props.onEndpointDrag = (which, sx, sy, free) =>
+                  onEndpointDrag(item.id, which, sx, sy, free);
               }
               return item.kind === 'linear' ? (
                 <LinearRulerView key={item.id} item={item} {...props} />
@@ -189,7 +190,7 @@ function rulerRootProps(
     // ruler Group's own drag.
     out.draggable = true;
     out.onDragStart = (e) => { if (e.target === e.currentTarget) drag.start('rulers', id, e.target); };
-    out.onDragMove = (e) => { if (e.target === e.currentTarget) drag.move(e.target); };
+    out.onDragMove = (e) => { if (e.target === e.currentTarget) drag.move(e.target, e.evt); };
     out.onDragEnd = (e) => { if (e.target === e.currentTarget) drag.end(e.target); };
   }
   return out;
@@ -221,7 +222,7 @@ function LinearRulerView({
   rootProps: RulerRootProps;
   onClick?: () => void;
   onDoubleClick?: () => void;
-  onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, commit: boolean) => void;
+  onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, free: boolean) => void;
 }) {
   const PX = studToPx();
   const showRulerAttachPoints = useEditorStore((s) => s.showRulerAttachPoints);
@@ -494,9 +495,9 @@ function LinearRulerView({
 
 /**
  * Draggable endpoint handle on a selected linear ruler. Reports
- * stud-coords on every dragmove (live) and once more on dragend with
- * `commit: true`. The committing call is what `MoveRulerEndpointCommand`
- * pushes onto the undo stack on desktop (RulerCommands.cpp:203-282).
+ * stud-coords on every dragmove (live) and once more on dragend, with
+ * `free` when Alt is held. Desktop's `MoveRulerEndpointCommand`
+ * (RulerCommands.cpp:203-282) does the same.
  */
 function EndpointHandle({
   x,
@@ -507,7 +508,7 @@ function EndpointHandle({
   x: number;
   y: number;
   which: 0 | 1;
-  onDrag: (which: 0 | 1, studX: number, studY: number, commit: boolean) => void;
+  onDrag: (which: 0 | 1, studX: number, studY: number, free: boolean) => void;
 }) {
   const PX = studToPx();
   return (
@@ -524,12 +525,12 @@ function EndpointHandle({
       onDragMove={(e) => {
         e.cancelBubble = true;
         const node = e.target;
-        onDrag(which, node.x() / PX, node.y() / PX, false);
+        onDrag(which, node.x() / PX, node.y() / PX, snapBypassed(e.evt));
       }}
       onDragEnd={(e) => {
         e.cancelBubble = true;
         const node = e.target;
-        onDrag(which, node.x() / PX, node.y() / PX, true);
+        onDrag(which, node.x() / PX, node.y() / PX, snapBypassed(e.evt));
       }}
     />
   );
