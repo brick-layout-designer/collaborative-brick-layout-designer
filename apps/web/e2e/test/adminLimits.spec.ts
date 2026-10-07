@@ -3,7 +3,7 @@
 // use, makes them read-only and lifts it again.
 
 import { test, expect } from '@playwright/test';
-import { signIn } from '../helpers';
+import { signIn, adminSection } from '../helpers';
 import { makeGlobalAdmin } from '../dbHelpers';
 
 const ts = Date.now();
@@ -20,7 +20,7 @@ test('limits: set one, reach it, then read-only and back', async ({ page, browse
   try {
     // Settings: one personal layout each.
     await page.goto('/admin');
-    await page.getByRole('button', { name: 'settings', exact: true }).click();
+    await adminSection(page, 'settings');
     await expect(page.getByRole('heading', { name: 'Usage limits' })).toBeVisible();
     await page.getByLabel('Layouts per person').fill('1');
     await page.getByRole('button', { name: 'Save limits' }).click();
@@ -33,7 +33,7 @@ test('limits: set one, reach it, then read-only and back', async ({ page, browse
     await expect(user.getByText('You have 1 layout, the most allowed. Delete one you don’t need, or ask the site admin for more.')).toBeVisible();
 
     // Heavy use: the person shows up; open them and make them read-only.
-    await page.getByRole('button', { name: 'heavy use' }).click();
+    await adminSection(page, 'heavy');
     const people = page.getByRole('region', { name: /Top people/ });
     await expect(people).toBeVisible();
     await people.getByRole('button', { name: `Lim User ${ts}` }).first().click();

@@ -57,6 +57,7 @@ test('a trusted club reviews its members’ shares itself; untrusted, the site r
     // The moderator trusts the club from Moderation.
     await mod.page.goto('/');
     await fromSettingsMenu(mod.page, /^Moderation/);
+    await mod.page.getByRole('tab', { name: 'Trusted clubs', exact: true }).click();
     await mod.page.getByLabel('Find a club to trust').fill(String(ts));
     await mod.page.getByRole('list', { name: 'Clubs found' }).getByRole('button', { name: `Trust ${CLUB}` }).click();
     await expect(mod.page.getByTestId('trusted-club').filter({ hasText: CLUB })).toContainText('Trusted club');
@@ -84,10 +85,12 @@ test('a trusted club reviews its members’ shares itself; untrusted, the site r
     await share.getByRole('button', { name: 'Done' }).click();
 
     // Not in the site's queue: under trusted clubs'.
-    await mod.page.reload();
-    await expect(mod.page.getByTestId('moderation-entry').filter({ hasText: `Bench ${ts}` })).toHaveCount(1);
-    await expect(mod.page.locator('section[aria-labelledby="mod-trusted-queue"]')).toContainText(`Bench ${ts}`);
-    await expect(mod.page.locator('section[aria-labelledby="mod-queue"]')).not.toContainText(`Bench ${ts}`);
+    await mod.page.getByRole('tab', { name: /^Trusted clubs’ queues/ }).click();
+    await expect(mod.page.locator('section[aria-labelledby="mod-list-trusted"]').getByTestId('moderation-entry').filter({ hasText: `Bench ${ts}` })).toHaveCount(1);
+    await mod.page.getByRole('tab', { name: /^To review/ }).click();
+    await expect(mod.page.locator('section[aria-labelledby="mod-list-waiting"]')).toBeVisible();
+    await expect(mod.page.getByTestId('moderation-entry').filter({ hasText: `Bench ${ts}` })).toHaveCount(0);
+    await mod.page.getByRole('tab', { name: 'Trusted clubs', exact: true }).click();
 
     // Ada's open Review tab shows it, live; she approves it.
     const waiting = ada.page.getByTestId('club-review-item').filter({ hasText: `Bench ${ts}` });

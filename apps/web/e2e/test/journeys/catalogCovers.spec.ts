@@ -10,7 +10,7 @@
 //   4. She removes it: back to the drawn picture.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../../helpers';
+import { ensureUser, signIn, adminSection } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 import { watch4xx } from '../../quietNetwork';
 
@@ -104,7 +104,7 @@ test('an owner uploads a cover with a background colour; it is reviewed, then sh
   // 3. The moderator sees both, and approves.
   await as(page, MOD, 'Mo Derator');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'moderation', exact: true }).click();
+  await adminSection(page, 'moderation');
   const entry = page.getByTestId('cover-review').filter({ hasText: TITLE });
   await expect(entry.getByTestId('review-old').locator('img')).toHaveAttribute('src', /\/preview\?/);
   await expect(entry.getByTestId('review-new').locator('img')).toHaveAttribute('src', /\/cover\?image=/);

@@ -974,6 +974,8 @@ export const catalogItems = sqliteTable(
   (t) => ({
     sourceIdx: index('catalog_items_source_idx').on(t.sourceId),
     statusIdx: index('catalog_items_status_idx').on(t.kind, t.status),
+    /** Moderation's lists of what's published or unpublished, a page at a time, newest first. */
+    statusUpdatedIdx: index('catalog_items_status_updated_idx').on(t.status, t.updatedAt),
   }),
 );
 
@@ -1016,6 +1018,8 @@ export const catalogItemVersions = sqliteTable(
   },
   (t) => ({
     itemVersionIdx: uniqueIndex('catalog_item_versions_item_version_idx').on(t.itemId, t.version),
+    /** Moderation's queue, a page at a time, oldest first. */
+    statusCreatedIdx: index('catalog_item_versions_status_created_idx').on(t.status, t.createdAt),
   }),
 );
 

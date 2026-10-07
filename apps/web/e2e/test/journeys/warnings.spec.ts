@@ -9,7 +9,7 @@
 //      was read. Someone outside the club never sees it.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, adminSection } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -36,7 +36,7 @@ test('a site warning reaches the member live, and the admin sees it read', async
 
     // The admin opens the member's page and sends a warning.
     await admin.page.goto('/admin');
-    await admin.page.getByRole('button', { name: 'users' }).click();
+    await adminSection(admin.page, 'users');
     await admin.page.getByPlaceholder('Search by email or name…').fill(MEMBER);
     await admin.page.getByRole('button', { name: MEMBER }).click();
     const form = admin.page.getByRole('form', { name: `Warn Member ${ts}` });

@@ -11,7 +11,7 @@
 //   own layout → the owner publishes an update → the copy offers it.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn, fromSettingsMenu, confirmInDialog } from '../../helpers';
+import { ensureUser, signIn, fromSettingsMenu, confirmInDialog, adminSection } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -141,11 +141,11 @@ test('a module goes from New module to another member’s layout', async ({ page
   // ── The site's admin opens the module catalog and names a moderator. ──
   await as(page, ADMIN, 'Admin Ari');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
+  await adminSection(page, 'settings');
   const catalogToggle = page.getByLabel('Public module catalog');
   if (!(await catalogToggle.isChecked())) await catalogToggle.click();
   await expect(catalogToggle).toBeChecked();
-  await page.getByRole('button', { name: 'users' }).click();
+  await adminSection(page, 'users');
   await page.getByLabel(`Moderator: ${MOD}`).click();
   await expect(page.getByLabel(`Moderator: ${MOD}`)).toBeChecked();
 

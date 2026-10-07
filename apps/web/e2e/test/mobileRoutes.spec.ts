@@ -78,9 +78,12 @@ const versionBar = (ready?: (page: Page) => Promise<void>) => async (page: Page)
   }).toBe(true);
 };
 
-const adminTab = (name: string) => async (page: Page) => {
+// The admin sections: a list down the side, or one "Section" picker on a phone.
+const adminTab = (key: string) => async (page: Page) => {
   await page.getByRole('main').waitFor();
-  await page.locator('nav').getByRole('button', { name, exact: true }).click();
+  const pick = page.getByRole('combobox', { name: 'Section' });
+  if (await pick.isVisible()) await pick.selectOption(key);
+  else await page.getByRole('navigation', { name: 'Admin sections' }).locator(`a[href="/admin?tab=${key}"]`).click();
 };
 const clubTab = (name: string) => async (page: Page) => {
   await page.getByRole('tab', { name, exact: true }).click();
@@ -112,8 +115,8 @@ const ROUTES: RouteCase[] = [
   { name: 'venue-new', who: 'owner', path: () => '/venues/new' },
   { name: 'venue-design', who: 'owner', path: (s) => `/venues/${s.venueId}/design` },
   { name: 'admin', who: 'owner', path: () => '/admin', ready: (p) => expect(p.getByRole('heading', { name: 'Needs attention' })).toBeVisible() },
-  ...['heavy use', 'users', 'clubs', 'layouts', 'parts', 'libraries', 'audit', 'settings'].map((t): RouteCase => ({
-    name: `admin-${t.replace(' ', '-')}`, who: 'owner', path: () => '/admin', tab: adminTab(t),
+  ...([['heavy-use', 'heavy'], ['users', 'users'], ['clubs', 'orgs'], ['layouts', 'layouts'], ['parts', 'parts'], ['libraries', 'libraries'], ['audit', 'audit'], ['settings', 'settings']] as const).map(([n, key]): RouteCase => ({
+    name: `admin-${n}`, who: 'owner', path: () => '/admin', tab: adminTab(key),
   })),
   { name: 'new-version-bar', who: 'owner', path: () => '/', before: newVersion, ready: versionBar() },
   { name: 'new-version-bar-editor', who: 'owner', path: (s) => `/editor/${s.layoutId}`, before: newVersion, ready: versionBar(canvasReady) },

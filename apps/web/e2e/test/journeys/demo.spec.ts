@@ -10,7 +10,7 @@
 //   4. Turning the demo off signs the visitor out and hides Try the demo.
 
 import { test, expect, type Page } from '@playwright/test';
-import { signIn } from '../../helpers';
+import { signIn, adminSection } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -53,7 +53,7 @@ test('an admin turns on the demo, a visitor tries it, and Reset now puts the sam
   try {
     // ── 1. The admin turns it on. ──
     await admin.goto('/admin');
-    await admin.getByRole('button', { name: 'settings', exact: true }).click();
+    await adminSection(admin, 'settings');
     const enable = admin.getByLabel('Enable the demo account');
     await expect(enable).not.toBeChecked();
     await enable.click(); // saved, then shown from the server

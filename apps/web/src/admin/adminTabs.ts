@@ -6,11 +6,6 @@ export type AdminTab = 'dashboard' | 'heavy' | 'users' | 'orgs' | 'layouts' | 'p
 
 export const ADMIN_TABS: readonly AdminTab[] = ['dashboard', 'heavy', 'users', 'orgs', 'layouts', 'parts', 'libraries', 'moderation', 'privacy', 'audit', 'settings'];
 
-/** The tab button's words (shown capitalised). */
-export function adminTabText(t: AdminTab): string {
-  return t === 'orgs' ? 'clubs' : t === 'heavy' ? 'heavy use' : t;
-}
-
 /** The Settings menu's words for each tab. */
 export const ADMIN_MENU_LABELS: Record<AdminTab, string> = {
   dashboard: 'Dashboard',
@@ -25,6 +20,18 @@ export const ADMIN_MENU_LABELS: Record<AdminTab, string> = {
   audit: 'Audit log',
   settings: 'Site settings',
 };
+
+/** The side list's groups, each under a small heading, in order. */
+export const ADMIN_GROUPS: readonly { label: string; tabs: readonly AdminTab[] }[] = [
+  { label: 'Overview', tabs: ['dashboard', 'heavy'] },
+  { label: 'People', tabs: ['users', 'orgs'] },
+  { label: 'Content', tabs: ['layouts', 'parts', 'libraries'] },
+  { label: 'Requests', tabs: ['moderation', 'privacy'] },
+  { label: 'Site', tabs: ['audit', 'settings'] },
+];
+
+/** The side list's words for each section. */
+export const ADMIN_NAV_LABELS: Record<AdminTab, string> = { ...ADMIN_MENU_LABELS, settings: 'Settings' };
 
 export function adminTabUrl(t: AdminTab): string {
   return `/admin?tab=${t}`;

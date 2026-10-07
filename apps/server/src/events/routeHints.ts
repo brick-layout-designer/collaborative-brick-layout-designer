@@ -457,6 +457,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/moderation/versions/:versionId/approve': catalog(async (c) => itemOfVersion(c.params.versionId ?? ''), true),
   'POST /api/moderation/versions/:versionId/decline': catalog(async (c) => itemOfVersion(c.params.versionId ?? ''), false),
   'POST /api/moderation/items/:id/unpublish': catalog(async (c) => c.params.id ?? null, true),
+  // Several at once: one hint for everyone (each list refetches).
+  'POST /api/moderation/bulk': catalog(async () => null, true),
   'PUT /api/catalog/items/:id/cover': catalog(async (c) => c.params.id ?? null, true),
   'DELETE /api/catalog/items/:id/cover': catalog(async (c) => c.params.id ?? null, true),
   'POST /api/moderation/items/:id/cover/approve': catalog(async (c) => c.params.id ?? null, true),

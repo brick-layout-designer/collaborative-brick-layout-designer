@@ -17,7 +17,7 @@ import { coverMaxBytes } from '../images/covers.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
@@ -994,6 +994,215 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       items: items.map((i) => ({ ...itemOut(i, name(i), pictured), status: i.status, reason: i.reason, owner: ownerRef(i), trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId) })),
     };
   });
+
+  // ---- moderation at scale: one list a page at a time ----------------------
+  // `view`: 'waiting' (versions to review), 'trusted' (waiting in trusted
+  // clubs' own queues), 'public' or 'unpublished' (items). Filters: kind,
+  // q (title, description, tags, reason), from/to (ms; when sent or last
+  // changed), sort ('oldest' or 'newest'). `limit` (≤ 100) and `offset`
+  // page through it; `total` counts every match.
+  const trustedOrg = sql`EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogItems.ownerOrgId} AND o.trusted = 1)`;
+  app.get<{ Querystring: { view?: string; kind?: string; q?: string; from?: string; to?: string; sort?: string; limit?: string; offset?: string } }>(
+    '/api/moderation/catalog',
+    async (req, reply) => {
+      const viewer = requireModerator(req);
+      const view = req.query.view ?? 'waiting';
+      if (!['waiting', 'trusted', 'public', 'unpublished'].includes(view)) return reply.code(400).send({ error: 'invalid_input' });
+      const kind = req.query.kind;
+      if (kind && !isKind(kind)) return reply.code(400).send({ error: 'invalid_input' });
+      const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit)) || 50));
+      const offset = Math.min(1_000_000, Math.max(0, Math.floor(Number(req.query.offset)) || 0));
+      const q = (req.query.q ?? '').trim().toLowerCase().slice(0, 80);
+      const like = q ? `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+      const text = like
+        ? or(
+            sql`lower(${schema.catalogItems.title}) LIKE ${like} ESCAPE '\\'`,
+            sql`lower(${schema.catalogItems.description}) LIKE ${like} ESCAPE '\\'`,
+            sql`lower(${schema.catalogItems.tags}) LIKE ${like} ESCAPE '\\'`,
+            sql`lower(coalesce(${schema.catalogItems.reason}, '')) LIKE ${like} ESCAPE '\\'`,
+          )
+        : undefined;
+      const from = Number(req.query.from) || 0;
+      const to = Number(req.query.to) || 0;
+      const oldest = view === 'waiting' || view === 'trusted' ? req.query.sort !== 'newest' : req.query.sort === 'oldest';
+      if (view === 'waiting' || view === 'trusted') {
+        const at = schema.catalogItemVersions.createdAt;
+        const where = and(
+          eq(schema.catalogItemVersions.status, 'in_review'),
+          view === 'trusted' ? trustedOrg : sql`NOT ${trustedOrg}`,
+          kind ? eq(schema.catalogItems.kind, kind as Kind) : undefined,
+          text,
+          from ? sql`${at} >= ${from}` : undefined,
+          to ? sql`${at} <= ${to}` : undefined,
+        );
+        const total = (
+          await db
+            .select({ n: sql<number>`count(*)` })
+            .from(schema.catalogItemVersions)
+            .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
+            .where(where)
+            .get()
+        )?.n ?? 0;
+        const rows = await db
+          .select({
+            versionId: schema.catalogItemVersions.id,
+            version: schema.catalogItemVersions.version,
+            note: schema.catalogItemVersions.note,
+            createdAt: at,
+            itemId: schema.catalogItems.id,
+            kind: schema.catalogItems.kind,
+            title: schema.catalogItems.title,
+            description: schema.catalogItems.description,
+            tags: schema.catalogItems.tags,
+            publicVersion: schema.catalogItems.publicVersion,
+            coverImageId: schema.catalogItems.coverImageId,
+            submitterId: schema.users.id,
+            submitterName: schema.users.displayName,
+            submitterEmail: schema.users.email,
+            ownerUserId: schema.catalogItems.ownerUserId,
+            ownerOrgId: schema.catalogItems.ownerOrgId,
+          })
+          .from(schema.catalogItemVersions)
+          .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
+          .leftJoin(schema.users, eq(schema.users.id, schema.catalogItemVersions.submittedBy))
+          .where(where)
+          .orderBy(oldest ? asc(at) : desc(at), asc(schema.catalogItemVersions.id))
+          .limit(limit)
+          .offset(offset);
+        const name = await ownerNames(rows);
+        const pictured = await picturedVersions(rows.map((r) => ({ id: r.itemId, version: r.version })));
+        return {
+          total,
+          nextOffset: offset + rows.length < total ? offset + rows.length : null,
+          rows: rows.map((r) => ({
+            versionId: r.versionId,
+            itemId: r.itemId,
+            kind: r.kind,
+            title: r.title,
+            description: r.description,
+            tags: parseTags(r.tags),
+            version: r.version,
+            isUpdate: r.publicVersion > 0,
+            note: r.note,
+            by: name(r),
+            submitter: r.submitterId
+              ? { name: nameFor(viewer, r.submitterId, r.submitterName), ...(viewer.isGlobalAdmin && r.submitterEmail ? { email: r.submitterEmail } : {}) }
+              : null,
+            createdAt: r.createdAt.getTime(),
+            previewUrl: previewUrlOf(r.itemId, r.version, pictured),
+            coverUrl: r.coverImageId ? itemCoverUrl(r.itemId, r.coverImageId) : null,
+            owner: ownerRef(r),
+            trustedClub: view === 'trusted',
+          })),
+        };
+      }
+      const at = schema.catalogItems.updatedAt;
+      const where = and(
+        eq(schema.catalogItems.status, view as 'public' | 'unpublished'),
+        kind ? eq(schema.catalogItems.kind, kind as Kind) : undefined,
+        text,
+        from ? sql`${at} >= ${from}` : undefined,
+        to ? sql`${at} <= ${to}` : undefined,
+      );
+      const total = (await db.select({ n: sql<number>`count(*)` }).from(schema.catalogItems).where(where).get())?.n ?? 0;
+      const rows = await db
+        .select()
+        .from(schema.catalogItems)
+        .where(where)
+        .orderBy(oldest ? asc(at) : desc(at), asc(schema.catalogItems.id))
+        .limit(limit)
+        .offset(offset);
+      const name = await ownerNames(rows);
+      const trusted = await trustedClubs(rows.map((r) => r.ownerOrgId));
+      const pictured = await picturedVersions(rows.map((i) => ({ id: i.id, version: i.publicVersion })));
+      return {
+        total,
+        nextOffset: offset + rows.length < total ? offset + rows.length : null,
+        rows: rows.map((i) => ({
+          ...itemOut(i, name(i), pictured),
+          status: i.status,
+          reason: i.reason,
+          updatedAt: i.updatedAt.getTime(),
+          owner: ownerRef(i),
+          trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId),
+        })),
+      };
+    },
+  );
+
+  // New pictures waiting, without the lists of items (Moderation › To review).
+  app.get('/api/moderation/covers', async (req) => {
+    requireModerator(req);
+    const covers = await coverQueue();
+    return { covers: covers.filter((c) => !c.trustedClub), trustedCovers: covers.filter((c) => c.trustedClub) };
+  });
+
+  // How many are in each list: the tab badges and the menu's count.
+  app.get('/api/moderation/counts', async (req) => {
+    requireModerator(req);
+    const waitingRows = await db
+      .select({ trusted: sql<number>`${trustedOrg}`, n: sql<number>`count(*)` })
+      .from(schema.catalogItemVersions)
+      .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
+      .where(eq(schema.catalogItemVersions.status, 'in_review'))
+      .groupBy(sql`1`);
+    const byStatus = await db
+      .select({ status: schema.catalogItems.status, n: sql<number>`count(*)` })
+      .from(schema.catalogItems)
+      .where(inArray(schema.catalogItems.status, ['public', 'unpublished']))
+      .groupBy(schema.catalogItems.status);
+    const covers = await db
+      .select({ trusted: sql<number>`${trustedOrg}`, n: sql<number>`count(*)` })
+      .from(schema.catalogItems)
+      .where(isNotNull(schema.catalogItems.pendingCoverImageId))
+      .groupBy(sql`1`);
+    const collections = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(schema.catalogCollections)
+      .where(
+        and(
+          eq(schema.catalogCollections.audience, 'everyone'),
+          or(eq(schema.catalogCollections.status, 'in_review'), and(eq(schema.catalogCollections.status, 'public'), isNotNull(schema.catalogCollections.pending))),
+          sql`NOT EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogCollections.orgId} AND o.trusted = 1)`,
+        ),
+      )
+      .get();
+    const pick = (rows: { trusted: number; n: number }[], t: boolean) => rows.find((r) => !!r.trusted === t)?.n ?? 0;
+    return {
+      waiting: pick(waitingRows, false),
+      trusted: pick(waitingRows, true),
+      covers: pick(covers, false),
+      trustedCovers: pick(covers, true),
+      public: byStatus.find((r) => r.status === 'public')?.n ?? 0,
+      unpublished: byStatus.find((r) => r.status === 'unpublished')?.n ?? 0,
+      /** Collections waiting (not trusted clubs' own). */
+      collections: collections?.n ?? 0,
+    };
+  });
+
+  // Several at once: approve or decline waiting versions, or unpublish
+  // items. Each is done (and audited) on its own, as if one by one.
+  app.post<{ Body: { action?: unknown; ids?: unknown; reason?: unknown } }>(
+    '/api/moderation/bulk',
+    // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+    { config: { rateLimit: perPerson(60, '1 minute') } },
+    async (req, reply) => {
+      const user = requireModerator(req);
+      const { action, ids, reason } = req.body ?? {};
+      if (action !== 'approve' && action !== 'decline' && action !== 'unpublish') return reply.code(400).send({ error: 'invalid_input' });
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100 || !ids.every((i) => typeof i === 'string' && i.length <= 64)) {
+        return reply.code(400).send({ error: 'invalid_input' });
+      }
+      let done = 0;
+      const failed: { id: string; error: string }[] = [];
+      for (const id of new Set(ids as string[])) {
+        const r = action === 'unpublish' ? await unpublishItem(user, id, reason) : await decideVersion(user, id, action === 'approve', reason);
+        if (r.code === 200) done++;
+        else failed.push({ id, error: (r.body as { error?: string }).error ?? 'failed' });
+      }
+      return { done, failed };
+    },
+  );
 
   const decide = (req: FastifyRequest<{ Params: { versionId: string }; Body: { reason?: unknown } }>, approve: boolean) =>
     decideVersion(requireModerator(req), req.params.versionId, approve, req.body?.reason);

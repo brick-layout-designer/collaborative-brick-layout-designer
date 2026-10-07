@@ -43,11 +43,9 @@ beforeEach(() => {
     const body: unknown =
       input === '/api/auth/me'
         ? { user: me }
-        : input === '/api/moderation/items'
-          ? { queue: [{ id: 'q1' }, { id: 'q2' }], items: [] }
-          : input === '/api/moderation/collections'
-            ? { queue: [{ id: 'c1' }], collections: [] }
-            : input === '/api/auth/logout'
+        : input === '/api/moderation/counts'
+          ? { waiting: 2, trusted: 0, covers: 0, trustedCovers: 0, public: 0, unpublished: 0, collections: 1 }
+          : input === '/api/auth/logout'
               ? { ok: true }
               : input === '/api/catalog/settings'
                 ? catalogSettings
@@ -261,22 +259,29 @@ describe('the pages the menu links to', () => {
     expect(scroll.mock.contexts[0]).toBe(document.getElementById('help'));
   });
 
-  it('/admin?tab=users opens the Users tab, and picking a tab puts it in the address', async () => {
+  it('/admin?tab=users opens Users; the side list groups the sections and puts the one picked in the address', async () => {
     me = ADMIN;
     wrap(<Routes><Route path="/admin" element={<AdminPage />} /></Routes>, '/admin?tab=users');
-    const users = await screen.findByRole('button', { name: 'users' });
-    expect(users.getAttribute('aria-current')).toBe('page');
-    fireEvent.click(screen.getByRole('button', { name: 'audit' }));
+    const nav = await screen.findByRole('navigation', { name: 'Admin sections' });
+    expect(within(nav).getAllByRole('heading').map((h) => h.textContent)).toEqual(['Overview', 'People', 'Content', 'Requests', 'Site']);
+    expect(within(nav).getByRole('link', { name: 'Users' }).getAttribute('aria-current')).toBe('page');
+    // The moderation count shows in the list.
+    expect(await within(nav).findByLabelText('3 waiting for review')).toBeTruthy();
+    fireEvent.click(within(nav).getByRole('link', { name: 'Audit log' }));
     expect(screen.getByTestId('where').textContent).toBe('/admin?tab=audit');
-    expect(screen.getByRole('button', { name: 'audit' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Audit log' }).getAttribute('aria-current')).toBe('page');
+    // On a phone the same sections are one picker, showing the current one.
+    expect((screen.getByRole('combobox', { name: 'Section' }) as HTMLSelectElement).value).toBe('audit');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Section' }), { target: { value: 'settings' } });
+    expect(screen.getByTestId('where').textContent).toBe('/admin?tab=settings');
   });
 
-  it('a moderator sent to an admin-only tab gets Moderation', async () => {
+  it('a moderator sent to an admin-only section gets Moderation, with no side list', async () => {
     me = MODERATOR;
     wrap(<Routes><Route path="/admin" element={<AdminPage />} /></Routes>, '/admin?tab=users');
-    const mod = await screen.findByRole('button', { name: 'moderation' });
-    expect(mod.getAttribute('aria-current')).toBe('page');
-    expect(screen.queryByRole('button', { name: 'users' })).toBeNull();
+    expect(await screen.findByRole('tab', { name: /To review/ })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Admin sections' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Section' })).toBeNull();
   });
 });
 
