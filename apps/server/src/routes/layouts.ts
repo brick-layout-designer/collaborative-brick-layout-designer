@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
-import { createWriteStream, createReadStream, existsSync } from 'node:fs';
+import { createWriteStream, createReadStream, existsSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -25,6 +25,7 @@ import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { creditLookup, withCredits } from './credits.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { backgroundImagePath, layoutFileBytes, smallZip } from '../privacy/exportFiles.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -406,6 +407,31 @@ export async function layoutRoutes(app: FastifyInstance) {
       `attachment; filename="${sanitizeFilename(layout.title)}.bbm"`,
     );
     return reply.send(xml);
+  });
+
+  // ---- export (.bld-layout) ------------------------------------------------
+  // The whole layout as one native file (its sidecar and background picture
+  // inside), for the desktop's "Download a copy". The same file the data
+  // download puts in its layouts/ folder; it remembers where it came from.
+  app.get<{ Params: { id: string } }>('/api/layouts/:id/export.bld-layout', { config: TOKEN_READ }, async (req, reply) => {
+    const user = requireUser(req);
+    const role = await resolveResourceRole(user.id, 'layout', req.params.id);
+    if (!hasAtLeast(role.role, 'viewer')) return reply.code(404).send({ error: 'not_found' });
+    const layout = await db.select().from(schema.layouts).where(eq(schema.layouts.id, req.params.id)).get();
+    if (!layout) return reply.code(404).send({ error: 'not_found' });
+    const bg = backgroundImagePath(layout.id);
+    const bytes = layoutFileBytes(
+      await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array),
+      layout.sidecarSnapshot as Uint8Array | null,
+      bg ? { bytes: readFileSync(bg.path), ext: bg.ext } : null,
+      { layoutId: layout.id, title: layout.title },
+      smallZip,
+    );
+    if (!bytes) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
+    rollup.count('exports', 'bld-layout');
+    reply.header('Content-Type', 'application/zip');
+    reply.header('Content-Disposition', `attachment; filename="${sanitizeFilename(layout.title)}.bld-layout"`);
+    return reply.send(Buffer.from(bytes));
   });
 
   // ---- snapshot (binary Y.Doc) --------------------------------------------

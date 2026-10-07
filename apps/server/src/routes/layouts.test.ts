@@ -132,6 +132,34 @@ describe('layout routes', () => {
     expect(reparsed.map).toEqual(original.map);
   });
 
+  it('downloads a layout as one .bld-layout file (desktop "Download a copy")', async () => {
+    const cookieStr = await registerAndLogin(app, 'dora@example.com');
+    const bbm = readFileSync(resolve(FIXTURES, 'tight-corner.bbm'), 'utf8');
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/layouts',
+      headers: { cookie: cookieStr },
+      payload: { title: 'Tight Corner', bbm },
+    });
+    const id = (create.json() as { id: string }).id;
+    const exp = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bld-layout`, headers: { cookie: cookieStr } });
+    expect(exp.statusCode).toBe(200);
+    expect(exp.headers['content-type']).toContain('application/zip');
+    expect(exp.headers['content-disposition']).toContain('Tight Corner.bld-layout');
+    const body = exp.rawPayload;
+    // A zip whose entries are the manifest (with where it came from) and the map.
+    expect(body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    const text = body.toString('latin1');
+    expect(text).toContain('manifest.json');
+    expect(text).toContain('layout.bbm');
+    expect(text).toContain(`"layoutId":"${id}"`);
+
+    // Someone else can't, and isn't told it exists.
+    const other = await registerAndLogin(app, 'eve@example.com');
+    const refused = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bld-layout`, headers: { cookie: other } });
+    expect(refused.statusCode).toBe(404);
+  });
+
   it('rejects garbage .bbm payloads with 400', async () => {
     const cookieStr = await registerAndLogin(app, 'carol@example.com');
     const res = await app.inject({

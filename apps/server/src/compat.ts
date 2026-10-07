@@ -29,6 +29,8 @@ export const FEATURES = [
   'ownerTags',
   // Usage limits (#148): a refusal says limit_reached with a sentence to show.
   'limits',
+  // GET /api/layouts/:id/export.bld-layout, and each venue's size and date in GET /api/venues.
+  'layoutDownload',
 ] as const;
 
 interface Parsed {
