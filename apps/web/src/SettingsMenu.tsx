@@ -19,7 +19,6 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiGet, type Me } from './api';
 import { isMobileDevice } from './pwa/install';
-import { ADMIN_MENU_LABELS, adminTabsFor, adminTabUrl } from './admin/adminTabs';
 import { usePreferences } from './theme/PrefsProvider';
 import { isPhoneScreen, useTours } from './tours/TourProvider';
 import { toursFor } from './tours/tours';
@@ -73,7 +72,7 @@ export function useWaitingReviews(user: Pick<Me, 'isGlobalAdmin' | 'isModerator'
 /** The menu's groups for this person. */
 export function settingsMenuGroups(
   user: Pick<Me, 'isGlobalAdmin' | 'isModerator' | 'isDemoAccount'>,
-  opts: { installOffered: boolean; waitingReviews: number; privacyDue?: number },
+  opts: { installOffered: boolean },
 ): Group[] {
   const account: Entry[] = [{ label: 'Profile and name', to: '/profile#name' }];
   // The shared demo account can't change its sign-in or connect a desktop app.
@@ -95,21 +94,6 @@ export function settingsMenuGroups(
     { id: 'account', title: 'Account', entries: account },
     { id: 'look', title: 'Look', entries: look },
   ];
-  const tabs = adminTabsFor(user);
-  if (tabs.length > 0) {
-    groups.push({
-      id: 'admin',
-      title: 'Admin settings',
-      entries: tabs.map((t) => ({
-        label: ADMIN_MENU_LABELS[t],
-        to: adminTabUrl(t),
-        ...(t === 'moderation' && opts.waitingReviews > 0 ? { badge: opts.waitingReviews } : {}),
-        ...(t === 'privacy' && (opts.privacyDue ?? 0) > 0
-          ? { badge: opts.privacyDue, badgeLabel: `${opts.privacyDue} privacy ${opts.privacyDue === 1 ? 'request' : 'requests'} due soon or overdue` }
-          : {}),
-      })),
-    });
-  }
   return groups;
 }
 
@@ -155,6 +139,13 @@ function usePhoneWidth(): boolean {
   return phone;
 }
 
+const OPEN_GROUPS_KEY = 'cld:menuOpenGroups';
+
+/** What a folded group would show as waiting (join requests, reviews). */
+function groupBadge(g: Group): number {
+  return g.entries.reduce((n, e) => n + (e.badge ?? 0), 0);
+}
+
 export function SettingsMenu({
   user,
   onSignOut,
@@ -168,24 +159,58 @@ export function SettingsMenu({
   pages?: Entry[];
 }) {
   const [open, setOpen] = useState(false);
+  // Which groups are open. Pages starts open; the rest start folded so the
+  // menu fits without scrolling. Remembered in this browser.
+  const [openGroups, setOpenGroups] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(OPEN_GROUPS_KEY) ?? 'null') as unknown;
+      if (Array.isArray(v) && v.every((x) => typeof x === 'string')) return v;
+    } catch {
+      /* private mode or a bad value: use the default */
+    }
+    return ['pages'];
+  });
+  const toggleGroup = (id: string) =>
+    setOpenGroups((now) => {
+      const next = now.includes(id) ? now.filter((g) => g !== id) : [...now, id];
+      try {
+        localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        /* not saved: fine */
+      }
+      return next;
+    });
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const waiting = useWaitingReviews(user);
-  const privacyDue = usePrivacyDue(user);
   const phone = usePhoneWidth();
+  // One link to the admin pages (site admins), or to Moderation (moderators),
+  // counting what waits there. The pages themselves have their own tabs.
+  const reviews = useWaitingReviews(user);
+  const privacyDue = usePrivacyDue(user);
+  const adminWaiting = reviews + privacyDue;
+  const admin = user.isGlobalAdmin
+    ? { label: 'Site admin', to: '/admin' }
+    : user.isModerator
+      ? { label: 'Moderation', to: '/admin?tab=moderation' }
+      : null;
+  const adminBadgeLabel = [
+    reviews > 0 ? `${reviews} ${reviews === 1 ? 'review' : 'reviews'} waiting` : '',
+    privacyDue > 0 ? `${privacyDue} privacy ${privacyDue === 1 ? 'request' : 'requests'} due` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
   const help = useHelpEntries(phone || isPhoneScreen());
   // Installing is offered on phones and tablets (the Settings page's rule).
   const installOffered = useMemo(() => isMobileDevice(), []);
   const groups: Group[] = [
     ...(phone && pages.length > 0 ? [{ id: 'pages', title: 'Pages', entries: pages }] : []),
     { id: 'help', title: 'Help', entries: help },
-    ...settingsMenuGroups(user, { installOffered, waitingReviews: waiting, privacyDue }),
+    ...settingsMenuGroups(user, { installOffered }),
   ];
   // People waiting to join a club only show in the Pages group, so the button counts them on a phone.
   const pageBadges = phone ? pages.reduce((n, p) => n + (p.badge ?? 0), 0) : 0;
-  const buttonBadge = waiting + privacyDue + pageBadges;
-  const reviewWords = `${waiting} ${waiting === 1 ? 'review' : 'reviews'} waiting`;
+  const buttonBadge = pageBadges + adminWaiting;
 
   const items = () => Array.from(menu.current?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? []);
   const close = useCallback((refocus: boolean) => {
@@ -261,18 +286,7 @@ export function SettingsMenu({
           {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
         </svg>
         <span className="sr-only sm:not-sr-only">Menu</span>
-        {buttonBadge > 0 && (
-          <Badge
-            n={buttonBadge}
-            label={
-              privacyDue > 0 && waiting === 0 && pageBadges === 0
-                ? `${privacyDue} privacy ${privacyDue === 1 ? 'request' : 'requests'} due`
-                : pageBadges > 0 && waiting === 0
-                  ? `${pageBadges} waiting`
-                  : reviewWords
-            }
-          />
-        )}
+        {buttonBadge > 0 && <Badge n={buttonBadge} label={`${buttonBadge} waiting`} />}
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className={`hidden transition-transform sm:block ${open ? 'rotate-180' : ''}`}>
           <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -298,15 +312,28 @@ export function SettingsMenu({
             </p>
             {groups.map((g) => (
               <div key={g.id} role="group" aria-labelledby={`settings-menu-${g.id}`} className="border-t border-line py-1">
-                <p id={`settings-menu-${g.id}`} className="px-4 pb-1 pt-2 text-xs font-bold uppercase tracking-wide text-muted">
-                  {g.title}
-                </p>
+                <button
+                  type="button"
+                  id={`settings-menu-${g.id}`}
+                  aria-expanded={openGroups.includes(g.id)}
+                  aria-controls={`settings-menu-${g.id}-items`}
+                  onClick={() => toggleGroup(g.id)}
+                  className="flex min-h-11 w-full items-center gap-2 px-4 text-left text-xs font-bold uppercase tracking-wide text-muted hover:bg-soft sm:min-h-9 pointer-coarse:min-h-11"
+                >
+                  <span className="flex-1">{g.title}</span>
+                  {!openGroups.includes(g.id) && groupBadge(g) > 0 && <Badge n={groupBadge(g)} label={`${groupBadge(g)} waiting`} />}
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className={`transition-transform ${openGroups.includes(g.id) ? 'rotate-180' : ''}`}>
+                    <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {openGroups.includes(g.id) && (
+                <div id={`settings-menu-${g.id}-items`}>
                 {g.entries.map((e) => {
                   const inner = (
                     <>
                       <span className="flex-1">{e.label}</span>
                       {e.note && <span className="text-xs font-normal text-muted">{e.note}</span>}
-                      {e.badge !== undefined && <Badge n={e.badge} label={e.badgeLabel ?? reviewWords} />}
+                      {e.badge !== undefined && <Badge n={e.badge} label={e.badgeLabel ?? `${e.badge} waiting`} />}
                     </>
                   );
                   return e.to ? (
@@ -319,19 +346,28 @@ export function SettingsMenu({
                     </button>
                   );
                 })}
-                {g.id === 'account' && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={signingOut}
-                    onClick={onSignOut}
-                    className={`${ITEM} text-danger disabled:opacity-50`}
-                  >
-                    Sign out
-                  </button>
+                </div>
                 )}
               </div>
             ))}
+            {/* Always one tap away, whatever is folded. */}
+            <div className="border-t border-line py-1">
+              {admin && (
+                <Link role="menuitem" to={admin.to} className={ITEM}>
+                  <span className="flex-1">{admin.label}</span>
+                  {adminWaiting > 0 && <Badge n={adminWaiting} label={adminBadgeLabel} />}
+                </Link>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={signingOut}
+                onClick={onSignOut}
+                className={`${ITEM} text-danger disabled:opacity-50`}
+              >
+                Sign out
+              </button>
+            </div>
             {/* A phone sheet gets a plain way out besides tapping the page. */}
             <div className="border-t border-line p-2 sm:hidden">
               <button type="button" onClick={() => close(true)} className="min-h-11 w-full rounded-control text-sm font-bold hover:bg-soft">

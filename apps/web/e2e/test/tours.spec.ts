@@ -76,7 +76,11 @@ test('the Venues tour opens the venue designer from the home page’s menu', asy
   await signIn(page, `tour-rooms-${ts}@example.com`, 'Room Planner');
   await page.goto('/');
   await page.getByRole('banner').getByRole('button', { name: /^Menu/ }).click();
-  await page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: 'Tour: Venues' }).click();
+  // Help starts folded; open it, then take the tour.
+  const menu = page.getByRole('menu', { name: 'Menu' });
+  const help = menu.getByRole('button', { name: /^Help/ });
+  if ((await help.getAttribute('aria-expanded')) !== 'true') await help.click();
+  await menu.getByRole('menuitem', { name: 'Tour: Venues' }).click();
   await expect(page).toHaveURL(/\/venues\/new/);
   for (const s of tour('rooms').steps) {
     await expect(card(page)).toHaveAccessibleName(s.title);
