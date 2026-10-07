@@ -23,13 +23,20 @@ export function effectivePxPerStud(declared: number, spritePath: string): number
   return spritePath.toLowerCase().endsWith('.gif') ? VANILLA_PX_PER_STUD : declared;
 }
 
-const PX_PER_STUD_ELEMENT = /[ \t]*<PixelsPerStud>[^<]*<\/PixelsPerStud>[ \t]*\r?\n?/g;
+const PX_PER_STUD_LINE = /^\s*<PixelsPerStud>[^<]*<\/PixelsPerStud>\s*$/;
+const PX_PER_STUD_ELEMENT = /<PixelsPerStud>[^<]*<\/PixelsPerStud>/g;
 
 /**
  * A part's XML made to agree with a GIF sprite: without `<PixelsPerStud>`,
- * so every reader takes it at 8 px a stud as the desktop does. Returns
- * `xml` itself when there is nothing to change.
+ * so every reader takes it at 8 px a stud as the desktop does. A line
+ * holding only the element goes with it. Returns `xml` itself when there
+ * is nothing to change.
  */
 export function xmlForGifSprite(xml: string): string {
-  return xml.replace(PX_PER_STUD_ELEMENT, '');
+  if (!xml.includes('<PixelsPerStud>')) return xml;
+  return xml
+    .split('\n')
+    .filter((line) => !PX_PER_STUD_LINE.test(line))
+    .join('\n')
+    .replace(PX_PER_STUD_ELEMENT, '');
 }
