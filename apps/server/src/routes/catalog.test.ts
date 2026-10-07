@@ -3,13 +3,14 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { db, resetDb, schema } from '../test/helpers.js';
+import { db, issueToken, resetDb, schema } from '../test/helpers.js';
 import { attachUser } from '../auth/cookie.js';
 import { passwordRoutes } from './auth/password.js';
 import { sessionRoutes } from './auth/session.js';
 import { orgRoutes } from './orgs.js';
 import { moduleRoutes } from './modules.js';
 import { catalogRoutes } from './catalog.js';
+import { deviceRoutes } from './auth/device.js';
 import { getPlatformSettings, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
 
 async function buildApp(): Promise<FastifyInstance> {
@@ -22,6 +23,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(orgRoutes);
   await app.register(moduleRoutes);
   await app.register(catalogRoutes);
+  await app.register(deviceRoutes);
   return app;
 }
 
@@ -205,6 +207,22 @@ describe('public catalogs', () => {
       for (let i = 0; i < 12; i++) codes.push((await share(alice)).statusCode);
       expect(codes).toContain(429);
     });
+  });
+
+  it('the desktop app shares with its API token and sees what it shared', async () => {
+    await settings({ moduleCatalogEnabled: true, catalogReview: 'none' });
+    const token = await issueToken(app, alice);
+    const auth = { authorization: `Bearer ${token}` };
+    const r = await app.inject({ method: 'POST', url: '/api/catalog/submissions', headers: auth, payload: { kind: 'module', sourceId: moduleId, title: 'Freight yard' } });
+    expect(r.statusCode).toBe(201);
+    expect(r.json()).toMatchObject({ status: 'public' });
+    const mine = await app.inject({ method: 'GET', url: '/api/catalog/mine', headers: auth });
+    expect(mine.statusCode).toBe(200);
+    expect((mine.json() as { items: { sourceId: string }[] }).items.map((i) => i.sourceId)).toEqual([moduleId]);
+    // A token that may only read can't share.
+    const reader = await issueToken(app, alice, 'layouts:read');
+    const refused = await app.inject({ method: 'POST', url: '/api/catalog/submissions', headers: { authorization: `Bearer ${reader}` }, payload: { kind: 'module', sourceId: moduleId, title: 'Again' } });
+    expect(refused.statusCode).toBe(403);
   });
 
   it('what is shared counts in the owner’s storage', async () => {
