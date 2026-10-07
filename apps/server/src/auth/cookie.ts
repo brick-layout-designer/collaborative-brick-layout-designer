@@ -88,7 +88,7 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
         message: `This account is being deleted on ${result.user.deletionDueAt.toUTCString()}. To keep it, sign in on the website before then.`,
       });
     }
-    req.user = result.user;
+    req.user = withoutDemoPowers(result.user);
     req.apiToken = { id: result.token.id, scopes: result.scopes };
     return refuseIfRestricted(req, reply);
   }
@@ -105,7 +105,7 @@ export async function attachUser(req: FastifyRequest, reply: FastifyReply): Prom
     return;
   }
   if (result.refreshed) setSessionCookie(reply, token, result.session.expiresAt);
-  req.user = result.user;
+  req.user = withoutDemoPowers(result.user);
   return refuseIfRestricted(req, reply);
 }
 
@@ -129,6 +129,15 @@ function allowedWhileRestricted(url: string): boolean {
  * whatever the usage-limit switch says: every change is refused with a
  * reason the web and the desktop show.
  */
+/**
+ * Anyone can sign in as the demo account, so it never acts as a site admin
+ * or moderator, even if a database edit gave it the flags.
+ */
+export function withoutDemoPowers(user: User): User {
+  if (!user.isDemoAccount || (!user.isGlobalAdmin && !user.isModerator)) return user;
+  return { ...user, isGlobalAdmin: false, isModerator: false };
+}
+
 function refuseIfRestricted(req: FastifyRequest, reply: FastifyReply): FastifyReply | undefined {
   const u = req.user;
   if (!u?.restrictedAt) return undefined;
