@@ -9,7 +9,6 @@ import type { ReactNode } from 'react';
 import { PrivacyDashboardCard, PrivacyRequestsTab, type PrivacyRequest } from '../PrivacyRequests';
 import { PrivacyPage } from '../PrivacyPage';
 import { Markdown, safeHref } from '../Markdown';
-import { settingsMenuGroups } from '../../SettingsMenu';
 
 afterEach(() => {
   cleanup();
@@ -97,12 +96,6 @@ describe('Admin › Privacy requests', () => {
     expect(card.textContent).toContain('add a privacy notice');
   });
 
-  it('the Admin menu badges privacy requests that are due', () => {
-    const groups = settingsMenuGroups({ isGlobalAdmin: true, isModerator: false, isDemoAccount: false }, { installOffered: false, waitingReviews: 0, privacyDue: 3 });
-    const entry = groups.find((g) => g.id === 'admin')!.entries.find((e) => e.label === 'Privacy requests')!;
-    expect(entry.badge).toBe(3);
-    expect(entry.badgeLabel).toContain('3 privacy requests');
-  });
 });
 
 describe('the privacy page', () => {

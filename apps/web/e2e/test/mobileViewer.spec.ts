@@ -328,7 +328,11 @@ test.describe('phone viewer gestures and pages', () => {
     const sheet = page.getByRole('menu', { name: 'Menu' });
     await expect(sheet).toBeVisible();
     await expect(sheet.getByRole('group', { name: 'Pages' }).getByRole('menuitem', { name: 'Clubs' })).toBeVisible();
+    // Help and the settings start folded so the sheet fits; a tap opens a group.
+    await expect(sheet.getByRole('menuitem', { name: /^Tour: / })).toHaveCount(0);
+    await sheet.getByRole('button', { name: /^Help/ }).tap();
     await expect(sheet.getByRole('menuitem', { name: /^Tour: / }).first()).toBeVisible();
+    await sheet.getByRole('button', { name: /^Look/ }).tap();
     const sheetBox = (await sheet.boundingBox())!;
     expect(Math.round(sheetBox.y + sheetBox.height)).toBe(page.viewportSize()!.height);
     expect(await noSidewaysScroll(page)).toBe(true);

@@ -80,9 +80,14 @@ function wrap(ui: ReactNode, url = '/') {
 
 const header = (user: Me) => wrap(<AppHeader user={user} />);
 const settingsButton = () => screen.getByRole('button', { name: /^Menu/ });
-function openMenu() {
+function openMenu(opts: { unfold?: boolean } = { unfold: true }) {
   fireEvent.click(settingsButton());
-  return screen.getByRole('menu', { name: 'Menu' });
+  const menu = screen.getByRole('menu', { name: 'Menu' });
+  // Groups start folded (except Pages); most checks want to see every entry.
+  if (opts.unfold) {
+    for (const h of within(menu).queryAllByRole('button', { expanded: false })) fireEvent.click(h);
+  }
+  return menu;
 }
 /** Each group's title and its entries' names and links (Help is checked on its own). */
 function groupsOf(menu: HTMLElement, opts: { withHelp?: boolean } = {}) {
@@ -109,7 +114,7 @@ describe('Settings menu by role', () => {
     expect(groupsOf(openMenu())).toEqual([
       {
         title: 'Account',
-        entries: ['Profile and name /profile#name', 'Sign-in methods /profile#sign-in', 'Devices /profile#devices', 'Your data /profile#my-data', 'Delete my account /profile#delete-account', 'Sign out (button)'],
+        entries: ['Profile and name /profile#name', 'Sign-in methods /profile#sign-in', 'Devices /profile#devices', 'Your data /profile#my-data', 'Delete my account /profile#delete-account'],
       },
       {
         title: 'Look',
@@ -119,34 +124,34 @@ describe('Settings menu by role', () => {
     expect(screen.getByTestId('settings-menu-who').textContent).toContain('Sam');
   });
 
-  it('a moderator: Admin settings has only Moderation, and waiting reviews show on the button', async () => {
+  it('a moderator: one Moderation entry in the menu, counting the reviews waiting; nothing admin in the bar', async () => {
     header(MODERATOR);
-    await waitFor(() => expect(within(settingsButton()).getByLabelText('3 reviews waiting')).toBeTruthy());
-    const groups = groupsOf(openMenu());
-    expect(groups.map((g) => g.title)).toEqual(['Account', 'Look', 'Admin settings']);
-    expect(groups[2]!.entries).toEqual(['Moderation /admin?tab=moderation']);
-    expect(within(screen.getByRole('menuitem', { name: /Moderation/ })).getByText('3')).toBeTruthy();
+    expect(within(screen.getByRole('navigation', { name: 'Site' })).queryByRole('link', { name: /Admin|Moderation/ })).toBeNull();
+    await waitFor(() => expect(within(settingsButton()).getByLabelText('3 waiting')).toBeTruthy());
+    const menu = openMenu();
+    const entry = within(menu).getByRole('menuitem', { name: /^Moderation/ });
+    expect(entry.getAttribute('href')).toBe('/admin?tab=moderation');
+    expect(within(entry).getByLabelText('3 reviews waiting')).toBeTruthy();
+    expect(groupsOf(menu).map((g) => g.title)).toEqual(['Account', 'Look']);
   });
 
-  it('an admin: one entry per admin tab, each straight to it', async () => {
+  it('an admin: one Site admin entry in the menu instead of a list of admin pages', () => {
     header(ADMIN);
-    const groups = groupsOf(openMenu());
-    expect(groups[2]).toEqual({
-      title: 'Admin settings',
-      entries: [
-        'Dashboard /admin?tab=dashboard',
-        'Heavy use /admin?tab=heavy',
-        'Users /admin?tab=users',
-        'Clubs /admin?tab=orgs',
-        'Layouts /admin?tab=layouts',
-        'Parts /admin?tab=parts',
-        'Part libraries /admin?tab=libraries',
-        'Moderation /admin?tab=moderation',
-        'Privacy requests /admin?tab=privacy',
-        'Audit log /admin?tab=audit',
-        'Site settings /admin?tab=settings',
-      ],
-    });
+    const menu = openMenu({ unfold: false });
+    expect(within(menu).getByRole('menuitem', { name: /^Site admin/ }).getAttribute('href')).toBe('/admin');
+    expect(within(menu).queryByRole('menuitem', { name: /Site settings|Audit log/ })).toBeNull();
+  });
+
+  it('groups start folded (so the menu fits), open with a tap, and stay as left', () => {
+    localStorage.removeItem('cld:menuOpenGroups');
+    header(USER);
+    const menu = openMenu({ unfold: false });
+    expect(within(menu).queryByRole('menuitem', { name: 'Profile and name' })).toBeNull();
+    // Sign out is always there, whatever is folded.
+    expect(within(menu).getByRole('menuitem', { name: 'Sign out' })).toBeTruthy();
+    fireEvent.click(within(menu).getByRole('button', { name: /^Account/, expanded: false }));
+    expect(within(menu).getByRole('menuitem', { name: 'Profile and name' })).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('cld:menuOpenGroups')!)).toContain('account');
   });
 
   it('one menu: Help comes first, with the tours, the help buttons switch and the help pages', () => {
@@ -158,7 +163,7 @@ describe('Settings menu by role', () => {
       expect.arrayContaining(['Turn help buttons off (button)', 'All help topics /help', 'Keyboard shortcuts /help#shortcuts']),
     );
     // No separate ? button in the header any more.
-    expect(within(screen.getByRole('banner')).queryByRole('button', { name: 'Help' })).toBeNull();
+    expect(within(screen.getByRole('banner')).queryAllByRole('button', { name: 'Help' }).filter((b) => !b.closest('[role=menu]'))).toHaveLength(0);
   });
 
   it('on a phone the page links are in the menu too', () => {
@@ -184,7 +189,8 @@ describe('Settings menu by role', () => {
 
   it('the demo account has no sign-in methods or devices to change', () => {
     header(DEMO);
-    expect(groupsOf(openMenu())[0]!.entries).toEqual(['Profile and name /profile#name', 'Sign out (button)']);
+    expect(groupsOf(openMenu())[0]!.entries).toEqual(['Profile and name /profile#name']);
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeTruthy();
   });
 
   it('Install the app is there only where installing is offered (phones and tablets)', () => {

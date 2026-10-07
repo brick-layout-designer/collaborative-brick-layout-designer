@@ -128,19 +128,34 @@ export async function signIn(
 }
 
 /**
- * Open an entry of the header's Settings ▾ menu (Account, Look, Admin
- * settings), e.g. `fromSettingsMenu(page, /^Moderation/)`.
+ * Open an entry of the header's Menu ▾ (Help, Account, Look), e.g.
+ * `fromSettingsMenu(page, 'Your data')`. Its groups start folded, so this
+ * unfolds them first. Admin pages have one menu entry ("Site admin", or
+ * "Moderation" for moderators): for `/^Moderation/` or `/^Privacy requests/`
+ * this picks it, then the tab, the way a person would.
  */
 export async function fromSettingsMenu(page: Page, entry: string | RegExp, opts: { tap?: boolean } = {}): Promise<void> {
-  const button = page.getByRole('banner').getByRole('button', { name: /^Menu/ });
-  const item = page.getByRole('menu', { name: 'Menu' }).getByRole('menuitem', { name: entry });
-  if (opts.tap) {
-    await button.tap();
-    await item.tap();
-  } else {
-    await button.click();
-    await item.click();
+  const press = (l: import('@playwright/test').Locator) => (opts.tap ? l.tap() : l.click());
+  const label = typeof entry === 'string' ? entry : entry.source.replace(/^\^/, '');
+  const adminTab = ['Moderation', 'Privacy requests'].find((t) => label.startsWith(t));
+  const menuButton = page.getByRole('banner').getByRole('button', { name: /^Menu/ });
+  const menu = page.getByRole('menu', { name: 'Menu' });
+  if (adminTab) {
+    // One "Site admin" (or "Moderation") entry in the menu, then the tab.
+    await press(menuButton);
+    await press(menu.getByRole('menuitem', { name: /^(Site admin|Moderation)/ }));
+    // The admin page's tabs are buttons; the current one is aria-current="page".
+    const tabKey = adminTab === 'Moderation' ? 'moderation' : 'privacy';
+    const tab = page.getByRole('button', { name: new RegExp(`^${tabKey}`, 'i') }).first();
+    await tab.waitFor();
+    if ((await tab.getAttribute('aria-current')) !== 'page') await press(tab);
+    return;
   }
+  await press(menuButton);
+  // Unfold one at a time: each tap re-renders the list.
+  const folded = menu.getByRole('button', { expanded: false });
+  while ((await folded.count()) > 0) await press(folded.first());
+  await press(menu.getByRole('menuitem', { name: entry }));
 }
 
 /**
