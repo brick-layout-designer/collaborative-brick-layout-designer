@@ -24,6 +24,7 @@ import { studToPx } from './coords';
 import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
+import { ringPoints, tracePickShape } from './pickShape';
 import { linkKeys, liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
 import { grabSnapCorner } from '../gridSnap';
 import { SnapSession, applyGroupTurn, holdReach, snapBypassed, type GroupTurn } from '../snapFeel';
@@ -1206,6 +1207,19 @@ const BrickGlyph = memo(function BrickGlyph({
           height={spriteHpx}
           opacity={1}
           perfectDrawEnabled={false}
+          // An imported part hits only inside its <PickShape>: clicks in its
+          // empty corners and holes reach what is underneath.
+          {...(meta?.pickShape ? {
+            hitFunc: (ctx: Konva.Context, shape: Konva.Shape) => {
+              const c = ctx._context;
+              c.save();
+              c.translate(spriteWpx / 2, spriteHpx / 2);
+              tracePickShape(c, meta.pickShape!, 8);
+              c.fillStyle = shape.colorKey;
+              c.fill('evenodd');
+              c.restore();
+            },
+          } : {})}
         />
       ) : (
         meta ? (
@@ -1250,7 +1264,22 @@ const BrickGlyph = memo(function BrickGlyph({
           />
         );
       })}
-      {isSelected && halo && (
+      {isSelected && halo && meta?.pickShape && (
+        // An imported part: the halo follows its real outline.
+        <>
+          {meta.pickShape.map((ring, i) => (
+            <Line key={`po-${i}`} name={EXPORT_HIDE} points={ringPoints(ring, 8)} closed
+              stroke={SELECTION.partOuter} strokeWidth={SELECTION.partOuterWidth} strokeScaleEnabled={false}
+              listening={false} perfectDrawEnabled={false} fillEnabled={false} />
+          ))}
+          {meta.pickShape.map((ring, i) => (
+            <Line key={`pi-${i}`} name={EXPORT_HIDE} points={ringPoints(ring, 8)} closed
+              stroke={selectionHalo(selectionTint, snapActive).stroke} strokeWidth={SELECTION.partInnerWidth}
+              strokeScaleEnabled={false} listening={false} perfectDrawEnabled={false} fillEnabled={false} />
+          ))}
+        </>
+      )}
+      {isSelected && halo && !meta?.pickShape && (
         // Two-stroke gold halo, port of SelectionOverlay::paint
         // (ui/SelectionOverlay.cpp:21-48):
         //   - 5px black outer outline (visible on light backgrounds)

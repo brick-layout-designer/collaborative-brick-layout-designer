@@ -48,6 +48,7 @@ interface WirePart {
   pxPerStud: number;
   spriteSize?: { w: number; h: number };
   hullPts: { x: number; y: number }[];
+  pickShape?: { x: number; y: number }[][];
 }
 
 describe('an uploaded part keeps its size in studs', () => {
@@ -63,12 +64,12 @@ describe('an uploaded part keeps its size in studs', () => {
     await app.close();
   });
 
-  async function send(partNumber: string, sprite: Buffer, spriteMime: string, method: 'POST' | 'PUT' = 'POST', id = '') {
+  async function send(partNumber: string, sprite: Buffer, spriteMime: string, method: 'POST' | 'PUT' = 'POST', id = '', xml = file('.xml')) {
     const res = await app.inject({
       method,
       url: id ? `/api/custom-parts/${id}` : '/api/custom-parts',
       headers: { cookie: cookieHeader },
-      payload: { partNumber, displayName: partNumber, xmlBase64: file('.xml').toString('base64'), spriteBase64: sprite.toString('base64'), spriteMime },
+      payload: { partNumber, displayName: partNumber, xmlBase64: xml.toString('base64'), spriteBase64: sprite.toString('base64'), spriteMime },
     });
     expect([200, 201]).toContain(res.statusCode);
     return (res.json() as { id: string }).id;
@@ -113,5 +114,18 @@ describe('an uploaded part keeps its size in studs', () => {
     const part = await wire('SCALESWAP');
     expect(part.pxPerStud).toBe(8);
     expect(footprint(part, 0)?.size).toEqual(expected.studs);
+  });
+
+  it("keeps an import's <PickShape> through the round trip, and its footprint", async () => {
+    const pt = (x: number, y: number) => `<point><x>${x}</x><y>${y}</y></point>`;
+    const shape = `<PickShape><ring>${pt(-1.5, -1)}${pt(0, -1)}${pt(0, 0)}${pt(1.5, 0)}${pt(1.5, 1)}${pt(-1.5, 1)}</ring></PickShape>`;
+    const xml = Buffer.from(file('.xml').toString('utf8').replace('</part>', `${shape}</part>`));
+    const id = await send('SCALESHAPE', file('.png'), 'image/png', 'POST', '', xml);
+    const part = await wire('SCALESHAPE');
+    expect(part.pickShape).toEqual([[{ x: -1.5, y: -1 }, { x: 0, y: -1 }, { x: 0, y: 0 }, { x: 1.5, y: 0 }, { x: 1.5, y: 1 }, { x: -1.5, y: 1 }]]);
+    expect(part.hullPts).toEqual([]);
+    expect(footprint(part, 0)?.size).toEqual(expected.studs);
+    const back = (await app.inject({ method: 'GET', url: `/api/custom-parts/${id}/xml`, headers: { cookie: cookieHeader } })).body;
+    expect(back).toContain('<PickShape>');
   });
 });

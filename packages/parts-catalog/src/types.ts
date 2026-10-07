@@ -113,6 +113,12 @@ export interface PartMetadata {
    */
   snapMargin?: SnapMargin;
   /**
+   * `<PickShape>` of an imported part: its outline rings (holes included),
+   * in studs around the sprite centre. Used for picking and the selection
+   * outline only; the footprint still comes from the sprite. Absent when none.
+   */
+  pickShape?: { x: number; y: number }[][];
+  /**
    * Earlier part numbers (`<OldNameList><OldName>`); maps and budgets
    * that use one resolve to this part (desktop PartsLibrary canonicalKey).
    * Optional so hand-built test metadata can leave it out.
