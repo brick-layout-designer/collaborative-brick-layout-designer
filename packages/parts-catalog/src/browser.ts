@@ -8,6 +8,7 @@ export { parsePartXml, type ParseInput } from './parse.js';
 export { rebuildConnectivity, type RebuildConnectivityResult } from './connectivity.js';
 export { footprint, imageOffset, type Footprint, type FootprintPart } from './footprint.js';
 export { imageSize, type ImageSize } from './imageSize.js';
+export { effectivePxPerStud, spriteExtensionsFor, VANILLA_PX_PER_STUD, xmlForGifSprite } from './spriteScale.js';
 export { connectionHingeAngle, FlexMove, type FlexSnapTarget, type FlexState } from './flexMove.js';
 export type { FourDBrixRemap, FourDBrixType, LDrawRemap, TrackDesignerPort, TrackDesignerRemap } from './types.js';
 export { MapLibrary, type MapReadResult } from './mapformats/library.js';

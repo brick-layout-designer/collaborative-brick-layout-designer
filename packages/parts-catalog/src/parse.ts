@@ -89,7 +89,8 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     sortingKey,
     spritePath: input.spritePath,
     xmlRelPath: input.xmlRelPath ?? '',
-    pxPerStud: Number.isFinite(pxPerStud) && pxPerStud > 0 ? pxPerStud : 8,
+    // The desktop's range (PartsLibrary.cpp parsePartXml): 4 to 256, else 8.
+    pxPerStud: Number.isFinite(pxPerStud) && pxPerStud >= 4 && pxPerStud <= 256 ? pxPerStud : 8,
     connections,
     subparts,
     canUngroup,

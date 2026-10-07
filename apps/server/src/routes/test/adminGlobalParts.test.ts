@@ -104,6 +104,21 @@ describe('admin global-parts', () => {
     expect(parts.some((p) => p.partNumber === 'GLOBAL_001')).toBe(true);
   });
 
+  it("POST stores a GIF part's XML without <PixelsPerStud>, as 8 px a stud", async () => {
+    const cookie = await registerAndLogin(app, 'admin@example.com');
+    await promoteToAdmin('admin@example.com');
+    const xml = '<part>\n  <Author>Test</Author>\n  <PixelsPerStud>32</PixelsPerStud>\n</part>';
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/admin/global-parts',
+      headers: { cookie },
+      payload: { partNumber: 'GLOBAL_GIF', displayName: 'Gif', xmlBase64: Buffer.from(xml).toString('base64'), spriteBase64: FAKE_GIF, spriteMime: 'image/gif' },
+    });
+    expect(create.statusCode).toBe(201);
+    const row = await db.select().from(schema.customParts).where(eq(schema.customParts.partNumber, 'GLOBAL_GIF')).get();
+    expect(Buffer.from(row!.xmlBlob as Uint8Array).toString('utf8')).toBe('<part>\n  <Author>Test</Author>\n</part>');
+  });
+
   it('POST returns 400 when partNumber or displayName is missing', async () => {
     const cookie = await registerAndLogin(app, 'admin@example.com');
     await promoteToAdmin('admin@example.com');
