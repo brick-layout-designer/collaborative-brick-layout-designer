@@ -5,10 +5,9 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parsePartXml } from './parse.js';
+import { effectivePxPerStud, spriteExtensionsFor } from './spriteScale.js';
 import type { Catalog, PartMetadata } from './types.js';
 import { imageSize } from './imageSize.js';
-
-const SPRITE_EXTS = ['.gif', '.png', '.jpg', '.jpeg'] as const;
 
 export interface ScanResult {
   catalog: Catalog;
@@ -52,15 +51,19 @@ async function parseOne(rootDir: string, xmlPath: string): Promise<PartMetadata>
   const partNumber = lastDot === -1 ? stem : stem.slice(0, lastDot);
   const colorCode = lastDot === -1 ? '' : stem.slice(lastDot + 1);
 
-  // Find a sibling sprite. The desktop tries .gif → .png → .jpg → .jpeg.
+  // Find a sibling sprite, in the desktop's order: .gif → .png → .jpg → .jpeg,
+  // or .png first when the XML declares a hi-res <PixelsPerStud>.
   // For `.set.xml` files the sprite is `<stem>.set.gif` (BlueBrickParts
   // ships a few sets — like `3739-1.set.gif` — with their own thumbnail).
   // Match desktop's `PartsLibrary.cpp:140-150`, which uses `completeBaseName`
   // (= path with just `.xml` stripped) for the sprite-stem search regardless
   // of whether the .set suffix is present.
   const xmlBase = xmlPath.slice(0, -'.xml'.length);
+  const xmlRelPath = relative(rootDir, xmlPath);
+  const part = parsePartXml(xml, { partNumber, colorCode, spritePath: '', xmlRelPath });
   let spritePath = '';
-  for (const ext of SPRITE_EXTS) {
+  // A hi-res import draws its .png; its .gif is vanilla's 8 px a stud.
+  for (const ext of spriteExtensionsFor(part.pxPerStud)) {
     const candidate = xmlBase + ext;
     if (existsSync(candidate)) {
       spritePath = relative(rootDir, candidate);
@@ -68,8 +71,8 @@ async function parseOne(rootDir: string, xmlPath: string): Promise<PartMetadata>
     }
   }
 
-  const xmlRelPath = relative(rootDir, xmlPath);
-  const part = parsePartXml(xml, { partNumber, colorCode, spritePath, xmlRelPath });
+  part.spritePath = spritePath;
+  part.pxPerStud = effectivePxPerStud(part.pxPerStud, spritePath);
   if (spritePath) {
     const size = imageSize(await readFile(join(rootDir, spritePath)));
     if (size) part.spriteSize = size;

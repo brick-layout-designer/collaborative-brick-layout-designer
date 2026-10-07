@@ -19,6 +19,7 @@ import { invalidateAllSessions } from '../auth/session.js';
 import { revokeAllApiTokens } from '../auth/apiTokens.js';
 import { DESKTOP_MINIMUM, compareVersions, resetDesktopPolicy, resolvePolicy } from '../compat.js';
 import { parsePartXml } from '@cld/parts-catalog';
+import { xmlForSprite } from './customParts.js';
 import { invalidatePartsCache } from './parts.js';
 import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../auth/platformSettings.js';
 import { invalidateLimitCaches } from '../limits/limits.js';
@@ -531,6 +532,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (xmlBlob.length === 0 || spriteBlob.length === 0) {
       return reply.code(400).send({ error: 'empty_payload' });
     }
+    xmlBlob = xmlForSprite(xmlBlob, body.spriteMime);
     try {
       parsePartXml(xmlBlob.toString('utf8'), { partNumber, colorCode: '', spritePath: '' });
     } catch {

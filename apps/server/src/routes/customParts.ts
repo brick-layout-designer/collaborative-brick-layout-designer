@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
+import { xmlForGifSprite } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { recordUpload } from '../metrics/usage.js';
@@ -534,7 +535,20 @@ function parsePartBody(body: CreatePartBody): ParsedPartBody {
   }
   if (xmlBlob.length === 0 || spriteBlob.length === 0) return { status: 400, error: 'empty_payload' };
   if (xmlBlob.length + spriteBlob.length > MAX_PART_BLOB_BYTES) return { status: 413, error: 'payload_too_large' };
-  return { partNumber, displayName, xmlBlob, spriteBlob };
+  return { partNumber, displayName, xmlBlob: xmlForSprite(xmlBlob, body.spriteMime), spriteBlob };
+}
+
+/**
+ * The XML stored with a sprite: a GIF is 8 px a stud whatever the XML
+ * says (the desktop's rule), so its `<PixelsPerStud>` is dropped and every
+ * reader sizes the part the same. Older desktops sent an import's 8 px a
+ * stud .gif with the XML of its 32 px a stud .png.
+ */
+export function xmlForSprite(xmlBlob: Buffer, spriteMime: string): Buffer {
+  if (spriteMime !== 'image/gif') return xmlBlob;
+  const xml = xmlBlob.toString('utf8');
+  const fixed = xmlForGifSprite(xml);
+  return fixed === xml ? xmlBlob : Buffer.from(fixed, 'utf8');
 }
 
 const partListColumns = {
