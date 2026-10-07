@@ -8,6 +8,7 @@ import { api } from '../api';
 import { defaultSaveTo, readOwnerFilter, type OwnerFilter } from '../owners/owners';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { CategoryPicker } from './CategoryPicker';
+import { DesktopOnlySteps } from '../open/DesktopOnly';
 
 /** `filter`: the owner filter being shown (home page); otherwise the last one picked there. */
 export function UploadPartDialog({ onClose, filter }: { onClose: () => void; filter?: OwnerFilter }) {
@@ -86,6 +87,13 @@ export function UploadPartDialog({ onClose, filter }: { onClose: () => void; fil
         className="w-full max-w-md space-y-3 rounded-lg border border-line bg-panel p-6 text-sm"
       >
         <h3 className="text-lg font-semibold">Upload custom part</h3>
+
+        <details className="rounded-lg border border-line bg-soft px-3 py-2 text-xs text-muted">
+          <summary className="cursor-pointer font-semibold text-ink">Making a part from an LDraw, Studio or LDD model?</summary>
+          <div className="mt-2">
+            <DesktopOnlySteps part />
+          </div>
+        </details>
 
         <label className="block">
           <span className="mb-1 block text-muted">Part number</span>

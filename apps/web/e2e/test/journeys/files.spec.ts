@@ -33,7 +33,7 @@ function brickCount(page: Page): Promise<number> {
 async function openAsNewLayout(page: Page, file: string, name: string): Promise<void> {
   await page.goto('/');
   await page.getByRole('button', { name: 'New layout', exact: true }).first().click();
-  await page.locator('input[type=file][accept*=".bld-layout"]').setInputFiles({ name, mimeType: 'application/octet-stream', buffer: readFileSync(file) });
+  await page.getByRole('dialog', { name: 'New layout' }).locator('input[type=file][accept*=".bld-layout"]').setInputFiles({ name, mimeType: 'application/octet-stream', buffer: readFileSync(file) });
   await page.getByRole('dialog', { name: 'New layout' }).getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/editor\/[0-9a-f-]{36}$/, { timeout: 15000 });
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });

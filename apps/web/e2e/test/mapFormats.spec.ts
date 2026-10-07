@@ -1,6 +1,6 @@
-// E2E: LDraw / TrackDesigner / 4DBrix maps (F1, F2) — opening one from
-// the New layout dialog or by dropping it, and Download As with the
-// lossy-format warning. The conversions themselves are checked against
+// E2E: TrackDesigner / 4DBrix maps (F1, F2) — opening one from the New
+// layout dialog or by dropping it (LDraw is imported in the desktop app),
+// and Download As (LDraw too) with the lossy-format warning. The conversions themselves are checked against
 // vanilla BlueBrick in @cld/parts-catalog; this checks the app wiring
 // with the real parts catalog.
 
@@ -14,7 +14,6 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../pack
 const fixture = (name: string) => readFileSync(join(FIXTURES, name), 'utf-8');
 const EMAIL = `mapformats-e2e-${Date.now()}@example.com`;
 
-const countPart = (bbm: string, part: string) => bbm.split(`<PartNumber>${part}</PartNumber>`).length - 1;
 const brickLines = (ldr: string) => ldr.split('\r\n').filter((l) => l.startsWith('1 ')).length;
 
 async function exportedBbm(page: Page): Promise<string> {
@@ -27,21 +26,36 @@ test.describe('opening other map formats', () => {
     await signIn(page, EMAIL, 'Map Formats Tester');
   });
 
-  test('the New layout dialog opens an LDraw file', async ({ page }) => {
+  test('the New layout dialog opens a TrackDesigner file', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'New layout' }).click();
-    await page.locator('input[type=file][accept*=".ldr"]').setInputFiles({
-      name: 'tight-corner.ldr',
-      mimeType: 'text/plain',
-      buffer: Buffer.from(fixture('oracle/tight-corner.ldr')),
+    await page.getByRole('dialog', { name: 'New layout' }).locator('input[type=file][accept*=".tdl"]').setInputFiles({
+      name: 'tight-corner.tdl',
+      mimeType: 'application/octet-stream',
+      buffer: readFileSync(join(FIXTURES, 'oracle/tight-corner.tdl')),
     });
     await expect(page.getByLabel('Title')).toHaveValue('tight-corner');
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(page).toHaveURL(/\/editor\/[^/]+$/, { timeout: 15000 });
     // As many of each part as vanilla BlueBrick read from the same file.
-    const vanilla = fixture('oracle/tight-corner.from-ldr.bbm');
-    await expect.poll(async () => countPart(await exportedBbm(page), '2865.8')).toBe(countPart(vanilla, '2865.8'));
-    expect(countPart(await exportedBbm(page), '3811.10')).toBe(countPart(vanilla, '3811.10'));
+    const vanilla = fixture('oracle/tight-corner.from-tdl.bbm');
+    await expect.poll(async () => (await exportedBbm(page)).split('<Brick ').length).toBe(vanilla.split('<Brick ').length);
+  });
+
+  test('an LDraw file in the New layout dialog says the desktop app imports it', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'New layout' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New layout' });
+    await dialog.locator('input[type=file][accept*=".ldr"]').setInputFiles({
+      name: 'tight-corner.ldr',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(fixture('oracle/tight-corner.ldr')),
+    });
+    await expect(dialog.getByTestId('desktop-only')).toContainText('tight-corner.ldr is an LDraw file');
+    await expect(dialog.getByTestId('desktop-only')).toContainText('File › Save to Server…');
+    await expect(dialog.getByRole('link', { name: 'Get the desktop app' })).toHaveAttribute('href', /github\.com/);
+    // Nothing was read: the title stays empty.
+    await expect(page.getByLabel('Title')).toHaveValue('');
   });
 
   test('a dropped 4DBrix file opens, and what it skipped shows in the status bar', async ({ page }) => {

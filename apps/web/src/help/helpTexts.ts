@@ -182,6 +182,20 @@ export const HELP_TEXTS = {
     more: 'When you add it to a layout, each sheet’s parts go on the layout’s sheet with the same name. If the layout has no sheet by that name, you choose where they go: the picked sheet, or a new sheet with that name. Put everything on one sheet saves the module with a single sheet instead.',
   },
 
+  // Opening files
+  'open.formats': {
+    title: 'Opening a file',
+    short: 'Open a layout file from this app, BlueBrick, TrackDesigner or 4DBrix.',
+    more: 'A layout file (.bld-layout) or a BlueBrick map (.bbm) opens with everything in it. TrackDesigner (.tdl) and 4DBrix (.ncp) parts are matched to parts in the library, and any that have no match are listed after opening. LDraw, BrickLink Studio and LDD models are imported in the desktop app.',
+    learnMoreUrl: '/help#opening',
+  },
+  'open.desktop': {
+    title: 'Models from other programs',
+    short: 'LDraw, BrickLink Studio and LDD files are imported in the desktop app, then saved here.',
+    more: 'The desktop app reads them, matches their parts to the library and lists the ones it can’t match. It can also turn a model into a custom part. Then choose File › Save to Server… and it shows up here.',
+    learnMoreUrl: '/help#opening',
+  },
+
   // Downloading
   'download.formats': {
     title: 'Download as',

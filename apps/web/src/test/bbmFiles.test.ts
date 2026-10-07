@@ -106,13 +106,14 @@ describe('dropped files', () => {
       seen.push(`${name}:${dec.decode(bytes)}`);
       return { bbm: `<from-${name}/>`, warnings: /\.ncp$/i.test(name) ? ['No part is mapped to these 4DBrix parts: X'] : [] };
     };
-    const files = [file('a.ldr', '0 a'), file('b.NCP', '<data/>'), file('c.bbm', '<C/>')];
+    // LDraw is imported in the desktop app: never converted here.
+    const files = [file('a.tdl', 'td'), file('b.NCP', '<data/>'), file('c.bbm', '<C/>'), file('d.ldr', '0 d')];
     expect(await layoutsFromFiles(files, convert)).toEqual([
       { name: 'c.bbm', bbm: '<C/>' },
-      { name: 'a.ldr', bbm: '<from-a.ldr/>' },
+      { name: 'a.tdl', bbm: '<from-a.tdl/>' },
       { name: 'b.NCP', bbm: '<from-b.NCP/>', warnings: ['No part is mapped to these 4DBrix parts: X'] },
     ]);
-    expect(seen).toEqual(['a.ldr:0 a', 'b.NCP:<data/>']);
+    expect(seen).toEqual(['a.tdl:td', 'b.NCP:<data/>']);
     expect(await layoutsFromFiles(files)).toEqual([{ name: 'c.bbm', bbm: '<C/>' }]);
   });
 });

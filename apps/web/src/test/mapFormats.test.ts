@@ -1,10 +1,13 @@
-// Opening and saving LDraw / TrackDesigner / 4DBrix maps in the browser:
+// Saving LDraw / TrackDesigner / 4DBrix maps in the browser, and opening
+// TrackDesigner / 4DBrix ones (LDraw opens in the desktop app):
 // a layout survives the trip through each format, using the parts'
 // remaps from the catalog wire. (The formats themselves are tested
 // against vanilla BlueBrick in @cld/parts-catalog.)
 
 import { describe, expect, it } from 'vitest';
-import { readBbm } from '@cld/bbm/browser';
+import { readBbm, writeBbm } from '@cld/bbm/browser';
+import { MapLibrary, readLDrawMap } from '@cld/parts-catalog/browser';
+import { catalogFromParts } from '../editor/catalogFromParts';
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
 import { LAYOUT_ACCEPT, mapDownload, mapFileToBbm, mapFormatOf, MAP_FORMATS } from '../mapFormats';
@@ -83,7 +86,14 @@ describe('map formats in the browser', () => {
     it(`keeps the bricks through .${format}`, async () => {
       const out = await mapDownload(layout(), [track], format, 'My: layout');
       expect(out.filename).toBe(`My_ layout.${format}`);
-      const back = await mapFileToBbm(out.filename, out.data, [track]);
+      // The website opens only .tdl / .ncp; LDraw is read back with the shared reader the desktop matches.
+      const back =
+        format === 'ldr' || format === 'mpd'
+          ? (() => {
+              const r = readLDrawMap(new TextDecoder().decode(out.data), new MapLibrary(catalogFromParts([track])), { mpd: format === 'mpd' });
+              return { warnings: r.warnings, bbm: writeBbm(r.map) };
+            })()
+          : await mapFileToBbm(out.filename, out.data, [track]);
       expect(back.warnings).toEqual([]);
       const map = readBbm(back.bbm).map;
       const got = areas(map).map(([pn, o, a]) => [pn, o, a && Object.fromEntries(Object.entries(a).map(([k, v]) => [k, Math.round(v * 1000) / 1000]))]);
@@ -95,12 +105,17 @@ describe('map formats in the browser', () => {
     const ncp = '<data><table><coordinates x="0" y="0"/><svgfile value="none.svg"/></table></data>';
     const r = await mapFileToBbm('x.ncp', new TextEncoder().encode(ncp), [track]);
     expect(r.warnings).toEqual(['No part is mapped to these 4DBrix parts: none.svg']);
-    await expect(mapFileToBbm('x.txt', new Uint8Array(), [track])).rejects.toThrow('not an LDraw');
+    await expect(mapFileToBbm('x.txt', new Uint8Array(), [track])).rejects.toThrow('not a TrackDesigner or 4DBrix map');
+    // LDraw is imported in the desktop app, not opened here.
+    await expect(mapFileToBbm('x.ldr', new TextEncoder().encode('1 16 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat'), [track])).rejects.toThrow('not a TrackDesigner');
   });
 
   it('knows its file names', () => {
-    expect(mapFormatOf('a.MPD')).toBe('mpd');
+    expect(mapFormatOf('a.TDL')).toBe('tdl');
+    expect(mapFormatOf('a.ncp')).toBe('ncp');
+    expect(mapFormatOf('a.mpd')).toBeNull();
+    expect(mapFormatOf('a.ldr')).toBeNull();
     expect(mapFormatOf('a.bbm')).toBeNull();
-    expect(LAYOUT_ACCEPT.split(',')).toEqual(['.bld-layout', '.bbm', '.ldr', '.mpd', '.tdl', '.ncp']);
+    expect(LAYOUT_ACCEPT.split(',')).toEqual(['.bld-layout', '.bbm', '.tdl', '.ncp']);
   });
 });

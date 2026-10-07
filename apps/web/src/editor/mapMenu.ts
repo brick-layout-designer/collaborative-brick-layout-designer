@@ -1,6 +1,6 @@
 // The editor's Map menu as data (ui/menu/menuModel.ts draws it). Grouped
-// like the desktop's menu bar: the layout itself at the top, then
-// Insert ▸, Modules & sets ▸, Venue ▸ (desktop Map ▸ Venue), View ▸,
+// like the desktop's menu bar: File ▸ (open a file, download), the layout
+// itself, then Insert ▸, Modules & sets ▸, Venue ▸ (desktop Map ▸ Venue), View ▸,
 // Budget ▸, Download & export ▸ and Preferences.
 //
 // The module editor has no venue, budget or layout download: those are
@@ -14,6 +14,8 @@ export interface MapMenuContext {
 }
 
 export interface MapMenuActions {
+  /** Open a file as a new layout (open/FileOpener.tsx). */
+  openFile: () => void;
   generalInfo: () => void;
   backgroundColor: () => void;
   backgroundImage: () => void;
@@ -79,6 +81,13 @@ export function modKey(platform: string = typeof navigator === 'undefined' ? '' 
 export function mapMenuEntries(a: MapMenuActions, t: MapMenuToggles, mod = modKey()): MenuEntry<MapMenuContext>[] {
   const sep: MenuEntry<MapMenuContext> = { kind: 'separator' };
   return [
+    {
+      kind: 'submenu', id: 'file', label: 'File', items: [
+        { kind: 'item', id: 'open-file', label: 'Open a file…', onSelect: a.openFile },
+        { kind: 'item', id: 'file-download-as', label: 'Download as…', onSelect: a.downloadAs },
+      ],
+    },
+    sep,
     { kind: 'item', id: 'general-info', label: 'General info…', onSelect: a.generalInfo },
     { kind: 'item', id: 'background-colour', label: 'Background colour…', onSelect: a.backgroundColor },
     { kind: 'item', id: 'background-image', label: 'Background image…', onSelect: a.backgroundImage },
@@ -154,16 +163,17 @@ export function mapMenuEntries(a: MapMenuActions, t: MapMenuToggles, mod = modKe
 }
 
 /** What a phone's Map menu does: a few of the Map menu's actions. */
-export type PhoneMapActions = Pick<MapMenuActions, 'downloadLayout' | 'downloadAs' | 'exportImage' | 'insertText' | 'insertLabel' | 'venueDesigner'>;
+export type PhoneMapActions = Pick<MapMenuActions, 'openFile' | 'downloadLayout' | 'downloadAs' | 'exportImage' | 'insertText' | 'insertLabel' | 'venueDesigner'>;
 
 /**
- * The phone's Map menu (from the layout-name menu): Download & export ▸,
+ * The phone's Map menu (from the layout-name menu): Open a file…, Download & export ▸,
  * Insert ▸ and the venue designer, in the Map menu's own words. Insert and
  * the venue designer only while editing (`editing`).
  */
 export function phoneMapEntries(a: PhoneMapActions, editing: boolean): MenuEntry<MapMenuContext>[] {
   const viewing = () => !editing;
   return [
+    { kind: 'item', id: 'open-file', label: 'Open a file…', onSelect: a.openFile },
     {
       kind: 'submenu', id: 'export', label: 'Download & export', items: [
         { kind: 'item', id: 'download-layout', label: 'Download layout (.bld-layout)', hidden: notInModule, onSelect: a.downloadLayout },

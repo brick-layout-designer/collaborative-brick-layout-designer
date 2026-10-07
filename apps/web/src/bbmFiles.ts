@@ -167,10 +167,10 @@ export interface DroppedLayout {
   parts?: Record<string, Uint8Array>;
 }
 
-/** Turns an LDraw / TrackDesigner / 4DBrix file into .bbm text (mapFormats.ts). */
+/** Turns a TrackDesigner / 4DBrix file into .bbm text (mapFormats.ts). */
 export type MapConverter = (name: string, bytes: Uint8Array) => Promise<{ bbm: string; warnings: string[] }>;
 
-const MAP_FILE = /\.(ldr|mpd|tdl|ncp)$/i;
+const MAP_FILE = /\.(tdl|ncp)$/i;
 
 interface NamedText {
   name: string;
@@ -205,7 +205,7 @@ export async function pairLayoutFiles(files: readonly NamedText[]): Promise<Drop
 
 /**
  * Layouts in dropped files: `.bld-layout` files, loose `.bbm` / `.bbm.bld`
- * files plus the contents of any `.zip`, and — given a converter — LDraw,
+ * files plus the contents of any `.zip`, and — given a converter —
  * TrackDesigner and 4DBrix maps.
  */
 export async function layoutsFromFiles(files: readonly File[], convertMap?: MapConverter): Promise<DroppedLayout[]> {

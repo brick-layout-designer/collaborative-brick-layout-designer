@@ -2,7 +2,7 @@
 // ticks and shortcuts.
 
 import { describe, expect, it, vi } from 'vitest';
-import { mapMenuEntries, modKey, type MapMenuActions, type MapMenuToggles } from '../mapMenu';
+import { mapMenuEntries, modKey, phoneMapEntries, type MapMenuActions, type PhoneMapActions, type MapMenuToggles } from '../mapMenu';
 import { activate, resolveMenu, type ResolvedEntry } from '../../ui/menu/menuModel';
 
 function setup(moduleMode = false) {
@@ -37,6 +37,7 @@ describe('Map menu', () => {
   it('has a short top level, grouped like the desktop', () => {
     const { menu } = setup();
     expect(outline(menu).map((e) => (typeof e === 'object' && e !== null ? Object.keys(e)[0] : e))).toEqual([
+      'File', '—',
       'General info…', 'Background colour…', 'Background image…', 'Find…', '—',
       'Insert', 'Modules & sets', 'Venue', 'View', 'Budget', 'Download & export', '—',
       'Preferences…',
@@ -46,6 +47,29 @@ describe('Map menu', () => {
       'Edit venue properties…', 'Save to venue library…', 'Export venue as file…', 'Load venue from file…', '—', 'Clear venue…',
     ]);
     expect(noDoubleSeparators(menu)).toBe(true);
+  });
+
+  it('starts with File: open a file, and download it as something else', () => {
+    const { menu, actions } = setup();
+    expect(outline((find(menu, 'File') as { items: ResolvedEntry[] }).items)).toEqual(['Open a file…', 'Download as…']);
+    activate(find(menu, 'File', 'Open a file…'));
+    activate(find(menu, 'File', 'Download as…'));
+    expect(actions.openFile).toHaveBeenCalledTimes(1);
+    expect(actions.downloadAs).toHaveBeenCalledTimes(1);
+    // The module editor opens files too.
+    const mod = setup(true);
+    expect(outline((find(mod.menu, 'File') as { items: ResolvedEntry[] }).items)).toEqual(['Open a file…', 'Download as…']);
+  });
+
+  it("on a phone, Open a file… is first, viewing or editing", () => {
+    for (const editing of [true, false]) {
+      const openFile = vi.fn();
+      const a = new Proxy({ openFile } as Record<string, () => void>, { get: (t, k: string) => (t[k] ??= vi.fn()) });
+      const menu = resolveMenu(phoneMapEntries(a as unknown as PhoneMapActions, editing), { moduleMode: false });
+      expect(menu[0]).toMatchObject({ kind: 'item', label: 'Open a file…' });
+      activate(menu[0]!);
+      expect(openFile).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('in the module editor: no Venue, no Budget, no Download layout, and no double separators', () => {
