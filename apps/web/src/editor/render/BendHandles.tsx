@@ -19,7 +19,8 @@ import { startFlexSession } from '../flexSession';
 import { pinnedAmong } from '../moduleEdit';
 import { useEditorStore } from '../editorStore';
 import { EXPORT_HIDE } from '../exportRender';
-import { dragsAny, nodePointIn, useLiveDragPose } from '../liveDragPose';
+import { nodePointIn } from '../liveDragPose';
+import { DRAG_LAYER } from './BrickLayer';
 
 const PX = 8;
 
@@ -190,15 +191,24 @@ export function BendHandles({ map, doc, selection, partsByKey, modules, editingM
     }
     useEditorStore.getState().showStatusMessage('Drag the round handle at the end of the flex track to bend it', 8000);
   }, [shown, halo]);
-  // A drag moves its parts on the drag layer and redraws only that; the
-  // handles of the parts it moves are drawn again with each frame.
+  // The handles are drawn where their parts' nodes are when their layer
+  // draws, so the layer must draw again whenever the parts do (a drag on
+  // the drag layer, a bend, an undo, someone else's edit); otherwise it
+  // shows, and hit-tests, where the ends were: a handle left over the
+  // middle of a straightened run caught a double-click meant for a part.
   const groupRef = useRef<Konva.Group>(null);
   useEffect(() => {
     if (!shown) return;
-    const ids = new Set(ends.flatMap((e) => e.run));
-    return useLiveDragPose.subscribe((s) => {
-      if (s.pose && dragsAny(s.pose, ids)) groupRef.current?.getLayer()?.batchDraw();
-    });
+    const own = groupRef.current?.getLayer();
+    const stage = own?.getStage();
+    if (!own || !stage) return;
+    const parts = stage.getLayers().filter((l) => l !== own && (l.hasName('parts-layer') || l.hasName(DRAG_LAYER)));
+    const redraw = () => own.batchDraw();
+    for (const l of parts) l.on('draw.bend-handles', redraw);
+    own.batchDraw();
+    return () => {
+      for (const l of parts) l.off('draw.bend-handles');
+    };
   }, [shown, ends]);
   if (!shown || (halo && !touch)) return null;
 
