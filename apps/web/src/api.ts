@@ -287,6 +287,10 @@ export interface VenueSummary {
   canManage?: boolean;
   owner?: OwnerInfo | null;
   credit?: Credit | null;
+  /** When it was saved (ms), and its size in studs (0: no outline); older servers leave them out. */
+  createdAt?: number;
+  widthStuds?: number;
+  heightStuds?: number;
 }
 
 export interface LayoutSummary {

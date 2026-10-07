@@ -82,6 +82,27 @@ describe('venues', () => {
     expect(venues.some((v) => v.id === id)).toBe(true);
   });
 
+  it('lists each venue with its size in studs and when it was saved', async () => {
+    const aliceCookie = await registerAndLogin(app, 'alice@example.com');
+    const before = Date.now();
+    await app.inject({
+      method: 'POST',
+      url: '/api/venues',
+      headers: { cookie: aliceCookie },
+      payload: { name: 'Big Hall', data: { ...SAMPLE_VENUE, bounds: { x: 0, y: 0, w: 1250.4, h: 624.6 } } },
+    });
+    await app.inject({ method: 'POST', url: '/api/venues', headers: { cookie: aliceCookie }, payload: { name: 'No outline', data: SAMPLE_VENUE } });
+    const list = await app.inject({ method: 'GET', url: '/api/venues', headers: { cookie: aliceCookie } });
+    const venues = (list.json() as { venues: { name: string; widthStuds: number; heightStuds: number; createdAt: number }[] }).venues;
+    const big = venues.find((v) => v.name === 'Big Hall')!;
+    expect(big.widthStuds).toBe(1250);
+    expect(big.heightStuds).toBe(625);
+    expect(big.createdAt).toBeGreaterThanOrEqual(before);
+    const bare = venues.find((v) => v.name === 'No outline')!;
+    expect(bare.widthStuds).toBe(0);
+    expect(bare.heightStuds).toBe(0);
+  });
+
   it('GET /api/venues/:id returns venue data to owner', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     const create = await app.inject({

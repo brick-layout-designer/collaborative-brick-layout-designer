@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
@@ -30,6 +30,10 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       name: schema.venueLibrary.name,
       ownerUserId: schema.venueLibrary.ownerUserId,
       ownerOrgId: schema.venueLibrary.ownerOrgId,
+      createdAt: schema.venueLibrary.createdAt,
+      // Its size, for the desktop's list (the venue JSON's bounds).
+      widthStuds: sql<number | null>`json_extract(${schema.venueLibrary.data}, '$.bounds.w')`,
+      heightStuds: sql<number | null>`json_extract(${schema.venueLibrary.data}, '$.bounds.h')`,
     };
     const personal = await db.select(cols).from(schema.venueLibrary).where(eq(schema.venueLibrary.ownerUserId, user.id));
     const orgOwned = await db
@@ -39,17 +43,36 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.orgMembers.userId, user.id));
 
     const seen = new Set<string>();
-    const all: { id: string; name: string; ownerUserId: string | null; ownerOrgId: string | null; canManage: boolean }[] = [];
+    type Row = (typeof personal)[number];
+    const all: {
+      id: string;
+      name: string;
+      ownerUserId: string | null;
+      ownerOrgId: string | null;
+      createdAt: number;
+      widthStuds: number;
+      heightStuds: number;
+      canManage: boolean;
+    }[] = [];
+    // Studs, rounded; 0 when the venue has no outline yet.
+    const studs = (n: unknown) => Math.max(0, Math.round(Number(n) || 0));
+    const listed = (v: Row, canManage: boolean) => ({
+      ...v,
+      createdAt: v.createdAt.getTime(),
+      widthStuds: studs(v.widthStuds),
+      heightStuds: studs(v.heightStuds),
+      canManage,
+    });
     for (const v of personal) {
       if (seen.has(v.id)) continue;
       seen.add(v.id);
-      all.push({ ...v, canManage: true });
+      all.push(listed(v, true));
     }
     for (const { venue, memberRole } of orgOwned) {
       if (seen.has(venue.id)) continue;
       seen.add(venue.id);
       // Same rights as PATCH / DELETE: a club's venues are its managers' and admins' to change.
-      all.push({ ...venue, canManage: atLeast(memberRole, 'manager') });
+      all.push(listed(venue, atLeast(memberRole, 'manager')));
     }
     const shown = all.filter((v) => matchesOwner(v, filter, user.id));
     const ownerOf = await ownerLookup(shown);
