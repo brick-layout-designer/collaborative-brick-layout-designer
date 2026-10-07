@@ -114,7 +114,7 @@ export function AnchoredLabels({
             ? {
                 draggable: true,
                 onDragStart: (e: KonvaEventObject<DragEvent>) => drag.start('labels', label.id, e.target),
-                onDragMove: (e: KonvaEventObject<DragEvent>) => drag.move(e.target),
+                onDragMove: (e: KonvaEventObject<DragEvent>) => drag.move(e.target, e.evt),
                 onDragEnd: (e: KonvaEventObject<DragEvent>) => drag.end(e.target),
               }
             : {}),

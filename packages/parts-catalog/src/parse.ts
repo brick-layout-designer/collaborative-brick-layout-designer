@@ -11,6 +11,7 @@ import type {
   LDrawRemap,
   PartKind,
   PartMetadata,
+  SnapMargin,
   SubPart,
   TrackDesignerRemap,
 } from './types.js';
@@ -68,6 +69,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
   const subparts = kind === 'group' ? readSubPartList(root.SubPartList) : [];
   const groupNextPreferred = kind === 'group' ? readGroupNextPreferred(root.GroupConnectionPreferenceList) : undefined;
   const hullPts = readHull(root.hull);
+  const snapMargin = readSnapMargin(root.SnapMargin);
   const oldNames = readOldNames(root.OldNameList);
   const ldraw = readLDraw(root.LDraw);
   const trackDesigner = readTrackDesigner(root.TrackDesigner);
@@ -95,6 +97,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     canUngroup,
     ...(groupNextPreferred ? { groupNextPreferred } : {}),
     hullPts,
+    ...(snapMargin ? { snapMargin } : {}),
     oldNames,
     ...(ldraw ? { ldraw } : {}),
     ...(trackDesigner ? { trackDesigner } : {}),
@@ -284,6 +287,14 @@ function optionalNumber(node: RawNode, key: string): number | undefined {
   if (v === undefined || v === null || v === '') return undefined;
   const n = Number.parseFloat(String(v));
   return Number.isFinite(n) ? n : undefined;
+}
+
+/** `<SnapMargin>` in studs; undefined when absent or all zero. */
+function readSnapMargin(node: unknown): SnapMargin | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const n = node as RawNode;
+  const m = { left: num(n.left), right: num(n.right), top: num(n.top), bottom: num(n.bottom) };
+  return m.left || m.right || m.top || m.bottom ? m : undefined;
 }
 
 function readHull(node: unknown): { x: number; y: number }[] {

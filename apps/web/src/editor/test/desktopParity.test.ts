@@ -170,17 +170,19 @@ describe('module drop placement (E)', () => {
     source: 'bundled', customPartId: null,
   });
 
-  it('centres the module under the cursor and grid-snaps its bbox top-left', () => {
+  it('centres the module under the cursor and puts its lead part on the grid', () => {
     const batches = [{ layerName: 'L', bricks: [
       { partNumber: 'x', displayArea: { x: -3, y: -1, width: 3, height: 2 } },
       { partNumber: 'x', displayArea: { x: 0, y: -1, width: 3, height: 2 } },
     ] }];
-    // Centroid (0,0), bbox TL (-3,-1).
+    // Centroid (0,0); the lead (first) part's corner (-3,-1).
     expect(moduleDropTranslation(batches, { x: 5.2, y: 7.9 }, 0, null, null)).toEqual({ dx: 5.2, dy: 7.9 });
     const t = moduleDropTranslation(batches, { x: 5.2, y: 7.9 }, 1, null, null);
-    // Wanted TL (2.2, 6.9) → (2, 7).
+    // Under the cursor its corner is at (2.2, 6.9), 3 by 1 studs from the
+    // cursor: BlueBrick keeps those whole steps from the grid line at or
+    // before the cursor (5, 7), so (2, 6).
     expect(t.dx).toBeCloseTo(5);
-    expect(t.dy).toBeCloseTo(8);
+    expect(t.dy).toBeCloseTo(7);
   });
 
   it('shifts the module onto a nearby free host connection', () => {

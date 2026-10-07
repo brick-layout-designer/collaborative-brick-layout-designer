@@ -163,7 +163,8 @@ import { drawnGridLayer, gridCellAt, parseCellIndexCorner } from './render/gridI
 import { AppMark, HelpMenu, LayoutNameMenu, SavePill, SettingsButton, TaskTabs, type EditorTask } from './EditorChrome';
 import { SettingsDialog } from '../settings/SettingsPage';
 import { usePreferences } from '../theme/PrefsProvider';
-import { DEFAULT_SNAP_STRENGTH, SnapSession } from './snapFeel';
+import { DEFAULT_SNAP_STRENGTH, SnapSession, snapBypassed } from './snapFeel';
+import { annoDragShift, grabSnapCorner, snapPoint } from './gridSnap';
 import { liveSnapReach } from './liveSnapReach';
 import { LAST_LAYOUT_KEY } from '../layouts/reopenLast';
 import { askConfirm, askLeaveUnsaved } from '../ui/ConfirmDialog';
@@ -1415,7 +1416,10 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               ? (useEditorStore.getState().selection[0] ?? null)
               : null
           }
-          viewCentre={canvasActionsRef.current?.viewCentre() ?? viewCentreStuds(viewport)}
+          viewCentre={snapPoint(
+            canvasActionsRef.current?.viewCentre() ?? viewCentreStuds(viewport),
+            useEditorStore.getState().snapStepStuds,
+          )}
           onClose={() => setShowAddLabel(false)}
         />
       )}
@@ -1911,10 +1915,18 @@ function Canvas({
   const viewFilter = useEditorStore((s) => s.viewFilter);
   const shownMap = useMemo(() => (map && viewFilter ? applyViewSheets(map, viewFilter.sheets) : map), [map, viewFilter]);
 
-  // Ruler- or label-led drag of a mixed selection. Qt moves every
-  // selected movable item with the grabbed one and commitDragIfMoved
-  // pushes one "Drag" macro (MapViewDrag.cpp:412-450); bricks then get
-  // the grid snap of the first brick's top-left (MapViewDrag.cpp:600-608).
+  /** `p` on the nearest grid point, unless the grid is off or `free` (Alt held). */
+  function gridPointStuds(p: { x: number; y: number }, free = false): { x: number; y: number } {
+    return snapPoint(p, free ? 0 : useEditorStore.getState().snapStepStuds);
+  }
+
+  // Ruler- or label-led drag of a mixed selection: everything moves by the
+  // same amount, one undo step (MapViewDrag.cpp commitDragIfMoved). With
+  // parts in it, the first part lands by its snap corner (gridSnap.ts, as
+  // when a part leads); without, the grabbed ruler's first end (or
+  // centre) or the label's corner goes on the nearest grid point, Alt
+  // freeing it (MapViewDrag.cpp applyAnnoGridSnap).
+  const partsByKeyRef = useRef<Map<string, PartWire>>(new Map());
   const annoDragRef = useRef<{
     lead: Konva.Node;
     x0: number;
@@ -1922,69 +1934,100 @@ function Canvas({
     others: NodeSnap[];
     bricks: string[];
     anno: AnnoSelection;
+    /** The first part's snap corner at the start (studs), when parts move too. */
+    corner: { x: number; y: number } | null;
+    /** The point that goes on the grid without parts (studs). */
+    ref: { x: number; y: number } | null;
+    /** The move so far, snapped (px). */
+    d: { x: number; y: number };
   } | null>(null);
-  const annoDrag = useMemo<AnnoDragHandlers>(() => ({
-    start(kind, id, node) {
-      const st = useEditorStore.getState();
-      let bricks = st.selection;
-      let anno = st.annoSelection;
-      if (!anno[kind].includes(id)) {
-        bricks = [];
-        anno = { rulers: [], labels: [], texts: [], [kind]: [id] };
-        st.setMixedSelection(bricks, anno);
-      }
-      const names = [...bricks.map((b) => `brick-${b}`), ...annoNodeNames(anno)];
-      annoDragRef.current = {
-        lead: node,
-        x0: node.x(),
-        y0: node.y(),
-        others: collectNodes(node.getStage(), names, node),
-        bricks,
-        anno,
-      };
-    },
-    move(node) {
-      const d = annoDragRef.current;
-      if (!d || d.lead !== node) return;
-      shiftNodes(d.others, node.x() - d.x0, node.y() - d.y0);
-    },
-    end(node) {
-      const d = annoDragRef.current;
-      annoDragRef.current = null;
-      if (!d || d.lead !== node) return;
-      const dx = pxToStud(node.x() - d.x0);
-      const dy = pxToStud(node.y() - d.y0);
-      restoreNodes(d.others);
-      node.position({ x: d.x0, y: d.y0 });
-      const m = mapRef.current;
-      if (!m || (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6)) return;
-      let brickDx = dx;
-      let brickDy = dy;
-      const step = useEditorStore.getState().snapStepStuds;
-      if (step > 0 && d.bricks.length > 0) {
-        const first = m.layers
-          .flatMap((l) => (l.type === 'brick' ? l.bricks : []))
-          .find((b) => d.bricks.includes(b.id));
-        if (first) {
-          const tlx = first.displayArea.x + dx;
-          const tly = first.displayArea.y + dy;
-          brickDx += Math.round(tlx / step) * step - tlx;
-          brickDy += Math.round(tly / step) * step - tly;
-        }
-      }
-      // A pinned module in the selection doesn't move as a whole.
-      if (d.bricks.length > 0 && !selectionMayMove(doc, d.bricks)) return;
-      const sc = readSidecarFromDoc(doc);
-      translateMixedSelection(doc, m, sc?.anchoredLabels ?? [], sc?.modules ?? [], {
-        bricks: d.bricks,
-        anno: d.anno,
-        dx,
-        dy,
-        brickDx,
-        brickDy,
+  const annoDrag = useMemo<AnnoDragHandlers>(() => {
+    // The move from where the lead started, on the grid (px).
+    const snapped = (d: NonNullable<typeof annoDragRef.current>, node: Konva.Node, free: boolean) => {
+      const raw = { x: node.x() - d.x0, y: node.y() - d.y0 };
+      const shift = annoDragShift({
+        moved: { x: pxToStud(raw.x), y: pxToStud(raw.y) },
+        mouse: pointerStuds(),
+        corner: d.corner,
+        ref: d.ref,
+        step: useEditorStore.getState().snapStepStuds,
+        free,
       });
-    },
-  }), [doc]);
+      return { x: raw.x + studToPx(shift.x), y: raw.y + studToPx(shift.y) };
+    };
+    return {
+      start(kind, id, node) {
+        const st = useEditorStore.getState();
+        let bricks = st.selection;
+        let anno = st.annoSelection;
+        if (!anno[kind].includes(id)) {
+          bricks = [];
+          anno = { rulers: [], labels: [], texts: [], [kind]: [id] };
+          st.setMixedSelection(bricks, anno);
+        }
+        const names = [...bricks.map((b) => `brick-${b}`), ...annoNodeNames(anno)];
+        const m = mapRef.current;
+        let corner: { x: number; y: number } | null = null;
+        let ref: { x: number; y: number } | null = null;
+        if (m && bricks.length > 0) {
+          for (const l of m.layers) {
+            if (l.type !== 'brick' || corner) continue;
+            const b = l.bricks.find((x) => bricks.includes(x.id));
+            if (b) corner = grabSnapCorner(l, b, partsByKeyRef.current);
+          }
+        } else if (m && kind === 'rulers') {
+          for (const l of m.layers) {
+            if (l.type !== 'ruler') continue;
+            const r = l.rulerItems.find((x) => x.id === id);
+            if (r) ref = r.kind === 'linear' ? { ...r.point1 } : { ...r.center };
+          }
+        } else if (kind === 'labels') {
+          // The label's text corner, where it is drawn.
+          const text = (node as Konva.Group).getChildren?.()[0];
+          if (text) ref = { x: pxToStud(node.x() + text.x()), y: pxToStud(node.y() + text.y()) };
+        }
+        annoDragRef.current = {
+          lead: node,
+          x0: node.x(),
+          y0: node.y(),
+          others: collectNodes(node.getStage(), names, node),
+          bricks,
+          anno,
+          corner,
+          ref,
+          d: { x: 0, y: 0 },
+        };
+      },
+      move(node, evt) {
+        const d = annoDragRef.current;
+        if (!d || d.lead !== node) return;
+        d.d = snapped(d, node, snapBypassed(evt));
+        node.position({ x: d.x0 + d.d.x, y: d.y0 + d.d.y });
+        shiftNodes(d.others, d.d.x, d.d.y);
+      },
+      end(node) {
+        const d = annoDragRef.current;
+        annoDragRef.current = null;
+        if (!d || d.lead !== node) return;
+        // Where the last move put it (the lead stands snapped there).
+        const dx = pxToStud(d.d.x);
+        const dy = pxToStud(d.d.y);
+        restoreNodes(d.others);
+        node.position({ x: d.x0, y: d.y0 });
+        const m = mapRef.current;
+        if (!m || (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6)) return;
+        // A pinned module in the selection doesn't move as a whole.
+        if (d.bricks.length > 0 && !selectionMayMove(doc, d.bricks)) return;
+        const sc = readSidecarFromDoc(doc);
+        translateMixedSelection(doc, m, sc?.anchoredLabels ?? [], sc?.modules ?? [], {
+          bricks: d.bricks,
+          anno: d.anno,
+          dx,
+          dy,
+        });
+      },
+    };
+  }, [doc]);
 
   /**
    * Resolve the layer that new parts should be placed into. `activeLayerId`
@@ -2037,6 +2080,7 @@ function Canvas({
     // editor/snap.ts `lookupPart`.
     return indexParts(catalog.data?.parts);
   }, [catalog.data]);
+  partsByKeyRef.current = partsByKey;
   // A picked part deleted by someone else (live) or by an undo leaves the
   // selection. Checked against the doc itself, which is never behind a pick.
   useEffect(() => {
@@ -2726,7 +2770,9 @@ function Canvas({
     panDx: number;
     panDy: number;
     studs: { x: number; y: number } | null;
-  }>({ raf: null, panDx: 0, panDy: 0, studs: null });
+    /** Alt held on the latest move: ruler and venue points go where the pointer is. */
+    free: boolean;
+  }>({ raf: null, panDx: 0, panDy: 0, studs: null, free: false });
   function flushPointerMove() {
     const m = moveRafRef.current;
     if (m.raf !== null) {
@@ -2743,12 +2789,10 @@ function Canvas({
     m.studs = null;
     if (!studs) return;
     setMarquee((prev) => (prev ? { ...prev, x1: studs.x, y1: studs.y } : prev));
-    const step = useEditorStore.getState().snapStepStuds;
-    const cx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-    const cy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
-    setRulerDraft((prev) => (prev ? { ...prev, curX: cx, curY: cy } : prev));
-    // Venue preview follows the raw cursor (no grid snap, like desktop).
-    setVenueDraft((prev) => (prev ? { ...prev, curX: studs.x, curY: studs.y } : prev));
+    // Ruler ends and venue corners go on the grid, as they will land.
+    const at = gridPointStuds(studs, m.free);
+    setRulerDraft((prev) => (prev ? { ...prev, curX: at.x, curY: at.y } : prev));
+    setVenueDraft((prev) => (prev ? { ...prev, curX: at.x, curY: at.y } : prev));
   }
   function schedulePointerMove() {
     const m = moveRafRef.current;
@@ -2842,11 +2886,8 @@ function Canvas({
       doPaintStroke(studs.x, studs.y);
     }
     if ((tool === 'rulerLinear' || tool === 'rulerCircular') && !isViewer) {
-      // Snap-step rounding on the start point matches the desktop
-      // (MapView.cpp:461-466).
-      const step = useEditorStore.getState().snapStepStuds;
-      const sx = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-      const sy = step > 0 ? Math.round(studs.y / step) * step : studs.y;
+      // The start on the nearest grid point, as the desktop (Alt: free).
+      const { x: sx, y: sy } = gridPointStuds(studs, snapBypassed(evt));
       setRulerDraft({
         kind: tool === 'rulerLinear' ? 'linear' : 'circular',
         startX: sx,
@@ -2856,10 +2897,8 @@ function Canvas({
       });
     }
     if ((tool === 'venueOutline' || tool === 'venueObstacle') && !isViewer) {
-      // Venue vertices land exactly where clicked: desktop appends the raw
-      // scene point with no grid snap (MapView.cpp:474-489).
-      const sx = studs.x;
-      const sy = studs.y;
+      // Venue corners on the grid, as the parts are (Alt: where clicked).
+      const { x: sx, y: sy } = gridPointStuds(studs, snapBypassed(evt));
       setVenueDraft((prev) =>
         prev
           ? { ...prev, pts: [...prev.pts, { x: sx, y: sy }], curX: sx, curY: sy }
@@ -2900,6 +2939,7 @@ function Canvas({
     }
     if (marquee || rulerDraft || venueDraft) {
       moveRafRef.current.studs = studs;
+      moveRafRef.current.free = snapBypassed(evt);
       schedulePointerMove();
     }
     // Always broadcast cursor so peers can see us — even when we're
@@ -2956,10 +2996,8 @@ function Canvas({
 
     // Commit a ruler draft if one is active. Snap end point to grid.
     if (rulerDraft) {
-      const step = useEditorStore.getState().snapStepStuds;
       const studs = pointerStuds() ?? { x: rulerDraft.curX, y: rulerDraft.curY };
-      const ex = step > 0 ? Math.round(studs.x / step) * step : studs.x;
-      const ey = step > 0 ? Math.round(studs.y / step) * step : studs.y;
+      const { x: ex, y: ey } = gridPointStuds(studs, snapBypassed(evt));
       const dx = ex - rulerDraft.startX;
       const dy = ey - rulerDraft.startY;
       // Skip degenerate zero-length drags (e.g. user clicked without drag).
@@ -3829,18 +3867,13 @@ function Canvas({
               selectAnno('rulers', id, false);
               setEditingRuler({ item, layerId: layer.id });
             }}
-            onEndpointDrag={(rulerId, which, studX, studY, commit) => {
+            onEndpointDrag={(rulerId, which, studX, studY, free) => {
               const layer = map.layers.find(
                 (l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === rulerId),
               );
               if (!layer || layer.type !== 'ruler') return;
-              let sx = studX;
-              let sy = studY;
-              if (commit && snapStepStuds > 0) {
-                sx = Math.round(studX / snapStepStuds) * snapStepStuds;
-                sy = Math.round(studY / snapStepStuds) * snapStepStuds;
-              }
-              moveRulerEndpoint(doc, layer.id, rulerId, which, { x: sx, y: sy });
+              // On the nearest grid point all the way, as the desktop (Alt: free).
+              moveRulerEndpoint(doc, layer.id, rulerId, which, gridPointStuds({ x: studX, y: studY }, free));
             }}
           />
           {viewFilter && !viewFilter.labels ? null : isViewer
@@ -3922,7 +3955,8 @@ function Canvas({
     // Like desktop's Insert Text (MapView::addTextAtScenePos): at the view
     // centre, or where "Add Text Here" was picked, on the first text
     // layer, in a 10-stud-high box.
-    const target = addTextAt ?? viewCentreStuds({ width, height });
+    // Its middle on the grid, as the parts are.
+    const target = gridPointStuds(addTextAt ?? viewCentreStuds({ width, height }));
     setAddTextAt(null);
     const layerId = ensureTextLayer(doc);
     const box = newTextBox(r.text);

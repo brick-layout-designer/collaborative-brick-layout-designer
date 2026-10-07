@@ -259,3 +259,18 @@ describe('parsePartXml map-format remaps', () => {
     expect(parsePartXml(SIMPLE_XML, input)).not.toHaveProperty('ldraw');
   });
 });
+
+describe('parsePartXml — <SnapMargin>', () => {
+  const xml = (margin: string) => `<?xml version="1.0" encoding="UTF-8"?><part>${margin}</part>`;
+  const parse = (margin: string) => parsePartXml(xml(margin), { partNumber: '2865', colorCode: '8', spritePath: '' });
+
+  it('reads the margin grid snapping leaves out, in studs', () => {
+    const p = parse('<SnapMargin><left>0.5</left><right>0.7</right><top>0</top><bottom>2.625</bottom></SnapMargin>');
+    expect(p.snapMargin).toEqual({ left: 0.5, right: 0.7, top: 0, bottom: 2.625 });
+  });
+
+  it('leaves it out when absent or all zero', () => {
+    expect(parse('').snapMargin).toBeUndefined();
+    expect(parse('<SnapMargin><left>0</left><right>0</right><top>0</top><bottom>0</bottom></SnapMargin>').snapMargin).toBeUndefined();
+  });
+});

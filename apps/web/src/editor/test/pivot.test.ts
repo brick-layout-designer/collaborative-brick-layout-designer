@@ -141,14 +141,16 @@ describe('snapping and picking from the pivot', () => {
     expect(conns.map((c) => [Math.round(c.x * 1000) / 1000, c.y])).toEqual([[8, 5], [12, 5]]);
   });
 
-  it('the grid rounds the box corner, not the pivot', () => {
+  it('on the grid, a new part is held by its box, not its pivot', () => {
     const r = snapPlacement(
       { part: { ...HULL, connections: [] }, centreX: 10.3, centreY: 5.2, orientation: 0, width: 2, height: 2, pivotOffsetX: 1, pivotOffsetY: 0, snapStepStuds: 1, reach: 3 },
       mapOf([]),
       parts,
     );
-    // Box corner 8.3, 4.2 → 8, 4; pivot = corner + (1, 1) + (1, 0).
-    expect([r.centreX, r.centreY]).toEqual([10, 5]);
+    // As BlueBrick drops a part: the box's middle at the cursor puts its
+    // corner at (9.3, 4.2), a step up and left of it, so (9, 4); the pivot
+    // is the corner + (1, 1) + (1, 0).
+    expect([r.centreX, r.centreY]).toEqual([11, 5]);
   });
 
   it('the grabbed connection is the one nearest the click, from the pivot', () => {

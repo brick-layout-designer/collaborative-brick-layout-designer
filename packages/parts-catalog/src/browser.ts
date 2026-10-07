@@ -3,7 +3,7 @@
 // connectivity-recompute algorithm without pulling the directory scanner
 // (which lives in scan.ts behind `node:fs/promises`).
 
-export type { Catalog, ConnectionPoint, PartKind, PartMetadata, SubPart } from './types.js';
+export type { Catalog, ConnectionPoint, PartKind, PartMetadata, SnapMargin, SubPart } from './types.js';
 export { parsePartXml, type ParseInput } from './parse.js';
 export { rebuildConnectivity, type RebuildConnectivityResult } from './connectivity.js';
 export { footprint, imageOffset, type Footprint, type FootprintPart } from './footprint.js';

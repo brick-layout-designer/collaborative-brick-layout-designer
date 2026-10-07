@@ -52,6 +52,7 @@ export function restoreNodes(snaps: readonly NodeSnap[]): void {
  */
 export interface AnnoDragHandlers {
   start: (kind: 'rulers' | 'labels', id: string, node: Konva.Node) => void;
-  move: (node: Konva.Node) => void;
+  /** `evt`: the drag's pointer event (Alt held frees a ruler or label from the grid). */
+  move: (node: Konva.Node, evt?: { altKey?: boolean }) => void;
   end: (node: Konva.Node) => void;
 }
