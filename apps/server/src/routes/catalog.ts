@@ -38,6 +38,7 @@ import { MAX_THUMBNAIL_BYTES, reencode, THUMBNAIL_BODY_LIMIT } from '../images/t
 import { sniffCover } from '../images/covers.js';
 import type { Venue } from '@cld/bbm';
 import { perPerson } from '../utils/rateLimits.js';
+import { stripImportSource } from '../utils/partXml.js';
 
 /** What the catalog holds: modules and custom parts, and (when on) layouts and venues. */
 export type Kind = 'module' | 'part' | 'layout' | 'venue';
@@ -193,7 +194,8 @@ async function snapshotSource(kind: Kind, sourceId: string, thumbnail: Buffer | 
   }
   const p = await db.select().from(schema.customParts).where(eq(schema.customParts.id, sourceId)).get();
   if (!p || p.isGlobal) return null;
-  const xml = Buffer.from(p.xmlBlob as Uint8Array);
+  // Never publish a path left by an older desktop's upload.
+  const xml = stripImportSource(Buffer.from(p.xmlBlob as Uint8Array));
   const sprite = Buffer.from(p.spriteBlob as Uint8Array);
   return {
     ownerUserId: p.ownerUserId,

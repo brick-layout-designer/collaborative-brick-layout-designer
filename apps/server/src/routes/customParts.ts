@@ -10,6 +10,7 @@
 // Sharing tiers mirror layouts: owner / editor / viewer; org ownership
 // available; explicit collaborators via `custom_part_collaborators`.
 
+import { stripImportSource } from '../utils/partXml.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
@@ -545,11 +546,13 @@ function parsePartBody(body: CreatePartBody): ParsedPartBody {
  * stud .gif with the XML of its 32 px a stud .png.
  */
 export function xmlForSprite(xmlBlob: Buffer, spriteMime: string): Buffer {
-  if (spriteMime !== 'image/gif') return xmlBlob;
-  const xml = xmlBlob.toString('utf8');
+  const clean = stripImportSource(xmlBlob);
+  if (spriteMime !== 'image/gif') return clean;
+  const xml = clean.toString('utf8');
   const fixed = xmlForGifSprite(xml);
-  return fixed === xml ? xmlBlob : Buffer.from(fixed, 'utf8');
+  return fixed === xml ? clean : Buffer.from(fixed, 'utf8');
 }
+
 
 const partListColumns = {
   id: schema.customParts.id,
