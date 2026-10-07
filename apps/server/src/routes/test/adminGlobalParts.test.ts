@@ -102,6 +102,11 @@ describe('admin global-parts', () => {
     const list = await app.inject({ method: 'GET', url: '/api/admin/global-parts', headers: { cookie } });
     const { parts } = list.json() as { parts: { partNumber: string }[] };
     expect(parts.some((p) => p.partNumber === 'GLOBAL_001')).toBe(true);
+    // A page at a time, searchable, with the total.
+    const found = (await app.inject({ method: 'GET', url: '/api/admin/global-parts?q=global_00&limit=1', headers: { cookie } })).json() as { parts: unknown[]; total: number; limit: number };
+    expect(found).toMatchObject({ total: 1, limit: 1 });
+    expect(found.parts).toHaveLength(1);
+    expect(((await app.inject({ method: 'GET', url: '/api/admin/global-parts?q=nothing-like-it', headers: { cookie } })).json() as { total: number }).total).toBe(0);
   });
 
   it("POST stores a GIF part's XML without <PixelsPerStud>, as 8 px a stud", async () => {

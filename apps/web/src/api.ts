@@ -943,7 +943,8 @@ export const api = {
         `/api/admin/layouts?${listParams(q)}`,
       ),
     deleteLayout: (id: string) => del(`/api/admin/layouts/${id}`),
-    globalParts: () => get<{ parts: AdminGlobalPart[] }>('/api/admin/global-parts'),
+    globalParts: (q: AdminListParams = {}) =>
+      get<{ parts: AdminGlobalPart[]; total: number; limit: number; offset: number }>(`/api/admin/global-parts?${listParams(q)}`),
     createGlobalPart: (body: {
       partNumber: string;
       displayName: string;

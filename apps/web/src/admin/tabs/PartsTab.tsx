@@ -5,11 +5,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminGlobalPart, type OrgSummary } from '../../api';
 import { CategoryPicker } from '../../parts/CategoryPicker';
 import { confirmDelete, toastDeleted } from '../../ui/ConfirmDialog';
-import { Loading, Td, Th } from './shared';
+import { Loading, Td, Th, Toolbar } from './shared';
 
 export function GlobalPartsTab() {
   const qc = useQueryClient();
-  const parts = useQuery({ queryKey: ['admin-global-parts'], queryFn: api.admin.globalParts });
+  const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const limit = 50;
+  const parts = useQuery({ queryKey: ['admin-global-parts', q, offset], queryFn: () => api.admin.globalParts({ q, offset, limit }) });
   const catalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const existingCategories = Array.from(
@@ -155,11 +158,23 @@ export function GlobalPartsTab() {
 
       <section>
         <h2 className="mb-3 text-sm font-semibold text-neutral-300">
-          Global parts ({parts.data?.parts.length ?? '…'})
+          Global parts ({parts.data?.total ?? '…'})
         </h2>
+        <Toolbar
+          q={q}
+          setQ={(v) => {
+            setQ(v);
+            setOffset(0);
+          }}
+          total={parts.data?.total ?? 0}
+          offset={offset}
+          limit={limit}
+          setOffset={setOffset}
+          placeholder="Search by part number or name…"
+        />
         {parts.isLoading && <Loading />}
         {parts.data && parts.data.parts.length === 0 && (
-          <p className="text-xs text-muted">No global parts yet.</p>
+          <p className="text-xs text-muted">{q ? 'Nothing matches.' : 'No global parts yet.'}</p>
         )}
         {parts.data && parts.data.parts.length > 0 && (
           <table className="w-full text-xs">
