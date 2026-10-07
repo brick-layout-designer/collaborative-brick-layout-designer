@@ -31,6 +31,8 @@ export const FEATURES = [
   'limits',
   // GET /api/layouts/:id/export.bld-layout, and each venue's size and date in GET /api/venues.
   'layoutDownload',
+  // POST /api/catalog/submissions and GET /api/catalog/mine take the desktop's API token.
+  'catalogShare',
 ] as const;
 
 interface Parsed {

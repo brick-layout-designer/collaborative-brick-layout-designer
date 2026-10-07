@@ -711,7 +711,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     // Ten shares an hour per person (counted after sign-in is read), not per
     // address: a whole club sharing from one venue's network isn't one person.
     // A layout brings its picture (base64 JSON), hence the bigger body.
-    { bodyLimit: THUMBNAIL_BODY_LIMIT, config: { rateLimit: perPerson(10, '1 hour') } },
+    // The desktop app shares too (its "Share to the catalog…"), with layouts:write or parts:write.
+    { bodyLimit: THUMBNAIL_BODY_LIMIT, config: { rateLimit: perPerson(10, '1 hour'), apiToken: TOKEN_ADD } },
     async (req, reply) => {
       const user = requireUser(req);
       const b = req.body ?? {};
@@ -722,7 +723,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // The caller's shared items (their own, and their clubs'), for the status badges.
-  app.get('/api/catalog/mine', async (req) => {
+  app.get('/api/catalog/mine', { config: TOKEN_READ }, async (req) => {
     const user = requireUser(req);
     const clubs = await db
       .select({ orgId: schema.orgMembers.orgId })
