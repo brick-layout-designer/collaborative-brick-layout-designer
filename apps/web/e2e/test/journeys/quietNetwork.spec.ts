@@ -48,7 +48,7 @@ async function post<T = { id: string }>(page: Page, url: string, data: object): 
 async function newLayoutFromFile(page: Page, name: string, buffer: Buffer): Promise<string> {
   await page.goto('/');
   await page.getByRole('button', { name: 'New layout', exact: true }).first().click();
-  await page.locator('input[type=file][accept^=".bld-layout"]').setInputFiles({ name, mimeType: 'application/octet-stream', buffer });
+  await page.getByRole('dialog', { name: 'New layout' }).locator('input[type=file][accept^=".bld-layout"]').setInputFiles({ name, mimeType: 'application/octet-stream', buffer });
   await page.getByRole('dialog', { name: 'New layout' }).getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/editor\/[0-9a-f-]{36}$/, { timeout: 30000 });
   await canvasUp(page);

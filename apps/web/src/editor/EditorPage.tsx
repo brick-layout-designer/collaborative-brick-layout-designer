@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import * as Y from 'yjs';
-import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, Text } from 'react-konva';
 import type Konva from 'konva';
@@ -173,6 +173,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { Menu } from '../ui/menu/Menu';
 import { resolveMenu } from '../ui/menu/menuModel';
 import { mapMenuEntries, phoneMapEntries } from './mapMenu';
+import { openFilePicker } from '../open/FileOpener';
+import { OpenedSummaryCard } from '../open/OpenedSummary';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
@@ -276,7 +278,16 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
   // shows it in the status bar after the open).
   const location = useLocation();
-  const openWarnings = (location.state as OpenedMapState | null)?.openWarnings;
+  const openedState = location.state as OpenedMapState | null;
+  const openWarnings = openedState?.openWarnings;
+  // "Opened ‹name›: N parts, M not in the library" until closed.
+  const [openedFile, setOpenedFile] = useState(openedState?.openedFile ?? null);
+  const navigate = useNavigate();
+  const closeOpenedSummary = () => {
+    setOpenedFile(null);
+    // Not again after a reload.
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  };
   // Opened from ⋯ › Refresh picture: say when the new picture is in.
   const refreshingPicture = new URLSearchParams(location.search).get('refresh') === 'picture';
   useEffect(() => {
@@ -890,6 +901,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                   entries={resolveMenu(
                     phoneMapEntries(
                       {
+                        openFile: openFilePicker,
                         downloadLayout: () => void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', catalog.data?.parts),
                         downloadAs: () => setShowDownloadAs(true),
                         exportImage: onExportImage,
@@ -1321,6 +1333,16 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       {/* Status bar — port of MainWindow.cpp:861-1014 status widgets.
           Spans every column. Shows mouse coords / selection count / zoom. */}
       <NoticeToast lifted={touchEditing || touchTablet} />
+      {openedFile && !loading && docMap && catalog.data && (
+        <OpenedSummaryCard
+          name={openedFile}
+          map={docMap}
+          index={partIndex}
+          warnings={openWarnings ?? []}
+          onClose={closeOpenedSummary}
+          lifted={touchEditing || touchTablet}
+        />
+      )}
       {showStatusBar && <StatusBar
         gridSpan={headerColSpan}
         compact={viewport.isMobile}
@@ -4853,7 +4875,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
 }
 
 /**
- * The Map menu: the layout, then Insert ▸, Modules & sets ▸, Venue ▸,
+ * The Map menu: File ▸, the layout, then Insert ▸, Modules & sets ▸, Venue ▸,
  * View ▸, Budget ▸, Download & export ▸ and Preferences (mapMenu.ts).
  * Grouped like desktop's menu bar (MainWindowMenus.cpp, MainWindowMapMenu.cpp).
  */
@@ -4937,6 +4959,7 @@ function MapMenu({
   const entries = resolveMenu(
     mapMenuEntries(
       {
+        openFile: openFilePicker,
         generalInfo: onGeneralInfo,
         backgroundColor: onBackgroundColor,
         backgroundImage: onBackgroundImage,

@@ -47,6 +47,14 @@ const TOPICS: { id: string; title: string; body: string[] }[] = [
     ],
   },
   {
+    id: 'opening',
+    title: 'Opening a file',
+    body: [
+      'Choose Open a file… on Home or in the editor’s Map menu, or drop a file anywhere on the page. The website opens this app’s layout files (.bld-layout), BlueBrick maps (.bbm), TrackDesigner (.tdl) and 4DBrix (.ncp). After opening, it says how many parts came in and lists any that aren’t in the parts library.',
+      'LDraw (.ldr, .mpd), BrickLink Studio (.io) and LEGO Digital Designer (.lxf) models are imported in the desktop app, which matches their parts or turns a model into a custom part. Then choose File › Save to Server… there, and it shows up here.',
+    ],
+  },
+  {
     id: 'files',
     title: 'Saving a copy',
     body: [

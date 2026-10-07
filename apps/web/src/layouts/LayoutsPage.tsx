@@ -7,7 +7,10 @@ import { CreditLine, MoveCopyDialog, OwnerChip, OwnerFilterBar, ReturnMenuItems,
 import { HelpButton } from '../help/HelpButton';
 import { MoreMenu, MORE_ITEM } from '../ui/MoreMenu';
 import { getNewLayoutTemplate, setNewLayoutTemplate, templateContent } from './newLayoutTemplate';
-import { LAYOUT_ACCEPT, mapFileToBbm, mapFormatOf } from '../mapFormats';
+import { mapFileToBbm, mapFormatOf, type OpenedMapState } from '../mapFormats';
+import { openFilePicker } from '../open/FileOpener';
+import { DesktopOnlySteps } from '../open/DesktopOnly';
+import { desktopOnlyFormat, OPEN_FORMATS_LINE, START_FILE_ACCEPT, titleFromFileName, type DesktopOnlyFormat } from '../open/openFiles';
 import { LAYOUT_FILE, readLayoutFile, type LayoutImage } from '../layoutFile';
 import { takeLayoutParts, type PartChoice, type PartDifference } from '../layoutParts';
 import { PartDifferencesDialog } from './PartDifferencesDialog';
@@ -126,17 +129,30 @@ export function LayoutsPage() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-2xl font-bold">Layouts</h2>
-          <button
-            onClick={() => setShowCreate(true)}
-            data-tour="publish.owner"
-            className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
-          >
-            New layout
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openFilePicker}
+              className="tap-target rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-soft"
+            >
+              Open a file…
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              data-tour="publish.owner"
+              className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+            >
+              New layout
+            </button>
+          </div>
         </div>
+        <p className="flex items-start gap-1 text-sm text-muted" data-testid="open-formats">
+          <span>{OPEN_FORMATS_LINE} You can also drop a file anywhere on this page.</span>
+          <HelpButton helpKey="open.formats" />
+        </p>
         {layouts.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
-            {where} no layouts yet. Click <em>New layout</em> to create or import one.
+            {where} no layouts yet. Click <em>New layout</em> to start one, or <em>Open a file…</em> to bring one in.
           </p>
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
@@ -169,12 +185,16 @@ export function LayoutsPage() {
             setShowCreate(false);
             if (startVenue !== null) setParams({}, { replace: true });
           }}
-          onCreated={(id, openWarnings) => {
+          onCreated={(id, openWarnings, openedFile) => {
             qc.invalidateQueries({ queryKey: ['layouts'] });
             setShowCreate(false);
             // Open the new layout straight away, like the desktop editor's
-            // File > New and the global .bbm drop handler in main.tsx do.
-            navigate(`/editor/${id}`, openWarnings?.length ? { state: { openWarnings } } : undefined);
+            // File > New and "Open a file…" (open/FileOpener.tsx) do.
+            const state: OpenedMapState = {
+              ...(openWarnings?.length ? { openWarnings } : {}),
+              ...(openedFile ? { openedFile } : {}),
+            };
+            navigate(`/editor/${id}`, Object.keys(state).length ? { state } : undefined);
           }}
         />
       )}
@@ -563,7 +583,8 @@ function CreateLayoutDialog({
   initialVenueId?: string;
   initialOwnerSlug?: string;
   onClose: () => void;
-  onCreated: (id: string, openWarnings?: string[]) => void;
+  /** `openedFile`: the layout started from this file. */
+  onCreated: (id: string, openWarnings?: string[], openedFile?: string) => void;
 }) {
   const [title, setTitle] = useState('');
   const [bbm, setBbm] = useState<string | null>(null);
@@ -578,6 +599,8 @@ function CreateLayoutDialog({
   // Parts the picked layout defines differently from the server, asked about on Create.
   const [asking, setAsking] = useState<{ differing: PartDifference[]; answer: (c: PartChoice[] | null) => void } | null>(null);
   const [bbmFilename, setBbmFilename] = useState<string | null>(null);
+  // A picked file only the desktop app opens.
+  const [desktopFile, setDesktopFile] = useState<{ name: string; format: DesktopOnlyFormat } | null>(null);
   // A picked .bld-layout saved from a layout on this server that you can open.
   const [original, setOriginal] = useState<OriginalLayout | null>(null);
   // Owner: empty string = personal; otherwise the org slug.
@@ -603,6 +626,13 @@ function CreateLayoutDialog({
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
+    // LDraw, Studio and LDD files are imported in the desktop app: say how.
+    const desktop = desktopOnlyFormat(file.name);
+    setDesktopFile(desktop ? { name: file.name, format: desktop } : null);
+    if (desktop) {
+      e.target.value = '';
+      return;
+    }
     let text: string;
     let warnings: string[] = [];
     setBackground(null);
@@ -637,7 +667,7 @@ function CreateLayoutDialog({
     setBbm(text);
     setOpenWarnings(warnings);
     setBbmFilename(file.name);
-    if (!title) setTitle(file.name.replace(/\.(bld-layout|bbm|ldr|mpd|tdl|ncp)$/i, ''));
+    if (!title) setTitle(titleFromFileName(file.name));
   }
 
   async function pickSidecar(e: ChangeEvent<HTMLInputElement>) {
@@ -696,7 +726,7 @@ function CreateLayoutDialog({
         partNotes = [`the layout's parts could not be added: ${(err as Error).message}`];
       }
     }
-    create.mutate(body, { onSuccess: (res) => onCreated(res.id, [...openWarnings, ...partNotes]) });
+    create.mutate(body, { onSuccess: (res) => onCreated(res.id, [...openWarnings, ...partNotes], bbm ? (bbmFilename ?? undefined) : undefined) });
   }
 
   return (
@@ -763,15 +793,24 @@ function CreateLayoutDialog({
         )}
 
         <label className="block text-sm">
-          <span className="mb-1 block text-muted">
-            Optional: open a layout file (.bld-layout), .bbm, LDraw, TrackDesigner or 4DBrix
-          </span>
-          <input type="file" accept={LAYOUT_ACCEPT} onChange={pickBbm} className="text-sm" />
+          <span className="mb-1 block text-muted">Optional: start from a file</span>
+          <input type="file" accept={START_FILE_ACCEPT} onChange={pickBbm} className="text-sm" />
           {bbmFilename && <p className="mt-1 text-xs text-muted">{bbmFilename}</p>}
           {openWarnings.map((w) => (
             <p key={w} className="mt-1 text-xs text-amber-400">{w}</p>
           ))}
         </label>
+        <div className="-mt-2 space-y-2">
+          <p className="flex items-start gap-1 text-xs text-muted">
+            <span>{OPEN_FORMATS_LINE}</span>
+            <HelpButton helpKey="open.formats" />
+          </p>
+          {desktopFile && (
+            <div className="rounded-lg border border-line bg-soft p-3 text-xs text-muted">
+              <DesktopOnlySteps name={desktopFile.name} format={desktopFile.format} />
+            </div>
+          )}
+        </div>
 
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Optional: sidecar (.bbm.cld / desktop .bbm.bld)</span>

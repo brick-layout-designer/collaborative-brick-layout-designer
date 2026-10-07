@@ -20,7 +20,7 @@ async function pick(page: Page, server: string, layoutId: string) {
     source: { server, layoutId, title: 'Original Show', exportedAt: new Date().toISOString() },
   });
   await page.getByRole('button', { name: 'New layout' }).first().click();
-  await page.locator('input[type=file][accept*=".bld-layout"]').setInputFiles({
+  await page.getByRole('dialog', { name: 'New layout' }).locator('input[type=file][accept*=".bld-layout"]').setInputFiles({
     name: 'copy.bld-layout',
     mimeType: 'application/x-brick-layout-designer-layout',
     buffer: Buffer.from(bytes),

@@ -121,7 +121,7 @@ test.describe('layout file', () => {
     await signIn(page, EMAIL, 'File Tester');
     await page.goto('/');
     await page.getByRole('button', { name: 'New layout' }).first().click();
-    await page.locator('input[type=file][accept*=".bld-layout"]').setInputFiles({
+    await page.getByRole('dialog', { name: 'New layout' }).locator('input[type=file][accept*=".bld-layout"]').setInputFiles({
       name: 'corner-lobby.bld-layout',
       mimeType: 'application/zip',
       buffer: CORNER_LOBBY,
