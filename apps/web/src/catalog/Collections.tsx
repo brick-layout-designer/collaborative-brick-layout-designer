@@ -139,7 +139,7 @@ function Cover({ url, className = '' }: { url: string | null; className?: string
 
 const chip = 'rounded-full px-2 py-0.5 text-xs font-semibold';
 
-function CollectionCard({
+export function CollectionCard({
   c,
   testId = 'collection-card',
   extra,

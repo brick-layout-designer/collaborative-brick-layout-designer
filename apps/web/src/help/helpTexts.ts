@@ -383,6 +383,12 @@ export const HELP_TEXTS = {
     more: 'Join an open club straight away, or ask to join and wait for an admin to say yes. Some clubs take new members by invite only.',
   },
   // Catalog collections
+  'catalog.featured': {
+    title: 'Featured',
+    short: 'Collections the site’s moderators picked as a good place to start.',
+    more: 'Open one to see what’s in it, then add one item or Add all to copy everything to you or your club. Below them, each kind of thing has its own row: See all opens the whole list, which you can search and sort.',
+    learnMoreUrl: '/help#collections',
+  },
   'catalog.collections': {
     title: 'Collections',
     short: 'Sets of modules and parts that go well together, like “Starter town”.',

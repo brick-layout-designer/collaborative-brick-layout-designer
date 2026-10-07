@@ -606,16 +606,30 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- browse --------------------------------------------------------------
-  app.get<{ Querystring: { kind?: string; q?: string; tag?: string; sort?: string } }>(
+  // `kind=all` lists every catalog that's on (the Catalog page's search
+  // and tags). `limit` and `offset` page through it; `nextOffset` is where
+  // the next page starts, null at the end. Without `limit`: the first 200,
+  // as before (the desktop app's lists).
+  app.get<{ Querystring: { kind?: string; q?: string; tag?: string; sort?: string; limit?: string; offset?: string } }>(
     '/api/catalog/items',
     { config: TOKEN_READ },
     async (req, reply) => {
       const kind = req.query.kind ?? 'module';
-      if (!isKind(kind) || !(await catalogOn(kind))) return reply.code(404).send({ error: 'catalog_off' });
+      let kinds: Kind[];
+      if (kind === 'all') {
+        kinds = [];
+        for (const k of CATALOG_KINDS) if (await catalogOn(k)) kinds.push(k);
+        if (!kinds.length) return reply.code(404).send({ error: 'catalog_off' });
+      } else {
+        if (!isKind(kind) || !(await catalogOn(kind))) return reply.code(404).send({ error: 'catalog_off' });
+        kinds = [kind];
+      }
       if (!(await mayBrowse(req))) return reply.code(401).send({ error: 'unauthorized' });
+      const limit = Math.min(200, Math.max(1, Math.floor(Number(req.query.limit)) || 200));
+      const offset = Math.min(1_000_000, Math.max(0, Math.floor(Number(req.query.offset)) || 0));
       const q = (req.query.q ?? '').trim().toLowerCase().slice(0, 80);
       const tag = (req.query.tag ?? '').trim().toLowerCase().slice(0, MAX_TAG);
-      const conds = [eq(schema.catalogItems.kind, kind), eq(schema.catalogItems.status, 'public'), sql`${schema.catalogItems.publicVersion} > 0`];
+      const conds = [inArray(schema.catalogItems.kind, kinds), eq(schema.catalogItems.status, 'public'), sql`${schema.catalogItems.publicVersion} > 0`];
       if (q) {
         const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
         conds.push(
@@ -631,13 +645,23 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .select()
         .from(schema.catalogItems)
         .where(and(...conds))
-        .orderBy(req.query.sort === 'popular' ? desc(schema.catalogItems.uses) : desc(schema.catalogItems.updatedAt))
-        .limit(200);
+        .orderBy(
+          ...(req.query.sort === 'popular' ? [desc(schema.catalogItems.uses)] : []),
+          desc(schema.catalogItems.updatedAt),
+          desc(schema.catalogItems.id),
+        )
+        .limit(limit + 1)
+        .offset(offset);
+      const more = rows.length > limit;
+      if (more) rows.length = limit;
       const name = await ownerNames(rows);
       const trusted = await trustedClubs(rows.map((r) => r.ownerOrgId));
       const sums = await catalogSummaries(rows);
       const pictured = await picturedVersions(rows.map((r) => ({ id: r.id, version: r.publicVersion })));
-      return { items: rows.map((r) => ({ ...itemOut(r, name(r), pictured), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId), summary: sums.get(r.id) ?? null })) };
+      return {
+        items: rows.map((r) => ({ ...itemOut(r, name(r), pictured), trustedClub: !!r.ownerOrgId && trusted.has(r.ownerOrgId), summary: sums.get(r.id) ?? null })),
+        nextOffset: more ? offset + limit : null,
+      };
     },
   );
 
