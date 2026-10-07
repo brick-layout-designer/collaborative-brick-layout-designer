@@ -13,6 +13,11 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 
   const existing = await findUserByEmail(email);
   if (existing) {
+    // Anyone can sign in as the demo account: it is never made an admin.
+    if (existing.isDemoAccount) {
+      console.warn(`[bootstrap] ${email} is the demo account; not making it an admin`);
+      return;
+    }
     if (!existing.isGlobalAdmin) {
       await db
         .update(schema.users)

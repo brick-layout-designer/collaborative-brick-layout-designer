@@ -279,6 +279,15 @@ describe('what the demo account can and cannot do', () => {
     moduleId = (owned(schema.modules, DEMO_USER_ID)[0] as { id: string }).id;
   });
 
+  it('never acts as an admin or moderator, even if the database says it is', async () => {
+    db.update(schema.users).set({ isGlobalAdmin: true, isModerator: true }).where(eq(schema.users.id, DEMO_USER_ID)).run();
+    const me = (await call({ url: '/api/auth/me', cookie: demo })).json() as { user: { isGlobalAdmin: boolean; isModerator: boolean } };
+    expect(me.user).toMatchObject({ isGlobalAdmin: false, isModerator: false });
+    expect((await call({ url: '/api/admin/users', cookie: demo })).statusCode).toBe(403);
+    expect((await call({ method: 'PATCH', url: `/api/admin/users/${alice.id}`, cookie: demo, payload: { isGlobalAdmin: true } })).statusCode).toBe(403);
+    expect(db.select().from(schema.users).where(eq(schema.users.id, alice.id)).get()!.isGlobalAdmin).toBe(false);
+  });
+
   it('is the only account the helper calls a demo', () => {
     expect(isDemoUser({ isDemoAccount: true })).toBe(true);
     expect(isDemoUser({ isDemoAccount: false })).toBe(false);
