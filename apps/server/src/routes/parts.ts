@@ -78,6 +78,8 @@ interface PartWire {
   hullPts: { x: number; y: number }[];
   /** `<SnapMargin>` in studs (what grid snapping leaves out of the sprite); omitted when none. */
   snapMargin?: { left: number; right: number; top: number; bottom: number };
+  /** `<PickShape>`: an imported part's outline rings in studs around the sprite centre; omitted when none. */
+  pickShape?: { x: number; y: number }[][];
   /**
    * Where this part came from. Drives sprite-URL resolution + UI
    * grouping. Defaults to 'bundled' so existing clients keep working.
@@ -268,6 +270,7 @@ interface ParsedCustomXml {
   kind: 'leaf' | 'group';
   hullPts: { x: number; y: number }[];
   snapMargin?: PartWire['snapMargin'];
+  pickShape?: PartWire['pickShape'];
   spriteSize?: { w: number; h: number };
   remaps?: MapRemaps;
 }
@@ -399,6 +402,7 @@ function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {
     })),
     hullPts: p.hullPts,
     ...(p.snapMargin ? { snapMargin: p.snapMargin } : {}),
+    ...(p.pickShape ? { pickShape: p.pickShape } : {}),
     ...(p.kind === 'group' && p.canUngroup === false ? { canUngroup: false as const } : {}),
     ...(p.kind === 'group' && p.groupNextPreferred ? { groupNextPreferred: p.groupNextPreferred } : {}),
     ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
@@ -436,6 +440,7 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
   let hullPts: { x: number; y: number }[] = [];
   let remaps: MapRemaps = {};
   let snapMargin: PartWire['snapMargin'];
+  let pickShape: PartWire['pickShape'];
   try {
     const xml = Buffer.from(xmlBlob).toString('utf8');
     const parsed = parsePartXml(xml, {
@@ -455,15 +460,16 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
     kind = parsed.kind;
     hullPts = parsed.hullPts;
     snapMargin = parsed.snapMargin;
+    pickShape = parsed.pickShape;
     remaps = remapsOf(parsed);
   } catch {
     /* malformed — fall back to defaults; the part still renders as a sprite */
   }
-  return { connections, pxPerStud, kind, hullPts, remaps, ...(snapMargin ? { snapMargin } : {}) };
+  return { connections, pxPerStud, kind, hullPts, remaps, ...(snapMargin ? { snapMargin } : {}), ...(pickShape ? { pickShape } : {}) };
 }
 
 function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefined): PartWire {
-  const { connections, pxPerStud, kind, hullPts, snapMargin, spriteSize, remaps } = parsed ?? {
+  const { connections, pxPerStud, kind, hullPts, snapMargin, pickShape, spriteSize, remaps } = parsed ?? {
     connections: [],
     pxPerStud: 8,
     kind: 'leaf' as const,
@@ -492,6 +498,7 @@ function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefine
     subparts: [],
     hullPts,
     ...(snapMargin ? { snapMargin } : {}),
+    ...(pickShape ? { pickShape } : {}),
     ...(spriteSize ? { spriteSize } : {}),
     ...remaps,
     source: 'custom',

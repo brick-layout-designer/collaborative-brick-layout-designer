@@ -274,3 +274,22 @@ describe('parsePartXml — <SnapMargin>', () => {
     expect(parse('<SnapMargin><left>0</left><right>0</right><top>0</top><bottom>0</bottom></SnapMargin>').snapMargin).toBeUndefined();
   });
 });
+
+describe('<PickShape>', () => {
+  const pt = (x: number, y: number) => `<point><x>${x}</x><y>${y}</y></point>`;
+  // An L, 8 x 8 studs with the top-right 4 x 4 empty, as the desktop's importer writes it.
+  const L_XML = `<part><Description><en>ell</en></Description>
+    <PickShape><ring>${pt(-4, -4)}${pt(0, -4)}${pt(0, 0)}${pt(4, 0)}${pt(4, 4)}${pt(-4, 4)}</ring></PickShape></part>`;
+
+  it('reads the rings and leaves the hull (and so the footprint) alone', () => {
+    const part = parsePartXml(L_XML, { partNumber: 'ell', colorCode: '', spritePath: '' });
+    expect(part.pickShape).toEqual([[{ x: -4, y: -4 }, { x: 0, y: -4 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: -4, y: 4 }]]);
+    expect(part.hullPts).toEqual([]);
+  });
+
+  it('is absent without one, and skips rings too small to be shapes', () => {
+    expect(parsePartXml('<part/>', { partNumber: 'a', colorCode: '', spritePath: '' }).pickShape).toBeUndefined();
+    const tiny = `<part><PickShape><ring>${pt(0, 0)}${pt(1, 0)}</ring></PickShape></part>`;
+    expect(parsePartXml(tiny, { partNumber: 'a', colorCode: '', spritePath: '' }).pickShape).toBeUndefined();
+  });
+});

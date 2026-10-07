@@ -36,6 +36,7 @@ export function catalogFromParts(parts: readonly PartWire[] | undefined): Catalo
       subparts: [],
       canUngroup: true,
       hullPts: p.hullPts ?? [],
+      ...(p.pickShape?.length ? { pickShape: p.pickShape } : {}),
       ...(p.spriteSize ? { spriteSize: p.spriteSize } : {}),
       ...(p.oldNames?.length ? { oldNames: p.oldNames } : {}),
       ...(p.ldraw ? { ldraw: p.ldraw } : {}),

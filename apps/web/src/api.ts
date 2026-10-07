@@ -405,6 +405,8 @@ export interface PartWire {
   hullPts: { x: number; y: number }[];
   /** `<SnapMargin>` in studs: what grid snapping leaves out of the sprite; absent when none. */
   snapMargin?: SnapMarginWire;
+  /** `<PickShape>`: an imported part's outline rings (holes too), studs around the sprite centre; absent when none. */
+  pickShape?: { x: number; y: number }[][];
   source: 'bundled' | 'custom';
   /** Set on source: 'custom' so the editor can build the sprite URL. */
   customPartId: string | null;

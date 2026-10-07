@@ -70,6 +70,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
   const groupNextPreferred = kind === 'group' ? readGroupNextPreferred(root.GroupConnectionPreferenceList) : undefined;
   const hullPts = readHull(root.hull);
   const snapMargin = readSnapMargin(root.SnapMargin);
+  const pickShape = readPickShape(root.PickShape);
   const oldNames = readOldNames(root.OldNameList);
   const ldraw = readLDraw(root.LDraw);
   const trackDesigner = readTrackDesigner(root.TrackDesigner);
@@ -99,6 +100,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     ...(groupNextPreferred ? { groupNextPreferred } : {}),
     hullPts,
     ...(snapMargin ? { snapMargin } : {}),
+    ...(pickShape ? { pickShape } : {}),
     oldNames,
     ...(ldraw ? { ldraw } : {}),
     ...(trackDesigner ? { trackDesigner } : {}),
@@ -288,6 +290,26 @@ function optionalNumber(node: RawNode, key: string): number | undefined {
   if (v === undefined || v === null || v === '') return undefined;
   const n = Number.parseFloat(String(v));
   return Number.isFinite(n) ? n : undefined;
+}
+
+/** `<PickShape><ring><point><x/><y/></point>…</ring>…</PickShape>`, capped; undefined when absent. */
+function readPickShape(node: unknown): { x: number; y: number }[][] | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const raw = (node as RawNode).ring;
+  if (raw === undefined) return undefined;
+  const rings: { x: number; y: number }[][] = [];
+  for (const r of (Array.isArray(raw) ? raw : [raw]).slice(0, 256)) {
+    const pts = (r as RawNode | undefined)?.point;
+    if (pts === undefined) continue;
+    const ring: { x: number; y: number }[] = [];
+    for (const p of (Array.isArray(pts) ? pts : [pts]).slice(0, 4096)) {
+      const x = Number.parseFloat(stringField(p as RawNode, 'x', ''));
+      const y = Number.parseFloat(stringField(p as RawNode, 'y', ''));
+      if (Number.isFinite(x) && Number.isFinite(y)) ring.push({ x, y });
+    }
+    if (ring.length >= 3) rings.push(ring);
+  }
+  return rings.length ? rings : undefined;
 }
 
 /** `<SnapMargin>` in studs; undefined when absent or all zero. */
