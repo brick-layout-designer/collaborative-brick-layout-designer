@@ -15,7 +15,7 @@
 // All bodies are JSON. Every change is audit-logged.
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, count, desc, eq, inArray, isNotNull, like, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, like, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
@@ -102,18 +102,24 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Clubs, for the moderators' "Trusted clubs" list: the trusted ones, and
-  // (with `q`) clubs whose name or address matches.
-  app.get<{ Querystring: { q?: string } }>('/api/moderation/clubs', async (req, reply) => {
+  // (with `q`) clubs whose name or address matches. A page at a time
+  // (`limit` ≤ 100, `offset`); `total` counts every match.
+  app.get<{ Querystring: { q?: string; limit?: string; offset?: string } }>('/api/moderation/clubs', async (req, reply) => {
     const user = requireUser(req);
     if (!canModerate(user)) return reply.code(403).send({ error: 'forbidden' });
     const q = typeof req.query?.q === 'string' ? req.query.q.trim().toLowerCase().slice(0, 80) : '';
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit)) || 50));
+    const offset = Math.min(1_000_000, Math.max(0, Math.floor(Number(req.query.offset)) || 0));
+    const where = q ? or(like(schema.orgs.name, `%${q}%`), like(schema.orgs.slug, `%${q}%`)) : eq(schema.orgs.trusted, true);
+    const total = (await db.select({ n: sql<number>`count(*)` }).from(schema.orgs).where(where).get())?.n ?? 0;
     const rows = await db
       .select({ id: schema.orgs.id, slug: schema.orgs.slug, name: schema.orgs.name, trusted: schema.orgs.trusted, trustedAt: schema.orgs.trustedAt })
       .from(schema.orgs)
-      .where(q ? or(like(schema.orgs.name, `%${q}%`), like(schema.orgs.slug, `%${q}%`)) : eq(schema.orgs.trusted, true))
-      .orderBy(desc(schema.orgs.trusted), asc(schema.orgs.name))
-      .limit(50);
-    return { clubs: rows.map((r) => ({ ...r, trustedAt: r.trustedAt?.getTime() ?? null })) };
+      .where(where)
+      .orderBy(desc(schema.orgs.trusted), asc(schema.orgs.name), asc(schema.orgs.id))
+      .limit(limit)
+      .offset(offset);
+    return { clubs: rows.map((r) => ({ ...r, trustedAt: r.trustedAt?.getTime() ?? null })), total, nextOffset: offset + rows.length < total ? offset + rows.length : null };
   });
 
   // ---- the club's own review queue ---------------------------------------

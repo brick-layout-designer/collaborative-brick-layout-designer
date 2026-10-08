@@ -475,6 +475,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/catalog/collections/:id/items': collection(),
   'DELETE /api/catalog/collections/:id': collection(),
   'POST /api/moderation/collections/:id/remove': collection(),
+  // Several at once: one hint for everyone (each list refetches).
+  'POST /api/moderation/collections/bulk': catalog(async () => null, true),
 
   // ---- trusted clubs
   'POST /api/moderation/clubs/:slug/trust': trust,

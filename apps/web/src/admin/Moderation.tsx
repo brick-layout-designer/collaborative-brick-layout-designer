@@ -17,6 +17,7 @@ import {
   type CatalogReview,
   type CollectionReviewEntry,
   type CoverReviewEntry,
+  type ModeratedCollection,
   type ModeratedItem,
   type ModerationClub,
   type ModerationEntry,
@@ -134,7 +135,7 @@ const isEntry = (r: Row): r is ModerationEntry => 'versionId' in r;
 const rowId = (r: Row) => (isEntry(r) ? r.versionId : r.id);
 
 /** Search, kind, dates and order for a list; the search waits for a pause in typing. */
-function Filters({ f, set, waiting }: { f: ModerationFilter; set: (f: ModerationFilter) => void; waiting: boolean }) {
+function Filters({ f, set, waiting, kinds = true }: { f: ModerationFilter; set: (f: ModerationFilter) => void; waiting: boolean; kinds?: boolean }) {
   const [q, setQ] = useState(f.q ?? '');
   useEffect(() => {
     const t = setTimeout(() => q !== (f.q ?? '') && set({ ...f, q }), 300);
@@ -146,6 +147,7 @@ function Filters({ f, set, waiting }: { f: ModerationFilter; set: (f: Moderation
   return (
     <div className="flex flex-wrap items-end gap-2">
       <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, description, tags or reason" aria-label="Search" className={`${field} min-w-0 flex-1 basis-full px-3 sm:basis-60`} />
+      {kinds && (
       <select value={f.kind ?? ''} onChange={(e) => set({ ...f, kind: e.target.value as CatalogKind | '' })} aria-label="Kind" className={field}>
         <option value="">All kinds</option>
         <option value="module">Modules</option>
@@ -153,6 +155,7 @@ function Filters({ f, set, waiting }: { f: ModerationFilter; set: (f: Moderation
         <option value="layout">Layouts</option>
         <option value="venue">Venues</option>
       </select>
+      )}
       <label className="flex flex-col text-xs text-muted">
         {waiting ? 'Sent from' : 'Changed from'}
         <input type="date" value={day(f.from)} onChange={(e) => set({ ...f, from: ms(e.target.value, false) })} className={field} />
@@ -500,8 +503,10 @@ function CoverQueue({ trusted }: { trusted: boolean }) {
 export function TrustedClubsSection() {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
-  const trusted = useQuery({ queryKey: ['moderation-clubs', ''], queryFn: () => api.moderation.clubs() });
-  const found = useQuery({ queryKey: ['moderation-clubs', q.trim()], queryFn: () => api.moderation.clubs(q.trim()), enabled: q.trim().length >= 2 });
+  const [offset, setOffset] = useState(0);
+  const [foundAt, setFoundAt] = useState(0);
+  const trusted = useQuery({ queryKey: ['moderation-clubs', '', offset], queryFn: () => api.moderation.clubs('', offset), placeholderData: (prev) => prev });
+  const found = useQuery({ queryKey: ['moderation-clubs', 'find', q.trim(), foundAt], queryFn: () => api.moderation.clubs(q.trim(), foundAt), enabled: q.trim().length >= 2, placeholderData: (prev) => prev });
   const [error, setError] = useState<string | null>(null);
   const set = useMutation({
     mutationFn: (a: { slug: string; trusted: boolean }) => api.moderation.trustClub(a.slug, a.trusted),
@@ -538,27 +543,40 @@ export function TrustedClubsSection() {
       </button>
     </li>
   );
-  const list = trusted.data?.clubs ?? [];
-  const more = (found.data?.clubs ?? []).filter((c) => !c.trusted);
+  // Searching shows every club that matches (trusted or not); otherwise the trusted ones. Both a page at a time.
+  const searching = q.trim().length >= 2;
+  const shown = searching ? found : trusted;
+  const at = searching ? foundAt : offset;
+  const clubs = shown.data?.clubs ?? [];
+  const total = shown.data?.total ?? clubs.length;
   return (
     <section className="space-y-3" aria-labelledby="mod-trusted">
       <h2 id="mod-trusted" className="flex items-center gap-2 text-sm font-semibold">
-        Trusted clubs
+        Trusted clubs {trusted.data?.total !== undefined && <span className="font-normal text-muted">({trusted.data.total.toLocaleString()})</span>}
         <HelpButton helpKey="club.trusted" />
       </h2>
       <p className="text-xs text-muted">
         A trusted club’s admins and managers review what’s published under its name, instead of you. You can still see, decline or unpublish anything.
       </p>
-      {list.length > 0 && <ul className="divide-y divide-line rounded-lg border border-line bg-panel">{list.map(row)}</ul>}
       <input
         type="search"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Find a club to trust"
+        onChange={(e) => {
+          setQ(e.target.value);
+          setFoundAt(0);
+        }}
+        placeholder="Find a club by name, to trust it or stop"
         aria-label="Find a club to trust"
         className="min-h-11 w-full rounded-lg border border-border bg-soft px-3"
       />
-      {more.length > 0 && <ul aria-label="Clubs found" className="divide-y divide-line rounded-lg border border-line bg-panel">{more.map(row)}</ul>}
+      {clubs.length > 0 ? (
+        <ul aria-label={searching ? 'Clubs found' : 'Trusted clubs'} className="divide-y divide-line rounded-lg border border-line bg-panel">
+          {clubs.map(row)}
+        </ul>
+      ) : (
+        shown.isSuccess && <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">{searching ? 'No club matches.' : 'No trusted clubs yet. Find one above.'}</p>
+      )}
+      <Pager offset={at} count={total} rows={clubs.length} setOffset={searching ? setFoundAt : setOffset} />
       {error && <p className="text-danger">{error}</p>}
     </section>
   );
@@ -663,185 +681,230 @@ export function TextReview({ q }: { q: CollectionReviewEntry }) {
   );
 }
 
-/** Collections: the text waiting for review (the site's, or trusted clubs'), or the ones in the catalog and clubs' own. */
+type CollView = 'queue' | 'trusted' | 'listed' | 'club';
+type CollRow = CollectionReviewEntry | ModeratedCollection;
+
+/**
+ * Collections, a page at a time: the text waiting for review (the site's,
+ * or trusted clubs'), the ones in the catalog, or clubs' private ones;
+ * searchable, with a tick box on each to act on several at once.
+ */
 function CollectionModeration({ part }: { part: 'queue' | 'trusted' | 'listed' }) {
+  if (part === 'listed')
+    return (
+      <>
+        <CollectionList view="listed" title="Collections in the catalog" />
+        <CollectionList view="club" title="Clubs’ private collections" note="Only each club’s members see these, and they’re never reviewed. Remove one only for abuse; it’s logged." />
+      </>
+    );
+  return <CollectionList view={part} title="Collections" />;
+}
+
+function CollectionList({ view, title, note }: { view: CollView; title: string; note?: string }) {
   const qc = useQueryClient();
-  const data = useQuery({ queryKey: ['moderation-collections'], queryFn: api.moderation.collections });
-  const [error, setError] = useState<string | null>(null);
-  const opts = {
-    onSuccess: () => {
-      setError(null);
-      void invalidateFor(qc, 'catalog');
-    },
-    onError: (e: Error) => setError(e.message),
+  const waiting = view === 'queue' || view === 'trusted';
+  const [f, setF] = useState<ModerationFilter>({});
+  const [offset, setOffset] = useState(0);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const list = useQuery({
+    queryKey: ['moderation', 'collections', view, f, offset],
+    queryFn: () => api.moderation.collectionList(view, { ...f, limit: PAGE, offset }),
+    placeholderData: (prev) => prev,
+  });
+  const rows: CollRow[] = list.data?.rows ?? [];
+  const count = list.data?.total ?? 0;
+  const filtered = Object.values(f).some(Boolean);
+  useEffect(() => {
+    setPicked((p) => {
+      const here = new Set(rows.map((r) => r.id));
+      const kept = [...p].filter((id) => here.has(id));
+      return kept.length === p.size ? p : new Set(kept);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.data]);
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ['moderation'] });
+    void invalidateFor(qc, 'catalog');
   };
-  const approve = useMutation({ mutationFn: api.moderation.approveCollection, ...opts });
-  const decline = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.declineCollection(a.id, a.reason), ...opts });
-  const unpublish = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.unpublishCollection(a.id, a.reason), ...opts });
-  const feature = useMutation({ mutationFn: (a: { id: string; featured: boolean }) => api.moderation.featureCollection(a.id, a.featured), ...opts });
-  const remove = useMutation({ mutationFn: (a: { id: string; reason: string }) => api.moderation.removeCollection(a.id, a.reason), ...opts });
-  if (!data.data) return null;
-  const { queue, collections } = data.data;
-  const trustedQueue = data.data.trustedQueue ?? [];
-  const renderTextQueue = (list: typeof queue) => (
-          <ul className="space-y-2">
-              {list.map((q) => (
-                <li key={q.id} data-testid="moderation-collection" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
+  const fail = (e: Error) => showToast(e.message);
+  type Action = 'approve' | 'decline' | 'unpublish' | 'remove';
+  const run = useMutation({
+    mutationFn: (a: { action: Action; ids: string[]; reason?: string }) => api.moderation.collectionBulk(a.action, a.ids, a.reason ?? ''),
+    onSuccess: (r, a) => {
+      setPicked(new Set());
+      if (a.ids.length > 1) showToast(r.failed.length ? `${r.done} done; ${r.failed.length} couldn’t be (already decided?).` : `${r.done} done.`);
+      else if (r.failed.length) showToast('That couldn’t be done (already decided?).');
+      done();
+    },
+    onError: fail,
+  });
+  const feature = useMutation({ mutationFn: (a: { id: string; featured: boolean }) => api.moderation.featureCollection(a.id, a.featured), onSuccess: done, onError: fail });
+  const ask = async (action: Action, what: string): Promise<string | null> => {
+    if (action === 'approve') return 'ok';
+    if (action === 'remove')
+      return askReason({
+        ...deleteOptions(what, { verb: 'Remove', removes: 'Deleted for good from its club.', keeps: 'Its modules and parts aren’t deleted.' }),
+        reason: { label: 'Reason (logged)' },
+      });
+    return askReason(
+      action === 'decline'
+        ? {
+            title: `Decline ${what}?`,
+            removes: 'It doesn’t go into the catalog.',
+            keeps: 'Nothing is deleted; they can change it and send it again.',
+            confirmLabel: 'Decline',
+            reason: { label: 'Why? (optional; the curator sees this)' },
+          }
+        : {
+            title: `Unpublish ${what}?`,
+            removes: 'It leaves the public catalog, so nobody new can add it.',
+            keeps: 'Copies people already added keep working.',
+            confirmLabel: 'Unpublish',
+            reason: { label: 'Reason (optional; the curator sees this)' },
+          },
+    );
+  };
+  const act = async (action: Action, r: CollRow) => {
+    const reason = await ask(action, `“${r.title}”`);
+    if (reason === null) return;
+    run.mutate({ action, ids: [r.id], ...(action === 'approve' ? {} : { reason }) }, { onSuccess: (x) => action === 'remove' && x.done && toastDeleted(r.title) });
+  };
+  const actMany = async (action: Action) => {
+    const what = `${picked.size} ${picked.size === 1 ? 'collection' : 'collections'}`;
+    if (action === 'approve') {
+      if (await askConfirm({ title: `Approve ${what}?`, removes: 'Their text goes into the public catalog.', keeps: 'You can unpublish any of them later.', confirmLabel: 'Approve' })) run.mutate({ action, ids: [...picked] });
+      return;
+    }
+    const reason = await ask(action, what);
+    if (reason !== null) run.mutate({ action, ids: [...picked], reason });
+  };
+  const bulkActions: Action[] = waiting ? ['approve', 'decline'] : view === 'listed' ? ['unpublish'] : ['remove'];
+  const label: Record<Action, string> = { approve: 'Approve', decline: 'Decline', unpublish: 'Unpublish', remove: 'Remove' };
+  const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.id));
+  const tick = (r: CollRow) => (
+    <label className="-my-1 inline-flex size-11 shrink-0 items-center justify-center">
+      <input
+        type="checkbox"
+        checked={picked.has(r.id)}
+        onChange={() =>
+          setPicked((p) => {
+            const n = new Set(p);
+            if (n.has(r.id)) n.delete(r.id);
+            else n.add(r.id);
+            return n;
+          })
+        }
+        aria-label={`Tick ${r.title}`}
+      />
+    </label>
+  );
+  const btn = 'tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft disabled:opacity-50';
+  const id = `mod-coll-${view}`;
+  if (view === 'trusted' && list.isSuccess && count === 0 && !filtered) return null;
+  return (
+    <section className="space-y-3" aria-labelledby={id}>
+      <h2 id={id} className="text-sm font-semibold">
+        {title} {list.data && <span className="font-normal text-muted">({count.toLocaleString()})</span>}
+      </h2>
+      {note && <p className="text-xs text-muted">{note}</p>}
+      {(count > 0 || filtered) && <Filters f={f} set={(n) => { setF(n); setOffset(0); setPicked(new Set()); }} waiting={waiting} kinds={false} />}
+      {list.isLoading && <p className="text-sm text-muted">Loading…</p>}
+      {list.isError && <p className="text-danger">{(list.error as Error).message}</p>}
+      {list.isSuccess && rows.length === 0 && (
+        <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">
+          {filtered ? 'Nothing matches.' : waiting ? 'Nothing waiting.' : view === 'listed' ? 'Nothing yet. Make one from the Catalog page (Your collections › New collection).' : 'None.'}
+        </p>
+      )}
+      {rows.length > 0 && (
+        <>
+          <div className="flex min-h-11 flex-wrap items-center gap-2 rounded-lg bg-soft px-3 py-1 text-sm">
+            <label className="inline-flex min-h-11 items-center gap-2">
+              <input type="checkbox" checked={allPicked} onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.id)))} aria-label="Tick every collection on this page" />
+              {picked.size > 0 ? `${picked.size} ticked` : 'Tick to do several at once'}
+            </label>
+            {picked.size > 0 && (
+              <span className="ml-auto flex flex-wrap gap-2">
+                {bulkActions.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    disabled={run.isPending}
+                    onClick={() => void actMany(a)}
+                    className={a === 'approve' ? 'tap-target rounded-lg bg-accent px-3 py-1 font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50' : `${btn} bg-panel ${a === 'decline' ? '' : 'text-danger'}`}
+                  >
+                    {label[a]} {picked.size}
+                    {a === 'approve' ? '' : '…'}
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+          <ul className={waiting ? 'space-y-2' : 'divide-y divide-line rounded-lg border border-line bg-panel'}>
+            {rows.map((r) =>
+              waiting ? (
+                <li key={r.id} data-testid="moderation-collection" className="flex flex-wrap gap-3 rounded-lg border border-line bg-panel p-3 text-sm">
+                  {tick(r)}
                   <div className="min-w-[12rem] flex-1 space-y-2">
                     <p className="font-semibold">
-                      {q.title} <span className="font-normal text-muted">(collection {q.isUpdate ? 'text, a change' : 'text, new'})</span>
+                      {r.title} <span className="font-normal text-muted">(collection {(r as CollectionReviewEntry).isUpdate ? 'text, a change' : 'text, new'})</span>
                     </p>
                     <p className="text-xs text-muted">
-                      From {q.by}
-                      {q.email ? ` (${q.email})` : ''} · {new Date(q.createdAt).toLocaleString()} ·{' '}
-                      <a href={`/catalog/collections/${q.id}`} target="_blank" rel="noreferrer" className="hover:underline">
-                        {q.itemCount} {q.itemCount === 1 ? 'item' : 'items'}
+                      From {r.by}
+                      {(r as CollectionReviewEntry).email ? ` (${(r as CollectionReviewEntry).email})` : ''} · {new Date((r as CollectionReviewEntry).createdAt).toLocaleString()} ·{' '}
+                      <a href={`/catalog/collections/${r.id}`} target="_blank" rel="noreferrer" className="hover:underline">
+                        {r.itemCount} {r.itemCount === 1 ? 'item' : 'items'}
                       </a>
                     </p>
-                    <TextReview q={q} />
+                    <TextReview q={r as CollectionReviewEntry} />
                   </div>
                   <div className="flex basis-full flex-wrap justify-end gap-2 sm:basis-auto sm:flex-col">
-                    <button
-                      type="button"
-                      onClick={() => approve.mutate(q.id)}
-                      aria-label={`Approve collection ${q.title}`}
-                      className="tap-target rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-ink hover:bg-accent-hover"
-                    >
+                    <button type="button" disabled={run.isPending} onClick={() => void act('approve', r)} aria-label={`Approve collection ${r.title}`} className="tap-target rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50">
                       Approve
                     </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                    const reason = await askReason({
-                      title: `Decline “${q.title}”?`,
-                      removes: 'It doesn’t go into the catalog.',
-                      keeps: 'Nothing is deleted; they can change it and send it again.',
-                      confirmLabel: 'Decline',
-                      reason: { label: 'Why? (optional; the curator sees this)' },
-                    });
-                    if (reason !== null) decline.mutate({ id: q.id, reason });
-                  }}
-                      aria-label={`Decline collection ${q.title}`}
-                      className="tap-target rounded-lg border border-border px-3 py-1.5 hover:bg-soft"
-                    >
+                    <button type="button" disabled={run.isPending} onClick={() => void act('decline', r)} aria-label={`Decline collection ${r.title}`} className={btn}>
                       Decline…
                     </button>
                   </div>
-                  {q.owner && <WarnOwner owner={q.owner} title={q.title} by={q.by} link={`/catalog/collections/${q.id}`} />}
+                  {r.owner && <WarnOwner owner={r.owner} title={r.title} by={r.by} link={`/catalog/collections/${r.id}`} />}
                 </li>
-              ))}
-            </ul>
-  );
-  const clubCollections = data.data.clubCollections ?? [];
-  if (part === 'queue')
-    return (
-      <section className="space-y-3" aria-labelledby="mod-coll-queue">
-        <h2 id="mod-coll-queue" className="text-sm font-semibold">
-          Collections <span className="font-normal text-muted">({queue.length})</span>
-        </h2>
-        {queue.length === 0 ? <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">Nothing waiting.</p> : renderTextQueue(queue)}
-        {error && <p className="text-danger">{error}</p>}
-      </section>
-    );
-  if (part === 'trusted')
-    return trustedQueue.length > 0 ? (
-      <section className="space-y-3" aria-labelledby="mod-coll-trusted">
-        <h2 id="mod-coll-trusted" className="text-sm font-semibold">
-          Collections <span className="font-normal text-muted">({trustedQueue.length})</span>
-        </h2>
-        {renderTextQueue(trustedQueue)}
-        {error && <p className="text-danger">{error}</p>}
-      </section>
-    ) : null;
-  return (
-    <>
-      <section className="space-y-3" aria-labelledby="mod-colls">
-        <h2 id="mod-colls" className="text-sm font-semibold">Collections in the catalog</h2>
-        {collections.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">Nothing yet. Make one from the Catalog page (Your collections › New collection).</p>
-        ) : (
-          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
-            {collections.map((c) => (
-              <li key={c.id} data-testid="moderated-collection" className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
-                <div className="min-w-[10rem] flex-1">
-                  <p className="font-medium">{c.title}</p>
-                  <p className="text-xs text-muted">
-                    {c.official ? 'Official' : `By ${c.by}`} · {c.itemCount} items ·{' '}
-                    {c.status === 'public' ? (c.featured ? 'Featured' : 'Public') : `Unpublished${c.reason ? `: ${c.reason}` : ''}`}
-                  </p>
-                </div>
-                {c.status === 'public' && c.official && (
-                  <label className="flex items-center gap-1 text-xs">
-                    <input type="checkbox" checked={c.featured} onChange={(e) => feature.mutate({ id: c.id, featured: e.target.checked })} aria-label={`Feature ${c.title}`} />
-                    Featured
-                  </label>
-                )}
-                {c.status === 'public' && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                    const reason = await askReason({
-                      title: `Unpublish “${c.title}”?`,
-                      removes: 'It leaves the public catalog, so nobody new can add it.',
-                      keeps: 'Copies people already added keep working.',
-                      confirmLabel: 'Unpublish',
-                      reason: { label: 'Reason (optional; the curator sees this)' },
-                    });
-                    if (reason !== null) unpublish.mutate({ id: c.id, reason });
-                  }}
-                    aria-label={`Unpublish collection ${c.title}`}
-                    className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"
-                  >
-                    Unpublish
-                  </button>
-                )}
-                {c.owner && !c.official && <WarnOwner owner={c.owner} title={c.title} by={c.by} link={`/catalog/collections/${c.id}`} />}
-              </li>
-            ))}
+              ) : (
+                <li key={r.id} data-testid={view === 'listed' ? 'moderated-collection' : 'moderated-club-collection'} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                  {tick(r)}
+                  <div className="min-w-[10rem] flex-1">
+                    <a href={`/catalog/collections/${r.id}`} className="font-medium hover:underline">
+                      {r.title}
+                    </a>
+                    <p className="text-xs text-muted">
+                      {view === 'listed'
+                        ? `${(r as ModeratedCollection).official ? 'Official' : `By ${r.by}`} · ${r.itemCount} items · ${(r as ModeratedCollection).status === 'public' ? ((r as ModeratedCollection).featured ? 'Featured' : 'Public') : `Unpublished${(r as ModeratedCollection).reason ? `: ${(r as ModeratedCollection).reason}` : ''}`}`
+                        : `${r.by} · ${r.itemCount} items`}
+                    </p>
+                  </div>
+                  {view === 'listed' && (r as ModeratedCollection).status === 'public' && (r as ModeratedCollection).official && (
+                    <label className="flex min-h-11 items-center gap-1 text-xs">
+                      <input type="checkbox" checked={!!(r as ModeratedCollection).featured} onChange={(e) => feature.mutate({ id: r.id, featured: e.target.checked })} aria-label={`Feature ${r.title}`} />
+                      Featured
+                    </label>
+                  )}
+                  {view === 'listed' && (r as ModeratedCollection).status === 'public' && (
+                    <button type="button" disabled={run.isPending} onClick={() => void act('unpublish', r)} aria-label={`Unpublish collection ${r.title}`} className={`${btn} text-danger`}>
+                      Unpublish
+                    </button>
+                  )}
+                  {view === 'club' && (
+                    <button type="button" disabled={run.isPending} onClick={() => void act('remove', r)} aria-label={`Remove collection ${r.title}`} className={`${btn} text-danger`}>
+                      Remove
+                    </button>
+                  )}
+                  {r.owner && !(view === 'listed' && (r as ModeratedCollection).official) && <WarnOwner owner={r.owner} title={r.title} by={r.by} link={`/catalog/collections/${r.id}`} />}
+                </li>
+              ),
+            )}
           </ul>
-        )}
-      </section>
-      <section className="space-y-3" aria-labelledby="mod-club-colls">
-        <h2 id="mod-club-colls" className="text-sm font-semibold">Clubs’ private collections ({clubCollections.length})</h2>
-        <p className="text-xs text-muted">Only each club’s members see these, and they’re never reviewed. Remove one only for abuse; it’s logged.</p>
-        {clubCollections.length > 0 && (
-          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
-            {clubCollections.map((c) => (
-              <li key={c.id} data-testid="moderated-club-collection" className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
-                <div className="min-w-[10rem] flex-1">
-                  <a href={`/catalog/collections/${c.id}`} className="font-medium hover:underline">
-                    {c.title}
-                  </a>
-                  <p className="text-xs text-muted">
-                    {c.by} · {c.itemCount} items
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const reason = await askReason({
-                      ...deleteOptions(c.title, {
-                        verb: 'Remove',
-                        removes: `The collection is deleted for good from ${c.by}.`,
-                        keeps: 'Its modules and parts aren’t deleted.',
-                      }),
-                      reason: { label: 'Reason (logged)' },
-                    });
-                    if (reason !== null) remove.mutate({ id: c.id, reason }, { onSuccess: () => toastDeleted(c.title) });
-                  }}
-                  aria-label={`Remove collection ${c.title}`}
-                  className="tap-target rounded-lg border border-border px-3 py-1.5 text-danger hover:bg-soft"
-                >
-                  Remove
-                </button>
-                {c.owner && <WarnOwner owner={c.owner} title={c.title} by={c.by} link={`/catalog/collections/${c.id}`} />}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      {error && <p className="text-danger">{error}</p>}
-    </>
+          <Pager offset={offset} count={count} rows={rows.length} setOffset={(o) => { setOffset(o); setPicked(new Set()); }} />
+        </>
+      )}
+    </section>
   );
 }
 

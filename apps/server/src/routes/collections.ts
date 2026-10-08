@@ -1451,6 +1451,117 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  // ---- moderation at scale: one collection list a page at a time ----------
+  // `view`: 'queue' (text waiting), 'trusted' (waiting in trusted clubs' own
+  // queues), 'listed' (public or unpublished, featured first), 'club'
+  // (clubs' private ones). q (title, description, reason), from/to (ms),
+  // sort ('oldest' | 'newest'), limit (≤ 100), offset; `total` counts every match.
+  const trustedColl = sql`EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogCollections.orgId} AND o.trusted = 1)`;
+  app.get<{ Querystring: { view?: string; q?: string; from?: string; to?: string; sort?: string; limit?: string; offset?: string } }>(
+    '/api/moderation/collections/list',
+    async (req, reply) => {
+      requireModerator(req);
+      const view = req.query.view ?? 'queue';
+      if (!['queue', 'trusted', 'listed', 'club'].includes(view)) return reply.code(400).send({ error: 'invalid_input' });
+      const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit)) || 50));
+      const offset = Math.min(1_000_000, Math.max(0, Math.floor(Number(req.query.offset)) || 0));
+      const q = (req.query.q ?? '').trim().toLowerCase().slice(0, 80);
+      const pat = q ? `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%` : null;
+      const C = schema.catalogCollections;
+      const text = pat
+        ? or(
+            sql`lower(${C.title}) LIKE ${pat} ESCAPE '\\'`,
+            sql`lower(${C.description}) LIKE ${pat} ESCAPE '\\'`,
+            sql`lower(coalesce(${C.reason}, '')) LIKE ${pat} ESCAPE '\\'`,
+          )
+        : undefined;
+      const from = Number(req.query.from) || 0;
+      const to = Number(req.query.to) || 0;
+      const at = C.updatedAt;
+      const everyone = eq(C.audience, 'everyone');
+      const waiting = or(eq(C.status, 'in_review'), and(eq(C.status, 'public'), isNotNull(C.pending)));
+      const base =
+        view === 'queue'
+          ? and(everyone, waiting, sql`NOT ${trustedColl}`)
+          : view === 'trusted'
+            ? and(everyone, waiting, trustedColl)
+            : view === 'listed'
+              ? and(everyone, inArray(C.status, ['public', 'unpublished']))
+              : and(isNotNull(C.orgId), ne(C.audience, 'everyone'));
+      const where = and(base, text, from ? sql`${at} >= ${from}` : undefined, to ? sql`${at} <= ${to}` : undefined);
+      const oldest = view === 'queue' || view === 'trusted' ? req.query.sort !== 'newest' : req.query.sort === 'oldest';
+      const total = (await db.select({ n: sql<number>`count(*)` }).from(C).where(where).get())?.n ?? 0;
+      const rows = await db
+        .select()
+        .from(C)
+        .where(where)
+        .orderBy(...(view === 'listed' ? [desc(C.featured)] : []), oldest ? asc(at) : desc(at), asc(C.id))
+        .limit(limit)
+        .offset(offset);
+      const on = await kindsOn();
+      const name = await byNames(rows);
+      const nextOffset = offset + rows.length < total ? offset + rows.length : null;
+      if (view === 'queue' || view === 'trusted') {
+        const shownAll = await shownOf(rows, on, () => true);
+        const { queue, trustedQueue } = await textQueue(rows, shownAll, name);
+        return { total, nextOffset, rows: view === 'queue' ? queue : trustedQueue };
+      }
+      const shown = await shownOf(rows, on, () => view === 'club');
+      return {
+        total,
+        nextOffset,
+        rows: rows.map((c) => ({
+          ...listOut(c, shown.get(c.id) ?? [], name(c)),
+          ...(view === 'listed' ? { status: c.status, reason: c.reason } : {}),
+          updatedAt: c.updatedAt.getTime(),
+          owner: collectionOwnerRef(c),
+        })),
+      };
+    },
+  );
+
+  // Several collections at once: approve or decline their text, unpublish
+  // public ones, or remove clubs' private ones. Each is done and audited on its own.
+  app.post<{ Body: { action?: unknown; ids?: unknown; reason?: unknown } }>(
+    '/api/moderation/collections/bulk',
+    // codeql[js/missing-rate-limiting] - rate limited via Fastify config.rateLimit
+    { config: { rateLimit: perPerson(60, '1 minute') } },
+    async (req, reply) => {
+      const user = requireModerator(req);
+      const { action, ids } = req.body ?? {};
+      if (action !== 'approve' && action !== 'decline' && action !== 'unpublish' && action !== 'remove') return reply.code(400).send({ error: 'invalid_input' });
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100 || !ids.every((i) => typeof i === 'string' && i.length <= 64)) {
+        return reply.code(400).send({ error: 'invalid_input' });
+      }
+      const reason = cleanText(req.body?.reason, MAX_REASON);
+      if (reason === undefined) return reply.code(400).send({ error: 'invalid_input' });
+      let done = 0;
+      const failed: { id: string; error: string }[] = [];
+      for (const id of new Set(ids as string[])) {
+        let r: { code: number; body: unknown };
+        if (action === 'remove') {
+          const c = await getCollection(id);
+          if (!c || !c.orgId || c.audience === 'everyone') r = { code: 404, body: { error: 'not_found' } };
+          else {
+            await db.delete(schema.catalogCollections).where(eq(schema.catalogCollections.id, c.id));
+            await writeAuditEvent({
+              resourceKind: 'catalog_collection',
+              resourceId: c.id,
+              userId: user.id,
+              eventType: 'collection_remove',
+              payload: { reason, title: c.title, orgId: c.orgId, curator: c.ownerUserId },
+            });
+            r = { code: 200, body: { ok: true } };
+          }
+        } else if (action === 'unpublish') r = await unpublishCollection(user, id, reason);
+        else r = await decideCollection(user, id, action === 'approve', reason);
+        if (r.code === 200) done++;
+        else failed.push({ id, error: (r.body as { error?: string }).error ?? 'failed' });
+      }
+      return { done, failed };
+    },
+  );
+
   // Featured: official collections only (moderators' and admins' own).
   app.post<{ Params: { id: string }; Body: { featured?: unknown } }>('/api/moderation/collections/:id/feature', async (req, reply) => {
     const user = requireModerator(req);

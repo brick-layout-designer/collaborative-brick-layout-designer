@@ -173,33 +173,34 @@ export default function Dashboard() {
       </Section>
 
       <Section id="dash-content" title="Content">
-        <BarList
-          title="Storage by club"
-          unit="bytes"
-          format={formatBytes}
-          items={
-            c
-              ? [
-                  { label: 'Personal (all people)', value: c.byOwner.personal.bytes, detail: `${c.byOwner.personal.layouts} layouts` },
-                  ...c.byOwner.clubs.slice(0, 9).map((o) => ({ label: o.name, value: o.bytes, detail: `${o.layouts} layouts` })),
-                ].sort((a, b) => b.value - a.value)
-              : []
-          }
-          note="Layout content size, not disk use."
-        />
-        <DataTable
-          title="Clubs’ layouts, venues and modules"
-          rows={c?.byOwner.clubs ?? []}
-          rowKey={(r) => r.orgId}
-          columns={[
-            { label: 'Club', value: (r) => r.name },
-            { label: 'Layouts', value: (r) => r.layouts, align: 'right' },
-            { label: 'Size', value: (r) => r.bytes, render: (r) => formatBytes(r.bytes), align: 'right' },
-            { label: 'Venues', value: (r) => r.rooms, align: 'right' },
-            { label: 'Modules', value: (r) => r.modules, align: 'right' },
-            { label: 'Custom parts', value: (r) => r.customParts, align: 'right' },
-          ]}
-        />
+        {/* Each club's storage and counts live in Heavy use (sortable, with limits); here only the split and the biggest three. */}
+        <Card title="Storage" note="Layout content size, not disk use.">
+          {c ? (
+            <div className="space-y-2 text-sm" data-testid="dash-storage-summary">
+              <p>
+                <b className="tabular-nums">{formatBytes(c.byOwner.personal.bytes + c.byOwner.clubs.reduce((n, o) => n + o.bytes, 0))}</b> in all:{' '}
+                {formatBytes(c.byOwner.personal.bytes)} personal, {formatBytes(c.byOwner.clubs.reduce((n, o) => n + o.bytes, 0))} in {c.byOwner.clubs.length}{' '}
+                {c.byOwner.clubs.length === 1 ? 'club' : 'clubs'}.
+              </p>
+              {c.byOwner.clubs.length > 0 && (
+                <p className="text-muted">
+                  Biggest:{' '}
+                  {[...c.byOwner.clubs]
+                    .sort((x, y) => y.bytes - x.bytes)
+                    .slice(0, 3)
+                    .map((o) => `${o.name} (${formatBytes(o.bytes)})`)
+                    .join(', ')}
+                  .
+                </p>
+              )}
+              <a href="/admin?tab=heavy" className="tap-target inline-flex items-center font-semibold text-accent-text hover:underline">
+                Every club and person in Heavy use →
+              </a>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">Loading…</p>
+          )}
+        </Card>
         <DataTable
           title="Largest layouts"
           rows={c?.largestLayouts ?? []}
