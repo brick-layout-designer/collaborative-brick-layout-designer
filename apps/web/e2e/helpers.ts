@@ -134,6 +134,23 @@ export async function signIn(
  * "Moderation" for moderators): for `/^Moderation/` or `/^Privacy requests/`
  * this picks it, then the tab, the way a person would.
  */
+/**
+ * Open a section of the admin pages the way a person would: the list
+ * down the side, or the "Section" picker on a phone. `key` is the
+ * section's address key (users, orgs, moderation, privacy, settings…).
+ */
+export async function adminSection(page: Page, key: string, opts: { tap?: boolean } = {}): Promise<void> {
+  const pick = page.getByRole('combobox', { name: 'Section' });
+  const link = page.getByRole('navigation', { name: 'Admin sections' }).locator(`a[href="/admin?tab=${key}"]`);
+  const modOnly = page.getByRole('tab', { name: /^To review/ });
+  await expect.poll(async () => (await pick.isVisible()) || (await link.isVisible()) || (key === 'moderation' && (await modOnly.isVisible()))).toBe(true);
+  // A moderator's page is Moderation alone: nothing to pick.
+  if (!(await pick.isVisible()) && !(await link.isVisible())) return;
+  if (await pick.isVisible()) await pick.selectOption(key);
+  else if ((await link.getAttribute('aria-current')) !== 'page') await (opts.tap ? link.tap() : link.click());
+  await expect(page).toHaveURL(new RegExp(`tab=${key}`));
+}
+
 export async function fromSettingsMenu(page: Page, entry: string | RegExp, opts: { tap?: boolean } = {}): Promise<void> {
   const press = (l: import('@playwright/test').Locator) => (opts.tap ? l.tap() : l.click());
   const label = typeof entry === 'string' ? entry : entry.source.replace(/^\^/, '');
@@ -141,14 +158,17 @@ export async function fromSettingsMenu(page: Page, entry: string | RegExp, opts:
   const menuButton = page.getByRole('banner').getByRole('button', { name: /^Menu/ });
   const menu = page.getByRole('menu', { name: 'Menu' });
   if (adminTab) {
-    // One "Site admin" (or "Moderation") entry in the menu, then the tab.
+    // One "Site admin" (or "Moderation") entry in the menu, then the section.
+    // A moderator lands on Moderation (no side list).
     await press(menuButton);
     await press(menu.getByRole('menuitem', { name: /^(Site admin|Moderation)/ }));
-    // The admin page's tabs are buttons; the current one is aria-current="page".
     const tabKey = adminTab === 'Moderation' ? 'moderation' : 'privacy';
-    const tab = page.getByRole('button', { name: new RegExp(`^${tabKey}`, 'i') }).first();
-    await tab.waitFor();
-    if ((await tab.getAttribute('aria-current')) !== 'page') await press(tab);
+    // Either the sections (an admin) or Moderation itself (a moderator).
+    const sections = async () =>
+      (await page.getByRole('navigation', { name: 'Admin sections' }).isVisible()) || (await page.getByRole('combobox', { name: 'Section' }).isVisible());
+    await expect.poll(async () => (await sections()) || (await page.getByRole('tab', { name: /^To review/ }).isVisible())).toBe(true);
+    if (!(await sections())) return;
+    await adminSection(page, tabKey, opts);
     return;
   }
   await press(menuButton);

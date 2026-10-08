@@ -483,8 +483,20 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Global parts library (admin-managed, visible to all users)
   // -----------------------------------------------------------------
 
-  app.get('/api/admin/global-parts', async (req) => {
+  // A page at a time (`limit`, `offset`), searchable by number or name; `total` counts every match.
+  app.get<{ Querystring: { q?: string; limit?: string; offset?: string } }>('/api/admin/global-parts', async (req) => {
     requireGlobalAdmin(req);
+    const limit = clampLimit(req.query.limit);
+    const offset = clampOffset(req.query.offset);
+    const needle = (req.query.q ?? '').trim();
+    const safe = `%${escapeLike(needle)}%`;
+    const where = and(
+      eq(schema.customParts.isGlobal, true),
+      needle
+        ? or(sql`${schema.customParts.partNumber} LIKE ${safe} ESCAPE '\\'`, sql`${schema.customParts.displayName} LIKE ${safe} ESCAPE '\\'`)
+        : undefined,
+    );
+    const total = (await db.select({ n: count() }).from(schema.customParts).where(where).get())?.n ?? 0;
     const rows = await db
       .select({
         id: schema.customParts.id,
@@ -495,9 +507,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         createdAt: schema.customParts.createdAt,
       })
       .from(schema.customParts)
-      .where(eq(schema.customParts.isGlobal, true))
-      .orderBy(schema.customParts.category, schema.customParts.displayName);
-    return { parts: rows };
+      .where(where)
+      .orderBy(schema.customParts.category, schema.customParts.displayName, schema.customParts.id)
+      .limit(limit)
+      .offset(offset);
+    return { parts: rows, total, limit, offset };
   });
 
   interface GlobalPartBody {

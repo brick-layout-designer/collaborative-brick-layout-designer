@@ -150,6 +150,7 @@ test('a club’s private collection: members see it live and Add all, outsiders 
     await streamOpen(mel.page);
     await mod.page.goto('/');
     await fromSettingsMenu(mod.page, /^Moderation/);
+    await mod.page.getByRole('tab', { name: /^Collections/ }).click();
     const row = mod.page.getByTestId('moderated-club-collection').filter({ hasText: TITLE });
     await expect(row).toContainText(`ArkLUG ${tag}`);
     await row.getByRole('button', { name: `Remove collection ${TITLE}` }).click();

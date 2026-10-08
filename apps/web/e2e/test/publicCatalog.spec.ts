@@ -6,7 +6,7 @@
 // added from the editor's Parts panel. With the catalogs off nothing shows.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn, fromSettingsMenu, confirmInDialog } from '../helpers';
+import { ensureUser, signIn, fromSettingsMenu, confirmInDialog, adminSection } from '../helpers';
 import { makeGlobalAdmin } from '../dbHelpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -72,11 +72,11 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   // The admin turns the module catalog on and makes a moderator, in Admin.
   await as(page, ADMIN, 'Site Admin');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
+  await adminSection(page, 'settings');
   await page.getByLabel('Public module catalog').click();
   await expect(page.getByLabel('Public module catalog')).toBeChecked();
   await expect(page.getByLabel('Moderators approve each one')).toBeChecked();
-  await page.getByRole('button', { name: 'users' }).click();
+  await adminSection(page, 'users');
   await page.getByLabel(`Moderator: ${MOD}`).click();
   await expect(page.getByLabel(`Moderator: ${MOD}`)).toBeChecked();
 
@@ -119,7 +119,7 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   const entry = page.getByTestId('moderation-entry').filter({ hasText: 'Coal stage' });
   await expect(entry).toContainText('From Owner Olive, sent by Owner Olive');
   await expect(entry).not.toContainText(OWNER);
-  await expect(page.getByRole('button', { name: 'users' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Admin sections' })).toHaveCount(0);
   await entry.getByRole('button', { name: 'Approve Coal stage' }).click();
   await expect(entry).toHaveCount(0);
 
@@ -157,7 +157,7 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   await expect(upd.getByRole('status')).toContainText('Sent for review');
   await as(page, ADMIN, 'Site Admin');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'moderation' }).click();
+  await adminSection(page, 'moderation');
   const upEntry = page.getByTestId('moderation-entry').filter({ hasText: 'Coal stage' });
   await expect(upEntry).toContainText('update, version 2');
   await upEntry.getByRole('button', { name: 'Approve Coal stage' }).click();
@@ -176,9 +176,11 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   // An admin unpublishes it: gone from the catalog, the copy still opens.
   await as(page, ADMIN, 'Site Admin');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'moderation' }).click();
+  await adminSection(page, 'moderation');
+  await page.getByRole('tab', { name: /^In the catalog/ }).click();
   await page.getByRole('button', { name: 'Unpublish Coal stage' }).click();
   await confirmInDialog(page, { reason: 'No longer allowed' });
+  await page.getByRole('radiogroup', { name: 'Show' }).getByText(/^Unpublished/).click();
   await expect(page.getByText(/Unpublished: No longer allowed/)).toBeVisible();
   await as(page, TAKER, 'Taker Tom');
   // (Other specs may have left modules of their own in the catalog.)

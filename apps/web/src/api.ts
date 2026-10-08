@@ -943,7 +943,8 @@ export const api = {
         `/api/admin/layouts?${listParams(q)}`,
       ),
     deleteLayout: (id: string) => del(`/api/admin/layouts/${id}`),
-    globalParts: () => get<{ parts: AdminGlobalPart[] }>('/api/admin/global-parts'),
+    globalParts: (q: AdminListParams = {}) =>
+      get<{ parts: AdminGlobalPart[]; total: number; limit: number; offset: number }>(`/api/admin/global-parts?${listParams(q)}`),
     createGlobalPart: (body: {
       partNumber: string;
       displayName: string;
@@ -1107,6 +1108,19 @@ export const api = {
         trustedCovers?: CoverReviewEntry[];
         items: (CatalogItem & { status: CatalogStatus; reason: string | null; owner: WarningSubject | null })[];
       }>('/api/moderation/items'),
+    /** One moderation list, a page at a time (see ModerationView). */
+    list: <V extends ModerationView>(view: V, f: ModerationFilter & { limit?: number; offset?: number } = {}) => {
+      const p = new URLSearchParams({ view });
+      for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '' && v !== 0) p.set(k, String(v));
+      return get<{ total: number; nextOffset: number | null; rows: V extends 'waiting' | 'trusted' ? ModerationEntry[] : ModeratedItem[] }>(`/api/moderation/catalog?${p.toString()}`);
+    },
+    /** New pictures for public items, waiting for review. */
+    covers: () => get<{ covers: CoverReviewEntry[]; trustedCovers: CoverReviewEntry[] }>('/api/moderation/covers'),
+    /** How many are in each list (the badges). */
+    counts: () => get<ModerationCounts>('/api/moderation/counts'),
+    /** Approve or decline waiting versions, or unpublish items, several at once. */
+    bulk: (action: 'approve' | 'decline' | 'unpublish', ids: string[], reason = '') =>
+      post<{ done: number; failed: { id: string; error: string }[] }>('/api/moderation/bulk', { action, ids, reason }),
     /** Trusted clubs, or (with `q`) clubs to trust. */
     clubs: (q?: string) => get<{ clubs: ModerationClub[] }>(`/api/moderation/clubs${q ? `?q=${encodeURIComponent(q)}` : ''}`),
     trustClub: (slug: string, trusted: boolean) => post<{ ok: true; trusted: boolean }>(`/api/moderation/clubs/${encodeURIComponent(slug)}/trust`, { trusted }),
@@ -1885,4 +1899,25 @@ export function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return btoa(binary);
+}
+
+/** Moderation's lists: waiting for review, waiting in trusted clubs' own queues, public, unpublished. */
+export type ModerationView = 'waiting' | 'trusted' | 'public' | 'unpublished';
+export interface ModerationFilter {
+  kind?: CatalogKind | '';
+  q?: string;
+  /** When sent (waiting) or last changed (public, unpublished), in ms. */
+  from?: number | undefined;
+  to?: number | undefined;
+  sort?: 'oldest' | 'newest';
+}
+export type ModeratedItem = CatalogItem & { status: CatalogStatus; reason: string | null; updatedAt: number; owner: WarningSubject | null };
+export interface ModerationCounts {
+  waiting: number;
+  trusted: number;
+  covers: number;
+  trustedCovers: number;
+  public: number;
+  unpublished: number;
+  collections: number;
 }

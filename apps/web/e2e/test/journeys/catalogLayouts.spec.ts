@@ -10,7 +10,7 @@
 //      venue: the new layout has the venue's walls.
 
 import { test, expect, type Page } from '@playwright/test';
-import { ensureUser, signIn } from '../../helpers';
+import { ensureUser, signIn, adminSection } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 test.setTimeout(240_000);
@@ -60,7 +60,7 @@ test('a layout and a venue are shared, reviewed, viewed signed out, copied, and 
   expect((await page.request.patch(`/api/admin/users/${modId}`, { data: { isModerator: true } })).ok()).toBe(true);
   expect((await page.request.patch('/api/admin/settings', { data: { catalogReview: 'moderators', catalogAnonymousBrowse: true, layoutCatalogEnabled: false, venueCatalogEnabled: false } })).ok()).toBe(true);
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
+  await adminSection(page, 'settings');
   await page.getByLabel(/^Public layouts/).click();
   await expect(page.getByLabel(/^Public layouts/)).toBeChecked();
   await page.getByLabel(/^Public venues/).click();
@@ -98,7 +98,7 @@ test('a layout and a venue are shared, reviewed, viewed signed out, copied, and 
   // 3. The moderator approves both.
   await as(page, MOD, 'Mo Derator');
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'moderation', exact: true }).click();
+  await adminSection(page, 'moderation');
   for (const t of [LAYOUT, VENUE]) {
     const entry = page.getByTestId('moderation-entry').filter({ hasText: t });
     await entry.getByRole('button', { name: `Approve ${t}` }).click();

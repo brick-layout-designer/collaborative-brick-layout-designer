@@ -7,7 +7,7 @@
 //   catalogs.
 
 import { test, expect } from '@playwright/test';
-import { signIn, fromSettingsMenu } from '../../helpers';
+import { signIn, fromSettingsMenu, adminSection } from '../../helpers';
 import { makeGlobalAdmin } from '../../dbHelpers';
 
 const ts = Date.now();
@@ -32,7 +32,7 @@ test('an admin turns limits on, helps a heavy user, and names a moderator', asyn
     await expect(page.getByRole('heading', { name: 'Needs attention' })).toBeVisible();
 
     // ── Settings: enforce limits, one personal layout each. ──
-    await page.getByRole('button', { name: 'settings', exact: true }).click();
+    await adminSection(page, 'settings');
     const enforce = page.getByLabel('Enforce usage limits');
     if (!(await enforce.isChecked())) await enforce.click();
     await expect(enforce).toBeChecked();
@@ -49,7 +49,7 @@ test('an admin turns limits on, helps a heavy user, and names a moderator', asyn
     ).toBeVisible();
 
     // ── Heavy use finds them; read-only, then lifted. ──
-    await page.getByRole('button', { name: 'heavy use' }).click();
+    await adminSection(page, 'heavy');
     const people = page.getByRole('region', { name: /Top people/ });
     await people.getByRole('button', { name: `Heavy User ${ts}` }).first().click();
     await expect(page.getByRole('heading', { name: 'Use and limits' })).toBeVisible();
@@ -65,15 +65,15 @@ test('an admin turns limits on, helps a heavy user, and names a moderator', asyn
 
     // ── Users: name a moderator; they get Moderation, not the admin pages. ──
     await page.goto('/admin');
-    await page.getByRole('button', { name: 'users' }).click();
+    await adminSection(page, 'users');
     await page.getByLabel(`Moderator: ${MOD}`).click();
     await expect(page.getByLabel(`Moderator: ${MOD}`)).toBeChecked();
     await moderator.goto('/');
     await fromSettingsMenu(moderator, /^Moderation/);
-    await expect(moderator.getByRole('button', { name: 'users' })).toHaveCount(0);
+    await expect(moderator.getByRole('navigation', { name: 'Admin sections' })).toHaveCount(0);
 
     // ── Settings: the oldest desktop allowed and the catalogs are there. ──
-    await page.getByRole('button', { name: 'settings', exact: true }).click();
+    await adminSection(page, 'settings');
     await expect(page.getByText('Oldest desktop allowed')).toBeVisible();
     await expect(page.getByLabel('Public module catalog')).toBeVisible();
     await expect(page.getByLabel('Enforce usage limits')).toBeChecked();
@@ -85,7 +85,7 @@ test('an admin turns limits on, helps a heavy user, and names a moderator', asyn
     await backups.click();
     await expect(backups).not.toBeChecked();
     await page.reload();
-    await page.getByRole('button', { name: 'settings', exact: true }).click();
+    await adminSection(page, 'settings');
     await expect(page.getByLabel('Nightly backups')).not.toBeChecked();
     await page.getByLabel('Nightly backups').click();
     await expect(page.getByLabel('Nightly backups')).toBeChecked();

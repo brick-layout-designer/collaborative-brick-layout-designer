@@ -53,20 +53,13 @@ export function usePrivacyDue(user: Pick<Me, 'isGlobalAdmin'>): number {
   return (q.data?.overdue ?? 0) + (q.data?.dueSoon ?? 0);
 }
 
-/** How many reviews are waiting (catalog items and collections), for moderators and admins. */
+/** How many reviews are waiting (catalog items, new pictures and collections), for moderators and admins. */
 export function useWaitingReviews(user: Pick<Me, 'isGlobalAdmin' | 'isModerator'>): number {
   const reviews = user.isGlobalAdmin || !!user.isModerator;
-  // The same queries as the Moderation tab, so a live change refreshes both.
-  const items = useQuery({ queryKey: ['moderation'], queryFn: api.moderation.items, enabled: reviews, staleTime: 60_000, retry: false });
-  const collections = useQuery({
-    queryKey: ['moderation-collections'],
-    queryFn: api.moderation.collections,
-    enabled: reviews,
-    staleTime: 60_000,
-    retry: false,
-  });
-  if (!reviews) return 0;
-  return (items.data?.queue.length ?? 0) + (collections.data?.queue.length ?? 0);
+  // Only the counts, never the lists. The key starts with 'moderation', so a live change refreshes it.
+  const counts = useQuery({ queryKey: ['moderation', 'counts'], queryFn: api.moderation.counts, enabled: reviews, staleTime: 60_000, retry: false });
+  if (!reviews || !counts.data) return 0;
+  return counts.data.waiting + counts.data.covers + counts.data.collections;
 }
 
 /** The menu's groups for this person. */
