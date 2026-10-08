@@ -36,6 +36,29 @@ describe('Settings', () => {
   });
 });
 
+describe('grid snap and rotation step (a phone has no toolbar for them)', () => {
+  it('sets the editor steps from Settings › Editing, and remembers them', async () => {
+    const { useEditorStore } = await import('../editor/editorStore');
+    const { act, fireEvent } = await import('@testing-library/react');
+    const { container } = render(
+      <MemoryRouter>
+        <SettingsContent />
+      </MemoryRouter>,
+    );
+    const view = within(container);
+    const snap = view.getByTestId('settings-snap-step') as HTMLSelectElement;
+    expect([...snap.options].map((o) => o.textContent)).toContain('1 stud');
+    fireEvent.change(snap, { target: { value: '8' } });
+    expect(useEditorStore.getState().snapStepStuds).toBe(8);
+    expect(localStorage.getItem('cld:snapStepStuds')).toBe('8');
+    fireEvent.change(view.getByTestId('settings-rotation-step'), { target: { value: '45' } });
+    expect(useEditorStore.getState().rotationStepDegrees).toBe(45);
+    // A change made in the editor's toolbar shows here at once.
+    act(() => useEditorStore.getState().setSnapStep(0));
+    expect(snap.value).toBe('0');
+  });
+});
+
 describe('snap trace (hidden)', () => {
   it('stays hidden until /settings?snaptrace=1 turns it on, and Turn off hides it again', async () => {
     const { setSnapTraceEnabled } = await import('../editor/snapTrace');

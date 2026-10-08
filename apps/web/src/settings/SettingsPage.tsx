@@ -17,6 +17,7 @@ import { useHashScroll } from '../ui/useHashScroll';
 import { isPhoneScreen, useTours } from '../tours/TourProvider';
 import { toursFor } from '../tours/tours';
 import { DEFAULT_SNAP_STRENGTH, type SnapStrength } from '../editor/snapFeel';
+import { ROTATION_STEPS, SNAP_STEPS, useEditorStore } from '../editor/editorStore';
 import { lastSnapTrace, setSnapTraceEnabled, snapTraceEnabled, snapTraceText } from '../editor/snapTrace';
 
 const SNAP_CHOICES: { id: SnapStrength; label: string; hint: string }[] = [
@@ -207,6 +208,7 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
 
         <Section id="editing" title="Editing">
           <div className="flex flex-col gap-3">
+            <StepPickers />
             <div>
               <div id="snap-strength-label" className="flex items-center gap-2 text-[15px] font-semibold">
                 Snap strength
@@ -325,6 +327,44 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
  * it on (=0 off). On, the editor records the last drag's frames and this
  * row copies them, to send in when snapping misbehaves.
  */
+/**
+ * The grid snap and rotation steps. The editor's toolbar has them too, but a
+ * phone has no toolbar row, so this is where a phone sets them.
+ */
+function StepPickers() {
+  const snap = useEditorStore((s) => s.snapStepStuds);
+  const setSnap = useEditorStore((s) => s.setSnapStep);
+  const rot = useEditorStore((s) => s.rotationStepDegrees);
+  const setRot = useEditorStore((s) => s.setRotationStep);
+  const select = 'min-h-11 rounded-control border border-border bg-panel px-3 text-[15px] text-ink';
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[15px] font-semibold">Grid snap</span>
+        <span className="text-sm text-muted">Parts, rulers and labels land on a grid this many studs apart.</span>
+        <select data-testid="settings-snap-step" value={snap} onChange={(e) => setSnap(parseFloat(e.target.value))} className={select}>
+          {SNAP_STEPS.map((v) => (
+            <option key={v} value={v}>
+              {v === 0 ? 'Off' : v === 1 ? '1 stud' : `${v} studs`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[15px] font-semibold">Rotation step</span>
+        <span className="text-sm text-muted">How far one turn rotates a part.</span>
+        <select data-testid="settings-rotation-step" value={rot} onChange={(e) => setRot(parseFloat(e.target.value))} className={select}>
+          {ROTATION_STEPS.map((v) => (
+            <option key={v} value={v}>
+              {v}°
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 function SnapTraceRow() {
   const [on, setOn] = useState(() => {
     try {
