@@ -506,7 +506,7 @@ export function TrustedClubsSection() {
   const [offset, setOffset] = useState(0);
   const [foundAt, setFoundAt] = useState(0);
   const trusted = useQuery({ queryKey: ['moderation-clubs', '', offset], queryFn: () => api.moderation.clubs('', offset), placeholderData: (prev) => prev });
-  const found = useQuery({ queryKey: ['moderation-clubs', q.trim(), foundAt], queryFn: () => api.moderation.clubs(q.trim(), foundAt), enabled: q.trim().length >= 2, placeholderData: (prev) => prev });
+  const found = useQuery({ queryKey: ['moderation-clubs', 'find', q.trim(), foundAt], queryFn: () => api.moderation.clubs(q.trim(), foundAt), enabled: q.trim().length >= 2, placeholderData: (prev) => prev });
   const [error, setError] = useState<string | null>(null);
   const set = useMutation({
     mutationFn: (a: { slug: string; trusted: boolean }) => api.moderation.trustClub(a.slug, a.trusted),

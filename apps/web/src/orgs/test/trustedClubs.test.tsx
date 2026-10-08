@@ -50,6 +50,9 @@ describe('Trusted clubs (moderators)', () => {
     fireEvent.click(within(found).getByRole('button', { name: 'Trust TexLUG' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/moderation/clubs/texlug/trust')).toBe(true));
     expect(JSON.parse(calls.find((c) => c.path === '/api/moderation/clubs/texlug/trust')!.body!)).toEqual({ trusted: true });
+    // Back to the trusted list (a search shows only what it found).
+    fireEvent.change(screen.getByLabelText('Find a club to trust'), { target: { value: '' } });
+    await screen.findByRole('list', { name: 'Trusted clubs' });
     // Stopping asks first; saying no sends nothing.
     const asked = autoConfirm(false, true);
     fireEvent.click(screen.getByRole('button', { name: 'Stop trusting ArkLUG' }));
