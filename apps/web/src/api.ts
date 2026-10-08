@@ -1122,7 +1122,12 @@ export const api = {
     bulk: (action: 'approve' | 'decline' | 'unpublish', ids: string[], reason = '') =>
       post<{ done: number; failed: { id: string; error: string }[] }>('/api/moderation/bulk', { action, ids, reason }),
     /** Trusted clubs, or (with `q`) clubs to trust. */
-    clubs: (q?: string) => get<{ clubs: ModerationClub[] }>(`/api/moderation/clubs${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    clubs: (q?: string, offset = 0) => {
+      const p = new URLSearchParams();
+      if (q) p.set('q', q);
+      if (offset) p.set('offset', String(offset));
+      return get<{ clubs: ModerationClub[]; total?: number; nextOffset?: number | null }>(`/api/moderation/clubs${p.size ? `?${p.toString()}` : ''}`);
+    },
     trustClub: (slug: string, trusted: boolean) => post<{ ok: true; trusted: boolean }>(`/api/moderation/clubs/${encodeURIComponent(slug)}/trust`, { trusted }),
     approve: (versionId: string) => post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/approve`, {}),
     decline: (versionId: string, reason: string) =>
@@ -1134,6 +1139,17 @@ export const api = {
       get<{ queue: CollectionReviewEntry[]; trustedQueue?: CollectionReviewEntry[]; collections: ModeratedCollection[]; clubCollections?: ModeratedCollection[] }>(
         '/api/moderation/collections',
       ),
+    /** One collection list a page at a time: text waiting (the site's or trusted clubs'), the listed ones, or clubs' private ones. */
+    collectionList: <V extends 'queue' | 'trusted' | 'listed' | 'club'>(view: V, f: Omit<ModerationFilter, 'kind'> & { limit?: number; offset?: number } = {}) => {
+      const p = new URLSearchParams({ view });
+      for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '' && v !== 0) p.set(k, String(v));
+      return get<{ total: number; nextOffset: number | null; rows: V extends 'queue' | 'trusted' ? CollectionReviewEntry[] : ModeratedCollection[] }>(
+        `/api/moderation/collections/list?${p.toString()}`,
+      );
+    },
+    /** Approve or decline collections' text, unpublish public ones, or remove clubs' private ones, several at once. */
+    collectionBulk: (action: 'approve' | 'decline' | 'unpublish' | 'remove', ids: string[], reason = '') =>
+      post<{ done: number; failed: { id: string; error: string }[] }>('/api/moderation/collections/bulk', { action, ids, reason }),
     removeCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/remove`, { reason }),
     approveCollection: (id: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/approve`, {}),
     declineCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/decline`, { reason }),
