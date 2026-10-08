@@ -190,70 +190,76 @@ function ModuleLibraryRow({
       onDragEnd={() => {
         activeModuleDrag.id = null;
       }}
-      className={`flex items-center justify-between gap-2 px-2 py-2 ${isEditingThis ? 'bg-soft/60' : 'cursor-grab hover:bg-soft/60 active:cursor-grabbing'}`}
+      className={`flex items-start gap-2 px-2 py-2 ${isEditingThis ? 'bg-soft/60' : 'cursor-grab hover:bg-soft/60 active:cursor-grabbing'}`}
       data-testid="module-library-row"
     >
       <ModuleThumb module={module} px={thumbPx} />
-      <div className="min-w-0 flex-1 leading-tight" onDoubleClick={isViewer || isEditingThis ? undefined : onInsert}>
-        {editing ? (
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void commitRename()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void commitRename();
-              if (e.key === 'Escape') setEditing(false);
-            }}
-            disabled={renaming}
-            className="w-full rounded-lg border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-ink"
-            onClick={(e) => e.stopPropagation()}
-          />
+      {/* The name and details, with the buttons on their own line under them,
+          so a big picture in a narrow panel never squeezes the name away. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="min-w-0 leading-tight" onDoubleClick={isViewer || isEditingThis ? undefined : onInsert}>
+          {editing ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => void commitRename()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commitRename();
+                if (e.key === 'Escape') setEditing(false);
+              }}
+              disabled={renaming}
+              className="w-full rounded-lg border border-neutral-600 bg-neutral-700 px-1 py-0 text-xs text-ink"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <p className="line-clamp-2 break-words text-xs font-medium text-ink" title={module.title}>
+              {module.title}
+            </p>
+          )}
+          <p className="text-[11px] text-muted">
+            v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
+          </p>
+          <CreditLine credit={module.credit} className="!text-[11px] truncate" />
+        </div>
+        {isEditingThis ? (
+          <span className="self-start rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-text" data-testid="editing-now">
+            Editing now
+          </span>
         ) : (
-          <p className="truncate font-medium text-ink text-xs">{module.title}</p>
-        )}
-        <p className="text-[10px] text-neutral-600">
-          v{module.docVersion} · {new Date(module.updatedAt).toLocaleDateString()}
-        </p>
-        <CreditLine credit={module.credit} className="!text-[10px] truncate" />
-      </div>
-      {isEditingThis ? (
-        <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-text" data-testid="editing-now">
-          Editing now
-        </span>
-      ) : (
-        !isViewer && (
-          <div className="flex shrink-0 items-center gap-1">
-            {/* The main thing to do with a module here: put it in what you're editing. */}
-            <button
-              type="button"
-              onClick={onInsert}
-              disabled={isInserting}
-              title={insertLabel}
-              className="min-h-8 rounded-control border border-line px-2 text-xs font-semibold text-ink hover:bg-soft disabled:opacity-40 pointer-coarse:min-h-11"
-            >
-              {isInserting ? 'Adding…' : insertLabel}
-            </button>
-            <MoreMenu label={`More for ${module.title}`}>
-              <a role="menuitem" href={`/modules/${module.id}`} target="_blank" rel="noreferrer" className={MORE_ITEM}>
-                Open to change it (new tab)
-              </a>
-              <button role="menuitem" type="button" onClick={startRename} className={MORE_ITEM}>
-                Rename…
+          !isViewer && (
+            <div className="flex min-w-0 items-center gap-1">
+              {/* The main thing to do with a module here: put it in what you're editing. */}
+              <button
+                type="button"
+                onClick={onInsert}
+                disabled={isInserting}
+                title={insertLabel}
+                className="min-h-8 min-w-0 flex-1 truncate rounded-control border border-line px-2 text-xs font-semibold text-ink hover:bg-soft disabled:opacity-40 pointer-coarse:min-h-11"
+              >
+                {isInserting ? 'Adding…' : insertLabel}
               </button>
-              {onAddToCollection && (
-                <button role="menuitem" type="button" onClick={onAddToCollection} className={MORE_ITEM}>
-                  Add to a collection…
+              <MoreMenu label={`More for ${module.title}`}>
+                <a role="menuitem" href={`/modules/${module.id}`} target="_blank" rel="noreferrer" className={MORE_ITEM}>
+                  Open to change it (new tab)
+                </a>
+                <button role="menuitem" type="button" onClick={startRename} className={MORE_ITEM}>
+                  Rename…
                 </button>
-              )}
-              <ReturnMenuItems kind="modules" id={module.id} title={module.title} credit={module.credit} />
-              <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
-                Delete…
-              </button>
-            </MoreMenu>
-          </div>
-        )
-      )}
+                {onAddToCollection && (
+                  <button role="menuitem" type="button" onClick={onAddToCollection} className={MORE_ITEM}>
+                    Add to a collection…
+                  </button>
+                )}
+                <ReturnMenuItems kind="modules" id={module.id} title={module.title} credit={module.credit} />
+                <button role="menuitem" type="button" onClick={onDelete} className={`${MORE_ITEM} text-danger`}>
+                  Delete…
+                </button>
+              </MoreMenu>
+            </div>
+          )
+        )}
+      </div>
     </li>
   );
 }
