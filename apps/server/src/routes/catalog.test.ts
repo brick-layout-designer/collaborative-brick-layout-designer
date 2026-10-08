@@ -100,7 +100,7 @@ describe('public catalogs', () => {
       const r = await share(alice);
       expect(r.statusCode).toBe(201);
       expect(r.json()).toMatchObject({ status: 'in_review', version: 1 });
-      expect((await list(alice)).json()).toEqual({ items: [] });
+      expect((await list(alice)).json()).toEqual({ items: [], nextOffset: null });
       // Alice isn't a moderator.
       expect((await app.inject({ method: 'GET', url: '/api/moderation/items', headers: { cookie: alice } })).statusCode).toBe(403);
       const mod = await moderator();

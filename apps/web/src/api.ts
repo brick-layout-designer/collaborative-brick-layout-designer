@@ -1018,12 +1018,15 @@ export const api = {
   // Public module and parts catalogs.
   catalog: {
     settings: () => get<CatalogSettings>('/api/catalog/settings'),
-    items: (kind: CatalogKind, opts: { q?: string; tag?: string; sort?: 'newest' | 'popular' } = {}) => {
+    /** One kind, or every kind that's on ('all'); a page at a time with `limit` and `offset`. */
+    items: (kind: CatalogKind | 'all', opts: { q?: string; tag?: string; sort?: 'newest' | 'popular'; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams({ kind });
       if (opts.q) p.set('q', opts.q);
       if (opts.tag) p.set('tag', opts.tag);
       if (opts.sort) p.set('sort', opts.sort);
-      return get<{ items: CatalogItem[] }>(`/api/catalog/items?${p.toString()}`);
+      if (opts.limit) p.set('limit', String(opts.limit));
+      if (opts.offset) p.set('offset', String(opts.offset));
+      return get<{ items: CatalogItem[]; nextOffset?: number | null }>(`/api/catalog/items?${p.toString()}`);
     },
     item: (id: string) =>
       get<{

@@ -107,8 +107,9 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
 
   // Not in the catalog yet.
   await as(page, TAKER, 'Taker Tom');
-  await page.goto('/catalog');
-  await expect(page.getByText('Nothing here yet.')).toBeVisible();
+  // (Other specs may have left modules of their own in the catalog.)
+  await page.goto('/catalog?kind=module&q=coal+stage');
+  await expect(page.getByText('Nothing matches.')).toBeVisible();
 
   // The moderator sees who sent it, by their public name (only site
   // admins see the address), and approves it.
@@ -180,8 +181,9 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   await confirmInDialog(page, { reason: 'No longer allowed' });
   await expect(page.getByText(/Unpublished: No longer allowed/)).toBeVisible();
   await as(page, TAKER, 'Taker Tom');
-  await page.goto('/catalog');
-  await expect(page.getByText('Nothing here yet.')).toBeVisible();
+  // (Other specs may have left modules of their own in the catalog.)
+  await page.goto('/catalog?kind=module&q=coal+stage');
+  await expect(page.getByText('Nothing matches.')).toBeVisible();
   await page.goto('/');
   await moduleRow(page, 'Coal stage').getByRole('link', { name: 'Open Coal stage' }).click();
   await expect.poll(() => brickCount(page), { timeout: 15000 }).toBe(2);
