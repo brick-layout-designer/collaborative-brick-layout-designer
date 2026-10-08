@@ -280,7 +280,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       const updates: Partial<typeof schema.layouts.$inferInsert> = {};
       if (req.body.title !== undefined) {
         const t = req.body.title.trim();
-        if (!t) return reply.code(400).send({ error: 'invalid_title' });
+        if (!t || t.length > 200) return reply.code(400).send({ error: 'invalid_title' });
         updates.title = t;
       }
       if (Object.keys(updates).length === 0) {
