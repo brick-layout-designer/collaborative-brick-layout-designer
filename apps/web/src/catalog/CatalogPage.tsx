@@ -23,8 +23,11 @@ import { ItemCoverDialog } from './ItemCover';
 const ROW = 8;
 const PAGE = 24;
 const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,13rem),1fr))] gap-3';
-/** A landing row: on a phone only its first three, so the next kind is a short scroll away. */
-const ROW_GRID = `${CARD_GRID} max-sm:[&>li:nth-child(n+4)]:hidden`;
+/**
+ * A landing row: on a phone only its first four, so the next kind is a short
+ * scroll away. Four, not three, so two columns end on a full line.
+ */
+const ROW_GRID = `${CARD_GRID} max-sm:[&>li:nth-child(n+5)]:hidden`;
 
 type Sort = 'newest' | 'popular';
 
