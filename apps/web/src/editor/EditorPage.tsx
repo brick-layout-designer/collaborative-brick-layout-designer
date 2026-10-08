@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RenameDialog } from '../ui/RenameDialog';
 import { flushSync } from 'react-dom';
 import * as Y from 'yjs';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -359,6 +360,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     [layoutId],
   );
   const isViewer = role === 'viewer' || (viewport.isMobile && !phoneEdit);
+  const [renaming, setRenaming] = useState(false);
   /** Editing on a phone: the touch bar, Undo / Redo and Add part over the map. */
   const touchEditing = viewport.isMobile && !isViewer;
   /** A tablet (full editor, touch screen): the bar for picked parts. */
@@ -876,6 +878,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                 title={meta.data?.layout.title ?? 'Untitled'}
                 onNew={isViewer ? undefined : leaveLayout}
                 onOpen={isViewer ? undefined : leaveLayout}
+                onRename={role !== 'viewer' ? () => setRenaming(true) : undefined}
               >
                 <ViewsMenuItems
                   views={savedViews}
@@ -959,6 +962,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             credit={creditLabel(meta.data?.layout.credit)}
             onNew={isViewer ? undefined : leaveLayout}
             onOpen={isViewer ? undefined : leaveLayout}
+            onRename={role !== 'viewer' ? () => setRenaming(true) : undefined}
           >
             {isViewer && (
               <ViewsMenuItems
@@ -1369,6 +1373,20 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
         </Suspense>
       )}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {renaming && (
+        <RenameDialog
+          heading={moduleMode ? 'Rename module' : 'Rename layout'}
+          current={meta.data?.layout.title ?? ''}
+          onSave={async (name) => {
+            await (moduleMode ? api.modules.rename(layoutId, name) : api.layouts.rename(layoutId, name));
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: [moduleMode ? 'module' : 'layout', layoutId] }),
+              qc.invalidateQueries({ queryKey: [moduleMode ? 'modules' : 'layouts'] }),
+            ]);
+          }}
+          onClose={() => setRenaming(false)}
+        />
+      )}
       {showGeneralInfo && docMap && (
         <GeneralInfoDialog map={docMap} doc={doc} onClose={() => setShowGeneralInfo(false)} />
       )}

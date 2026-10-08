@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { RenameDialog } from '../ui/RenameDialog';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, lowResThumbnail, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
@@ -62,6 +63,7 @@ export function LayoutsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog-mine'] }),
   });
   const [shareLayout, setShareLayout] = useState<LayoutSummary | null>(null);
+  const [renameLayout, setRenameLayout] = useState<LayoutSummary | null>(null);
   const [moving, setMoving] = useState<{ kind: 'layout' | 'module'; item: LayoutSummary | ModuleSummary } | null>(null);
 
   const remove = useMutation({
@@ -170,6 +172,7 @@ export function LayoutsPage() {
                   if (ok) remove.mutate(l.id, { onSuccess: () => toastDeleted(l.title) });
                 }}
                 onShare={() => setShareLayout(l)}
+                onRename={() => setRenameLayout(l)}
                 onMove={hasClubs ? () => setMoving({ kind: 'layout', item: l }) : undefined}
               />
             ))}
@@ -361,6 +364,20 @@ export function LayoutsPage() {
         />
       )}
 
+      {renameLayout && (
+        <RenameDialog
+          heading="Rename layout"
+          current={renameLayout.title}
+          onSave={async (name) => {
+            await api.layouts.rename(renameLayout.id, name);
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: ['layouts'] }),
+              qc.invalidateQueries({ queryKey: ['layout', renameLayout.id] }),
+            ]);
+          }}
+          onClose={() => setRenameLayout(null)}
+        />
+      )}
       {shareLayout && me.data?.user && (
         <ShareDialogLoader
           layout={shareLayout}
@@ -479,12 +496,14 @@ function LayoutRow({
   chip,
   onDelete,
   onShare,
+  onRename,
   onMove,
 }: {
   layout: LayoutSummary;
   chip: ReactNode;
   onDelete: () => void;
   onShare: () => void;
+  onRename: () => void;
   /** Move or copy… (only offered to people in a club). */
   onMove?: (() => void) | undefined;
 }) {
@@ -532,6 +551,11 @@ function LayoutRow({
           <button role="menuitem" type="button" onClick={onShare} className={MORE_ITEM}>
             Share…
           </button>
+          {layout.role !== 'viewer' && (
+            <button role="menuitem" type="button" onClick={onRename} className={MORE_ITEM}>
+              Rename…
+            </button>
+          )}
           <a
             role="menuitem"
             href={api.layouts.exportZipUrl(layout.id)}

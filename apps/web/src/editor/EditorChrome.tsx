@@ -54,6 +54,7 @@ export function LayoutNameMenu({
   credit,
   onNew,
   onOpen,
+  onRename,
   children,
 }: {
   title: string;
@@ -61,6 +62,8 @@ export function LayoutNameMenu({
   credit?: string | null | undefined;
   onNew?: (() => void) | undefined;
   onOpen?: (() => void) | undefined;
+  /** "Rename…", for people who may change it. */
+  onRename?: (() => void) | undefined;
   /** Extra items (e.g. the existing Save). */
   children?: ReactNode;
 }) {
@@ -97,6 +100,11 @@ export function LayoutNameMenu({
           {onOpen && (
             <button role="menuitem" type="button" title="Open layout (Ctrl+O)" onClick={onOpen} className={MENU_ITEM}>
               Open another layout
+            </button>
+          )}
+          {onRename && (
+            <button role="menuitem" type="button" onClick={onRename} className={MENU_ITEM}>
+              Rename…
             </button>
           )}
           {children}
