@@ -331,7 +331,7 @@ function ModerationList({ view, title, total }: { view: ModerationView; title: s
                     <span className="break-words">{r.title}</span>
                     <span className="text-xs font-normal text-muted">
                       {KIND_WORD[r.kind]}
-                      {isEntry(r) ? (r.isUpdate ? `, update v${r.version}` : ', new') : ''}
+                      {isEntry(r) ? (r.isUpdate ? `, update, version ${r.version}` : ', new') : ''}
                     </span>
                     {!isEntry(r) && r.trustedClub && <TrustedBadge />}
                   </span>
