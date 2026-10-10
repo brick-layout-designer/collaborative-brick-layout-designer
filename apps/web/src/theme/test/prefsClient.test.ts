@@ -11,7 +11,7 @@ function fakeFetch(body: unknown, status = 200) {
 
 describe('fetchPreferences / savePreferences', () => {
   it('reads {prefs, updatedAt} and cleans unknown values', async () => {
-    const f = fakeFetch({ prefs: { theme: 'dark', accent: 'teal' }, updatedAt: '2026-09-30T10:00:00.000Z' });
+    const f = fakeFetch({ prefs: { theme: 'dark', accent: 'chartreuse' }, updatedAt: '2026-09-30T10:00:00.000Z' });
     const res = await fetchPreferences(f);
     expect(f).toHaveBeenCalledWith('/api/me/preferences', { credentials: 'include' });
     expect(res).toEqual({ prefs: { ...DEFAULT_PREFERENCES, theme: 'dark' }, updatedAt: '2026-09-30T10:00:00.000Z' });

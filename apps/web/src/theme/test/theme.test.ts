@@ -69,7 +69,7 @@ describe('applyTheme', () => {
 
   it('falls back to brick for an unknown accent', () => {
     const root = document.createElement('html');
-    applyTheme(root, { theme: 'light', accent: 'teal' as never, largeText: false }, false);
+    applyTheme(root, { theme: 'light', accent: 'neon' as never, largeText: false }, false);
     expect(root.dataset.accent).toBe('brick');
   });
 
@@ -150,7 +150,7 @@ describe('cached preferences', () => {
     expect(readCachedPreferences(storage)).toMatchObject({ theme: 'dark', accent: 'plum', largeText: true });
     store.set(PREFS_CACHE_KEY, '{not json');
     expect(readCachedPreferences(storage)).toEqual(DEFAULT_PREFERENCES);
-    expect(sanitizePreferences({ theme: 'neon', accent: 'teal', helpIcons: 'no', toursSeen: ['a', 3] })).toEqual({
+    expect(sanitizePreferences({ theme: 'neon', accent: 'chartreuse', helpIcons: 'no', toursSeen: ['a', 3] })).toEqual({
       ...DEFAULT_PREFERENCES,
       toursSeen: ['a'],
     });

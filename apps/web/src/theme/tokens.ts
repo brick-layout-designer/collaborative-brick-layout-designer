@@ -64,7 +64,7 @@ export const NEUTRALS: Record<Mode, Record<NeutralKey, string>> = {
   },
 };
 
-export const ACCENT_IDS = ['brick', 'ocean', 'forest', 'plum', 'sunny'] as const;
+export const ACCENT_IDS = ['brick', 'ocean', 'forest', 'plum', 'sunny', 'teal', 'orange', 'rose', 'indigo', 'slate'] as const;
 export type AccentId = (typeof ACCENT_IDS)[number];
 
 export interface Accent {
@@ -121,6 +121,41 @@ export const ACCENTS: Record<AccentId, Accent> = {
     onMain: '#1E2124',
     soft: { light: '#FBF1D9', dark: '#3A2F14' },
     text: { light: '#8A6508', dark: '#E9C86A' },
+  },
+  teal: {
+    label: 'Lagoon teal',
+    main: '#0F7C80',
+    onMain: '#FFFFFF',
+    soft: { light: '#E0F2F2', dark: '#16302F' },
+    text: { light: '#0B6569', dark: '#7FD0CF' },
+  },
+  orange: {
+    label: 'Pumpkin orange',
+    main: '#B9520B',
+    onMain: '#FFFFFF',
+    soft: { light: '#FCEBDD', dark: '#3A2616' },
+    text: { light: '#A0470A', dark: '#F4B183' },
+  },
+  rose: {
+    label: 'Rose pink',
+    main: '#C2335F',
+    onMain: '#FFFFFF',
+    soft: { light: '#FBE6EC', dark: '#3A1E27' },
+    text: { light: '#A6284F', dark: '#F2A3BA' },
+  },
+  indigo: {
+    label: 'Indigo',
+    main: '#4B4FC4',
+    onMain: '#FFFFFF',
+    soft: { light: '#EAEAFB', dark: '#23243F' },
+    text: { light: '#3E42A8', dark: '#B0B3F2' },
+  },
+  slate: {
+    label: 'Slate gray',
+    main: '#4F5B6B',
+    onMain: '#FFFFFF',
+    soft: { light: '#EBEEF2', dark: '#262B32' },
+    text: { light: '#46505E', dark: '#B6C0CC' },
   },
 };
 
