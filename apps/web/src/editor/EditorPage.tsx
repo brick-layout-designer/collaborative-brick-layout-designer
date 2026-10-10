@@ -103,6 +103,8 @@ import {
   readBudgetLimits,
   readSavedViews,
   reorderBricks,
+  moveBricksToLayer,
+  addLayer,
   setBudgetLimits,
   rotateBricksAboutCentroid,
   ungroupBricksAcrossLayers,
@@ -4101,6 +4103,15 @@ function Canvas({
           onSendToBack={() => {
             if (selection.length > 0) reorderBricks(doc, selection, 'back');
           }}
+          onMoveToSheet={(target) => {
+            const byLayer = selectionByLayer();
+            if (byLayer.size === 0) return;
+            // A new sheet and the move are one undo step.
+            doc.transact(() => {
+              const to = target ?? addLayer(doc, 'brick');
+              if (moveBricksToLayer(doc, byLayer, to) > 0) setActiveLayer(to);
+            }, LOCAL_ORIGIN);
+          }}
           onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
           onUngroup={() => ungroupSelection()}
           ungroup={ungroupState(map, selection, canUngroupSet)}
@@ -4226,7 +4237,7 @@ function CanvasContextMenu({
   x, y, onBrick, selection, map, doc, undo,
   textCellRef, onEditText, rulerRef, brickIdUnderCursor, selectedRulerId, onAttachRuler,
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
-  onRotateCCW, onRotateCW, onBringToFront, onSendToBack,
+  onRotateCCW, onRotateCW, onBringToFront, onSendToBack, onMoveToSheet,
   onGroup, onUngroup, ungroup, onSelectConnected, onAddTextHere, onProperties, onMakeModule,
   module, editingModuleId, onEditModule, onDoneEditing, onPinModule, onModuleShowName, onModuleLook,
 }: {
@@ -4251,6 +4262,8 @@ function CanvasContextMenu({
   onCopy: () => void; onCut: () => void; onPaste: () => void; onDuplicate: () => void;
   onDelete: () => void; onRotateCCW: () => void; onRotateCW: () => void;
   onBringToFront: () => void; onSendToBack: () => void;
+  /** Move the selected parts to that part sheet, or (null) to a new one. */
+  onMoveToSheet: (layerId: string | null) => void;
   onGroup: () => void; onUngroup: () => void; onSelectConnected: () => void;
   /** What Ungroup would do: nothing grouped (hidden), split, or only sets always used whole (greyed out). */
   ungroup: 'nothing' | 'splits' | 'whole';
@@ -4361,6 +4374,22 @@ function CanvasContextMenu({
     entries.push(item('Bring to Front', onBringToFront));
     entries.push(item('Send to Back', onSendToBack));
     entries.push(sep('s2'));
+    // Parts can go to another part sheet (on top of what's there).
+    if (map) {
+      const sel = new Set(selection);
+      const from = new Set(map.layers.filter((l) => l.type === 'brick' && l.bricks.some((b) => sel.has(b.id))).map((l) => l.id));
+      if (from.size > 0) {
+        const seen = new Map<string, number>();
+        for (const l of map.layers) {
+          if (l.type !== 'brick' || (from.size === 1 && from.has(l.id))) continue;
+          const n = (seen.get(l.name) ?? 0) + 1;
+          seen.set(l.name, n);
+          entries.push(item(`Move to sheet “${l.name}”${n > 1 ? ` (${n})` : ''}`, () => onMoveToSheet(l.id)));
+        }
+        entries.push(item('Move to a new sheet', () => onMoveToSheet(null)));
+        entries.push(sep('s2b'));
+      }
+    }
     if (multiSel) entries.push(item('Group', onGroup));
     if (ungroup === 'splits') entries.push(item('Ungroup', onUngroup));
     else if (ungroup === 'whole') entries.push(item('Ungroup (this set is always used whole)', onUngroup, true));
