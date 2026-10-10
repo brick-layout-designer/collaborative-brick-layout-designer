@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { withCustomPartNumbers } from '../utils/customPartNumbers.js';
 import { Buffer } from 'node:buffer';
 import { createWriteStream, createReadStream, existsSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
@@ -392,7 +393,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
     const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
-    const map = exportBbmFromDoc(doc);
+    const exported = exportBbmFromDoc(doc);
+    // Named by part number, so BlueBrick and the desktop find the server's custom parts.
+    const map = exported && (await withCustomPartNumbers(exported));
     if (!map) {
       // The doc was authored in-app and there's no cached BbmMap yet.
       // Phase 3 fills this in once the editor mutates the Yjs structure
@@ -541,7 +544,9 @@ export async function layoutRoutes(app: FastifyInstance) {
         .get();
       if (!layout) return reply.code(404).send({ error: 'no_sidecar' });
       const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
-      const map = exportBbmFromDoc(doc);
+      const exported = exportBbmFromDoc(doc);
+      // Named by part number, so BlueBrick and the desktop find the server's custom parts.
+      const map = exported && (await withCustomPartNumbers(exported));
       const json = sidecarJson(doc, layout.sidecarSnapshot as Uint8Array | null, map ? writeBbm(map) : null);
       if (!json) return reply.code(404).send({ error: 'no_sidecar' });
       rollup.count('exports', 'sidecar');
@@ -571,7 +576,9 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!layout) return reply.code(404).send({ error: 'not_found' });
 
     const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
-    const map = exportBbmFromDoc(doc);
+    const exported = exportBbmFromDoc(doc);
+    // Named by part number, so BlueBrick and the desktop find the server's custom parts.
+    const map = exported && (await withCustomPartNumbers(exported));
     if (!map) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
 
     const safe = sanitizeFilename(layout.title);
