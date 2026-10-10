@@ -423,7 +423,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const layout = await db.select().from(schema.layouts).where(eq(schema.layouts.id, req.params.id)).get();
     if (!layout) return reply.code(404).send({ error: 'not_found' });
     const bg = backgroundImagePath(layout.id);
-    const bytes = layoutFileBytes(
+    const bytes = await layoutFileBytes(
       await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array),
       layout.sidecarSnapshot as Uint8Array | null,
       bg ? { bytes: readFileSync(bg.path), ext: bg.ext } : null,
