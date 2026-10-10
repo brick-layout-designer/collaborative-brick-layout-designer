@@ -113,24 +113,3 @@ export function staleAreaFix(brick: Pick<Brick, 'displayArea' | 'orientation'>, 
   return areaForPivot(part, brick.orientation, areaCentre(a));
 }
 
-/**
- * Bricks in drawing order: by altitude, lowest first, keeping array order
- * among equal altitudes — Qt's setZValue(altitude) with insertion order as
- * the tie-break (SceneBuilder.cpp:221). Returns the input when already in
- * order.
- */
-export function drawOrder<B extends { altitude: number }>(bricks: readonly B[]): readonly B[] {
-  let sorted = true;
-  for (let i = 1; i < bricks.length; i++) {
-    if (bricks[i]!.altitude < bricks[i - 1]!.altitude) {
-      sorted = false;
-      break;
-    }
-  }
-  if (sorted) return bricks;
-  return bricks
-    .map((b, i) => [b, i] as const)
-    .sort((a, b) => a[0].altitude - b[0].altitude || a[1] - b[1])
-    .map(([b]) => b);
-}
-

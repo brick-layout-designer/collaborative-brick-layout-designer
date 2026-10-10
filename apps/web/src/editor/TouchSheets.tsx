@@ -81,7 +81,15 @@ async function askDeleteSheet(doc: Y.Doc, layer: Layer) {
   if (activeLayerId === layer.id) setActiveLayer(null);
 }
 
-function SheetRow({ layer, doc, first, last, active }: { layer: Layer; doc: Y.Doc; first: boolean; last: boolean; active: boolean }) {
+function SheetRow({ layer, doc, first, last, active, onMoveHere }: {
+  layer: Layer;
+  doc: Y.Doc;
+  first: boolean;
+  last: boolean;
+  active: boolean;
+  /** Put the picked parts on this sheet (only on other part sheets, with parts picked). */
+  onMoveHere?: (() => void) | undefined;
+}) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(layer.name);
   const label = layer.name || KIND[layer.type];
@@ -164,6 +172,11 @@ function SheetRow({ layer, doc, first, last, active }: { layer: Layer; doc: Y.Do
             />
             <span className="w-9 shrink-0 text-right tabular-nums">{layer.transparency}%</span>
           </label>
+          {onMoveHere && (
+            <button type="button" onClick={onMoveHere} data-testid="move-here" className="min-h-11 shrink-0 rounded-control bg-accent px-3 text-sm font-bold text-accent-ink hover:bg-accent-hover">
+              Move here
+            </button>
+          )}
           <button
             type="button"
             aria-label={`Rename ${label}`}
@@ -212,10 +225,23 @@ function AddSheetChoices({ doc, onDone }: { doc: Y.Doc; onDone: () => void }) {
 }
 
 /** The sheets, topmost first (as the Sheets panel lists them): add, delete, show / hide, fade, rename and reorder by touch. */
-export function SheetsSheet({ map, doc, onClose }: { map: BbmMap; doc: Y.Doc; onClose: () => void }) {
+export function SheetsSheet({ map, doc, onClose, onMovePicked }: {
+  map: BbmMap;
+  doc: Y.Doc;
+  onClose: () => void;
+  /** Move the picked parts to that part sheet, or (null) to a new one. */
+  onMovePicked?: ((sheetId: string | null) => void) | undefined;
+}) {
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
+  const selection = useEditorStore((s) => s.selection);
   const [adding, setAdding] = useState(false);
   const rows = [...map.layers].reverse();
+  // The picked parts: which sheets they're on, so each other part sheet can take them.
+  const picked = new Set(selection);
+  const pickedOn = onMovePicked && picked.size > 0
+    ? new Set(map.layers.filter((l) => l.type === 'brick' && l.bricks.some((b) => picked.has(b.id))).map((l) => l.id))
+    : new Set<string>();
+  const onlyOn = pickedOn.size === 1 ? map.layers.find((l) => pickedOn.has(l.id)) : undefined;
   return (
     <BottomSheet
       title="Sheets"
@@ -238,6 +264,22 @@ export function SheetsSheet({ map, doc, onClose }: { map: BbmMap; doc: Y.Doc; on
       <p className="mb-2 text-sm text-muted">
         Sheets are like see-through pages. The top one is drawn over the others. Slide “Solid” down to fade a sheet.
       </p>
+      {pickedOn.size > 0 && (
+        <div role="status" data-testid="picked-sheet" className="mb-2 flex flex-col gap-2 rounded-control bg-accent-soft p-3 text-sm text-ink">
+          <p>
+            {selection.length === 1 ? 'The picked part is' : `The ${selection.length} picked parts are`} on{' '}
+            {onlyOn ? <span className="font-bold">{onlyOn.name || KIND[onlyOn.type]}</span> : `${pickedOn.size} sheets`}. Tap “Move here” on
+            another parts sheet to put {selection.length === 1 ? 'it' : 'them'} on top of it. Bring to front and Send to back only change the order inside a sheet.
+          </p>
+          <button
+            type="button"
+            onClick={() => { onMovePicked?.(null); onClose(); }}
+            className="min-h-11 self-start rounded-control border border-line bg-panel px-3 text-sm font-bold text-accent-text"
+          >
+            Move to a new sheet
+          </button>
+        </div>
+      )}
       <ul className="flex flex-col gap-1" aria-label="Sheets, top first">
         {rows.map((layer, i) => (
           <SheetRow
@@ -247,6 +289,11 @@ export function SheetsSheet({ map, doc, onClose }: { map: BbmMap; doc: Y.Doc; on
             first={i === 0}
             last={i === rows.length - 1}
             active={layer.id === activeLayerId}
+            onMoveHere={
+              pickedOn.size > 0 && layer.type === 'brick' && !(onlyOn && onlyOn.id === layer.id)
+                ? () => { onMovePicked?.(layer.id); onClose(); }
+                : undefined
+            }
           />
         ))}
       </ul>

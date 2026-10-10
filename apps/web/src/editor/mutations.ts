@@ -1432,6 +1432,7 @@ export function editBrick(
     if (!yBrick) return;
     if (patch.partNumber !== undefined) yBrick.set('partNumber', patch.partNumber);
     if (patch.orientation !== undefined) yBrick.set('orientation', mod360(patch.orientation));
+    const newAltitude = patch.altitude !== undefined && patch.altitude !== yBrick.get('altitude');
     if (patch.altitude !== undefined) yBrick.set('altitude', patch.altitude);
     if (patch.activeConnectionPointIndex !== undefined) {
       yBrick.set('activeConnectionPointIndex', patch.activeConnectionPointIndex);
@@ -1444,6 +1445,8 @@ export function editBrick(
         y: patch.y ?? area.y,
       });
     }
+    // Last: the sort makes new Y.Maps, so the edits above go first.
+    if (newAltitude) sortLayerByAltitude(doc, layerId);
   }, LOCAL_ORIGIN);
 }
 
@@ -1711,6 +1714,29 @@ export function ungroupBricks(doc: Y.Doc, layerId: string, brickIds: string[]): 
       }
     }
   }, LOCAL_ORIGIN);
+}
+
+/**
+ * A part sheet's bricks in altitude order, lowest first, equal ones keeping
+ * their order: BlueBrick's LayerBrick.sortBricksByElevation after an
+ * altitude edit, so higher parts draw over lower ones while Bring to Front
+ * still decides among equals. Call inside a transaction.
+ */
+function sortLayerByAltitude(doc: Y.Doc, layerId: string): void {
+  const layerData = doc.getMap('layerData').get(layerId);
+  if (!(layerData instanceof Y.Map)) return;
+  const yBricks = layerData.get('bricks');
+  if (!(yBricks instanceof Y.Array)) return;
+  const all = yBricks.toArray().filter((b): b is Y.Map<unknown> => b instanceof Y.Map).map((b) => b.toJSON() as Record<string, unknown>);
+  const alt = (b: Record<string, unknown>) => (typeof b.altitude === 'number' ? b.altitude : 0);
+  const sorted = all.map((b, i) => [b, i] as const).sort((a, c) => alt(a[0]) - alt(c[0]) || a[1] - c[1]);
+  if (sorted.every(([, i], k) => i === k)) return;
+  yBricks.delete(0, yBricks.length);
+  yBricks.push(sorted.map(([json]) => {
+    const y = new Y.Map<unknown>();
+    for (const [k, v] of Object.entries(json)) y.set(k, v);
+    return y;
+  }));
 }
 
 /** Normalise to [0, 360) without losing fractional precision. */

@@ -33,7 +33,7 @@ import { liveSnapReach } from '../liveSnapReach';
 import { annoNodeNames, collectNodes, restoreNodes, shiftNodes, type NodeSnap } from './groupDragNodes';
 import { EXPORT_HIDE } from '../exportRender';
 import { indexParts } from '../partIndex';
-import { drawOrder, pivotOf } from '../brickGeometry';
+import { pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
 import { SELECTION } from './selectionStyle';
 import { useLiveDragPose, type DragPose } from '../liveDragPose';
@@ -203,7 +203,8 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
         const showElevation = (!isViewer && view.showBrickElevation) || layer.displayBrickElevation;
         return (
           <Group key={layer.id}>
-            {drawOrder(layer.bricks).map((brick) => {
+            {/* The sheet's own order, like BlueBrick (an altitude edit sorts the sheet: editBrick). */}
+            {layer.bricks.map((brick) => {
               const lower = brick.partNumber.toLowerCase();
               return (
                 <BrickGlyph
