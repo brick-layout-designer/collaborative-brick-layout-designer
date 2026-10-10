@@ -528,13 +528,13 @@ Each client publishes:
 ```
 
 Clients render:
-- A coloured cursor with the user's name for every other connected user
-- Outlines on bricks another user has selected (their colour, semi-transparent)
+- A colored cursor with the user's name for every other connected user
+- Outlines on bricks another user has selected (their color, semi-transparent)
 - A "live" panel listing who's connected with avatar + name + status dot
 - Idle detection (5min no movement → grey dot)
 
-Colours are deterministic per-user-per-layout (hash user_id + layout_id) so
-the same user always shows up as the same colour for the same map.
+Colors are deterministic per-user-per-layout (hash user_id + layout_id) so
+the same user always shows up as the same color for the same map.
 
 ### 4.6 Backups (in-app)
 
@@ -650,7 +650,7 @@ opens a server layout and edits it live alongside web users.
 - Undo uses the yrs UndoManager with a local origin, so it reverts only
   the desktop's own edits, as on the web (§4.4).
 - Cursors and selections use the web's awareness format (§4.5); names and
-  colours come from `GET /api/tokens/current`.
+  colors come from `GET /api/tokens/current`.
 - `meta.schemaVersion` plus `GET /api/version` let an older desktop refuse
   a newer server's doc.
 
@@ -877,7 +877,7 @@ auto-save, real `.bbm` sprites, and connectivity recompute.
   `synced` / `reconnecting` / `offline` / `error`.
 - Awareness publish (`usePublishAwareness`): cursor (in stud coords),
   selection, current tool, identity (id, displayName, avatarUrl,
-  colour), `lastActivityMs` for idle dot. Colour is deterministic per
+  color), `lastActivityMs` for idle dot. Color is deterministic per
   `(userId, layoutId)`.
 - Awareness render: `RemoteCursors` Konva layer (peer cursor + name
   pill + selection outlines), `PresencePanel` header strip with

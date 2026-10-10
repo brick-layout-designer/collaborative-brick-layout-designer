@@ -11,7 +11,7 @@
 //
 // Writing: remapped parts, sleepers under rails, groups, rulers. Area,
 // grid and text layers can't be expressed in LDraw and are written as a
-// comment only. Parts without a numeric colour (sets, logos) are
+// comment only. Parts without a numeric color (sets, logos) are
 // skipped, as in BlueBrick.
 
 import type { BbmMap, Brick, ColorSpec, Group, Layer, LayerBrick, LayerRuler, RulerItem } from '@cld/model';
@@ -57,8 +57,8 @@ const toInt = (s: string | undefined): number => {
   return /^[+-]?\d+$/.test(t) ? Number(t) : 0;
 };
 
-/** "<part>.<colour>" split at the last dot. */
-function splitPartAndColour(partNumber: string): [string, string] {
+/** "<part>.<color>" split at the last dot. */
+function splitPartAndColor(partNumber: string): [string, string] {
   const dot = partNumber.lastIndexOf('.');
   return dot < 0 ? [partNumber, ''] : [partNumber.slice(0, dot), partNumber.slice(dot + 1)];
 }
@@ -70,7 +70,7 @@ function completeBaseName(path: string): string {
   return dot < 0 ? name : name.slice(0, dot);
 }
 
-function readColour(token: string): ColorSpec {
+function readColor(token: string): ColorSpec {
   if (/^0x/i.test(token)) {
     const v = Number.parseInt(token.slice(2), 16);
     return { kind: 'argb', argb: (Number.isFinite(v) ? v >>> 0 : 0).toString(16).padStart(8, '0') };
@@ -176,13 +176,13 @@ export function readLDrawMap(text: string, lib: MapLibrary, opts: LDrawReadOptio
     // Only parts; references to submodels (.ldr) are layers, not bricks.
     const file = t.slice(i + 13).join(' ');
     if (!/\.dat$/i.test(file)) return;
-    const colour = t[i]!;
+    const color = t[i]!;
     let x = toDouble(t[i + 1]);
     const y = toDouble(t[i + 2]);
     let z = -toDouble(t[i + 3]);
     const a = toDouble(t[i + 4]);
     const c = toDouble(t[i + 6]);
-    let partNumber = `${completeBaseName(file).toUpperCase()}.${colour}`;
+    let partNumber = `${completeBaseName(file).toUpperCase()}.${color}`;
 
     const meta = lib.meta(partNumber);
     if (meta && isIgnorable(meta)) return;
@@ -217,7 +217,7 @@ export function readLDrawMap(text: string, lib: MapLibrary, opts: LDrawReadOptio
   };
 
   const parseRuler = (t: string[], i: number) => {
-    // <type> #id dist unit colour guideColour fontColour thick guideThick
+    // <type> #id dist unit color guideColor fontColor thick guideThick
     // [dash] unit "font" <geometry>. BlueBrick writes nothing at all for
     // an empty dash pattern, so detect that from the token count.
     const linear = t[i] === 'LINEAR';
@@ -226,9 +226,9 @@ export function readLDrawMap(text: string, lib: MapLibrary, opts: LDrawReadOptio
     let k = i + 2; // skip type and id
     const displayDistance = t[k++] === 'true';
     const displayUnit = t[k++] === 'true';
-    const color = readColour(t[k++] ?? '');
-    const guidelineColor = readColour(t[k++] ?? '');
-    const measureFontColor = readColour(t[k++] ?? '');
+    const color = readColor(t[k++] ?? '');
+    const guidelineColor = readColor(t[k++] ?? '');
+    const measureFontColor = readColor(t[k++] ?? '');
     const lineThickness = f(toDouble(t[k++]));
     const guidelineThickness = f(toDouble(t[k++]));
     const guidelineDashPattern: number[] = [];
@@ -353,7 +353,7 @@ export function readLDrawMap(text: string, lib: MapLibrary, opts: LDrawReadOptio
 
 const fmt = (v: number) => formatNumber(v, 'g7');
 
-function colourToken(c: ColorSpec): string {
+function colorToken(c: ColorSpec): string {
   return c.kind === 'known' ? `"${c.name}" ` : `"0x${c.argb.toLowerCase().padStart(8, '0')}" `;
 }
 
@@ -434,7 +434,7 @@ class Writer {
 
   // Same arithmetic as BlueBrick's saveOneBrickInLDRAW, in 32-bit float,
   // so the written numbers match it digit for digit.
-  private oneBrick(partNumber: string, colour: string, altitude: number, orientation: number, x: number, z: number, remap: PartMetadata | undefined, hide: boolean) {
+  private oneBrick(partNumber: string, color: string, altitude: number, orientation: number, x: number, z: number, remap: PartMetadata | undefined, hide: boolean) {
     x = f(f(x) * 20);
     z = f(f(z) * 20);
     let y = f(altitude);
@@ -460,7 +460,7 @@ class Writer {
     const sinA = f(Math.sin(angle));
     const cs = fmt(cosA);
     this.line(
-      `${hide ? HIDE : ''}1 ${colour} ${fmt(x)} ${fmt(y)} ${fmt(z)} ${cs} 0 ${fmt(sinA)} 0 1 0 ${fmt(f(-sinA))} 0 ${cs} ${partNumber}.DAT`,
+      `${hide ? HIDE : ''}1 ${color} ${fmt(x)} ${fmt(y)} ${fmt(z)} ${cs} 0 ${fmt(sinA)} 0 1 0 ${fmt(f(-sinA))} 0 ${cs} ${partNumber}.DAT`,
     );
   }
 
@@ -496,23 +496,23 @@ class Writer {
     const members: string[] = [];
 
     for (const b of layer.bricks) {
-      let [pn, colour] = splitPartAndColour(b.partNumber);
-      if (!/^[+-]?\d+$/.test(colour.trim())) continue; // sets, logos, custom parts
+      let [pn, color] = splitPartAndColor(b.partNumber);
+      if (!/^[+-]?\d+$/.test(color.trim())) continue; // sets, logos, custom parts
       const centre = this.centre(b);
       const meta = lib.meta(b.partNumber);
       if (meta?.ldraw?.alias) {
-        const [aliasPn, aliasColour] = splitPartAndColour(meta.ldraw.alias);
+        const [aliasPn, aliasColor] = splitPartAndColor(meta.ldraw.alias);
         pn = aliasPn;
-        if (aliasColour) colour = aliasColour;
+        if (aliasColor) color = aliasColor;
       }
       this.belongsTo(b.myGroup, layer.groups);
       members.push(b.myGroup);
-      this.oneBrick(pn, colour, b.altitude, b.orientation, centre.x, f(f(-centre.cy) - centre.oy), meta, hide);
+      this.oneBrick(pn, color, b.altitude, b.orientation, centre.x, f(f(-centre.cy) - centre.oy), meta, hide);
       const sleeper = meta?.ldraw?.sleeper;
       if (!meta || !sleeper || meta.connections.length === 0) continue;
 
       // Rails get a sleeper at every end (once per joint).
-      const [sleeperPn, sleeperColour] = splitPartAndColour(sleeper);
+      const [sleeperPn, sleeperColor] = splitPartAndColor(sleeper);
       const sleeperMeta = lib.meta(sleeper);
       let sleeperAltitude = f(b.altitude);
       if (sleeperMeta && sleeperAltitude !== 0) {
@@ -527,12 +527,12 @@ class Writer {
             // 12V grey sleepers clip together; next to a plain plate the plate wins.
             const other = byConnection.get(conn.linkedTo);
             const otherSleeper = other ? lib.meta(other.partNumber)?.ldraw?.sleeper : undefined;
-            if (otherSleeper) add = splitPartAndColour(otherSleeper)[0] === '767';
+            if (otherSleeper) add = splitPartAndColor(otherSleeper)[0] === '767';
           }
         }
         if (!add) continue;
         const at = this.connection(b, meta, i);
-        this.oneBrick(sleeperPn, sleeperColour, sleeperAltitude, f(f(b.orientation) + f(meta.connections[i]!.angle)), f(at.x), f(-at.y), sleeperMeta, hide);
+        this.oneBrick(sleeperPn, sleeperColor, sleeperAltitude, f(f(b.orientation) + f(meta.connections[i]!.angle)), f(at.x), f(-at.y), sleeperMeta, hide);
         sleepered.add(conn.id);
       }
     }
@@ -546,7 +546,7 @@ class Writer {
       members.push(r.myGroup);
       let text = `${hide ? HIDE : ''}${RULER}${r.kind === 'linear' ? 'LINEAR ' : 'CIRCULAR '}#${r.id} `;
       text += `${r.displayDistance} ${r.displayUnit} `;
-      text += colourToken(r.color) + colourToken(r.guidelineColor) + colourToken(r.measureFontColor);
+      text += colorToken(r.color) + colorToken(r.guidelineColor) + colorToken(r.measureFontColor);
       text += `${fmt(r.lineThickness)} ${fmt(r.guidelineThickness)} `;
       if (r.guidelineDashPattern.length) text += `${r.guidelineDashPattern.map(fmt).join('|')} `;
       text += `${Math.trunc(r.unit)} `;

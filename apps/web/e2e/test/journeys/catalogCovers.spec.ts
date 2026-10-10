@@ -40,7 +40,7 @@ async function halfClearPng(page: Page): Promise<Buffer> {
   return Buffer.from(b64, 'base64');
 }
 
-/** The colour of one pixel of an image on the page, read through a canvas. */
+/** The color of one pixel of an image on the page, read through a canvas. */
 async function pixel(page: Page, src: string, x: number, y: number): Promise<number[]> {
   return page.evaluate(
     async ([u, px, py]) => {
@@ -58,7 +58,7 @@ async function pixel(page: Page, src: string, x: number, y: number): Promise<num
   );
 }
 
-test('an owner uploads a cover with a background colour; it is reviewed, then shows to everyone', async ({ page }) => {
+test('an owner uploads a cover with a background color; it is reviewed, then shows to everyone', async ({ page }) => {
   // Nothing here asks for a picture that isn't there (a WAF bans bursts of 404s).
   const net = watch4xx(page);
   for (const [e, n] of [[ADMIN, 'Site Admin'], [MOD, 'Mo Derator'], [OWNER, 'Owner Olive']] as const) await ensureUser(e, n);

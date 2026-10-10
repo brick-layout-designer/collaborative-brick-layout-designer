@@ -436,7 +436,7 @@ export async function pullFromLibrary(
     const ok = await (o.confirm ?? askConfirm)({
       title: `Replace “${mod.name || 'this module'}” with version ${latest.version}?`,
       removes: 'This module was changed in this layout. Those changes are replaced by the Module library’s version.',
-      keeps: 'Its name, colours and place on the map stay. You can undo this.',
+      keeps: 'Its name, colors and place on the map stay. You can undo this.',
       confirmLabel: 'Update',
       danger: false,
     });

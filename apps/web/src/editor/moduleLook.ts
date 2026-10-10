@@ -1,35 +1,35 @@
 // A placed module's own look (sidecar fields, packages/bbm sidecar.ts):
-// whether its name shows, its outline and name colours, and the "Same
-// colour" link that keeps the two in step. Pure functions over a module
+// whether its name shows, its outline and name colors, and the "Same
+// color" link that keeps the two in step. Pure functions over a module
 // entry; mutations.ts updateSidecarModule writes the result. The desktop's
 // core/ModuleLook.h does the same.
 
 import type { SidecarModule } from '@cld/bbm';
 
-export type ModuleColourPart = 'outline' | 'name';
+export type ModuleColorPart = 'outline' | 'name';
 
-/** The default look's colours, as a colour input shows them (rgba(100,180,255) without its opacity). */
-export const MODULE_DEFAULT_COLOUR = '#64b4ff';
+/** The default look's colors, as a color input shows them (rgba(100,180,255) without its opacity). */
+export const MODULE_DEFAULT_COLOR = '#64b4ff';
 
-/** Whether the two colours move together ("Same colour", on unless turned off). */
-export function coloursLinked(m: SidecarModule): boolean {
+/** Whether the two colors move together ("Same color", on unless turned off). */
+export function colorsLinked(m: SidecarModule): boolean {
   return m.sameColor !== false;
 }
 
-/** The colour a picker shows for one part: the chosen one, or the module's own default (moduleColours). */
-export function moduleColour(m: SidecarModule, part: ModuleColourPart, fallback: string = MODULE_DEFAULT_COLOUR): string {
+/** The color a picker shows for one part: the chosen one, or the module's own default (moduleColors). */
+export function moduleColor(m: SidecarModule, part: ModuleColorPart, fallback: string = MODULE_DEFAULT_COLOR): string {
   return (part === 'outline' ? m.outlineColor : m.nameColor) ?? fallback.toLowerCase();
 }
 
-/** Whether either colour was chosen (so "Reset to default" has something to do). */
-export function hasCustomColours(m: SidecarModule): boolean {
+/** Whether either color was chosen (so "Reset to default" has something to do). */
+export function hasCustomColors(m: SidecarModule): boolean {
   return m.outlineColor !== undefined || m.nameColor !== undefined || m.sameColor === false;
 }
 
-/** Sets one part's colour; with "Same colour" on, the other part follows. */
-export function withColour(m: SidecarModule, part: ModuleColourPart, hex: string): SidecarModule {
+/** Sets one part's color; with "Same color" on, the other part follows. */
+export function withColor(m: SidecarModule, part: ModuleColorPart, hex: string): SidecarModule {
   const c = hex.toLowerCase();
-  if (coloursLinked(m)) return { ...m, outlineColor: c, nameColor: c };
+  if (colorsLinked(m)) return { ...m, outlineColor: c, nameColor: c };
   return part === 'outline' ? { ...m, outlineColor: c } : { ...m, nameColor: c };
 }
 
@@ -41,17 +41,17 @@ function omit(m: SidecarModule, ...keys: (keyof SidecarModule)[]): SidecarModule
 }
 
 /**
- * Turns "Same colour" on or off. Turning it on gives the name the
- * outline's colour (or both the default, if the outline has none).
+ * Turns "Same color" on or off. Turning it on gives the name the
+ * outline's color (or both the default, if the outline has none).
  */
-export function withSameColour(m: SidecarModule, on: boolean): SidecarModule {
+export function withSameColor(m: SidecarModule, on: boolean): SidecarModule {
   if (!on) return { ...m, sameColor: false };
   const linked = omit(m, 'sameColor', 'nameColor');
   return m.outlineColor !== undefined ? { ...linked, nameColor: m.outlineColor } : linked;
 }
 
-/** Back to the default look: both colours the module's own default colour, linked. */
-export function withDefaultColours(m: SidecarModule): SidecarModule {
+/** Back to the default look: both colors the module's own default color, linked. */
+export function withDefaultColors(m: SidecarModule): SidecarModule {
   return omit(m, 'outlineColor', 'nameColor', 'sameColor');
 }
 

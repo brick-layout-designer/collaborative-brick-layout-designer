@@ -1,7 +1,7 @@
 // The touch bar on a phone, with parts picked: every word sits inside its
 // own button (they used to run into each other on a Pixel 7), the notice
 // after Make a module sits above the bar instead of over its buttons, and
-// a picked module's sheet has Show / Hide name and Colours… as the
+// a picked module's sheet has Show / Hide name and Colors… as the
 // desktop's menus do.
 
 import { test, expect, devices, type Page } from '@playwright/test';
@@ -67,14 +67,14 @@ for (const phone of [{ name: 'Pixel 7', use: pixel7 }, { name: 'iPhone SE', use:
       expect(n.y + n.height).toBeLessThanOrEqual(b.y + 0.5);
       await bar.getByRole('button', { name: 'Module' }).tap();
 
-      // The module's sheet: Hide name, then Colours… opens the colours dialog.
+      // The module's sheet: Hide name, then Colors… opens the colors dialog.
       const modSheet = page.getByTestId('touch-module-sheet');
       await expect(modSheet.getByRole('button', { name: 'Hide name' })).toBeVisible();
       await modSheet.getByRole('button', { name: 'Hide name' }).tap();
       await expect(modSheet).toHaveCount(0);
       await bar.getByRole('button', { name: 'Module' }).tap();
       await expect(modSheet.getByRole('button', { name: 'Show name' })).toBeVisible();
-      await modSheet.getByRole('button', { name: 'Colours…' }).tap();
+      await modSheet.getByRole('button', { name: 'Colors…' }).tap();
       await expect(page.getByRole('dialog', { name: /^Module look/ })).toBeVisible();
     });
   });

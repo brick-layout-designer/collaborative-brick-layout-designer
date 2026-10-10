@@ -7,7 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { SettingsContent } from './SettingsPage';
 
 describe('Settings', () => {
-  it('offers the look, colour, text size and help, without Expert mode', () => {
+  it('offers the look, color, text size and help, without Expert mode', () => {
     render(
       <MemoryRouter>
         <SettingsContent />

@@ -58,7 +58,7 @@ describe('undo scope', () => {
     expect(layer?.type === 'brick' && layer.bricks.length).toBe(1);
   });
 
-  it('layer reorder, venue, labels and background colour are undoable', () => {
+  it('layer reorder, venue, labels and background color are undoable', () => {
     const doc = createDefaultLayoutDoc();
     const a = addLayer(doc, 'brick');
     const um = createUndoManager(doc);

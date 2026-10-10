@@ -137,7 +137,7 @@
   font-size: 112.5%;
 }
 
-/* Light theme: the status colours the dark UI used as light-on-dark
+/* Light theme: the status colors the dark UI used as light-on-dark
    (red-400 text, red-950 fills) swap ends of the scale so they stay
    readable on white. */
 :root[data-theme='light'] {
@@ -169,7 +169,7 @@
     'Noto Color Emoji';
   --font-display: 'Bricolage Grotesque', 'Figtree', ui-sans-serif, system-ui, sans-serif;
 
-  /* Semantic colours: bg-panel, text-ink, border-line, bg-accent, ... */
+  /* Semantic colors: bg-panel, text-ink, border-line, bg-accent, ... */
   --color-bg: var(--bg);
   --color-panel: var(--panel);
   --color-line: var(--line);
@@ -206,7 +206,7 @@
   --color-neutral-925: var(--n-925);
   --color-neutral-950: var(--n-950);
 
-  /* Legacy blue (the old primary colour) -> the chosen accent. */
+  /* Legacy blue (the old primary color) -> the chosen accent. */
   --color-blue-50: var(--accent-soft);
   --color-blue-100: var(--accent-soft);
   --color-blue-200: var(--accent-text);

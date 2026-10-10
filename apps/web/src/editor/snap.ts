@@ -440,9 +440,9 @@ export function lookupPart(
 ): PartWire | undefined {
   // Bricks store the catalog KEY (`<partNumber>.<colorCode>` lowercased)
   // in their `partNumber` field. The catalog's `partNumber` is just the
-  // numeric prefix WITHOUT colour code. Look up by `key` first; only
+  // numeric prefix WITHOUT color code. Look up by `key` first; only
   // fall back to a `partNumber`-only match for bricks that arrived
-  // without a colour code (group parts, some custom uploads).
+  // without a color code (group parts, some custom uploads).
   const lower = partNumber.toLowerCase();
   const direct = partsByKey.get(lower);
   if (direct) return direct;

@@ -1,5 +1,5 @@
 // Edit module: everything outside the module being edited is dimmed, and
-// the module's outline is drawn in the accent colour. The HUD layer draws
+// the module's outline is drawn in the accent color. The HUD layer draws
 // it (no clicks). The desktop's MapView draws the same in its foreground.
 
 import { Group, Line, Rect } from 'react-konva';

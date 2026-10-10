@@ -86,7 +86,7 @@ interface Bounds {
   yMax: number;
 }
 
-// Desktop draws grid lines at full pen colour (no transparency multiplier
+// Desktop draws grid lines at full pen color (no transparency multiplier
 // applied, even when the layer has a non-100 `transparency`) — see
 // MapViewPaint.cpp:84-104. The sub-step is `gridSizeInStud /
 // max(subDivisionNumber, 2)` (line 77) so a single-division grid still

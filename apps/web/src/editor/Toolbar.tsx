@@ -10,7 +10,7 @@ import { isEditableTarget } from './keyboardGuard';
 // shortcut.
 const TOOLS: { id: Tool; label: string; hint: string; shortcut: string | null; icon: ReactNode }[] = [
   { id: 'select', label: 'Select', hint: 'Select and move pieces', shortcut: 'V', icon: <path d="M5 3l14 8-6 2-2 6z" /> },
-  { id: 'paint', label: 'Paint', hint: 'Paint pieces a colour', shortcut: 'B', icon: <><path d="M4 20c0-3 2-5 5-5l6-6 3 3-6 6c0 3-2 5-5 5H4z" /><path d="M14 5l2-2 5 5-2 2" /></> },
+  { id: 'paint', label: 'Paint', hint: 'Paint pieces a color', shortcut: 'B', icon: <><path d="M4 20c0-3 2-5 5-5l6-6 3 3-6 6c0 3-2 5-5 5H4z" /><path d="M14 5l2-2 5 5-2 2" /></> },
   { id: 'erase', label: 'Erase', hint: 'Erase areas', shortcut: 'E', icon: <><path d="M16 3l5 5-11 11H5l-2-2z" /><path d="M9 21h12" /></> },
   { id: 'rulerLinear', label: 'Measure', hint: 'Measure a straight distance', shortcut: null, icon: <><path d="M3 17L17 3l4 4L7 21z" /><path d="M8 12l2 2M11 9l2 2M14 6l2 2" /></> },
   { id: 'rulerCircular', label: 'Circle', hint: 'Measure with a circle', shortcut: null, icon: <><circle cx="12" cy="12" r="8" /><path d="M12 12h8" /></> },

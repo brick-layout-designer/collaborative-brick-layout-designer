@@ -16,7 +16,7 @@ export const MODULE_FRAME_DASH: [number, number] = [6, 4];
 export const MODULE_FRAME_PARTLY_HIDDEN_DASH: [number, number] = [2, 6];
 export const MODULE_NAME_FILL = 'rgba(100,180,255,0.9)';
 export const MODULE_NAME_STROKE = 'rgba(0,0,0,0.6)';
-/** A chosen colour is drawn at the default look's opacity: 0.8 for the outline, 0.9 for the name. */
+/** A chosen color is drawn at the default look's opacity: 0.8 for the outline, 0.9 for the name. */
 export const MODULE_FRAME_ALPHA = 0.8;
 export const MODULE_NAME_ALPHA = 0.9;
 /** The full name, shown over a shortened one on hover or select: a dark pill behind it. */
@@ -148,8 +148,8 @@ export function hexToRgba(hex: string | undefined, alpha: number): string | null
 }
 
 /**
- * How one placed module is drawn: its colours (chosen, else `defaultHex`,
- * its own default colour from moduleColours, else the light blue) and
+ * How one placed module is drawn: its colors (chosen, else `defaultHex`,
+ * its own default color from moduleColors, else the light blue) and
  * whether its name shows.
  */
 export function moduleLook(mod: Pick<SidecarModule, 'outlineColor' | 'nameColor' | 'showName'>, defaultHex?: string): {
@@ -164,16 +164,16 @@ export function moduleLook(mod: Pick<SidecarModule, 'outlineColor' | 'nameColor'
   };
 }
 
-// ---- Default colours --------------------------------------------------------
+// ---- Default colors --------------------------------------------------------
 
 /**
- * Each module's own default colour comes from this palette: distinct hues,
+ * Each module's own default color comes from this palette: distinct hues,
  * light enough to read inside the name's dark outline (at least 10:1
  * against black), apart from the map's default blue (at least 1.4:1 and
  * 30° of hue), on light and dark themes alike.
  */
 export const MODULE_PALETTE = ['#FFE066', '#FFA94D', '#FCC2D7', '#E599F7', '#8CE99A', '#C0EB75', '#66D9E8', '#63E6BE'] as const;
-/** Modules this close (studs) count as neighbours, which get different colours. */
+/** Modules this close (studs) count as neighbours, which get different colors. */
 export const MODULE_NEIGHBOUR_STUDS = 4;
 
 /** FNV-1a over the id's UTF-16 code units: the same number in both apps. */
@@ -193,12 +193,12 @@ function near(a: StudBox, b: StudBox, d: number): boolean {
 }
 
 /**
- * Every module's default colour (a palette hex), from its id so it is the
+ * Every module's default color (a palette hex), from its id so it is the
  * same everywhere, stepping on through the palette when a neighbour
- * (placed earlier in the list) already has it. Chosen colours (Colours…)
+ * (placed earlier in the list) already has it. Chosen colors (Colors…)
  * don't change this; they draw over it.
  */
-export function moduleColours(modules: readonly { id: string; box: StudBox | null }[]): Map<string, string> {
+export function moduleColors(modules: readonly { id: string; box: StudBox | null }[]): Map<string, string> {
   const n = MODULE_PALETTE.length;
   const index = new Map<string, number>();
   const out = new Map<string, string>();
@@ -267,7 +267,7 @@ type Box = { x: number; y: number; width: number; height: number };
  * Lay out every module's frame and name (the drawing below and the fits
  * that must show the names use the same numbers). Names are placed
  * together (placeModuleNames), so they keep clear of parts and of each
- * other; each module gets its own default colour (moduleColours).
+ * other; each module gets its own default color (moduleColors).
  */
 export function moduleLabelLayouts(
   map: BbmMap,
@@ -295,7 +295,7 @@ export function moduleLabelLayouts(
     }
   }
   const boxes = modules.map((m) => ({ mod: m, box: moduleStudBox(m, brickById) }));
-  const colours = moduleColours(boxes.map((b) => ({ id: b.mod.id, box: b.box })));
+  const colors = moduleColors(boxes.map((b) => ({ id: b.mod.id, box: b.box })));
   const shown = boxes.filter((b): b is { mod: SidecarModule; box: StudBox } => b.box !== null);
   const placed = placeModuleNames(
     shown.map((b) => ({ id: b.mod.id, name: b.mod.name || '(module)', studs: b.box, showName: b.mod.showName !== false })),
@@ -306,20 +306,20 @@ export function moduleLabelLayouts(
   );
   return placed.map((p, i) => {
     const mod = shown[i]!.mod;
-    const look = moduleLook(mod, colours.get(mod.id));
+    const look = moduleLook(mod, colors.get(mod.id));
     const partlyHidden = hidden.size > 0 && mod.members.some((id) => hidden.has(id));
     return { ...p, partlyHidden, frameStroke: look.frameStroke, nameFill: look.nameFill };
   });
 }
 
-/** Every module's own default colour in a layout (moduleColours over where its parts are). */
-export function layoutModuleColours(map: BbmMap, modules: readonly SidecarModule[]): Map<string, string> {
+/** Every module's own default color in a layout (moduleColors over where its parts are). */
+export function layoutModuleColors(map: BbmMap, modules: readonly SidecarModule[]): Map<string, string> {
   const brickById = new Map<string, { x: number; y: number; w: number; h: number }>();
   for (const layer of map.layers) {
     if (layer.type !== 'brick' || !layer.visible) continue;
     for (const b of layer.bricks) brickById.set(b.id, { x: b.displayArea.x, y: b.displayArea.y, w: b.displayArea.width, h: b.displayArea.height });
   }
-  return moduleColours(modules.map((m) => ({ id: m.id, box: moduleStudBox(m, brickById) })));
+  return moduleColors(modules.map((m) => ({ id: m.id, box: moduleStudBox(m, brickById) })));
 }
 
 /** The bounds of a module's parts on visible sheets, in studs; null when none show. */

@@ -3,7 +3,7 @@
 //
 // Every chart is a <figure> with a title, a one-sentence text summary
 // (also its accessible name), a "Show as table" fallback and a CSV
-// download. Colours: one series per chart in the validated slot-1 blue
+// download. Colors: one series per chart in the validated slot-1 blue
 // (see the dataviz palette); text always uses the theme's ink tokens.
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
@@ -13,7 +13,7 @@ const DEFAULT_W = 600;
 const H = 180;
 const PAD = { top: 12, right: 12, bottom: 24, left: 44 };
 
-/** Series colour, light and dark (validated against --panel). */
+/** Series color, light and dark (validated against --panel). */
 export const SERIES_STYLE = `
 .cld-viz { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; }
 :root[data-theme='dark'] .cld-viz { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; }
@@ -216,7 +216,7 @@ export interface BarItem {
   detail?: string;
 }
 
-/** Ranked horizontal bars (breakdowns). Values sit at the bar tips in ink, never in the series colour. */
+/** Ranked horizontal bars (breakdowns). Values sit at the bar tips in ink, never in the series color. */
 export function BarList({
   title,
   items,

@@ -1,8 +1,8 @@
 // Journey: a module in a layout acts as one piece. Sam groups three track
 // pieces as a module; a click picks the whole module; a double-click opens
 // Edit module (Alex, editing it too, shows on the bar); Sam moves one part
-// on its own, presses Done, then recolours the module, and Alex sees the
-// new colour straight away. SHOTS=<dir> saves light and dark pictures.
+// on its own, presses Done, then recolors the module, and Alex sees the
+// new color straight away. SHOTS=<dir> saves light and dark pictures.
 
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -39,7 +39,7 @@ function bricks(page: Page): Promise<Brick[]> {
   });
 }
 
-/** The module's outline colour as the map draws it. */
+/** The module's outline color as the map draws it. */
 function frameStroke(page: Page): Promise<string | null> {
   return page.evaluate(() => {
     type N = { name: () => string; getClassName: () => string; stroke: () => string };
@@ -61,7 +61,7 @@ async function shot(page: Page, name: string) {
   await page.emulateMedia({ colorScheme: 'light' });
 }
 
-test('a module is one piece, opens with Edit module, and its new colour reaches the other browser', async ({ page, browser }) => {
+test('a module is one piece, opens with Edit module, and its new color reaches the other browser', async ({ page, browser }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1400, height: 900 });
   await ensureUser(SAM, 'Sam');
@@ -136,12 +136,12 @@ test('a module is one piece, opens with Edit module, and its new colour reaches 
   await page.mouse.click(before[0]!.sx, before[0]!.sy);
   await expect(footer(page)).toContainText('selected: 3');
 
-  // Sam recolours the module from its ⋯ menu; Alex sees it at once.
-  // Before: its own default colour, the same in both browsers.
-  const ownColour = await frameStroke(alex);
-  expect(ownColour).toMatch(/^rgba\(\d+,\d+,\d+,0\.8\)$/);
-  expect(ownColour).not.toBe('rgba(255,136,0,0.8)');
-  expect(await frameStroke(page)).toBe(ownColour);
+  // Sam recolors the module from its ⋯ menu; Alex sees it at once.
+  // Before: its own default color, the same in both browsers.
+  const ownColor = await frameStroke(alex);
+  expect(ownColor).toMatch(/^rgba\(\d+,\d+,\d+,0\.8\)$/);
+  expect(ownColor).not.toBe('rgba(255,136,0,0.8)');
+  expect(await frameStroke(page)).toBe(ownColor);
   // (The "is a module in this layout" note has gone: it sat where the click below closes Panels.)
   await expect(page.getByText(`“${NAME}” is a module in this layout`)).toBeHidden({ timeout: 10000 });
   await page.getByRole('button', { name: 'Panels', exact: true }).click();
@@ -149,7 +149,7 @@ test('a module is one piece, opens with Edit module, and its new colour reaches 
   await page.mouse.click(700, 800);
   await page.getByRole('button', { name: `More for ${NAME}` }).click();
   await page.getByTestId('module-menu-look').click();
-  await page.getByTestId('module-outline-colour').fill('#ff8800');
+  await page.getByTestId('module-outline-color').fill('#ff8800');
   await shot(page, 'module-look');
   await page.getByRole('dialog', { name: `Module look: ${NAME}` }).getByRole('button', { name: 'Done' }).click();
   await expect.poll(() => frameStroke(page)).toBe('rgba(255,136,0,0.8)');

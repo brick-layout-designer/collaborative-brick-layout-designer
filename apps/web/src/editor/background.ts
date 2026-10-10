@@ -1,4 +1,4 @@
-// Map background helpers — the background colour (with alpha) and the
+// Map background helpers — the background color (with alpha) and the
 // sidecar background image placement.
 
 import type { ColorSpec } from '@cld/model';
@@ -22,7 +22,7 @@ export function backgroundImageRectPx(
 }
 
 /**
- * ARGB colour spec as desktop writes it: `QColorDialog` with
+ * ARGB color spec as desktop writes it: `QColorDialog` with
  * ShowAlphaChannel (MainWindowMapMenu.cpp:54-55) → ColorSpec::fromArgb →
  * lowercase 8-digit `aarrggbb` (XmlPrimitives.cpp:174-180).
  */
@@ -32,7 +32,7 @@ export function argbSpec(hex: string, alpha: number): ColorSpec {
   return { kind: 'argb', argb: `${a}${rgb}` };
 }
 
-/** Picker state for a colour spec: `#rrggbb` plus alpha 0-255 (known colours are opaque). */
+/** Picker state for a color spec: `#rrggbb` plus alpha 0-255 (known colors are opaque). */
 export function hexAlpha(c: ColorSpec, fallback = '#6495ed'): { hex: string; alpha: number } {
   return { hex: colorSpecToHex(c, fallback), alpha: colorSpecAlpha(c) };
 }

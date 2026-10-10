@@ -152,7 +152,7 @@ export interface EditorState {
    */
   connectionSnap: SnapStrength;
   /**
-   * Paint colour as AARRGGBB hex (uppercase, no leading "#"). Drives
+   * Paint color as AARRGGBB hex (uppercase, no leading "#"). Drives
    * the Paint Area tool. Defaults to a 50%-alpha green similar to the
    * desktop's Preferences default (`editing/paintColor`).
    */
@@ -182,7 +182,7 @@ export interface EditorState {
    */
   wheelZoomFactor: number;
   /**
-   * Selection halo colour as RRGGBB hex (no leading #, no alpha).
+   * Selection halo color as RRGGBB hex (no leading #, no alpha).
    * Mirrors `appearance/selectionTint`. Default is desktop gold FFD700.
    */
   selectionTint: string;

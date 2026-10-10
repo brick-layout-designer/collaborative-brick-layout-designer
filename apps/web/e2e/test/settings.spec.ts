@@ -5,7 +5,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from '../helpers';
 
-test('dark theme and ocean colour persist across a reload and on the account', async ({ page }) => {
+test('dark theme and ocean color persist across a reload and on the account', async ({ page }) => {
   const email = `settings-${Date.now()}@example.com`;
   await signIn(page, email, 'Settings Tester');
   await page.goto('/settings');

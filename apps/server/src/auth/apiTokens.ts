@@ -21,7 +21,7 @@ export const TOKEN_PREFIX = 'bld_pat_';
  * - layouts:create: publish a new layout (personal or to an org).
  * - parts:read / parts:write: download the parts catalog and custom parts (write uploads them).
  * - venues:read / venues:write: list and download saved venues (write saves, renames and deletes them).
- * - account:prefs: read and change the account's appearance settings (theme, colour, text size),
+ * - account:prefs: read and change the account's appearance settings (theme, color, text size),
  *   so the desktop app can keep them in step with the web.
  */
 export const API_SCOPES = [

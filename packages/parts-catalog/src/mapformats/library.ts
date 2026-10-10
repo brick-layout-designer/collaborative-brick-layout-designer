@@ -32,7 +32,7 @@ export function rotated(v: Point, degrees: number): Point {
   return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
 }
 
-/** The part number a brick stores for a library part: `PART.COLOUR`, upper case. */
+/** The part number a brick stores for a library part: `PART.COLOR`, upper case. */
 export function partNumberOf(meta: PartMetadata): string {
   return (meta.colorCode ? `${meta.partNumber}.${meta.colorCode}` : meta.partNumber).toUpperCase();
 }

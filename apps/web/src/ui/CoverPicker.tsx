@@ -4,7 +4,7 @@
 // dragging, a zoom slider, pinching, the mouse wheel or the arrow keys, with
 // Fit (the whole picture) and Fill (cover the card). The preview is the
 // card's size and crop. A see-through picture (or the bands beside a fitted
-// one) gets a background colour. The browser draws the final 1200 × 900
+// one) gets a background color. The browser draws the final 1200 × 900
 // picture; the server checks and re-encodes it, with no metadata.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -35,7 +35,7 @@ export interface CoverPickerHandle {
 
 export type CoverMode = 'drawn' | 'upload';
 
-/** The background swatches: the theme's card colour first, then a few plain ones. */
+/** The background swatches: the theme's card color first, then a few plain ones. */
 export const SWATCHES: { label: string; value: string }[] = [
   { label: 'White', value: '#FFFFFF' },
   { label: 'Light grey', value: '#E5E7EB' },
@@ -331,8 +331,8 @@ export function CoverPicker({
                 </button>
               </div>
               {showBackground && (
-                <div className="space-y-1" role="radiogroup" aria-label="Background colour">
-                  <p className="text-muted">{pic.transparent ? 'Your picture is see-through in places. Background colour:' : 'Background colour beside the picture:'}</p>
+                <div className="space-y-1" role="radiogroup" aria-label="Background color">
+                  <p className="text-muted">{pic.transparent ? 'Your picture is see-through in places. Background color:' : 'Background color beside the picture:'}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     {[{ label: 'Same as the site', value: 'theme' }, ...SWATCHES].map((s) => (
                       <button
@@ -350,13 +350,13 @@ export function CoverPicker({
                     <label
                       className={`relative inline-flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-border ${bgChoice === 'custom' ? 'ring-2 ring-accent ring-offset-2 ring-offset-panel' : ''}`}
                       style={{ background: custom }}
-                      title="Pick a colour"
+                      title="Pick a color"
                     >
-                      <span className="sr-only">Pick a colour</span>
+                      <span className="sr-only">Pick a color</span>
                       <input
                         type="color"
                         value={custom}
-                        aria-label="Pick a background colour"
+                        aria-label="Pick a background color"
                         onChange={(e) => {
                           setCustom(e.target.value);
                           setBgChoice('custom');

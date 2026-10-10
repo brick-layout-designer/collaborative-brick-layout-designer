@@ -174,7 +174,7 @@ describe('renderMapToCanvas output size and antialias', () => {
 });
 
 describe('exportBackground', () => {
-  it('paints the layout colour, including names outside the old 11-colour table', () => {
+  it('paints the layout color, including names outside the old 11-color table', () => {
     expect(exportBackground({ backgroundColor: { kind: 'known', name: 'CornflowerBlue' } })).toBe('#6495ed');
     expect(exportBackground({ backgroundColor: { kind: 'known', name: 'Cornsilk' } })).toBe('#fff8dc');
     expect(exportBackground({ backgroundColor: { kind: 'known', name: 'DarkOliveGreen' } })).toBe('#556b2f');

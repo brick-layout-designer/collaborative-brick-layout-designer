@@ -90,7 +90,7 @@ const DIALOGS: DialogCase[] = [
   { name: 'editor map menu venue page', path: editor, on: 'tablet', open: mapItem(['Venue']) },
   ...[
     ['General info…'],
-    ['Background colour…'],
+    ['Background color…'],
     ['Background image…'],
     ['Find…'],
     ['Venue', 'Draw outline by dimensions…'],

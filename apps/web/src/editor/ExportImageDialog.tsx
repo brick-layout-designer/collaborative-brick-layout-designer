@@ -1,7 +1,7 @@
 // Export as Image / Print / PDF dialog — port of MainWindowMenus.cpp:97-312.
 //
 // All modes render the WHOLE map (content bounds + margin, over the map
-// background colour, without grid/selection/cursors) — see exportRender.ts;
+// background color, without grid/selection/cursors) — see exportRender.ts;
 // desktop exports scene->itemsBoundingRect(), never just the viewport.
 //
 // Image: explicit width/height in px with keep-aspect (or a 1×/2×/4×

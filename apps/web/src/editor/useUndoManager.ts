@@ -9,7 +9,7 @@
 // Scope: `layerData` (every brick/text/area/ruler edit), the `layers`
 // order array (add/delete/reorder layer — without it, undoing deleteLayer
 // restored the layer's data but not its id in the order, leaving an
-// invisible layer) and `meta` (general info, background colour, and the
+// invisible layer) and `meta` (general info, background color, and the
 // sidecar cache: venue, anchored labels, modules, background image).
 // Connectivity write-backs use their own untracked origin, and remote
 // updates carry the provider as origin, so neither lands on the stack.

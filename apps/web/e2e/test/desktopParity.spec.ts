@@ -305,14 +305,14 @@ test.describe('module drag ghost', () => {
   });
 });
 
-test.describe('anchored labels — colour round-trip', () => {
-  test('editing a label with a known colour keeps the colour in the doc', async ({ page }) => {
+test.describe('anchored labels — color round-trip', () => {
+  test('editing a label with a known color keeps the color in the doc', async ({ page }) => {
     await signIn(page, EMAIL, 'Parity Tester');
     const sidecar = JSON.stringify({
       schemaVersion: 1,
       bbmHashSha256: '',
       anchoredLabels: [{
-        id: '4242', text: 'Colour Test', font: { family: 'Arial', size: 24, style: 'Regular' },
+        id: '4242', text: 'Color Test', font: { family: 'Arial', size: 24, style: 'Regular' },
         color: { known: true, argb: 4294901760, name: 'Red' },
         kind: 0, targetId: '', offset: { x: 40, y: 30 }, rot: 0, minZoom: 0,
       }],
@@ -332,10 +332,10 @@ test.describe('anchored labels — colour round-trip', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Edit Anchored Label');
     await expect(dialog.locator('input[type="color"]')).toHaveValue('#ff0000');
-    await dialog.locator('input[type="text"]').first().fill('Colour Kept');
+    await dialog.locator('input[type="text"]').first().fill('Color Kept');
     await dialog.getByRole('button', { name: 'Save' }).click();
 
-    await expect.poll(async () => (await exportedLabels(page, id))[0]?.text).toBe('Colour Kept');
+    await expect.poll(async () => (await exportedLabels(page, id))[0]?.text).toBe('Color Kept');
     const raw = await (await page.request.get(`/api/layouts/${id}/export.bbm.bld`)).json() as {
       anchoredLabels: { id: string; color: unknown }[];
     };

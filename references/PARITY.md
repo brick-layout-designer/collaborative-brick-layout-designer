@@ -24,7 +24,7 @@ Web source root: this repository.
   - **Server.** It does not write files on save; it writes them on export. (`MainWindowMenus.cpp:88-90`)
 - [x] **Save As...** — layouts are server-side, so this is Map → **Download As...**: the layout as `.bbm`, LDraw `.ldr` / `.mpd`, TrackDesigner `.tdl` or 4DBrix `.ncp`. The other formats show desktop's warning that they can't hold everything (text / area / grid layers, module, label and venue data), with "Don't show this again" remembered per browser (`DownloadAsDialog.tsx`, `MainWindowFileIO.cpp` `onSaveAs`).
 - [x] **Open** other map formats — the New layout dialog and a drop on any page open `.ldr`, `.mpd`, `.tdl` and `.ncp` as well as `.bbm`, converted in the browser with each part's `<LDraw>` / `<TrackDesigner>` / `<FourDBrix>` remap from the catalog; parts the conversion skipped show in the editor's status bar, as on desktop (`mapFormats.ts`, `MainWindowFileIO.cpp:86-105`).
-- [x] **Export as Image...** — `ExportImageDialog`: width/height in px with "Keep aspect ratio (height auto)" (1×/2×/4× presets), PNG or JPEG with quality, antialias and transparent-background (PNG only) toggles; download client-side (`MainWindowMenus.cpp:132-163`). Antialias controls sprite smoothing; the browser canvas always antialiases vector shapes. Renders the whole map (content bounds ± 20 px, like desktop `itemsBoundingRect` export), not the viewport. The grid, selection halo, snap ring and HUD are hidden and the background colour is painted (`exportRender.ts`, `MainWindowMenus.cpp:97-201`). Size, aspect lock, format, JPEG quality, transparency and antialias are remembered for the next export, like desktop's `export/*` settings (`exportSettings.ts`).
+- [x] **Export as Image...** — `ExportImageDialog`: width/height in px with "Keep aspect ratio (height auto)" (1×/2×/4× presets), PNG or JPEG with quality, antialias and transparent-background (PNG only) toggles; download client-side (`MainWindowMenus.cpp:132-163`). Antialias controls sprite smoothing; the browser canvas always antialiases vector shapes. Renders the whole map (content bounds ± 20 px, like desktop `itemsBoundingRect` export), not the viewport. The grid, selection halo, snap ring and HUD are hidden and the background color is painted (`exportRender.ts`, `MainWindowMenus.cpp:97-201`). Size, aspect lock, format, JPEG quality, transparency and antialias are remembered for the next export, like desktop's `export/*` settings (`exportSettings.ts`).
 - [x] **Export as PDF...** — one A3 page, orientation from the layout's aspect, 12 mm margins, map fitted and centred, written by a small built-in PDF writer (`ExportImageDialog`)
 - [x] **Print...** (`Ctrl+P`) — tiled at actual size (1 stud = 8 mm, like desktop File → Print): each page is a paper-sized map region at the chosen DPI, with page margin and optional overlap; opens the browser print window (`ExportImageDialog`)
 - [n/a] **Quit** (`Ctrl+Q`) — browser tab close; no equivalent needed
@@ -46,11 +46,11 @@ Web source root: this repository.
 - [x] **Bring to Front / Send to Back** (`Ctrl+Shift+]` / `Ctrl+Shift+[`)
 - [x] **Rotation Step** — dropdown `90 / 45 / 22.5 / 11.25 / 5 / 1°` in editor toolbar (`editorStore.rotationStepDegrees`)
 - [x] **Rotate CW / CCW** (`Shift+R` / `R`) — uses the configured rotation step. Rotates the selection about its centroid, across layers (`MapView.cpp:1043-1110`).
-- [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / colour / rotation. Both place the text at the view centre (`MapView::addTextAtViewCenter`) on the first text layer (a new one is named "Labels"), Arial 12 pt, known colour Black, in a 10-stud-high box 0.6 × 10 per character wide, at least 20 (`MapView::addTextAtScenePos`). "Add Text Here" places it at the clicked point.
-- [x] **Insert → Anchored Label...** (`Ctrl+L`) — `AddAnchoredLabelDialog`: text, font, size, bold/italic, colour, World/Brick anchor, offset, rotation, minZoom; mutations via sidecar cache patch (`addAnchoredLabel` / `editAnchoredLabel` / `deleteAnchoredLabel` in `mutations.ts`). A new World label is placed at the viewport centre; a Brick label defaults to offset (2, −2) (`MainWindowMenus.cpp:447-457`). Editing keeps a known colour (e.g. desktop "Black") unless a new colour is picked.
-- [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint colour), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
-- [x] **Desktop defaults** — snap off, paint colour opaque #008000, Connection Points off (a selected brick still shows its free connections, `SceneBuilder.cpp:250-310`), one Module Names toggle for names and frames, on by default, frame thickness 5 px in 0.5 steps from 0.5 to 20 (`PreferencesDialog.cpp:137,152,200-207`, `SceneBuilderSidecar.cpp:233-236`).
-- [x] **Colours with alpha** — paint colour, text, ruler (line, measure, guideline), hull and grid colours all edit alpha as desktop's QColorDialog::ShowAlphaChannel (`ColorAlphaInput.tsx`); an untouched named colour is kept as named.
+- [x] **Insert → Text...** (`Ctrl+T`, or Map menu → Insert Text...) — TextDialog with font / size / bold / italic / color / rotation. Both place the text at the view centre (`MapView::addTextAtViewCenter`) on the first text layer (a new one is named "Labels"), Arial 12 pt, known color Black, in a 10-stud-high box 0.6 × 10 per character wide, at least 20 (`MapView::addTextAtScenePos`). "Add Text Here" places it at the clicked point.
+- [x] **Insert → Anchored Label...** (`Ctrl+L`) — `AddAnchoredLabelDialog`: text, font, size, bold/italic, color, World/Brick anchor, offset, rotation, minZoom; mutations via sidecar cache patch (`addAnchoredLabel` / `editAnchoredLabel` / `deleteAnchoredLabel` in `mutations.ts`). A new World label is placed at the viewport centre; a Brick label defaults to offset (2, −2) (`MainWindowMenus.cpp:447-457`). Editing keeps a known color (e.g. desktop "Black") unless a new color is picked.
+- [x] **Preferences...** (`Ctrl+,`) — General (wheel zoom, undo depth, reopen-last-file), Editing (snap, rotation, paint color), Appearance (view toggles, selection tint, module frame) tabs fully shipped (`PreferencesDialog.tsx`)
+- [x] **Desktop defaults** — snap off, paint color opaque #008000, Connection Points off (a selected brick still shows its free connections, `SceneBuilder.cpp:250-310`), one Module Names toggle for names and frames, on by default, frame thickness 5 px in 0.5 steps from 0.5 to 20 (`PreferencesDialog.cpp:137,152,200-207`, `SceneBuilderSidecar.cpp:233-236`).
+- [x] **Colors with alpha** — paint color, text, ruler (line, measure, guideline), hull and grid colors all edit alpha as desktop's QColorDialog::ShowAlphaChannel (`ColorAlphaInput.tsx`); an untouched named color is kept as named.
 - [x] **Unresolved parts** — a brick whose part the library doesn't have draws as desktop's placeholder: a dashed red outline over a translucent pink fill at its stored size (`SceneBuilder.cpp:230-242`).
 - [x] **Stacking** — within a layer bricks are drawn by altitude, lowest first, in file order among equals (`setZValue(altitude)`, `SceneBuilder.cpp:221`).
 - [x] **Grid cell indices** — like `MapView::drawCellIndices`: column labels along the origin cell's row and row labels down its column, centred in their cells, counting from 1 / A after the origin (blank at and before it), in the cell-index font sized in map units so it scales with zoom (`gridIndex.ts`). The first visible grid layer draws (`MapViewPaint.cpp:71-73`).
@@ -83,7 +83,7 @@ Web source root: this repository.
 
 ## Map menu (`MainWindowMapMenu.cpp`)
 
-- [x] **Background Colour...** — colour picker with alpha → `setBackgroundColor` mutation; written to the `.bbm` as desktop's lowercase `aarrggbb`, and the canvas renders the translucency
+- [x] **Background Color...** — color picker with alpha → `setBackgroundColor` mutation; written to the `.bbm` as desktop's lowercase `aarrggbb`, and the canvas renders the translucency
 - [x] **Background Image...** — `BackgroundImageDialog`: file upload (PNG/JPG/GIF/WebP, 10 MB), opacity slider, optional placement rect in studs (without one the image is drawn at native size, top-left at the origin); stored via `POST /api/layouts/:id/background-image`; `BackgroundImage` in sidecar; rendered as `KonvaImage` layer below all content; remove button calls `DELETE`.
 - [x] **General Info...** — Author / LUG / Event / Date / Comment dialog
 - [x] **Venue → Draw Outline...** — `venueOutline` tool: click to add vertices, dashed polygon preview with closing segment + vertex dots + hint text; Enter or right-click commits (builds `VenueEdge[]` from polygon segments, calls `setVenue`), Esc cancels. Vertices can be placed over bricks. Accessible from the Map menu and toolbar. The status bar says how to draw on entering the tool; an obstacle needs a venue outline first ("Draw the venue outline first.", `MainWindowMapMenu.cpp:160-212`).
@@ -134,7 +134,7 @@ Web source root: this repository.
 - [x] Rotate CCW / CW — header toolbar ⟲ / ⟳ buttons and keyboard `R` / `Shift+R` (`MainWindow.cpp:733-736`)
 - [x] Send to Back / Bring to Front — header toolbar "To back" / "To front" buttons and keyboard `Ctrl+Shift+[` / `Ctrl+Shift+]` (`MainWindow.cpp:738-742`)
 - [x] **Tool drop-down** — Select / Drag / Paint / Erase / Linear Ruler / Circular Ruler / Rotate / Delete (Place removed; click-from-panel is the desktop model)
-- [x] **Paint colour** swatch (HTML5 colour picker)
+- [x] **Paint color** swatch (HTML5 color picker)
 
 ---
 
@@ -258,15 +258,15 @@ Selection-aware; entries vary based on what's under the cursor:
 
 - [x] **Preferences** (`Ctrl+,`) — all three relevant tabs fully shipped:
   - General: wheel zoom factor [x], undo stack depth [x], reopen-last-file [x], new-map template [x] (on the layouts page: "Template for new layouts" marks one of your layouts, and New layout starts from its .bbm and sidecar unless unticked — `newLayoutTemplate.ts`, desktop `general/newMapTemplate`); show-splash [n/a], language [n/a]
-  - Editing: default snap step [x], default rotation step [x], default paint colour [x]
+  - Editing: default snap step [x], default rotation step [x], default paint color [x]
   - Appearance: show grid [x], always-show connections [x], selection tint [x], module frame thickness [x], show module names [x], show module frames [x], electric circuits toggle [x], export watermark [x], module label % [x], venue label px [x] (persisted `cld:venueLabelPx`, wired to `VenueOverlay` label fontSize)
   - Library: module library folder [n/a — server-side]; additional parts library paths → replaced by admin-installed part libraries (org-selectable)
   - Import: LDraw/Studio/LDD [n/a] — not planned
 - [x] **Part Library management** — platform-admin installs libraries, org-admin enables/disables per library (`apps/web/src/admin/AdminPage.tsx` Libraries tab; `apps/web/src/orgs/OrgDetailPage.tsx` Part libraries section)
 - [n/a] **Library Paths** dialog (legacy local-path model) — superseded by server-side part library manager
 - [x] **Find & Replace** — modeless, live selection of matches; Replace (current match) and Replace All for text cells and part numbers, one undo step each (`FindDialog.cpp:150-189`)
-- [x] **Layer Options** dialog — `LayerOptionsDialog.tsx` (form model in `layerOptions.ts`), opened by double-clicking a layer row or from the context menu. Fields: name, transparency, visible, hull visibility/colour/thickness (`MainWindow.cpp:146-265`). OK writes only the changed fields, as one undo step.
-  - [x] Grid-layer options: cell size (1-512), line thickness, sub-divisions (2-32), display grid / sub-grid / cell-index labels (`MainWindow.cpp:172-202`). Grid, sub-grid and cell-index colours are a web extra (vanilla BlueBrick has them; the desktop dialog does not).
+- [x] **Layer Options** dialog — `LayerOptionsDialog.tsx` (form model in `layerOptions.ts`), opened by double-clicking a layer row or from the context menu. Fields: name, transparency, visible, hull visibility/color/thickness (`MainWindow.cpp:146-265`). OK writes only the changed fields, as one undo step.
+  - [x] Grid-layer options: cell size (1-512), line thickness, sub-divisions (2-32), display grid / sub-grid / cell-index labels (`MainWindow.cpp:172-202`). Grid, sub-grid and cell-index colors are a web extra (vanilla BlueBrick has them; the desktop dialog does not).
   - [x] Brick-layer elevation labels (`MainWindow.cpp:205-216`)
   - [x] Area-layer paint cell size, 1-256 studs (`MainWindow.cpp:218-231`)
 - [x] **General Info** dialog — Author / LUG / Event / Date / Comment (`GeneralInfoDialog`)
@@ -275,7 +275,7 @@ Selection-aware; entries vary based on what's under the cursor:
 - [x] **Edit Ruler** dialog — line color/thickness, unit, guideline, label, Detach buttons (`EditRulerDialog`)
 - [x] **Add Text** dialog — text, font, size, bold, italic, color, rotation (`TextDialog` via `Ctrl+T` or context menu "Add Text Here...")
 - [x] **Edit Text** dialog (double-click or right-click on existing text cell → `TextDialog` pre-populated; patches text/font/color/orientation via `editTextCellFull`; Delete button)
-- [x] **Add / Edit Anchored Label** dialog — `AddAnchoredLabelDialog.tsx` (text, font, colour, World/Brick anchor, offset, rotation, minZoom); double-click on a rendered label opens in edit mode via `initialLabel` prop + `editAnchoredLabel` mutation; Delete button
+- [x] **Add / Edit Anchored Label** dialog — `AddAnchoredLabelDialog.tsx` (text, font, color, World/Brick anchor, offset, rotation, minZoom); double-click on a rendered label opens in edit mode via `initialLabel` prop + `editAnchoredLabel` mutation; Delete button
 - [x] **Export Image** dialog — width/height px + keep aspect, PNG/JPEG + quality, antialias, transparent background (`ExportImageDialog.tsx`, `MainWindowMenus.cpp:132-152`)
 - [x] **Venue Properties** dialog — `VenuePropertiesDialog.tsx`: name, enabled, min walkway (ft), per-edge kind/door-width/label table; Clear Venue button; wired into Map menu
 - [x] **Venue by Dimensions** dialog — `VenueDimensionsDialog.tsx`: unit, origin, segment table with compass-preset angles and Rectangle preset; wired into Map menu
@@ -312,11 +312,11 @@ Selection-aware; entries vary based on what's under the cursor:
 
 - [x] Layer-ordered draw, per-layer transparency, per-layer visibility
 - [x] Brick sprite from part GIF; pxPerStud-aware scaling for hi-DPI imports
-- [x] **Connection-point dots** (free vs linked colour, gold for active CP); always rendered (dimmed when unselected, full-bright on selection)
+- [x] **Connection-point dots** (free vs linked color, gold for active CP); always rendered (dimmed when unselected, full-bright on selection)
 - [x] **Hull / outline polygon** — `<hull>` pixel-space polygon parsed from XML into `PartMetadata.hullPts` + `PartWire.hullPts`; rendered as a closed `<Line>` polygon in `BrickLayer.tsx` when ≥3 points available; falls back to sprite bounding rect for parts without a `<hull>` element (184 parts ship explicit hulls)
 - [x] **Elevation badge** labels (per `view/brickElevation` + per-layer `displayBrickElevation`; non-zero altitude only)
 - [x] **Electric circuit** overlay — `ElectricCircuitLayer.tsx` / `electricCircuits.ts`: port of `SceneBuilderElectric.cpp`. A circuit joins a part's opposite plugs (+N / −N, 0 = none, `PartsLibrary.cpp` buildElectricCircuits); BFS polarity propagation follows `LinkedTo` (a connection id) into the partner brick; OrangeRed / Cyan parallel rail lines offset 2px perpendicular to circuit centreline; orange diamond shortcut markers; gated by `showElectricCircuits` toggle; rendered above bricks (z=500)
-- [x] Grid + sub-grid line drawing, with colour alpha (the desktop default grid is half-transparent black)
+- [x] Grid + sub-grid line drawing, with color alpha (the desktop default grid is half-transparent black)
 - [x] **Grid cell-index labels** ("A1", "B1", ...) when the Grid layer's `DisplayCellIndex` is on (`render/gridIndex.ts`, `GridLayer.tsx`). Letters or numbers per axis from `CellIndexColumnType` / `CellIndexRowType`, counted from `CellIndexCorner`, drawn at a constant screen size. The desktop port keeps the fields and the checkbox but draws nothing; this follows vanilla BlueBrick.
 - [x] **Sidecar background-image** painted under everything — `BackgroundImageLayer` in `EditorPage.tsx` renders sidecar `backgroundImage` as a `KonvaImage` below all canvas layers
 - [x] **Selection halo** — gold / green-when-snap-active polygon outline
@@ -405,7 +405,7 @@ mix of: server-side (per-user, sync across devices) and `localStorage`
 - [x] `view/moduleNames` → `cld:showModuleNames`; `view/moduleFrameThickness` → `cld:moduleFrameThickness` + `cld:showModuleFrames`
 - [x] `view/electricCircuits` → `cld:showElectricCircuits`; `appearance/exportWatermark` → `cld:showExportWatermark`; `view/moduleLabelPercent` → `cld:moduleLabelPercent` — all persisted and wired in Preferences → Appearance tab
 - [x] `appearance/alwaysShowConnections` → `cld:alwaysShowConnections`; when true, connection-point dots render at full brightness on all bricks (not just selected)
-- [x] `appearance/selectionTint` → `cld:selectionTint`; RRGGBB hex, colour picker in Preferences → Appearance tab; drives selection halo colour (default FFD700 gold)
+- [x] `appearance/selectionTint` → `cld:selectionTint`; RRGGBB hex, color picker in Preferences → Appearance tab; drives selection halo color (default FFD700 gold)
 - [x] `appearance/exportWatermark` → `cld:showExportWatermark`; `venue/labelPx` → `cld:venueLabelPx` (default 28, Preferences → Appearance → "Venue label size (px)")
 - [x] `general/wheelZoomFactor` → `cld:wheelZoomFactor`; slider in Preferences → General tab (0.2× – 3×); clamped 0.1–10
 - [x] `general/undoStackDepth` → `cld:undoStackDepth`; number input in Preferences → General tab (0 = unlimited); pruned in `useUndoManager` on `stack-item-added`
@@ -466,7 +466,7 @@ mix of: server-side (per-user, sync across devices) and `localStorage`
    - Group / Ungroup
    - Edit-Brick dialog (per-brick properties)
 3. **New tool modes**
-   - Paint-area / Erase-area + colour picker
+   - Paint-area / Erase-area + color picker
    - Add-text + Edit-text dialog
    - Linear-ruler / Circular-ruler draw + render + edit dialog
 4. **Side-panel parity (with moveable + persisted layout)**

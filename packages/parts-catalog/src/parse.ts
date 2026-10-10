@@ -126,7 +126,7 @@ function readLDraw(node: unknown): LDrawRemap | undefined {
   const n = node as RawNode;
   const t = (n.Translation ?? {}) as RawNode;
   let sleeper = text(n.SleeperID).trim().toUpperCase();
-  // Vanilla: a sleeper without a colour is black.
+  // Vanilla: a sleeper without a color is black.
   if (sleeper && !sleeper.includes('.')) sleeper += '.0';
   return {
     angle: num(text(n.Angle)),

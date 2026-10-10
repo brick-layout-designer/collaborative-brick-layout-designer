@@ -77,7 +77,7 @@ describe.skipIf(!existsSync(PARTS))('LDraw maps match vanilla BlueBrick', () => 
     const map = corpus('fordyce-2026.bbm');
     const back = readLDrawMap(writeLDrawMap(map, lib, 'fordyce.mpd'), lib, { mpd: true });
     // Parts the library lacks come back with a placeholder size, and parts
-    // without a numeric colour aren't written (as in BlueBrick).
+    // without a numeric color aren't written (as in BlueBrick).
     const writable = (pn: string) => /^\d+$/.test(pn.slice(pn.lastIndexOf('.') + 1)) && !!lib.meta(pn);
     expect(unmatched(bricksOf(back.map, writable), bricksOf(map, writable), false)).toBe('');
   });

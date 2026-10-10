@@ -1,7 +1,7 @@
 // CoverPicker: the fit / fill / zoom / pan arithmetic, drawing the final
 // picture (background first, then the picture where the preview shows it),
 // and the picker itself: choosing a see-through picture offers a background
-// colour, and what it composes uses the colour picked.
+// color, and what it composes uses the color picked.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -160,7 +160,7 @@ describe('CoverPicker', () => {
     expect(await h.current!.compose()).toBeNull();
   });
 
-  it('a see-through picture offers a background colour, and the picture is composed on it', async () => {
+  it('a see-through picture offers a background color, and the picture is composed on it', async () => {
     alpha = 0;
     let h: { current: CoverPickerHandle | null } = { current: null };
     render(<Harness onHandle={(x) => (h = x)} />);
@@ -183,11 +183,11 @@ describe('CoverPicker', () => {
     fireEvent.click(screen.getByLabelText('Upload your own picture'));
     await pick('image/jpeg');
     await waitFor(() => expect(screen.getByTestId('cover-preview')).toBeTruthy());
-    expect(screen.queryByRole('radiogroup', { name: 'Background colour' })).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Background color' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Fit' }));
-    expect(screen.getByRole('radiogroup', { name: 'Background colour' })).toBeTruthy();
+    expect(screen.getByRole('radiogroup', { name: 'Background color' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Fill' }));
-    expect(screen.queryByRole('radiogroup', { name: 'Background colour' })).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Background color' })).toBeNull();
   });
 
   it('refuses other kinds of file, and “Remove custom picture” goes back to the drawn one', async () => {

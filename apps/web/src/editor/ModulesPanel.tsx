@@ -343,7 +343,7 @@ function ModuleRow({
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"
             onClick={() => { setCtxMenu(null); setLookOpen(true); }}
           >
-            Colours…
+            Colors…
           </button>
           <button
             className="block w-full px-3 py-1 text-left hover:bg-neutral-700"

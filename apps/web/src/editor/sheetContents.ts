@@ -42,7 +42,7 @@ export function deleteSheetWording(layer: Layer, undoHow: string): DeleteWording
 export const SHEET_KINDS: { kind: LayerKind; label: string; about: string }[] = [
   { kind: 'brick', label: 'Parts sheet', about: 'Track, bricks and other parts' },
   { kind: 'text', label: 'Text sheet', about: 'Words on the map' },
-  { kind: 'area', label: 'Area sheet', about: 'Painted squares of colour, like grass or water' },
+  { kind: 'area', label: 'Area sheet', about: 'Painted squares of color, like grass or water' },
   { kind: 'ruler', label: 'Ruler sheet', about: 'Measurements' },
   { kind: 'grid', label: 'Grid sheet', about: 'Lines to line things up' },
 ];

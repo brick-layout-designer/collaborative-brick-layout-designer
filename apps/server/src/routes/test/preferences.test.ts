@@ -1,4 +1,4 @@
-// Account preferences (theme, colour, text size, expert mode, help
+// Account preferences (theme, color, text size, expert mode, help
 // icons, tours seen): session round-trip, validation, and which API
 // token scopes may read or change them.
 

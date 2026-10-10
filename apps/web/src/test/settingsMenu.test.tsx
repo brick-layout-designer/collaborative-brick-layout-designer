@@ -116,7 +116,7 @@ describe('Settings menu by role', () => {
       },
       {
         title: 'Look',
-        entries: ['Light or dark /settings#look', 'Colour and text size /settings#colour', 'Help and tours /settings#help'],
+        entries: ['Light or dark /settings#look', 'Color and text size /settings#color', 'Help and tours /settings#help'],
       },
     ]);
     expect(screen.getByTestId('settings-menu-who').textContent).toContain('Sam');

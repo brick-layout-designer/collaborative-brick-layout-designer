@@ -1,5 +1,5 @@
 // Runs before the app loads (a plain script, not a module, so it blocks
-// first paint): applies the last-known theme, colour and text size so a
+// first paint): applies the last-known theme, color and text size so a
 // dark-theme user never sees a flash of light. Mirrors applyTheme() in
 // src/theme/theme.ts; the React provider takes over once it mounts.
 (function () {

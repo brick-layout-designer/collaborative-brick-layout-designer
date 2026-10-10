@@ -1,6 +1,6 @@
 // Copies of a module: Duplicate or paste of exactly one picked module, and
 // the Modules panel's Duplicate, make a real module named "X (copy)" with
-// the original's look (colours, Show name). The copy is its own module:
+// the original's look (colors, Show name). The copy is its own module:
 // not linked to the Module library, and not pinned (it is there to be moved).
 
 import type { SidecarModule } from '@cld/bbm';

@@ -1,5 +1,5 @@
 // Catalog index shared by the editor: lower-cased catalog key, then the
-// bare part number for entries without a colour code, then old part
+// bare part number for entries without a color code, then old part
 // numbers (<OldNameList>, desktop PartsLibrary canonicalKey). Earlier
 // entries win, so an old name never shadows a real part.
 

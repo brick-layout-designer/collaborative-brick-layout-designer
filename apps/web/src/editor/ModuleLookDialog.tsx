@@ -1,5 +1,5 @@
 // A placed module's look: whether its name shows, its outline and name
-// colours, the "Same colour" link and Reset to default. Changes show on
+// colors, the "Same color" link and Reset to default. Changes show on
 // the map (and for everyone else) as they're made; the desktop's
 // ModuleLookDialog is the same.
 
@@ -11,16 +11,16 @@ import { useYjsSnapshot } from './useYjsSnapshot';
 import { HelpButton } from '../help/HelpButton';
 import { updateSidecarModule } from './mutations';
 import { projectDoc } from './useDocMap';
-import { layoutModuleColours } from './render/moduleLabels';
+import { layoutModuleColors } from './render/moduleLabels';
 import {
-  coloursLinked,
-  hasCustomColours,
-  moduleColour,
-  withColour,
-  withDefaultColours,
-  withSameColour,
+  colorsLinked,
+  hasCustomColors,
+  moduleColor,
+  withColor,
+  withDefaultColors,
+  withSameColor,
   withShowName,
-  type ModuleColourPart,
+  type ModuleColorPart,
 } from './moduleLook';
 
 interface Props {
@@ -29,18 +29,18 @@ interface Props {
   onClose: () => void;
 }
 
-/** How long a colour being dragged around the picker waits before it's written. */
-const COLOUR_WRITE_MS = 120;
+/** How long a color being dragged around the picker waits before it's written. */
+const COLOR_WRITE_MS = 120;
 
 export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
   // Follows the module as it changes, here or from someone else.
   useYjsSnapshot(doc);
   const modules = readSidecarFromDoc(doc)?.modules ?? [];
   const mod = modules.find((m) => m.id === moduleId) ?? null;
-  // Its own default colour, as the map draws it when none is chosen.
+  // Its own default color, as the map draws it when none is chosen.
   const map = projectDoc(doc);
-  const ownDefault = (map && layoutModuleColours(map, modules).get(moduleId)) || undefined;
-  const pending = useRef<{ part: ModuleColourPart; hex: string } | null>(null);
+  const ownDefault = (map && layoutModuleColors(map, modules).get(moduleId)) || undefined;
+  const pending = useRef<{ part: ModuleColorPart; hex: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function flush() {
@@ -48,7 +48,7 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
     timer.current = null;
     const p = pending.current;
     pending.current = null;
-    if (p) updateSidecarModule(doc, moduleId, (m) => withColour(m, p.part, p.hex));
+    if (p) updateSidecarModule(doc, moduleId, (m) => withColor(m, p.part, p.hex));
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -68,21 +68,21 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
   }, [mod, onClose]);
   if (!mod) return null;
 
-  function pick(part: ModuleColourPart, hex: string) {
+  function pick(part: ModuleColorPart, hex: string) {
     pending.current = { part, hex };
-    if (timer.current === null) timer.current = setTimeout(flush, COLOUR_WRITE_MS);
+    if (timer.current === null) timer.current = setTimeout(flush, COLOR_WRITE_MS);
   }
 
-  const linked = coloursLinked(mod);
+  const linked = colorsLinked(mod);
   const name = mod.name || '(module)';
-  const swatch = (part: ModuleColourPart, label: string) => (
+  const swatch = (part: ModuleColorPart, label: string) => (
     <label className="flex items-center justify-between gap-3 text-sm">
       <span>{label}</span>
       <input
         type="color"
         aria-label={label}
-        data-testid={`module-${part}-colour`}
-        value={moduleColour(mod, part, ownDefault)}
+        data-testid={`module-${part}-color`}
+        value={moduleColor(mod, part, ownDefault)}
         onChange={(e) => pick(part, e.target.value)}
         className="h-9 w-16 cursor-pointer rounded-lg border border-border bg-transparent"
       />
@@ -123,34 +123,34 @@ export function ModuleLookDialog({ doc, moduleId, onClose }: Props) {
           Show name
         </label>
         <div className="mt-4 space-y-3">
-          {swatch('outline', 'Outline colour')}
-          {swatch('name', 'Name colour')}
+          {swatch('outline', 'Outline color')}
+          {swatch('name', 'Name color')}
           <div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                data-testid="module-same-colour"
+                data-testid="module-same-color"
                 checked={linked}
                 onChange={(e) => {
                   flush();
-                  updateSidecarModule(doc, moduleId, (m) => withSameColour(m, e.target.checked));
+                  updateSidecarModule(doc, moduleId, (m) => withSameColor(m, e.target.checked));
                 }}
               />
-              Same colour
+              Same color
             </label>
             <p className="ml-6 mt-0.5 text-xs text-muted">
-              {linked ? 'The outline and the name change together.' : 'Set each colour on its own.'}
+              {linked ? 'The outline and the name change together.' : 'Set each color on its own.'}
             </p>
           </div>
         </div>
         <div className="mt-5 flex items-center justify-between gap-2">
           <button
             type="button"
-            disabled={!hasCustomColours(mod)}
+            disabled={!hasCustomColors(mod)}
             onClick={() => {
               pending.current = null;
               flush();
-              updateSidecarModule(doc, moduleId, withDefaultColours);
+              updateSidecarModule(doc, moduleId, withDefaultColors);
             }}
             className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-soft disabled:cursor-default disabled:opacity-40"
           >

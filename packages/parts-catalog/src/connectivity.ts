@@ -184,7 +184,7 @@ function catalogLookup(catalog: Catalog, partNumber: string): PartMetadata | und
 }
 
 /**
- * Memoised `catalogLookup` for one recompute. The colour-variant fallback
+ * Memoised `catalogLookup` for one recompute. The color-variant fallback
  * is an O(catalog) scan; without the memo every brick whose part isn't
  * keyed directly paid that scan again (hits AND misses are cached).
  */

@@ -1,5 +1,5 @@
 // A transparent sheet's alpha goes on each part, as vanilla BlueBrick draws
-// it (LayerBrick.cs: every image with the alpha colour matrix) and as the
+// it (LayerBrick.cs: every image with the alpha color matrix) and as the
 // desktop does (per-item setOpacity), so the parts under a part show
 // through. Fading the sheet as one picture made overlapping parts look solid.
 

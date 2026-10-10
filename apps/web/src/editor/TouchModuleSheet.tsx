@@ -1,5 +1,5 @@
 // A picked module's menu on a phone or tablet (the touch bar's Module
-// button): Edit module, Pin in place, Show / Hide name, Colours… and the
+// button): Edit module, Pin in place, Show / Hide name, Colors… and the
 // Module library entries (Save to library…, Update Module library version…,
 // Update from Module library), as the map's right-click menu has them.
 
@@ -17,7 +17,7 @@ export function TouchModuleSheet({ doc, moduleId, onClose }: { doc: Y.Doc; modul
   const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId);
   const library = useLibraryEntries(doc);
   const [open, setOpen] = useState(false);
-  // Colours… replaces the sheet with the colours dialog; closing it closes both.
+  // Colors… replaces the sheet with the colors dialog; closing it closes both.
   const [look, setLook] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setOpen(true));
@@ -43,7 +43,7 @@ export function TouchModuleSheet({ doc, moduleId, onClose }: { doc: Y.Doc; modul
     { id: 'edit', label: 'Edit module', onSelect: () => enterModuleEdit(mod.id) },
     { id: 'pin', label: mod.pinned ? 'Unpin' : 'Pin in place', onSelect: () => setModulePinned(doc, mod.id, !mod.pinned) },
     { id: 'name', label: hidden ? 'Show name' : 'Hide name', onSelect: () => updateSidecarModule(doc, mod.id, (m) => withShowName(m, hidden)) },
-    { id: 'look', label: 'Colours…', keepOpen: true, onSelect: () => setLook(true) },
+    { id: 'look', label: 'Colors…', keepOpen: true, onSelect: () => setLook(true) },
     ...library(mod),
   ];
   return (

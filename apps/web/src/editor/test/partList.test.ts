@@ -25,7 +25,7 @@ const parts = new Map<string, PartWire>([
 ]);
 
 describe('colorName (BlueBrick ColorTable.xml)', () => {
-  it('names LDraw colours, empty for anything else', () => {
+  it('names LDraw colors, empty for anything else', () => {
     expect(colorName('0')).toBe('Black');
     expect(colorName('1')).toBe('Blue');
     expect(colorName('set')).toBe('');
@@ -43,7 +43,7 @@ describe('percentageBar', () => {
 });
 
 describe('buildPartList', () => {
-  it('counts, colours, hidden layers, budget and per-layer groups', () => {
+  it('counts, colors, hidden layers, budget and per-layer groups', () => {
     const map = sampleMap();
     let groups = buildPartList(map, parts);
     expect(groups).toHaveLength(1);

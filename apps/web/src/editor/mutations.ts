@@ -533,7 +533,7 @@ export function ungroupBricksAcrossLayers(
  * (AreaCommands.cpp:41-68).
  *
  * `color === null` ⇒ erase the cell at (x, y); otherwise upsert the
- * cell with the new colour. All changes apply in one Yjs transaction
+ * cell with the new color. All changes apply in one Yjs transaction
  * → one undo step.
  *
  * `color` is the AARRGGBB hex string (uppercase per AreaCell.color).
@@ -653,7 +653,7 @@ export function setGeneralInfo(doc: Y.Doc, patch: GeneralInfoPatch): void {
 }
 
 /**
- * Map > Background Colour — port of `ChangeBackgroundColorCommand`
+ * Map > Background Color — port of `ChangeBackgroundColorCommand`
  * (LayerCommands.cpp). `color` is a ColorSpec (known-name or argb hex).
  */
 export function setBackgroundColor(
@@ -763,7 +763,7 @@ export function renameLayer(doc: Y.Doc, layerId: string, name: string): void {
   }, LOCAL_ORIGIN);
 }
 
-/** Set hull visibility, colour, and thickness on a brick layer — port of `LayerOptionsDialog` changes. */
+/** Set hull visibility, color, and thickness on a brick layer — port of `LayerOptionsDialog` changes. */
 export function setLayerHullProperties(
   doc: Y.Doc,
   layerId: string,
@@ -892,7 +892,7 @@ export function rulerStatusMessage(lengthStuds: number, circular: boolean): stri
 
 /**
  * A new ruler, as desktop's RulerItemBase defaults (core/RulerItem.h:22-31,
- * FontSpec.h:11-12): black (the known colour) line, guideline and
+ * FontSpec.h:11-12): black (the known color) line, guideline and
  * measure text, 1-thick solid lines, Microsoft Sans Serif 8.25.
  */
 const RULER_DEFAULTS = {
@@ -1232,7 +1232,7 @@ export interface AddTextSpec {
   text: string;
   /** Font shape — defaults applied if missing. */
   font: { family: string; size: number; style: string };
-  /** Font colour as `{ kind: 'argb', argb: '...' }` or `{ kind: 'known', name: '...' }`. */
+  /** Font color as `{ kind: 'argb', argb: '...' }` or `{ kind: 'known', name: '...' }`. */
   fontColor: { kind: 'argb'; argb: string } | { kind: 'known'; name: string };
   orientation?: number;
   textAlignment?: string;

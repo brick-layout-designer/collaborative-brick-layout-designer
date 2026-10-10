@@ -1,4 +1,4 @@
-// Design tokens: the one list of colours, type and shapes the web app
+// Design tokens: the one list of colors, type and shapes the web app
 // and the desktop app (src/ui/theme/Tokens.{h,cpp}) share. The CSS
 // variables in styles.css carry the same values; theme.test.ts checks
 // that the two agree.
@@ -75,13 +75,13 @@ export interface Accent {
   /** Text and icons drawn on `main`. */
   onMain: string;
   soft: Record<Mode, string>;
-  /** Accent-coloured text on panels (links, the active tab). */
+  /** Accent-colored text on panels (links, the active tab). */
   text: Record<Mode, string>;
 }
 
 /**
  * Contrast (WCAG 2.1), checked in theme.test.ts:
- * - `onMain` on `main` is at least 4.5:1 for every colour. Sunny's
+ * - `onMain` on `main` is at least 4.5:1 for every color. Sunny's
  *   #B8860B only reaches 3.25:1 with white, so sunny buttons use dark
  *   ink (4.97:1) instead of darkening the yellow into brown.
  * - `text` on panel, bg and soft is at least 4.5:1 in both modes.

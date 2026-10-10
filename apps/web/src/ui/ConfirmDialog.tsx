@@ -21,7 +21,7 @@ export interface ConfirmOptions {
   undo?: string;
   /** The red button. Default "Delete". */
   confirmLabel?: string;
-  /** Red (default) or the accent colour for things that aren't removals. */
+  /** Red (default) or the accent color for things that aren't removals. */
   danger?: boolean;
   /** The person types this before the button turns on. */
   typeName?: string;
