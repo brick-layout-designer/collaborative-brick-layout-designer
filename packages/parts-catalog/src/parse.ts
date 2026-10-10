@@ -71,6 +71,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
   const hullPts = readHull(root.hull);
   const snapMargin = readSnapMargin(root.SnapMargin);
   const pickShape = readPickShape(root.PickShape);
+  const designer = readDesigner(root.Designer);
   const oldNames = readOldNames(root.OldNameList);
   const ldraw = readLDraw(root.LDraw);
   const trackDesigner = readTrackDesigner(root.TrackDesigner);
@@ -101,6 +102,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     hullPts,
     ...(snapMargin ? { snapMargin } : {}),
     ...(pickShape ? { pickShape } : {}),
+    ...(designer ? { designer } : {}),
     oldNames,
     ...(ldraw ? { ldraw } : {}),
     ...(trackDesigner ? { trackDesigner } : {}),
@@ -176,6 +178,15 @@ function readFourDBrix(node: unknown): FourDBrixRemap | undefined {
     orientationDifference: Math.fround(num(text(n.OrientationDifference))),
     originConnection: int(text(n.ConnectionIndexUsedAsOrigin)),
   };
+}
+
+/** `<Designer url="https://…">Name</Designer>`; only an http(s) link is kept. */
+function readDesigner(node: unknown): { name: string; url?: string } | undefined {
+  const n = node && typeof node === 'object' ? (node as RawNode) : null;
+  const name = (n ? text(n['#text'] as never) : typeof node === 'string' || typeof node === 'number' ? String(node) : '').trim().slice(0, 120);
+  if (!name) return undefined;
+  const url = n ? text(n['@url'] as never).trim() : '';
+  return /^https?:\/\//i.test(url) ? { name, url } : { name };
 }
 
 /** `<OldNameList><OldName>4186P01</OldName>…</OldNameList>` (PartsLibrary.cpp readOldNames). */

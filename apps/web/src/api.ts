@@ -407,6 +407,8 @@ export interface PartWire {
   snapMargin?: SnapMarginWire;
   /** `<PickShape>`: an imported part's outline rings (holes too), studs around the sprite centre; absent when none. */
   pickShape?: { x: number; y: number }[][];
+  /** Who built the model an imported part was made from (`<Designer>`). */
+  designer?: { name: string; url?: string };
   source: 'bundled' | 'custom';
   /** Set on source: 'custom' so the editor can build the sprite URL. */
   customPartId: string | null;
