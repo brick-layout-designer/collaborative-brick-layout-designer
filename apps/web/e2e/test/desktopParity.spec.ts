@@ -895,8 +895,9 @@ test.describe('unresolved parts', () => {
 });
 
 test.describe('brick stacking', () => {
-  test('a brick with a higher altitude is drawn above the rest of its layer', async ({ page }) => {
-    // The first brick in the file, lifted to altitude 5.
+  test('bricks draw in the sheet\'s order, whatever their altitude (like BlueBrick)', async ({ page }) => {
+    // The first brick in the file, lifted to altitude 5: BlueBrick still draws it
+    // first (an altitude edit re-sorts the sheet; loading a file doesn't).
     const bbm = FORDYCE_BBM.replace(/(<Brick id="5">[\s\S]*?<Altitude>)0(<\/Altitude>)/, '$15$2');
     const id = await createLayout(page, bbm);
     await openEditor(page, id);
@@ -911,7 +912,7 @@ test.describe('brick stacking', () => {
       });
     await expect.poll(async () => (await position())?.index).not.toBeUndefined();
     const p = (await position())!;
-    expect(p.index).toBe(p.last);
+    expect(p.index).toBeLessThan(p.last);
   });
 });
 
