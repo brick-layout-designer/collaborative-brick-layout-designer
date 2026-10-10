@@ -913,6 +913,32 @@ test.describe('brick stacking', () => {
     await expect.poll(async () => (await position())?.index).not.toBeUndefined();
     const p = (await position())!;
     expect(p.index).toBeLessThan(p.last);
+
+    // Bring to Front puts the clicked part on top of its sheet (the drawing order is the sheet's order).
+    const orders = () => page.evaluate(() => {
+      type Node = { name: () => string; getChildren: () => Node[]; getParent: () => Node };
+      const K = (window as unknown as { Konva: { stages: { find: (f: (n: Node) => boolean) => Node[] }[] } }).Konva;
+      const parents = new Set<Node>();
+      for (const st of K.stages) for (const n of st.find((x) => /^brick-/.test(x.name()))) parents.add(n.getParent());
+      return [...parents].map((pa) => pa.getChildren().map((n) => n.name()).filter((x) => x.startsWith('brick-')));
+    });
+    const was = await orders();
+    // Over brick 5: whichever part is on top there gets picked.
+    const mid = await page.evaluate(() => {
+      type N = { getClientRect: () => { x: number; y: number; width: number; height: number }; getStage: () => { container: () => HTMLElement } };
+      const K = (window as unknown as { Konva: { stages: { findOne: (s: string) => N | undefined }[] } }).Konva;
+      const g = K.stages.map((st) => st.findOne('.brick-5')).find(Boolean)!;
+      const r = g.getClientRect();
+      const c = g.getStage().container().getBoundingClientRect();
+      return { x: c.left + r.x + r.width / 2, y: c.top + r.y + r.height / 2 };
+    });
+    await page.mouse.click(mid.x, mid.y);
+    await expect(page.locator('footer')).toContainText('selected: 1');
+    await page.keyboard.press('ControlOrMeta+Shift+BracketRight');
+    await expect.poll(async () => {
+      const now = await orders();
+      return was.some((o, i) => now[i] && now[i]!.at(-1) !== o.at(-1) && now[i]!.length === o.length);
+    }).toBe(true);
   });
 });
 
