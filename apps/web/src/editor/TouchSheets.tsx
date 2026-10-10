@@ -172,11 +172,6 @@ function SheetRow({ layer, doc, first, last, active, onMoveHere }: {
             />
             <span className="w-9 shrink-0 text-right tabular-nums">{layer.transparency}%</span>
           </label>
-          {onMoveHere && (
-            <button type="button" onClick={onMoveHere} data-testid="move-here" className="min-h-11 shrink-0 rounded-control bg-accent px-3 text-sm font-bold text-accent-ink hover:bg-accent-hover">
-              Move here
-            </button>
-          )}
           <button
             type="button"
             aria-label={`Rename ${label}`}
@@ -190,6 +185,14 @@ function SheetRow({ layer, doc, first, last, active, onMoveHere }: {
           </button>
           <button type="button" aria-label={`Delete ${label}`} onClick={() => void askDeleteSheet(doc, layer)} className={`${iconBtn} text-danger`}>
             <Trash />
+          </button>
+        </div>
+      )}
+      {onMoveHere && !renaming && (
+        // Its own line, so the Solid slider keeps its width.
+        <div className="pl-12 pr-1 pt-1">
+          <button type="button" onClick={onMoveHere} data-testid="move-here" className="min-h-11 w-full rounded-control bg-accent px-3 text-sm font-bold text-accent-ink hover:bg-accent-hover">
+            Move here
           </button>
         </div>
       )}
