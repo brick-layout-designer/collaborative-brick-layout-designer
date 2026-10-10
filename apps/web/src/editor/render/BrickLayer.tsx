@@ -460,7 +460,10 @@ const BrickGlyph = memo(function BrickGlyph({
 
     // The second press of a double-click on a hinged chain starts a flex
     // move (desktop MapView::mouseDoubleClickEvent → startFlexMove).
-    const now = performance.now();
+    // When the press happened, not when this handler got to run: on a busy
+    // page the second press of a quick double-click can be handled well
+    // after it was made (a flaky test on slow CI machines).
+    const now = Number.isFinite(e.evt.timeStamp) && e.evt.timeStamp > 0 ? e.evt.timeStamp : performance.now();
     const second = lastPress.id === brick.id && now - lastPress.time < DOUBLE_CLICK_MS;
     // The selection as it was before the double-click's first press: that
     // click may have narrowed it to this brick (desktop pressSelection_).
