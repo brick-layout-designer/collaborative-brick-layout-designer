@@ -185,7 +185,7 @@ export function PartsPanel({
             const desc = p.description ?? '';
             const captionShort = desc.length > 28 ? desc.slice(0, 27) + '…' : desc;
             const caption = captionShort || p.key;
-            const tooltip = desc ? `${desc}\n(${p.key})` : p.key;
+            const tooltip = (desc ? `${desc}\n(${p.key})` : p.key) + (p.designer ? `\nDesigned by ${p.designer.name}` : '');
             const used = usage?.get(p.key.toLowerCase())?.count ?? 0;
             const limit = usage ? effectiveLimit(budgetLimits!, p.key, defaultInfinite) : -1;
             const over = usage !== null && limit >= 0 && used > limit;

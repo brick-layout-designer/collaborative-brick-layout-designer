@@ -58,6 +58,19 @@ export function EditBrickDialog({ brick, layerId, doc, meta, onClose }: Props) {
       >
         <h2 className="text-base font-semibold">Edit brick</h2>
         <p className="mt-1 text-xs text-muted">id {brick.id}</p>
+        {meta?.designer && (
+          // Credit for whoever built an imported model (desktop import dialog).
+          <p className="mt-1 text-sm" data-testid="part-designer">
+            Designed by{' '}
+            {meta.designer.url ? (
+              <a href={meta.designer.url} target="_blank" rel="noreferrer noopener" className="font-semibold text-accent-text underline">
+                {meta.designer.name}
+              </a>
+            ) : (
+              <span className="font-semibold">{meta.designer.name}</span>
+            )}
+          </p>
+        )}
         <div className="mt-4 grid grid-cols-[10rem_1fr] gap-2 text-sm">
           <label className="self-center">Part:</label>
           <input

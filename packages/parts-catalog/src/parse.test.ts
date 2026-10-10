@@ -293,3 +293,23 @@ describe('<PickShape>', () => {
     expect(parsePartXml(tiny, { partNumber: 'a', colorCode: '', spritePath: '' }).pickShape).toBeUndefined();
   });
 });
+
+describe('<Designer>: who built an imported model', () => {
+  const xml = (designer: string) =>
+    `<?xml version="1.0"?><part><Author>me</Author>${designer}<ImageURL></ImageURL></part>`;
+  const parse = (designer: string) => parsePartXml(xml(designer), { partNumber: 'MARKET', colorCode: '', spritePath: '' });
+
+  it('reads the name and an http(s) link', () => {
+    expect(parse('<Designer url="https://example.com/sam">Sam Builder</Designer>').designer).toEqual({
+      name: 'Sam Builder',
+      url: 'https://example.com/sam',
+    });
+    expect(parse('<Designer>Sam</Designer>').designer).toEqual({ name: 'Sam' });
+  });
+
+  it('drops a link that isn’t a web page, and an empty name', () => {
+    expect(parse('<Designer url="javascript:alert(1)">Sam</Designer>').designer).toEqual({ name: 'Sam' });
+    expect(parse('<Designer url="https://example.com"> </Designer>').designer).toBeUndefined();
+    expect(parse('').designer).toBeUndefined();
+  });
+});

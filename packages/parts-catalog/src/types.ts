@@ -119,6 +119,11 @@ export interface PartMetadata {
    */
   pickShape?: { x: number; y: number }[][];
   /**
+   * `<Designer url="…">Name</Designer>`: who built the model an imported
+   * part was made from (the desktop's import dialog). Absent when none.
+   */
+  designer?: { name: string; url?: string };
+  /**
    * Earlier part numbers (`<OldNameList><OldName>`); maps and budgets
    * that use one resolve to this part (desktop PartsLibrary canonicalKey).
    * Optional so hand-built test metadata can leave it out.
