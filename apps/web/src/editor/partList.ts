@@ -13,7 +13,7 @@ export const COLUMN_TITLES = ['Part', 'In Use', 'Color', 'Description', 'Budgete
 export interface PartListRow {
   /** Part id as used on the map, upper-cased ("2865.8"). */
   partNumber: string;
-  /** Part number without the colour code ("2865"). */
+  /** Part number without the color code ("2865"). */
   part: string;
   colorName: string;
   description: string;

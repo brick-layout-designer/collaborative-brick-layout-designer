@@ -120,8 +120,8 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
 
         <fieldset className="mt-4 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Line</legend>
-          <Row label="Colour">
-            <ColorAlphaInput label="Line colour" value={color} onChange={setColor} />
+          <Row label="Color">
+            <ColorAlphaInput label="Line color" value={color} onChange={setColor} />
           </Row>
           <Row label="Thickness">
             <NumberField value={lineThickness} setValue={setLineThickness} step={0.5} min={0.5} />
@@ -183,15 +183,15 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               </label>
             </div>
           </Row>
-          <Row label="Colour">
-            <ColorAlphaInput label="Measure colour" value={fontColor} onChange={setFontColor} />
+          <Row label="Color">
+            <ColorAlphaInput label="Measure color" value={fontColor} onChange={setFontColor} />
           </Row>
         </fieldset>
 
         <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
           <legend className="px-1 text-xs uppercase tracking-wider text-muted">Guidelines</legend>
-          <Row label="Colour">
-            <ColorAlphaInput label="Guideline colour" value={guidelineColor} onChange={setGuidelineColor} />
+          <Row label="Color">
+            <ColorAlphaInput label="Guideline color" value={guidelineColor} onChange={setGuidelineColor} />
           </Row>
           <Row label="Thickness">
             <NumberField
@@ -326,7 +326,7 @@ function NumberField({
 }
 
 /**
- * The colour to write: the original when unchanged (so a known colour
+ * The color to write: the original when unchanged (so a known color
  * like "Black" stays named), else the edited `aarrggbb`, alpha included.
  */
 function colorOut(original: ColorSpec, argb: string): ColorSpec {

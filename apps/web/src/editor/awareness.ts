@@ -17,7 +17,7 @@ export interface AwarenessUser {
   id: string;
   displayName: string;
   avatarUrl: string | null;
-  /** Deterministic per (user_id, layout_id) so a user has the same colour everywhere. */
+  /** Deterministic per (user_id, layout_id) so a user has the same color everywhere. */
   color: string;
 }
 
@@ -51,8 +51,8 @@ const COLOR_PALETTE = [
 ];
 
 /**
- * Deterministic colour for a user-on-a-layout. Plan §4.5 calls this
- * out: same user always gets the same colour for the same map, so
+ * Deterministic color for a user-on-a-layout. Plan §4.5 calls this
+ * out: same user always gets the same color for the same map, so
  * peers don't visually swap mid-session.
  */
 export function deterministicColor(userId: string, layoutId: string): string {

@@ -1,5 +1,5 @@
-// Map > Background Colour dialog — port of MainWindowMapMenu.cpp:48-60:
-// a colour picker with an alpha channel (QColorDialog::ShowAlphaChannel),
+// Map > Background Color dialog — port of MainWindowMapMenu.cpp:48-60:
+// a color picker with an alpha channel (QColorDialog::ShowAlphaChannel),
 // written to the .bbm as desktop does (lowercase `aarrggbb`).
 
 import { useState } from 'react';
@@ -28,7 +28,7 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
 
   return (
     <div
-      role="dialog" aria-label="Background colour"
+      role="dialog" aria-label="Background color"
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/60"
       onClick={onClose}
@@ -37,7 +37,7 @@ export function BackgroundColorDialog({ current, doc, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
         className="w-[24rem] rounded-lg border border-line bg-panel p-5 shadow-xl"
       >
-        <h2 className="text-base font-semibold">Background colour</h2>
+        <h2 className="text-base font-semibold">Background color</h2>
         <div className="mt-4 flex items-center gap-3 text-sm">
           <input
             type="color"

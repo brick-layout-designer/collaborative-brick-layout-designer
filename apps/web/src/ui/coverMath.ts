@@ -94,7 +94,7 @@ export interface CoverCtx {
 /**
  * Draw the cover on a `w` × `h` canvas (the card, or the preview: the same
  * 4:3 shape, so one scale): the background first, so a see-through picture, or the bands
- * beside a fitted one, show that colour; then the picture.
+ * beside a fitted one, show that color; then the picture.
  */
 export function composeCover(ctx: CoverCtx, img: CanvasImageSource, size: Size, c: Crop, background: string, w = CARD_W, h = CARD_H): void {
   const s = w / CARD_W;

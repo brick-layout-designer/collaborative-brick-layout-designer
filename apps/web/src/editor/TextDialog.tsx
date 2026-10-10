@@ -40,7 +40,7 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
   const styleStr = (initial?.font.style ?? '').toLowerCase();
   const [isBold, setIsBold] = useState(styleStr.includes('bold'));
   const [isItalic, setIsItalic] = useState(styleStr.includes('italic'));
-  // Initial colour with alpha; a known colour (e.g. "Red") resolves to its value.
+  // Initial color with alpha; a known color (e.g. "Red") resolves to its value.
   const initArgb = initial ? colorSpecToArgb(initial.fontColor) : 'FF000000';
   const [colorArgb, setColorArgb] = useState(initArgb.toUpperCase());
   const [rotation, setRotation] = useState(initial?.orientation ?? 0);
@@ -105,8 +105,8 @@ export function TextDialog({ initial, onClose, onCommit, onDelete }: Props) {
               Italic
             </label>
           </div>
-          <label className="self-center">Colour:</label>
-          <ColorAlphaInput label="Text colour" value={colorArgb} onChange={(v) => setColorArgb(v.toUpperCase())} />
+          <label className="self-center">Color:</label>
+          <ColorAlphaInput label="Text color" value={colorArgb} onChange={(v) => setColorArgb(v.toUpperCase())} />
           <label className="self-center">Rotation (°):</label>
           <input
             type="number"

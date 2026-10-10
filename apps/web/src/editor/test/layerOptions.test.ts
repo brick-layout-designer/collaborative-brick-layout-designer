@@ -19,8 +19,8 @@ function layerById<T>(doc: Y.Doc, id: string): T {
   return docToBbm(doc).layers.find((l) => l.id === id) as T;
 }
 
-describe('colour helpers', () => {
-  it('converts known and ARGB colours', () => {
+describe('color helpers', () => {
+  it('converts known and ARGB colors', () => {
     expect(colorSpecToHex({ kind: 'known', name: 'CornflowerBlue' })).toBe('#6495ed');
     expect(colorSpecToHex({ kind: 'argb', argb: '80FF0000' })).toBe('#ff0000');
     expect(colorSpecAlpha({ kind: 'argb', argb: '80000000' })).toBe(128);
@@ -57,7 +57,7 @@ describe('addLayer', () => {
 });
 
 describe('layerOptionsPatch', () => {
-  it('is empty when nothing changed, so stored colour specs stay untouched', () => {
+  it('is empty when nothing changed, so stored color specs stay untouched', () => {
     const doc = new Y.Doc();
     const id = ensureBrickLayer(doc);
     const layer = layerById<LayerBrick>(doc, id);

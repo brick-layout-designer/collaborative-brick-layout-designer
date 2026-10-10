@@ -1,6 +1,6 @@
 // Export the WHOLE map, not just the visible viewport — desktop renders
 // `scene->itemsBoundingRect()` plus a 20 px margin (MainWindowMenus.cpp:102,
-// 178), onto the map background colour, without the view-only chrome
+// 178), onto the map background color, without the view-only chrome
 // (grid, selection, snap ring, cursors), which desktop paints in
 // drawBackground / drawForeground rather than as scene items.
 
@@ -172,7 +172,7 @@ export function clampExportSize(width: number, height: number): { width: number;
 }
 
 /**
- * CSS colour the export paints under the map: the layout's background,
+ * CSS color the export paints under the map: the layout's background,
  * alpha included. A known name the table can't resolve paints black, like
  * desktop QColor(name) (XmlPrimitives.cpp:72-77).
  */
@@ -200,7 +200,7 @@ export interface ExportOptions {
   /**
    * Render exactly this map region (studs) instead of the whole map — one
    * print tile. It may extend past the content; that part shows the
-   * background colour.
+   * background color.
    */
   regionStuds?: StudRect;
   /**
@@ -301,7 +301,7 @@ export function paintGridLines(
  * Render the full map to a canvas: the stage is temporarily reset to
  * 1:1 at the content origin, view-only chrome (nodes named
  * `EXPORT_HIDE` plus the HUD layer) is hidden, and the result is
- * composited over the map background colour. Everything is restored
+ * composited over the map background color. Everything is restored
  * before returning. Null for an empty map.
  */
 export function renderMapToCanvas(

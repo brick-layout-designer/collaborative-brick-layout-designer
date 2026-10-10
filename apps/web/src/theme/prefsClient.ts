@@ -1,5 +1,5 @@
 // Talks to GET/PUT /api/me/preferences. Writes are debounced: flicking
-// through the colours in Settings sends one PUT with the last choice,
+// through the colors in Settings sends one PUT with the last choice,
 // not one per click. Only the keys that changed are sent; the server
 // merges them onto what it has.
 

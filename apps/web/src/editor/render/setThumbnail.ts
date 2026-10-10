@@ -170,7 +170,7 @@ async function composeSetThumbnail(
 
 /**
  * Subparts reference parts by their full key (e.g. `TS_TRACK18S.8`),
- * but the case of the colour code can vary. The map is lowercase-keyed,
+ * but the case of the color code can vary. The map is lowercase-keyed,
  * so try lowercase first; fall back to a partNumber-only walk.
  */
 function findByPartNumber(

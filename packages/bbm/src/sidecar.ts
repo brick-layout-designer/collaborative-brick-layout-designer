@@ -48,11 +48,11 @@ export interface SidecarModule {
   // differs from the default, so a sidecar without them reads as before.
   /** Its name shows on the map (absent: true). The layout-wide View ▸ Module names still applies. */
   showName?: boolean;
-  /** Its outline colour, `#rrggbb` (absent: the default light blue). */
+  /** Its outline color, `#rrggbb` (absent: the default light blue). */
   outlineColor?: string;
-  /** Its name colour, `#rrggbb` (absent: the default light blue). */
+  /** Its name color, `#rrggbb` (absent: the default light blue). */
   nameColor?: string;
-  /** "Same colour": the outline and name colours change together (absent: true). */
+  /** "Same color": the outline and name colors change together (absent: true). */
   sameColor?: boolean;
   /** Pinned in place: it can't be moved as a whole (Edit module still works). Absent: false. */
   pinned?: boolean;

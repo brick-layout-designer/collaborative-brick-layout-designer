@@ -38,7 +38,7 @@ describe('Map menu', () => {
     const { menu } = setup();
     expect(outline(menu).map((e) => (typeof e === 'object' && e !== null ? Object.keys(e)[0] : e))).toEqual([
       'File', '—',
-      'General info…', 'Background colour…', 'Background image…', 'Find…', '—',
+      'General info…', 'Background color…', 'Background image…', 'Find…', '—',
       'Insert', 'Modules & sets', 'Venue', 'View', 'Budget', 'Download & export', '—',
       'Preferences…',
     ]);

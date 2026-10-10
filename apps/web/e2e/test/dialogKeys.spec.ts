@@ -45,7 +45,7 @@ test('Escape closes the dialogs, and the map keys wait while one is open', async
   // Every entry that opens a dialog closes with Escape.
   for (const [path, name] of [
     [['General info…'], 'General info'],
-    [['Background colour…'], 'Background colour'],
+    [['Background color…'], 'Background color'],
     [['Background image…'], 'Background image'],
     [['Download & export', 'Export as image…'], 'Export / Print'],
     [['Modules & sets', 'Import .bbm as module…'], 'Import .bbm as module'],

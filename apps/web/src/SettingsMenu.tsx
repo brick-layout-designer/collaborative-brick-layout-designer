@@ -5,7 +5,7 @@
 //   Help            the tours · help buttons on/off · all help topics ·
 //                   keyboard shortcuts (not on phones)
 //   Account         Profile and name · Sign-in methods · Devices · Sign out
-//   Look            Light or dark · Colour and text size · Help and tours ·
+//   Look            Light or dark · Color and text size · Help and tours ·
 //                   Install the app (only where installing is offered)
 //   Admin settings  one entry per admin tab (moderators: Moderation only)
 //
@@ -79,7 +79,7 @@ export function settingsMenuGroups(
   }
   const look: Entry[] = [
     { label: 'Light or dark', to: '/settings#look' },
-    { label: 'Colour and text size', to: '/settings#colour' },
+    { label: 'Color and text size', to: '/settings#color' },
     { label: 'Help and tours', to: '/settings#help' },
   ];
   if (opts.installOffered) look.push({ label: 'Install the app', to: '/settings#install' });

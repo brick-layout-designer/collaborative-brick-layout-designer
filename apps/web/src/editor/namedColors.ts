@@ -1,7 +1,7 @@
-// CSS / SVG named colours — what desktop resolves a .bbm known colour
+// CSS / SVG named colors — what desktop resolves a .bbm known color
 // with (`QColor(name)`, XmlPrimitives.cpp:72-77), keyed lower-case.
 // Generated from the CSS Color 4 table; a .NET KnownColor outside it
-// (e.g. a system colour like Control) resolves to black, as on desktop.
+// (e.g. a system color like Control) resolves to black, as on desktop.
 
 export const NAMED_COLORS: Readonly<Record<string, string>> = {
   aliceblue: '#f0f8ff',

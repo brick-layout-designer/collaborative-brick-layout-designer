@@ -1,6 +1,6 @@
-// LDraw colour names (English) from BlueBrick's ColorTable.xml, as desktop
+// LDraw color names (English) from BlueBrick's ColorTable.xml, as desktop
 // parts::colorName uses for the part list (generated from
-// src/parts/data/ColorTable.xml; 77 colours).
+// src/parts/data/ColorTable.xml; 77 colors).
 
 const COLOR_NAMES: Readonly<Record<number, string>> = {
   0: 'Black',
@@ -82,7 +82,7 @@ const COLOR_NAMES: Readonly<Record<number, string>> = {
   511: 'Rubber White',
 };
 
-/** Name of LDraw colour `code` ("0" → "Black"); empty for an unknown or non-numeric code. */
+/** Name of LDraw color `code` ("0" → "Black"); empty for an unknown or non-numeric code. */
 export function colorName(code: string): string {
   if (!/^\d+$/.test(code.trim())) return '';
   return COLOR_NAMES[Number(code)] ?? '';

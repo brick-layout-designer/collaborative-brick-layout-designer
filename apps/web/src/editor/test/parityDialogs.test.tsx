@@ -1,5 +1,5 @@
 // Component tests for the desktop-parity dialog changes: anchored-label
-// placement defaults and colour round-trip, Find & Replace buttons, the
+// placement defaults and color round-trip, Find & Replace buttons, the
 // Budget dialog writing to the doc, and the Export Image options.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -71,12 +71,12 @@ describe('AddAnchoredLabelDialog', () => {
     expect([numberInputs()[1]!.value, numberInputs()[2]!.value]).toEqual(['2', '-2']);
   });
 
-  it('edit mode shows a known colour and keeps it on save (no FF000000 rewrite)', () => {
+  it('edit mode shows a known color and keeps it on save (no FF000000 rewrite)', () => {
     const doc = createDefaultLayoutDoc();
     addAnchoredLabel(doc, KNOWN_RED);
     render(<AddAnchoredLabelDialog doc={doc} defaultTargetId={null} initialLabel={KNOWN_RED} onClose={() => {}} />);
-    const colour = document.querySelector<HTMLInputElement>('input[type="color"]')!;
-    expect(colour.value).toBe('#ff0000');
+    const color = document.querySelector<HTMLInputElement>('input[type="color"]')!;
+    expect(color.value).toBe('#ff0000');
     fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: 'Depot 2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     const [l] = labels(doc);
@@ -85,7 +85,7 @@ describe('AddAnchoredLabelDialog', () => {
     expect(l!.color).toEqual({ known: true, argb: 0xffff0000, name: 'Red' });
   });
 
-  it('edit mode writes a newly picked colour as ARGB', () => {
+  it('edit mode writes a newly picked color as ARGB', () => {
     const doc = createDefaultLayoutDoc();
     addAnchoredLabel(doc, KNOWN_RED);
     render(<AddAnchoredLabelDialog doc={doc} defaultTargetId={null} initialLabel={KNOWN_RED} onClose={() => {}} />);

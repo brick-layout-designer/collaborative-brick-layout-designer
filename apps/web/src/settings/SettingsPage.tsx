@@ -1,4 +1,4 @@
-// Settings: light or dark, colour, bigger text, help icons and how
+// Settings: light or dark, color, bigger text, help icons and how
 // strongly parts snap together. Signed in, they're stored on the account on this server (named
 // by window.location.host, since every club runs its own); signed out,
 // in this browser only. Used as a page (/settings) and as a dialog over
@@ -165,8 +165,8 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
           </div>
         </Section>
 
-        <Section id="colour" title="Colour" help="settings.colour">
-          <div className="flex flex-wrap gap-5" role="radiogroup" aria-label="Colour">
+        <Section id="color" title="Color" help="settings.color">
+          <div className="flex flex-wrap gap-5" role="radiogroup" aria-label="Color">
             {ACCENT_IDS.map((id) => {
               const a = ACCENTS[id];
               const on = prefs.accent === id;

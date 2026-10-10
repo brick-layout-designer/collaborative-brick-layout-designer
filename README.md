@@ -54,7 +54,7 @@ too, and reads and writes the same files (`.bld-layout`, and BlueBrick's
   it in place, edit it, and drop it into other layouts.
 - **Files**: open and download `.bld-layout` (the shared layout file) and
   BlueBrick `.bbm`; open LDraw, TrackDesigner and nControl maps.
-- Guided tours, ⓘ help beside each setting, light, dark and colour themes,
+- Guided tours, ⓘ help beside each setting, light, dark and color themes,
   and settings that follow your account to the desktop app.
 
 **Clubs.** Members share layouts, modules, venues and parts. A club is

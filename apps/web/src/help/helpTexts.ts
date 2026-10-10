@@ -88,10 +88,10 @@ export const HELP_TEXTS = {
     short: 'How far a piece turns each time you press R.',
     more: 'Pick 90° for square turns, or a smaller step for curves and angles. Shift+R turns the other way.',
   },
-  'toolbar.paintColour': {
-    title: 'Paint colour',
-    short: 'The colour the Paint tool uses.',
-    more: 'Pick a colour here, then choose Paint and click on the map to colour an area. It paints the ground, not the pieces.',
+  'toolbar.paintColor': {
+    title: 'Paint color',
+    short: 'The color the Paint tool uses.',
+    more: 'Pick a color here, then choose Paint and click on the map to color an area. It paints the ground, not the pieces.',
   },
   'toolbar.panels': {
     title: 'Panels',
@@ -144,7 +144,7 @@ export const HELP_TEXTS = {
   'dialog.measure': {
     title: 'Measure',
     short: 'A ruler on the map that shows a real distance.',
-    more: 'Rulers stay on the map until you delete them, so others can see them too. Change its colour, or show the length in studs, metres or feet.',
+    more: 'Rulers stay on the map until you delete them, so others can see them too. Change its color, or show the length in studs, metres or feet.',
   },
   'dialog.exportImage': {
     title: 'Export or print',
@@ -158,8 +158,8 @@ export const HELP_TEXTS = {
   },
   'dialog.moduleLook': {
     title: 'Module look',
-    short: 'This module’s own outline and name colours, and whether its name shows.',
-    more: 'With Same colour on, the outline and the name change together. Reset to default brings back the light blue. Long names wrap, get smaller, and are only cut short when nothing else fits.',
+    short: 'This module’s own outline and name colors, and whether its name shows.',
+    more: 'With Same color on, the outline and the name change together. Reset to default brings back the light blue. Long names wrap, get smaller, and are only cut short when nothing else fits.',
   },
   'module.edit': {
     title: 'Edit module',
@@ -267,9 +267,9 @@ export const HELP_TEXTS = {
     short: 'Signed in, your settings follow you to any computer.',
     more: 'They are kept with your account on this server. Signed out, they are kept in this browser only.',
   },
-  'settings.colour': {
-    title: 'Colour',
-    short: 'The colour of buttons and highlights; your bricks keep their own colours.',
+  'settings.color': {
+    title: 'Color',
+    short: 'The color of buttons and highlights; your bricks keep their own colors.',
     more: 'Pick the one you like best. It only changes how the app looks for you.',
   },
   'settings.largeText': {

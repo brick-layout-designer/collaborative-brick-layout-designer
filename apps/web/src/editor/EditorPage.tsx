@@ -1054,7 +1054,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               <RotationPicker />
               <HelpButton helpKey="toolbar.rotateStep" />
               <PaintColorPicker />
-              <HelpButton helpKey="toolbar.paintColour" />
+              <HelpButton helpKey="toolbar.paintColor" />
               <PanelsMenu
                 dock={dock.state}
                 onToggle={(id, visible) => dock.setZone(id, visible ? 'right' : 'hidden')}
@@ -2093,7 +2093,7 @@ function Canvas({
     // Bricks reference the catalog KEY (`<partNumber>.<colorCode>`
     // lowercased) in their `partNumber` field — index by that, then
     // also stash the bare `partNumber` as a fallback for entries
-    // arriving without a colour code (group parts / some custom uploads).
+    // arriving without a color code (group parts / some custom uploads).
     // Inconsistent indexing was breaking the snap helpers — see
     // editor/snap.ts `lookupPart`.
     return indexParts(catalog.data?.parts);
@@ -3988,7 +3988,7 @@ function Canvas({
       heightStuds: box.height,
       text: r.text,
       font: { family: r.fontFamily, size: r.fontSize, style: styleParts.join(',') || 'Regular' },
-      // Desktop's new text is the known colour Black.
+      // Desktop's new text is the known color Black.
       fontColor: r.colorArgb.toUpperCase() === 'FF000000' ? { kind: 'known', name: 'Black' } : { kind: 'argb', argb: r.colorArgb },
       orientation: r.rotation,
     });
@@ -4189,8 +4189,8 @@ const PHONE_LANDSCAPE_FIT_INSETS: ViewInsets = { top: 10, right: 12, bottom: 10,
 function ScaleBarHud({ zoom }: { zoom: number }) {
   const bar = scaleBar(zoom * 8); // 8 px per stud at zoom 1
   if (!bar) return null;
-  // Fixed colours, not theme tokens: the card sits on the map, whose
-  // background is the layout's own colour in either theme. It keeps clear
+  // Fixed colors, not theme tokens: the card sits on the map, whose
+  // background is the layout's own color in either theme. It keeps clear
   // of the phone's rounded corners and home bar (safe-area insets).
   return (
     <div
@@ -4316,7 +4316,7 @@ function CanvasContextMenu({
     entries.push(item('Edit module', () => onEditModule(module.id)));
     entries.push(item(module.pinned ? 'Unpin' : 'Pin in place', () => onPinModule(module.id, !module.pinned)));
     entries.push(item(module.showName === false ? 'Show name' : 'Hide name', () => onModuleShowName(module.id, module.showName === false)));
-    entries.push(item('Colours…', () => onModuleLook(module.id)));
+    entries.push(item('Colors…', () => onModuleLook(module.id)));
     entries.push(sep('sm1'));
     for (const e of libraryEntries(module)) entries.push(item(e.label, e.onSelect, !!e.disabled));
     entries.push(sep('sm2'));
@@ -5120,18 +5120,18 @@ function PanelsMenu({
 }
 
 /**
- * Paint colour swatch — port of desktop's MainWindow toolbar colour
- * button (MainWindow.cpp:578-845, "Paint colour" entry): a colour swatch
+ * Paint color swatch — port of desktop's MainWindow toolbar color
+ * button (MainWindow.cpp:578-845, "Paint color" entry): a color swatch
  * and an alpha slider. Stored value is AARRGGBB hex.
  */
 function PaintColorPicker() {
   const value = useEditorStore((s) => s.paintColor);
   const set = useEditorStore((s) => s.setPaintColor);
-  // Colour and alpha, like desktop's paint colour dialog (R6).
+  // Color and alpha, like desktop's paint color dialog (R6).
   return (
-    <label className="flex items-center gap-1 text-xs text-muted" title="Paint colour">
-      <span>Colour</span>
-      <ColorAlphaInput compact label="Paint colour" value={value} onChange={(v) => set(v.toUpperCase())} />
+    <label className="flex items-center gap-1 text-xs text-muted" title="Paint color">
+      <span>Color</span>
+      <ColorAlphaInput compact label="Paint color" value={value} onChange={(v) => set(v.toUpperCase())} />
     </label>
   );
 }

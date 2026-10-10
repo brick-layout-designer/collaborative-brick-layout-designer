@@ -205,7 +205,7 @@ describe('layout parts', () => {
       // A set the file carries takes its number too: its file is .set.xml.
       expect(nextFreePartNumber('KIT.1', withSet, { 'kit-3.1.set.xml': bytes('x') })).toBe('KIT-4.1');
       expect(nextFreePartNumber('KIT.1', withSet, {}, ['KIT-3.1'])).toBe('KIT-4.1');
-      // A bundled key is taken as well; no colour: the number goes on the end.
+      // A bundled key is taken as well; no color: the number goes on the end.
       expect(nextFreePartNumber('3001', [part({ key: '3001-2', partNumber: '3001', source: 'bundled' })])).toBe('3001-3');
     });
 

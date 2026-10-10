@@ -132,7 +132,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
   // Bricks store the catalog key (`<partNumber>.<colorCode>` lowercased)
   // in their `partNumber` field — that's how desktop CLD writes the .bbm.
   // Index by `key` so the lookup matches without a parse step. Fall back
-  // to bare `partNumber` for the rare "no colour code" entries (group
+  // to bare `partNumber` for the rare "no color code" entries (group
   // parts and some custom uploads). Built once per catalog (it used to be
   // rebuilt on every render, which also broke every glyph's memo).
   const { partsByKey, byBarePartNumber } = useMemo(() => {
@@ -1413,7 +1413,7 @@ function collectGroupMembers(map: BbmMap, groupId: string): string[] {
 }
 
 /**
- * Selection halo colours: the selection tint, or desktop's green while a
+ * Selection halo colors: the selection tint, or desktop's green while a
  * connection snap is live (SelectionOverlay.cpp:26-29).
  */
 export function selectionHalo(tint: string, snapActive: boolean): { stroke: string; fill: string } {

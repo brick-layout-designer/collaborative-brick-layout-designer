@@ -843,7 +843,7 @@ export const venueLibrary = sqliteTable('venue_library', {
 export type VenueLibraryEntry = typeof venueLibrary.$inferSelect;
 
 /**
- * Per-account appearance and help settings (theme, colour, bigger text,
+ * Per-account appearance and help settings (theme, color, bigger text,
  * expert mode, help icons, tours seen). One row per user; `prefs` is a
  * validated JSON object (see routes/preferences.ts) so new keys don't
  * need a migration. `updatedAt` lets clients that cache the settings

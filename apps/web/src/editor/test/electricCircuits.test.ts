@@ -62,9 +62,9 @@ describe('deriveCircuits', () => {
     expect(strokes.every((l) => l.width === 4)).toBe(true); // 0.5 stud
   });
 
-  it('a reversed straight keeps the colours on the same rails', () => {
+  it('a reversed straight keeps the colors on the same rails', () => {
     // b is turned round: its +1 end meets a's -1 end, so polarity flows in
-    // through b's second connection and its colours swap back.
+    // through b's second connection and its colors swap back.
     const a = brick('a', 'straight', 0, ['', 'b_c1']);
     const b = { ...brick('b', 'straight', 16, ['', 'a_c1']), orientation: 180 } as Brick;
     const { strokes } = electricOverlay(mapOf([a, b]), parts);

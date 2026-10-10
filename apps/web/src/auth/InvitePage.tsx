@@ -140,12 +140,12 @@ function Alert({
   title: string;
   body: React.ReactNode;
 }) {
-  const colour =
+  const color =
     tone === 'error'
       ? 'border-red-900 bg-red-950/30 text-red-300'
       : 'border-amber-900 bg-amber-950/30 text-amber-200';
   return (
-    <div className={`rounded-lg border ${colour} p-3 text-sm`}>
+    <div className={`rounded-lg border ${color} p-3 text-sm`}>
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-xs">{body}</p>
     </div>

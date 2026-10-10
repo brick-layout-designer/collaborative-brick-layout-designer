@@ -30,7 +30,7 @@ export const VENUE_LABEL = {
   radius: 0.75,
 } as const;
 
-/** The pill's colours by theme (light: white with a slate edge; dark: slate with a light edge). */
+/** The pill's colors by theme (light: white with a slate edge; dark: slate with a light edge). */
 export const VENUE_LABEL_THEME = {
   light: { fill: 'rgba(255,255,255,0.92)', border: 'rgba(15,23,42,0.2)', text: 'rgb(20,20,20)' },
   dark: { fill: 'rgba(30,41,59,0.92)', border: 'rgba(255,255,255,0.25)', text: 'rgb(241,245,249)' },

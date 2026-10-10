@@ -1,6 +1,6 @@
-// Colour with alpha — the web stand-in for desktop's colour buttons, which
+// Color with alpha — the web stand-in for desktop's color buttons, which
 // open QColorDialog with ShowAlphaChannel (EditDialogs.cpp:68). The value
-// is `aarrggbb` hex, as the .bbm stores unknown colours.
+// is `aarrggbb` hex, as the .bbm stores unknown colors.
 
 interface Props {
   /** `aarrggbb` (case-insensitive). */

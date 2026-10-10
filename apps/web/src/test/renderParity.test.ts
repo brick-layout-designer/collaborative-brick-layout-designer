@@ -21,7 +21,7 @@ import {
   MODULE_NEIGHBOUR_STUDS,
   MODULE_PALETTE,
   fitModuleName,
-  moduleColours,
+  moduleColors,
   moduleIdHash,
   moduleLabelLayouts,
   moduleLook,
@@ -97,21 +97,21 @@ describe('render parity: modules', () => {
     expect(kept.text!.y - settled!.text!.y).toBeCloseTo(-400 * 8, 6);
   });
 
-  it.each(SPEC.colours.cases)('gives each module its own default colour: $name', (c) => {
-    expect(Object.fromEntries(moduleColours(c.modules))).toEqual(c.expect);
+  it.each(SPEC.colors.cases)('gives each module its own default color: $name', (c) => {
+    expect(Object.fromEntries(moduleColors(c.modules))).toEqual(c.expect);
   });
 
   it('hashes ids, and keeps neighbours apart, as the shared description says', () => {
-    expect([...MODULE_PALETTE]).toEqual(SPEC.colours.palette);
-    expect(MODULE_NEIGHBOUR_STUDS).toBe(SPEC.colours.neighbourStuds);
-    for (const h of SPEC.colours.hashes) expect(moduleIdHash(h.id)).toBe(h.hash);
+    expect([...MODULE_PALETTE]).toEqual(SPEC.colors.palette);
+    expect(MODULE_NEIGHBOUR_STUDS).toBe(SPEC.colors.neighbourStuds);
+    for (const h of SPEC.colors.hashes) expect(moduleIdHash(h.id)).toBe(h.hash);
   });
 
-  it.each(SPEC.looks)('draws a module with $module in the shared colours', (c) => {
+  it.each(SPEC.looks)('draws a module with $module in the shared colors', (c) => {
     expect(moduleLook(c.module)).toEqual(c.expect);
   });
 
-  it('draws the shared colours, dash and outline', () => {
+  it('draws the shared colors, dash and outline', () => {
     expect(MODULE_FRAME_STROKE).toBe(SPEC.style.frameStroke);
     expect(MODULE_FRAME_DASH).toEqual(SPEC.style.frameDash);
     expect(MODULE_FRAME_PARTLY_HIDDEN_DASH).toEqual(SPEC.style.partlyHiddenFrameDash);
@@ -223,7 +223,7 @@ describe('render parity: venue wall labels', () => {
     });
   });
 
-  it('draws the shared pill, colours and grid fade', () => {
+  it('draws the shared pill, colors and grid fade', () => {
     expect(VENUE_LABEL).toEqual(VENUE.pill);
     expect(VENUE_LABEL_THEME).toEqual(VENUE.theme);
     expect(GRID_FADE).toBe(VENUE.gridFade);

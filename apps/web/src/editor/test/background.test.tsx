@@ -1,4 +1,4 @@
-// Map background: colour with alpha (MainWindowMapMenu.cpp:48-60,
+// Map background: color with alpha (MainWindowMapMenu.cpp:48-60,
 // XmlPrimitives.cpp:174-180) and image placement (MapViewPaint.cpp:41-67).
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -20,12 +20,12 @@ describe('backgroundImageRectPx', () => {
   });
 });
 
-describe('background colour alpha', () => {
+describe('background color alpha', () => {
   it('writes lowercase aarrggbb like desktop', () => {
     expect(argbSpec('#6495ED', 128)).toEqual({ kind: 'argb', argb: '806495ed' });
     expect(argbSpec('00ff00', 300)).toEqual({ kind: 'argb', argb: 'ff00ff00' });
   });
-  it('reads picker state back, known colours opaque', () => {
+  it('reads picker state back, known colors opaque', () => {
     expect(hexAlpha({ kind: 'argb', argb: '40112233' })).toEqual({ hex: '#112233', alpha: 64 });
     expect(hexAlpha({ kind: 'known', name: 'White' })).toEqual({ hex: '#ffffff', alpha: 255 });
   });

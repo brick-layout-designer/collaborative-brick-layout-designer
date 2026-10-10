@@ -79,7 +79,7 @@ export function ModuleOverlay({ map: committed, modules }: Props) {
   const settled = useMemo(() => moduleLabelLayouts(committed, modules, labelPercent, measureBold), [committed, modules, labelPercent]);
   const layouts = useMemo(() => {
     if (map === committed) return settled;
-    // Its colours stay too, until the drop.
+    // Its colors stay too, until the drop.
     const before = new Map(settled.map((l) => [l.id, l]));
     const keep = new Map(settled.flatMap((l) => (l.slot ? [[l.id, l.slot] as const] : [])));
     return moduleLabelLayouts(map, modules, labelPercent, measureBold, keep).map((l) => {

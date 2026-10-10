@@ -145,9 +145,9 @@ export interface LDrawRemap {
   translation: { x: number; y: number };
   /** LDU; written when the brick's altitude is 0. */
   preferredHeight: number;
-  /** `"<part>.<colour>"` sleeper put under the rails on save, or ''. */
+  /** `"<part>.<color>"` sleeper put under the rails on save, or ''. */
   sleeper: string;
-  /** `"<part>[.<colour>]"` written instead of this part, or ''. */
+  /** `"<part>[.<color>]"` written instead of this part, or ''. */
   alias: string;
 }
 

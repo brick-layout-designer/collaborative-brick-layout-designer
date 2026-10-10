@@ -43,7 +43,7 @@ export function RemoteCursors({
           {state.selection.brickIds.map((id) => {
             const brick = brickIndex.get(id);
             if (!brick) return null;
-            // Outline the brick's display area in the peer's colour
+            // Outline the brick's display area in the peer's color
             // — semi-transparent so it doesn't drown out the local
             // selection's solid blue dashes.
             return (

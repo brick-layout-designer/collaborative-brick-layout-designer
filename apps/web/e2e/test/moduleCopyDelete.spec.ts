@@ -1,6 +1,6 @@
 // Aaron's approved proposals (2026-10-06), end to end:
 // - Duplicate (Ctrl+D) and paste of exactly one picked module make a real
-//   module, "X (copy)", with the original's colours, not linked or pinned.
+//   module, "X (copy)", with the original's colors, not linked or pinned.
 // - The Modules panel's Delete deletes the module's parts (Ungroup keeps them).
 // - Undo brings them back picked, as BlueBrick does.
 // - A phone reaches Download & export, Insert and the venue designer from

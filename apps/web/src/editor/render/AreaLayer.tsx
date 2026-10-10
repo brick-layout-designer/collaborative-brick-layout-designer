@@ -2,7 +2,7 @@
 // SceneBuilder::addAreaLayer (rendering/SceneBuilder.cpp:437-457).
 //
 // Each cell is a square of side `areaCellSize` studs at world-coords
-// (cell.x * areaCellSize, cell.y * areaCellSize). The cell colour is
+// (cell.x * areaCellSize, cell.y * areaCellSize). The cell color is
 // stored as `aarrggbb` UPPERCASE hex (per AreaCell.color comment in
 // @cld/model). A cell is drawn in its RGB at the sheet's alpha, as
 // vanilla BlueBrick does (areaCellCss).
@@ -49,7 +49,7 @@ function SingleAreaLayer({ layer }: { layer: LayerArea }) {
 }
 
 /**
- * A painted cell's colour: its RGB with the sheet's alpha. Vanilla BlueBrick
+ * A painted cell's color: its RGB with the sheet's alpha. Vanilla BlueBrick
  * replaces a cell's own alpha with the sheet's, (255 × transparency) / 100
  * in whole numbers (LayerArea.cs paintCell / AlphaValue); the desktop does
  * the same. render-parity/areas.json holds the cases both apps check.

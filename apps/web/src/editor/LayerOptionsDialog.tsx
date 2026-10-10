@@ -2,7 +2,7 @@
 // MainWindow.cpp:146-265 (opened by double-clicking a layer row,
 // LayerPanel.cpp:145). Common fields: name, transparency, visibility,
 // hull. Per kind: Grid (cell size, line thickness, sub-divisions,
-// display grid / sub-grid / cell-index labels, colours), Brick
+// display grid / sub-grid / cell-index labels, colors), Brick
 // (elevation labels), Area (paint cell size). The form model and the
 // diffing live in layerOptions.ts; OK writes one undo step.
 
@@ -128,7 +128,7 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
           {number('Transparency (%)', form.transparency, 0, 100, (v) => set('transparency', v))}
           {check('Visible', form.visible, (v) => set('visible', v))}
           {check('Display selection hulls', form.hullVisible, (v) => set('hullVisible', v))}
-          {color('Hull colour', form.hullArgb, (v) => set('hullArgb', v))}
+          {color('Hull color', form.hullArgb, (v) => set('hullArgb', v))}
           {number('Hull thickness (px)', form.hullThickness, 1, 20, (v) => set('hullThickness', v))}
 
           {(form.grid || form.displayBrickElevation !== undefined || form.areaCellSize !== undefined) && (
@@ -143,9 +143,9 @@ export function LayerOptionsDialog({ layer, doc, onClose }: Props) {
               {check('Display grid', form.grid.displayGrid, (v) => setGrid('displayGrid', v))}
               {check('Display sub-grid', form.grid.displaySubGrid, (v) => setGrid('displaySubGrid', v))}
               {check('Display cell index labels', form.grid.displayCellIndex, (v) => setGrid('displayCellIndex', v))}
-              {color('Grid colour', form.grid.gridArgb, (v) => setGrid('gridArgb', v))}
-              {color('Sub-grid colour', form.grid.subGridArgb, (v) => setGrid('subGridArgb', v))}
-              {color('Cell index colour', form.grid.cellIndexArgb, (v) => setGrid('cellIndexArgb', v))}
+              {color('Grid color', form.grid.gridArgb, (v) => setGrid('gridArgb', v))}
+              {color('Sub-grid color', form.grid.subGridArgb, (v) => setGrid('subGridArgb', v))}
+              {color('Cell index color', form.grid.cellIndexArgb, (v) => setGrid('cellIndexArgb', v))}
             </>
           )}
 

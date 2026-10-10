@@ -44,8 +44,8 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
   const [fontSize, setFontSize] = useState<number>(initialLabel?.font.size ?? DEFAULT_LABEL_FONT.size);
   const [isBold, setIsBold] = useState(initStyle.includes('bold'));
   const [isItalic, setIsItalic] = useState(initStyle.includes('italic'));
-  // Known colours (desktop "Black" etc.) keep their spec unless the user
-  // picks a new colour, so an edit doesn't rewrite them as plain ARGB.
+  // Known colors (desktop "Black" etc.) keep their spec unless the user
+  // picks a new color, so an edit doesn't rewrite them as plain ARGB.
   const [colorArgb, setColorArgb] = useState(
     initialLabel ? `FF${labelColorHex(initialLabel.color)}` : 'FF000000'
   );
@@ -144,7 +144,7 @@ export function AddAnchoredLabelDialog({ doc, defaultTargetId, initialLabel, vie
           </div>
 
           <div className={rowCls}>
-            <span className={labelCls}>Colour</span>
+            <span className={labelCls}>Color</span>
             <input
               type="color"
               value={rgb}

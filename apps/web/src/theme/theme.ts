@@ -82,7 +82,7 @@ export function rootFontSize(largeText: boolean): string {
 /**
  * Put the preferences on <html>: `data-theme` (the resolved mode),
  * `data-accent`, `data-text`, the root font size and `color-scheme`.
- * The colours themselves live in styles.css keyed on these attributes.
+ * The colors themselves live in styles.css keyed on these attributes.
  */
 export function applyTheme(root: HTMLElement, prefs: Pick<Preferences, 'theme' | 'accent' | 'largeText'>, systemDark: boolean): Mode {
   const mode = resolveMode(prefs.theme, systemDark);

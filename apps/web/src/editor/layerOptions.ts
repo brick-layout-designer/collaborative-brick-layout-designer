@@ -5,9 +5,9 @@
 // sub-grid / cell-index labels), a Brick section (elevation labels) and
 // an Area section (paint cell size).
 //
-// The web dialog also offers the grid / sub-grid / cell-index colours
+// The web dialog also offers the grid / sub-grid / cell-index colors
 // (vanilla BlueBrick's LayerGridOptionForm has them; the desktop dialog
-// does not) and the hull colour.
+// does not) and the hull color.
 //
 // Pure: `formFromLayer` → edit → `layerOptionsPatch` gives only the fields
 // that changed, which `applyLayerOptions` writes in one transaction (one
@@ -19,17 +19,17 @@ import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { NAMED_COLORS } from './namedColors';
 
 // ---------------------------------------------------------------------------
-// Colour helpers
+// Color helpers
 // ---------------------------------------------------------------------------
 
-/** `#rrggbb` for a colour input; unknown names give `fallback`. */
+/** `#rrggbb` for a color input; unknown names give `fallback`. */
 export function colorSpecToHex(c: ColorSpec, fallback = '#000000'): string {
   if (c.kind === 'known') return NAMED_COLORS[c.name.toLowerCase()] ?? (c.name.toLowerCase() === 'transparent' ? '#000000' : fallback);
   const hex = c.argb.length === 8 ? c.argb.slice(2) : c.argb.padStart(6, '0').slice(-6);
   return `#${hex.toLowerCase()}`;
 }
 
-/** Alpha byte (0-255) of a colour; known colours are opaque except Transparent. */
+/** Alpha byte (0-255) of a color; known colors are opaque except Transparent. */
 export function colorSpecAlpha(c: ColorSpec): number {
   if (c.kind === 'known') return c.name.toLowerCase() === 'transparent' ? 0 : 255;
   if (c.argb.length !== 8) return 255;
@@ -37,7 +37,7 @@ export function colorSpecAlpha(c: ColorSpec): number {
   return Number.isFinite(a) ? a : 255;
 }
 
-/** CSS colour including alpha (desktop grid defaults are half-transparent black). */
+/** CSS color including alpha (desktop grid defaults are half-transparent black). */
 export function colorSpecToCss(c: ColorSpec, fallback = '#404040'): string {
   const hex = colorSpecToHex(c, fallback);
   const a = colorSpecAlpha(c);
@@ -46,12 +46,12 @@ export function colorSpecToCss(c: ColorSpec, fallback = '#404040'): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${+(a / 255).toFixed(3)})`;
 }
 
-/** `aarrggbb` (lowercase) for a colour, alpha included — what ColorAlphaInput edits. */
+/** `aarrggbb` (lowercase) for a color, alpha included — what ColorAlphaInput edits. */
 export function colorSpecToArgb(c: ColorSpec, fallback = '#000000'): string {
   return colorSpecAlpha(c).toString(16).padStart(2, '0') + colorSpecToHex(c, fallback).slice(1);
 }
 
-/** New ARGB spec with `hex`'s RGB, keeping the original colour's alpha. */
+/** New ARGB spec with `hex`'s RGB, keeping the original color's alpha. */
 export function withRgb(original: ColorSpec, hex: string): ColorSpec {
   const a = colorSpecAlpha(original).toString(16).padStart(2, '0');
   return { kind: 'argb', argb: `${a}${hex.replace('#', '').toLowerCase()}` };
@@ -121,7 +121,7 @@ const clampInt = (v: number, lo: number, hi: number, fallback: number): number =
 
 /**
  * Fields to write, compared with the layer's current form so untouched
- * values (e.g. a KnownColor hull colour) are left exactly as stored.
+ * values (e.g. a KnownColor hull color) are left exactly as stored.
  * Ranges match the desktop spin boxes: transparency 0-100, hull
  * thickness 1-20, cell size 1-512, grid thickness 1-20, sub-divisions
  * 2-32, area cell size 1-256.
@@ -164,7 +164,7 @@ export function layerOptionsPatch(layer: Layer, form: LayerOptionsForm): Record<
     if (g.displayGrid !== c.displayGrid) patch.displayGrid = g.displayGrid;
     if (g.displaySubGrid !== c.displaySubGrid) patch.displaySubGrid = g.displaySubGrid;
     if (g.displayCellIndex !== c.displayCellIndex) patch.displayCellIndex = g.displayCellIndex;
-    // Colours are edited with alpha (desktop's colour buttons use
+    // Colors are edited with alpha (desktop's color buttons use
     // QColorDialog::ShowAlphaChannel, EditDialogs.cpp:68).
     if (g.gridArgb !== c.gridArgb) patch.gridColor = { kind: 'argb', argb: g.gridArgb };
     if (g.subGridArgb !== c.subGridArgb) patch.subGridColor = { kind: 'argb', argb: g.subGridArgb };

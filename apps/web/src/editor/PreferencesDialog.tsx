@@ -61,9 +61,9 @@ export function PreferencesDialog({ onClose }: Props) {
   const setShowRulerAttachPoints = useEditorStore((s) => s.setShowRulerAttachPoints);
   const setAlwaysShowConnections = useEditorStore((s) => s.setAlwaysShowConnections);
 
-  // Paint colour is stored as AARRGGBB hex — convert to/from #rrggbb for
-  // the colour picker. We always write back with FF alpha (fully opaque)
-  // for the base colour; the "50% alpha" default is kept for new maps only.
+  // Paint color is stored as AARRGGBB hex — convert to/from #rrggbb for
+  // the color picker. We always write back with FF alpha (fully opaque)
+  // for the base color; the "50% alpha" default is kept for new maps only.
   const pickerColor = `#${paintColor.slice(-6)}`;
   function onPickerChange(hex: string) {
     // hex = "#rrggbb" → store as "FFrrggbb"
@@ -196,7 +196,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 </select>
               </div>
               <div className={rowCls}>
-                <span className={labelCls}>Default paint colour</span>
+                <span className={labelCls}>Default paint color</span>
                 <input
                   type="color"
                   value={pickerColor}
@@ -231,7 +231,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 </label>
               ))}
               <div className="flex items-center justify-between gap-4 py-1.5">
-                <span className="text-xs text-muted">Selection tint colour</span>
+                <span className="text-xs text-muted">Selection tint color</span>
                 <input
                   type="color"
                   value={`#${selectionTint}`}

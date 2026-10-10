@@ -89,7 +89,7 @@ export function mapMenuEntries(a: MapMenuActions, t: MapMenuToggles, mod = modKe
     },
     sep,
     { kind: 'item', id: 'general-info', label: 'General info…', onSelect: a.generalInfo },
-    { kind: 'item', id: 'background-colour', label: 'Background colour…', onSelect: a.backgroundColor },
+    { kind: 'item', id: 'background-color', label: 'Background color…', onSelect: a.backgroundColor },
     { kind: 'item', id: 'background-image', label: 'Background image…', onSelect: a.backgroundImage },
     { kind: 'item', id: 'find', label: 'Find…', shortcut: `${mod}+F`, onSelect: a.find },
     sep,

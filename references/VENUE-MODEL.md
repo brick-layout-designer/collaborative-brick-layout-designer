@@ -68,7 +68,7 @@ Stairs with an `upDegrees` also get:
 
 **Power points**
 - A circle with a radius of 6 studs, outlined in `rgb(220,100,20)` 2 px.
-- Floor outlets are filled in that colour; wall outlets are filled white.
+- Floor outlets are filled in that color; wall outlets are filled white.
 - The label "label · N A · N V" goes to the right, leaving out empty parts.
 
 **Notes**
