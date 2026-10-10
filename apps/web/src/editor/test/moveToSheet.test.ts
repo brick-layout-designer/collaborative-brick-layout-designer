@@ -88,3 +88,36 @@ describe('drawing order, like BlueBrick', () => {
     expect(ids(bricks(doc, a))).toEqual([q, r, p]);
   });
 });
+
+describe('reordering keeps other people\'s edits', () => {
+  it('Bring to Front moves only the picked part, so a concurrent edit to another survives', async () => {
+    const { reorderBricks } = await import('../mutations');
+    const a = new Y.Doc();
+    const L = ensureBrickLayer(a);
+    const [p, q, r] = [0, 4, 8].map((x) => placeBrick(a, L, spec(x)));
+    const b = new Y.Doc();
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    const sv = Y.encodeStateVector(a);
+    // A brings p to the front; at the same time B moves q.
+    reorderBricks(a, [p!], 'front');
+    const qInB = bricks(b, L).find((x) => x.get('id') === q)!;
+    b.transact(() => qInB.set('displayArea', { ...(qInB.get('displayArea') as object), x: 99 }));
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b, sv));
+    for (const doc of [a, b]) {
+      expect(ids(bricks(doc, L))).toEqual([q, r, p]);
+      expect((bricks(doc, L).find((x) => x.get('id') === q)!.get('displayArea') as { x: number }).x).toBe(99);
+    }
+  });
+
+  it('moving to another sheet keeps the parts\' connection points, unlinked', () => {
+    const doc = new Y.Doc();
+    const a = ensureBrickLayer(doc);
+    const b = addLayer(doc, 'brick');
+    const p = placeBrick(doc, a, spec(0));
+    const yp = bricks(doc, a)[0]!;
+    doc.transact(() => yp.set('connexions', [{ id: 'c1', linkedTo: 'x9' }]));
+    moveBricksToLayer(doc, new Map([[a, [p]]]), b);
+    expect(bricks(doc, b)[0]!.get('connexions')).toEqual([{ id: 'c1', linkedTo: '' }]);
+  });
+});
