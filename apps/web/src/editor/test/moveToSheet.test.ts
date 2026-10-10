@@ -68,3 +68,23 @@ describe('moveBricksToLayer', () => {
     expect(ids(bricks(doc, b))).toEqual([]);
   });
 });
+
+describe('drawing order, like BlueBrick', () => {
+  it('a new altitude sorts the sheet (equal ones keep their order); other edits leave it', async () => {
+    const { editBrick, reorderBricks } = await import('../mutations');
+    const doc = new Y.Doc();
+    const a = ensureBrickLayer(doc);
+    const [p, q, r] = [0, 4, 8].map((x) => placeBrick(doc, a, spec(x)));
+    editBrick(doc, a, r!, { altitude: 2 });
+    expect(ids(bricks(doc, a))).toEqual([p, q, r]);
+    reorderBricks(doc, [r!], 'back');
+    expect(ids(bricks(doc, a))).toEqual([r, p, q]);  // Send to Back works whatever the altitude
+    editBrick(doc, a, p!, { altitude: 5, x: 30 });
+    expect(ids(bricks(doc, a))).toEqual([q, r, p]);
+    const moved = bricks(doc, a)[2]!;
+    expect(moved.get('altitude')).toBe(5);
+    expect((moved.get('displayArea') as { x: number }).x).toBe(30);
+    editBrick(doc, a, q!, { orientation: 90 });
+    expect(ids(bricks(doc, a))).toEqual([q, r, p]);
+  });
+});

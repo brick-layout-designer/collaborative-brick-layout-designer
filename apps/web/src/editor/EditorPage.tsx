@@ -895,6 +895,12 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                     Map…
                   </button>
                 )}
+                {role !== 'viewer' && (
+                  // Also with parts picked (the bar's Sheets button is only there with none): move them to a sheet.
+                  <button role="menuitem" type="button" data-testid="phone-sheets" onClick={() => setShowTouchSheets(true)} className="block w-full px-3.5 py-3 text-left hover:bg-soft">
+                    Sheets…
+                  </button>
+                )}
                 <button role="menuitem" type="button" onClick={() => setShowSettings(true)} className="block w-full px-3.5 py-3 text-left hover:bg-soft">
                   Settings
                 </button>
@@ -1230,6 +1236,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           />
         )}
         {touchModuleId && doc && <TouchModuleSheet doc={doc} moduleId={touchModuleId} onClose={() => setTouchModuleId(null)} />}
+
         <Canvas doc={doc} awareness={awareness} isViewer={isViewer} size={canvasSize} touchEl={canvasBox} phone={viewport.isMobile} saveNow={saveNow} status={status} placeAtCenterRef={placeAtCenterRef} exportImageRef={exportImageRef} canvasActionsRef={canvasActionsRef} undo={undo} onOpenVenueProps={() => setShowVenueProps(true)} onMakeModule={() => openMakeModule(doc)} />
       </main>
       {showRight && (
@@ -1274,7 +1281,12 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
         <TextEditSheet title={touchText.title} initial={touchText.text} onSave={touchText.save} onClose={() => setTouchText(null)} />
       )}
       {showTouchSheets && (touchEditing || touchTablet) && docMap && (
-        <SheetsSheet map={docMap} doc={doc} onClose={() => setShowTouchSheets(false)} />
+        <SheetsSheet
+          map={docMap}
+          doc={doc}
+          onClose={() => setShowTouchSheets(false)}
+          onMovePicked={isViewer ? undefined : (id) => canvasActionsRef.current?.moveToSheet(id)}
+        />
       )}
       {showAddPart && (touchEditing || touchTablet) && (
         <AddPartSheet
@@ -3149,6 +3161,17 @@ function Canvas({
     return map ? bricksByLayer(map, selection) : new Map();
   }
 
+  /** The selected parts to that part sheet, or (null) to a new one: one undo step. */
+  function moveSelectionToSheet(target: string | null): void {
+    if (isViewer) return;
+    const byLayer = selectionByLayer();
+    if (byLayer.size === 0) return;
+    doc.transact(() => {
+      const to = target ?? addLayer(doc, 'brick');
+      if (moveBricksToLayer(doc, byLayer, to) > 0) setActiveLayer(to);
+    }, LOCAL_ORIGIN);
+  }
+
   /**
    * Delete the whole mixed selection — bricks on any layer, rulers,
    * labels and text cells — as one undo step (MapView.cpp:2108-2179).
@@ -3642,6 +3665,7 @@ function Canvas({
       if (isViewer || selection.length === 0) return;
       reorderBricks(doc, selection, to);
     },
+    moveToSheet: (target) => moveSelectionToSheet(target),
     // View ▸ Zoom In / Zoom Out / Fit (MainWindowMenus.cpp:493-503).
     zoom: (factor) => {
       const live = useEditorStore.getState().zoom;
@@ -4103,15 +4127,7 @@ function Canvas({
           onSendToBack={() => {
             if (selection.length > 0) reorderBricks(doc, selection, 'back');
           }}
-          onMoveToSheet={(target) => {
-            const byLayer = selectionByLayer();
-            if (byLayer.size === 0) return;
-            // A new sheet and the move are one undo step.
-            doc.transact(() => {
-              const to = target ?? addLayer(doc, 'brick');
-              if (moveBricksToLayer(doc, byLayer, to) > 0) setActiveLayer(to);
-            }, LOCAL_ORIGIN);
-          }}
+          onMoveToSheet={(target) => moveSelectionToSheet(target)}
           onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
           onUngroup={() => ungroupSelection()}
           ungroup={ungroupState(map, selection, canUngroupSet)}
@@ -4833,6 +4849,10 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
   const studY = useEditorStore((s) => s.hudMouseStudY);
   // Bricks plus selected rulers / labels / text cells (mixed selection).
   const selectionCount = useEditorStore((s) => s.selection.length + annoCount(s.annoSelection));
+  // Which sheet the picked parts are on, so it's clear where they live.
+  const selection = useEditorStore((s) => s.selection);
+  const onSheets = budgetMap ? sheetsOfSelection(budgetMap, selection) : [];
+  const sheetName = onSheets.length === 1 ? budgetMap?.layers.find((l) => l.id === onSheets[0])?.name : undefined;
   const zoom = useEditorStore((s) => s.zoom);
   const tool = useEditorStore((s) => s.tool);
   const mapW = useEditorStore((s) => s.hudMapWidthStuds);
@@ -4945,6 +4965,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
           {selectionCount === 0
             ? 'no selection'
             : `selected: ${selectionCount}`}
+          {sheetName ? <span data-testid="status-sheet"> · on sheet “{sheetName}”</span> : onSheets.length > 1 ? <span data-testid="status-sheet"> · on {onSheets.length} sheets</span> : null}
         </span>
         <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={zoomBtn}>−</button>
         <span className="font-bold tabular-nums text-ink">Zoom: {Math.round(zoom * 100)}%</span>
@@ -5406,6 +5427,13 @@ async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
   }
 }
 
+/** The part sheets (ids) that hold any of the selected parts. */
+function sheetsOfSelection(map: import('@cld/model').BbmMap, selection: readonly string[]): string[] {
+  if (selection.length === 0) return [];
+  const sel = new Set(selection);
+  return map.layers.filter((l) => l.type === 'brick' && l.bricks.some((b) => sel.has(b.id))).map((l) => l.id);
+}
+
 /** Keyboard / View-menu zoom step (desktop MainWindowMenus.cpp:493-498). */
 const ZOOM_STEP = 1.2;
 
@@ -5419,6 +5447,8 @@ interface CanvasActions {
   duplicate: (beside?: boolean) => void;
   rotate: (cw: boolean) => void;
   reorder: (to: 'front' | 'back') => void;
+  /** Move the selected parts to that part sheet, or (null) to a new one. One undo step. */
+  moveToSheet: (sheetId: string | null) => void;
   zoom: (factor: number) => void;
   fit: () => void;
   insertText: () => void;
