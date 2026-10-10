@@ -1488,6 +1488,52 @@ export function setActiveConnectionPoint(
 }
 
 /**
+ * Put a Y.Array of id'd maps into `targetIds` order, moving as few as
+ * possible: the items on the longest run already in order stay; the rest
+ * are taken out and put back at their new places. Yjs has no move (an item
+ * is deleted and inserted again, which drops a concurrent edit to it), so
+ * this keeps someone else's edits to every part that didn't need to move.
+ * The desktop does the same (SyncDoc::syncItems). Call inside a transaction.
+ */
+function reorderYItems(yArr: Y.Array<unknown>, targetIds: readonly string[]): void {
+  const cur = yArr.toArray().map((b) => (b instanceof Y.Map ? (b.get('id') as string) : ''));
+  if (cur.length !== targetIds.length || cur.every((id, i) => id === targetIds[i])) return;
+  const want = new Map(targetIds.map((id, i) => [id, i] as const));
+  const seq = cur.map((id) => want.get(id) ?? -1);
+  // Longest increasing run (patience sort).
+  const tails: number[] = [];
+  const prev = new Array<number>(seq.length).fill(-1);
+  seq.forEach((v, i) => {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (seq[tails[mid]!]! < v) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1]!;
+    tails[lo] = i;
+  });
+  const keep = new Set<number>();
+  for (let k = tails.length ? tails[tails.length - 1]! : -1; k >= 0; k = prev[k]!) keep.add(k);
+  // Copy the movers first (a deleted Y.Map reads as empty), then take them out.
+  const movers = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < cur.length; i++) {
+    if (keep.has(i)) continue;
+    const m = yArr.get(i);
+    if (m instanceof Y.Map) movers.set(cur[i]!, m.toJSON() as Record<string, unknown>);
+  }
+  for (let i = cur.length - 1; i >= 0; i--) if (!keep.has(i)) yArr.delete(i, 1);
+  targetIds.forEach((id, pos) => {
+    const json = movers.get(id);
+    if (!json) return;
+    const y = new Y.Map<unknown>();
+    for (const [k, v] of Object.entries(json)) y.set(k, v);
+    yArr.insert(pos, [y]);
+  });
+}
+
+/**
  * Bring-to-front / send-to-back — port of desktop's
  * `ReorderBricksCommand` (EditCommands.cpp). Repositions every brick in
  * `brickIds` within its own layer's `bricks` Y.Array (any layer) so it sits at the
@@ -1521,23 +1567,11 @@ export function reorderBricks(
       }
       if (moving.length === 0) continue;
 
-      const all: Record<string, unknown>[] = [];
-      for (let i = 0; i < yBricks.length; i++) {
-        const b = yBricks.get(i);
-        if (b instanceof Y.Map) all.push(b.toJSON() as Record<string, unknown>);
-      }
+      const ids = yBricks.toArray().map((b) => (b instanceof Y.Map ? (b.get('id') as string) : ''));
       const movingSet = new Set(moving);
-      const movingJson = moving.map((i) => all[i]!);
-      const stationary = all.filter((_, i) => !movingSet.has(i));
-      const next = to === 'front' ? [...stationary, ...movingJson]
-                                  : [...movingJson, ...stationary];
-
-      yBricks.delete(0, yBricks.length);
-      for (const json of next) {
-        const yBrick = new Y.Map<unknown>();
-        for (const [k, v] of Object.entries(json)) yBrick.set(k, v);
-        yBricks.push([yBrick]);
-      }
+      const movingIds = moving.map((i) => ids[i]!);
+      const stationary = ids.filter((_, i) => !movingSet.has(i));
+      reorderYItems(yBricks as Y.Array<unknown>, to === 'front' ? [...stationary, ...movingIds] : [...movingIds, ...stationary]);
     }
   }, LOCAL_ORIGIN);
 }
@@ -1612,7 +1646,10 @@ export function moveBricksToLayer(doc: Y.Doc, byLayer: Map<string, string[]>, ta
         if (!idSet.has(b.get('id') as string)) continue;
         const y = copy(b);
         if (!goes.has(((b.get('myGroup') as string) ?? '') || '')) y.set('myGroup', '');
-        y.set('connexions', []);
+        // Keep each connection point (its id), unlinked, like the desktop
+        // (MoveBricksToLayerCommand); the connectivity pass links them again.
+        const conns = (b.get('connexions') as { id: string; linkedTo: string }[] | undefined) ?? [];
+        y.set('connexions', conns.map((c) => ({ ...c, linkedTo: '' })));
         newBricks.push(y);
       }
       for (let i = yBricks.length - 1; i >= 0; i--) {
@@ -1727,16 +1764,10 @@ function sortLayerByAltitude(doc: Y.Doc, layerId: string): void {
   if (!(layerData instanceof Y.Map)) return;
   const yBricks = layerData.get('bricks');
   if (!(yBricks instanceof Y.Array)) return;
-  const all = yBricks.toArray().filter((b): b is Y.Map<unknown> => b instanceof Y.Map).map((b) => b.toJSON() as Record<string, unknown>);
-  const alt = (b: Record<string, unknown>) => (typeof b.altitude === 'number' ? b.altitude : 0);
+  const all = yBricks.toArray().filter((b): b is Y.Map<unknown> => b instanceof Y.Map);
+  const alt = (b: Y.Map<unknown>) => (typeof b.get('altitude') === 'number' ? (b.get('altitude') as number) : 0);
   const sorted = all.map((b, i) => [b, i] as const).sort((a, c) => alt(a[0]) - alt(c[0]) || a[1] - c[1]);
-  if (sorted.every(([, i], k) => i === k)) return;
-  yBricks.delete(0, yBricks.length);
-  yBricks.push(sorted.map(([json]) => {
-    const y = new Y.Map<unknown>();
-    for (const [k, v] of Object.entries(json)) y.set(k, v);
-    return y;
-  }));
+  reorderYItems(yBricks as Y.Array<unknown>, sorted.map(([b]) => b.get('id') as string));
 }
 
 /** Normalise to [0, 360) without losing fractional precision. */
