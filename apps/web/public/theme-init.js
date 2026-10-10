@@ -13,7 +13,7 @@
     dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   } catch (e) {}
   var mode = choice === 'system' ? (dark ? 'dark' : 'light') : choice;
-  var accents = ['brick', 'ocean', 'forest', 'plum', 'sunny'];
+  var accents = ['brick', 'ocean', 'forest', 'plum', 'sunny', 'teal', 'orange', 'rose', 'indigo', 'slate'];
   var root = document.documentElement;
   root.setAttribute('data-theme', mode);
   root.setAttribute('data-theme-choice', choice);

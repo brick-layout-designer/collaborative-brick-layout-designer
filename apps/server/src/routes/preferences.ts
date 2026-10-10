@@ -16,7 +16,7 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 
 export const THEMES = ['light', 'dark', 'system'] as const;
-export const ACCENTS = ['brick', 'ocean', 'forest', 'plum', 'sunny'] as const;
+export const ACCENTS = ['brick', 'ocean', 'forest', 'plum', 'sunny', 'teal', 'orange', 'rose', 'indigo', 'slate'] as const;
 export const MAX_TOURS = 200;
 /** Picture size in the editor's parts and module lists, in CSS px. */
 export const PARTS_ICON_MIN = 32;

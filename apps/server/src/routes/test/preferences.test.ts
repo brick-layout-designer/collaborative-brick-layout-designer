@@ -107,7 +107,7 @@ describe('account preferences', () => {
   it('refuses unknown keys and wrong values without storing anything', async () => {
     const bad: unknown[] = [
       { theme: 'purple' },
-      { accent: 'teal' },
+      { accent: 'chartreuse' },
       { largeText: 'yes' },
       { expertMode: 1 },
       { helpIcons: null },
