@@ -100,5 +100,10 @@ describe('collection moderation paging', () => {
     expect(t.clubs).toHaveLength(50);
     const f = (await app.inject({ method: 'GET', url: '/api/moderation/clubs?q=club%206', headers: { cookie: mod } })).json() as { total: number };
     expect(f.total).toBe(10);
+    // A % or _ is a plain character, not "anything".
+    const w = (await app.inject({ method: 'GET', url: '/api/moderation/clubs?q=%25', headers: { cookie: mod } })).json() as { total: number };
+    expect(w.total).toBe(0);
+    const u = (await app.inject({ method: 'GET', url: '/api/moderation/clubs?q=_', headers: { cookie: mod } })).json() as { total: number };
+    expect(u.total).toBe(0);
   });
 });
