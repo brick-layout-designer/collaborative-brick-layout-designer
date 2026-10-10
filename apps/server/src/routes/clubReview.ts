@@ -15,10 +15,11 @@
 // All bodies are JSON. Every change is audit-logged.
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, count, desc, eq, inArray, isNotNull, like, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
+import { escapeLike } from '../utils/validate.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
 import { canModerate, decideVersion, itemOut, ownerNames, picturedVersions, previewUrlOf, unpublishItem } from './catalog.js';
@@ -110,7 +111,11 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
     const q = typeof req.query?.q === 'string' ? req.query.q.trim().toLowerCase().slice(0, 80) : '';
     const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit)) || 50));
     const offset = Math.min(1_000_000, Math.max(0, Math.floor(Number(req.query.offset)) || 0));
-    const where = q ? or(like(schema.orgs.name, `%${q}%`), like(schema.orgs.slug, `%${q}%`)) : eq(schema.orgs.trusted, true);
+    // `%` and `_` in the search are plain characters, not wildcards.
+    const safe = `%${escapeLike(q)}%`;
+    const where = q
+      ? or(sql`${schema.orgs.name} LIKE ${safe} ESCAPE '\\'`, sql`${schema.orgs.slug} LIKE ${safe} ESCAPE '\\'`)
+      : eq(schema.orgs.trusted, true);
     const total = (await db.select({ n: sql<number>`count(*)` }).from(schema.orgs).where(where).get())?.n ?? 0;
     const rows = await db
       .select({ id: schema.orgs.id, slug: schema.orgs.slug, name: schema.orgs.name, trusted: schema.orgs.trusted, trustedAt: schema.orgs.trustedAt })
