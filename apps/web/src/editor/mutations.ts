@@ -1540,6 +1540,98 @@ export function reorderBricks(
 }
 
 /**
+ * Move bricks to another part sheet (`targetLayerId`), on top of what's
+ * there. A group goes with them when all of its parts do (with its own
+ * group, and so on up); a part whose group stays behind leaves it. Links
+ * are rebuilt from the parts' places, so parts moved together stay
+ * linked and links to parts left behind go. Ids are kept, so modules,
+ * labels and rulers still find the parts. One transaction.
+ */
+export function moveBricksToLayer(doc: Y.Doc, byLayer: Map<string, string[]>, targetLayerId: string): number {
+  const layerData = doc.getMap('layerData');
+  const target = layerData.get(targetLayerId);
+  if (!(target instanceof Y.Map) || target.get('type') !== 'brick') return 0;
+  let moved = 0;
+  doc.transact(() => {
+    let tBricks = target.get('bricks');
+    if (!(tBricks instanceof Y.Array)) {
+      tBricks = new Y.Array<Y.Map<unknown>>();
+      target.set('bricks', tBricks);
+    }
+    let tGroups = target.get('groups');
+    if (!(tGroups instanceof Y.Array)) {
+      tGroups = new Y.Array<Y.Map<unknown>>();
+      target.set('groups', tGroups);
+    }
+    for (const [layerId, ids] of byLayer) {
+      if (layerId === targetLayerId || ids.length === 0) continue;
+      const src = layerData.get(layerId);
+      if (!(src instanceof Y.Map) || src.get('type') !== 'brick') continue;
+      const yBricks = src.get('bricks');
+      const yGroups = src.get('groups');
+      if (!(yBricks instanceof Y.Array)) continue;
+      const idSet = new Set(ids);
+      const all = yBricks.toArray().filter((b): b is Y.Map<unknown> => b instanceof Y.Map);
+      const groups = yGroups instanceof Y.Array ? yGroups.toArray().filter((g): g is Y.Map<unknown> => g instanceof Y.Map) : [];
+      const parentOf = new Map(groups.map((g) => [g.get('id') as string, ((g.get('myGroup') as string) ?? '') || '']));
+      // A group goes when every part under it (at any depth) does.
+      const chain = (g: string): string[] => {
+        const out: string[] = [];
+        for (let c = g; c && !out.includes(c); c = parentOf.get(c) ?? '') out.push(c);
+        return out;
+      };
+      const stays = new Set<string>();
+      for (const b of all) {
+        if (idSet.has(b.get('id') as string)) continue;
+        for (const g of chain((b.get('myGroup') as string) ?? '')) stays.add(g);
+      }
+      const goes = new Set<string>();
+      for (const b of all) {
+        if (!idSet.has(b.get('id') as string)) continue;
+        for (const g of chain((b.get('myGroup') as string) ?? '')) if (!stays.has(g)) goes.add(g);
+      }
+      const copy = (m: Y.Map<unknown>): Y.Map<unknown> => {
+        const y = new Y.Map<unknown>();
+        for (const [k, v] of Object.entries(m.toJSON() as Record<string, unknown>)) y.set(k, v);
+        return y;
+      };
+      // Copied before the originals go (a deleted Y.Map reads as empty).
+      const newGroups: Y.Map<unknown>[] = [];
+      for (const g of groups) {
+        if (!goes.has(g.get('id') as string)) continue;
+        // (Read from the original: a Y.Map not yet in the doc reads as empty.)
+        const y = copy(g);
+        if (!goes.has(((g.get('myGroup') as string) ?? '') || '')) y.set('myGroup', '');
+        newGroups.push(y);
+      }
+      const newBricks: Y.Map<unknown>[] = [];
+      for (const b of all) {
+        if (!idSet.has(b.get('id') as string)) continue;
+        const y = copy(b);
+        if (!goes.has(((b.get('myGroup') as string) ?? '') || '')) y.set('myGroup', '');
+        y.set('connexions', []);
+        newBricks.push(y);
+      }
+      for (let i = yBricks.length - 1; i >= 0; i--) {
+        const b = yBricks.get(i);
+        if (!(b instanceof Y.Map) || !idSet.has(b.get('id') as string)) continue;
+        yBricks.delete(i, 1);
+      }
+      if (newGroups.length) tGroups.push(newGroups);
+      if (newBricks.length) tBricks.push(newBricks);
+      moved += newBricks.length;
+      if (yGroups instanceof Y.Array) {
+        for (let i = yGroups.length - 1; i >= 0; i--) {
+          const g = yGroups.get(i);
+          if (g instanceof Y.Map && goes.has(g.get('id') as string)) yGroups.delete(i, 1);
+        }
+      }
+    }
+  }, LOCAL_ORIGIN);
+  return moved;
+}
+
+/**
  * Group every brick in `brickIds` under a freshly-minted group id.
  * Mirrors desktop's `GroupBricksCommand` (EditCommands.cpp:290-355):
  * one new Group entry per layer, every brick's `myGroup` points at it.
