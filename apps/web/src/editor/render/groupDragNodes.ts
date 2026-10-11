@@ -15,7 +15,11 @@ export interface NodeSnap {
 
 /** Konva node names of the movable annotations (text cells don't move). */
 export function annoNodeNames(anno: AnnoSelection): string[] {
-  return [...anno.rulers.map((id) => `ruler-${id}`), ...anno.labels.map((id) => `label-${id}`)];
+  return [
+    ...anno.rulers.map((id) => `ruler-${id}`),
+    ...anno.labels.map((id) => `label-${id}`),
+    ...anno.texts.map((key) => `text-${key}`),
+  ];
 }
 
 /** Snapshot the named nodes (one scene walk), skipping `exclude`. */
@@ -51,7 +55,7 @@ export function restoreNodes(snaps: readonly NodeSnap[]): void {
  * selection with it and commits everything as one undo step.
  */
 export interface AnnoDragHandlers {
-  start: (kind: 'rulers' | 'labels', id: string, node: Konva.Node) => void;
+  start: (kind: 'rulers' | 'labels' | 'texts', id: string, node: Konva.Node) => void;
   /** `evt`: the drag's pointer event (Alt held frees a ruler or label from the grid). */
   move: (node: Konva.Node, evt?: { altKey?: boolean }) => void;
   end: (node: Konva.Node) => void;

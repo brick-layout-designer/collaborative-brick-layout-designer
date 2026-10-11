@@ -31,6 +31,7 @@ import {
   deleteTextCell,
   moveAnchoredLabel,
   moveRulerItem,
+  moveTextCell,
   translateBricksAcrossLayers,
 } from './mutations';
 import { pivotOf } from './brickGeometry';
@@ -374,6 +375,10 @@ export function translateMixedSelection(
     if (move.dx === 0 && move.dy === 0) return;
     for (const [id, layerId] of rulerLayers(map, move.anno.rulers)) {
       moveRulerItem(doc, layerId, id, move.dx, move.dy);
+    }
+    for (const key of move.anno.texts) {
+      const c = parseTextKey(key);
+      if (c) moveTextCell(doc, c.layerId, c.cellIndex, move.dx, move.dy);
     }
     if (move.anno.labels.length > 0) {
       const moving = new Set<string>(move.movedBricks ?? []);
