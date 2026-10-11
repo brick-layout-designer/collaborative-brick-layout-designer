@@ -10,7 +10,7 @@ import * as Y from 'yjs';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { readBbm, readSidecar, writeBbm, writeSidecar, type Sidecar } from '@cld/bbm';
 import { hashBbmBytes } from '@cld/bbm/hash';
-import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm, seedFromSidecar } from '@cld/ydoc';
+import { createDefaultLayoutDoc, decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, readSidecarCache, seedFromBbm, seedFromSidecar, writeSidecarCache } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
@@ -905,11 +905,11 @@ export async function prepareLayoutCopy(
   const doc = decodeDoc(await currentDocBytes(src.id, src.docSnapshot as Uint8Array));
   // The background is served per layout: point the copy at its own.
   const oldBg = `/api/layouts/${src.id}/background-image`;
-  const meta = doc.getMap('meta');
-  const cache = meta.get('cache') as Record<string, unknown> | undefined;
+  // Everyone's modules and labels, kept one per key (@cld/ydoc).
+  const cache = readSidecarCache(doc) ?? undefined;
   const bg = cache?.backgroundImage as Record<string, unknown> | undefined;
   if (cache && bg && typeof bg.url === 'string' && bg.url.startsWith(oldBg)) {
-    meta.set('cache', { ...cache, backgroundImage: { ...bg, url: `/api/layouts/${id}/background-image` } });
+    doc.transact(() => writeSidecarCache(doc, { ...cache, backgroundImage: { ...bg, url: `/api/layouts/${id}/background-image` } }));
   }
   const now = new Date();
   return {
