@@ -103,6 +103,7 @@ import {
   readBudgetLimits,
   readSavedViews,
   reorderBricks,
+  reorderAnnotations,
   moveBricksToLayer,
   addLayer,
   setBudgetLimits,
@@ -2604,14 +2605,12 @@ function Canvas({
       // Desktop MainWindowMenus.cpp:391-396.
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === ']' || e.key === '}')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0) return;
-        reorderBricks(doc, selection, 'front');
+        reorderPicked('front');
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '[' || e.key === '{')) {
         e.preventDefault();
-        if (isViewer || selection.length === 0) return;
-        reorderBricks(doc, selection, 'back');
+        reorderPicked('back');
         return;
       }
 
@@ -3157,6 +3156,25 @@ function Canvas({
   }
 
   /** The selection's brick ids grouped by the layer that holds them. */
+  /**
+   * Bring to Front / Send to Back for what's picked: parts, and text and
+   * rulers too (BlueBrick's BringTextToFront, BringRulerToFront). One undo step.
+   */
+  function reorderPicked(to: 'front' | 'back'): void {
+    if (isViewer) return;
+    const st = useEditorStore.getState();
+    const anno = st.annoSelection;
+    if (st.selection.length === 0 && anno.texts.length === 0 && anno.rulers.length === 0) return;
+    doc.transact(() => {
+      if (st.selection.length > 0) reorderBricks(doc, st.selection, to);
+      if (anno.texts.length > 0 || anno.rulers.length > 0) {
+        const keys = reorderAnnotations(doc, anno, to);
+        // Text is picked by sheet and position, which just changed.
+        if (anno.texts.length > 0) useEditorStore.getState().setMixedSelection(st.selection, { ...anno, texts: keys });
+      }
+    }, LOCAL_ORIGIN);
+  }
+
   function selectionByLayer(): Map<string, string[]> {
     return map ? bricksByLayer(map, selection) : new Map();
   }
@@ -3661,10 +3679,7 @@ function Canvas({
       if (isViewer || selection.length === 0 || !selectionMayMove(doc, selection)) return;
       rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees, partOf);
     },
-    reorder: (to) => {
-      if (isViewer || selection.length === 0) return;
-      reorderBricks(doc, selection, to);
-    },
+    reorder: (to) => reorderPicked(to),
     moveToSheet: (target) => moveSelectionToSheet(target),
     // View ▸ Zoom In / Zoom Out / Fit (MainWindowMenus.cpp:493-503).
     zoom: (factor) => {
@@ -3825,6 +3840,20 @@ function Canvas({
         // Determine click position in client (viewport) coords for the
         // overlay div. getPointerPosition() is stage-local; convert.
         const rect = stage.container().getBoundingClientRect();
+        // Right-clicking text or a ruler with no parts picked picks it, as
+        // BlueBrick does, so the menu's Bring to Front acts on it.
+        if (!onBrick && useEditorStore.getState().selection.length === 0 && (textCellRef || rulerRef)) {
+          const key = textCellRef ? `${textCellRef.layerId}#${textCellRef.cellIndex}` : null;
+          const anno = useEditorStore.getState().annoSelection;
+          const already = key ? anno.texts.includes(key) : anno.rulers.includes(rulerRef!.item.id);
+          if (!already) {
+            useEditorStore.getState().setMixedSelection([], {
+              rulers: key ? [] : [rulerRef!.item.id],
+              labels: [],
+              texts: key ? [key] : [],
+            });
+          }
+        }
         setCtxMenu({ x: rect.left + ptr.x, y: rect.top + ptr.y, studX, studY, onBrick, textCellRef, rulerRef, brickIdUnderCursor });
       }}
       // A touch pans, pinches, taps or long-presses (useTouchView); it
@@ -4121,12 +4150,8 @@ function Canvas({
           onDelete={() => deleteSelection()}
           onRotateCCW={() => selectionMayMove(doc, selection) && rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees, partOf)}
           onRotateCW={() => selectionMayMove(doc, selection) && rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees, partOf)}
-          onBringToFront={() => {
-            if (selection.length > 0) reorderBricks(doc, selection, 'front');
-          }}
-          onSendToBack={() => {
-            if (selection.length > 0) reorderBricks(doc, selection, 'back');
-          }}
+          onBringToFront={() => reorderPicked('front')}
+          onSendToBack={() => reorderPicked('back')}
           onMoveToSheet={(target) => moveSelectionToSheet(target)}
           onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
           onUngroup={() => ungroupSelection()}
@@ -4375,9 +4400,19 @@ function CanvasContextMenu({
     entries.push(item('Edit Text…', () => onEditText(textCellRef)));
     entries.push(item('Properties…', () => onEditText(textCellRef)));
     entries.push(sep('s0'));
+    if (!hasSel) {
+      entries.push(item('Bring to Front', onBringToFront));
+      entries.push(item('Send to Back', onSendToBack));
+      entries.push(sep('s0t'));
+    }
   } else if (rulerRef) {
     entries.push(item('Properties…', onProperties));
     entries.push(sep('s0'));
+    if (!hasSel) {
+      entries.push(item('Bring to Front', onBringToFront));
+      entries.push(item('Send to Back', onSendToBack));
+      entries.push(sep('s0r'));
+    }
   } else if (singleSel && onBrick) {
     entries.push(item('Properties…', onProperties));
     entries.push(sep('s0'));
