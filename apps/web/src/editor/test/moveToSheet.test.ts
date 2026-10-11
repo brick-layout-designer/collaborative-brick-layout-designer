@@ -121,3 +121,23 @@ describe('reordering keeps other people\'s edits', () => {
     expect(bricks(doc, b)[0]!.get('connexions')).toEqual([{ id: 'c1', linkedTo: '' }]);
   });
 });
+
+describe('Bring to Front / Send to Back for text and rulers (BlueBrick)', () => {
+  it('moves picked text cells and rulers to the front or back of their sheet, and gives the new text keys', async () => {
+    const { addTextCell, ensureTextLayer, ensureRulerLayer, addLinearRuler, reorderAnnotations } = await import('../mutations');
+    const doc = new Y.Doc();
+    const t = ensureTextLayer(doc);
+    for (const text of ['a', 'b', 'c']) addTextCell(doc, t, { text, x: 0, y: 0 } as never);
+    const r = ensureRulerLayer(doc);
+    const r1 = addLinearRuler(doc, r, { x: 0, y: 0 }, { x: 5, y: 0 });
+    const r2 = addLinearRuler(doc, r, { x: 0, y: 2 }, { x: 5, y: 2 });
+    const texts = () => ((doc.getMap('layerData').get(t) as Y.Map<unknown>).get('textCells') as Y.Array<Y.Map<unknown>>).toArray().map((c) => c.get('text'));
+    const rulers = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<{ id: string }>).toArray().map((x) => x.id);
+    const keys = reorderAnnotations(doc, { texts: [`${t}#0`], rulers: [r1] }, 'front');
+    expect(texts()).toEqual(['b', 'c', 'a']);
+    expect(rulers()).toEqual([r2, r1]);
+    expect(keys).toEqual([`${t}#2`]);
+    reorderAnnotations(doc, { texts: [`${t}#2`], rulers: [] }, 'back');
+    expect(texts()).toEqual(['a', 'b', 'c']);
+  });
+});

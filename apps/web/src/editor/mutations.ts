@@ -1497,7 +1497,7 @@ export function setActiveConnectionPoint(
  * The desktop does the same (SyncDoc::syncItems). Call inside a transaction.
  */
 function reorderYItems(yArr: Y.Array<unknown>, targetIds: readonly string[]): void {
-  const cur = yArr.toArray().map((b) => (b instanceof Y.Map ? (b.get('id') as string) : ''));
+  const cur = yArr.toArray().map(itemId);
   if (cur.length !== targetIds.length || cur.every((id, i) => id === targetIds[i])) return;
   const want = new Map(targetIds.map((id, i) => [id, i] as const));
   const seq = cur.map((id) => want.get(id) ?? -1);
@@ -1518,20 +1518,82 @@ function reorderYItems(yArr: Y.Array<unknown>, targetIds: readonly string[]): vo
   const keep = new Set<number>();
   for (let k = tails.length ? tails[tails.length - 1]! : -1; k >= 0; k = prev[k]!) keep.add(k);
   // Copy the movers first (a deleted Y.Map reads as empty), then take them out.
-  const movers = new Map<string, Record<string, unknown>>();
+  // (Text cells and bricks are Y.Maps; ruler items are plain objects.)
+  const movers = new Map<string, { json: Record<string, unknown>; map: boolean }>();
   for (let i = 0; i < cur.length; i++) {
     if (keep.has(i)) continue;
     const m = yArr.get(i);
-    if (m instanceof Y.Map) movers.set(cur[i]!, m.toJSON() as Record<string, unknown>);
+    if (m instanceof Y.Map) movers.set(cur[i]!, { json: m.toJSON() as Record<string, unknown>, map: true });
+    else if (m && typeof m === 'object') movers.set(cur[i]!, { json: { ...(m as Record<string, unknown>) }, map: false });
   }
   for (let i = cur.length - 1; i >= 0; i--) if (!keep.has(i)) yArr.delete(i, 1);
   targetIds.forEach((id, pos) => {
-    const json = movers.get(id);
-    if (!json) return;
+    const mover = movers.get(id);
+    if (!mover) return;
+    if (!mover.map) {
+      yArr.insert(pos, [mover.json]);
+      return;
+    }
     const y = new Y.Map<unknown>();
-    for (const [k, v] of Object.entries(json)) y.set(k, v);
+    for (const [k, v] of Object.entries(mover.json)) y.set(k, v);
     yArr.insert(pos, [y]);
   });
+}
+
+function itemId(item: unknown): string {
+  if (item instanceof Y.Map) return (item.get('id') as string) ?? '';
+  return item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string' ? (item as { id: string }).id : '';
+}
+
+/**
+ * Bring to Front / Send to Back for text and rulers too, as BlueBrick does
+ * (BringTextToFront, BringRulerToFront, ...): each picked one moves to the
+ * end (front) or start (back) of its sheet, keeping their order. `texts`
+ * are text keys (sheet#index); the new keys are returned, as the indexes
+ * change. One transaction.
+ */
+export function reorderAnnotations(
+  doc: Y.Doc,
+  picked: { texts: readonly string[]; rulers: readonly string[] },
+  to: 'front' | 'back',
+): string[] {
+  const rulerIds = new Set(picked.rulers);
+  const textsByLayer = new Map<string, Set<number>>();
+  for (const key of picked.texts) {
+    const at = key.lastIndexOf('#');
+    if (at <= 0) continue;
+    const layerId = key.slice(0, at);
+    const set = textsByLayer.get(layerId) ?? new Set<number>();
+    set.add(Number(key.slice(at + 1)));
+    textsByLayer.set(layerId, set);
+  }
+  const newKeys: string[] = [];
+  doc.transact(() => {
+    for (const lid of doc.getArray<string>('layers').toArray()) {
+      const layer = doc.getMap('layerData').get(lid);
+      if (!(layer instanceof Y.Map)) continue;
+      const order = (arr: Y.Array<unknown>, moving: (id: string, i: number) => boolean) => {
+        const ids = arr.toArray().map(itemId);
+        if (ids.some((id) => !id) || new Set(ids).size !== ids.length) return [] as string[];
+        const move = ids.filter((id, i) => moving(id, i));
+        if (move.length === 0) return [];
+        const stay = ids.filter((id, i) => !moving(id, i));
+        reorderYItems(arr, to === 'front' ? [...stay, ...move] : [...move, ...stay]);
+        return move;
+      };
+      const rulers = layer.get('rulerItems');
+      if (rulerIds.size && rulers instanceof Y.Array) order(rulers as Y.Array<unknown>, (id) => rulerIds.has(id));
+      const cells = layer.get('textCells');
+      const indexes = textsByLayer.get(lid);
+      if (indexes && cells instanceof Y.Array) {
+        const moved = new Set(order(cells as Y.Array<unknown>, (_id, i) => indexes.has(i)));
+        (cells as Y.Array<unknown>).toArray().forEach((c, i) => {
+          if (moved.has(itemId(c))) newKeys.push(`${lid}#${i}`);
+        });
+      }
+    }
+  }, LOCAL_ORIGIN);
+  return newKeys;
 }
 
 /**
