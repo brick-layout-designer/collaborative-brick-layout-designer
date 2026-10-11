@@ -139,6 +139,9 @@ describe('Bring to Front / Send to Back for text and rulers (BlueBrick)', () => 
     expect(keys).toEqual([`${t}#2`]);
     reorderAnnotations(doc, { texts: [`${t}#2`], rulers: [] }, 'back');
     expect(texts()).toEqual(['a', 'b', 'c']);
+  });
+});
+
 describe('moving text (BlueBrick MoveText)', () => {
   it('moveTextCell shifts the box, and a mixed move carries picked text along', async () => {
     const { addTextCell, ensureTextLayer, moveTextCell } = await import('../mutations');
