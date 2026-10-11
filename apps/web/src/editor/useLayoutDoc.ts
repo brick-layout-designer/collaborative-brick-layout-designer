@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { Awareness } from 'y-protocols/awareness';
-import { canReadDoc } from '@cld/ydoc';
+import { canReadDoc, removeDuplicateBricks, repairSidecarCache } from '@cld/ydoc';
 
 export type SaveStatus =
   | { kind: 'connecting' }
@@ -63,6 +63,8 @@ export interface LayoutDocState {
  * the WebsocketProvider instance) doesn't get reverted by Cmd-Z.
  */
 export const LOCAL_ORIGIN = Symbol('cld-local-origin');
+/** Tidying after concurrent edits (meta.cache, duplicate parts): not an undo step. */
+const SIDECAR_REPAIR_ORIGIN = Symbol('cld-sidecar-repair');
 
 export type SaveResult = 'saved' | 'offline';
 
@@ -204,12 +206,29 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
     provider.on('status', onStatus);
     provider.on('connection-close', onConnectionClose);
 
+    // After someone else's edit: when two people changed modules or labels
+    // at once, rewrite meta.cache from the merged items so apps that only
+    // read meta.cache (the desktop) see both (@cld/ydoc repairSidecarCache).
+    let repairTimer: ReturnType<typeof setTimeout> | null = null;
+    const onTransaction = (tr: Y.Transaction) => {
+      if (tr.origin !== provider || repairTimer) return;
+      repairTimer = setTimeout(() => {
+        repairTimer = null;
+        repairSidecarCache(fresh, SIDECAR_REPAIR_ORIGIN);
+        // Two people moving the same part at once leave it there twice.
+        removeDuplicateBricks(fresh, SIDECAR_REPAIR_ORIGIN);
+      }, 50);
+    };
+    fresh.on('afterTransaction', onTransaction);
+
     return () => {
       if (syncTimer) clearTimeout(syncTimer);
       meta.unobserve(onMeta);
       provider.off('sync', onSync);
       provider.off('status', onStatus);
       provider.off('connection-close', onConnectionClose);
+      fresh.off('afterTransaction', onTransaction);
+      if (repairTimer) clearTimeout(repairTimer);
       provider.disconnect();
       provider.destroy();
       if (providerRef.current === provider) providerRef.current = null;

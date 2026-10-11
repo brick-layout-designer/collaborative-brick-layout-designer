@@ -8,6 +8,7 @@
 // distinguish "this user's edits" from "other users' edits" using the
 // y-websocket clientID; for Phase 3 single-user, LOCAL_ORIGIN is enough.
 
+import { readSidecarCache as readMergedSidecar, writeSidecarCache as writeMergedSidecar } from '@cld/ydoc';
 import * as Y from 'yjs';
 import type { ColorSpec, FontSpec, Group, Layer, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SavedView, SidecarModule } from '@cld/bbm';
@@ -1956,16 +1957,16 @@ function seedDefaultMeta(meta: Y.Map<unknown>): void {
 // ---------------------------------------------------------------------------
 
 function readSidecarCache(doc: Y.Doc): Record<string, unknown> {
-  const meta = doc.getMap('meta');
-  const cache = meta.get('cache');
-  // A layout's first label, view or venue starts the sidecar: give it the
-  // fields every sidecar file has, or the downloaded file won't open again.
-  const base = (cache && typeof cache === 'object' ? cache : {}) as Record<string, unknown>;
+  // Everyone's modules and labels (@cld/ydoc keeps them one per key, so
+  // concurrent edits merge). A layout's first label, view or venue starts
+  // the sidecar: give it the fields every sidecar file has, or the
+  // downloaded file won't open again.
+  const base = readMergedSidecar(doc) ?? {};
   return { schemaVersion: 1, bbmHashSha256: '', ...base };
 }
 
 function writeSidecarCache(doc: Y.Doc, cache: Record<string, unknown>): void {
-  doc.getMap('meta').set('cache', cache);
+  writeMergedSidecar(doc, cache);
 }
 
 export function addAnchoredLabel(doc: Y.Doc, label: AnchoredLabel): void {
