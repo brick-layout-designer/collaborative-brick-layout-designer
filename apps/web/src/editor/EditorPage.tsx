@@ -2014,6 +2014,12 @@ function Canvas({
             const r = l.rulerItems.find((x) => x.id === id);
             if (r) ref = r.kind === 'linear' ? { ...r.point1 } : { ...r.center };
           }
+        } else if (m && kind === 'texts') {
+          // The text box's corner goes on the grid, like a part's.
+          const at = id.lastIndexOf('#');
+          const l = m.layers.find((x) => x.id === id.slice(0, at));
+          const cell = l?.type === 'text' ? l.textCells[Number(id.slice(at + 1))] : undefined;
+          if (cell) ref = { x: cell.displayArea.x, y: cell.displayArea.y };
         } else if (kind === 'labels') {
           // The label's text corner, where it is drawn.
           const text = (node as Konva.Group).getChildren?.()[0];
@@ -3922,6 +3928,7 @@ function Canvas({
             onEditText={(ref) => setEditingText(ref)}
             selectedKeys={selectedTextKeys}
             onSelectText={(key, additive) => selectAnno('texts', key, additive)}
+            {...(!isViewer && tool === 'select' ? { drag: annoDrag } : {})}
           />
           <RulerLayers
             map={shown}

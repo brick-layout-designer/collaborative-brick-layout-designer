@@ -1361,6 +1361,22 @@ export function editTextCell(doc: Y.Doc, layerId: string, cellIndex: number, new
   }, LOCAL_ORIGIN);
 }
 
+/** Move a text cell by (dx, dy) studs (BlueBrick's MoveText). */
+export function moveTextCell(doc: Y.Doc, layerId: string, cellIndex: number, dx: number, dy: number): void {
+  doc.transact(() => {
+    const layerData = doc.getMap('layerData').get(layerId);
+    if (!(layerData instanceof Y.Map)) return;
+    const yCells = layerData.get('textCells');
+    if (!(yCells instanceof Y.Array)) return;
+    const cell = yCells.get(cellIndex);
+    const area = (cell instanceof Y.Map ? cell.get('displayArea') : (cell as { displayArea?: unknown } | undefined)?.displayArea) as
+      | { x: number; y: number; width: number; height: number }
+      | undefined;
+    if (!area) return;
+    patchTextCell(yCells, cellIndex, { displayArea: { ...area, x: area.x + dx, y: area.y + dy } });
+  }, LOCAL_ORIGIN);
+}
+
 export interface EditTextCellPatch {
   text?: string;
   font?: { family: string; size: number; style: string };

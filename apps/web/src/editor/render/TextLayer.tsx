@@ -11,6 +11,7 @@
 // Per-layer transparency lands on the layer Group (matches desktop
 // SceneBuilder.cpp:832-834).
 
+import type { AnnoDragHandlers } from './groupDragNodes';
 import { useEffect, useMemo, useState } from 'react';
 import Konva from 'konva';
 import { Group, Text as KonvaText } from 'react-konva';
@@ -66,8 +67,11 @@ export function TextLayers({
   onEditText,
   selectedKeys,
   onSelectText,
+  drag,
 }: {
   map: BbmMap;
+  /** Dragging moves the text (and the rest of the selection), like BlueBrick's MoveText. */
+  drag?: AnnoDragHandlers | undefined;
   isViewer?: boolean;
   onEditText?: (ref: TextCellRef) => void;
   /** Selected cells (`textKey(layerId, index)`), highlighted; part of the mixed selection. */
@@ -92,6 +96,7 @@ export function TextLayers({
                 isSelected={!!selectedKeys && selectedKeys.has(textKey(layer.id, i))}
                 onDblClick={() => onEditText?.({ layerId: layer.id, cellIndex: i, cell })}
                 onClick={(additive) => onSelectText?.(textKey(layer.id, i), additive)}
+                drag={!isViewer && onEditText ? drag : undefined}
               />
             ))}
           </Group>
@@ -108,7 +113,9 @@ function FittedTextCell({
   isSelected,
   onDblClick,
   onClick,
+  drag,
 }: {
+  drag?: AnnoDragHandlers | undefined;
   /** Its key in the selection (textKey), also the node's id, for touch hit tests. */
   cellKey: string;
   cell: TextCell;
@@ -140,7 +147,7 @@ function FittedTextCell({
   return (
     <KonvaText
       id={cellKey}
-      name="text-cell"
+      name={`text-cell text-${cellKey}`}
       x={layout.centre.x}
       y={layout.centre.y}
       text={layout.lines.map((l) => l.text).join('\n')}
@@ -173,6 +180,14 @@ function FittedTextCell({
               e.cancelBubble = true;
               onClick(useEditorStore.getState().touchSelectMore);
             },
+          }
+        : {})}
+      {...(interactive && drag
+        ? {
+            draggable: true,
+            onDragStart: (e: Konva.KonvaEventObject<DragEvent>) => drag.start('texts', cellKey, e.target),
+            onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => drag.move(e.target, e.evt),
+            onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => drag.end(e.target),
           }
         : {})}
       {...(isSelected ? TEXT_GLOW : {})}

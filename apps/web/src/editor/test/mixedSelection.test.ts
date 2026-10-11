@@ -225,7 +225,7 @@ describe('annotationsInMarquee', () => {
 });
 
 describe('translateMixedSelection', () => {
-  it('moves bricks, rulers and labels (not text) in one undo step', () => {
+  it('moves bricks, rulers, labels and text (like BlueBrick) in one undo step', () => {
     const { doc, brick, ruler, textLayer } = seed();
     const um = createUndoManager(doc);
     const map = docToBbm(doc);
@@ -246,7 +246,7 @@ describe('translateMixedSelection', () => {
     // Anchored to a moving brick → follows it, offset unchanged.
     expect(ls.find((l) => l.id === 'onBrick')!.offset).toEqual({ x: 1, y: 1 });
     const t = after.layers.find((l) => l.type === 'text');
-    expect(t?.type === 'text' && t.textCells[0]!.displayArea.x).toBe(48);
+    expect(t?.type === 'text' && t.textCells[0]!.displayArea.x).toBe(50);
     expect(um.undoStack.length).toBe(1);
     um.undo();
     expect(labels(doc).find((l) => l.id === 'world')!.offset).toEqual({ x: 70, y: 0 });

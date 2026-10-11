@@ -139,5 +139,19 @@ describe('Bring to Front / Send to Back for text and rulers (BlueBrick)', () => 
     expect(keys).toEqual([`${t}#2`]);
     reorderAnnotations(doc, { texts: [`${t}#2`], rulers: [] }, 'back');
     expect(texts()).toEqual(['a', 'b', 'c']);
+describe('moving text (BlueBrick MoveText)', () => {
+  it('moveTextCell shifts the box, and a mixed move carries picked text along', async () => {
+    const { addTextCell, ensureTextLayer, moveTextCell } = await import('../mutations');
+    const { translateMixedSelection } = await import('../mixedSelection');
+    const doc = new Y.Doc();
+    const t = ensureTextLayer(doc);
+    addTextCell(doc, t, { text: 'Harbour', x: 2, y: 3 } as never);
+    const area = () => ((doc.getMap('layerData').get(t) as Y.Map<unknown>).get('textCells') as Y.Array<Y.Map<unknown>>).get(0).get('displayArea') as { x: number; y: number };
+    const x0 = area().x;
+    const y0 = area().y;
+    moveTextCell(doc, t, 0, 4, -1);
+    expect(area()).toMatchObject({ x: x0 + 4, y: y0 - 1 });
+    translateMixedSelection(doc, { layers: [] } as never, [], [], { bricks: [], anno: { rulers: [], labels: [], texts: [`${t}#0`] }, dx: 1, dy: 1 });
+    expect(area()).toMatchObject({ x: x0 + 5, y: y0 });
   });
 });
