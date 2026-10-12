@@ -83,6 +83,7 @@ import {
   deleteTextCell,
   editTextCellFull,
   moveRulerEndpoint,
+  scaleRuler,
   ensureAreaLayer,
   ensureBrickLayer,
   ensureRulerLayer,
@@ -3964,6 +3965,12 @@ function Canvas({
               if (!layer || layer.type !== 'ruler') return;
               // On the nearest grid point all the way, as the desktop (Alt: free).
               moveRulerEndpoint(doc, layer.id, rulerId, which, gridPointStuds({ x: studX, y: studY }, free));
+            }}
+            onScaleDrag={(rulerId, studX, studY) => {
+              const layer = map.layers.find((l) => l.type === 'ruler' && l.rulerItems.some((r) => r.id === rulerId));
+              if (!layer || layer.type !== 'ruler') return;
+              // Not on the grid, as BlueBrick's ScaleRuler.
+              scaleRuler(doc, layer.id, rulerId, { x: studX, y: studY });
             }}
           />
           {viewFilter && !viewFilter.labels ? null : isViewer

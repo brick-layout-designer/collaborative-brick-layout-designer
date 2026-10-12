@@ -73,6 +73,12 @@ interface Props {
     studY: number,
     free: boolean,
   ) => void;
+  /**
+   * BlueBrick ScaleRuler: dragging the middle of a linear ruler's offset
+   * line (when it allows an offset) or a circle's rim handle, live and on
+   * release, with the pointer in studs.
+   */
+  onScaleDrag?: (rulerId: string, studX: number, studY: number) => void;
 }
 
 export function RulerLayers({
@@ -84,6 +90,7 @@ export function RulerLayers({
   drag,
   onRulerDoubleClick,
   onEndpointDrag,
+  onScaleDrag,
 }: Props) {
   // The parts being dragged where they are now (liveDragPose.ts), so this
   // follows the drag every frame, not only the drop.
@@ -131,6 +138,7 @@ export function RulerLayers({
                 onClick?: () => void;
                 onDoubleClick?: () => void;
                 onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, free: boolean) => void;
+                onScaleDrag?: (studX: number, studY: number) => void;
               } = {
                 brickCentres,
                 selected: sel,
@@ -143,6 +151,7 @@ export function RulerLayers({
                 props.onEndpointDrag = (which, sx, sy, free) =>
                   onEndpointDrag(item.id, which, sx, sy, free);
               }
+              if (onScaleDrag) props.onScaleDrag = (sx, sy) => onScaleDrag(item.id, sx, sy);
               return item.kind === 'linear' ? (
                 <LinearRulerView key={item.id} item={item} {...props} />
               ) : (
@@ -214,6 +223,7 @@ function LinearRulerView({
   onClick,
   onDoubleClick,
   onEndpointDrag,
+  onScaleDrag,
 }: {
   item: LinearRulerItem;
   brickCentres: Map<string, { x: number; y: number }>;
@@ -223,6 +233,7 @@ function LinearRulerView({
   onClick?: () => void;
   onDoubleClick?: () => void;
   onEndpointDrag?: (which: 0 | 1, studX: number, studY: number, free: boolean) => void;
+  onScaleDrag?: (studX: number, studY: number) => void;
 }) {
   const PX = studToPx();
   const showRulerAttachPoints = useEditorStore((s) => s.showRulerAttachPoints);
@@ -489,7 +500,34 @@ function LinearRulerView({
           <EndpointHandle x={a2.x} y={a2.y} which={1} onDrag={onEndpointDrag} />
         </>
       )}
+      {showHandles && onScaleDrag && item.allowOffset && (
+        <ScaleHandle x={(a1.x + a2.x) / 2 + nrm.x * item.offsetDistance * PX} y={(a1.y + a2.y) / 2 + nrm.y * item.offsetDistance * PX} onDrag={onScaleDrag} />
+      )}
     </Group>
+  );
+}
+
+/** BlueBrick ScaleRuler's handle: the offset line's middle, or a circle's rim. */
+function ScaleHandle({ x, y, onDrag }: { x: number; y: number; onDrag: (studX: number, studY: number) => void }) {
+  const PX = studToPx();
+  const report = (e: KonvaEventObject<DragEvent>) => {
+    e.cancelBubble = true;
+    onDrag(e.target.x() / PX, e.target.y() / PX);
+  };
+  return (
+    <KonvaCircle
+      name="ruler-scale"
+      x={x}
+      y={y}
+      radius={SELECTION.handleRadius}
+      fill={SELECTION.handleStroke}
+      stroke={SELECTION.handleFill}
+      strokeWidth={SELECTION.handleStrokeWidth}
+      strokeScaleEnabled={false}
+      draggable
+      onDragMove={report}
+      onDragEnd={report}
+    />
   );
 }
 
@@ -540,9 +578,11 @@ function CircularRulerView({
   item,
   brickCentres,
   selected,
+  showHandles = false,
   rootProps,
   onClick,
   onDoubleClick,
+  onScaleDrag,
 }: {
   item: CircularRulerItem;
   brickCentres: Map<string, { x: number; y: number }>;
@@ -551,6 +591,7 @@ function CircularRulerView({
   rootProps: RulerRootProps;
   onClick?: () => void;
   onDoubleClick?: () => void;
+  onScaleDrag?: (studX: number, studY: number) => void;
 }) {
   const PX = studToPx();
   const cStud = resolveAnchor(item.attachedBrickId, item.center, brickCentres);
@@ -632,6 +673,7 @@ function CircularRulerView({
           }}
         />
       )}
+      {showHandles && onScaleDrag && <ScaleHandle x={cx + rPx} y={cy} onDrag={onScaleDrag} />}
     </Group>
   );
 }

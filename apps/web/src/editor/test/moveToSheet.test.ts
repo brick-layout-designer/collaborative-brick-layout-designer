@@ -213,3 +213,34 @@ describe('rotating text and rulers (BlueBrick RotateText, RotateRulers)', () => 
     expect(cell().get('orientation')).toBe(90);
   });
 });
+
+describe('scaling a ruler (BlueBrick ScaleRuler)', () => {
+  it('scaledRulerValue gives the offset along (Uy, -Ux) or the radius', async () => {
+    const { scaledRulerValue } = await import('../mutations');
+    const line = { kind: 'linear' as const, point1: { x: 0, y: 0 }, point2: { x: 10, y: 0 }, center: { x: 0, y: 0 } };
+    expect(scaledRulerValue(line, { x: 4, y: -3 })).toBeCloseTo(3); // up is +
+    expect(scaledRulerValue(line, { x: 4, y: 2 })).toBeCloseTo(-2);
+    expect(scaledRulerValue({ ...line, kind: 'circular', center: { x: 1, y: 1 } }, { x: 4, y: 5 })).toBeCloseTo(5);
+  });
+
+  it('scaleRuler sets the offset or the radius in one undo step, and leaves the ends and centre', async () => {
+    const { ensureRulerLayer, addLinearRuler, addCircularRuler, scaleRuler } = await import('../mutations');
+    const { LOCAL_ORIGIN } = await import('../useLayoutDoc');
+    const doc = new Y.Doc();
+    const r = ensureRulerLayer(doc);
+    const line = addLinearRuler(doc, r, { x: 0, y: 20 }, { x: 10, y: 20 });
+    const ring = addCircularRuler(doc, r, { x: 30, y: 0 }, 3);
+    const items = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<Record<string, unknown>>).toArray();
+    const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
+    scaleRuler(doc, r, line, { x: 5, y: 14 });
+    expect(items()[0]!.offsetDistance).toBeCloseTo(6);
+    expect(items()[0]!.point1).toEqual({ x: 0, y: 20 });
+    undo.stopCapturing();
+    scaleRuler(doc, r, ring, { x: 30, y: 7 });
+    expect(items()[1]!.radius).toBeCloseTo(7);
+    expect(items()[1]!.center).toEqual({ x: 30, y: 0 });
+    expect(items()[1]!.displayArea).toMatchObject({ x: 23, y: -7, width: 14, height: 14 });
+    undo.undo();
+    expect(items()[1]!.radius).toBe(3);
+  });
+});

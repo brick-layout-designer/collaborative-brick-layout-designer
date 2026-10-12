@@ -1438,3 +1438,76 @@ test.describe('rotation pivot (BlueBrick RotateItems, RotateBrick)', () => {
     await other.close();
   });
 });
+
+test.describe('scaling a ruler (BlueBrick ScaleRuler)', () => {
+  /** The scale handle's page position, or null when it isn't shown. */
+  const scaleHandle = (page: Page) =>
+    page.evaluate(() => {
+      type N = { getAbsolutePosition: () => { x: number; y: number } };
+      const st = (window as unknown as { Konva: { stages: { container: () => HTMLElement; find: (s: string) => N[] }[] } }).Konva.stages[0]!;
+      const h = st.find('.ruler-scale')[0];
+      if (!h) return null;
+      const box = st.container().getBoundingClientRect();
+      const p = h.getAbsolutePosition();
+      return { x: box.left + p.x, y: box.top + p.y };
+    });
+
+  test("drag a circle's rim handle to change its radius; a second window sees it live and drags it on", async ({ page, browser }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const c = { x: box.x + 300, y: box.y + 250 };
+    // Draw a circle of 10 studs (80 px at zoom 1).
+    await page.getByRole('button', { name: 'Circle', exact: true }).click();
+    await page.mouse.move(c.x, c.y);
+    await page.mouse.down();
+    await page.mouse.move(c.x + 80, c.y, { steps: 8 });
+    await page.mouse.up();
+    const xml = async () => (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    const radius = async () => Number(/<CircularRuler[\s\S]*?<Radius>([^<]+)<\/Radius>/.exec(await xml())?.[1]);
+    await expect.poll(radius).toBeCloseTo(10, 1);
+
+    // Pick it (click its rim), then drag the handle on the rim 5 studs out.
+    await page.getByRole('button', { name: 'Select', exact: true }).click();
+    await page.mouse.click(c.x, c.y - 80);
+    await expect.poll(() => scaleHandle(page)).not.toBeNull();
+    const h = (await scaleHandle(page))!;
+    await page.mouse.move(h.x, h.y);
+    await page.mouse.down();
+    await page.mouse.move(h.x + 40, h.y, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(radius).toBeCloseTo(15, 1);
+
+    // The second window picks the circle and drags it on: from 15, so it had the first drag live.
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await signIn(page2, EMAIL, 'Parity Tester');
+    await openEditor(page2, id);
+    // Its view may differ: work in its own transform, from the circle's centre.
+    const centre = /<CircularRuler[\s\S]*?<Center>\s*<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>/.exec(await xml())!;
+    const cStuds = { x: Number(centre[1]), y: Number(centre[2]) };
+    const onPage2 = (sx: number, sy: number) =>
+      page2.evaluate((q) => {
+        const st = (window as unknown as {
+          Konva: { stages: { container: () => HTMLElement; getAbsoluteTransform: () => { point: (q: { x: number; y: number }) => { x: number; y: number } } }[] };
+        }).Konva.stages[0]!;
+        const b = st.container().getBoundingClientRect();
+        const a = st.getAbsoluteTransform().point({ x: q.x * 8, y: q.y * 8 });
+        return { x: b.left + a.x, y: b.top + a.y };
+      }, { x: sx, y: sy });
+    const rim = await onPage2(cStuds.x, cStuds.y - 15);
+    await page2.mouse.click(rim.x, rim.y);
+    await expect.poll(() => scaleHandle(page2)).not.toBeNull();
+    const h2 = (await scaleHandle(page2))!;
+    // The handle is on the 15-stud rim: the first window's drag arrived.
+    const want = await onPage2(cStuds.x + 15, cStuds.y);
+    expect(Math.abs(h2.x - want.x)).toBeLessThan(2);
+    const to = await onPage2(cStuds.x + 20, cStuds.y);
+    await page2.mouse.move(h2.x, h2.y);
+    await page2.mouse.down();
+    await page2.mouse.move(to.x, to.y, { steps: 8 });
+    await page2.mouse.up();
+    await expect.poll(radius).toBeCloseTo(20, 0);
+    await other.close();
+  });
+});
