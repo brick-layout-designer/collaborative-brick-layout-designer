@@ -49,7 +49,15 @@ const CatalogItemPage = lazy(() => import('./catalog/CatalogItemPage').then((m) 
 const PublicLayoutPage = lazy(() => import('./layouts/PublicLayoutPage').then((m) => ({ default: m.PublicLayoutPage })));
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: { retry: false, refetchOnWindowFocus: false },
+    // Run a change even when the browser says it's offline: by default a
+    // mutation waits (paused) for the network, so a dialog that edits the
+    // layout first and talks to the server second sat on "Saving…" forever.
+    // The layout edit happens at once; a request that can't get through
+    // fails with a plain "You're offline" (api.ts).
+    mutations: { networkMode: 'always' },
+  },
 });
 
 const root = document.getElementById('root');

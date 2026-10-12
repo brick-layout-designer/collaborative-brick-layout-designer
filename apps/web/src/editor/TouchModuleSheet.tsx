@@ -1,9 +1,10 @@
 // A picked module's menu on a phone or tablet (the touch bar's Module
+import { lazyRetry } from '../ui/lazyRetry';
 // button): Edit module, Pin in place, Show / Hide name, Colors… and the
 // Module library entries (Save to library…, Update Module library version…,
 // Update from Module library), as the map's right-click menu has them.
 
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import type * as Y from 'yjs';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import { enterModuleEdit, setModulePinned } from './moduleActions';
@@ -11,7 +12,7 @@ import { useLibraryEntries, type ModuleMenuEntry } from './moduleLibraryMenu';
 import { updateSidecarModule } from './mutations';
 import { withShowName } from './moduleLook';
 
-const ModuleLookDialog = lazy(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
+const ModuleLookDialog = lazyRetry(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
 
 export function TouchModuleSheet({ doc, moduleId, onClose }: { doc: Y.Doc; moduleId: string; onClose: () => void }) {
   const mod = readSidecarFromDoc(doc)?.modules?.find((m) => m.id === moduleId);

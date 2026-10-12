@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyRetry, preloadLazy } from '../ui/lazyRetry';
 import { RenameDialog } from '../ui/RenameDialog';
 import { flushSync } from 'react-dom';
 import * as Y from 'yjs';
@@ -185,30 +186,30 @@ import { OpenedSummaryCard } from '../open/OpenedSummary';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
 // the initial editor chunk. React.lazy requires a default export, but all
 // our components are named; the wrappers below re-export as default.
-const SharePictureDialog = lazy(() => import('./SharePictureDialog').then((m) => ({ default: m.SharePictureDialog })));
-const ShareDialog = lazy(() => import('../layouts/ShareDialog').then((m) => ({ default: m.ShareDialog })));
-const InsertModuleDialog = lazy(() => import('./InsertModuleDialog').then((m) => ({ default: m.InsertModuleDialog })));
-const ModuleLookDialog = lazy(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
-const ModuleDialogHost = lazy(() => import('./ModuleDialogs').then((m) => ({ default: m.ModuleDialogHost })));
-const EditBrickDialog = lazy(() => import('./EditBrickDialog').then((m) => ({ default: m.EditBrickDialog })));
-const EditRulerDialog = lazy(() => import('./EditRulerDialog').then((m) => ({ default: m.EditRulerDialog })));
-const GeneralInfoDialog = lazy(() => import('./GeneralInfoDialog').then((m) => ({ default: m.GeneralInfoDialog })));
-const BackgroundColorDialog = lazy(() => import('./BackgroundColorDialog').then((m) => ({ default: m.BackgroundColorDialog })));
-const BackgroundImageDialog = lazy(() => import('./BackgroundImageDialog').then((m) => ({ default: m.BackgroundImageDialog })));
-const FindDialog = lazy(() => import('./FindDialog').then((m) => ({ default: m.FindDialog })));
-const PreferencesDialog = lazy(() => import('./PreferencesDialog').then((m) => ({ default: m.PreferencesDialog })));
-const ImportBbmDialog = lazy(() => import('./ImportBbmDialog').then((m) => ({ default: m.ImportBbmDialog })));
-const ExportImageDialog = lazy(() => import('./ExportImageDialog').then((m) => ({ default: m.ExportImageDialog })));
-const AddAnchoredLabelDialog = lazy(() => import('./AddAnchoredLabelDialog').then((m) => ({ default: m.AddAnchoredLabelDialog })));
-const SaveAsSetDialog = lazy(() => import('./SaveAsSetDialog').then((m) => ({ default: m.SaveAsSetDialog })));
-const ModulesPanel = lazy(() => import('./ModulesPanel').then((m) => ({ default: m.ModulesPanel })));
-const ModuleLibraryPanel = lazy(() => import('./ModuleLibraryPanel').then((m) => ({ default: m.ModuleLibraryPanel })));
-const VenueDesigner = lazy(() => import('../venues/designer/VenueDesigner').then((m) => ({ default: m.VenueDesigner })));
-const VenuePropertiesDialog = lazy(() => import('./VenuePropertiesDialog').then((m) => ({ default: m.VenuePropertiesDialog })));
-const VenueDimensionsDialog = lazy(() => import('./VenueDimensionsDialog').then((m) => ({ default: m.VenueDimensionsDialog })));
-const BudgetDialog = lazy(() => import('./BudgetDialog').then((m) => ({ default: m.BudgetDialog })));
-const VenueLibraryPanel = lazy(() => import('./VenueLibraryPanel').then((m) => ({ default: m.VenueLibraryPanel })));
-const VenueSaveLibraryDialog = lazy(() => import('./VenueSaveLibraryDialog').then((m) => ({ default: m.VenueSaveLibraryDialog })));
+const SharePictureDialog = lazyRetry(() => import('./SharePictureDialog').then((m) => ({ default: m.SharePictureDialog })));
+const ShareDialog = lazyRetry(() => import('../layouts/ShareDialog').then((m) => ({ default: m.ShareDialog })));
+const InsertModuleDialog = lazyRetry(() => import('./InsertModuleDialog').then((m) => ({ default: m.InsertModuleDialog })));
+const ModuleLookDialog = lazyRetry(() => import('./ModuleLookDialog').then((m) => ({ default: m.ModuleLookDialog })));
+const ModuleDialogHost = lazyRetry(() => import('./ModuleDialogs').then((m) => ({ default: m.ModuleDialogHost })));
+const EditBrickDialog = lazyRetry(() => import('./EditBrickDialog').then((m) => ({ default: m.EditBrickDialog })));
+const EditRulerDialog = lazyRetry(() => import('./EditRulerDialog').then((m) => ({ default: m.EditRulerDialog })));
+const GeneralInfoDialog = lazyRetry(() => import('./GeneralInfoDialog').then((m) => ({ default: m.GeneralInfoDialog })));
+const BackgroundColorDialog = lazyRetry(() => import('./BackgroundColorDialog').then((m) => ({ default: m.BackgroundColorDialog })));
+const BackgroundImageDialog = lazyRetry(() => import('./BackgroundImageDialog').then((m) => ({ default: m.BackgroundImageDialog })));
+const FindDialog = lazyRetry(() => import('./FindDialog').then((m) => ({ default: m.FindDialog })));
+const PreferencesDialog = lazyRetry(() => import('./PreferencesDialog').then((m) => ({ default: m.PreferencesDialog })));
+const ImportBbmDialog = lazyRetry(() => import('./ImportBbmDialog').then((m) => ({ default: m.ImportBbmDialog })));
+const ExportImageDialog = lazyRetry(() => import('./ExportImageDialog').then((m) => ({ default: m.ExportImageDialog })));
+const AddAnchoredLabelDialog = lazyRetry(() => import('./AddAnchoredLabelDialog').then((m) => ({ default: m.AddAnchoredLabelDialog })));
+const SaveAsSetDialog = lazyRetry(() => import('./SaveAsSetDialog').then((m) => ({ default: m.SaveAsSetDialog })));
+const ModulesPanel = lazyRetry(() => import('./ModulesPanel').then((m) => ({ default: m.ModulesPanel })));
+const ModuleLibraryPanel = lazyRetry(() => import('./ModuleLibraryPanel').then((m) => ({ default: m.ModuleLibraryPanel })));
+const VenueDesigner = lazyRetry(() => import('../venues/designer/VenueDesigner').then((m) => ({ default: m.VenueDesigner })));
+const VenuePropertiesDialog = lazyRetry(() => import('./VenuePropertiesDialog').then((m) => ({ default: m.VenuePropertiesDialog })));
+const VenueDimensionsDialog = lazyRetry(() => import('./VenueDimensionsDialog').then((m) => ({ default: m.VenueDimensionsDialog })));
+const BudgetDialog = lazyRetry(() => import('./BudgetDialog').then((m) => ({ default: m.BudgetDialog })));
+const VenueLibraryPanel = lazyRetry(() => import('./VenueLibraryPanel').then((m) => ({ default: m.VenueLibraryPanel })));
+const VenueSaveLibraryDialog = lazyRetry(() => import('./VenueSaveLibraryDialog').then((m) => ({ default: m.VenueSaveLibraryDialog })));
 
 /** A part from the parts list being dragged over the map: where it would land (a set: its parts, placed). */
 interface DropPart {
@@ -282,6 +283,21 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = docState;
   // A layout is opening: the loading card counts its pictures afresh.
   useEffect(() => resetSpriteProgress(), [layoutId]);
+  // Once the layout is open, fetch every panel and dialog while the Wi-Fi is
+  // up, so they still open if it drops at the show.
+  useEffect(() => {
+    if (!doc) return;
+    let idle = 0;
+    const t = setTimeout(() => {
+      // When the page has nothing else to do, so it never slows an edit.
+      if (typeof requestIdleCallback === 'function') idle = requestIdleCallback(() => void preloadLazy(), { timeout: 10000 });
+      else void preloadLazy();
+    }, 2000);
+    return () => {
+      clearTimeout(t);
+      if (idle && typeof cancelIdleCallback === 'function') cancelIdleCallback(idle);
+    };
+  }, [doc]);
   // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
   // shows it in the status bar after the open).
   const location = useLocation();
