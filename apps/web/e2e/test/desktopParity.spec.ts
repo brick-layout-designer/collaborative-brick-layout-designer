@@ -1584,3 +1584,65 @@ test.describe('moving an area sheet (BlueBrick MoveArea)', () => {
     await other.close();
   });
 });
+
+test.describe('detaching a ruler (BlueBrick Detach)', () => {
+  const FLEX_IN = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/oracle/flex-in.bbm'),
+    'utf-8',
+  );
+  const toScreen = (page: Page, s: { x: number; y: number }) =>
+    page.evaluate((p) => {
+      const st = (window as unknown as {
+        Konva: { stages: { container: () => HTMLElement; getAbsoluteTransform: () => { point: (q: { x: number; y: number }) => { x: number; y: number } } }[] };
+      }).Konva.stages[0]!;
+      const box = st.container().getBoundingClientRect();
+      const a = st.getAbsoluteTransform().point({ x: p.x * 8, y: p.y * 8 });
+      return { x: box.left + a.x, y: box.top + a.y };
+    }, s);
+
+  test('attach a ruler end to a part from the menu; a second window detaches it from the ruler\'s menu', async ({ page, browser }) => {
+    const id = await createLayout(page, FLEX_IN);
+    await openEditor(page, id);
+    const xml = async () => (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    // The first end's part; '' when free (written <AttachedBrick1 /> or 0).
+    const attached1 = async () => {
+      const ruler = /<LinearRuler[\s\S]*?<\/LinearRuler>/.exec(await xml())?.[0] ?? '';
+      const id = /<AttachedBrick1>([^<]*)<\/AttachedBrick1>/.exec(ruler)?.[1] ?? '';
+      return id === '0' ? '' : id;
+    };
+
+    // Draw a ruler just above the track, from (33, 30) to (45, 30) studs.
+    await page.getByRole('button', { name: 'Measure', exact: true }).click();
+    const a = await toScreen(page, { x: 33, y: 30 });
+    const b = await toScreen(page, { x: 45, y: 30 });
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => /<LinearRuler/.test(await xml())).toBe(true);
+
+    // Pick it, then right-click the straight: attach its first end there.
+    await page.getByRole('button', { name: 'Select', exact: true }).click();
+    const mid = await toScreen(page, { x: 34.5, y: 30 }); // on the line, not its label
+    await page.mouse.click(mid.x, mid.y);
+    await expect(page.getByText(/selected: 1/)).toBeVisible();
+    const rail = await toScreen(page, { x: 40, y: 37.35 });
+    await page.mouse.click(rail.x, rail.y, { button: 'right' });
+    await expect(page.locator('button', { hasText: /^Detach/ })).toHaveCount(0);
+    await page.locator('button', { hasText: /^Attach Endpoint 1 to this brick$/ }).click();
+    await expect.poll(attached1).toBe('186617953428535140');
+
+    // The second window right-clicks the ruler, which now runs from the
+    // straight's centre (40, 40) to (45, 30), and detaches that end.
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await signIn(page2, EMAIL, 'Parity Tester');
+    await openEditor(page2, id);
+    const onLine = await toScreen(page2, { x: 43, y: 34 });
+    await page2.mouse.click(onLine.x, onLine.y, { button: 'right' });
+    await expect(page2.locator('button', { hasText: /^Detach Endpoint 2$/ })).toHaveCount(0);
+    await page2.locator('button', { hasText: /^Detach Endpoint 1$/ }).click();
+    await expect.poll(attached1).toBe('');
+    await other.close();
+  });
+});
