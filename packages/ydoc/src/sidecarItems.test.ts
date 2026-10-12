@@ -3,7 +3,7 @@
 // apps that only read it, and a write by such an app is still honoured.
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { readSidecarCache, removeDuplicateBricks, repairSidecarCache, sidecarBlobHash, writeSidecarCache } from './index.js';
+import { decodeDoc, encodeDoc, exportSidecarFromDoc, readSidecarCache, removeDuplicateBricks, repairSidecarCache, sidecarBlobHash, writeSidecarCache } from './index.js';
 
 const base = { schemaVersion: 1, bbmHashSha256: '', modules: [{ id: 'm0', name: 'Yard', members: [] }] };
 const sync = (a: Y.Doc, b: Y.Doc) => {
@@ -63,6 +63,143 @@ describe('sidecar items', () => {
     const a = new Y.Doc();
     a.getMap('meta').set('cache', base);
     expect(names(a)).toEqual(['Yard']);
+  });
+});
+
+// The readers from before sidecarItems (packages/ydoc/src/index.ts at
+// 63c80fc^), copied as they were: an older server or web build still in
+// use reads only meta.cache.
+const old = {
+  readSidecarFromDoc(doc: Y.Doc): Record<string, unknown> | null {
+    const cache = doc.getMap('meta').get('cache');
+    if (!cache || typeof cache !== 'object') return null;
+    return cache as Record<string, unknown>;
+  },
+  exportSidecarFromDoc(doc: Y.Doc): Record<string, unknown> | null {
+    return (doc.getMap('meta').get('cache') as Record<string, unknown> | undefined) ?? null;
+  },
+};
+
+const full = {
+  schemaVersion: 1,
+  bbmHashSha256: 'abc',
+  modules: [
+    { id: 'm1', name: 'Yard', members: ['b1', 'b2'], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1], sourceFile: 'yard.bbm' },
+    { id: 'm2', name: 'Harbour', members: [], transform: [1, 0, 5, 0, 1, 7, 0, 0, 1] },
+  ],
+  anchoredLabels: [
+    { id: 'l1', text: 'Station', kind: 0, targetId: '', offset: { x: 1, y: 2 }, rot: 0, minZoom: 0 },
+    { id: 'l2', text: 'Crane', kind: 3, targetId: 'm2', offset: { x: 0, y: 0 }, rot: 90, minZoom: 0.5 },
+  ],
+  venue: { name: 'Hall', enabled: true, edges: [], obstacles: [], minWalkwayStuds: 2 },
+  rulers: [{ id: 'r1', kind: 'linear' }],
+  views: [{ id: 'v1', name: 'All', fit: true }],
+};
+
+describe('older builds read docs written with sidecarItems', () => {
+  it('meta.cache is complete: an old reader sees what the new one does, with no item bookkeeping in it', () => {
+    const a = new Y.Doc();
+    a.transact(() => writeSidecarCache(a, full));
+    const d = decodeDoc(encodeDoc(a));
+    for (const read of [old.readSidecarFromDoc, old.exportSidecarFromDoc]) {
+      expect(read(d)).toEqual(full);
+      expect(read(d)).toEqual(readSidecarCache(d));
+      expect(JSON.stringify(read(d))).not.toMatch(/_order|__blob/);
+    }
+    expect(exportSidecarFromDoc(d)).toEqual(full);
+  });
+
+  it('after edits (rename, add, remove, reorder) the old reader still matches', () => {
+    const a = new Y.Doc();
+    a.transact(() => writeSidecarCache(a, full));
+    const next = {
+      ...full,
+      modules: [{ ...full.modules[1]!, name: 'Port' }, { id: 'm3', name: 'Town', members: ['b9'], transform: [1, 0, 0, 0, 1, 0, 0, 0, 1] }],
+      anchoredLabels: [full.anchoredLabels[1]!],
+    };
+    a.transact(() => writeSidecarCache(a, next));
+    const d = decodeDoc(encodeDoc(a));
+    expect(old.readSidecarFromDoc(d)).toEqual(next);
+    expect(readSidecarCache(d)).toEqual(next);
+  });
+
+  it('two new writers at once: once repaired, the old reader sees both changes', () => {
+    const a = new Y.Doc();
+    a.transact(() => writeSidecarCache(a, full));
+    const b = new Y.Doc();
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    const ca = readSidecarCache(a)!;
+    a.transact(() => writeSidecarCache(a, { ...ca, modules: [...(ca.modules as object[]), { id: 'ma', name: 'Docks', members: [] }] }));
+    const cb = readSidecarCache(b)!;
+    b.transact(() => writeSidecarCache(b, { ...cb, anchoredLabels: [...(cb.anchoredLabels as object[]), { id: 'lb', text: 'Pier' }] }));
+    sync(a, b);
+    repairSidecarCache(a, 'repair');
+    repairSidecarCache(b, 'repair');
+    sync(a, b);
+    for (const d of [a, b]) {
+      const o = old.readSidecarFromDoc(d)!;
+      expect(o).toEqual(readSidecarCache(d));
+      expect((o.modules as { id: string }[]).map((m) => m.id)).toEqual(['m1', 'm2', 'ma']);
+      expect((o.anchoredLabels as { id: string }[]).map((l) => l.id)).toEqual(['l1', 'l2', 'lb']);
+    }
+  });
+
+  // Steps: writeSidecarCache(doc, { modules: [{ id: 'a', name: 'One' }, { id: 'a', name: 'Two' }] }),
+  // then readSidecarCache(doc): it returns one module, meta.cache (the old reader) has two.
+  // The items map is keyed by id, so a sidecar with two modules sharing an id (or a label
+  // with no id) loses one in the new reader while the old reader keeps both.
+  it.fails('a sidecar with repeated or missing ids reads the same in both (known bug: the new reader drops them)', () => {
+    const odd = {
+      ...full,
+      modules: [{ id: 'dup', name: 'One', members: [] }, { id: 'dup', name: 'Two', members: [] }, { name: 'No id', members: [] }],
+      anchoredLabels: [{ text: 'No id' }],
+    };
+    const a = new Y.Doc();
+    a.transact(() => writeSidecarCache(a, odd));
+    expect(old.readSidecarFromDoc(a)).toEqual(odd);
+    expect(readSidecarCache(a)).toEqual(odd);
+  });
+});
+
+describe('the new code reads docs written by older builds (meta.cache only)', () => {
+  it('a blob-only doc reads as written, through every reader', () => {
+    const a = new Y.Doc();
+    a.getMap('meta').set('cache', full);
+    const d = decodeDoc(encodeDoc(a));
+    expect(readSidecarCache(d)).toEqual(full);
+    expect(exportSidecarFromDoc(d)).toEqual(full);
+    expect(repairSidecarCache(d, 'repair')).toBe(false);
+  });
+
+  it('an old build editing a doc the new one wrote wins, and the next new write keeps its edit', () => {
+    const a = new Y.Doc();
+    a.transact(() => writeSidecarCache(a, full));
+    // An old build (blob only) renames a module, drops a label and adds a module.
+    const b = decodeDoc(encodeDoc(a));
+    const edited = {
+      ...full,
+      modules: [{ ...full.modules[0]!, name: 'Old-build yard' }, full.modules[1]!, { id: 'm7', name: 'Old-build town', members: [] }],
+      anchoredLabels: [full.anchoredLabels[0]!],
+    };
+    b.getMap('meta').set('cache', edited);
+    sync(a, b);
+    for (const d of [a, b]) expect(readSidecarCache(d)).toEqual(edited);
+    expect(repairSidecarCache(a, 'repair')).toBe(false);
+    // The new build writes next, from what it reads: nothing of the old build's edit is lost.
+    a.transact(() => writeSidecarCache(a, { ...readSidecarCache(a)!, rulers: [] }));
+    sync(a, b);
+    expect(readSidecarCache(b)).toEqual({ ...edited, rulers: [] });
+    expect(old.readSidecarFromDoc(b)).toEqual({ ...edited, rulers: [] });
+  });
+
+  it('an old build clearing the sidecar is read as cleared', () => {
+    const a = new Y.Doc();
+    a.transact(() => writeSidecarCache(a, full));
+    a.getMap('meta').delete('cache');
+    expect(readSidecarCache(a)).toBeNull();
+    expect(exportSidecarFromDoc(a)).toBeNull();
+    a.getMap('meta').set('cache', { schemaVersion: 1 });
+    expect(readSidecarCache(a)).toEqual({ schemaVersion: 1 });
   });
 });
 
