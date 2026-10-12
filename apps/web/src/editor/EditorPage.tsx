@@ -673,7 +673,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   function panelBody(panelId: string): React.ReactNode {
     if (!doc) return null;
     if (moduleMode && NOT_IN_MODULES.has(panelId)) return null;
-    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={docMap} canUploadPart={!!me.data?.user && !me.data.user.isDemoAccount} />;
+    if (panelId === 'parts') return <PartsPanel onPlacePart={onPlacePart} budgetLimits={budgetLimits} map={budgetLimits.size > 0 ? docMap : null} canUploadPart={!!me.data?.user && !me.data.user.isDemoAccount} />;
     if (panelId === 'layers') return <LayersPanelHost doc={doc} isViewer={isViewer} />;
     if (panelId === 'usedparts') return <UsedPartsPanel doc={doc} budgetLimits={budgetLimits} />;
     if (panelId === 'modules') return <Suspense fallback={null}><ModulesPanel doc={doc} isViewer={isViewer} /></Suspense>;
