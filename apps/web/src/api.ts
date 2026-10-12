@@ -122,6 +122,28 @@ const ERROR_MESSAGES: Record<string, string> = {
 const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required', 'heir_not_member']);
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
+/** What a request says when it never reached the server (no Wi-Fi, server down). */
+export function unreachableMessage(online: boolean = typeof navigator === 'undefined' || navigator.onLine !== false): string {
+  return online
+    ? "Couldn't reach the server. Check the connection and try again."
+    : "You're offline. Check the Wi-Fi and try again.";
+}
+
+/**
+ * fetch, but a request that never reached the server fails with a plain
+ * sentence instead of the browser's "Failed to fetch". (An abort stays an abort.)
+ */
+async function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await globalThis.fetch(input, init);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    if (e instanceof TypeError) throw new Error(unreachableMessage(), { cause: e });
+    throw e;
+  }
+}
+export { fetch as apiFetch };
+
 export const FIREWALL_BLOCKED =
   "The site's firewall blocked this request. Please tell the site admin (what you were doing, and the time).";
 

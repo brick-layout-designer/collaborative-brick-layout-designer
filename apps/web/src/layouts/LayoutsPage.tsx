@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { lazyRetry } from '../ui/lazyRetry';
 import { RenameDialog } from '../ui/RenameDialog';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,7 +31,7 @@ import { ModuleVersionsDialog } from '../modules/ModuleVersionsDialog';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { MODULE_DELETE_WORDING } from '../ui/deleteWording';
 import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
-const ShareDialog = lazy(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
+const ShareDialog = lazyRetry(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 
 export function LayoutsPage() {
   const qc = useQueryClient();

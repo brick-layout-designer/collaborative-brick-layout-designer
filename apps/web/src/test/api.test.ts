@@ -286,3 +286,26 @@ describe('a 403 from the site\'s firewall', () => {
     await expect(api.layouts.list()).rejects.toThrow("You don't have permission to do that.");
   });
 });
+
+// --------------------------------------------------------------------------
+// A request that never reaches the server (show Wi-Fi drops)
+// --------------------------------------------------------------------------
+
+describe('unreachable server', () => {
+  it('says "You\'re offline" instead of "Failed to fetch" when the browser is offline', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
+    vi.stubGlobal('navigator', { onLine: false });
+    await expect(api.modules.list()).rejects.toThrow("You're offline. Check the Wi-Fi and try again.");
+  });
+
+  it('says the server could not be reached when the browser thinks it is online', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
+    vi.stubGlobal('navigator', { onLine: true });
+    await expect(api.modules.list()).rejects.toThrow("Couldn't reach the server. Check the connection and try again.");
+  });
+
+  it('keeps an abort an abort', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new DOMException('aborted', 'AbortError'))));
+    await expect(api.modules.list()).rejects.toMatchObject({ name: 'AbortError' });
+  });
+});
