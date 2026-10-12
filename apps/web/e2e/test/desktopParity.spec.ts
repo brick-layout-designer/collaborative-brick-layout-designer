@@ -1378,3 +1378,63 @@ test.describe('rotating text (BlueBrick RotateText)', () => {
     await other.close();
   });
 });
+
+test.describe('rotation pivot (BlueBrick RotateItems, RotateBrick)', () => {
+  const ORACLE = (name: string) =>
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/oracle', name), 'utf-8');
+  const STRAIGHT = '186617953428535140';
+  /** Each part's box and orientation, by id, from a .bbm. */
+  const parts = (xml: string) => {
+    const out = new Map<string, number[]>();
+    for (const m of xml.matchAll(/<Brick id="(\d+)">\s*<DisplayArea>\s*<X>([^<]+)<\/X>\s*<Y>([^<]+)<\/Y>\s*<Width>([^<]+)<\/Width>\s*<Height>([^<]+)<\/Height>[\s\S]*?<Orientation>([^<]+)<\/Orientation>/g))
+      out.set(m[1]!, [2, 3, 4, 5, 6].map((i) => Number(m[i])));
+    return out;
+  };
+  const toScreen = (page: Page, s: { x: number; y: number }) =>
+    page.evaluate((p) => {
+      const st = (window as unknown as {
+        Konva: { stages: { container: () => HTMLElement; getAbsoluteTransform: () => { point: (q: { x: number; y: number }) => { x: number; y: number } } }[] };
+      }).Konva.stages[0]!;
+      const box = st.container().getBoundingClientRect();
+      const a = st.getAbsoluteTransform().point({ x: p.x * 8, y: p.y * 8 });
+      return { x: box.left + a.x, y: box.top + a.y };
+    }, s);
+
+  test('a joined straight flips round its join; a second window turns everything about the box, like vanilla', async ({ page, browser }) => {
+    const id = await createLayout(page, ORACLE('flex-in.bbm'));
+    await openEditor(page, id);
+    const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
+    const near = (got: Map<string, number[]>, want: Map<string, number[]>, only?: string) => {
+      for (const [pid, w] of want) {
+        if (only && pid !== only) continue;
+        const g = got.get(pid)!;
+        for (let i = 0; i < 4; i++) if (Math.abs(g[i]! - w[i]!) > 0.01) return false;
+        if (Math.abs((((g[4]! - w[4]!) % 360) + 360) % 360) > 0.01 && Math.abs((((g[4]! - w[4]!) % 360) + 360) % 360 - 360) > 0.01) return false;
+      }
+      return true;
+    };
+
+    // Right-click the straight (17 x 8 at (31.5, 36)), Rotate CW: it stays
+    // joined to the flex end, so it flips in place (vanilla rot-one-ccw).
+    const at = await toScreen(page, { x: 40, y: 37.35 }); // on a rail
+    await page.mouse.click(at.x, at.y, { button: 'right' });
+    await page.locator('button', { hasText: /^Rotate CW$/ }).click();
+    const oneTurn = parts(ORACLE('rot-one-ccw.bbm'));
+    await expect.poll(async () => near(parts(await bbm()), oneTurn, STRAIGHT)).toBe(true);
+    // Back as it was, for the second window.
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => near(parts(await bbm()), parts(ORACLE('flex-in.bbm')))).toBe(true);
+
+    // A second window picks everything and turns it: about the box centre.
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await signIn(page2, EMAIL, 'Parity Tester');
+    await openEditor(page2, id);
+    const box2 = (await page2.locator('.konvajs-content').first().boundingBox())!;
+    await page2.mouse.click(box2.x + 5, box2.y + box2.height - 5);
+    await page2.keyboard.press('Control+a');
+    await page2.keyboard.press('Shift+R'); // Shift+R turns by +step, as Rotate CW
+    await expect.poll(async () => near(parts(await bbm()), parts(ORACLE('rot-all1.bbm')))).toBe(true);
+    await other.close();
+  });
+});
