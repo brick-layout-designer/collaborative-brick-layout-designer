@@ -1259,6 +1259,7 @@ test.describe('grid origin drag', () => {
 test.describe('flex track', () => {
   test('a selected flex chain bends like vanilla BlueBrick: by its end\'s handle (flex-a) or a double-click-drag (flex-c)', async ({ page }) => {
     test.slow();
+    page.on('console', (m) => { if (m.text().startsWith('[dbg]')) console.log(Date.now() % 100000, m.text()); });
     const fixtures = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/oracle');
     const oracle = (name: string) => readFileSync(join(fixtures, name), 'utf-8');
     const id = await createLayout(page, oracle('flex-in.bbm'));
@@ -1331,6 +1332,7 @@ test.describe('flex track', () => {
     await undoToStraight();
 
     // A double-click without moving opens the brick's properties as usual.
+    console.log(Date.now() % 100000, '[test] dblclick');
     await page.mouse.dblclick(mid.x, mid.y);
     await expect(page.getByRole('dialog')).toBeVisible();
   });

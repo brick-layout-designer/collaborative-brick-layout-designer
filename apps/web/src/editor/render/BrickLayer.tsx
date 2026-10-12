@@ -346,6 +346,7 @@ const BrickGlyph = memo(function BrickGlyph({
   const spriteHpx = sprite ? sprite.naturalHeight * spriteScale : h;
 
   function handleClick(e: KonvaEventObject<MouseEvent | TouchEvent>) {
+    console.debug('[dbg] click', brick.id, (e.evt as MouseEvent).detail, 'sel', useEditorStore.getState().selection.length);
     // Right-click: if the clicked brick is already selected keep the whole
     // selection so the context menu applies to all selected bricks. If it's
     // NOT selected, select just this brick (standard OS right-click behaviour).
@@ -456,6 +457,7 @@ const BrickGlyph = memo(function BrickGlyph({
   function handleMouseDown(e: KonvaEventObject<MouseEvent>) {
     grabConnRef.current = -1;
     pointerKindRef.current = 'mouse';
+    console.debug('[dbg] press', brick.id, 'tool', tool, 'btn', e.evt.button, 'outside', outside, 'target', e.target.name() || e.target.className);
     if (isViewer || tool !== 'select' || e.evt.button !== 0 || outside) return;
     const stage = e.target.getStage();
     const ptr = stage?.getPointerPosition();
@@ -479,6 +481,7 @@ const BrickGlyph = memo(function BrickGlyph({
       // produced its double-click event.
       flexMovedRef.current = false;
     }
+    console.debug('[dbg] down', brick.id, e.evt.detail, e.evt.timeStamp.toFixed(0), performance.now().toFixed(0), 'second', second);
     lastPress.id = second ? '' : brick.id;
     lastPress.time = now;
     // A hinged chain bends even in a module (a flex track set is placed as
@@ -497,6 +500,7 @@ const BrickGlyph = memo(function BrickGlyph({
         partsByKey,
         modules: getModules(),
         onEnd: (moved) => {
+          console.debug('[dbg] onEnd moved', moved);
           group?.draggable(true);
           // Moved: the release is not a double-click that opens properties.
           if (moved) {
@@ -511,6 +515,7 @@ const BrickGlyph = memo(function BrickGlyph({
           doubleClickAction(false);
         },
       });
+      console.debug('[dbg] started', started);
       if (started) {
         // The chain bends instead of the brick being dragged.
         group?.draggable(false);
@@ -1143,6 +1148,7 @@ const BrickGlyph = memo(function BrickGlyph({
   const doubleClickDoneAt = useRef(-Infinity);
 
   function onDoubleClick(e: KonvaEventObject<MouseEvent | TouchEvent>, byTouch = false) {
+    console.debug('[dbg] dblclick', brick.id, flexMovedRef.current, performance.now() - doubleClickDoneAt.current);
     e.cancelBubble = true;
     // A double-click that bent a flex chain doesn't open properties.
     if (flexMovedRef.current) {
@@ -1164,6 +1170,7 @@ const BrickGlyph = memo(function BrickGlyph({
       enterModuleEdit(mod.id, brick.id);
       return;
     }
+    console.debug('[dbg] action', byTouch, !!onEditBrick);
     if (!byTouch && onEditBrick) onEditBrick(brick, layerId, meta);
   }
 

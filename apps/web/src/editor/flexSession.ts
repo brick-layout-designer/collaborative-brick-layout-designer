@@ -81,10 +81,10 @@ export function startFlexSession(opts: {
     if (grabbed) grabbed.activeConnectionPointIndex = opts.activeConnection;
   }
   const flex = FlexMove.start(layer, selection, grabbedId, mouseStuds, catalogFromParts([...new Set(partsByKey.values())]));
-  if (!flex) return false;
+  if (!flex) { console.debug('[dbg] no FlexMove', [...selection].join(',')); return false; }
 
   const chainIds = flex.initialState().map((s) => s.id);
-  if (pinnedAmong(chainIds, modules, st.editingModuleId)) return false;
+  if (pinnedAmong(chainIds, modules, st.editingModuleId)) { console.debug('[dbg] pinned'); return false; }
   st.setSelection(chainIds);
   let moved = false;
 
@@ -161,6 +161,7 @@ export function startFlexSession(opts: {
     draw();
   };
   const onMove = (e?: { evt?: Event & { altKey?: boolean } }) => {
+    console.debug('[dbg] flex move evt', e?.evt?.type, (e?.evt as MouseEvent | undefined)?.clientX, (e?.evt as MouseEvent | undefined)?.clientY);
     const m = pointerStuds();
     if (!m) return;
     if (e?.evt) coarse = isTouchEvent(e.evt);

@@ -1859,7 +1859,7 @@ function Canvas({
 
   const onEditBrick = useCallback(
     (brick: import('@cld/model').Brick, layerId: string, meta: PartWire | undefined) =>
-      setEditing({ brick, layerId, meta }),
+      { console.debug('[dbg] setEditing'); setEditing({ brick, layerId, meta }); },
     [],
   );
 
@@ -4171,7 +4171,7 @@ function Canvas({
           layerId={editing.layerId}
           doc={doc}
           meta={editing.meta}
-          onClose={() => setEditing(null)}
+          onClose={() => { console.debug('[dbg] dialog close', new Error().stack?.split('\n').slice(1, 6).join(' | ')); setEditing(null); }}
         />
       )}
       {editingRuler && (
