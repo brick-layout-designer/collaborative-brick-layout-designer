@@ -4447,6 +4447,9 @@ function CanvasContextMenu({
     }
   } else if (singleSel && onBrick) {
     entries.push(item('Properties…', onProperties));
+    // BlueBrick's Use as Model: pick this part in the parts list.
+    const partNumber = map?.layers.flatMap((l) => (l.type === 'brick' ? l.bricks : [])).find((b) => b.id === selection[0])?.partNumber;
+    if (partNumber) entries.push(item('Use as Model', () => useEditorStore.getState().useAsModel(partNumber)));
     entries.push(sep('s0'));
   }
 

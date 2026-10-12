@@ -301,3 +301,14 @@ describe('editorStore — misc setters', () => {
     expect(useEditorStore.getState().hudMapHeightStuds).toBe(80);
   });
 });
+
+describe('Use as Model (BlueBrick)', () => {
+  it('asks the parts list for the part, a new request each time', async () => {
+    const { useEditorStore } = await import('../editorStore');
+    useEditorStore.getState().useAsModel('2865.8');
+    const first = useEditorStore.getState().modelPart!;
+    expect(first.key).toBe('2865.8');
+    useEditorStore.getState().useAsModel('2865.8');
+    expect(useEditorStore.getState().modelPart!.seq).toBe(first.seq + 1);
+  });
+});

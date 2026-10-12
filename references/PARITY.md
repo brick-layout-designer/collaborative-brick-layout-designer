@@ -585,7 +585,7 @@ These are confirmed in both apps unless a row says otherwise. They are the gaps 
 | Group / Ungroup | same | same |
 | Attach (ruler) | same: per endpoint | same |
 | Detach (ruler) | **missing** from the menu (gap 6) | **missing** from the menu |
-| Use as Model | **missing.** Nothing picks the clicked part in the parts library | **missing** |
+| Use as Model | same: a part's menu picks it in the parts list (desktop #162) | same: the brick menu's Use as Model picks it in the Parts panel (`modelPart`) |
 | Properties | same | same |
 | Scroll bars | n/a: there are no scroll bars | n/a |
 
@@ -616,6 +616,6 @@ The menus otherwise match, item by item. The web repo's `references/PARITY.md` c
 3. Rotate and Bring to Front / Send to Back for text and rulers.
 4. Detach on the context menu.
 5. On-canvas ruler offset and radius handles.
-6. Use as Model.
+6. ~~Use as Model~~: done in both apps.
 7. MoveArea.
 8. ~~Rotation pivot~~: done in both apps, checked against vanilla.
