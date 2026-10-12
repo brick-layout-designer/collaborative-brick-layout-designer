@@ -1,3 +1,8 @@
+# Fewer, grouped update PRs (Aaron, 2026-10-12): each week at most one PR
+# for dev tools, one for what runs on the server or in the page, one for
+# GitHub Actions and one for Docker. Major versions still come one per PR,
+# since those need a real look. Triage: dev-only groups merge on green;
+# runtime ones wait for Aaron's OK.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -12,14 +17,12 @@ updates:
       prefix: chore
       include: scope
     groups:
-      types:
-        patterns: ['@types/*']
-      dev-tools:
-        patterns:
-          - typescript
-          - vitest
-          - tsx
-          - drizzle-kit
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      runtime-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
 
   - package-ecosystem: github-actions
     directory: /
@@ -29,6 +32,9 @@ updates:
     labels: [dependencies, ci]
     commit-message:
       prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
 
   - package-ecosystem: docker
     directory: /
@@ -38,3 +44,6 @@ updates:
     labels: [dependencies, docker]
     commit-message:
       prefix: build
+    groups:
+      docker:
+        patterns: ['*']
