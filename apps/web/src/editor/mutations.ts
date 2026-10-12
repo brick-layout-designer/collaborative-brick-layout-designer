@@ -1217,6 +1217,41 @@ export function moveRulerItem(
 }
 
 /**
+ * BlueBrick ScaleRuler: the offset of a linear ruler (signed, along
+ * (Uy, -Ux) as vanilla draws it) or the radius of a circle that puts its
+ * scale handle at `at` (studs). Desktop scaledRulerValue.
+ */
+export function scaledRulerValue(r: Pick<RulerLike, 'kind' | 'point1' | 'point2' | 'center'>, at: { x: number; y: number }): number {
+  if (r.kind === 'circular') return Math.hypot(at.x - r.center.x, at.y - r.center.y);
+  const dx = r.point2.x - r.point1.x;
+  const dy = r.point2.y - r.point1.y;
+  const len = Math.hypot(dx, dy);
+  const u = len > 1e-9 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 };
+  return (at.x - r.point1.x) * u.y - (at.y - r.point1.y) * u.x;
+}
+
+/** Drag a ruler's offset or a circle's radius to `at` (studs): ScaleRuler. */
+export function scaleRuler(doc: Y.Doc, layerId: string, rulerId: string, at: { x: number; y: number }): void {
+  doc.transact(() => {
+    const layerData = doc.getMap('layerData').get(layerId);
+    if (!(layerData instanceof Y.Map)) return;
+    const yItems = layerData.get('rulerItems');
+    if (!(yItems instanceof Y.Array)) return;
+    const idx = findRulerIndex(yItems, rulerId);
+    if (idx < 0) return;
+    const cur = yItems.get(idx) as RulerLike;
+    if (!cur) return;
+    const value = scaledRulerValue(cur, at);
+    const next =
+      cur.kind === 'circular'
+        ? { ...cur, radius: Math.max(0, value), displayArea: rectAroundCircle(cur.center, Math.max(0, value)) }
+        : { ...cur, offsetDistance: value };
+    yItems.delete(idx, 1);
+    yItems.insert(idx, [next as unknown as Record<string, unknown>]);
+  }, LOCAL_ORIGIN);
+}
+
+/**
  * Move one endpoint of a linear ruler. `which` selects 0 = point1 or
  * 1 = point2. Mirrors `MoveRulerEndpointCommand` (RulerCommands.cpp:203-282).
  * Detaches the corresponding `attachedBrickN` automatically (the
