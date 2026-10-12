@@ -130,19 +130,16 @@ export function unreachableMessage(online: boolean = typeof navigator === 'undef
 }
 
 /**
- * fetch, but a request that never reached the server fails with a plain
- * sentence instead of the browser's "Failed to fetch". (An abort stays an abort.)
+ * A request that never reached the server fails with a plain sentence
+ * instead of the browser's "Failed to fetch": `await reach(fetch(…))`.
+ * (An abort stays an abort.)
  */
-async function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  try {
-    return await globalThis.fetch(input, init);
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+export function reach(request: Promise<Response>): Promise<Response> {
+  return Promise.resolve(request).catch((e: unknown) => {
     if (e instanceof TypeError) throw new Error(unreachableMessage(), { cause: e });
     throw e;
-  }
+  });
 }
-export { fetch as apiFetch };
 
 export const FIREWALL_BLOCKED =
   "The site's firewall blocked this request. Please tell the site admin (what you were doing, and the time).";
@@ -241,19 +238,19 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 /** JSON request with the same friendly errors (for lazily loaded admin code). */
 export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST' | 'DELETE', path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await reach(fetch(path, {
     method,
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, method, path));
   noteWrite(method, path);
   return res.json() as Promise<T>;
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path, { credentials: 'include' });
+  const res = await reach(fetch(path, { credentials: 'include' }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
   return res.json() as Promise<T>;
 }
@@ -264,7 +261,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     init.headers = { 'content-type': 'application/json' };
     init.body = JSON.stringify(body);
   }
-  const res = await fetch(path, init);
+  const res = await reach(fetch(path, init));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'POST', path));
   noteWrite('POST', path);
   return res.json() as Promise<T>;
@@ -348,30 +345,30 @@ export interface PublicLayoutSummary {
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await reach(fetch(path, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PATCH', path));
   noteWrite('PATCH', path);
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+  const res = await reach(fetch(path, { method: 'DELETE', credentials: 'include' }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
   noteWrite('DELETE', path);
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await reach(fetch(path, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PUT', path));
   noteWrite('PUT', path);
   return res.json() as Promise<T>;
@@ -453,7 +450,7 @@ export function spriteUrlFor(part: PartWire): string {
 }
 
 async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: number }> {
-  const res = await fetch(path, { credentials: 'include' });
+  const res = await reach(fetch(path, { credentials: 'include' }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
   const buf = await res.arrayBuffer();
   return {
@@ -463,7 +460,7 @@ async function getBytes(path: string): Promise<{ bytes: Uint8Array; docVersion: 
 }
 
 async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: number }> {
-  const res = await fetch(path, {
+  const res = await reach(fetch(path, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'content-type': 'application/octet-stream' },
@@ -472,7 +469,7 @@ async function putBytes(path: string, bytes: Uint8Array): Promise<{ updatedAt: n
     // Uint8Array (which could theoretically back a SharedArrayBuffer,
     // though nothing in this codebase ever produces one here).
     body: bytes as Uint8Array<ArrayBuffer>,
-  });
+  }));
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'PUT', path));
   noteWrite('PUT', path);
   return res.json() as Promise<{ updatedAt: number }>;
@@ -597,7 +594,7 @@ export const api = {
       Date.now() - partsChangedAt < PARTS_CACHE_MS ? api.parts.catalogFresh() : get<{ parts: PartWire[] }>('/api/parts/catalog'),
     /** The catalog past the browser's 60 s cache, after parts were added. */
     catalogFresh: async () => {
-      const res = await fetch('/api/parts/catalog', { credentials: 'include', cache: 'no-cache' });
+      const res = await reach(fetch('/api/parts/catalog', { credentials: 'include', cache: 'no-cache' }));
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', '/api/parts/catalog'));
       return (await res.json()) as { parts: PartWire[] };
     },
@@ -709,12 +706,12 @@ export const api = {
      * `heirUserId`, or 'takedown'). Newer servers answer `dueAt`.
      */
     remove: async (slug: string, confirm: string, choice: { catalog?: 'hand' | 'takedown'; heirUserId?: string | null } = {}) => {
-      const res = await fetch(`/api/orgs/${slug}`, {
+      const res = await reach(fetch(`/api/orgs/${slug}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ confirm, ...choice }),
-      });
+      }));
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', `/api/orgs/${slug}`));
       noteWrite('DELETE', `/api/orgs/${slug}`);
       try {
@@ -865,7 +862,7 @@ export const api = {
     /** One version's Y.Doc bytes. */
     versionSnapshot: async (id: string, version: number): Promise<Uint8Array> => {
       const path = `/api/modules/${encodeURIComponent(id)}/versions/${version}/snapshot`;
-      const res = await fetch(path, { credentials: 'include' });
+      const res = await reach(fetch(path, { credentials: 'include' }));
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
       return new Uint8Array(await res.arrayBuffer());
     },
@@ -874,7 +871,7 @@ export const api = {
       post<{ ok: true; version: number }>(`/api/modules/${encodeURIComponent(id)}/versions/${version}/restore`, {}),
     /** The module's Y.Doc bytes (for the module editor). */
     snapshot: async (id: string): Promise<Uint8Array> => {
-      const res = await fetch(`/api/modules/${encodeURIComponent(id)}/snapshot`, { credentials: 'include' });
+      const res = await reach(fetch(`/api/modules/${encodeURIComponent(id)}/snapshot`, { credentials: 'include' }));
       if (!res.ok) throw new Error(await friendlyErrorMessage(res));
       return new Uint8Array(await res.arrayBuffer());
     },
@@ -1101,7 +1098,7 @@ export const api = {
       put<CollectionSaved & { coverImageId: string }>(`/api/catalog/collections/${encodeURIComponent(id)}/cover`, body),
     removeCollectionCover: async (id: string): Promise<CollectionSaved> => {
       const path = `/api/catalog/collections/${encodeURIComponent(id)}/cover`;
-      const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+      const res = await reach(fetch(path, { method: 'DELETE', credentials: 'include' }));
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
       noteWrite('DELETE', path);
       return res.json() as Promise<CollectionSaved>;
@@ -1111,7 +1108,7 @@ export const api = {
     /** Back to the drawn picture (a waiting one goes too). */
     removeItemCover: async (id: string): Promise<ItemCoverState> => {
       const path = `/api/catalog/items/${encodeURIComponent(id)}/cover`;
-      const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+      const res = await reach(fetch(path, { method: 'DELETE', credentials: 'include' }));
       if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'DELETE', path));
       noteWrite('DELETE', path);
       return res.json() as Promise<ItemCoverState>;

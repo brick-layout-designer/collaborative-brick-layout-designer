@@ -6,14 +6,14 @@ import * as Y from 'yjs';
 import { docToBbm } from '@cld/ydoc';
 import type { ModuleBatch } from './mutations';
 import { moduleBatchesFromMap } from './moduleDrop';
-import { api, apiFetch } from '../api';
+import { api, reach } from '../api';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export async function fetchModuleBatches(moduleId: string): Promise<ModuleBatch[]> {
   if (!UUID_RE.test(moduleId)) throw new Error('invalid module id');
   // Same-origin relative fetch; the id is a validated UUID.
-  const res = await apiFetch(`/api/modules/${moduleId}/snapshot`, { credentials: 'include' });
+  const res = await reach(fetch(`/api/modules/${moduleId}/snapshot`, { credentials: 'include' }));
   if (!res.ok) throw new Error(`snapshot fetch failed: ${res.status}`);
   const buf = await res.arrayBuffer();
   const moduleDoc = new Y.Doc();

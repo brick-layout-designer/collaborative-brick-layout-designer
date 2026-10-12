@@ -287,8 +287,16 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   // up, so they still open if it drops at the show.
   useEffect(() => {
     if (!doc) return;
-    const t = setTimeout(() => void preloadLazy(), 2000);
-    return () => clearTimeout(t);
+    let idle = 0;
+    const t = setTimeout(() => {
+      // When the page has nothing else to do, so it never slows an edit.
+      if (typeof requestIdleCallback === 'function') idle = requestIdleCallback(() => void preloadLazy(), { timeout: 10000 });
+      else void preloadLazy();
+    }, 2000);
+    return () => {
+      clearTimeout(t);
+      if (idle && typeof cancelIdleCallback === 'function') cancelIdleCallback(idle);
+    };
   }, [doc]);
   // What opening an LDraw / TrackDesigner / 4DBrix file skipped (desktop
   // shows it in the status bar after the open).
