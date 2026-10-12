@@ -17,6 +17,7 @@
 // the club's admins and managers get a note in their notices, and the
 // move is audit-logged.
 
+import { stripImportSource } from '../utils/partXml.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -200,7 +201,7 @@ export async function returnToAuthor(
           ownerUserId: null,
           ownerOrgId: orgId,
           createdBy: authorUser.id,
-          xmlBlob: Buffer.from(src.xmlBlob as Uint8Array),
+          xmlBlob: stripImportSource(Buffer.from(src.xmlBlob as Uint8Array)),
           spriteBlob: Buffer.from(src.spriteBlob as Uint8Array),
           spriteMime: src.spriteMime,
           copiedFromId: src.id,

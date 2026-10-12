@@ -32,6 +32,7 @@
 //
 // All bodies are JSON. Every change is audit-logged.
 
+import { stripImportSource } from '../utils/partXml.js';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, notInArray, or, sql } from 'drizzle-orm';
@@ -1638,7 +1639,8 @@ export async function copyPartTo(user: User, partId: string, destOrgId: string |
     .where(and(eq(schema.customParts.partNumber, src.partNumber), destOrgId ? eq(schema.customParts.ownerOrgId, destOrgId) : eq(schema.customParts.ownerUserId, user.id)))
     .get();
   if (taken) return { ok: false, status: 409, body: { error: 'part_number_taken' } };
-  const xml = Buffer.from(src.xmlBlob as Uint8Array);
+  // A copy never carries the importer's local path (older rows may still have it).
+  const xml = stripImportSource(Buffer.from(src.xmlBlob as Uint8Array));
   const sprite = Buffer.from(src.spriteBlob as Uint8Array);
   const owner: Subject = destOrgId ? { kind: 'org', id: destOrgId } : { kind: 'user', id: user.id };
   const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: xml.length + sprite.length } });

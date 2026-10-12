@@ -151,7 +151,7 @@ describe('older builds read docs written with sidecarItems', () => {
   // then readSidecarCache(doc): it returns one module, meta.cache (the old reader) has two.
   // The items map is keyed by id, so a sidecar with two modules sharing an id (or a label
   // with no id) loses one in the new reader while the old reader keeps both.
-  it.fails('a sidecar with repeated or missing ids reads the same in both (known bug: the new reader drops them)', () => {
+  it('a sidecar with repeated or missing ids reads the same in both', () => {
     const odd = {
       ...full,
       modules: [{ id: 'dup', name: 'One', members: [] }, { id: 'dup', name: 'Two', members: [] }, { name: 'No id', members: [] }],
@@ -160,6 +160,9 @@ describe('older builds read docs written with sidecarItems', () => {
     const a = new Y.Doc();
     a.transact(() => writeSidecarCache(a, odd));
     expect(old.readSidecarFromDoc(a)).toEqual(odd);
+    expect(readSidecarCache(a)).toEqual(odd);
+    // …and isn't "repaired" into fewer entries either.
+    expect(repairSidecarCache(a, 'repair')).toBe(false);
     expect(readSidecarCache(a)).toEqual(odd);
   });
 });

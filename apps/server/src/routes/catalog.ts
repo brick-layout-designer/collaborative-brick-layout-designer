@@ -394,7 +394,7 @@ export async function copyItemTo(user: User, item: typeof schema.catalogItems.$i
       )
       .get();
     if (taken) return { ok: false, code: 409, body: { error: 'part_number_taken' } };
-    const xml = Buffer.from(v.xmlBlob as Uint8Array);
+    const xml = stripImportSource(Buffer.from(v.xmlBlob as Uint8Array));
     const sprite = Buffer.from(v.spriteBlob as Uint8Array);
     const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: xml.length + sprite.length } });
     if (refusal) return { ok: false, code: refusal.status, body: refusal.body };
@@ -893,7 +893,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       await db
         .update(schema.customParts)
         .set({
-          xmlBlob: Buffer.from(v.xmlBlob as Uint8Array),
+          xmlBlob: stripImportSource(Buffer.from(v.xmlBlob as Uint8Array)),
           spriteBlob: Buffer.from(v.spriteBlob as Uint8Array),
           spriteMime: (v.spriteMime ?? p.spriteMime) as 'image/gif' | 'image/png',
           updatedAt: now,

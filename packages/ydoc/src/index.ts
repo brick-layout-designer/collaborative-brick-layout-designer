@@ -189,8 +189,25 @@ export function readSidecarCache(doc: Y.Doc): Record<string, unknown> | null {
   if (!blob || typeof blob !== 'object') return null;
   const cache = blob as Record<string, unknown>;
   const items = doc.getMap(SIDECAR_ITEMS);
-  if (items.size === 0 || items.get('__blob') !== blobHash(cache)) return cache;
+  if (items.size === 0 || items.get('__blob') !== blobHash(cache) || !idsUnique(cache)) return cache;
   return mergedSidecar(cache, items);
+}
+
+// The items are keyed by id: a sidecar where a module or label has no id,
+// or shares one, can't be split into them without losing an entry, so it's
+// read (and kept) as the blob it is.
+function idsUnique(cache: Record<string, unknown>): boolean {
+  for (const { field } of ITEM_KINDS) {
+    const list = cache[field];
+    if (!Array.isArray(list)) continue;
+    const seen = new Set<string>();
+    for (const v of list) {
+      const id = v && typeof v === 'object' ? (v as { id?: unknown }).id : undefined;
+      if (typeof id !== 'string' || seen.has(id)) return false;
+      seen.add(id);
+    }
+  }
+  return true;
 }
 
 function mergedSidecar(cache: Record<string, unknown>, items: Y.Map<unknown>): Record<string, unknown> {
@@ -239,7 +256,7 @@ export function repairSidecarCache(doc: Y.Doc, origin: unknown): boolean {
   const blob = doc.getMap('meta').get('cache');
   if (!blob || typeof blob !== 'object') return false;
   const items = doc.getMap(SIDECAR_ITEMS);
-  if (items.size === 0) return false;
+  if (items.size === 0 || !idsUnique(blob as Record<string, unknown>)) return false;
   const merged = mergedSidecar(blob as Record<string, unknown>, items);
   const hash = blobHash(merged);
   if (items.get('__blob') === hash && JSON.stringify(merged) === JSON.stringify(blob)) return false;
