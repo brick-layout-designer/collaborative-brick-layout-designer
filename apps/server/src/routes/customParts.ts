@@ -166,7 +166,9 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       reply.header('Content-Type', 'text/plain; charset=utf-8');
       reply.header('Content-Disposition', 'attachment; filename="part.xml"');
       reply.header('X-Content-Type-Options', 'nosniff');
-      return reply.send(Buffer.from(part.xmlBlob as Uint8Array).toString('utf8'));
+      // Never the importer's local path, even for a part stored before
+      // uploads were stripped (or copied from one).
+      return reply.send(stripImportSource(Buffer.from(part.xmlBlob as Uint8Array)).toString('utf8'));
     },
   );
 

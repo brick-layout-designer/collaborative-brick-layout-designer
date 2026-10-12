@@ -145,7 +145,7 @@ describe('an imported part on the server', () => {
   // copied from one) still has it; GET /api/custom-parts/:id/xml serves the
   // stored bytes as they are, so the importer's local path (/home/<user>/…)
   // is shown to everyone the part is shared with.
-  it.fails('a part stored before stripping existed is not served with its ImportSource (known bug: served as stored)', async () => {
+  it('a part stored before stripping existed is not served with its ImportSource', async () => {
     const id = await upload();
     await db.update(schema.customParts).set({ xmlBlob: xml }).where(eq(schema.customParts.id, id));
     const served = await app.inject({ method: 'GET', url: `/api/custom-parts/${id}/xml`, headers: { cookie: sam.cookie } });
@@ -156,7 +156,7 @@ describe('an imported part on the server', () => {
   // Steps: as above, then "Copy to…" a club (POST /api/custom-parts/:id/copy,
   // collections.ts copyPartTo; ownership.ts's hand-over copy does the same):
   // the copy's XML is the stored bytes, ImportSource and all.
-  it.fails('copying a part stored before stripping existed drops its ImportSource (known bug: copied as stored)', async () => {
+  it('copying a part stored before stripping existed drops its ImportSource', async () => {
     const id = await upload();
     await db.update(schema.customParts).set({ xmlBlob: xml }).where(eq(schema.customParts.id, id));
     expect((await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: sam.cookie }, payload: { name: 'Harbour Club' } })).statusCode).toBe(201);
