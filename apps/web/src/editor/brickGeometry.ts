@@ -82,10 +82,11 @@ export function connectionWorld(brick: Pick<Brick, 'displayArea' | 'orientation'
 export function rotateAroundPivots(
   bricks: readonly { brick: Pick<Brick, 'displayArea' | 'orientation'>; part: PartGeom | undefined }[],
   degrees: number,
+  about?: Pt,
 ): { orientation: number; displayArea: RectangleF }[] {
   if (bricks.length === 0) return [];
   const centres = bricks.map(({ brick, part }) => pivotOf(brick, part));
-  const pivot = {
+  const pivot = about ?? {
     x: centres.reduce((s, c) => s + c.x, 0) / centres.length,
     y: centres.reduce((s, c) => s + c.y, 0) / centres.length,
   };

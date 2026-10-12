@@ -1335,3 +1335,46 @@ test.describe('flex track', () => {
     await expect(page.getByRole('dialog')).toBeVisible();
   });
 });
+
+test.describe('rotating text (BlueBrick RotateText)', () => {
+  test('right-click a text, Rotate CW turns it; a second window sees it live and turns it on', async ({ page, browser }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const box = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    // Ctrl+T puts the text at the view centre.
+    await page.keyboard.press('Control+t');
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('input[type="text"], textarea').first().fill('Yard');
+    await dialog.getByRole('button', { name: 'OK' }).click();
+    const bbm = () => page.request.get(`/api/layouts/${id}/export.bbm`).then((r) => r.text());
+    const cell = async () => {
+      const xml = await bbm();
+      return xml.includes('<TextCell>') ? xml.slice(xml.indexOf('<TextCell>'), xml.indexOf('</TextCell>')) : '';
+    };
+    const num = (xml: string, tag: string) => Number(new RegExp(`<${tag}>([^<]+)</${tag}>`).exec(xml)?.[1]);
+    await expect.poll(async () => (await cell()) !== '').toBe(true);
+    const before = await cell();
+
+    // The other window, open on the same layout.
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await signIn(page2, EMAIL, 'Parity Tester');
+    await openEditor(page2, id);
+
+    await page.mouse.click(centre.x, centre.y, { button: 'right' });
+    await page.locator('button', { hasText: /^Rotate CW$/ }).click();
+    await expect.poll(async () => num(await cell(), 'Orientation')).toBe(90);
+    const after = await cell();
+    // It turned in place: same centre, the box stood upright.
+    expect(num(after, 'X') + num(after, 'Width') / 2).toBeCloseTo(num(before, 'X') + num(before, 'Width') / 2, 3);
+    expect(num(after, 'Width')).toBeCloseTo(num(before, 'Height'), 3);
+
+    // The second window turns it again: from 90, so it had the first turn live.
+    const box2 = (await page2.locator('.konvajs-content').first().boundingBox())!;
+    await page2.mouse.click(box2.x + box2.width / 2, box2.y + box2.height / 2, { button: 'right' });
+    await page2.locator('button', { hasText: /^Rotate CW$/ }).click();
+    await expect.poll(async () => num(await cell(), 'Orientation')).toBe(180);
+    await other.close();
+  });
+});
