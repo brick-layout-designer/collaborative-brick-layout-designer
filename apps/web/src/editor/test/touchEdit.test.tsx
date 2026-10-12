@@ -92,6 +92,8 @@ function touchEvent(type: string, el: Element, pts: Pt[], target: Element = el):
 
 interface Harness {
   el: HTMLDivElement;
+  sets: number;
+  moving: boolean[];
   view: () => View;
   taps: Pt[];
   longs: Pt[];
@@ -100,11 +102,12 @@ interface Harness {
 }
 
 function setup(panFrom?: (p: Pt) => boolean, boxFrom?: (p: Pt) => boolean): Harness {
-  const h: Harness = { el: null as unknown as HTMLDivElement, view: () => v, taps: [], longs: [], pinches: 0, boxes: [] };
+  const h: Harness = { el: null as unknown as HTMLDivElement, sets: 0, moving: [], view: () => v, taps: [], longs: [], pinches: 0, boxes: [] };
   let v: View = { zoom: 1, panX: 0, panY: 0 };
   function Probe() {
     const [el, setEl] = useState<HTMLDivElement | null>(null);
-    useTouchView(el, () => v, (n) => { v = n; }, {
+    useTouchView(el, () => v, (n) => { v = n; h.sets++; }, {
+      onViewMoving: (m) => h.moving.push(m),
       oneFingerPan: true,
       range: { min: 0.1, max: 10 },
       ...(panFrom ? { panFrom } : {}),
@@ -175,6 +178,7 @@ describe('useTouchView for touch editing', () => {
     // Elsewhere the view pans.
     touchEvent('touchstart', h.el, [{ x: 60, y: 10 }]);
     touchEvent('touchmove', h.el, [{ x: 70, y: 10 }]);
+    vi.advanceTimersToNextFrame();
     expect(h.view().panX).toBe(10);
   });
 
@@ -184,11 +188,38 @@ describe('useTouchView for touch editing', () => {
     touchEvent('touchstart', h.el, [{ x: 10, y: 10 }, { x: 50, y: 10 }]);
     expect(h.pinches).toBe(1);
     touchEvent('touchmove', h.el, [{ x: 0, y: 10 }, { x: 80, y: 10 }]);
+    vi.advanceTimersToNextFrame();
     expect(h.view().zoom).toBeCloseTo(2, 6);
     touchEvent('touchend', h.el, []);
     vi.advanceTimersByTime(LONG_PRESS_MS * 2);
     expect(h.taps).toEqual([]);
     expect(h.longs).toEqual([]);
+  });
+
+  it('moves the view at most once a frame, and says when fingers move it', () => {
+    const h = setup();
+    // A tap never moves the view.
+    touchEvent('touchstart', h.el, [{ x: 10, y: 10 }]);
+    touchEvent('touchend', h.el, []);
+    expect(h.moving).toEqual([]);
+    // Three moves within one frame: one new view, the newest.
+    touchEvent('touchstart', h.el, [{ x: 10, y: 10 }]);
+    touchEvent('touchmove', h.el, [{ x: 20, y: 10 }]);
+    touchEvent('touchmove', h.el, [{ x: 30, y: 10 }]);
+    touchEvent('touchmove', h.el, [{ x: 40, y: 10 }]);
+    expect(h.moving).toEqual([true]);
+    expect(h.sets).toBe(0);
+    vi.advanceTimersToNextFrame();
+    expect(h.sets).toBe(1);
+    expect(h.view().panX).toBe(30);
+    // Let go mid-frame: the last move still lands, and the gesture ends.
+    touchEvent('touchmove', h.el, [{ x: 50, y: 10 }]);
+    touchEvent('touchend', h.el, []);
+    expect(h.view().panX).toBe(40);
+    expect(h.sets).toBe(2);
+    expect(h.moving).toEqual([true, false]);
+    vi.advanceTimersToNextFrame();
+    expect(h.sets).toBe(2);
   });
 
   it('"Select area": one finger draws a box, and the view stays put', () => {
@@ -210,6 +241,7 @@ describe('useTouchView for touch editing', () => {
     touchEvent('touchstart', h.el, [{ x: 30, y: 10 }, { x: 70, y: 10 }]);
     expect(h.boxes).toEqual(['move 10,10 30,10', 'cancel 10,10 30,10']);
     touchEvent('touchmove', h.el, [{ x: 10, y: 10 }, { x: 90, y: 10 }]);
+    vi.advanceTimersToNextFrame();
     expect(h.view().zoom).toBeCloseTo(2, 6);
     touchEvent('touchend', h.el, []);
     expect(h.boxes).toHaveLength(2);

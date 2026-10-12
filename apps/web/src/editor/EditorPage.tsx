@@ -1663,6 +1663,16 @@ function Canvas({
         if (Math.hypot(to.x - from.x, to.y - from.y) < 8) return;
         commitMarquee(band, useEditorStore.getState().touchSelectMore);
       },
+      onViewMoving: (moving) => {
+        // While fingers move the view, Konva needn't redraw its hit canvas
+        // (what a touch would land on) every frame: on a big layout that
+        // was about a third of each frame. Drawn once when they let go (in
+        // the same frame as the last view's redraw, so only once).
+        const stage = stageRef.current;
+        if (!stage) return;
+        stage.listening(!moving);
+        if (!moving) for (const layer of stage.getLayers()) layer.batchDraw();
+      },
       onPinchStart: () => {
         // A part being dragged by the first finger stays where it is.
         const stage = stageRef.current;
