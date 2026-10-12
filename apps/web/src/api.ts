@@ -134,7 +134,7 @@ export function unreachableMessage(online: boolean = typeof navigator === 'undef
  * instead of the browser's "Failed to fetch": `await reach(fetch(…))`.
  * (An abort stays an abort.)
  */
-export function reach(request: Promise<Response>): Promise<Response> {
+export function reach<T>(request: Promise<T>): Promise<T> {
   return Promise.resolve(request).catch((e: unknown) => {
     if (e instanceof TypeError) throw new Error(unreachableMessage(), { cause: e });
     throw e;
@@ -249,8 +249,12 @@ export async function apiSend<T>(method: 'PATCH' | 'PUT' | 'POST' | 'DELETE', pa
   return res.json() as Promise<T>;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await reach(fetch(path, { credentials: 'include' }));
+function get<T>(path: string): Promise<T> {
+  return reach(getJson<T>(path));
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(path, { credentials: 'include' });
   if (!res.ok) throw new Error(await friendlyErrorMessage(res, 'GET', path));
   return res.json() as Promise<T>;
 }
