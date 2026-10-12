@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../api';
 import { ensureSetThumbnail, getSetThumbnailSync } from './render/setThumbnail';
@@ -19,7 +19,13 @@ interface PartContextMenu {
 const ALL_CATEGORIES = '__all__';
 
 
-export function PartsPanel({
+/**
+ * The parts list. Memoized: it can hold thousands of pictures, and a click on
+ * the map (which react-konva renders synchronously, inside the mouse event)
+ * re-rendered all of them, long enough on a slow machine that a quick
+ * double-click's second press came too late to count.
+ */
+export const PartsPanel = memo(function PartsPanel({
   onPlacePart,
   budgetLimits,
   map,
@@ -267,7 +273,7 @@ export function PartsPanel({
       )}
     </aside>
   );
-}
+});
 
 function PartContextMenuPopup({
   menu,
