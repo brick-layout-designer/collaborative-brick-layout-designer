@@ -146,8 +146,32 @@ const ITEM_KINDS = [
   { field: 'anchoredLabels', prefix: 'l:' },
 ] as const;
 
+/**
+ * JSON with every object's keys in sorted order (by UTF-16 code unit), so the
+ * text, and the hash, don't depend on the order a writer gave the keys: the
+ * desktop's yrs keeps an object's keys in no fixed order.
+ */
+function stableStringify(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map((x) => (x === undefined ? 'null' : stableStringify(x))).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const keys = Object.keys(o).filter((k) => o[k] !== undefined).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v) ?? 'null';
+}
+
+/**
+ * Which sidecar blob the items go with: FNV-1a over the UTF-16 code units of
+ * its key-sorted JSON, and the text's length. The desktop computes the same
+ * (sync/SidecarItems.cpp; shared vectors in sidecarItems.test.ts).
+ */
+export function sidecarBlobHash(blob: unknown): string {
+  return blobHash(blob);
+}
+
 function blobHash(blob: unknown): string {
-  const text = JSON.stringify(blob) ?? '';
+  const text = stableStringify(blob);
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);

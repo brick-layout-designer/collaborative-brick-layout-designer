@@ -3,7 +3,7 @@
 // apps that only read it, and a write by such an app is still honoured.
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { readSidecarCache, removeDuplicateBricks, repairSidecarCache, writeSidecarCache } from './index.js';
+import { readSidecarCache, removeDuplicateBricks, repairSidecarCache, sidecarBlobHash, writeSidecarCache } from './index.js';
 
 const base = { schemaVersion: 1, bbmHashSha256: '', modules: [{ id: 'm0', name: 'Yard', members: [] }] };
 const sync = (a: Y.Doc, b: Y.Doc) => {
@@ -105,5 +105,26 @@ describe('removeDuplicateBricks', () => {
     for (const d of [a, b]) expect(ids(d).sort()).toEqual(['p', 'q', 'r']);
     const by = (d: Y.Doc) => ((d.getMap('layerData').get('L') as Y.Map<unknown>).get('bricks') as Y.Array<Y.Map<unknown>>).toArray().find((m) => m.get('id') === 'p')!.get('by');
     expect(by(a)).toBe(by(b));
+  });
+});
+
+// The desktop computes the same hash (sync/SidecarItems.cpp, with these
+// vectors in tests/sync/SidecarItemsTest.cpp): keep both in step.
+describe('sidecarBlobHash', () => {
+  it('matches the shared vectors', () => {
+    const vectors: [string, string][] = [
+    ["{}", "2:5465b825"],
+    ["{\"b\":1,\"a\":\"x\"}", "15:f7b213ed"],
+    ["{\"modules\":[{\"id\":\"m1\",\"name\":\"Yard\",\"memberIds\":[\"a\",\"b\"],\"z\":null,\"ok\":true}],\"anchoredLabels\":[]}", "100:b3f06b1b"],
+    ["{\"n\":[0,-1,1.5,0.1,100,1e+21,1.5e-7,123456789012,-0.000001,2.5e-7],\"s\":\"é \\\"q\\\" \\\\ \\n\\t\\u0001 ✓ 😀\"}", "100:779387ef"],
+    ["{\"nested\":{\"z\":{\"y\":[{\"b\":2,\"a\":1}]},\"a\":false}}", "48:6b434d83"],
+    ];
+    for (const [json, hash] of vectors) expect(sidecarBlobHash(JSON.parse(json))).toBe(hash);
+  });
+
+  it("doesn't depend on the order of an object's keys", () => {
+    expect(sidecarBlobHash({ a: 1, b: { d: [1, { y: 2, x: 1 }], c: 'z' } })).toBe(
+      sidecarBlobHash({ b: { c: 'z', d: [1, { x: 1, y: 2 }] }, a: 1 }),
+    );
   });
 });
