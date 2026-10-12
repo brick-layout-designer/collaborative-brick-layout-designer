@@ -351,9 +351,14 @@ const BrickGlyph = memo(function BrickGlyph({
     // NOT selected, select just this brick (standard OS right-click behaviour).
     if ('button' in e.evt && e.evt.button === 2) {
       if (tool === 'select') {
-        const currentSel = useEditorStore.getState().selection;
-        if (!currentSel.includes(brick.id)) {
-          useEditorStore.getState().setSelection([brick.id]);
+        const st = useEditorStore.getState();
+        const currentSel = st.selection;
+        // One ruler held and no parts: keep it, so the menu can attach
+        // it to this part (desktop MapViewContextMenu heldRulerGuid).
+        const holdsOneRuler = currentSel.length === 0 && st.annoSelection.rulers.length === 1
+          && st.annoSelection.texts.length === 0 && st.annoSelection.labels.length === 0;
+        if (!currentSel.includes(brick.id) && !holdsOneRuler) {
+          st.setSelection([brick.id]);
         }
       }
       return;

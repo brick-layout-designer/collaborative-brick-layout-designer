@@ -3856,9 +3856,22 @@ function Canvas({
             }
           }
         }
-        // Detect ruler item under cursor by AABB hit-test on displayArea.
+        // The ruler under the cursor: the drawn one Konva hit (its line as
+        // drawn, an attached end included), else by its box.
         let rulerRef: { item: import('@cld/model').RulerItem; layerId: string } | null = null;
-        if (map) {
+        const hitRulerId = shapes
+          .flatMap((s) => [s, ...(s.getAncestors?.() ?? [])])
+          .map((n) => (n as Konva.Node).name?.() ?? '')
+          .find((n) => n.startsWith('ruler-') && n !== 'ruler-endpoint' && n !== 'ruler-scale')
+          ?.slice('ruler-'.length);
+        if (map && hitRulerId) {
+          for (const layer of map.layers) {
+            if (layer.type !== 'ruler' || !layer.visible) continue;
+            const item = layer.rulerItems.find((r) => r.id === hitRulerId);
+            if (item) rulerRef = { item, layerId: layer.id };
+          }
+        }
+        if (map && !rulerRef) {
           outerR: for (const layer of map.layers) {
             if (layer.type !== 'ruler' || !layer.visible) continue;
             for (const item of layer.rulerItems) {
@@ -4465,6 +4478,16 @@ function CanvasContextMenu({
     }
   } else if (rulerRef) {
     entries.push(item('Properties…', onProperties));
+    // BlueBrick's Detach (MapPanel.cs): free each attached end from its part.
+    const r = rulerRef.item;
+    const detach = (label: string, which: 0 | 1) =>
+      entries.push(item(label, () => attachRulerEndpoint(doc, rulerRef.layerId, r.id, which, '')));
+    if (r.kind === 'linear') {
+      if (r.attachedBrick1Id) detach('Detach Endpoint 1', 0);
+      if (r.attachedBrick2Id) detach('Detach Endpoint 2', 1);
+    } else if (r.attachedBrickId) {
+      detach('Detach Centre', 0);
+    }
     entries.push(sep('s0'));
     if (!hasSel) {
       // Text and rulers turn too (BlueBrick RotateText, RotateRulers).

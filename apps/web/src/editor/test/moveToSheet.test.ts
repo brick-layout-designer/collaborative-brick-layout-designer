@@ -260,3 +260,22 @@ describe('moving an area sheet (BlueBrick MoveArea)', () => {
     expect(cells().map((c) => [c.x, c.y]).sort()).toEqual([[-2, 5], [0, 0]]);
   });
 });
+
+describe('detaching a ruler (BlueBrick DetachRuler)', () => {
+  it('attaching an end to no part frees it, in one undo step', async () => {
+    const { ensureRulerLayer, addLinearRuler, attachRulerEndpoint } = await import('../mutations');
+    const { LOCAL_ORIGIN } = await import('../useLayoutDoc');
+    const doc = new Y.Doc();
+    const r = ensureRulerLayer(doc);
+    const line = addLinearRuler(doc, r, { x: 0, y: 0 }, { x: 10, y: 0 });
+    const item = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<Record<string, unknown>>).get(0);
+    attachRulerEndpoint(doc, r, line, 0, 'brick-a');
+    attachRulerEndpoint(doc, r, line, 1, 'brick-b');
+    const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
+    attachRulerEndpoint(doc, r, line, 0, '');
+    expect(item().attachedBrick1Id).toBe('');
+    expect(item().attachedBrick2Id).toBe('brick-b');
+    undo.undo();
+    expect(item().attachedBrick1Id).toBe('brick-a');
+  });
+});
