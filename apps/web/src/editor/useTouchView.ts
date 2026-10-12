@@ -23,6 +23,11 @@ interface Options {
   boxFrom?: (p: Pt) => boolean;
   /** The box from where the finger came down to where it is: growing, let go, or given up (a second finger). */
   onBox?: (phase: 'move' | 'end' | 'cancel', from: Pt, to: Pt) => void;
+  /**
+   * The fingers started moving the view (true) and let go of it (false):
+   * a big layout can skip work it doesn't need mid-gesture.
+   */
+  onViewMoving?: (moving: boolean) => void;
 }
 
 /**
@@ -31,6 +36,9 @@ interface Options {
  * agrees). Taps and long presses are reported for touch editing. The
  * listeners are not passive, so the browser's own page zoom and scrolling
  * don't fight the canvas (the element also carries `touch-action: none`).
+ *
+ * The view changes at most once a frame: a phone sends several touch moves
+ * a frame, and each new view re-renders and redraws the whole map.
  */
 export function useTouchView(
   el: HTMLElement | null,
@@ -50,6 +58,37 @@ export function useTouchView(
       | null = null;
     // The current one-finger press, for taps and long presses.
     let press: { from: Pt; moved: boolean; long: boolean; timer: ReturnType<typeof setTimeout> | null } | null = null;
+    // The newest view, waiting for the next frame.
+    let pending: View | null = null;
+    let frame = 0;
+    let moving = false;
+    const flush = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      if (!pending) return;
+      const v = pending;
+      pending = null;
+      latest.current.setView(v);
+    };
+    const show = (v: View) => {
+      if (!moving) {
+        moving = true;
+        latest.current.onViewMoving?.(true);
+      }
+      pending = v;
+      if (!frame) frame = requestAnimationFrame(() => {
+        frame = 0;
+        flush();
+      });
+    };
+    // The view is where the fingers left it; nothing moves it any more.
+    const settle = () => {
+      flush();
+      if (moving && !gesture) {
+        moving = false;
+        latest.current.onViewMoving?.(false);
+      }
+    };
     const endPress = () => {
       if (press?.timer) clearTimeout(press.timer);
       press = null;
@@ -61,6 +100,8 @@ export function useTouchView(
     // (Re)start from whatever fingers are down now, so lifting one of two
     // fingers carries on as a pan without a jump.
     const begin = (e: TouchEvent) => {
+      // A gesture starts from the view as shown.
+      flush();
       const { getView: get, oneFingerPan: pan, panFrom, boxFrom } = latest.current;
       if (gesture?.kind === 'box') latest.current.onBox?.('cancel', gesture.from, gesture.to);
       if (e.touches.length >= 2) {
@@ -115,11 +156,11 @@ export function useTouchView(
       }
       if (!gesture) return;
       e.preventDefault();
-      const { setView: set, range: r } = latest.current;
+      const { range: r } = latest.current;
       if (gesture.kind === 'pinch' && e.touches.length >= 2) {
-        set(pinchView(gesture.start, gesture.a, gesture.b, local(e.touches[0]!), local(e.touches[1]!), r));
+        show(pinchView(gesture.start, gesture.a, gesture.b, local(e.touches[0]!), local(e.touches[1]!), r));
       } else if (gesture.kind === 'pan' && e.touches.length === 1) {
-        set(panView(gesture.start, gesture.from, local(e.touches[0]!)));
+        show(panView(gesture.start, gesture.from, local(e.touches[0]!)));
       } else if (gesture.kind === 'box' && e.touches.length === 1) {
         gesture.to = local(e.touches[0]!);
         latest.current.onBox?.('move', gesture.from, gesture.to);
@@ -131,7 +172,7 @@ export function useTouchView(
         endPress();
         if (!p.moved && !p.long && e.type === 'touchend') latest.current.onTap?.(p.from);
       }
-      if (!gesture) return;
+      if (!gesture) return settle();
       if (gesture.kind === 'box') {
         const box = gesture;
         gesture = null;
@@ -140,12 +181,14 @@ export function useTouchView(
       }
       // Lifting a finger of a pinch: the one left pans (when one finger
       // pans at all), from where it is now.
+      flush();
       const { getView: get, oneFingerPan: pan } = latest.current;
       if (e.touches.length === 1 && gesture.kind === 'pinch') {
         gesture = pan ? { kind: 'pan', start: get(), from: local(e.touches[0]!) } : null;
       } else {
         begin(e);
       }
+      settle();
     };
     el.addEventListener('touchstart', onStart, { passive: false });
     el.addEventListener('touchmove', onMove, { passive: false });
@@ -153,6 +196,8 @@ export function useTouchView(
     el.addEventListener('touchcancel', onEnd);
     return () => {
       endPress();
+      flush();
+      if (moving) latest.current.onViewMoving?.(false);
       el.removeEventListener('touchstart', onStart);
       el.removeEventListener('touchmove', onMove);
       el.removeEventListener('touchend', onEnd);

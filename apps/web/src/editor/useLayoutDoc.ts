@@ -68,7 +68,13 @@ const SIDECAR_REPAIR_ORIGIN = Symbol('cld-sidecar-repair');
 
 export type SaveResult = 'saved' | 'offline';
 
+/** No answer from the server at all for this long: say so. */
 const SYNC_TIMEOUT_MS = 10_000;
+/**
+ * Connected, and the layout on its way: a big layout on a slow phone or
+ * show Wi-Fi can take a while to arrive and be read.
+ */
+const SYNCING_TIMEOUT_MS = 60_000;
 
 /** Why a layout won't open when its doc is newer than this page reads. */
 export const UNREADABLE_LAYOUT =
@@ -76,7 +82,7 @@ export const UNREADABLE_LAYOUT =
 
 /** Load errors the editor's error screen words (and offers Sign in for the last). */
 export const LAYOUT_NOT_FOUND = "This layout isn't here: it may have been deleted, or it isn't shared with you. Ask its owner for access.";
-export const LOAD_TIMED_OUT = "The layout didn't open in time. Check your connection, then reload the page.";
+export const LOAD_TIMED_OUT = "The layout hasn't opened yet. Check your connection: it opens by itself as soon as it gets through.";
 export const SIGN_IN_TO_OPEN = 'This layout is private. Sign in with an account it is shared with to open it.';
 
 /** Build the WS URL relative to the current page (so dev + prod both work). */
@@ -112,13 +118,20 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
     providerRef.current = provider;
 
     let lastSyncedAt: number | null = null;
-    let syncTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-      // If the handshake doesn't complete within 10s, surface a clear
-      // error rather than spinning forever. Common cause: the layout
-      // doesn't exist or the user isn't authorized.
-      setLoadError(new Error(LOAD_TIMED_OUT));
-      setStatus({ kind: 'error', message: 'connection timed out' });
-    }, SYNC_TIMEOUT_MS);
+    let syncTimer: ReturnType<typeof setTimeout> | null = null;
+    // Said "hasn't opened yet"; the provider keeps trying, and the layout
+    // opens by itself if it gets through after all.
+    let timedOut = false;
+    const waitFor = (ms: number) => {
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        // Surface a clear message rather than spinning forever.
+        timedOut = true;
+        setLoadError(new Error(LOAD_TIMED_OUT));
+        setStatus({ kind: 'error', message: 'connection timed out' });
+      }, ms);
+    };
+    waitFor(SYNC_TIMEOUT_MS);
 
     // A layout written by a newer (or much older) version than this page
     // reads: stop syncing rather than edit what we don't understand.
@@ -146,6 +159,10 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           clearTimeout(syncTimer);
           syncTimer = null;
         }
+        if (timedOut) {
+          timedOut = false;
+          setLoadError(null);
+        }
         lastSyncedAt = Date.now();
         setLoading(false);
         setDoc(fresh);
@@ -157,7 +174,9 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
     const onStatus = (event: { status: 'disconnected' | 'connecting' | 'connected' }): void => {
       switch (event.status) {
         case 'connected':
-          // 'sync' fires shortly after to flip us to synced.
+          // 'sync' follows once the layout has arrived and been read:
+          // give a big one on a slow phone time for that.
+          if (syncTimer && !timedOut && lastSyncedAt === null) waitFor(SYNCING_TIMEOUT_MS);
           break;
         case 'connecting':
           setStatus({ kind: 'reconnecting', lastSyncedAt });
