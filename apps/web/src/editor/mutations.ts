@@ -16,7 +16,8 @@ import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { moduleCopy } from './moduleCopy';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
-import { areaForPivot, pivotOf, rotateAroundPivots, rotated, type PartGeom } from './brickGeometry';
+import { areaForPivot, connectionWorld, pivotOf, rotateAroundPivots, rotated, type PartGeom } from './brickGeometry';
+import { connectedTurn, type TurnBrick } from './rotateTurn';
 import { cloneGroups, topGroupId, type ExpandedSet, type SetModule } from './sets';
 import { findPartsSheet, type SheetChoices } from './moduleSheets';
 
@@ -456,8 +457,9 @@ export function rulerCentre(r: Pick<RulerLike, 'kind' | 'point1' | 'point2' | 'c
 /**
  * Rotate CW / CCW for everything picked (BlueBrick RotateItems, RotateText,
  * RotateRulers): parts on any sheet, text cells (`sheet#index` keys) and
- * rulers (ids) turn by `degrees` about one pivot, the mean of their centres,
- * so one item turns in place. Desktop MapView::rotateSelected. One transaction.
+ * rulers (ids) turn by `degrees` about one pivot: the centre of their
+ * bounding box, or one item's own centre. Parts joined to other track step
+ * round that join (RotateBrick). Desktop MapView::rotateSelected. One transaction.
  */
 export function rotateSelection(
   doc: Y.Doc,
@@ -468,14 +470,27 @@ export function rotateSelection(
 ): void {
   if (degrees === 0) return;
   const bricks: Array<{ yBrick: Y.Map<unknown>; area: RectangleF; orientation: number; part: PartGeom | undefined }> = [];
-  for (const [layerId, ids] of byLayer) {
+  // Every part on the map, in sheet order, for joins to other track.
+  const allBricks: TurnBrick[] = [];
+  const pickedBricks: TurnBrick[] = [];
+  const wantedIds = new Set([...byLayer.values()].flat());
+  for (const layerId of doc.getArray<string>('layers').toArray()) {
     const layerData = doc.getMap('layerData').get(layerId);
     const yBricks = layerData instanceof Y.Map ? layerData.get('bricks') : undefined;
     if (!(yBricks instanceof Y.Array)) continue;
-    const idSet = new Set(ids);
+    const idSet = new Set(byLayer.get(layerId) ?? []);
     yBricks.forEach((b) => {
-      if (b instanceof Y.Map && idSet.has(b.get('id') as string))
-        bricks.push({ yBrick: b, area: b.get('displayArea') as RectangleF, orientation: (b.get('orientation') as number) ?? 0, part: partOf(b.get('partNumber') as string) });
+      if (!(b instanceof Y.Map)) return;
+      const id = b.get('id') as string;
+      const area = b.get('displayArea') as RectangleF;
+      const orientation = (b.get('orientation') as number) ?? 0;
+      const part = partOf(b.get('partNumber') as string);
+      const turn: TurnBrick = { id, displayArea: area, orientation, part, connexions: (b.get('connexions') as TurnBrick['connexions']) ?? [] };
+      allBricks.push(turn);
+      if (idSet.has(id) && wantedIds.has(id)) {
+        bricks.push({ yBrick: b, area, orientation, part });
+        pickedBricks.push(turn);
+      }
     });
   }
   const texts: Array<{ yCells: Y.Array<unknown>; index: number; area: Box; orientation: number }> = [];
@@ -504,22 +519,44 @@ export function rotateSelection(
       });
     }
   }
-  const centres: Pt[] = [
-    ...bricks.map(({ area, orientation, part }) => pivotOf({ displayArea: area, orientation }, part)),
-    ...texts.map(({ area }) => ({ x: area.x + area.width / 2, y: area.y + area.height / 2 })),
-    ...rulers.map(({ ruler }) => rulerCentre(ruler)),
+  const count = bricks.length + texts.length + rulers.length;
+  if (count === 0) return;
+  // The pivot (BlueBrick RotateItems): one item turns about its own centre;
+  // several about the centre of their bounding box, worked out afresh each
+  // turn (vanilla's sLastCenter is cleared when its redo re-selects).
+  const boxes: Box[] = [
+    ...bricks.map(({ area }) => area),
+    ...texts.map(({ area }) => area),
+    ...rulers.map(({ ruler }) => (ruler.displayArea as Box | undefined) ?? { ...rulerCentre(ruler), width: 0, height: 0 }),
   ];
-  if (centres.length === 0) return;
-  const pivot = {
-    x: centres.reduce((s, c) => s + c.x, 0) / centres.length,
-    y: centres.reduce((s, c) => s + c.y, 0) / centres.length,
-  };
+  const left = Math.min(...boxes.map((b) => b.x));
+  const top = Math.min(...boxes.map((b) => b.y));
+  const right = Math.max(...boxes.map((b) => b.x + b.width));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+  let pivot: Pt = { x: (left + right) / 2, y: (top + bottom) / 2 };
+  if (count === 1) {
+    if (bricks.length) pivot = pivotOf({ displayArea: bricks[0]!.area, orientation: bricks[0]!.orientation }, bricks[0]!.part);
+    else if (texts.length) pivot = { x: texts[0]!.area.x + texts[0]!.area.width / 2, y: texts[0]!.area.y + texts[0]!.area.height / 2 };
+    else pivot = rulerCentre(rulers[0]!.ruler);
+  }
+  // Parts joined to other track step round that join instead, so they stay
+  // connected (RotateBrick).
+  const joined = texts.length === 0 && rulers.length === 0 ? connectedTurn(pickedBricks, allBricks, degrees > 0 ? 1 : -1) : null;
+  if (joined) degrees = joined.degrees;
   doc.transact(() => {
     const next = rotateAroundPivots(
       bricks.map(({ area, orientation, part }) => ({ brick: { displayArea: area, orientation }, part })),
       degrees,
       pivot,
     );
+    if (joined) {
+      // Moved so the new connection sits where the old join was.
+      const i = pickedBricks.findIndex((b) => b.id === joined.brickId);
+      const now = connectionWorld(next[i]!, bricks[i]!.part, joined.connection);
+      const dx = joined.at.x - now.x;
+      const dy = joined.at.y - now.y;
+      for (const n of next) n.displayArea = { ...n.displayArea, x: n.displayArea.x + dx, y: n.displayArea.y + dy };
+    }
     bricks.forEach(({ yBrick }, i) => {
       yBrick.set('displayArea', next[i]!.displayArea);
       yBrick.set('orientation', mod360(next[i]!.orientation));

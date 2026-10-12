@@ -172,7 +172,7 @@ describe('rotating text and rulers (BlueBrick RotateText, RotateRulers)', () => 
     expect(rotatedTextBox({ x: 0, y: 0, width: 8, height: 2 }, 0, { x: 4, y: 1 }, 45).displayArea.width).toBeCloseTo(8);
   });
 
-  it('rotateSelection turns picked text and rulers about their shared centre, in one undo step', async () => {
+  it('rotateSelection turns picked text and rulers about the centre of their box, in one undo step', async () => {
     const { addTextCell, ensureTextLayer, ensureRulerLayer, addLinearRuler, addCircularRuler, rotateSelection } = await import('../mutations');
     const { LOCAL_ORIGIN } = await import('../useLayoutDoc');
     const doc = new Y.Doc();
@@ -195,9 +195,11 @@ describe('rotating text and rulers (BlueBrick RotateText, RotateRulers)', () => 
     expect(a1.width).toBeCloseTo(a0.height);
     expect(rulers()[0]!.point1).toEqual({ x: 0, y: 20 });
 
-    // Together: about the mean of the three centres.
+    // Together: about the centre of their box, text (13, 7, 2, 8), line
+    // (0, 20)-(8, 20), circle (27, -3)-(33, 3): (0, -3)-(33, 20).
     undo.stopCapturing();
-    const pivot = { x: (c0.x + 4 + 30) / 3, y: (c0.y + 20 + 0) / 3 };
+    expect(a1).toMatchObject({ x: 13, y: 7 });
+    const pivot = { x: 16.5, y: 8.5 };
     rotateSelection(doc, new Map(), { texts: [`${t}#0`], rulers: [line, ring] }, -90);
     // -90 maps (x, y) to (y, -x) about the pivot.
     const turn = (p: { x: number; y: number }) => ({ x: pivot.x + (p.y - pivot.y), y: pivot.y - (p.x - pivot.x) });
