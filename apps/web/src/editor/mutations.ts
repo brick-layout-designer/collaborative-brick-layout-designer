@@ -16,7 +16,7 @@ import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
 import { moduleCopy } from './moduleCopy';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
-import { areaForPivot, rotateAroundPivots, type PartGeom } from './brickGeometry';
+import { areaForPivot, pivotOf, rotateAroundPivots, rotated, type PartGeom } from './brickGeometry';
 import { cloneGroups, topGroupId, type ExpandedSet, type SetModule } from './sets';
 import { findPartsSheet, type SheetChoices } from './moduleSheets';
 
@@ -417,6 +417,129 @@ export function rotateBricksAboutCentroid(
       }
       yBrick.set('orientation', mod360(n.orientation));
     });
+  }, LOCAL_ORIGIN);
+}
+
+type Pt = { x: number; y: number };
+type Box = { x: number; y: number; width: number; height: number };
+
+/** True when a text at `orientation` stands upright (90 / 270), as the map's text layout reads it. */
+function uprightText(orientation: number): boolean {
+  const o = mod360(orientation);
+  return Math.abs(o - 90) < 1 || Math.abs(o - 270) < 1;
+}
+
+/**
+ * A text cell turned `degrees` about `pivot` (BlueBrick RotateText): its box
+ * centre turns, its orientation adds up, and its box keeps the text's size
+ * (width and height swap going to or from upright). Desktop rotatedTextCell.
+ */
+export function rotatedTextBox(area: Box, orientation: number, pivot: Pt, degrees: number): { displayArea: Box; orientation: number } {
+  const next = orientation + degrees;
+  const swap = uprightText(orientation) !== uprightText(next);
+  const w = swap ? area.height : area.width;
+  const h = swap ? area.width : area.height;
+  const r = rotated({ x: area.x + area.width / 2 - pivot.x, y: area.y + area.height / 2 - pivot.y }, degrees);
+  return { displayArea: { x: pivot.x + r.x - w / 2, y: pivot.y + r.y - h / 2, width: w, height: h }, orientation: mod360(next) };
+}
+
+function turnedPoint(p: Pt, pivot: Pt, degrees: number): Pt {
+  const r = rotated({ x: p.x - pivot.x, y: p.y - pivot.y }, degrees);
+  return { x: pivot.x + r.x, y: pivot.y + r.y };
+}
+
+/** The point a ruler turns about on its own: a line's middle, a circle's centre. */
+export function rulerCentre(r: Pick<RulerLike, 'kind' | 'point1' | 'point2' | 'center'>): Pt {
+  return r.kind === 'circular' ? r.center : { x: (r.point1.x + r.point2.x) / 2, y: (r.point1.y + r.point2.y) / 2 };
+}
+
+/**
+ * Rotate CW / CCW for everything picked (BlueBrick RotateItems, RotateText,
+ * RotateRulers): parts on any sheet, text cells (`sheet#index` keys) and
+ * rulers (ids) turn by `degrees` about one pivot, the mean of their centres,
+ * so one item turns in place. Desktop MapView::rotateSelected. One transaction.
+ */
+export function rotateSelection(
+  doc: Y.Doc,
+  byLayer: Map<string, string[]>,
+  anno: { texts: readonly string[]; rulers: readonly string[] },
+  degrees: number,
+  partOf: (partNumber: string) => PartGeom | undefined = () => undefined,
+): void {
+  if (degrees === 0) return;
+  const bricks: Array<{ yBrick: Y.Map<unknown>; area: RectangleF; orientation: number; part: PartGeom | undefined }> = [];
+  for (const [layerId, ids] of byLayer) {
+    const layerData = doc.getMap('layerData').get(layerId);
+    const yBricks = layerData instanceof Y.Map ? layerData.get('bricks') : undefined;
+    if (!(yBricks instanceof Y.Array)) continue;
+    const idSet = new Set(ids);
+    yBricks.forEach((b) => {
+      if (b instanceof Y.Map && idSet.has(b.get('id') as string))
+        bricks.push({ yBrick: b, area: b.get('displayArea') as RectangleF, orientation: (b.get('orientation') as number) ?? 0, part: partOf(b.get('partNumber') as string) });
+    });
+  }
+  const texts: Array<{ yCells: Y.Array<unknown>; index: number; area: Box; orientation: number }> = [];
+  for (const key of anno.texts) {
+    const at = key.lastIndexOf('#');
+    if (at <= 0) continue;
+    const layerData = doc.getMap('layerData').get(key.slice(0, at));
+    const yCells = layerData instanceof Y.Map ? layerData.get('textCells') : undefined;
+    if (!(yCells instanceof Y.Array)) continue;
+    const index = Number(key.slice(at + 1));
+    const cell = yCells.get(index) as unknown;
+    const get = (k: string): unknown => (cell instanceof Y.Map ? cell.get(k) : (cell as Record<string, unknown> | undefined)?.[k]);
+    const area = get('displayArea') as Box | undefined;
+    if (area) texts.push({ yCells: yCells as Y.Array<unknown>, index, area, orientation: (get('orientation') as number) ?? 0 });
+  }
+  const rulers: Array<{ yItems: Y.Array<unknown>; ruler: RulerLike }> = [];
+  if (anno.rulers.length > 0) {
+    const wanted = new Set(anno.rulers);
+    for (const lid of doc.getArray<string>('layers').toArray()) {
+      const layerData = doc.getMap('layerData').get(lid);
+      const yItems = layerData instanceof Y.Map ? layerData.get('rulerItems') : undefined;
+      if (!(yItems instanceof Y.Array)) continue;
+      yItems.forEach((r) => {
+        const ruler = r as RulerLike | undefined;
+        if (ruler && wanted.has(ruler.id)) rulers.push({ yItems: yItems as Y.Array<unknown>, ruler });
+      });
+    }
+  }
+  const centres: Pt[] = [
+    ...bricks.map(({ area, orientation, part }) => pivotOf({ displayArea: area, orientation }, part)),
+    ...texts.map(({ area }) => ({ x: area.x + area.width / 2, y: area.y + area.height / 2 })),
+    ...rulers.map(({ ruler }) => rulerCentre(ruler)),
+  ];
+  if (centres.length === 0) return;
+  const pivot = {
+    x: centres.reduce((s, c) => s + c.x, 0) / centres.length,
+    y: centres.reduce((s, c) => s + c.y, 0) / centres.length,
+  };
+  doc.transact(() => {
+    const next = rotateAroundPivots(
+      bricks.map(({ area, orientation, part }) => ({ brick: { displayArea: area, orientation }, part })),
+      degrees,
+      pivot,
+    );
+    bricks.forEach(({ yBrick }, i) => {
+      yBrick.set('displayArea', next[i]!.displayArea);
+      yBrick.set('orientation', mod360(next[i]!.orientation));
+    });
+    for (const t of texts) patchTextCell(t.yCells, t.index, rotatedTextBox(t.area, t.orientation, pivot, degrees));
+    for (const { yItems, ruler } of rulers) {
+      const idx = findRulerIndex(yItems, ruler.id);
+      if (idx < 0) continue;
+      let turned: Record<string, unknown>;
+      if (ruler.kind === 'linear') {
+        const p1 = turnedPoint(ruler.point1, pivot, degrees);
+        const p2 = turnedPoint(ruler.point2, pivot, degrees);
+        turned = { ...ruler, point1: p1, point2: p2, displayArea: rectFromTwoPoints(p1, p2) };
+      } else {
+        const c = turnedPoint(ruler.center, pivot, degrees);
+        turned = { ...ruler, center: c, displayArea: rectAroundCircle(c, ruler.radius) };
+      }
+      yItems.delete(idx, 1);
+      yItems.insert(idx, [turned]);
+    }
   }, LOCAL_ORIGIN);
 }
 

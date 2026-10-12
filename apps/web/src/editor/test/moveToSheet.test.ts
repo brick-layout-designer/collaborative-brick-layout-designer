@@ -158,3 +158,56 @@ describe('moving text (BlueBrick MoveText)', () => {
     expect(area()).toMatchObject({ x: x0 + 5, y: y0 });
   });
 });
+
+describe('rotating text and rulers (BlueBrick RotateText, RotateRulers)', () => {
+  it('rotatedTextBox turns the centre and keeps the text size', async () => {
+    const { rotatedTextBox } = await import('../mutations');
+    const r = rotatedTextBox({ x: 0, y: 0, width: 8, height: 2 }, 0, { x: 0, y: 0 }, 90);
+    expect(r.orientation).toBe(90);
+    // The centre (4, 1) goes to (-1, 4); the box turns upright.
+    expect(r.displayArea.x + r.displayArea.width / 2).toBeCloseTo(-1);
+    expect(r.displayArea.y + r.displayArea.height / 2).toBeCloseTo(4);
+    expect(r.displayArea.width).toBeCloseTo(2);
+    expect(r.displayArea.height).toBeCloseTo(8);
+    expect(rotatedTextBox({ x: 0, y: 0, width: 8, height: 2 }, 0, { x: 4, y: 1 }, 45).displayArea.width).toBeCloseTo(8);
+  });
+
+  it('rotateSelection turns picked text and rulers about their shared centre, in one undo step', async () => {
+    const { addTextCell, ensureTextLayer, ensureRulerLayer, addLinearRuler, addCircularRuler, rotateSelection } = await import('../mutations');
+    const { LOCAL_ORIGIN } = await import('../useLayoutDoc');
+    const doc = new Y.Doc();
+    const t = ensureTextLayer(doc);
+    addTextCell(doc, t, { text: 'Yard', centreX: 14, centreY: 11, widthStuds: 8, heightStuds: 2 } as never);
+    const cell = () => ((doc.getMap('layerData').get(t) as Y.Map<unknown>).get('textCells') as Y.Array<Y.Map<unknown>>).get(0);
+    const a0 = cell().get('displayArea') as { x: number; y: number; width: number; height: number };
+    const c0 = { x: a0.x + a0.width / 2, y: a0.y + a0.height / 2 };
+    const r = ensureRulerLayer(doc);
+    const line = addLinearRuler(doc, r, { x: 0, y: 20 }, { x: 8, y: 20 });
+    const ring = addCircularRuler(doc, r, { x: 30, y: 0 }, 3);
+    const rulers = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<Record<string, { x: number; y: number }>>).toArray();
+    const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
+
+    // Alone, text turns in place.
+    rotateSelection(doc, new Map(), { texts: [`${t}#0`], rulers: [] }, 90);
+    expect(cell().get('orientation')).toBe(90);
+    const a1 = cell().get('displayArea') as typeof a0;
+    expect(a1.x + a1.width / 2).toBeCloseTo(c0.x);
+    expect(a1.width).toBeCloseTo(a0.height);
+    expect(rulers()[0]!.point1).toEqual({ x: 0, y: 20 });
+
+    // Together: about the mean of the three centres.
+    undo.stopCapturing();
+    const pivot = { x: (c0.x + 4 + 30) / 3, y: (c0.y + 20 + 0) / 3 };
+    rotateSelection(doc, new Map(), { texts: [`${t}#0`], rulers: [line, ring] }, -90);
+    // -90 maps (x, y) to (y, -x) about the pivot.
+    const turn = (p: { x: number; y: number }) => ({ x: pivot.x + (p.y - pivot.y), y: pivot.y - (p.x - pivot.x) });
+    expect(rulers()[0]!.point1!.x).toBeCloseTo(turn({ x: 0, y: 20 }).x);
+    expect(rulers()[0]!.point1!.y).toBeCloseTo(turn({ x: 0, y: 20 }).y);
+    expect(rulers()[1]!.center!.x).toBeCloseTo(turn({ x: 30, y: 0 }).x);
+    expect(rulers()[1]!.center!.y).toBeCloseTo(turn({ x: 30, y: 0 }).y);
+    expect(cell().get('orientation')).toBe(0);
+    undo.undo();
+    expect(rulers()[0]!.point1).toEqual({ x: 0, y: 20 });
+    expect(cell().get('orientation')).toBe(90);
+  });
+});

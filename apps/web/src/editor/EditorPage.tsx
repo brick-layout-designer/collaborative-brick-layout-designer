@@ -107,7 +107,7 @@ import {
   moveBricksToLayer,
   addLayer,
   setBudgetLimits,
-  rotateBricksAboutCentroid,
+  rotateSelection,
   ungroupBricksAcrossLayers,
   setVenue,
   makeId,
@@ -2764,7 +2764,7 @@ function Canvas({
         }
       }
 
-      if (selection.length === 0) return;
+      if (selection.length + annoCount(annoSelection) === 0) return;
 
       if (e.key === 'r' || e.key === 'R') {
         // Shift+R = CW (+step), R = CCW (-step). Matches desktop's MainWindow
@@ -2772,8 +2772,7 @@ function Canvas({
         // bare R is CCW; step is the configured rotation step. The whole
         // selection (any layer) turns about its centroid.
         e.preventDefault();
-        if (!selectionMayMove(doc, selection)) return;
-        rotateBricksAboutCentroid(doc, selectionByLayer(), e.shiftKey ? rotationStepDegrees : -rotationStepDegrees, partOf);
+        rotatePicked(e.shiftKey ? rotationStepDegrees : -rotationStepDegrees);
         return;
       }
     }
@@ -3179,6 +3178,17 @@ function Canvas({
         if (anno.texts.length > 0) useEditorStore.getState().setMixedSelection(st.selection, { ...anno, texts: keys });
       }
     }, LOCAL_ORIGIN);
+  }
+
+  /**
+   * Rotate CW / CCW for what's picked: parts, and text and rulers too
+   * (BlueBrick RotateText, RotateRulers), about one pivot. One undo step.
+   */
+  function rotatePicked(degrees: number): void {
+    const st = useEditorStore.getState();
+    if (st.selection.length + annoCount(st.annoSelection) === 0) return;
+    if (!selectionMayMove(doc, st.selection)) return;
+    rotateSelection(doc, map ? bricksByLayer(map, st.selection) : new Map(), st.annoSelection, degrees, partOf);
   }
 
   function selectionByLayer(): Map<string, string[]> {
@@ -3682,8 +3692,8 @@ function Canvas({
     // (MainWindow.cpp:733-742) — same actions as R / Shift+R and
     // Ctrl+Shift+[ / ].
     rotate: (cw) => {
-      if (isViewer || selection.length === 0 || !selectionMayMove(doc, selection)) return;
-      rotateBricksAboutCentroid(doc, selectionByLayer(), cw ? rotationStepDegrees : -rotationStepDegrees, partOf);
+      if (isViewer) return;
+      rotatePicked(cw ? rotationStepDegrees : -rotationStepDegrees);
     },
     reorder: (to) => reorderPicked(to),
     moveToSheet: (target) => moveSelectionToSheet(target),
@@ -4155,8 +4165,8 @@ function Canvas({
           onPaste={() => void pasteAtCursor()}
           onDuplicate={() => void duplicateSelection()}
           onDelete={() => deleteSelection()}
-          onRotateCCW={() => selectionMayMove(doc, selection) && rotateBricksAboutCentroid(doc, selectionByLayer(), -rotationStepDegrees, partOf)}
-          onRotateCW={() => selectionMayMove(doc, selection) && rotateBricksAboutCentroid(doc, selectionByLayer(), rotationStepDegrees, partOf)}
+          onRotateCCW={() => rotatePicked(-rotationStepDegrees)}
+          onRotateCW={() => rotatePicked(rotationStepDegrees)}
           onBringToFront={() => reorderPicked('front')}
           onSendToBack={() => reorderPicked('back')}
           onMoveToSheet={(target) => moveSelectionToSheet(target)}
@@ -4408,6 +4418,10 @@ function CanvasContextMenu({
     entries.push(item('Properties…', () => onEditText(textCellRef)));
     entries.push(sep('s0'));
     if (!hasSel) {
+      // Text and rulers turn too (BlueBrick RotateText, RotateRulers).
+      entries.push(item('Rotate CCW', onRotateCCW));
+      entries.push(item('Rotate CW', onRotateCW));
+      entries.push(sep('s0tx'));
       entries.push(item('Bring to Front', onBringToFront));
       entries.push(item('Send to Back', onSendToBack));
       entries.push(sep('s0t'));
@@ -4416,6 +4430,10 @@ function CanvasContextMenu({
     entries.push(item('Properties…', onProperties));
     entries.push(sep('s0'));
     if (!hasSel) {
+      // Text and rulers turn too (BlueBrick RotateText, RotateRulers).
+      entries.push(item('Rotate CCW', onRotateCCW));
+      entries.push(item('Rotate CW', onRotateCW));
+      entries.push(sep('s0rx'));
       entries.push(item('Bring to Front', onBringToFront));
       entries.push(item('Send to Back', onSendToBack));
       entries.push(sep('s0r'));
