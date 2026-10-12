@@ -2,7 +2,7 @@
 // sprite's mask. Both give the answer in fixtures/contracts/imported-part.json
 // at each point (the desktop's side: tests/sync/ContractsTest.cpp).
 import { describe, expect, it } from 'vitest';
-import { parsePartXml } from '@cld/parts-catalog';
+import { parsePartXml } from '@cld/parts-catalog/browser';
 import { insidePickShape } from './pickShape';
 import XML from '../../../../../fixtures/contracts/imported-part.xml?raw';
 import JSON_TEXT from '../../../../../fixtures/contracts/imported-part.json?raw';
