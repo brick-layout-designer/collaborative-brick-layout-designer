@@ -69,6 +69,22 @@ export function PartsPanel({
   });
   const [filter, setFilter] = useState('');
   const [category, setCategory] = useState<string>(ALL_CATEGORIES);
+  // Use as Model on a map part: find it here, pick it and show it.
+  const modelPart = useEditorStore((s) => s.modelPart);
+  useEffect(() => {
+    if (!modelPart) return;
+    const hit = data?.parts.find((p) => p.key.toLowerCase() === modelPart.key.toLowerCase());
+    setCategory(ALL_CATEGORIES);
+    setFilter(hit?.key ?? modelPart.key);
+    setSelectedTile(hit?.key ?? null);
+    if (hit) {
+      requestAnimationFrame(() =>
+        document.querySelector(`[data-part-key="${CSS.escape(hit.key)}"]`)?.scrollIntoView({ block: 'nearest' }),
+      );
+    }
+    // Only a new request re-runs it, not the catalog reloading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelPart]);
 
   // Index by lowercase key + bare partNumber so the set-thumbnail
   // compositor can resolve each subpart's metadata.
@@ -196,6 +212,7 @@ export function PartsPanel({
                   // PartsBrowser.cpp:145): a click picks the tile, a
                   // double-click or Enter adds the part to the map.
                   aria-pressed={selectedTile === p.key}
+                  data-part-key={p.key}
                   onClick={() => setSelectedTile(p.key)}
                   onDoubleClick={() => onPlacePart(p)}
                   onKeyDown={(e) => {

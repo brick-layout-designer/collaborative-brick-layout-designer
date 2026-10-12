@@ -1511,3 +1511,30 @@ test.describe('scaling a ruler (BlueBrick ScaleRuler)', () => {
     await other.close();
   });
 });
+
+test.describe('Use as Model (BlueBrick)', () => {
+  test("right-click a part, Use as Model: the parts list finds and picks it", async ({ page }) => {
+    const flexIn = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/oracle/flex-in.bbm'),
+      'utf-8',
+    );
+    const id = await createLayout(page, flexIn);
+    await openEditor(page, id);
+    // The straight 2865.8 (17 x 8 at (31.5, 36)), on a rail.
+    const at = await page.evaluate((p) => {
+      const st = (window as unknown as {
+        Konva: { stages: { container: () => HTMLElement; getAbsoluteTransform: () => { point: (q: { x: number; y: number }) => { x: number; y: number } } }[] };
+      }).Konva.stages[0]!;
+      const box = st.container().getBoundingClientRect();
+      const a = st.getAbsoluteTransform().point({ x: p.x * 8, y: p.y * 8 });
+      return { x: box.left + a.x, y: box.top + a.y };
+    }, { x: 40, y: 37.35 });
+    await page.mouse.click(at.x, at.y, { button: 'right' });
+    await page.locator('button', { hasText: /^Use as Model$/ }).click();
+    await expect(page.getByPlaceholder(/Fuzzy filter/)).toHaveValue(/^2865\.8$/i);
+    const tile = page.locator('[data-part-key]', { hasText: /./ }).and(page.locator('[aria-pressed="true"]'));
+    await expect(tile).toHaveCount(1);
+    await expect(tile).toHaveAttribute('data-part-key', /^2865\.8$/i);
+    await expect(tile).toBeInViewport();
+  });
+});

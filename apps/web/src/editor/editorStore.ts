@@ -90,6 +90,12 @@ export type ModuleDialog = { kind: 'make' } | { kind: 'save' | 'publish'; module
 export interface EditorState {
   tool: Tool;
   /**
+   * BlueBrick's Use as Model: the part a map part's menu asked the parts
+   * list to show and pick (`seq` repeats a request for the same part).
+   */
+  modelPart: { key: string; seq: number } | null;
+  useAsModel: (partNumber: string) => void;
+  /**
    * The placed module being edited part by part ("Edit module"), or null:
    * then every module acts as one piece.
    */
@@ -317,6 +323,8 @@ export interface EditorState {
 
 export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
+  modelPart: null,
+  useAsModel: (partNumber) => set((s) => ({ modelPart: { key: partNumber, seq: (s.modelPart?.seq ?? 0) + 1 } })),
   selection: [],
   editingModuleId: null,
   moduleDialog: null,
