@@ -547,7 +547,7 @@ These are confirmed in both apps unless a row says otherwise. They are the gaps 
 | GroupItems / UngroupItems | same: `GroupBricksCommand` / `UngroupBricksCommand` | same: `groupBricks` / `ungroupBricks` |
 | MoveGridOrigin | same: `MoveGridOriginCommand` | same: `moveGridOrigin` |
 | AddArea / DeleteArea | same: paint / erase (`PaintAreaCellsCommand`) | same: `paintAreaCells` |
-| MoveArea | **missing.** You can't shift a whole area layer by cells | **missing** |
+| MoveArea | same: Ctrl+drag with Paint or Erase shifts the whole area sheet by cells (desktop #163) | same: Ctrl+drag with Paint or Erase, shown live, `moveArea` on release |
 | AddLayer / RemoveLayer | same: `AddLayerCommand` / `DeleteLayerCommand` | same: `addLayer` / `deleteLayer` |
 | MoveLayerUp / MoveLayerDown | same: `MoveLayerCommand` | same: `moveLayer` |
 | ChangeLayerOption | same: layer properties (name, transparency, hull, elevation) | same: `renameLayer`, `setLayerTransparency`, `setLayerHullProperties`, ... |
@@ -617,5 +617,5 @@ The menus otherwise match, item by item. The web repo's `references/PARITY.md` c
 4. Detach on the context menu.
 5. On-canvas ruler offset and radius handles.
 6. ~~Use as Model~~: done in both apps.
-7. MoveArea.
+7. ~~MoveArea~~: done in both apps.
 8. ~~Rotation pivot~~: done in both apps, checked against vanilla.
