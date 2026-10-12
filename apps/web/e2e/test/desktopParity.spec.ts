@@ -1538,3 +1538,49 @@ test.describe('Use as Model (BlueBrick)', () => {
     await expect(tile).toBeInViewport();
   });
 });
+
+test.describe('moving an area sheet (BlueBrick MoveArea)', () => {
+  test('paint a cell; a second window Ctrl+drags the whole sheet by cells', async ({ page, browser }) => {
+    const id = await createLayout(page);
+    await openEditor(page, id);
+    const xml = async () => (await page.request.get(`/api/layouts/${id}/export.bbm`)).text();
+    const cells = async () => [...(await xml()).matchAll(/<Area>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/g)].map((m) => `${m[1]},${m[2]}`);
+    const toScreen = (p: Page, s: { x: number; y: number }) =>
+      p.evaluate((q) => {
+        const st = (window as unknown as {
+          Konva: { stages: { container: () => HTMLElement; getAbsoluteTransform: () => { point: (r: { x: number; y: number }) => { x: number; y: number } } }[] };
+        }).Konva.stages[0]!;
+        const box = st.container().getBoundingClientRect();
+        const a = st.getAbsoluteTransform().point({ x: q.x * 8, y: q.y * 8 });
+        return { x: box.left + a.x, y: box.top + a.y };
+      }, s);
+
+    // Paint the cell under (4, 4) studs: cell (0, 0) at the default size.
+    await page.getByRole('button', { name: 'Paint', exact: true }).click();
+    const at = await toScreen(page, { x: 4, y: 4 });
+    await page.mouse.click(at.x, at.y);
+    await expect.poll(cells).toEqual(['0,0']);
+    const size = Number(/<AreaCellSize>(\d+)<\/AreaCellSize>/.exec(await xml())![1]);
+
+    // The second window, Paint picked, Ctrl+drags one cell right and one down.
+    const other = await browser.newContext();
+    const page2 = await other.newPage();
+    await signIn(page2, EMAIL, 'Parity Tester');
+    await openEditor(page2, id);
+    await page2.getByRole('button', { name: 'Paint', exact: true }).click();
+    const from = await toScreen(page2, { x: 4, y: 4 });
+    const to = await toScreen(page2, { x: 4 + size, y: 4 + size });
+    const canvas = (await page2.locator('.konvajs-content').first().boundingBox())!;
+    expect(to.x).toBeLessThan(canvas.x + canvas.width); // the drag stays on the map
+    expect(to.y).toBeLessThan(canvas.y + canvas.height);
+    await page2.keyboard.down('Control');
+    await page2.mouse.move(from.x, from.y);
+    await page2.mouse.down();
+    await page2.mouse.move(to.x, to.y, { steps: 10 });
+    await page2.mouse.up();
+    await page2.keyboard.up('Control');
+    // Moved, not painted: still one cell.
+    await expect.poll(cells).toEqual(['1,1']);
+    await other.close();
+  });
+});

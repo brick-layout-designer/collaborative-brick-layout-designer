@@ -244,3 +244,19 @@ describe('scaling a ruler (BlueBrick ScaleRuler)', () => {
     expect(items()[1]!.radius).toBe(3);
   });
 });
+
+describe('moving an area sheet (BlueBrick MoveArea)', () => {
+  it('moveArea shifts every cell by whole cells, in one undo step', async () => {
+    const { ensureAreaLayer, paintAreaCells, moveArea } = await import('../mutations');
+    const { LOCAL_ORIGIN } = await import('../useLayoutDoc');
+    const doc = new Y.Doc();
+    const a = ensureAreaLayer(doc);
+    paintAreaCells(doc, a, [{ x: 0, y: 0, color: 'FFFF0000' }, { x: -2, y: 5, color: 'FF0000FF' }]);
+    const cells = () => ((doc.getMap('layerData').get(a) as Y.Map<unknown>).get('areas') as Y.Array<{ x: number; y: number; color: string }>).toArray();
+    const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
+    moveArea(doc, a, 3, -1);
+    expect(cells().map((c) => [c.x, c.y, c.color]).sort()).toEqual([[1, 4, 'FF0000FF'], [3, -1, 'FFFF0000']]);
+    undo.undo();
+    expect(cells().map((c) => [c.x, c.y]).sort()).toEqual([[-2, 5], [0, 0]]);
+  });
+});

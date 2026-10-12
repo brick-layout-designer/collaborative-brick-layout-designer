@@ -754,6 +754,23 @@ export const AREA_CELL_SIZE_DEFAULT = 32;
  * visible Area layer. Creates a new Area layer with sane defaults
  * when no Area layer exists. Returns the layer id.
  */
+/**
+ * BlueBrick MoveArea: shift every painted cell of an area sheet by whole
+ * cells (desktop MoveAreaCommand). One transaction.
+ */
+export function moveArea(doc: Y.Doc, layerId: string, dx: number, dy: number): void {
+  if (dx === 0 && dy === 0) return;
+  doc.transact(() => {
+    const layerData = doc.getMap('layerData').get(layerId);
+    if (!(layerData instanceof Y.Map)) return;
+    const yAreas = layerData.get('areas');
+    if (!(yAreas instanceof Y.Array)) return;
+    const moved = (yAreas.toArray() as { x: number; y: number; color: string }[]).map((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
+    yAreas.delete(0, yAreas.length);
+    yAreas.insert(0, moved);
+  }, LOCAL_ORIGIN);
+}
+
 export function ensureAreaLayer(doc: Y.Doc, defaultCellSizeStuds = AREA_CELL_SIZE_DEFAULT): string {
   const layerOrder = doc.getArray<string>('layers');
   const layerData = doc.getMap<Y.Map<unknown>>('layerData');

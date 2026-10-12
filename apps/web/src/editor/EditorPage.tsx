@@ -100,6 +100,7 @@ import {
   insertBricks,
   insertSet,
   paintAreaCells,
+  moveArea,
   placeBrick,
   readBudgetLimits,
   readSavedViews,
@@ -1938,6 +1939,10 @@ function Canvas({
   // change for cells the cursor crosses multiple times. Mirrors
   // desktop's `strokeCellsTouched_` (MapView.cpp:493-523).
   const paintStrokeRef = useRef<Set<string> | null>(null);
+  // Ctrl+drag with Paint / Erase moves the whole area sheet (BlueBrick
+  // MoveArea): where it started, in cells, and the shift shown so far.
+  const areaMoveRef = useRef<{ layerId: string; cellSize: number; start: { x: number; y: number } } | null>(null);
+  const [areaShift, setAreaShift] = useState<{ layerId: string; dx: number; dy: number } | null>(null);
 
   // Shared cached projection (see useDocMap): same object until the doc
   // changes, and unchanged bricks keep their identity across edits so the
@@ -2919,6 +2924,12 @@ function Canvas({
     }
     if (tool === 'paint' || tool === 'erase') {
       if (isViewer) return;
+      const sheet = [...(map?.layers ?? [])].reverse().find((l) => l.type === 'area' && l.visible);
+      if ((evt.ctrlKey || evt.metaKey) && sheet && sheet.type === 'area') {
+        const cellSize = sheet.areaCellSize > 0 ? sheet.areaCellSize : 8;
+        areaMoveRef.current = { layerId: sheet.id, cellSize, start: { x: Math.floor(studs.x / cellSize), y: Math.floor(studs.y / cellSize) } };
+        return;
+      }
       paintStrokeRef.current = new Set();
       doPaintStroke(studs.x, studs.y);
     }
@@ -2970,6 +2981,13 @@ function Canvas({
       }
       return;
     }
+    const am = areaMoveRef.current;
+    if (am && evt.buttons & 1) {
+      const dx = Math.floor(studs.x / am.cellSize) - am.start.x;
+      const dy = Math.floor(studs.y / am.cellSize) - am.start.y;
+      if (dx !== areaShift?.dx || dy !== areaShift?.dy) setAreaShift({ layerId: am.layerId, dx, dy });
+      return;
+    }
     // Continue the paint/erase stroke while the button is held.
     if ((tool === 'paint' || tool === 'erase') && paintStrokeRef.current && evt.buttons & 1) {
       doPaintStroke(studs.x, studs.y);
@@ -2988,6 +3006,8 @@ function Canvas({
     dispatchCursorLeave();
     middlePanRef.current = null;
     paintStrokeRef.current = null;
+    areaMoveRef.current = null;
+    setAreaShift(null);
     scheduleHudMouse(null);
   }
 
@@ -3026,6 +3046,16 @@ function Canvas({
       return;
     }
     paintStrokeRef.current = null;
+    if (areaMoveRef.current && evt.button === 0) {
+      const am = areaMoveRef.current;
+      areaMoveRef.current = null;
+      const studs = pointerStuds();
+      const dx = studs ? Math.floor(studs.x / am.cellSize) - am.start.x : (areaShift?.dx ?? 0);
+      const dy = studs ? Math.floor(studs.y / am.cellSize) - am.start.y : (areaShift?.dy ?? 0);
+      setAreaShift(null);
+      moveArea(doc, am.layerId, dx, dy);
+      return;
+    }
     // Pending (not yet rendered) pointer move: the marquee must commit
     // against the final pointer position, not the last painted frame.
     const pendingStuds = moveRafRef.current.studs;
@@ -3905,7 +3935,7 @@ function Canvas({
             ? <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} />
             : <VenueOverlay venue={readSidecarFromDoc(doc)?.venue ?? null} labelFontPx={venueLabelPx} onDoubleClick={onOpenVenueProps} />}
         </Group>
-        <AreaLayers map={shown} />
+        <AreaLayers map={areaShift ? shiftArea(shown, areaShift) : shown} />
         {showElectricCircuits && map && (
           <ElectricCircuitLayer map={shown} partsByKey={partsByKey} />
         )}
@@ -5586,4 +5616,16 @@ function ViewOnlyPill() {
       View only
     </span>
   );
+}
+
+/** The map with one area sheet's cells shown shifted (a MoveArea drag). */
+function shiftArea(map: import('@cld/model').BbmMap, shift: { layerId: string; dx: number; dy: number }): import('@cld/model').BbmMap {
+  return {
+    ...map,
+    layers: map.layers.map((l) =>
+      l.type === 'area' && l.id === shift.layerId
+        ? { ...l, areas: l.areas.map((c) => ({ ...c, x: c.x + shift.dx, y: c.y + shift.dy })) }
+        : l,
+    ),
+  };
 }
