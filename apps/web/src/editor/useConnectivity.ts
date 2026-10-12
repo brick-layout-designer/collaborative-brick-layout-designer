@@ -12,8 +12,8 @@
 // UndoManager: the write-back lands ~250ms after the edit (after the
 // undo capture window closes), so tracking it produced a separate undo
 // step and the first Ctrl+Z after a move appeared to do nothing. Links
-// are instead re-derived after undo/redo, which is why undo/redo origins
-// also schedule a recompute.
+// are instead re-derived after undo/redo, at once (not debounced), so the
+// restored parts are never drawn, or clicked, with the undone edit's links.
 //
 // Before connectivity, the first pass (and every remote update, including
 // the initial sync) repairs stale brick boxes: earlier builds kept a
@@ -71,7 +71,19 @@ export function useConnectivity(doc: Y.Doc | null, parts: PartWire[] | undefined
 
     function onUpdate(_u: Uint8Array, origin: unknown) {
       if (origin === CONNECTIVITY_ORIGIN) return;
-      if (origin !== LOCAL_ORIGIN && !(origin instanceof Y.UndoManager)) {
+      if (origin instanceof Y.UndoManager) {
+        // An undo or redo puts the parts back at once, so their links come
+        // back with them, before anything draws or is clicked: a debounced
+        // recompute left the moves' links in place for a while (longer on
+        // a busy phone), so the bend handle of a joint a flex move had
+        // opened stayed in the middle of the restored run and caught the
+        // double-click meant for a part.
+        if (timer) clearTimeout(timer);
+        timer = null;
+        runRecompute();
+        return;
+      }
+      if (origin !== LOCAL_ORIGIN) {
         scheduleStaleFix();
         return;
       }
