@@ -3,6 +3,9 @@
 // apps that only read it, and a write by such an app is still honoured.
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { decodeDoc, encodeDoc, exportSidecarFromDoc, readSidecarCache, removeDuplicateBricks, repairSidecarCache, sidecarBlobHash, writeSidecarCache } from './index.js';
 
 const base = { schemaVersion: 1, bbmHashSha256: '', modules: [{ id: 'm0', name: 'Yard', members: [] }] };
@@ -248,15 +251,11 @@ describe('removeDuplicateBricks', () => {
 // The desktop computes the same hash (sync/SidecarItems.cpp, with these
 // vectors in tests/sync/SidecarItemsTest.cpp): keep both in step.
 describe('sidecarBlobHash', () => {
-  it('matches the shared vectors', () => {
-    const vectors: [string, string][] = [
-    ["{}", "2:5465b825"],
-    ["{\"b\":1,\"a\":\"x\"}", "15:f7b213ed"],
-    ["{\"modules\":[{\"id\":\"m1\",\"name\":\"Yard\",\"memberIds\":[\"a\",\"b\"],\"z\":null,\"ok\":true}],\"anchoredLabels\":[]}", "100:b3f06b1b"],
-    ["{\"n\":[0,-1,1.5,0.1,100,1e+21,1.5e-7,123456789012,-0.000001,2.5e-7],\"s\":\"é \\\"q\\\" \\\\ \\n\\t\\u0001 ✓ 😀\"}", "100:779387ef"],
-    ["{\"nested\":{\"z\":{\"y\":[{\"b\":2,\"a\":1}]},\"a\":false}}", "48:6b434d83"],
-    ];
-    for (const [json, hash] of vectors) expect(sidecarBlobHash(JSON.parse(json))).toBe(hash);
+  it('matches the shared vectors (fixtures/contracts/sidecar-hash.json, the same file the desktop checks)', () => {
+    const file = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/contracts/sidecar-hash.json');
+    const { vectors } = JSON.parse(readFileSync(file, 'utf8')) as { vectors: { json: string; hash: string }[] };
+    expect(vectors.length).toBeGreaterThanOrEqual(5);
+    for (const { json, hash } of vectors) expect(sidecarBlobHash(JSON.parse(json)), json).toBe(hash);
   });
 
   it("doesn't depend on the order of an object's keys", () => {
