@@ -1,12 +1,14 @@
 // Connectivity write-back in the editor: links and the handed-over active
 // connection (BlueBrick onLinked) reach the doc, outside the undo stack.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import * as Y from 'yjs';
 import { createDefaultLayoutDoc, docToBbm } from '@cld/ydoc';
 import type { PartWire } from '../../api';
-import { placeBrick } from '../mutations';
-import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
+import { moveBrick, placeBrick } from '../mutations';
+import { catalogFromParts, recomputeConnectivity, useConnectivity } from '../useConnectivity';
+import { createUndoManager } from '../useUndoManager';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 
 // 2865.8-style straight: connection 0 prefers 1 next, 1 prefers 0.
@@ -50,6 +52,39 @@ describe('connectivity write-back', () => {
     expect(A.activeConnectionPointIndex).toBe(0);
     expect(B.activeConnectionPointIndex).toBe(1);
     expect(um.undoStack.length).toBe(undoSteps);
+  });
+});
+
+describe('links after an undo', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('come back with the parts at once, not after the debounce', () => {
+    vi.useFakeTimers();
+    const doc = createDefaultLayoutDoc();
+    const layerId = docToBbm(doc).layers.find((l) => l.type === 'brick')!.id;
+    const a = placeBrick(doc, layerId, { partNumber: 'straight.8', x: 0, y: 0, width: 16, height: 8 });
+    const b = placeBrick(doc, layerId, { partNumber: 'straight.8', x: 16, y: 0, width: 16, height: 8 });
+    const parts = [STRAIGHT];
+    const { unmount } = renderHook(() => useConnectivity(doc, parts));
+    const linked = () => {
+      const bricks = docToBbm(doc).layers.flatMap((l) => (l.type === 'brick' ? l.bricks : []));
+      return bricks.find((x) => x.id === a)!.connexions[1]!.linkedTo === bricks.find((x) => x.id === b)!.connexions[0]!.id;
+    };
+    vi.advanceTimersByTime(1000);
+    expect(linked()).toBe(true);
+
+    const um = createUndoManager(doc);
+    moveBrick(doc, layerId, b, 100, 4); // pulled away: the joint opens
+    um.stopCapturing();
+    vi.advanceTimersByTime(1000);
+    expect(linked()).toBe(false);
+
+    // A slow page: no timer gets to run between the undo and the next draw or click.
+    um.undo();
+    expect(linked()).toBe(true);
+    um.redo();
+    expect(linked()).toBe(false);
+    unmount();
   });
 });
 
