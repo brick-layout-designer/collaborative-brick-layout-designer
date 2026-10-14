@@ -57,7 +57,7 @@ jobs:
           ref: ${{ env.BLUEBRICK_PARTS_SHA }}
           path: .e2e/BlueBrickParts
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
