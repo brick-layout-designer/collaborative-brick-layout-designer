@@ -84,6 +84,71 @@ export const UNREADABLE_LAYOUT =
 export const LAYOUT_NOT_FOUND = "This layout isn't here: it may have been deleted, or it isn't shared with you. Ask its owner for access.";
 export const LOAD_TIMED_OUT = "The layout hasn't opened yet. Check your connection: it opens by itself as soon as it gets through.";
 export const SIGN_IN_TO_OPEN = 'This layout is private. Sign in with an account it is shared with to open it.';
+/** The server refused what this page sent because it held another layout's parts (ws/mergeGuard.ts). */
+export const MERGE_REFUSED =
+  "The server stopped this page from sending another layout's parts into this one, so nothing was changed. Reload the page to open the layout again.";
+
+/**
+ * Close codes after which a connection never comes back: retrying can't
+ * succeed (and y-websocket would otherwise reconnect with backoff forever).
+ * An account put on hold (privacy) reconnects read only by itself.
+ */
+function isFinalClose(event: CloseEvent): boolean {
+  if (event.code === 1008 && event.reason === 'account_restricted') return false;
+  return event.code === 4404 || event.code === 1008;
+}
+
+/**
+ * Layouts left (another layout opened in the app, Back, the layouts list)
+ * with edits the server hasn't got yet: made offline, they reach the
+ * server once the connection is back. Each keeps its own doc and provider,
+ * for its own layout id only, until then; nothing is shared with the
+ * layout opened next.
+ */
+const leaving = new Set<{ layoutId: string; provider: WebsocketProvider; doc: Y.Doc }>();
+
+/** Layout ids whose left-behind edits are still on their way (tests, the unload guard). */
+export function layoutsStillSending(): string[] {
+  return [...leaving].map((l) => l.layoutId);
+}
+
+function onUnloadWhileSending(e: BeforeUnloadEvent): void {
+  if (leaving.size === 0) return;
+  e.preventDefault();
+  e.returnValue = '';
+}
+
+/** Keep a left layout's connection until its edits are sent, then close it. */
+function finishSending(layoutId: string, provider: WebsocketProvider, doc: Y.Doc): void {
+  const entry = { layoutId, provider, doc };
+  leaving.add(entry);
+  if (leaving.size === 1 && typeof window !== 'undefined') window.addEventListener('beforeunload', onUnloadWhileSending);
+  let poll: ReturnType<typeof setInterval> | null = null;
+  const done = (): void => {
+    if (!leaving.delete(entry)) return;
+    if (poll) clearInterval(poll);
+    provider.off('sync', onSync);
+    provider.off('connection-close', onClose);
+    provider.disconnect();
+    provider.destroy();
+    doc.destroy();
+    if (leaving.size === 0 && typeof window !== 'undefined') window.removeEventListener('beforeunload', onUnloadWhileSending);
+  };
+  // Synced again: our reply to the server's step 1 (all it lacks) went out
+  // before its step 2 arrived. Close once the socket has sent it.
+  const onSync = (isSynced: boolean): void => {
+    if (!isSynced || poll) return;
+    poll = setInterval(() => {
+      const ws = provider.ws as WebSocket | null;
+      if (!ws || ws.bufferedAmount === 0) done();
+    }, 100);
+  };
+  const onClose = (event: CloseEvent | null): void => {
+    if (event && isFinalClose(event)) done();
+  };
+  provider.on('sync', onSync);
+  provider.on('connection-close', onClose);
+}
 
 /** Build the WS URL relative to the current page (so dev + prod both work). */
 function wsUrlBase(): string {
@@ -118,6 +183,13 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
     providerRef.current = provider;
 
     let lastSyncedAt: number | null = null;
+    // Edits made while not connected and synced: sent on reconnect, so a
+    // layout left before then finishes sending them (finishSending).
+    let unsent = false;
+    const onDocUpdate = (_u: Uint8Array, origin: unknown): void => {
+      if (origin !== provider && !(provider.wsconnected && provider.synced)) unsent = true;
+    };
+    fresh.on('update', onDocUpdate);
     let syncTimer: ReturnType<typeof setTimeout> | null = null;
     // Said "hasn't opened yet"; the provider keeps trying, and the layout
     // opens by itself if it gets through after all.
@@ -154,6 +226,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
 
     const onSync = (isSynced: boolean): void => {
       if (isSynced) {
+        unsent = false;
         if (unreadable()) return;
         if (syncTimer) {
           clearTimeout(syncTimer);
@@ -189,13 +262,10 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
 
     const onConnectionClose = (event: CloseEvent | null): void => {
       if (!event) return;
-      if (event.code === 1008 && event.reason === 'account_restricted') {
-        // The account was put on hold (privacy): it reconnects read only by itself.
-        return;
-      }
-      if (event.code === 4404 || event.code === 1008) {
+      if (isFinalClose(event)) {
         // Terminal: retrying can't succeed, and y-websocket would
         // otherwise keep reconnecting with backoff forever.
+        unsent = false;
         provider.disconnect();
         if (syncTimer) {
           clearTimeout(syncTimer);
@@ -205,9 +275,11 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           new Error(
             event.code === 4404
               ? LAYOUT_NOT_FOUND
-              : event.reason === 'account_pending_deletion'
-                ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
-                : SIGN_IN_TO_OPEN,
+              : event.reason === 'layout_merge_refused'
+                ? MERGE_REFUSED
+                : event.reason === 'account_pending_deletion'
+                  ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
+                  : SIGN_IN_TO_OPEN,
           ),
         );
       } else if (event.code === 4429) {
@@ -247,10 +319,17 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       provider.off('status', onStatus);
       provider.off('connection-close', onConnectionClose);
       fresh.off('afterTransaction', onTransaction);
+      fresh.off('update', onDocUpdate);
       if (repairTimer) clearTimeout(repairTimer);
+      if (providerRef.current === provider) providerRef.current = null;
+      if (unsent) {
+        // Left with edits the server hasn't got: they still go to THIS
+        // layout when the connection is back, never to the next one.
+        finishSending(layoutId, provider, fresh);
+        return;
+      }
       provider.disconnect();
       provider.destroy();
-      if (providerRef.current === provider) providerRef.current = null;
       fresh.destroy();
     };
   }, [layoutId]);
