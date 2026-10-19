@@ -7,6 +7,20 @@ import { Loading, Td, Th } from './shared';
 
 const AUDIT_PAGE = 50;
 
+/** Events an admin should read in words, not as a type name. */
+export function auditSentence(e: AdminAuditEvent): string | null {
+  const p = (e.payload ?? {}) as { foreignLayers?: number; unseenClients?: number; client?: string };
+  const from = p.client ? ` (from ${p.client})` : '';
+  switch (e.eventType) {
+    case 'layout_merge_refused':
+      return `Refused a live update that would have mixed another layout into this one: it brought ${p.foreignLayers ?? 'some'} layers from elsewhere${from}. Nothing was changed, and that connection was closed.`;
+    case 'layout_merge_suspected':
+      return `Applied a live update that came from ${p.unseenClients ?? 'many'} editors this layout had never seen at once${from}. Worth a look: it can mean another layout's edits were mixed in.`;
+    default:
+      return null;
+  }
+}
+
 export function AuditTab() {
   const [offset, setOffset] = useState(0);
   const log = useQuery({
@@ -30,7 +44,10 @@ export function AuditTab() {
               {log.data.events.map((e: AdminAuditEvent) => (
                 <tr key={e.id} className="border-b border-line hover:bg-panel/40">
                   <Td>{new Date(e.createdAt).toLocaleString()}</Td>
-                  <Td>{e.eventType}</Td>
+                  <Td>
+                    {e.eventType}
+                    {auditSentence(e) && <p className="mt-0.5 max-w-sm text-neutral-300">{auditSentence(e)}</p>}
+                  </Td>
                   <Td>{e.userName ?? e.userId ?? '—'}</Td>
                   <Td className="font-mono text-[10px] text-muted">{e.layoutId ?? (e.resourceKind ? `${e.resourceKind}:${e.resourceId}` : '—')}</Td>
                   <Td>

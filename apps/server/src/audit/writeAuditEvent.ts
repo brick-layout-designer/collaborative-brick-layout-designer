@@ -35,6 +35,11 @@ export type AuditEventType =
   | 'join'
   | 'join_approve'
   | 'join_decline'
+  // The live editor refused an update that would have merged another
+  // layout into this one (ws/mergeGuard.ts), or applied one that looked
+  // like it might (many clients the layout had never seen at once).
+  | 'layout_merge_refused'
+  | 'layout_merge_suspected'
   // A module went back to an earlier version (as a new version).
   | 'restore_version'
   // Platform-admin actions. Subject is the resource being modified
