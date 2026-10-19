@@ -281,6 +281,25 @@ describe('checkIncomingUpdate: normal work passes', () => {
     expect(server.getArray('layers').toArray()).toContain('made-on-desktop');
   });
 
+  it('an update made against an older state (part of it already here), with a layer placed after the new part', () => {
+    // A whole-state update (the desktop sends one when the server's state
+    // vector can't be read) or a second socket of the same doc that is
+    // behind: the first struct of a client starts inside what the room
+    // has and runs on past it, and another client's layer sits after
+    // that new tail.
+    const server = serverLayout(300, 'fordyce-2026.bbm');
+    const c = synced(server, 81);
+    const order = c.getArray<string>('layers');
+    for (const u of recording(c, () => order.push(['c-1']))) deliver(server, u);
+    order.push(['c-2']); // right after c-1: one struct with it in a whole-state update
+    const d = synced(c, 82);
+    d.getArray<string>('layers').push(['d-1']); // after c-2
+    Y.applyUpdate(c, step2(d, c));
+    const check = deliver(server, Y.encodeStateAsUpdate(c));
+    expect(check.refuse).toBe(false);
+    expect(server.getArray('layers').toArray().slice(-3)).toEqual(['c-1', 'c-2', 'd-1']);
+  });
+
   it('a desktop writing a layout it opened into an empty server layout', () => {
     const server = serverLayout(300);
     const desktop = synced(server, 71);
