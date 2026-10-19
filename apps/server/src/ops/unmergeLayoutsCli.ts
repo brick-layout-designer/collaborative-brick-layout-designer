@@ -24,14 +24,14 @@ import { writeBbm, writeSidecar, type Sidecar } from '@cld/bbm';
 import { exportBbmFromDoc, exportSidecarFromDoc } from '@cld/ydoc';
 import { planFingerprint, planUnmerge, type DocSummary, type LayoutPlan, type UnmergeInput } from './unmergeLayouts.js';
 
-interface Row {
+export interface Row {
   id: string;
   title: string;
   doc_snapshot: Buffer;
   doc_version: number;
 }
 
-function currentBytes(db: Database.Database, row: Row): Uint8Array {
+export function currentBytes(db: Database.Database, row: Row): Uint8Array {
   const updates = db
     .prepare("select update_bytes from layout_updates where layout_id = ? and doc = 'main' order by id")
     .all(row.id) as { update_bytes: Buffer }[];
@@ -48,7 +48,7 @@ function currentBytes(db: Database.Database, row: Row): Uint8Array {
   return Y.encodeStateAsUpdate(doc);
 }
 
-function loadRows(db: Database.Database, ids: string[]): Map<string, Row> {
+export function loadRows(db: Database.Database, ids: string[]): Map<string, Row> {
   const stmt = db.prepare('select id, title, doc_snapshot, doc_version from layouts where id = ?');
   const out = new Map<string, Row>();
   for (const id of ids) {
@@ -94,7 +94,7 @@ function printPlan(p: LayoutPlan): void {
   out();
 }
 
-function exportDoc(dir: string, name: string, bytes: Uint8Array): void {
+export function exportDoc(dir: string, name: string, bytes: Uint8Array): void {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, bytes);
   const map = exportBbmFromDoc(doc);
@@ -103,7 +103,7 @@ function exportDoc(dir: string, name: string, bytes: Uint8Array): void {
   if (sidecar) writeFileSync(join(dir, `${name}.bbm.bld`), writeSidecar(sidecar as Sidecar));
 }
 
-function safeName(s: string): string {
+export function safeName(s: string): string {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_');
 }
 
