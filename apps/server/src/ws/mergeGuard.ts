@@ -15,7 +15,10 @@
 // cross-merge; no normal flow makes one:
 //   - adding, importing, pasting, undoing: inserted next to synced entries;
 //   - Make module: sidecarItems / meta keys only, no layer entries;
-//   - offline edits replayed on reconnect: made on the synced doc;
+//   - offline edits replayed on reconnect: made on the synced doc, however
+//     long the session and whatever others deleted meanwhile (anchors
+//     stay in the room as tombstones), also after a server restart or a
+//     rollback to a backup of this layout (routes/test/wsOfflineSessions);
 //   - a desktop opening a layout fresh: an empty doc, or its own cache of
 //     this layout (items the room has, or edits placed among them);
 //   - a brand-new layout (no layer order yet): allowed whatever it holds.
@@ -178,7 +181,10 @@ export function checkIncomingUpdate(doc: Y.Doc, update: Uint8Array): MergeCheck 
       if (known(ref)) anchored = true;
       else {
         const s = inUpdate(ref);
-        if (s && s !== e) {
+        // In a struct that starts inside what the room has (an update made
+        // against an older state: its new tail continues a known run).
+        if (s && known(s.id)) anchored = true;
+        else if (s && s !== e) {
           let w = waiting.get(s);
           if (!w) waiting.set(s, (w = []));
           w.push(e);
