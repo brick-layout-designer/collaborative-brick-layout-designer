@@ -11,6 +11,7 @@
 // This file is small because Yjs's protocol library does the heavy lifting.
 
 import type { WebSocket } from '@fastify/websocket';
+import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
@@ -25,6 +26,18 @@ import {
 } from './protocol.js';
 import { resolveResourceRole } from '../access/resolveResourceRole.js';
 import { isCredentialActive, revokedReason, type Credential } from '../auth/credentials.js';
+import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { checkIncomingUpdate, type MergeCheck } from './mergeGuard.js';
+
+/**
+ * Close code and reason for an update refused because it would merge
+ * another layout into this one (ws/mergeGuard.ts). 1008 is a close both
+ * apps already treat as final: the desktop stops reconnecting and keeps
+ * its copy as an unsaved file, the web says so instead of retrying, so the
+ * same update isn't sent again and again.
+ */
+export const CLOSE_MERGE_REFUSED = 1008;
+export const MERGE_REFUSED_REASON = 'layout_merge_refused';
 
 /**
  * How often we re-check whether the connected user still has access to
@@ -38,12 +51,22 @@ export const wsTiming = { revalidateMs: 30_000 };
 
 export interface WsAuth {
   /** Credential the socket authenticated with; re-checked periodically. */
-  credential?: Credential;
+  credential?: Credential | undefined;
   /**
    * Cap the connection at viewer regardless of the user's layout role —
    * an API token without the `layouts:write` scope.
    */
   readOnly?: boolean;
+  /** Who is on the other end, for the audit log: the User-Agent. */
+  client?: string | undefined;
+}
+
+/** Where a refused or flagged update came from, for the log and the audit. */
+interface Sender {
+  layoutId: string;
+  userId: string;
+  client: string;
+  credential?: Credential | undefined;
 }
 
 /**
@@ -71,6 +94,7 @@ export async function attachWsHandlers(
   auth: WsAuth = {},
 ): Promise<() => Promise<void>> {
   const { credential, readOnly = false } = auth;
+  const sender: Sender = { layoutId, userId, client: auth.client ?? '', credential };
   const cap = (r: 'owner' | 'editor' | 'viewer') => (readOnly ? 'viewer' : r);
   const session = await docHub.getOrCreate(layoutId);
   docHub.attach(session, ws, userId);
@@ -100,7 +124,7 @@ export async function attachWsHandlers(
   let currentRole = cap(role);
   ws.on('message', (data: Buffer) => {
     try {
-      handleMessage(ws, session, new Uint8Array(data), currentRole);
+      handleMessage(ws, session, new Uint8Array(data), currentRole, sender);
     } catch {
       // Drop malformed messages silently — Yjs protocol errors should
       // never propagate to the client.
@@ -167,6 +191,7 @@ function handleMessage(
   session: DocSession,
   msg: Uint8Array,
   role: 'owner' | 'editor' | 'viewer',
+  sender: Sender,
 ): void {
   const decoder = decoding.createDecoder(msg);
   const messageType = decoding.readVarUint(decoder);
@@ -174,23 +199,29 @@ function handleMessage(
     case MESSAGE_SYNC: {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_SYNC);
-      if (role === 'viewer') {
-        // A viewer's sync step 1 is a read ("send me what I'm missing")
-        // and is how y-websocket clients get the document at all, so it
-        // must be answered. Step 2 and update messages carry the
-        // viewer's own state/edits: write paths, dropped.
-        const syncType = decoding.readVarUint(decoder);
-        if (syncType !== syncProtocol.messageYjsSyncStep1) return;
+      const syncType = decoding.readVarUint(decoder);
+      if (syncType === syncProtocol.messageYjsSyncStep1) {
+        // A read ("send me what I'm missing"): how every client, viewers
+        // included, gets the document at all.
         syncProtocol.readSyncStep1(decoder, encoder, session.doc);
-      } else {
-        // For step 1 (request) and step 2 (response with missing
-        // updates) readSyncMessage writes the reply into `encoder`.
-        syncProtocol.readSyncMessage(
-          decoder,
-          encoder,
-          session.doc,
-          ws, // origin so our own broadcasts skip this client
-        );
+      } else if (syncType === syncProtocol.messageYjsSyncStep2 || syncType === syncProtocol.messageYjsUpdate) {
+        // The client's own state / edits: write paths. A viewer's are
+        // dropped (a hostile viewer can't corrupt the doc).
+        if (role === 'viewer') return;
+        const update = decoding.readVarUint8Array(decoder);
+        // Checked before it is applied, so a refused one leaves the doc as it was.
+        const check = checkIncomingUpdate(session.doc, update);
+        if (check.refuse) {
+          refuseMerge(ws, session, sender, check);
+          return;
+        }
+        if (check.suspicious) flagUpdate(session, sender, check);
+        try {
+          // Origin = this socket, so our own broadcasts skip this client.
+          Y.applyUpdate(session.doc, update, ws);
+        } catch (err) {
+          console.error('[ws] could not apply an update', err);
+        }
       }
       if (encoding.length(encoder) > 1) {
         sendBytes(ws, encoding.toUint8Array(encoder));
@@ -209,6 +240,55 @@ function handleMessage(
       // Unknown message type — ignore.
       break;
   }
+}
+
+function mergePayload(sender: Sender, check: MergeCheck): Record<string, unknown> {
+  return {
+    client: sender.client,
+    via: sender.credential?.kind ?? null,
+    updateBytes: check.updateBytes,
+    foreignLayers: check.foreignLayers,
+    unseenClients: check.unseenClients,
+    layoutLayers: check.docLayers,
+  };
+}
+
+/**
+ * The update would merge another layout's layers into this one: drop it
+ * whole, end this connection with a reason both apps know, and say so in
+ * the log and the audit.
+ */
+function refuseMerge(ws: WebSocket, session: DocSession, sender: Sender, check: MergeCheck): void {
+  console.warn(
+    `[ws] refused an update to layout ${session.layoutId} from user ${sender.userId} (${sender.client || 'unknown client'}): ` +
+      `it adds ${check.foreignLayers} layer entries from another layout (${check.updateBytes} bytes, ` +
+      `${check.unseenClients} unseen clients; the layout has ${check.docLayers} layers)`,
+  );
+  try {
+    ws.close(CLOSE_MERGE_REFUSED, MERGE_REFUSED_REASON);
+  } catch {
+    /* already closed */
+  }
+  writeAuditEvent({
+    layoutId: session.layoutId,
+    userId: sender.userId,
+    eventType: 'layout_merge_refused',
+    payload: mergePayload(sender, check),
+  }).catch((err) => console.error('[ws] could not write the layout_merge_refused audit event', err));
+}
+
+/** Applied, but unusual enough for the admins to see (mergeGuard.ts). */
+function flagUpdate(session: DocSession, sender: Sender, check: MergeCheck): void {
+  console.warn(
+    `[ws] layout ${session.layoutId}: an update from user ${sender.userId} (${sender.client || 'unknown client'}) ` +
+      `brings items from ${check.unseenClients} clients this layout has never seen (${check.updateBytes} bytes); applied`,
+  );
+  writeAuditEvent({
+    layoutId: session.layoutId,
+    userId: sender.userId,
+    eventType: 'layout_merge_suspected',
+    payload: mergePayload(sender, check),
+  }).catch((err) => console.error('[ws] could not write the layout_merge_suspected audit event', err));
 }
 
 function sendSyncStep1(ws: WebSocket, session: DocSession): void {

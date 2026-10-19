@@ -201,7 +201,7 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
         const readOnly = suspended || !!req.user.restrictedAt || (token !== null && !hasScope(token.scopes, 'layouts:write'));
         let detach: () => Promise<void>;
         try {
-          detach = await attachWsHandlers(ws, layoutId, userId, role.role!, { credential, readOnly });
+          detach = await attachWsHandlers(ws, layoutId, userId, role.role!, { credential, readOnly, client: req.headers['user-agent'] });
         } catch (err) {
           const n = (userConnections.get(userId) ?? 1) - 1;
           if (n <= 0) userConnections.delete(userId);
