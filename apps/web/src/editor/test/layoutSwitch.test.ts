@@ -45,6 +45,19 @@ class FakeProvider {
 vi.mock('y-websocket', () => ({ WebsocketProvider: FakeProvider }));
 
 const { MERGE_REFUSED, layoutsStillSending, useLayoutDoc } = await import('../useLayoutDoc');
+const { dropRefusedCopy, markRefusedCopyKept, useRefusedCopies } = await import('../refusedCopies');
+
+function destroyed(doc: Y.Doc): () => boolean {
+  let gone = false;
+  doc.on('destroy', () => (gone = true));
+  return () => gone;
+}
+
+function unloadAsks(): boolean {
+  const e = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(e);
+  return e.defaultPrevented;
+}
 
 function addLayer(doc: Y.Doc, id: string): void {
   doc.transact(() => {
@@ -57,6 +70,7 @@ describe('switching layouts', () => {
   afterEach(() => {
     providers.length = 0;
     vi.useRealTimers();
+    for (const c of useRefusedCopies.getState().copies) dropRefusedCopy(c.key);
   });
 
   it('gives each layout id its own doc and provider, and closes the one left', () => {
@@ -124,5 +138,55 @@ describe('switching layouts', () => {
     act(() => p.emit('connection-close', { code: 1008, reason: 'layout_merge_refused' }));
     expect(result.current.loadError?.message).toBe(MERGE_REFUSED);
     expect(p.disconnected).toBe(true);
+  });
+
+  it('keeps the refused copy after leaving the editor, and asks before the page closes until it is kept', () => {
+    const { unmount } = renderHook(() => useLayoutDoc('C'));
+    const p = providers.at(-1)!;
+    act(() => p.emit('sync', true));
+    act(() => addLayer(p.doc, 'synced'));
+    p.wsconnected = false;
+    act(() => p.emit('sync', false));
+    act(() => addLayer(p.doc, 'made-offline'));
+    const gone = destroyed(p.doc);
+    act(() => p.emit('connection-close', { code: 1008, reason: 'layout_merge_refused' }));
+    unmount();
+    expect(gone()).toBe(false);
+    const [copy] = useRefusedCopies.getState().copies;
+    expect(copy?.layoutId).toBe('C');
+    expect(copy?.doc.getArray('layers').toArray()).toEqual(['synced', 'made-offline']);
+    expect(unloadAsks()).toBe(true);
+    // Saved or downloaded: no longer asks; let go: the doc goes.
+    markRefusedCopyKept(copy!.key);
+    expect(unloadAsks()).toBe(false);
+    dropRefusedCopy(copy!.key);
+    expect(gone()).toBe(true);
+    expect(useRefusedCopies.getState().copies).toEqual([]);
+  });
+
+  it('a left layout refused by the server keeps its copy too', () => {
+    const { rerender, unmount } = renderHook(({ id }) => useLayoutDoc(id), { initialProps: { id: 'A' } });
+    const a = providers.at(-1)!;
+    act(() => a.emit('sync', true));
+    a.wsconnected = false;
+    act(() => a.emit('sync', false));
+    act(() => addLayer(a.doc, 'offline-edit'));
+    rerender({ id: 'B' });
+    const gone = destroyed(a.doc);
+    act(() => a.emit('connection-close', { code: 1008, reason: 'layout_merge_refused' }));
+    expect(layoutsStillSending()).toEqual([]);
+    expect(a.destroyed).toBe(true);
+    expect(gone()).toBe(false);
+    expect(useRefusedCopies.getState().copies.map((c) => c.layoutId)).toEqual(['A']);
+    unmount();
+  });
+
+  it('a refusal before the layout arrived has nothing to keep', () => {
+    const { unmount } = renderHook(() => useLayoutDoc('D'));
+    const p = providers.at(-1)!;
+    act(() => p.emit('connection-close', { code: 1008, reason: 'layout_merge_refused' }));
+    unmount();
+    expect(useRefusedCopies.getState().copies).toEqual([]);
+    expect(unloadAsks()).toBe(false);
   });
 });

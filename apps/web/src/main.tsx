@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveUpdates } from './live/LiveUpdates';
 import { NoticeBanner, NoticesPage } from './notices/Notices';
+import { RefusedCopies } from './editor/RefusedCopies';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { PARTS_SECTION } from './parts/CustomPartsSection';
 import { TourProvider } from './tours/TourProvider';
@@ -79,6 +80,7 @@ createRoot(root).render(
         <FileOpener />
         <SiteVersionBar />
         <NoticeBanner />
+        <RefusedCopies />
         <DemoBanner />
         <NamePrompt />
         <CollectionToastHost />

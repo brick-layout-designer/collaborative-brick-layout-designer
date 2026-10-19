@@ -21,6 +21,7 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { Awareness } from 'y-protocols/awareness';
 import { canReadDoc, removeDuplicateBricks, repairSidecarCache } from '@cld/ydoc';
+import { keepRefusedCopy } from './refusedCopies';
 
 export type SaveStatus =
   | { kind: 'connecting' }
@@ -86,7 +87,9 @@ export const LOAD_TIMED_OUT = "The layout hasn't opened yet. Check your connecti
 export const SIGN_IN_TO_OPEN = 'This layout is private. Sign in with an account it is shared with to open it.';
 /** The server refused what this page sent because it held another layout's parts (ws/mergeGuard.ts). */
 export const MERGE_REFUSED =
-  "The server stopped this page from sending another layout's parts into this one, so nothing was changed. Reload the page to open the layout again.";
+  "The server didn't take this page's changes: they looked like another layout's parts going into this one, so the layout on the server wasn't changed. Nothing you did is lost: your copy is kept on this page. Save it as a new layout or download it.";
+
+const MERGE_REFUSED_REASON = 'layout_merge_refused';
 
 /**
  * Close codes after which a connection never comes back: retrying can't
@@ -124,14 +127,14 @@ function finishSending(layoutId: string, provider: WebsocketProvider, doc: Y.Doc
   leaving.add(entry);
   if (leaving.size === 1 && typeof window !== 'undefined') window.addEventListener('beforeunload', onUnloadWhileSending);
   let poll: ReturnType<typeof setInterval> | null = null;
-  const done = (): void => {
+  const done = (keepDoc = false): void => {
     if (!leaving.delete(entry)) return;
     if (poll) clearInterval(poll);
     provider.off('sync', onSync);
     provider.off('connection-close', onClose);
     provider.disconnect();
     provider.destroy();
-    doc.destroy();
+    if (!keepDoc) doc.destroy();
     if (leaving.size === 0 && typeof window !== 'undefined') window.removeEventListener('beforeunload', onUnloadWhileSending);
   };
   // Synced again: our reply to the server's step 1 (all it lacks) went out
@@ -144,7 +147,9 @@ function finishSending(layoutId: string, provider: WebsocketProvider, doc: Y.Doc
     }, 100);
   };
   const onClose = (event: CloseEvent | null): void => {
-    if (event && isFinalClose(event)) done();
+    if (!event || !isFinalClose(event)) return;
+    // Refused: its edits never got there, so the copy is kept (refusedCopies).
+    done(event.reason === MERGE_REFUSED_REASON && keepRefusedCopy(layoutId, doc));
   };
   provider.on('sync', onSync);
   provider.on('connection-close', onClose);
@@ -186,6 +191,8 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
     // Edits made while not connected and synced: sent on reconnect, so a
     // layout left before then finishes sending them (finishSending).
     let unsent = false;
+    // Refused by the server: the doc is handed to refusedCopies, not destroyed.
+    let refused = false;
     const onDocUpdate = (_u: Uint8Array, origin: unknown): void => {
       if (origin !== provider && !(provider.wsconnected && provider.synced)) unsent = true;
     };
@@ -267,6 +274,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
         // otherwise keep reconnecting with backoff forever.
         unsent = false;
         provider.disconnect();
+        if (event.reason === MERGE_REFUSED_REASON) refused = keepRefusedCopy(layoutId, fresh);
         if (syncTimer) {
           clearTimeout(syncTimer);
           syncTimer = null;
@@ -275,7 +283,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           new Error(
             event.code === 4404
               ? LAYOUT_NOT_FOUND
-              : event.reason === 'layout_merge_refused'
+              : event.reason === MERGE_REFUSED_REASON
                 ? MERGE_REFUSED
                 : event.reason === 'account_pending_deletion'
                   ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
@@ -330,7 +338,7 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       }
       provider.disconnect();
       provider.destroy();
-      fresh.destroy();
+      if (!refused) fresh.destroy();
     };
   }, [layoutId]);
 
