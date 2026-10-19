@@ -9,7 +9,7 @@ import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, T
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
-import { SIGN_IN_TO_OPEN, useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
+import { MERGE_REFUSED, SIGN_IN_TO_OPEN, useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
 import { useModuleDoc } from './useModuleDoc';
 import { ShareToCatalogDialog, useCatalogStatus } from '../catalog/ShareToCatalog';
 import { makeModuleThumbnail, makeRegionThumbnail, waitForPartPictures } from './moduleThumbnail';
@@ -65,8 +65,7 @@ import { addSidecarModule, editAnchoredLabel, editTextCell, setExportElectricCir
 import { brickIdsInDoc, parseTextKey, stillPicked } from './mixedSelection';
 import { PHONE_MIN_TEXT_PX } from './textLegibility';
 import { sanitizeFilename } from '../bbmFiles';
-import { layoutFileDownload, layoutSourceHere, type LayoutImage } from '../layoutFile';
-import { layoutPartFiles } from '../layoutParts';
+import { downloadLocalLayout, saveFile } from './localLayoutFile';
 import { backgroundImageRectPx } from './background';
 import { mapFontsReady } from './render/mapText';
 import { scaleBar } from './scaleBar';
@@ -154,7 +153,7 @@ import { applyViewSheets, moduleNamesShown, pictureGrid, setModuleNamesSource, v
 import { ViewsPanel, PictureIcon } from './ViewsPanel';
 import { downloadAllViews } from './sharePicture';
 import { NoticeToast } from './NoticeToast';
-import { writeBbm, writeSidecar, type SavedView, type SidecarModule } from '@cld/bbm';
+import { writeBbm, type SavedView, type SidecarModule } from '@cld/bbm';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, unionStudRects, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
@@ -5394,7 +5393,9 @@ function ErrorScreen({ err, what }: { err: Error; what: 'layout' | 'module' }) {
   return (
     <div className="grid h-screen place-items-center p-4">
       <div role="alert" className="max-w-sm rounded-lg border border-red-900 bg-red-950/30 p-4 text-sm">
-        <p className="font-semibold text-danger">{signIn ? `Sign in to open this ${what}` : `Couldn't open this ${what}`}</p>
+        <p className="font-semibold text-danger">
+          {signIn ? `Sign in to open this ${what}` : err.message === MERGE_REFUSED ? 'Your changes weren’t sent' : `Couldn't open this ${what}`}
+        </p>
         <p className="mt-2 text-neutral-300">{err.message}</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {signIn && (
@@ -5522,50 +5523,6 @@ setModuleNamesSource(() => {
   const s = useEditorStore.getState();
   return s.showModuleNames ? { percent: s.moduleLabelPercent, measure: measureBold } : null;
 });
-
-function saveFile(file: { filename: string; type: string; data: Uint8Array }): void {
-  const url = URL.createObjectURL(new Blob([file.data as BlobPart], { type: file.type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = file.filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  noticeDownloaded(file.filename);
-}
-
-/**
- * Serialise the local doc as a .bld-layout (desktop's own save format)
- * and download it: the whole layout in one file, background image
- * included.
- */
-async function downloadLocalLayout(doc: Y.Doc, layoutId: string, title: string, parts: readonly PartWire[] | undefined): Promise<void> {
-  try {
-    const map = docToBbm(doc);
-    const xml = writeBbm(map);
-    // The custom parts it uses travel with it.
-    const partFiles = parts ? await layoutPartFiles(map, parts) : {};
-    const sidecar = readSidecarFromDoc(doc);
-    let background: LayoutImage | undefined;
-    const bgUrl = sidecar?.backgroundImage?.url;
-    if (bgUrl) {
-      const res = await fetch(bgUrl, { credentials: 'include' });
-      if (!res.ok) throw new Error(`the background image could not be fetched (${res.status})`);
-      background = { type: res.headers.get('Content-Type') ?? '', data: new Uint8Array(await res.arrayBuffer()) };
-    }
-    saveFile(
-      await layoutFileDownload(title, {
-        bbm: xml,
-        sidecar: sidecar ? writeSidecar(sidecar) : null,
-        ...(background ? { background } : {}),
-        parts: partFiles,
-        // Every web layout is on this server: the file says which one.
-        source: layoutSourceHere(layoutId, title),
-      }),
-    );
-  } catch (e) {
-    window.alert(`Could not build the layout file: ${(e as Error).message}`);
-  }
-}
 
 /** The .bbm alone, for BlueBrick: labels, modules, venue and background stay behind. */
 async function downloadLocalBbm(doc: Y.Doc, title: string): Promise<void> {
