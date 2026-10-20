@@ -7,8 +7,9 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { removeDuplicateItems } from '@cld/ydoc';
+import { readSidecarCache, removeDuplicateItems, repairSidecarCache } from '@cld/ydoc';
 import {
+  addAnchoredLabel,
   addLinearRuler,
   deleteBricks,
   deleteRulerItem,
@@ -22,6 +23,7 @@ import {
   placeBrick,
   reorderBricks,
 } from '../mutations';
+import { createUndoManager } from '../useUndoManager';
 
 function pair(seed: (d: Y.Doc) => void): { a: Y.Doc; b: Y.Doc } {
   const a = new Y.Doc();
@@ -181,5 +183,56 @@ describe('parts', () => {
     settle(a, b);
     const moved = (list(a, L, 'bricks') as Y.Map<unknown>[]).find((m) => m.get('id') === p)!;
     expect((moved.get('displayArea') as { x: number }).x).not.toBe(0);
+  });
+});
+
+describe('undo with someone else editing', () => {
+  const label = (id: string) => ({
+    id, text: id, font: { family: 'Arial', size: 10, style: 'Regular' }, color: { known: true, argb: 0, name: 'Black' },
+    kind: 'World' as never, targetId: '', offset: { x: 0, y: 0 }, rot: 0, minZoom: 0,
+  });
+  const labels = (d: Y.Doc) => ((readSidecarCache(d)?.anchoredLabels ?? []) as { id: string }[]).map((l) => l.id).sort();
+
+  it('undoing my move keeps the move someone made after it', () => {
+    let L = '';
+    let p = '';
+    const { a, b } = pair((d) => {
+      L = ensureBrickLayer(d);
+      p = placeBrick(d, L, { ...brick, x: 0, y: 0 });
+    });
+    const undo = createUndoManager(a);
+    moveBrick(a, L, p, 20, 20);
+    sync(a, b);
+    moveBrick(b, L, p, 40, 40);
+    sync(a, b);
+    undo.undo();
+    sync(a, b);
+    const area = (list(a, L, 'bricks')[0] as Y.Map<unknown>).get('displayArea') as { x: number };
+    expect(area.x).toBe(38);
+  });
+
+  // Needs Aaron: labels and modules live in the sidecar blob (meta.cache)
+  // plus per-item keys (sidecarItems, outside the undo manager's scope).
+  // Once another person's label is merged in, the repair rewrites
+  // meta.cache, so undoing my label does nothing (and uses up the step).
+  // Fixing it means undoing the per-item keys and rebuilding the blob from
+  // them, which touches what the desktop reads.
+  // Repro: A adds a label, B adds another at the same time, A presses Undo.
+  it.fails('undoing my label removes it after someone else added one at the same time', () => {
+    const { a, b } = pair((d) => {
+      ensureBrickLayer(d);
+      addAnchoredLabel(d, label('L0'));
+    });
+    const undo = createUndoManager(a);
+    addAnchoredLabel(a, label('LA'));
+    addAnchoredLabel(b, label('LB'));
+    sync(a, b);
+    repairSidecarCache(a, 'repair');
+    repairSidecarCache(b, 'repair');
+    sync(a, b);
+    expect(labels(a)).toEqual(['L0', 'LA', 'LB']);
+    undo.undo();
+    sync(a, b);
+    expect(labels(a)).toEqual(['L0', 'LB']);
   });
 });
