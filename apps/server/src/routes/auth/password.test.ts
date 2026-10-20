@@ -11,7 +11,7 @@ vi.mock('../../email/sendVerification.js', () => ({
     return false;
   },
 }));
-import { resetDb } from '../../test/helpers.js';
+import { resetDb, signupCookieOf, testVerificationToken } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { db, schema } from '../../db/index.js';
 import { passwordRoutes } from './password.js';
@@ -26,7 +26,7 @@ async function buildApp(): Promise<FastifyInstance> {
   return app;
 }
 
-/** No SMTP is configured in tests, so the link never gets emailed — pull the live token straight from the DB, the way the server log fallback would print it. */
+/** No SMTP is configured in tests, so the link never gets emailed — give the live row a known token, the way the emailed link would carry it. */
 async function tokenFor(email: string): Promise<string> {
   const user = await db.select().from(schema.users).where(eq(schema.users.email, email)).get();
   const verification = await db
@@ -34,7 +34,7 @@ async function tokenFor(email: string): Promise<string> {
     .from(schema.emailVerifications)
     .where(eq(schema.emailVerifications.userId, user!.id))
     .get();
-  return verification!.token;
+  return testVerificationToken(verification!);
 }
 
 function cookieHeader(res: { headers: Record<string, unknown> }): string {
@@ -62,7 +62,7 @@ describe('password auth routes', () => {
     });
     expect(register.statusCode).toBe(200);
     expect((register.json() as { verificationRequired: boolean }).verificationRequired).toBe(true);
-    expect(register.headers['set-cookie']).toBeUndefined();
+    expect(cookieHeader(register)).not.toContain('cld_session=');
 
     const me = await app.inject({ method: 'GET', url: '/api/auth/me' });
     expect((me.json() as { user: unknown }).user).toBeNull();
@@ -85,15 +85,20 @@ describe('password auth routes', () => {
   });
 
   it('verify-email with the emailed token logs the user in, then login works too', async () => {
-    await app.inject({
+    const register = await app.inject({
       method: 'POST',
       url: '/api/auth/password/register',
       payload: { email: 'alice@example.com', password: 'correct horse battery', displayName: 'Alice' },
     });
     const token = await tokenFor('alice@example.com');
 
-    const verify = await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${token}` });
+    const verify = await app.inject({
+      method: 'POST',
+      url: `/api/auth/password/verify-email/${token}`,
+      headers: { cookie: signupCookieOf(register) },
+    });
     expect(verify.statusCode).toBe(200);
+    expect(verify.json()).toEqual({ ok: true, needsPassword: false });
     const verifyCookie = cookieHeader(verify);
     expect(verifyCookie).toContain('cld_session=');
 
@@ -179,13 +184,17 @@ describe('password auth routes', () => {
   });
 
   it('resend-verification is a no-op for an already-verified account', async () => {
-    await app.inject({
+    const register = await app.inject({
       method: 'POST',
       url: '/api/auth/password/register',
       payload: { email: 'alice@example.com', password: 'correct horse battery' },
     });
     const token = await tokenFor('alice@example.com');
-    await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${token}` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/auth/password/verify-email/${token}`,
+      headers: { cookie: signupCookieOf(register) },
+    });
 
     const resend = await app.inject({
       method: 'POST',
@@ -212,21 +221,28 @@ describe('password auth routes', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('rejects duplicate email registration', async () => {
+  it('a second sign-up with the same email answers the same as the first and makes no second account', async () => {
     const payload = { email: 'dup@example.com', password: 'correct horse battery' };
     const first = await app.inject({ method: 'POST', url: '/api/auth/password/register', payload });
     expect(first.statusCode).toBe(200);
-    const second = await app.inject({ method: 'POST', url: '/api/auth/password/register', payload });
-    expect(second.statusCode).toBe(409);
+    const second = await app.inject({ method: 'POST', url: '/api/auth/password/register', payload: { ...payload, email: 'DUP@example.com' } });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual(first.json());
+    const rows = await db.select().from(schema.users).where(eq(schema.users.email, 'dup@example.com')).all();
+    expect(rows).toHaveLength(1);
   });
 
   it('login with the right password returns a session once verified', async () => {
-    await app.inject({
+    const register = await app.inject({
       method: 'POST',
       url: '/api/auth/password/register',
       payload: { email: 'bob@example.com', password: 'correct horse battery' },
     });
-    await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('bob@example.com')}` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/auth/password/verify-email/${await tokenFor('bob@example.com')}`,
+      headers: { cookie: signupCookieOf(register) },
+    });
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/password/login',
@@ -237,12 +253,16 @@ describe('password auth routes', () => {
   });
 
   it('login with wrong password returns 401 and no cookie', async () => {
-    await app.inject({
+    const register = await app.inject({
       method: 'POST',
       url: '/api/auth/password/register',
       payload: { email: 'carol@example.com', password: 'correct horse battery' },
     });
-    await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${await tokenFor('carol@example.com')}` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/auth/password/verify-email/${await tokenFor('carol@example.com')}`,
+      headers: { cookie: signupCookieOf(register) },
+    });
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/password/login',

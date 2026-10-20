@@ -46,6 +46,7 @@ const ACCESS: Record<string, [Access, Scope, Flags?]> = {
   'POST /api/auth/password/resend-verification': ['public', null],
   'POST /api/auth/password/verify-email/:token': ['token', null],
   'POST /api/auth/password/login': ['public', null],
+  'POST /api/auth/password/set': ['user', null, { demo: true }],
   'GET /api/auth/me': ['public', null],
   'PATCH /api/auth/me': ['user', null, { demo: true }],
   'GET /api/auth/providers': ['public', null],

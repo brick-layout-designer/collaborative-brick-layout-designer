@@ -1,27 +1,59 @@
 import { randomUUID, randomBytes } from 'node:crypto';
-import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
+import type { FastifyInstance, FastifyBaseLogger, FastifyReply, FastifyRequest } from 'fastify';
 import { hash, verify } from '@node-rs/argon2';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { db, schema } from '../../db/index.js';
-import { createSession } from '../../auth/session.js';
-import { setSessionCookie } from '../../auth/cookie.js';
+import type { User } from '../../db/schema.js';
+import { createSession, hashToken, invalidateAllSessions } from '../../auth/session.js';
+import { requireUser, setSessionCookie } from '../../auth/cookie.js';
+import { revokeAllApiTokens } from '../../auth/apiTokens.js';
 import { sendVerificationEmail } from '../../email/sendVerification.js';
+import { sendSignupNoticeEmail } from '../../email/sendSignupNotice.js';
 import { getPlatformSettings } from '../../auth/platformSettings.js';
-import { findUserByEmail } from '../../auth/users.js';
+import { findUserByEmail, listLinkedProviders } from '../../auth/users.js';
 import { env } from '../../env.js';
 import { normalizeEmail, safeNextPath } from '../../utils/validate.js';
 import { needsName } from '../../utils/publicName.js';
 
 const ARGON_OPTS = { memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1 };
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const PASSWORD_MIN = 8;
+const PASSWORD_MAX = 128;
 
 /**
- * Delete any existing verification token for a user and issue a fresh
- * one, emailing the link if SMTP is configured. Used by both register
- * and resend. When SMTP isn't configured the link is logged instead —
- * there's no copy-paste fallback surfaced to the client the way invite
- * links have, since a brand-new account has nowhere else to show it.
+ * The browser that signs up gets this cookie. A verification link keeps
+ * the password chosen at sign-up only when it is opened in that same
+ * browser (the cookie matches the link's row). Opened anywhere else, the
+ * person who opened it chooses the password instead. Scoped to the
+ * password routes and lives as long as the link.
  */
+export const SIGNUP_COOKIE = 'cld_signup';
+const SIGNUP_COOKIE_PATH = '/api/auth/password';
+/**
+ * Verification rows bound to a sign-up browser have this id prefix plus
+ * the sha256 of that browser's cookie (no extra column needed). Other
+ * rows have a plain uuid id.
+ */
+const BOUND_ID_PREFIX = 'signup:';
+/** Rows from before tokens were hashed hold the raw 24-byte hex token (48 chars); hashes are 64. */
+const LEGACY_TOKEN_LENGTH = 48;
+
+/**
+ * At most one "someone tried to sign up with your email" note per
+ * account in this window, so the sign-up form can't flood an inbox. In
+ * memory (one server process), bounded.
+ */
+const SIGNUP_NOTICE_EVERY_MS = 60 * 60 * 1000;
+const SIGNUP_NOTICE_MAX_TRACKED = 10_000;
+const lastSignupNotice = new Map<string, number>();
+
+/** Argon2 hash of a random password: login for an unknown email checks against it, so it takes as long as a wrong password. */
+let dummyHash: Promise<string> | null = null;
+function dummyPasswordHash(): Promise<string> {
+  dummyHash ??= hash(randomBytes(16).toString('hex'), ARGON_OPTS);
+  return dummyHash;
+}
+
 /**
  * The emailed link. `next` (a path on this site) is where the person was
  * going when they signed up, e.g. a club invite: verifying takes them on
@@ -32,20 +64,66 @@ export function verificationUrl(token: string, next: string | null): string {
   return next && next !== '/' ? `${base}?next=${encodeURIComponent(next)}` : base;
 }
 
-async function issueVerification(log: FastifyBaseLogger, userId: string, email: string, next: string | null = null): Promise<void> {
-  await db.delete(schema.emailVerifications).where(eq(schema.emailVerifications.userId, userId));
+function boundRowId(signupSecret: string): string {
+  return `${BOUND_ID_PREFIX}${hashToken(signupSecret)}`;
+}
+
+function setSignupCookie(reply: FastifyReply, secret: string): void {
+  reply.setCookie(SIGNUP_COOKIE, secret, {
+    httpOnly: true,
+    secure: env.cookieSecure,
+    sameSite: 'lax',
+    path: SIGNUP_COOKIE_PATH,
+    maxAge: VERIFICATION_TTL_MS / 1000,
+  });
+}
+
+function clearSignupCookie(reply: FastifyReply): void {
+  reply.clearCookie(SIGNUP_COOKIE, { path: SIGNUP_COOKIE_PATH });
+}
+
+/** The user's current verification row id when this request comes from the browser it is bound to, else null. */
+async function boundIdForRequest(req: FastifyRequest, userId: string): Promise<string | null> {
+  const secret = req.cookies[SIGNUP_COOKIE];
+  if (!secret) return null;
+  const wanted = boundRowId(secret);
+  const row = await db
+    .select({ userId: schema.emailVerifications.userId })
+    .from(schema.emailVerifications)
+    .where(eq(schema.emailVerifications.id, wanted))
+    .get();
+  return row && row.userId === userId ? wanted : null;
+}
+
+/**
+ * Delete any existing verification token for a user and issue a fresh
+ * one, emailing the link if SMTP is configured. The token is stored
+ * hashed (sha256, like sessions); only the email carries it. `rowId` is
+ * the bound id from sign-up (see BOUND_ID_PREFIX), or null for a link
+ * that doesn't keep the sign-up password. When SMTP isn't configured the
+ * link is logged instead: a brand-new account has nowhere else to show
+ * it.
+ */
+async function issueVerification(
+  log: FastifyBaseLogger,
+  user: Pick<User, 'id' | 'email'>,
+  next: string | null,
+  rowId: string | null,
+  purpose: 'verify' | 'set-password' = 'verify',
+): Promise<void> {
+  await db.delete(schema.emailVerifications).where(eq(schema.emailVerifications.userId, user.id));
   const token = randomBytes(24).toString('hex');
   await db.insert(schema.emailVerifications).values({
-    id: randomUUID(),
-    userId,
-    token,
+    id: rowId ?? randomUUID(),
+    userId: user.id,
+    token: hashToken(token),
     expiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
     createdAt: new Date(),
   });
   const verifyUrl = verificationUrl(token, next);
   let delivered = false;
   try {
-    delivered = await sendVerificationEmail({ to: email, verifyUrl });
+    delivered = await sendVerificationEmail({ to: user.email, verifyUrl, purpose });
   } catch (err) {
     log.warn({ err }, 'failed to send verification email');
   }
@@ -53,8 +131,68 @@ async function issueVerification(log: FastifyBaseLogger, userId: string, email: 
     // No SMTP configured (or delivery failed): the link is otherwise
     // unrecoverable, so surface it in the server log for local/dev use
     // and for an operator to hand-deliver if needed.
-    log.info({ email, verifyUrl }, 'email verification link (SMTP not configured or delivery failed)');
+    log.info({ email: user.email, verifyUrl }, 'email verification link (SMTP not configured or delivery failed)');
   }
+}
+
+/** A verified account with no password and no other sign-in: the only way back in is a link to its own mailbox. */
+async function hasNoWayToSignIn(user: User): Promise<boolean> {
+  if (user.passwordHash || user.isDemoAccount || !user.emailVerified) return false;
+  return (await listLinkedProviders(user.id)).length === 0;
+}
+
+async function sendSignupNotice(log: FastifyBaseLogger, user: Pick<User, 'id' | 'email'>): Promise<void> {
+  const now = Date.now();
+  const last = lastSignupNotice.get(user.id);
+  if (last !== undefined && now - last < SIGNUP_NOTICE_EVERY_MS) return;
+  lastSignupNotice.delete(user.id);
+  if (lastSignupNotice.size >= SIGNUP_NOTICE_MAX_TRACKED) {
+    const oldest = lastSignupNotice.keys().next().value;
+    if (oldest !== undefined) lastSignupNotice.delete(oldest);
+  }
+  lastSignupNotice.set(user.id, now);
+  try {
+    await sendSignupNoticeEmail({ to: user.email });
+  } catch (err) {
+    log.warn({ err }, 'failed to send sign-up notice email');
+  }
+}
+
+/** Forget the sign-up notice throttle (tests). */
+export function resetSignupNoticesForTests(): void {
+  lastSignupNotice.clear();
+}
+
+/**
+ * Sign-up with an address that already has an account. The answer is
+ * the same as for a new address ("check your email"); what happens
+ * depends on the account:
+ *  - never verified: a fresh verification link. It keeps the sign-up
+ *    password only when asked again from the browser that signed up,
+ *    with the same password; otherwise whoever opens it chooses one.
+ *  - no password and no other way to sign in: a link to choose one.
+ *  - anything else: a short note to the owner, and nothing changes.
+ */
+async function registerExisting(
+  req: FastifyRequest,
+  existing: User,
+  password: string,
+  next: string | null,
+  requireVerification: boolean,
+): Promise<void> {
+  if (requireVerification && !existing.emailVerified && existing.passwordHash) {
+    const bound = await boundIdForRequest(req, existing.id);
+    const samePassword = bound ? await verify(existing.passwordHash, password, ARGON_OPTS) : false;
+    await issueVerification(req.log, existing, next, bound && samePassword ? bound : null);
+    return;
+  }
+  // The same argon2 work as a new sign-up, so the answer takes as long.
+  await hash(password, ARGON_OPTS);
+  if (await hasNoWayToSignIn(existing)) {
+    await issueVerification(req.log, existing, next, null, 'set-password');
+    return;
+  }
+  await sendSignupNotice(req.log, existing);
 }
 
 export async function passwordRoutes(app: FastifyInstance) {
@@ -69,31 +207,41 @@ export async function passwordRoutes(app: FastifyInstance) {
       const body: Partial<NonNullable<typeof req.body>> = req.body ?? {};
       const { password, displayName } = body;
       const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
-      if (!email || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      if (!email || typeof password !== 'string' || password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
         return reply.code(400).send({ error: 'invalid_input' });
       }
+      const settings = await getPlatformSettings();
+      const next = safeNextPath(body.next);
       // Case-insensitive: `Alice@x.com` must not register alongside
       // `alice@x.com` (that would let a second account claim invites
-      // addressed to the first).
+      // addressed to the first). The answer never says whether the
+      // address already had an account; the email does.
       const existing = await findUserByEmail(email);
-      if (existing) return reply.code(409).send({ error: 'email_taken' });
+      if (existing) {
+        await registerExisting(req, existing, password, next, settings.requireEmailVerification);
+        return reply.send({ ok: true, verificationRequired: true });
+      }
 
-      const settings = await getPlatformSettings();
       const passwordHash = await hash(password, ARGON_OPTS);
       const id = randomUUID();
-      await db.insert(schema.users).values({
-        id,
-        email,
-        // Never the email address: names are shown to other people. The
-        // sign-up form asks for one; without it (older clients) the person
-        // is asked after they sign in.
-        displayName: typeof displayName === 'string' && !needsName(displayName) ? displayName.trim().slice(0, 60) : '',
-        avatarUrl: null,
-        passwordHash,
-        isGlobalAdmin: false,
-        emailVerified: !settings.requireEmailVerification,
-        createdAt: new Date(),
-      });
+      try {
+        await db.insert(schema.users).values({
+          id,
+          email,
+          // Never the email address: names are shown to other people. The
+          // sign-up form asks for one; without it (older clients) the person
+          // is asked after they sign in.
+          displayName: typeof displayName === 'string' && !needsName(displayName) ? displayName.trim().slice(0, 60) : '',
+          avatarUrl: null,
+          passwordHash,
+          isGlobalAdmin: false,
+          emailVerified: !settings.requireEmailVerification,
+          createdAt: new Date(),
+        });
+      } catch {
+        // Two sign-ups for the same address at once: the other one made it.
+        return reply.send({ ok: true, verificationRequired: true });
+      }
 
       if (!settings.requireEmailVerification) {
         // Verification is off — behave exactly like pre-verification
@@ -104,7 +252,10 @@ export async function passwordRoutes(app: FastifyInstance) {
         return reply.send({ ok: true, verificationRequired: false });
       }
 
-      await issueVerification(req.log, id, email, safeNextPath(body.next));
+      // The link keeps this password when it's opened in this browser.
+      const signupSecret = randomBytes(24).toString('hex');
+      setSignupCookie(reply, signupSecret);
+      await issueVerification(req.log, { id, email }, next, boundRowId(signupSecret));
       // No session cookie yet — the account can't log in until verified.
       return reply.send({ ok: true, verificationRequired: true });
     },
@@ -124,8 +275,12 @@ export async function passwordRoutes(app: FastifyInstance) {
       // Always return ok regardless of whether the account exists or is
       // already verified — don't let this endpoint be used to enumerate
       // registered emails.
+      const next = safeNextPath(body.next);
       if (settings.requireEmailVerification && user && user.passwordHash && !user.emailVerified) {
-        await issueVerification(req.log, user.id, user.email, safeNextPath(body.next));
+        // Asked from the browser that signed up: the new link still keeps its password.
+        await issueVerification(req.log, user, next, await boundIdForRequest(req, user.id));
+      } else if (user && (await hasNoWayToSignIn(user))) {
+        await issueVerification(req.log, user, next, null, 'set-password');
       }
       return reply.send({ ok: true });
     },
@@ -134,29 +289,75 @@ export async function passwordRoutes(app: FastifyInstance) {
   app.post<{ Params: { token: string } }>(
     '/api/auth/password/verify-email/:token',
     async (req, reply) => {
+      const raw = req.params.token;
+      // Rows are found by the token's hash. Links issued before tokens
+      // were hashed (raw 48-hex values) keep working until they expire.
       const verification = await db
         .select()
         .from(schema.emailVerifications)
-        .where(eq(schema.emailVerifications.token, req.params.token))
+        .where(
+          raw.length === LEGACY_TOKEN_LENGTH
+            ? or(eq(schema.emailVerifications.token, hashToken(raw)), eq(schema.emailVerifications.token, raw))
+            : eq(schema.emailVerifications.token, hashToken(raw)),
+        )
         .get();
       if (!verification) return reply.code(404).send({ error: 'verification_not_found' });
       if (verification.expiresAt.getTime() < Date.now()) {
         return reply.code(410).send({ error: 'verification_expired' });
       }
+      const user = await db.select().from(schema.users).where(eq(schema.users.id, verification.userId)).get();
+      if (!user) return reply.code(404).send({ error: 'verification_not_found' });
 
-      await db
-        .update(schema.users)
-        .set({ emailVerified: true })
-        .where(eq(schema.users.id, verification.userId));
-      await db
-        .delete(schema.emailVerifications)
-        .where(eq(schema.emailVerifications.id, verification.id));
+      let passwordHash = user.passwordHash;
+      if (!user.emailVerified) {
+        // First verification: whoever opened the link controls the
+        // mailbox, so the account is theirs from here on. The password
+        // chosen at sign-up stays only when the link was opened in the
+        // browser that signed up (and no other link was asked for since);
+        // otherwise they choose a new one. Sessions and tokens from before
+        // verification end either way.
+        const secret = req.cookies[SIGNUP_COOKIE];
+        const keepsPassword =
+          !!secret && verification.id.startsWith(BOUND_ID_PREFIX) && verification.id === boundRowId(secret);
+        if (!keepsPassword) passwordHash = null;
+        await invalidateAllSessions(user.id);
+        await revokeAllApiTokens(user.id);
+        await db.update(schema.users).set({ emailVerified: true, passwordHash }).where(eq(schema.users.id, user.id));
+      }
+      await db.delete(schema.emailVerifications).where(eq(schema.emailVerifications.userId, user.id));
+      clearSignupCookie(reply);
 
       // Verifying logs the user in directly — they already proved
       // control of the mailbox, which is a stronger check than a
       // password alone.
-      const { token, expiresAt } = await createSession(verification.userId);
+      const { token, expiresAt } = await createSession(user.id);
       setSessionCookie(reply, token, expiresAt);
+      // No password: the page asks them to choose one next.
+      return reply.send({ ok: true, needsPassword: !passwordHash });
+    },
+  );
+
+  /**
+   * Choose a password for an account that has none: after a verification
+   * that didn't keep one, or an account that has only used GitHub/Google.
+   * Browser session only (API tokens are refused); an account that
+   * already has a password can't replace it here.
+   */
+  app.post<{ Body: { password?: string } }>(
+    '/api/auth/password/set',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const user = requireUser(req);
+      if (user.isDemoAccount) return reply.code(403).send({ error: 'demo_account_cannot_change_profile' });
+      const password = req.body?.password;
+      if (typeof password !== 'string' || password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
+        return reply.code(400).send({ error: 'invalid_password' });
+      }
+      if (user.passwordHash) return reply.code(409).send({ error: 'password_already_set' });
+      const passwordHash = await hash(password, ARGON_OPTS);
+      await db.update(schema.users).set({ passwordHash }).where(eq(schema.users.id, user.id));
       return reply.send({ ok: true });
     },
   );
@@ -170,9 +371,13 @@ export async function passwordRoutes(app: FastifyInstance) {
       const body: Partial<NonNullable<typeof req.body>> = req.body ?? {};
       const { password } = body;
       const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
-      if (!email || typeof password !== 'string' || !password || password.length > 128) return reply.code(400).send({ error: 'invalid_input' });
+      if (!email || typeof password !== 'string' || !password || password.length > PASSWORD_MAX) {
+        return reply.code(400).send({ error: 'invalid_input' });
+      }
       const user = await findUserByEmail(email);
       if (!user || !user.passwordHash) {
+        // The same argon2 work as a wrong password, so the answer takes as long.
+        await verify(await dummyPasswordHash(), password, ARGON_OPTS);
         return reply.code(401).send({ error: 'invalid_credentials' });
       }
       const ok = await verify(user.passwordHash, password, ARGON_OPTS);

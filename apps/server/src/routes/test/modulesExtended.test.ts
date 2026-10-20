@@ -12,7 +12,7 @@ import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
-import { db, resetDb, schema } from '../../test/helpers.js';
+import { db, resetDb, schema, testVerificationToken } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { sessionRoutes } from '../auth/session.js';
@@ -45,7 +45,7 @@ async function registerAndLogin(app: FastifyInstance, email: string): Promise<st
     .get();
   const verifyRes = await app.inject({
     method: 'POST',
-    url: `/api/auth/password/verify-email/${verification!.token}`,
+    url: `/api/auth/password/verify-email/${await testVerificationToken(verification!)}`,
   });
   expect(verifyRes.statusCode).toBe(200);
   const setCookie = verifyRes.headers['set-cookie'];

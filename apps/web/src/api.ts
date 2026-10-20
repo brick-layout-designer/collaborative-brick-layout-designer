@@ -23,6 +23,8 @@ export interface Me {
   /** On hold (read only) while a privacy request is looked at (older servers leave it out). */
   restricted?: boolean;
   linkedProviders: ProviderId[];
+  /** False when the account has no password yet (older servers leave it out). */
+  hasPassword?: boolean;
   /** Only on the demo account: how often it resets, and when next. */
   demo?: DemoStatus;
 }
@@ -51,7 +53,8 @@ export interface ProviderInfo {
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Incorrect email or password.',
   invalid_input: 'Please fill in all required fields.',
-  email_taken: 'An account with that email already exists.',
+  invalid_password: 'Use a password of 8 to 128 characters.',
+  password_already_set: 'This account already has a password.',
   name_taken: 'Another saved venue already has that name.',
   not_an_org_member: 'You are not in that club.',
   not_a_member_of_recipient_org: 'You are not in that club.',
@@ -536,8 +539,11 @@ export const api = {
     }),
   resendVerification: (email: string, next?: string) =>
     post<{ ok: true }>('/api/auth/password/resend-verification', { email, ...(next && next !== '/' ? { next } : {}) }),
+  /** `needsPassword`: signed in, but the account has no password yet; ask for one (setPassword). */
   verifyEmail: (token: string) =>
-    post<{ ok: true }>(`/api/auth/password/verify-email/${encodeURIComponent(token)}`),
+    post<{ ok: true; needsPassword?: boolean }>(`/api/auth/password/verify-email/${encodeURIComponent(token)}`),
+  /** Choose a password for the signed-in account when it has none. */
+  setPassword: (password: string) => post<{ ok: true }>('/api/auth/password/set', { password }),
 
   /** Desktop sign-in (device-code flow), the signed-in user's side. */
   device: {

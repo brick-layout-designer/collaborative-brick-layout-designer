@@ -7,7 +7,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
@@ -41,7 +41,7 @@ describe('email normalisation', () => {
     await app.close();
   });
 
-  it('stores registered emails lower-cased and trimmed, and blocks case-variant duplicates', async () => {
+  it('stores registered emails lower-cased and trimmed, and makes no case-variant duplicates', async () => {
     const r1 = await app.inject({
       method: 'POST',
       url: '/api/auth/password/register',
@@ -56,7 +56,10 @@ describe('email normalisation', () => {
       url: '/api/auth/password/register',
       payload: { email: 'bob@example.com', password: PASSWORD },
     });
-    expect(r2.statusCode).toBe(409);
+    expect(r2.statusCode).toBe(200);
+    expect(r2.json()).toEqual(r1.json());
+    const rows = await db.select().from(schema.users).where(sql`lower(${schema.users.email}) = 'bob@example.com'`).all();
+    expect(rows).toHaveLength(1);
   });
 
   it('treats a legacy mixed-case row as taken and lets its owner log in with any casing', async () => {
@@ -72,7 +75,9 @@ describe('email normalisation', () => {
       url: '/api/auth/password/register',
       payload: { email: 'carol@example.com', password: PASSWORD },
     });
-    expect(dup.statusCode).toBe(409);
+    expect(dup.statusCode).toBe(200);
+    const carols = await db.select().from(schema.users).where(sql`lower(${schema.users.email}) = 'carol@example.com'`).all();
+    expect(carols).toHaveLength(1);
 
     const u = await loginAs(app, 'dave@example.com');
     expect(u.cookie).toContain('cld_session');
