@@ -167,8 +167,8 @@ function PasswordForm({ next }: { next: string }) {
     return (
       <div className="space-y-3 border-t border-line pt-4 text-center">
         <p className="text-sm text-neutral-300">
-          Check <span className="font-medium text-ink">{awaitingVerification}</span> for a
-          confirmation link to finish creating your account.
+          Check your email: we’ve sent a message to{' '}
+          <span className="font-medium text-ink">{awaitingVerification}</span> with what to do next.
         </p>
         <button
           type="button"

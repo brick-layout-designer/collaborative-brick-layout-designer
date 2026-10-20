@@ -34,6 +34,9 @@ export async function sessionRoutes(app: FastifyInstance) {
         // pages say so, rather than each change failing on its own.
         restricted: !!req.user.restrictedAt,
         linkedProviders: await listLinkedProviders(req.user.id),
+        // No password yet (e.g. a verification that asked them to choose
+        // one): the account page offers to set one.
+        hasPassword: !!req.user.passwordHash,
         // The demo banner: how often it resets and when next.
         ...(isDemoUser(req.user) ? { demo: demoStatus(await getPlatformSettings()) } : {}),
       },

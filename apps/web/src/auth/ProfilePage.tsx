@@ -9,6 +9,7 @@ import { MyDataSection } from '../privacy/MyDataSection';
 import { DeleteAccountSection } from '../privacy/DeleteAccount';
 import { HelpButton } from '../help/HelpButton';
 import { useHashScroll } from '../ui/useHashScroll';
+import { SetPasswordForm } from './SetPasswordForm';
 
 export function ProfilePage() {
   const qc = useQueryClient();
@@ -133,6 +134,13 @@ export function ProfilePage() {
               );
             })}
           </ul>
+          {providers.data?.passwordEnabled && user.hasPassword === false && (
+            <div className="space-y-2 rounded-lg border border-line p-4" data-testid="set-password">
+              <h3 className="font-medium">Password</h3>
+              <p className="text-sm text-muted">This account has no password yet. Choose one to sign in with your email address.</p>
+              <SetPasswordForm />
+            </div>
+          )}
         </section>
         )}
 

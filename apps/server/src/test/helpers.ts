@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
+import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, schema, sqlite } from '../db/index.js';
+import { hashToken } from '../auth/session.js';
 
 // TypeScript 7's stricter ArrayBufferLike/SharedArrayBuffer variance made
 // `Buffer` no longer structurally satisfy `Uint8Array<ArrayBuffer>` at
@@ -58,15 +60,38 @@ export function resetDb(): void {
 }
 
 /**
+ * A working link token for a verification row. Rows only keep the
+ * token's hash (the raw one is only ever emailed), so this gives the row
+ * a fresh token and returns it, the way the emailed link would carry it.
+ */
+export async function testVerificationToken(row: { id: string }): Promise<string> {
+  const token = randomBytes(24).toString('hex');
+  await db.update(schema.emailVerifications).set({ token: hashToken(token) }).where(eq(schema.emailVerifications.id, row.id));
+  return token;
+}
+
+/** The `cld_signup=…` pair a register answer sets (the browser that signed up), or '' when none. */
+export function signupCookieOf(res: { headers: Record<string, unknown> }): string {
+  const sc = res.headers['set-cookie'];
+  const all = Array.isArray(sc) ? sc : typeof sc === 'string' ? [sc] : [];
+  for (const c of all) {
+    const m = /^cld_signup=([^;]*)/.exec(String(c));
+    if (m && m[1]) return `cld_signup=${m[1]}`;
+  }
+  return '';
+}
+
+/**
  * Register + verify a password account through the real routes (the app
  * must have `passwordRoutes` registered) and return its session cookie
- * and user id. Verification is what issues the first session cookie.
+ * and user id. Verification is what issues the first session cookie. The
+ * link is opened from the browser that signed up, so the password stays.
  */
 export async function loginAs(
   app: FastifyInstance,
   email: string,
 ): Promise<{ cookie: string; id: string }> {
-  await app.inject({
+  const reg = await app.inject({
     method: 'POST',
     url: '/api/auth/password/register',
     payload: { email, password: 'correct horse battery', displayName: email.split('@')[0] },
@@ -79,7 +104,11 @@ export async function loginAs(
     .where(eq(schema.emailVerifications.userId, user.id))
     .get();
   if (!v) throw new Error(`loginAs: no verification token for ${email}`);
-  const res = await app.inject({ method: 'POST', url: `/api/auth/password/verify-email/${v.token}` });
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/auth/password/verify-email/${await testVerificationToken(v)}`,
+    headers: { cookie: signupCookieOf(reg) },
+  });
   const sc = res.headers['set-cookie'];
   return { cookie: Array.isArray(sc) ? sc.join('; ') : (sc ?? ''), id: user.id };
 }

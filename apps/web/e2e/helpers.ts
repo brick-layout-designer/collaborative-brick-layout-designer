@@ -10,7 +10,7 @@
 //      throwaway API context; verifying logs the account in, and that
 //      session cookie is cached and simply added to whichever browser
 //      context later needs to act as that user. No /login round-trip per
-//      test, and no burning register calls on "409 already exists".
+//      test, and no register call for an account that already exists.
 //   2. When a 429 does happen (e.g. a second run started within a minute
 //      of the first), wait out the server's own `retry-after` and extend
 //      the current test's timeout by that wait, so a legitimate back-off
@@ -27,7 +27,7 @@ import {
   request as playwrightRequest,
   test,
 } from '@playwright/test';
-import { getVerificationToken } from './dbHelpers';
+import { accountState, getVerificationToken } from './dbHelpers';
 
 export const PASS = 'correct horse battery';
 
@@ -92,17 +92,18 @@ export async function ensureUser(email: string, displayName = nameOf(email)): Pr
   const { baseURL } = test.info().project.use;
   const api = await playwrightRequest.newContext(baseURL ? { baseURL } : {});
   try {
-    const reg = await postAuth(api, '/api/auth/password/register', {
-      email,
-      password: PASS,
-      displayName,
-    });
-    if (reg.status() === 409) {
+    if (accountState(email) === 'verified') {
       // Registered by something outside this cache (e.g. a UI flow) — just log in.
       const login = await postAuth(api, '/api/auth/password/login', { email, password: PASS });
       expect(login.ok(), `login ${email}: ${login.status()} ${await login.text()}`).toBe(true);
     } else {
+      const reg = await postAuth(api, '/api/auth/password/register', {
+        email,
+        password: PASS,
+        displayName,
+      });
       expect(reg.ok(), `register ${email}: ${reg.status()} ${await reg.text()}`).toBe(true);
+      // Same request context as the sign-up, so the link keeps PASS.
       const token = await getVerificationToken(email);
       const verify = await api.post(`/api/auth/password/verify-email/${token}`);
       expect(verify.ok(), `verify ${email}: ${verify.status()}`).toBe(true);

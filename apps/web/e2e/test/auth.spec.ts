@@ -4,9 +4,9 @@
 // Registration no longer logs the user straight in (see
 // apps/server/src/routes/auth/password.ts) — it creates an unverified
 // account and emails a verification link. Since Playwright can't
-// receive that email, these tests pull the live token directly from
-// the server's own SQLite DB via dbHelpers.ts (Node-side, not a
-// browser action) to click the equivalent of the emailed link.
+// receive that email, these tests give the live link a known token in
+// the server's own SQLite DB via dbHelpers.ts (Node-side, not a browser
+// action) to click the equivalent of the emailed link.
 //
 // Tests in this file share a unique email per run to stay isolated.
 
@@ -39,6 +39,23 @@ test.describe('auth — register', () => {
     await expect(page.getByText(/check/i)).toBeVisible();
   });
 
+  test('registering an address that already has an account shows the same check-your-email state', async ({ page }) => {
+    // EMAIL was signed up by the test above.
+    await page.goto('/login');
+    await page.getByRole('button', { name: /need an account/i }).click();
+    await page.getByLabel('Your name (shown to others)').fill('Someone Else');
+    await page.getByLabel(/email/i).fill(EMAIL);
+    await page.getByLabel(/password/i).fill('another-password-9');
+    const res = await submitAuthForm(page, '/api/auth/password/register', () =>
+      page.getByRole('button', { name: /create account/i }).click(),
+    );
+    expect(res.status()).toBe(200);
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByText(EMAIL)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/check your email/i)).toBeVisible();
+    await expect(page.getByText(/already exists/i)).toHaveCount(0);
+  });
+
   test('rejects registration with a too-short password', async ({ page }) => {
     await page.goto('/login');
     await page.getByRole('button', { name: /need an account/i }).click();
@@ -56,11 +73,10 @@ test.describe('auth — register', () => {
 });
 
 test.describe('auth — email verification', () => {
-  test('clicking the verification link logs the user in', async ({ page, request }) => {
+  test('clicking the verification link logs the user in', async ({ page }) => {
     const email = `verify-${ts}@example.com`;
-    // Register via a cookie-isolated context — see the login-test
-    // comment below for why `page.request` isn't used here.
-    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Verify User' });
+    // Sign up in this browser, so the link keeps the password chosen here.
+    await postAuth(page.request, '/api/auth/password/register', { email, password: PASS, displayName: 'Verify User' });
 
     const token = await getVerificationToken(email);
     await page.goto(`/verify-email/${token}`);
@@ -68,6 +84,31 @@ test.describe('auth — email verification', () => {
     // The header's Settings menu names the account by its displayName, not its email.
     await page.getByRole('banner').getByRole('button', { name: /^Menu/ }).click();
     await expect(page.getByTestId('settings-menu-who')).toHaveText('Signed in as Verify User', { timeout: 5000 });
+  });
+
+  test('the verification link opened in another browser signs in and asks for a new password', async ({ page, request, browser }) => {
+    const email = `verify-elsewhere-${ts}@example.com`;
+    // Signed up from a separate context: this browser never saw the sign-up.
+    await postAuth(request, '/api/auth/password/register', { email, password: PASS, displayName: 'Elsewhere User' });
+
+    const token = await getVerificationToken(email);
+    await page.goto(`/verify-email/${token}`);
+    await expect(page.getByRole('heading', { name: 'Choose a password' })).toBeVisible({ timeout: 5000 });
+    await page.getByLabel('New password', { exact: true }).fill('a-new-password-2');
+    await page.getByLabel('New password again').fill('a-new-password-2');
+    await page.getByRole('button', { name: 'Save and continue' }).click();
+    await expect(page).toHaveURL('/', { timeout: 5000 });
+
+    // The new password signs in; the one chosen at sign-up doesn't.
+    const other = await browser.newContext();
+    try {
+      const old = await postAuth(other.request, '/api/auth/password/login', { email, password: PASS });
+      expect(old.status()).toBe(401);
+      const fresh = await postAuth(other.request, '/api/auth/password/login', { email, password: 'a-new-password-2' });
+      expect(fresh.ok()).toBe(true);
+    } finally {
+      await other.close();
+    }
   });
 
   test('an expired verification link shows an error, not a login', async ({ page, request }) => {
@@ -90,8 +131,7 @@ test.describe('auth — email verification', () => {
     const email = `resend-${ts}@example.com`;
 
     // Register through the UI itself — this is what actually creates the
-    // first token; no separate pre-registration needed (and doing one
-    // via the API first would just 409 this form submission instead).
+    // first token; no separate pre-registration needed.
     await page.goto('/login');
     await page.getByRole('button', { name: /need an account/i }).click();
     await page.getByLabel('Your name (shown to others)').fill('Auth Tester');

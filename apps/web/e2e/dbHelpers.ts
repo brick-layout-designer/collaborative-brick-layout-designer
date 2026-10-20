@@ -4,11 +4,13 @@
 // can't receive. Opens the same DB_PATH the running server was started
 // with (see playwright.config.ts's header comment for the expected env).
 //
-// Read-only spirit: we only SELECT here. The one exception is tests that
-// need to simulate token expiry, which UPDATE a row's expires_at
-// directly — there's no API surface for that and it's the standard way
-// to test expiry without sleeping the test for real.
+// Mostly read-only. The exceptions: a verification link's token is set
+// to a known value (the server keeps only its hash), and tests that
+// simulate token expiry UPDATE a row's expires_at directly — there's no
+// API surface for that and it's the standard way to test expiry without
+// sleeping the test for real.
 
+import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import Database from 'better-sqlite3';
 
@@ -21,28 +23,50 @@ function dbPath(): string {
 }
 
 /**
- * Look up the live (unconsumed) email-verification token for a user by
- * email. Polls briefly since the register request may return to the
- * test before the write is visible to a fresh connection in rare cases.
+ * A working email-verification link token for a user, by email. The
+ * server keeps only the token's sha256 (the raw token is only ever
+ * emailed), so this gives the user's live verification row a fresh token
+ * and returns it, the way the emailed link would carry it. The row stays
+ * the same otherwise (still tied to the browser that signed up, if it
+ * was). Polls briefly since the register request may return to the test
+ * before the write is visible to a fresh connection in rare cases.
  */
 export async function getVerificationToken(email: string): Promise<string> {
-  const db = new Database(dbPath(), { readonly: true });
+  const db = new Database(dbPath());
   try {
     for (let attempt = 0; attempt < 20; attempt++) {
       const row = db
         .prepare(
-          `SELECT ev.token AS token
+          `SELECT ev.id AS id
            FROM email_verifications ev
            JOIN users u ON u.id = ev.user_id
            WHERE u.email = ?
            ORDER BY ev.created_at DESC
            LIMIT 1`,
         )
-        .get(email) as { token: string } | undefined;
-      if (row) return row.token;
+        .get(email) as { id: string } | undefined;
+      if (row) {
+        const token = randomBytes(24).toString('hex');
+        db.prepare(`UPDATE email_verifications SET token = ? WHERE id = ?`).run(
+          createHash('sha256').update(token).digest('hex'),
+          row.id,
+        );
+        return token;
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
     throw new Error(`no verification token found for ${email} after polling`);
+  } finally {
+    db.close();
+  }
+}
+
+/** Whether an account exists for `email`, and whether its email is confirmed. */
+export function accountState(email: string): 'none' | 'unverified' | 'verified' {
+  const db = new Database(dbPath(), { readonly: true });
+  try {
+    const row = db.prepare(`SELECT email_verified AS v FROM users WHERE email = ?`).get(email) as { v: number } | undefined;
+    return !row ? 'none' : row.v ? 'verified' : 'unverified';
   } finally {
     db.close();
   }
