@@ -29,6 +29,7 @@ import { dropModuleFromCollections } from './collections.js';
 import { clubDeletionSummary, deletingClubsFor, eraseClub, mayRestore, restoreClub } from '../privacy/clubDeletion.js';
 import { describeExport, listExports, nextExportAllowedAt, startExport } from '../privacy/exports.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { clearPendingSharesFor } from '../access/pendingShares.js';
 
 export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/orgs/deleting', async (req) => {
@@ -118,6 +119,8 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
           payload: { from: { kind: 'org', orgId: org.id }, to: to.ownerOrgId ? { kind: 'org', orgId: to.ownerOrgId } : { kind: 'user', userId: to.ownerUserId }, reason: 'before_club_deletion' },
         });
       }
+      // They changed hands: pending invites and transfers sent for them go.
+      await clearPendingSharesFor(kind, rows.map((r) => r.id));
       if (kind === 'layouts') await docHub.closeMany(rows.map((r) => r.id), 'layout_moved');
       const hintKind = kind === 'layouts' ? 'layout' : 'module';
       void publish({ kind: hintKind, owner: { kind: 'org', id: org.id }, action: 'update:move' });

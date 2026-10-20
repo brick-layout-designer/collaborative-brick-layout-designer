@@ -463,6 +463,12 @@ export const layoutInvites = sqliteTable('layout_invites', {
   token: text('token').notNull().unique(),
   expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+  /**
+   * Who sent it (0033). The invite holds only while they still manage the
+   * layout's sharing. Null on invites made before 0033: the audit log's
+   * `share` row names the sender for those.
+   */
+  invitedBy: text('invited_by').references(() => users.id, { onDelete: 'cascade' }),
 });
 
 // User → user layout transfers (Phase 6 / PLAN.md §3.5). When the new

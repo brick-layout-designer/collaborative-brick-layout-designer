@@ -72,13 +72,7 @@ async function createLayout(app: FastifyInstance, cookieStr: string, title = 'Te
 
 // ---- layout invite expiry helpers -----------------------------------------
 
-/**
- * Create a layout invite directly in the DB with a custom expiresAt.
- * `invitedBy` is accepted (call sites fetch the owner's id for it) but
- * unused — `layout_invites` has no such column; it's kept as a param so
- * call sites document who's issuing the invite without implying the
- * schema tracks it.
- */
+/** Create a layout invite from `invitedBy` directly in the DB with a custom expiresAt. */
 async function insertLayoutInvite(opts: {
   layoutId: string;
   invitedBy: string;
@@ -86,7 +80,6 @@ async function insertLayoutInvite(opts: {
   expiresAt: Date;
   acceptedAt?: Date;
 }): Promise<string> {
-  void opts.invitedBy;
   const token = `tok-layout-${Math.random().toString(36).slice(2)}`;
   const id = `inv-${Math.random().toString(36).slice(2)}`;
   await db.insert(schema.layoutInvites).values({
@@ -97,6 +90,7 @@ async function insertLayoutInvite(opts: {
     token,
     expiresAt: opts.expiresAt,
     acceptedAt: opts.acceptedAt ?? null,
+    invitedBy: opts.invitedBy,
   });
   return token;
 }

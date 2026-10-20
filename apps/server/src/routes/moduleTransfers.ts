@@ -4,7 +4,7 @@
 // such transfer still pending is cleared when the module changes hands.
 
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
@@ -14,6 +14,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
 import { trimmed } from '../utils/validate.js';
+import { clearPendingModuleShares } from '../access/pendingShares.js';
 
 interface InitiateTransferBody {
   recipientOrgSlug?: string;
@@ -81,7 +82,7 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
           .where(eq(schema.modules.id, req.params.id));
         // Ownership changed: pending user->user transfers issued by the
         // previous owner must not be redeemable any more.
-        await deletePendingModuleTransfers(req.params.id);
+        await clearPendingModuleShares(req.params.id);
         // Moved out of a club: that club's collections lose it.
         if (module.ownerOrgId && module.ownerOrgId !== dest.id) {
           await dropModuleFromCollections(module, 'moved to another club', dest.id, user.id);
@@ -109,20 +110,4 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(400).send({ error: 'transfer_to_club_only' });
     },
   );
-}
-
-/**
- * Delete every not-yet-accepted transfer for a module (optionally keeping
- * one). Call whenever the module's owner changes.
- */
-async function deletePendingModuleTransfers(moduleId: string, exceptId?: string): Promise<void> {
-  await db
-    .delete(schema.moduleTransfers)
-    .where(
-      and(
-        eq(schema.moduleTransfers.moduleId, moduleId),
-        isNull(schema.moduleTransfers.acceptedAt),
-        exceptId ? ne(schema.moduleTransfers.id, exceptId) : undefined,
-      ),
-    );
 }

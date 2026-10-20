@@ -75,6 +75,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   only_club_admins_can_give_back: 'Only the club’s admins and managers can give it back.',
   author_gone: 'The person who made it no longer has an account here.',
   already_returned: 'This is the club’s copy; its author already has the original.',
+  author_handed_it_over: 'Its author handed it to someone else, so it stays with the club.',
+  invite_no_longer_valid: 'This invite no longer works: the layout changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
   already_yours: 'It’s already yours.',
   part_number_taken: 'There’s already a part with that number there.',
   invalid_email: 'Enter a valid email address.',
