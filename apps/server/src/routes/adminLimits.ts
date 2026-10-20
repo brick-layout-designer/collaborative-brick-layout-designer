@@ -40,6 +40,7 @@ import { dayKey } from '../metrics/rollup.js';
 import { usage as usageCounter } from '../metrics/usage.js';
 import { liveConnectionsByLayout, liveConnectionsByUser } from './ws.js';
 import { trimmed } from '../utils/validate.js';
+import { notifyAccessChanged } from '../ws/liveAccess.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -576,6 +577,8 @@ export async function adminLimitsRoutes(app: FastifyInstance): Promise<void> {
       })
       .run();
     invalidateLimitCaches();
+    // Open live connections see a suspension (or its end) at once.
+    if (suspended !== current.suspended) notifyAccessChanged({ all: true });
     if (JSON.stringify(next) !== JSON.stringify(current.limits)) {
       await writeAuditEvent({ resourceKind: kind, resourceId: id, userId: adminId, eventType: 'admin_limits_override', payload: { before: current.limits, after: next } });
     }

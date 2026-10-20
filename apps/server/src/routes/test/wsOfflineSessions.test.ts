@@ -312,8 +312,11 @@ describe('WS merge guard: large offline sessions', () => {
     const online = addLayer(mine, 'Made online');
     insertBricks(mine, online, brickBatches(fordyce())[0]!.bricks.slice(0, 100));
     await landed(id, mine);
-    const rows = await db.select().from(schema.layoutUpdates).where(eq(schema.layoutUpdates.layoutId, id));
-    expect(rows.length).toBeGreaterThan(0);
+    // (Stored a moment later, in a batch: DocSession.queuePersist.)
+    await vi.waitFor(async () => {
+      const rows = await db.select().from(schema.layoutUpdates).where(eq(schema.layoutUpdates.layoutId, id));
+      expect(rows.length).toBeGreaterThan(0);
+    });
     await restartServer(id);
 
     // Offline while it was down: built on what it made online.

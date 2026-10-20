@@ -31,6 +31,11 @@ export const MAX_AWARENESS_BYTES = 1024 * 1024;
 /** Awareness clientIDs one connection may own (an app uses one per layout it has open). */
 export const MAX_AWARENESS_IDS = 4;
 
+/** Live updates this close together are stored as one layout_updates row (DocSession.queuePersist)... */
+const PERSIST_BATCH_MS = 50;
+/** ...up to this many bytes. */
+const PERSIST_BATCH_BYTES = 1024 * 1024;
+
 export class DocSession {
   readonly doc: Y.Doc;
   readonly awareness: Awareness;
@@ -59,6 +64,11 @@ export class DocSession {
   /** Set by DocHub.close(); a closed session never persists or re-arms. */
   closed = false;
   private broadcasting = false;
+  /** Updates waiting to be stored as one layout_updates row (queuePersist). */
+  private batch: Uint8Array[] = [];
+  private batchBytes = 0;
+  private batchTimer: ReturnType<typeof setTimeout> | null = null;
+  private persistError: (err: unknown) => void = () => {};
 
   constructor(public readonly layoutId: string) {
     this.doc = new Y.Doc();
@@ -75,13 +85,11 @@ export class DocSession {
   startBroadcasting(onPersistError: (err: unknown) => void): void {
     if (this.broadcasting) return;
     this.broadcasting = true;
+    this.persistError = onPersistError;
 
     this.doc.on('update', (update: Uint8Array, origin: unknown) => {
       if (this.closed) return;
-      // Never let a failed insert (e.g. the layout row was deleted while
-      // sockets were still open -> FK violation) become an unhandled
-      // rejection; that terminates the Node process.
-      this.persistUpdate(update).catch(onPersistError);
+      this.queuePersist(update);
       const bytes = encodeSyncUpdate(update);
       for (const client of this.clients) {
         if (client === origin) continue;
@@ -225,7 +233,7 @@ export class DocSession {
    * between snapshot rewrites. The compaction worker periodically writes
    * a fresh snapshot and DELETEs the rows it has consumed.
    */
-  async persistUpdate(update: Uint8Array): Promise<void> {
+  async persistUpdate(update: Uint8Array, edits = 1): Promise<void> {
     await db.insert(schema.layoutUpdates).values({
       layoutId: this.layoutId,
       doc: 'main',
@@ -234,7 +242,57 @@ export class DocSession {
     });
     this.pendingUpdates += 1;
     rollup.distinct('layouts_edited', '', this.layoutId);
-    rollup.count('layout_edits', this.layoutId);
+    rollup.count('layout_edits', this.layoutId, edits);
+  }
+
+  /**
+   * Store a live update. Updates arriving within PERSIST_BATCH_MS of each
+   * other (or until PERSIST_BATCH_BYTES) go into one layout_updates row,
+   * merged, so a burst of edits is a few rows rather than one each. If the
+   * server stops before a batch is stored, the clients still have those
+   * edits and send them again with their next sync step 2.
+   */
+  queuePersist(update: Uint8Array): void {
+    this.batch.push(update);
+    this.batchBytes += update.length;
+    if (this.batchBytes >= PERSIST_BATCH_BYTES) {
+      void this.flushBatch();
+      return;
+    }
+    this.batchTimer ??= setTimeout(() => {
+      this.batchTimer = null;
+      void this.flushBatch();
+    }, PERSIST_BATCH_MS);
+  }
+
+  /** Store the waiting batch now (tests, and before a snapshot replaces it). */
+  async flushBatch(): Promise<void> {
+    const updates = this.takeBatch();
+    if (updates.length === 0 || this.closed) return;
+    try {
+      await this.persistUpdate(updates.length === 1 ? updates[0]! : Y.mergeUpdates(updates), updates.length);
+    } catch (err) {
+      // Never let a failed insert (e.g. the layout row was deleted while
+      // sockets were still open -> FK violation) become an unhandled
+      // rejection; that terminates the Node process.
+      this.persistError(err);
+    }
+  }
+
+  private takeBatch(): Uint8Array[] {
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    const updates = this.batch;
+    this.batch = [];
+    this.batchBytes = 0;
+    return updates;
+  }
+
+  /** Drop what waits to be stored (the doc is going away). */
+  discardBatch(): void {
+    this.takeBatch();
   }
 
   /**
@@ -245,8 +303,11 @@ export class DocSession {
   async flushSnapshot(): Promise<void> {
     if (this.flushing) return;
     this.flushing = true;
+    // The snapshot holds what waits to be stored; put back if it fails.
+    let covered: Uint8Array[] = [];
     try {
       this.limitPending();
+      covered = this.takeBatch();
       const bytes = Y.encodeStateAsUpdate(this.doc);
       await db
         .update(schema.layouts)
@@ -256,6 +317,7 @@ export class DocSession {
           updatedAt: new Date(),
         })
         .where(eq(schema.layouts.id, this.layoutId));
+      covered = [];
       // Crash-safe ordering: snapshot commits BEFORE deletes. If we crash
       // between the two, replay will re-apply already-included updates,
       // which is a no-op for Yjs (idempotent merge).
@@ -270,6 +332,14 @@ export class DocSession {
       this.pendingUpdates = 0;
     } finally {
       this.flushing = false;
+      if (covered.length > 0 && !this.closed) {
+        this.batch = [...covered, ...this.batch];
+        this.batchBytes += covered.reduce((n, u) => n + u.length, 0);
+        this.batchTimer ??= setTimeout(() => {
+          this.batchTimer = null;
+          void this.flushBatch();
+        }, PERSIST_BATCH_MS);
+      }
     }
   }
 
@@ -440,6 +510,7 @@ class DocHub {
       }
     }
     if (this.live.get(layoutId) === session) this.live.delete(layoutId);
+    session.discardBatch();
     session.doc.destroy();
     session.awareness.destroy();
   }
@@ -454,6 +525,7 @@ class DocHub {
       this.live.delete(session.layoutId);
       this.sessions.delete(session.layoutId);
     }
+    session.discardBatch();
     session.doc.destroy();
     session.awareness.destroy();
   }

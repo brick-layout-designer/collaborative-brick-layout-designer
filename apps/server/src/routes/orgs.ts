@@ -33,6 +33,7 @@ import { nameFor, publicName } from '../utils/publicName.js';
 import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { maskEmail } from '../utils/maskEmail.js';
+import { notifyAccessChanged } from '../ws/liveAccess.js';
 
 interface CreateOrgBody {
   name: string;
@@ -349,6 +350,8 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, userId)));
       await setRole(targetId, 'admin');
       await setRole(user.id, 'member');
+      notifyAccessChanged({ userId: targetId });
+      notifyAccessChanged({ userId: user.id });
       await writeAuditEvent({
         resourceKind: 'org',
         resourceId: org.id,
@@ -698,6 +701,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           eq(schema.orgMembers.userId, req.params.userId),
         ),
       );
+    notifyAccessChanged({ userId: req.params.userId });
     await writeAuditEvent({
       resourceKind: 'org',
       resourceId: org.id,
@@ -748,6 +752,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
             eq(schema.orgMembers.userId, req.params.userId),
           ),
         );
+      notifyAccessChanged({ userId: req.params.userId });
       await writeAuditEvent({
         resourceKind: 'org',
         resourceId: org.id,

@@ -35,6 +35,7 @@ import { sameEmail, trimmed } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
 import { clearPendingLayoutShares } from '../access/pendingShares.js';
+import { notifyAccessChanged } from '../ws/liveAccess.js';
 
 interface InitiateTransferBody {
   /** Recipient kind. Exactly one of `recipientEmail` / `recipientOrgSlug` set. */
@@ -114,6 +115,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         // Ownership changed: pending transfers and invites were sent by
         // the previous owner and must not be redeemable any more.
         await clearPendingLayoutShares(req.params.id);
+        notifyAccessChanged({ layoutId: req.params.id });
 
         await writeAuditEvent({
           layoutId: req.params.id,
@@ -309,6 +311,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           })
           .onConflictDoNothing();
       }
+      notifyAccessChanged({ layoutId: transfer.layoutId });
 
       await writeAuditEvent({
         layoutId: transfer.layoutId,

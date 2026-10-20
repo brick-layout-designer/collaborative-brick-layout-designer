@@ -356,7 +356,8 @@ describe('DocHub — lifecycle hardening', () => {
     const other = new Y.Doc();
     other.getMap('m').set('k', 'v');
     Y.applyUpdate(session.doc, Y.encodeStateAsUpdate(other), peers[0]);
-    await new Promise((r) => setTimeout(r, 20));
+    // (Stored with the next batch: DocSession.queuePersist.)
+    await session.flushBatch();
 
     expect(peers[0]!.sent.length).toBe(0); // origin is skipped
     expect(peers[1]!.sent.length).toBe(1);

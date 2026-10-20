@@ -30,6 +30,8 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { checkIncomingUpdate, type MergeCheck } from './mergeGuard.js';
 import { checkStateVector, checkUpdate } from './updateGuard.js';
 import { MAX_PENDING_BYTES, pendingBytes, restorePending, savePending } from './pending.js';
+import { newPace, type Pace } from './pacing.js';
+import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
 
 /**
  * Close code and reason for an update refused because it would merge
@@ -80,7 +82,13 @@ interface Sender {
   credential?: Credential | undefined;
   /** What this connection has already logged or audited: each once per connection. */
   noted: Set<string>;
+  /** How fast this connection may send (ws/pacing.ts). */
+  pace: Pace;
 }
+
+/** Close code and reason for a connection sending faster than ws/pacing.ts allows: "try again later". */
+export const CLOSE_SLOW_DOWN = 1013;
+export const SLOW_DOWN_REASON = 'slow_down';
 
 /**
  * Per-connection lifecycle. The handler does NOT close the WS itself;
@@ -107,9 +115,12 @@ export async function attachWsHandlers(
   auth: WsAuth = {},
 ): Promise<() => Promise<void>> {
   const { credential, readOnly = false } = auth;
-  const sender: Sender = { layoutId, userId, client: auth.client ?? '', credential, noted: new Set() };
-  const cap = (r: 'owner' | 'editor' | 'viewer') => (readOnly ? 'viewer' : r);
-  const session = await docHub.getOrCreate(layoutId);
+  const sender: Sender = { layoutId, userId, client: auth.client ?? '', credential, noted: new Set(), pace: newPace() };
+  // A suspended person, or a suspended owner's layout, is read-only; checked
+  // again with the role (below).
+  const [suspendedNow, session] = await Promise.all([suspendedIn(userId, layoutId), docHub.getOrCreate(layoutId)]);
+  let suspended = suspendedNow;
+  const cap = (r: 'owner' | 'editor' | 'viewer') => (readOnly || suspended ? 'viewer' : r);
   docHub.attach(session, ws, userId);
   if (session.closed) {
     // The layout was deleted between hydrate and attach.
@@ -139,6 +150,13 @@ export async function attachWsHandlers(
     // Nothing more is read from a connection being closed (what follows a
     // refused update, a revoked sign-in's last messages).
     if (ws.readyState !== ws.OPEN) return;
+    // Pacing (ws/pacing.ts): past it the connection is closed with 1013
+    // "try again later"; both apps reconnect and their sync step 2 brings
+    // whatever was not taken, so nothing is lost.
+    if (!sender.pace.messages.take(1) || !sender.pace.bytes.take(data.length)) {
+      slowDown(ws, session, sender, data.length);
+      return;
+    }
     try {
       handleMessage(ws, session, new Uint8Array(data), currentRole, sender);
     } catch {
@@ -147,48 +165,60 @@ export async function attachWsHandlers(
     }
   });
 
-  // 5. Periodic role revalidation. If the user is removed from the layout
-  //    mid-session (admin yanks their share, layout is transferred away),
-  //    we need to drop the connection rather than let them keep editing.
-  //    Polling is the simplest fit — a DB-trigger-style notification would
-  //    avoid the 30s window but pulls in pub/sub infrastructure.
-  const revalidateTimer = setInterval(() => {
-    void (async () => {
-      try {
-        // The session / token may have expired or been revoked (logout
-        // elsewhere, admin "revoke all", token revoked on the Devices
-        // page) without us hearing about it.
-        if (credential !== undefined && !(await isCredentialActive(credential))) {
-          ws.close(1008, revokedReason(credential));
-          return;
+  // 5. Access checks: every revalidateMs, and at once when a route changes
+  //    who may open this layout (ws/liveAccess.ts). A removed user is
+  //    disconnected; a downgraded or suspended one is held to viewer.
+  const checkOnce = async (): Promise<void> => {
+    // The session / token may have expired or been revoked (logout
+    // elsewhere, admin "revoke all", token revoked on the Devices page)
+    // without us hearing about it.
+    if (credential !== undefined && !(await isCredentialActive(credential))) {
+      ws.close(1008, revokedReason(credential));
+      return;
+    }
+    const { role: refreshedRole } = await resolveResourceRole(userId, 'layout', layoutId);
+    if (refreshedRole === null) {
+      // Access revoked. Close with our "not_found" code so the client
+      // surfaces the same error as a stale page reload would.
+      ws.close(4404, 'access_revoked');
+      return;
+    }
+    suspended = await suspendedIn(userId, layoutId);
+    // Role downgraded (or upgraded), or suspended: later messages are
+    // handled at the new tier. The user still has access, so the
+    // connection stays; the editor's UI catches up when it refetches the
+    // layout.
+    currentRole = cap(refreshedRole);
+  };
+  let checking = false;
+  let checkAgain = false;
+  const check = async (): Promise<void> => {
+    if (checking) {
+      checkAgain = true;
+      return;
+    }
+    checking = true;
+    try {
+      do {
+        checkAgain = false;
+        try {
+          await checkOnce();
+        } catch {
+          /* DB transient — try again next time */
         }
-        const { role: refreshedRole } = await resolveResourceRole(
-          userId,
-          'layout',
-          layoutId,
-        );
-        if (refreshedRole === null) {
-          // Access revoked. Close with our "not_found" code so the client
-          // surfaces the same error as a stale page reload would.
-          ws.close(4404, 'access_revoked');
-          return;
-        }
-        if (cap(refreshedRole) !== currentRole) {
-          // Role downgraded (or upgraded). Update the in-memory copy so
-          // subsequent message handling honours the new tier. We don't
-          // disconnect on role change because the user still has access;
-          // the editor's UI will catch up next time it refetches the
-          // layout-detail query.
-          currentRole = cap(refreshedRole);
-        }
-      } catch {
-        /* DB transient — try again next tick */
-      }
-    })();
-  }, wsTiming.revalidateMs);
+      } while (checkAgain);
+    } finally {
+      checking = false;
+    }
+  };
+  const revalidateTimer = setInterval(() => void check(), wsTiming.revalidateMs);
+  const stopListening = onAccessChanged((c) => {
+    if (concerns(c, userId, layoutId)) void check();
+  });
 
   return async () => {
     clearInterval(revalidateTimer);
+    stopListening();
     // Remove this client's own awareness entries (only those it still
     // owns) so others see them disappear.
     const owned = session.releaseAwareness(ws);
@@ -220,8 +250,11 @@ function handleMessage(
       if (syncType === syncProtocol.messageYjsSyncStep1) {
         // A read ("send me what I'm missing"): how every client, viewers
         // included, gets the document at all. One no app writes is dropped.
+        // Answered a few times per connection, then at most every
+        // step1EveryMs (ws/pacing.ts): the apps ask once per connection.
         const stateVector = decoding.readVarUint8Array(decoder);
         if (checkStateVector(stateVector) !== null) return;
+        if (!sender.pace.step1.take(1)) return;
         syncProtocol.writeSyncStep2(encoder, session.doc, stateVector);
       } else if (syncType === syncProtocol.messageYjsSyncStep2 || syncType === syncProtocol.messageYjsUpdate) {
         // The client's own state / edits: write paths. A viewer's are
@@ -314,6 +347,20 @@ function refuseMerge(ws: WebSocket, session: DocSession, sender: Sender, check: 
     eventType: 'layout_merge_refused',
     payload: mergePayload(sender, check),
   }).catch((err) => console.error('[ws] could not write the layout_merge_refused audit event', err));
+}
+
+/** Sending faster than ws/pacing.ts allows: close with 1013 "try again later" (the apps reconnect), logged once. */
+function slowDown(ws: WebSocket, session: DocSession, sender: Sender, bytes: number): void {
+  try {
+    ws.close(CLOSE_SLOW_DOWN, SLOW_DOWN_REASON);
+  } catch {
+    /* already closed */
+  }
+  if (!once(sender, 'slow_down')) return;
+  console.warn(
+    `[ws] closed a connection to layout ${session.layoutId} from user ${sender.userId} (${sender.client || 'unknown client'}): ` +
+      `it sent faster than allowed (last message ${bytes} bytes)`,
+  );
 }
 
 /** True the first time this connection notes `what`. */
