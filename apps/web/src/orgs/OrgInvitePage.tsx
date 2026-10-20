@@ -6,18 +6,19 @@ import { api } from '../api';
 
 /**
  * /org-invite/:token landing — same shape as the layout-invite page,
- * but for joining an org. Auto-accepts when the signed-in user's email
- * matches; otherwise prompts to sign in or surfaces an email-mismatch
- * notice.
+ * but for joining an org. Auto-accepts when the server says the invite
+ * is for the signed-in account; otherwise prompts to sign in or surfaces
+ * an email-mismatch notice (the address is masked unless it's yours).
  */
 export function OrgInvitePage() {
   const params = useParams<{ token: string }>();
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const preview = useQuery({
-    queryKey: ['org-invite-preview', params.token],
+    // Keyed on who's signed in: the answer says whether it's for them.
+    queryKey: ['org-invite-preview', params.token, me.data?.user?.id ?? null],
     queryFn: () => api.orgInvites.preview(params.token!),
-    enabled: !!params.token,
+    enabled: !!params.token && !me.isLoading,
   });
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function OrgInvitePage() {
     if (
       preview.data &&
       me.data?.user &&
-      me.data.user.email.toLowerCase() === preview.data.invitedEmail.toLowerCase() &&
+      preview.data.forYou === true &&
       !accept.isPending &&
       !accept.isSuccess &&
       !accept.isError
@@ -62,7 +63,7 @@ export function OrgInvitePage() {
   const inv = preview.data!;
   const isSignedIn = !!me.data?.user;
   const wrongUser =
-    isSignedIn && me.data!.user!.email.toLowerCase() !== inv.invitedEmail.toLowerCase();
+    isSignedIn && inv.forYou === false;
 
   if (accepted) return <Centered>Joined! Opening the club…</Centered>;
 

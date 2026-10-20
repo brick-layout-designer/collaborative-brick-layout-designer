@@ -801,10 +801,11 @@ const collectionOwnerRef = (c: Collection) =>
 /**
  * Collections' text waiting for review, as the queue shows it: the new text
  * and (for a change) what's public now. Split into the site's queue and
- * trusted clubs' own queues.
+ * trusted clubs' own queues. Curators' addresses only for site admins
+ * (`showEmails`), as in the item queue.
  */
-export async function textQueue(queueRows: Collection[], shownAll: Map<string, Shown[]>, name: (c: Collection) => string) {
-  const ownerIds = [...new Set(queueRows.map((c) => c.ownerUserId).filter((x): x is string => !!x))];
+export async function textQueue(queueRows: Collection[], shownAll: Map<string, Shown[]>, name: (c: Collection) => string, showEmails: boolean) {
+  const ownerIds = showEmails ? [...new Set(queueRows.map((c) => c.ownerUserId).filter((x): x is string => !!x))] : [];
   const emails = ownerIds.length
     ? new Map((await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, ownerIds))).map((u) => [u.id, u.email]))
     : new Map<string, string>();
@@ -1377,7 +1378,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // The queue holds only collection *text* (title, description, cover):
   // each item is reviewed on its own, in the catalog items queue.
   app.get('/api/moderation/collections', async (req) => {
-    requireModerator(req);
+    const mod = requireModerator(req);
     const everyone = eq(schema.catalogCollections.audience, 'everyone');
     const queueRows = await db
       .select()
@@ -1407,7 +1408,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const shownAll = await shownOf([...new Map(all.map((c) => [c.id, c])).values()], on, () => true);
     const shownPublic = await shownOf([...new Map([...queueRows, ...listed].map((c) => [c.id, c])).values()], on, () => false);
     const name = await byNames(all);
-    const { queue, trustedQueue } = await textQueue(queueRows, shownAll, name);
+    const { queue, trustedQueue } = await textQueue(queueRows, shownAll, name, mod.isGlobalAdmin);
     const ownerRef = collectionOwnerRef;
     return {
       queue,
@@ -1461,7 +1462,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: { view?: string; q?: string; from?: string; to?: string; sort?: string; limit?: string; offset?: string } }>(
     '/api/moderation/collections/list',
     async (req, reply) => {
-      requireModerator(req);
+      const mod = requireModerator(req);
       const view = req.query.view ?? 'queue';
       if (!['queue', 'trusted', 'listed', 'club'].includes(view)) return reply.code(400).send({ error: 'invalid_input' });
       const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit)) || 50));
@@ -1504,7 +1505,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       const nextOffset = offset + rows.length < total ? offset + rows.length : null;
       if (view === 'queue' || view === 'trusted') {
         const shownAll = await shownOf(rows, on, () => true);
-        const { queue, trustedQueue } = await textQueue(rows, shownAll, name);
+        const { queue, trustedQueue } = await textQueue(rows, shownAll, name, mod.isGlobalAdmin);
         return { total, nextOffset, rows: view === 'queue' ? queue : trustedQueue };
       }
       const shown = await shownOf(rows, on, () => view === 'club');

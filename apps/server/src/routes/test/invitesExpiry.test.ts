@@ -382,7 +382,8 @@ describe('org invite — GET preview edge cases', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { orgName: string; invitedEmail: string };
     expect(body.orgName).toBe('Preview Org');
-    expect(body.invitedEmail).toBe('member@example.com');
+    // Signed out: a masked address.
+    expect(body.invitedEmail).toBe('m…@example.com');
   });
 });
 

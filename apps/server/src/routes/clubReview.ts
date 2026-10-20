@@ -131,7 +131,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { slug: string } }>('/api/orgs/:slug/review', async (req, reply) => {
     const r = await reviewer(req);
     if (isOutcome(r)) return reply.code(r.code).send(r.body);
-    const { org } = r;
+    const { org, user } = r;
     const waiting = await db
       .select({
         versionId: schema.catalogItemVersions.id,
@@ -170,7 +170,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
     const name = await ownerNames(published);
     const shown = await shownForQueue([...collRows, ...publicColls]);
     const collName = await collectionOwnerNames([...collRows, ...publicColls]);
-    const texts = await textQueue(collRows, shown, collName);
+    const texts = await textQueue(collRows, shown, collName, user.isGlobalAdmin);
     const pictured = await picturedVersions([...waiting.map((w) => ({ id: w.item.id, version: w.version })), ...published.map((i) => ({ id: i.id, version: i.publicVersion }))]);
     return {
       items: waiting.map((w) => ({

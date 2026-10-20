@@ -90,7 +90,9 @@ test('a submitted collection is approved, shows up live, Add all skips what you 
     await mod.page.goto('/');
     await fromSettingsMenu(mod.page, /^Moderation/);
     const entry = mod.page.getByTestId('moderation-collection').filter({ hasText: TITLE });
-    await expect(entry).toContainText(CORA);
+    // A moderator sees who sent it by name; addresses are for site admins.
+    await expect(entry).toContainText('Cora Curator');
+    await expect(entry).not.toContainText(CORA);
     // The review covers its text; each item is reviewed on its own.
     await expect(entry.getByTestId('review-new')).toContainText('Everything a small goods yard needs.');
     await expect(entry).toContainText('2 items');

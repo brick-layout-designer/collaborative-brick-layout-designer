@@ -14,6 +14,7 @@ import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
+import { maskEmail } from '../utils/maskEmail.js';
 
 export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { token: string } }>(
@@ -38,8 +39,12 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
         .get();
       if (!org) return reply.code(404).send({ error: 'org_not_found' });
 
+      // Whoever holds the link sees a masked address, and whether the
+      // invite is for the account they're signed in with.
+      const forYou = req.user ? sameEmail(invite.invitedEmail, req.user.email) : null;
       return {
-        invitedEmail: invite.invitedEmail,
+        invitedEmail: forYou ? invite.invitedEmail : maskEmail(invite.invitedEmail),
+        forYou,
         role: invite.role,
         orgId: invite.orgId,
         orgName: org.name,
