@@ -225,6 +225,13 @@
       "when": 1791416131677,
       "tag": "0031_moderation_paging",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1792509356357,
+      "tag": "0032_catalog_review_holds",
+      "breakpoints": true
     }
   ]
 }

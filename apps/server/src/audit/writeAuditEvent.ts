@@ -78,6 +78,7 @@ export type AuditEventType =
   | 'catalog_cover_decline'
   | 'catalog_decline'
   | 'catalog_unpublish'
+  | 'catalog_restore'
   | 'catalog_withdraw'
   | 'catalog_add'
   // Catalog collections: made or changed, reviewed, taken down, featured,
@@ -89,6 +90,7 @@ export type AuditEventType =
   | 'collection_approve'
   | 'collection_decline'
   | 'collection_unpublish'
+  | 'collection_restore'
   | 'collection_feature'
   | 'collection_item_removed'
   | 'collection_add'

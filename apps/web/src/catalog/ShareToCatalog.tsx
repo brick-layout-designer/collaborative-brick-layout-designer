@@ -49,9 +49,16 @@ export function CatalogBadge({ item }: { item: MyCatalogItem }) {
     item.status === 'public' ? 'bg-ok-soft text-ok' : item.status === 'in_review' ? 'bg-amber-950 text-amber-300' : 'bg-soft text-muted';
   const text =
     item.status === 'public' && item.pendingVersion ? 'Public · update in review' : LABEL[item.status] + (item.reason ? `: ${item.reason}` : '');
+  // An update's new name shows in the catalog once it's approved.
+  const newName = item.pendingVersion && item.pendingText && item.pendingText.title !== item.title ? item.pendingText.title : null;
   return (
-    <span data-testid="catalog-badge" className={`rounded-full px-2 py-0.5 text-xs font-bold ${tone}`} title="In the public catalog">
+    <span
+      data-testid="catalog-badge"
+      className={`rounded-full px-2 py-0.5 text-xs font-bold ${tone}`}
+      title={newName ? `In the public catalog as “${item.title}”. The new name, “${newName}”, shows once it’s approved.` : 'In the public catalog'}
+    >
       {text}
+      {newName && <span className="font-normal">{` (new name: “${newName}”)`}</span>}
     </span>
   );
 }
@@ -108,7 +115,8 @@ export function ShareToCatalogDialog({
 }) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
-  const [title, setTitle] = useState(existing?.title ?? initialTitle);
+  // An update waiting for review: start from the text it sent.
+  const [title, setTitle] = useState(existing?.pendingText?.title ?? existing?.title ?? initialTitle);
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [note, setNote] = useState('');

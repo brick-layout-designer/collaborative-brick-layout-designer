@@ -968,6 +968,13 @@ export const catalogItems = sqliteTable(
     pendingCoverImageId: text('pending_cover_image_id'),
     /** Why the last uploaded picture was declined, until a new one is sent. */
     coverReason: text('cover_reason'),
+    /**
+     * Who took it down, while that stands: 'site' (a site moderator; only
+     * site moderators bring it back) or 'club' (a trusted club's reviewers,
+     * or a site moderator). Kept through withdrawals and new shares, and
+     * cleared when a reviewer approves it again.
+     */
+    takenDownBy: text('taken_down_by', { enum: ['site', 'club'] }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -1014,6 +1021,14 @@ export const catalogItemVersions = sqliteTable(
      * JSON (size in studs, a layout's parts list). Null for modules and parts.
      */
     summary: text('summary'),
+    /**
+     * The title, description and tags (JSON) sent with this version. They
+     * become the item's when it's approved; until then the public sees the
+     * approved ones. Null on versions from before they were kept here.
+     */
+    title: text('title'),
+    description: text('description'),
+    tags: text('tags'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => ({
@@ -1096,6 +1111,8 @@ export const catalogCollections = sqliteTable(
      * set, it's the cover, whatever item is chosen.
      */
     coverImageId: text('cover_image_id'),
+    /** As catalog_items.taken_down_by: who unpublished it, kept through audience changes and withdrawals. */
+    takenDownBy: text('taken_down_by', { enum: ['site', 'club'] }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },

@@ -44,7 +44,7 @@ import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { destinationOrg } from './owners.js';
-import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, isTrustedClub, itemOut, mayBrowse, ownerNames, picturedVersions, previewUrlOf, submitToCatalog, trustedClubs } from './catalog.js';
+import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, holdOf, isTrustedClub, nextHold, itemOut, mayBrowse, ownerNames, picturedVersions, previewUrlOf, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
@@ -209,14 +209,21 @@ const modulePreview = (m: Pick<ModuleRow, 'id' | 'thumbnailAt'>) => (m.thumbnail
 
 const partPreview = (p: Pick<PartRow, 'id' | 'updatedAt'>) => `/api/custom-parts/${p.id}/sprite?v=${p.updatedAt.getTime()}`;
 
-/** The catalog item shared from each of these modules (or parts), if any. */
-async function catalogItemsFor(kind: Kind, sourceIds: string[]): Promise<Map<string, Item>> {
-  if (!sourceIds.length) return new Map();
+type Owned = { ownerUserId: string | null; ownerOrgId: string | null };
+const ownerKey = (o: Owned) => (o.ownerOrgId ? `org:${o.ownerOrgId}` : `user:${o.ownerUserId ?? ''}`);
+
+/**
+ * The catalog item shared from each of these modules (or parts), if any:
+ * the one shared by its owner (one its earlier owner shared stays theirs).
+ */
+async function catalogItemsFor(kind: Kind, sources: readonly (Owned & { id: string })[]): Promise<Map<string, Item>> {
+  if (!sources.length) return new Map();
+  const owner = new Map(sources.map((x) => [x.id, ownerKey(x)]));
   const rows = await db
     .select()
     .from(schema.catalogItems)
-    .where(and(eq(schema.catalogItems.kind, kind), inArray(schema.catalogItems.sourceId, sourceIds)));
-  return new Map(rows.map((r) => [r.sourceId, r]));
+    .where(and(eq(schema.catalogItems.kind, kind), inArray(schema.catalogItems.sourceId, [...owner.keys()])));
+  return new Map(rows.filter((r) => owner.get(r.sourceId) === ownerKey(r)).map((r) => [r.sourceId, r]));
 }
 
 /**
@@ -229,8 +236,8 @@ async function shownOf(cs: readonly Collection[], on: Set<Kind>, insider: (c: Co
   const items = await itemRows(ids);
   const mods = await moduleRows(ids);
   const parts = await partRows(ids);
-  const shared = await catalogItemsFor('module', [...mods.values()].flat().map((r) => r.module.id));
-  const sharedParts = await catalogItemsFor('part', [...parts.values()].flat().map((r) => r.part.id));
+  const shared = await catalogItemsFor('module', [...mods.values()].flat().map((r) => r.module));
+  const sharedParts = await catalogItemsFor('part', [...parts.values()].flat().map((r) => r.part));
   const pictured = await picturedVersions(
     [...[...items.values()].flat().map((r) => r.item), ...shared.values(), ...sharedParts.values()].map((i) => ({ id: i.id, version: i.publicVersion })),
   );
@@ -458,13 +465,15 @@ async function applyEntries(id: string, entries: Entry[]): Promise<void> {
  * yet are shared, each for its own review. Ones that were declined or
  * unpublished are left for their owner to share again.
  */
-async function shareModules(user: User, c: Pick<Collection, 'title'>, entries: Entry[]): Promise<{ submitted: string[]; notShared: { id: string; error: string }[] }> {
+async function shareModules(user: User, c: Pick<Collection, 'title' | 'orgId' | 'ownerUserId'>, entries: Entry[]): Promise<{ submitted: string[]; notShared: { id: string; error: string }[] }> {
   const submitted: string[] = [];
   const notShared: { id: string; error: string }[] = [];
+  // A collection's own modules and parts are its owner's.
+  const owner: Owned = c.orgId ? { ownerUserId: null, ownerOrgId: c.orgId } : { ownerUserId: c.ownerUserId, ownerOrgId: null };
   for (const kind of ['module', 'part'] as const) {
     const ids = entries.filter((e) => e.source === kind).map((e) => e.id);
     if (!ids.length) continue;
-    const shared = await catalogItemsFor(kind, ids);
+    const shared = await catalogItemsFor(kind, ids.map((id) => ({ id, ...owner })));
     for (const id of ids) {
       const it = shared.get(id);
       if (it && it.status !== 'withdrawn') continue;
@@ -728,8 +737,13 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
 
   // Items are never reviewed with the collection.
   await applyEntries(c.id, entries);
-  // A trusted club's curators (its admins and managers) publish its text at once.
-  const straight = canModerate(user) || (await getPlatformSettings()).catalogReview === 'none' || (await isTrustedClub(c.orgId));
+  // A trusted club's curators (its admins and managers) publish its text at
+  // once. One a moderator took down only comes back through review: a site
+  // moderator's through the site's, a club's through the club's own.
+  const hold = holdOf(c);
+  const clubCurator = await isTrustedClub(c.orgId);
+  const straight =
+    canModerate(user) || (hold === 'site' ? false : hold === 'club' ? clubCurator : (await getPlatformSettings()).catalogReview === 'none' || clubCurator);
   let status = c.status;
   let reviewed = false;
   if (audience === 'private') {
@@ -738,7 +752,8 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
     status = 'public';
     await db
       .update(schema.catalogCollections)
-      .set({ audience, status, featured: false, reason: null, pending: null, pendingAt: null })
+      // A takedown is remembered while it's private.
+      .set({ audience, status, featured: false, reason: null, pending: null, pendingAt: null, takenDownBy: hold })
       .where(eq(schema.catalogCollections.id, c.id));
   } else if (c.audience === 'private' || c.status === 'withdrawn') {
     // Made public (again): its text goes for review.
@@ -747,15 +762,15 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
     reviewed = !straight;
     await db
       .update(schema.catalogCollections)
-      .set({ audience, status, reason: null, pending: null, pendingAt: null })
+      .set({ audience, status, reason: null, pending: null, pendingAt: null, takenDownBy: straight ? null : hold })
       .where(eq(schema.catalogCollections.id, c.id));
-  } else if (straight && !(c.status === 'unpublished' && !canModerate(user))) {
+  } else if (straight) {
     // A moderator's change, or review is off: public at once.
     await applyText(c.id, text, now);
     status = 'public';
     await db
       .update(schema.catalogCollections)
-      .set({ status, reason: null, pending: null, pendingAt: null })
+      .set({ status, reason: null, pending: null, pendingAt: null, takenDownBy: null })
       .where(eq(schema.catalogCollections.id, c.id));
   } else if (c.status === 'public') {
     if (sameText(text, textOf(c))) {
@@ -779,12 +794,12 @@ async function editCollection(user: User, c: Collection, body: Record<string, un
     if (changed || c.status === 'in_review') {
       status = 'in_review';
       reviewed = changed;
-      await db.update(schema.catalogCollections).set({ status, reason: null }).where(eq(schema.catalogCollections.id, c.id));
+      await db.update(schema.catalogCollections).set({ status, reason: null, takenDownBy: hold }).where(eq(schema.catalogCollections.id, c.id));
     }
   }
   const pending = (await getCollection(c.id))?.pending != null;
   await pruneCovers(c.id);
-  const shared = audience === 'everyone' ? await shareModules(user, { title: text.title }, entries) : { submitted: [], notShared: [] };
+  const shared = audience === 'everyone' ? await shareModules(user, { title: text.title, orgId: c.orgId, ownerUserId: c.ownerUserId }, entries) : { submitted: [], notShared: [] };
   await writeAuditEvent({
     resourceKind: 'catalog_collection',
     resourceId: c.id,
@@ -833,7 +848,9 @@ export async function textQueue(queueRows: Collection[], shownAll: Map<string, S
       club: c.orgId,
     };
   });
-  const inClub = (e: { club: string | null }) => !!e.club && trusted.has(e.club);
+  // A club's collection a site moderator took down waits in the site's queue.
+  const siteHeld = new Set(queueRows.filter((c) => holdOf(c) === 'site').map((c) => c.id));
+  const inClub = (e: { id: string; club: string | null }) => !!e.club && trusted.has(e.club) && !siteHeld.has(e.id);
   return { queue: all.filter((e) => !inClub(e)), trustedQueue: all.filter(inClub) };
 }
 
@@ -844,7 +861,8 @@ export async function textQueue(queueRows: Collection[], shownAll: Map<string, S
 export async function decideCollection(user: User, id: string, approve: boolean, rawReason: unknown, clubId: string | null = null) {
   const c = await getCollection(id);
   const waiting = !!c && c.audience === 'everyone' && (c.status === 'in_review' || (c.status === 'public' && c.pending !== null));
-  if (!c || !waiting || (clubId && c.orgId !== clubId)) return { code: 404, body: { error: 'not_found' } };
+  // A club decides its own, except one a site moderator took down.
+  if (!c || !waiting || (clubId && (c.orgId !== clubId || holdOf(c) === 'site'))) return { code: 404, body: { error: 'not_found' } };
   const reason = cleanText(rawReason, MAX_REASON);
   if (reason === undefined) return { code: 400, body: { error: 'invalid_input' } };
   const now = new Date();
@@ -876,7 +894,7 @@ export async function decideCollection(user: User, id: string, approve: boolean,
     }
     await db
       .update(schema.catalogCollections)
-      .set({ status: 'public', reason: null, pending: null, pendingAt: null, updatedAt: now })
+      .set({ status: 'public', reason: null, pending: null, pendingAt: null, takenDownBy: null, updatedAt: now })
       .where(eq(schema.catalogCollections.id, c.id));
   } else if (d) {
     // A declined change: the public collection stays as it was.
@@ -905,12 +923,15 @@ export async function unpublishCollection(user: User, id: string, rawReason: unk
   if (c.audience !== 'everyone') return { code: 409, body: { error: 'not_public' } };
   await db
     .update(schema.catalogCollections)
-    .set({ status: 'unpublished', featured: false, reason, pending: null, pendingAt: null, updatedAt: new Date() })
+    .set({ status: 'unpublished', takenDownBy: nextHold(holdOf(c), clubId), featured: false, reason, pending: null, pendingAt: null, updatedAt: new Date() })
     .where(eq(schema.catalogCollections.id, c.id));
   await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_unpublish', payload: { reason, ...(clubId ? { byClub: clubId } : {}) } });
   await pruneCovers(c.id);
   return { code: 200, body: { ok: true } };
 }
+
+/** A collection a site moderator took down (or one taken down before who did was kept), in SQL. */
+export const siteHeldCollection = sql`(coalesce(${schema.catalogCollections.takenDownBy}, CASE WHEN ${schema.catalogCollections.status} = 'unpublished' THEN 'site' END, '') = 'site')`;
 
 /** Who each collection is by (its club's name, or its curator's). */
 export const collectionOwnerNames = (rows: readonly Collection[]) => byNames(rows);
@@ -1129,7 +1150,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       });
       await applyEntries(id, entries);
       await applyText(id, text, now);
-      const shared = audience === 'everyone' ? await shareModules(user, text, entries) : { submitted: [], notShared: [] };
+      const shared = audience === 'everyone' ? await shareModules(user, { title: text.title, orgId, ownerUserId: user.id }, entries) : { submitted: [], notShared: [] };
       await writeAuditEvent({
         resourceKind: 'catalog_collection',
         resourceId: id,
@@ -1192,7 +1213,8 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       if (refused) return reply.code(refused.code).send(refused.body);
       await db
         .update(schema.catalogCollections)
-        .set({ status: 'withdrawn', featured: false, pending: null, pendingAt: null, updatedAt: new Date() })
+        // A takedown is remembered through a withdrawal.
+        .set({ status: 'withdrawn', takenDownBy: holdOf(c), featured: false, pending: null, pendingAt: null, updatedAt: new Date() })
         .where(eq(schema.catalogCollections.id, c.id));
       await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_withdraw', payload: {} });
       await pruneCovers(c.id);
@@ -1435,6 +1457,21 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(r.code).send(r.body);
   });
 
+  // Put an unpublished collection back in the catalog, as it was. Only site
+  // moderators: curators ask by changing it, which sends it for review.
+  app.post<{ Params: { id: string } }>('/api/moderation/collections/:id/restore', async (req, reply) => {
+    const user = requireModerator(req);
+    const c = await getCollection(req.params.id);
+    if (!c) return reply.code(404).send({ error: 'not_found' });
+    if (c.status !== 'unpublished' || c.audience !== 'everyone') return reply.code(409).send({ error: 'not_unpublished' });
+    await db
+      .update(schema.catalogCollections)
+      .set({ status: 'public', takenDownBy: null, reason: null, updatedAt: new Date() })
+      .where(eq(schema.catalogCollections.id, c.id));
+    await writeAuditEvent({ resourceKind: 'catalog_collection', resourceId: c.id, userId: user.id, eventType: 'collection_restore', payload: {} });
+    return { ok: true };
+  });
+
   // Remove a club collection for good (abuse handling). Audit-logged.
   app.post<{ Params: { id: string }; Body: { reason?: unknown } }>('/api/moderation/collections/:id/remove', async (req, reply) => {
     const user = requireModerator(req);
@@ -1458,7 +1495,8 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // queues), 'listed' (public or unpublished, featured first), 'club'
   // (clubs' private ones). q (title, description, reason), from/to (ms),
   // sort ('oldest' | 'newest'), limit (≤ 100), offset; `total` counts every match.
-  const trustedColl = sql`EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogCollections.orgId} AND o.trusted = 1)`;
+  // Waiting in a trusted club's own queue: its collections, except one a site moderator took down.
+  const trustedColl = sql`(EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogCollections.orgId} AND o.trusted = 1) AND NOT ${siteHeldCollection})`;
   app.get<{ Querystring: { view?: string; q?: string; from?: string; to?: string; sort?: string; limit?: string; offset?: string } }>(
     '/api/moderation/collections/list',
     async (req, reply) => {

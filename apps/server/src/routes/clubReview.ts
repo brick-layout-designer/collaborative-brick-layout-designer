@@ -22,8 +22,8 @@ import { requireUser } from '../auth/cookie.js';
 import { escapeLike } from '../utils/validate.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
-import { canModerate, decideVersion, itemOut, ownerNames, picturedVersions, previewUrlOf, unpublishItem } from './catalog.js';
-import { decideCollection, textQueue, unpublishCollection, collectionOwnerNames, shownForQueue } from './collections.js';
+import { canModerate, decideVersion, itemOut, ownerNames, picturedVersions, previewUrlOf, sentText, siteHeldItem, unpublishItem } from './catalog.js';
+import { decideCollection, textQueue, unpublishCollection, collectionOwnerNames, shownForQueue, siteHeldCollection } from './collections.js';
 import { publicName } from '../utils/publicName.js';
 import { coverQueue, decideCover } from './itemCovers.js';
 
@@ -62,7 +62,7 @@ export async function clubReviewCount(orgId: string): Promise<number> {
     .select({ n: count() })
     .from(schema.catalogItemVersions)
     .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
-    .where(and(eq(schema.catalogItemVersions.status, 'in_review'), eq(schema.catalogItems.ownerOrgId, orgId)))
+    .where(and(eq(schema.catalogItemVersions.status, 'in_review'), eq(schema.catalogItems.ownerOrgId, orgId), sql`NOT ${siteHeldItem}`))
     .get();
   const collections = await db
     .select({ n: count() })
@@ -72,6 +72,7 @@ export async function clubReviewCount(orgId: string): Promise<number> {
         eq(schema.catalogCollections.orgId, orgId),
         eq(schema.catalogCollections.audience, 'everyone'),
         or(eq(schema.catalogCollections.status, 'in_review'), and(eq(schema.catalogCollections.status, 'public'), isNotNull(schema.catalogCollections.pending))),
+        sql`NOT ${siteHeldCollection}`,
       ),
     )
     .get();
@@ -138,6 +139,9 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
         version: schema.catalogItemVersions.version,
         note: schema.catalogItemVersions.note,
         createdAt: schema.catalogItemVersions.createdAt,
+        sentTitle: schema.catalogItemVersions.title,
+        sentDescription: schema.catalogItemVersions.description,
+        sentTags: schema.catalogItemVersions.tags,
         item: schema.catalogItems,
         submitter: schema.users.displayName,
         submitterId: schema.users.id,
@@ -145,7 +149,8 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.catalogItemVersions)
       .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
       .leftJoin(schema.users, eq(schema.users.id, schema.catalogItemVersions.submittedBy))
-      .where(and(eq(schema.catalogItemVersions.status, 'in_review'), eq(schema.catalogItems.ownerOrgId, org.id)))
+      // One a site moderator took down waits for the site's moderators.
+      .where(and(eq(schema.catalogItemVersions.status, 'in_review'), eq(schema.catalogItems.ownerOrgId, org.id), sql`NOT ${siteHeldItem}`))
       .orderBy(asc(schema.catalogItemVersions.createdAt));
     const published = await db
       .select()
@@ -161,6 +166,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
           eq(schema.catalogCollections.orgId, org.id),
           eq(schema.catalogCollections.audience, 'everyone'),
           or(eq(schema.catalogCollections.status, 'in_review'), and(eq(schema.catalogCollections.status, 'public'), isNotNull(schema.catalogCollections.pending))),
+          sql`NOT ${siteHeldCollection}`,
         ),
       );
     const publicColls = await db
@@ -177,8 +183,7 @@ export async function clubReviewRoutes(app: FastifyInstance): Promise<void> {
         versionId: w.versionId,
         itemId: w.item.id,
         kind: w.item.kind,
-        title: w.item.title,
-        description: w.item.description,
+        ...sentText({ ...w.item, sentTitle: w.sentTitle, sentDescription: w.sentDescription, sentTags: w.sentTags }),
         version: w.version,
         isUpdate: w.item.publicVersion > 0,
         note: w.note,

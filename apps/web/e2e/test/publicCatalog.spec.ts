@@ -224,7 +224,9 @@ test('parts: shared straight away, added from the Parts panel; modules inserted 
   await parts.getByRole('button', { name: 'Close' }).click();
   await page.getByPlaceholder(/fuzzy filter/i).first().fill(`Home signal ${ts}`);
   await expect(page.locator(`[title*="Home signal ${ts}"]`).first()).toBeVisible({ timeout: 15000 });
-  // The Coal stage is unpublished; insert a module that is public: share one first.
+  // The Coal stage is unpublished; insert a module that is public. Shared
+  // again, a moderator's takedown goes back through review (even with
+  // review off), and a moderator approves it.
   await as(page, OWNER, 'Owner Olive');
   await page.goto('/');
   await moduleRow(page, 'Coal stage').getByRole('button', { name: 'More for Coal stage' }).click();
@@ -232,7 +234,13 @@ test('parts: shared straight away, added from the Parts panel; modules inserted 
   const again = page.getByRole('dialog', { name: 'Share to the public catalog' });
   await again.getByLabel('Anyone can copy this into their own layouts.').check();
   await again.getByRole('button', { name: 'Publish update' }).click();
-  await expect(again.getByRole('status')).toContainText('in the public catalog now');
+  await expect(again.getByRole('status')).toContainText('Sent for review');
+  await as(page, ADMIN, 'Site Admin');
+  await page.goto('/admin');
+  await adminSection(page, 'moderation');
+  const back = page.getByTestId('moderation-entry').filter({ hasText: 'Coal stage' });
+  await back.getByRole('button', { name: 'Approve Coal stage' }).click();
+  await expect(back).toHaveCount(0);
   await as(page, TAKER, 'Taker Tom');
   await page.goto(`/editor/${layoutId}`);
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });

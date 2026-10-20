@@ -1161,6 +1161,8 @@ export const api = {
     decline: (versionId: string, reason: string) =>
       post<{ ok: true }>(`/api/moderation/versions/${encodeURIComponent(versionId)}/decline`, { reason }),
     unpublish: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/unpublish`, { reason }),
+    /** Put an unpublished item back in the catalog, on the version it had. */
+    restore: (id: string) => post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(id)}/restore`, {}),
     decideCover: (itemId: string, approve: boolean, reason = '') =>
       post<{ ok: true }>(`/api/moderation/items/${encodeURIComponent(itemId)}/cover/${approve ? 'approve' : 'decline'}`, approve ? {} : { reason }),
     collections: () =>
@@ -1182,6 +1184,8 @@ export const api = {
     approveCollection: (id: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/approve`, {}),
     declineCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/decline`, { reason }),
     unpublishCollection: (id: string, reason: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/unpublish`, { reason }),
+    /** Put an unpublished collection back in the catalog, as it was. */
+    restoreCollection: (id: string) => post<{ ok: true }>(`/api/moderation/collections/${encodeURIComponent(id)}/restore`, {}),
     featureCollection: (id: string, featured: boolean) =>
       post<{ ok: true; featured: boolean }>(`/api/moderation/collections/${encodeURIComponent(id)}/feature`, { featured }),
   },
@@ -1340,6 +1344,8 @@ export interface MyCatalogItem {
   reason: string | null;
   version: number;
   pendingVersion: number | null;
+  /** The text sent with the version waiting, public once it's approved. Older servers leave it out. */
+  pendingText?: CatalogText | null;
   /** Its drawn picture; '' when it has none. Older servers leave it out. */
   drawnUrl?: string;
   /** How many public collections it's in. */
@@ -1506,13 +1512,23 @@ export interface CatalogCopy {
   updateAvailable: boolean;
 }
 
+/** A catalog item's title, description and tags. */
+export interface CatalogText {
+  title: string;
+  description: string;
+  tags: string[];
+}
+
 export interface ModerationEntry {
   versionId: string;
   itemId: string;
   kind: CatalogKind;
+  /** The text sent with this version (it becomes public when approved). */
   title: string;
   description: string;
   tags: string[];
+  /** An update that changes the text: what the public sees now. Older servers leave it out. */
+  current?: CatalogText | null;
   version: number;
   isUpdate: boolean;
   note: string | null;
@@ -1822,6 +1838,8 @@ export interface ClubReview {
     submitter: string | null;
     createdAt: number;
     previewUrl: string;
+    /** An update that changes the text: what the public sees now (the title and description above are the new ones). */
+    current?: CatalogText | null;
   }[];
   collections: CollectionReviewEntry[];
   /** New pictures for the club's public items (older servers leave it out). */
