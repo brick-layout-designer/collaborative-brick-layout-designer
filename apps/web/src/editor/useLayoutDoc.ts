@@ -91,6 +91,12 @@ export const MERGE_REFUSED =
 
 const MERGE_REFUSED_REASON = 'layout_merge_refused';
 
+/** The server refused what this page sent because the apps can't read it (ws/updateGuard.ts). */
+export const UPDATE_REFUSED =
+  "The server didn't take this page's latest changes: they hold something the apps can't read, so the layout on the server wasn't changed. Nothing you did is lost: your copy is kept on this page. Save it as a new layout or download it.";
+
+const UPDATE_REFUSED_REASON = 'unreadable_update';
+
 /**
  * Close codes after which a connection never comes back: retrying can't
  * succeed (and y-websocket would otherwise reconnect with backoff forever).
@@ -104,6 +110,7 @@ function isFinalClose(event: CloseEvent): boolean {
 /** Why a final close ended the layout, for the kept copy's card. */
 function whyEnded(event: CloseEvent): RefusedWhy {
   if (event.reason === MERGE_REFUSED_REASON) return 'merge';
+  if (event.reason === UPDATE_REFUSED_REASON) return 'unreadable';
   return event.code === 4404 ? 'gone' : 'signed_out';
 }
 
@@ -284,7 +291,8 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
         const hadUnsent = unsent;
         unsent = false;
         provider.disconnect();
-        if (event.reason === MERGE_REFUSED_REASON || hadUnsent) refused = keepRefusedCopy(layoutId, fresh, whyEnded(event));
+        const why = whyEnded(event);
+        if (why === 'merge' || why === 'unreadable' || hadUnsent) refused = keepRefusedCopy(layoutId, fresh, why);
         if (syncTimer) {
           clearTimeout(syncTimer);
           syncTimer = null;
@@ -293,11 +301,13 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
           new Error(
             event.code === 4404
               ? LAYOUT_NOT_FOUND
-              : event.reason === MERGE_REFUSED_REASON
+              : why === 'merge'
                 ? MERGE_REFUSED
-                : event.reason === 'account_pending_deletion'
-                  ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
-                  : SIGN_IN_TO_OPEN,
+                : why === 'unreadable'
+                  ? UPDATE_REFUSED
+                  : event.reason === 'account_pending_deletion'
+                    ? 'Your account is being deleted, so you were signed out. Sign in again to keep it.'
+                    : SIGN_IN_TO_OPEN,
           ),
         );
       } else if (event.code === 4429) {

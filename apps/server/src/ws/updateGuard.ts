@@ -1,0 +1,294 @@
+// A check on the bytes of a shared layout before the server reads them,
+// the same check the desktop runs (desktop src/sync/UpdateGuard.cpp, same
+// rules, same limits, same test vectors: fixtures/contracts/update-guard.json).
+//
+// Whatever the server takes it also stores and sends to every desktop, and
+// the desktop's Yjs (yrs) refuses some updates the web's Yjs reads: so the
+// server refuses them on the way in, and both apps hold the same layout.
+// The walk follows the update v1 encoding without allocating, and refuses:
+//
+// - more than MAX_UPDATE_BYTES;
+// - a count or length longer than the bytes left could hold;
+// - values nested deeper than MAX_NESTING;
+// - content kinds the desktop can't read, or a layout never holds (weak links);
+// - strings with a NUL character in them;
+// - an empty GC or skip block.
+//
+// Where yrs reads a field differently from Yjs (a JSON content holds one
+// string more than its count), the walk follows yrs, like the desktop's.
+// Neither app writes that content kind.
+
+/** The largest update or state vector read (the desktop's kMaxUpdateBytes). */
+export const MAX_UPDATE_BYTES = 64 * 1024 * 1024;
+
+/** How deep values may nest (the desktop's kMaxNesting). The layout model nests 5 deep. */
+export const MAX_NESTING = 256;
+
+// Block info byte.
+const GC = 0;
+const SKIP = 10;
+const HAS_ORIGIN = 0x80;
+const HAS_RIGHT_ORIGIN = 0x40;
+const HAS_PARENT_SUB = 0x20;
+
+class Refused extends Error {}
+
+class Walk {
+  private p = 0;
+  private readonly b: Uint8Array;
+
+  constructor(bytes: Uint8Array) {
+    this.b = bytes;
+  }
+
+  private left(): number {
+    return this.b.length - this.p;
+  }
+
+  private fail(why: string): never {
+    throw new Refused(why);
+  }
+
+  private u8(): number {
+    if (this.p >= this.b.length) this.fail('it ends early');
+    return this.b[this.p++]!;
+  }
+
+  private skip(n: number): void {
+    if (n > this.left()) this.fail('it ends early');
+    this.p += n;
+  }
+
+  /** lib0 varUint. Ten bytes hold 64 bits; Yjs never writes more. (Precision past 2^53 doesn't matter: only compared with byte counts.) */
+  private varUint(): number {
+    let v = 0;
+    let scale = 1;
+    for (let i = 0; i < 10; i++) {
+      const byte = this.u8();
+      v += (byte & 0x7f) * scale;
+      if ((byte & 0x80) === 0) return v;
+      scale *= 128;
+    }
+    this.fail('a number runs on past 64 bits');
+  }
+
+  /** A count of things that each take at least `minBytes`: never more than the bytes left could hold. */
+  private count(minBytes: number, what: string): number {
+    const n = this.varUint();
+    if (n > Math.floor(this.left() / minBytes)) this.fail(`it claims ${n} ${what} with ${this.left()} bytes left`);
+    return n;
+  }
+
+  /** lib0 varUint8Array: a length, then that many bytes. Returns where they start. */
+  private bytes(): [number, number] {
+    const len = this.varUint();
+    if (len > this.left()) this.fail(`a ${len}-byte string with ${this.left()} bytes left`);
+    const start = this.p;
+    this.p += len;
+    return [start, len];
+  }
+
+  /** lib0 varString, without a NUL inside. */
+  private text(): void {
+    const [start, len] = this.bytes();
+    if (len > 0 && this.b.subarray(start, start + len).includes(0)) this.fail('a string has a NUL character in it');
+  }
+
+  update(): void {
+    const clients = this.count(3, 'clients'); // each: block count, client id, clock
+    for (let c = 0; c < clients; c++) {
+      const blocks = this.count(2, 'blocks'); // each: info byte and at least one more
+      this.varUint(); // client id
+      this.varUint(); // first clock
+      for (let i = 0; i < blocks; i++) this.block();
+    }
+    this.deleteSet();
+  }
+
+  stateVector(): void {
+    const clients = this.count(2, 'clients'); // each: client id, clock
+    for (let c = 0; c < clients; c++) {
+      this.varUint();
+      this.varUint();
+    }
+  }
+
+  private block(): void {
+    const info = this.u8();
+    if (info === GC || info === SKIP) {
+      // Yjs never writes an empty one, and the desktop's yrs divides by zero
+      // looking up a clock after an empty GC block.
+      if (this.varUint() === 0) this.fail('it holds an empty block');
+      return;
+    }
+    const cantCopyParentInfo = (info & (HAS_ORIGIN | HAS_RIGHT_ORIGIN)) === 0;
+    if (info & HAS_ORIGIN) {
+      this.varUint();
+      this.varUint();
+    }
+    if (info & HAS_RIGHT_ORIGIN) {
+      this.varUint();
+      this.varUint();
+    }
+    if (cantCopyParentInfo) {
+      if (this.varUint() === 1) this.text(); // a root type's name
+      else {
+        this.varUint(); // or the id of the type it's in
+        this.varUint();
+      }
+      if (info & HAS_PARENT_SUB) this.text(); // map key
+    }
+    this.content(info & 0x0f);
+  }
+
+  private content(ref: number): void {
+    switch (ref) {
+      case 1: // deleted: a length
+        this.varUint();
+        return;
+      case 2: {
+        // JSON: yrs reads count + 1 strings
+        const n = this.varUint();
+        if (n >= this.left()) this.fail(`it claims ${n + 1} JSON values with ${this.left()} bytes left`);
+        for (let i = 0; i <= n; i++) this.text();
+        return;
+      }
+      case 3: // binary
+        this.bytes();
+        return;
+      case 4: // string
+      case 5: // embed (JSON text)
+        this.text();
+        return;
+      case 6: // format: key, JSON text
+        this.text();
+        this.text();
+        return;
+      case 7: // a nested type
+        this.typeRef();
+        return;
+      case 8: {
+        // values
+        const n = this.count(1, 'values');
+        for (let i = 0; i < n; i++) this.any(0);
+        return;
+      }
+      case 9: // a sub-document: guid, options
+        this.text();
+        this.any(0);
+        return;
+      default:
+        this.fail(`unknown content kind ${ref}`);
+    }
+  }
+
+  private typeRef(): void {
+    const ref = this.u8();
+    switch (ref) {
+      case 0: // array
+      case 1: // map
+      case 2: // text
+      case 4: // XML fragment
+      case 5: // XML hook
+      case 6: // XML text
+      case 9: // sub-document
+      case 15: // undefined
+        return;
+      case 3: // XML element: its name
+        this.text();
+        return;
+      case 7:
+        return this.fail('it holds a weak link, which layouts never use');
+      default:
+        return this.fail(`unknown type ${ref}`);
+    }
+  }
+
+  /** lib0 Any (iterative, so a deep one can't overflow the stack here either). */
+  private any(depth0: number): void {
+    // Pending container items: [items left, depth of those items, is object].
+    const stack: [number, number, boolean][] = [];
+    let depth = depth0;
+    for (;;) {
+      if (depth > MAX_NESTING) this.fail(`values nest more than ${MAX_NESTING} deep`);
+      const tag = this.u8();
+      switch (tag) {
+        case 127: // undefined
+        case 126: // null
+        case 121: // false
+        case 120: // true
+          break;
+        case 125: // varInt: the same continuation bit as varUint
+          this.varUint();
+          break;
+        case 124: // float32
+          this.skip(4);
+          break;
+        case 123: // float64
+        case 122: // bigint64
+          this.skip(8);
+          break;
+        case 119: // string
+          this.text();
+          break;
+        case 116: // bytes
+          this.bytes();
+          break;
+        case 118: {
+          // object: key, value pairs
+          const n = this.count(2, 'object entries');
+          if (n > 0) stack.push([n, depth + 1, true]);
+          break;
+        }
+        case 117: {
+          // array
+          const n = this.count(1, 'array items');
+          if (n > 0) stack.push([n, depth + 1, false]);
+          break;
+        }
+        default:
+          this.fail(`unknown value kind ${tag}`);
+      }
+      // The next value: the next item of the innermost open container.
+      const top = stack.at(-1);
+      if (!top) return;
+      if (top[2]) this.text(); // object key
+      depth = top[1];
+      if (--top[0] === 0) stack.pop();
+    }
+  }
+
+  private deleteSet(): void {
+    const clients = this.count(2, 'deleted-range clients'); // each: client id, range count
+    for (let c = 0; c < clients; c++) {
+      this.varUint(); // client id
+      const ranges = this.count(2, 'deleted ranges'); // each: clock, length
+      for (let r = 0; r < ranges; r++) {
+        this.varUint();
+        this.varUint();
+      }
+    }
+    // Anything after the delete set is ignored (yrs does the same).
+  }
+}
+
+function run(bytes: Uint8Array, walk: (w: Walk) => void): string | null {
+  if (bytes.length > MAX_UPDATE_BYTES) return `${bytes.length} bytes is over the ${MAX_UPDATE_BYTES / (1024 * 1024)} MiB limit`;
+  try {
+    walk(new Walk(bytes));
+    return null;
+  } catch (err) {
+    if (err instanceof Refused) return err.message;
+    throw err;
+  }
+}
+
+/** Null when `update` (Yjs update v1) may be read; otherwise why not, for the log. */
+export function checkUpdate(update: Uint8Array): string | null {
+  return run(update, (w) => w.update());
+}
+
+/** The same for a state vector (sync step 1). */
+export function checkStateVector(stateVector: Uint8Array): string | null {
+  return run(stateVector, (w) => w.stateVector());
+}

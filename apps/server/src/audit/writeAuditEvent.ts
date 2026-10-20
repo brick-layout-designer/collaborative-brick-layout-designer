@@ -40,6 +40,10 @@ export type AuditEventType =
   // like it might (many clients the layout had never seen at once).
   | 'layout_merge_refused'
   | 'layout_merge_suspected'
+  // The live editor refused an update the apps can't read (ws/updateGuard.ts),
+  // or one that left too much waiting for changes the layout doesn't have
+  // (ws/pending.ts). Once per connection.
+  | 'layout_update_refused'
   // A module went back to an earlier version (as a new version).
   | 'restore_version'
   // Platform-admin actions. Subject is the resource being modified

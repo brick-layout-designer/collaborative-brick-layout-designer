@@ -30,6 +30,7 @@ import { canModerate } from './catalog.js';
 import type { User } from '../db/schema.js';
 import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
+import { checkUpdate } from '../ws/updateGuard.js';
 
 type ModuleRow = typeof schema.modules.$inferSelect;
 
@@ -330,6 +331,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     if (bytes.length > 50 * 1024 * 1024) {
       return reply.code(413).send({ error: 'snapshot_too_large' });
     }
+    // Only a document both apps can read (the live editor's check).
+    if (checkUpdate(bytes) !== null) return reply.code(400).send({ error: 'unreadable_snapshot' });
     const updatedAt = new Date();
     const current = await db
       .select({

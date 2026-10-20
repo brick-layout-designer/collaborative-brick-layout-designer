@@ -44,7 +44,7 @@ class FakeProvider {
 
 vi.mock('y-websocket', () => ({ WebsocketProvider: FakeProvider }));
 
-const { MERGE_REFUSED, layoutsStillSending, useLayoutDoc } = await import('../useLayoutDoc');
+const { MERGE_REFUSED, UPDATE_REFUSED, layoutsStillSending, useLayoutDoc } = await import('../useLayoutDoc');
 const { dropRefusedCopy, markRefusedCopyKept, useRefusedCopies } = await import('../refusedCopies');
 
 function destroyed(doc: Y.Doc): () => boolean {
@@ -226,6 +226,23 @@ describe('switching layouts', () => {
     expect(copy?.why).toBe('gone');
     expect(copy?.doc.getArray('layers').toArray()).toEqual(['offline-edit']);
     unmount();
+  });
+
+  it('says plainly when the server cannot read a change, and keeps the copy', () => {
+    const { result, unmount } = renderHook(() => useLayoutDoc('E'));
+    const p = providers.at(-1)!;
+    act(() => p.emit('sync', true));
+    act(() => addLayer(p.doc, 'unreadable-edit'));
+    const gone = destroyed(p.doc);
+    act(() => p.emit('connection-close', { code: 1008, reason: 'unreadable_update' }));
+    expect(result.current.loadError?.message).toBe(UPDATE_REFUSED);
+    expect(p.disconnected).toBe(true);
+    unmount();
+    expect(gone()).toBe(false);
+    const copy = useRefusedCopies.getState().copies.find((c) => c.layoutId === 'E');
+    expect(copy?.why).toBe('unreadable');
+    expect(copy?.doc.getArray('layers').toArray()).toEqual(['unreadable-edit']);
+    dropRefusedCopy(copy!.key);
   });
 
   it('a refusal before the layout arrived has nothing to keep', () => {

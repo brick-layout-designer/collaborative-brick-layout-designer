@@ -46,6 +46,12 @@ describe('kept copy card', () => {
     expect(screen.getByText(/This layout was deleted, or is no longer shared with you/)).toBeTruthy();
   });
 
+  it('an update the apps cannot read: says so', () => {
+    show('unreadable');
+    expect(screen.getByText(/they hold something the apps can't read/)).toBeTruthy();
+    expect(screen.queryByText(/another layout's parts/)).toBeNull();
+  });
+
   it('a refused merge keeps its own wording', () => {
     show('merge');
     expect(screen.getByText(/looked like another layout's parts going into it/)).toBeTruthy();

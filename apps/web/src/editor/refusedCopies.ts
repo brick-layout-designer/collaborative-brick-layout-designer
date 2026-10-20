@@ -9,10 +9,12 @@ import * as Y from 'yjs';
 import { create } from 'zustand';
 
 /**
- * Why the server never got the copy's changes: it refused them as a merge,
- * the person was signed out, or the layout was deleted (or unshared).
+ * Why the server never got the copy's changes: it refused them as a merge
+ * (1008 layout_merge_refused) or as something the apps can't read (1008
+ * unreadable_update, apps/server/src/ws/updateGuard.ts), the person was
+ * signed out, or the layout was deleted (or unshared).
  */
-export type RefusedWhy = 'merge' | 'signed_out' | 'gone';
+export type RefusedWhy = 'merge' | 'unreadable' | 'signed_out' | 'gone';
 
 export interface RefusedCopy {
   /** Unique per copy (one layout can be refused twice). */
