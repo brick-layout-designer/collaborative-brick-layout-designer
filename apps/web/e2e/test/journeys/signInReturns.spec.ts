@@ -56,7 +56,7 @@ test('sign-in, sign-up and invites come back to the link that was followed', asy
   const reg = await submitAuthForm(newbie, '/api/auth/password/register', () => newbie.getByRole('button', { name: 'Create account' }).click());
   // The sign-up says where to go once the email is confirmed.
   expect(reg.request().postDataJSON()).toMatchObject({ next: invitePath });
-  await expect(newbie.getByText('for a confirmation link')).toBeVisible();
+  await expect(newbie.getByText(/Check your email/)).toBeVisible();
   const token = await getVerificationToken(NEWBIE);
   await newbie.goto(`/verify-email/${token}?next=${encodeURIComponent(invitePath)}`);
   await expect(newbie).toHaveURL(new RegExp(`/orgs/${club.slug}$`), { timeout: 15_000 });
