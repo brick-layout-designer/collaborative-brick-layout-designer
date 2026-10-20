@@ -22,6 +22,15 @@ export function RefusedCopies() {
   );
 }
 
+const WHY: Record<RefusedCopy['why'], string> = {
+  merge:
+    "The server didn't take your latest changes to this layout, because they looked like another layout's parts going into it. Nothing you did is lost, but it's only on this page: save it as a new layout or download it before you close the page.",
+  signed_out:
+    'You were signed out before your latest changes to this layout reached the server. Nothing you did is lost, but it’s only on this page: sign in again in another tab and save it as a new layout, or download it, before you close the page.',
+  gone:
+    'This layout was deleted, or is no longer shared with you, before your latest changes reached the server. Nothing you did is lost, but it’s only on this page: save it as a new layout or download it before you close the page.',
+};
+
 function CopyCard({ copy }: { copy: RefusedCopy }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -92,11 +101,7 @@ function CopyCard({ copy }: { copy: RefusedCopy }) {
       <p id={headingId} className="text-sm font-semibold">
         Your copy of “{title}” is kept on this page
       </p>
-      <p className="mt-2 text-sm">
-        The server didn't take your latest changes to this layout, because they looked like another layout's parts
-        going into it. Nothing you did is lost, but it's only on this page: save it as a new layout or download it
-        before you close the page.
-      </p>
+      <p className="mt-2 text-sm">{WHY[copy.why]}</p>
       {error && (
         <p role="alert" className="mt-2 text-sm text-danger">
           {error}
