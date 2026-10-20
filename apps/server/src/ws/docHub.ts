@@ -10,13 +10,26 @@
 // simplest correct shape.
 
 import * as Y from 'yjs';
-import { Awareness } from 'y-protocols/awareness';
+import { Awareness, applyAwarenessUpdate } from 'y-protocols/awareness';
+import * as decoding from 'lib0/decoding';
+import * as encoding from 'lib0/encoding';
 import { eq, and } from 'drizzle-orm';
 import { upgradeDoc } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 import { rollup } from '../metrics/rollup.js';
 import { MAX_PENDING_BYTES, dropPending, pendingBytes } from './pending.js';
+
+/**
+ * Largest awareness (presence) message taken from a client. A presence
+ * entry holds the selection's brick ids: selecting all 940 parts of Fordyce
+ * is 6.6 KB, and 1 MiB holds the selection of a ~45 000-part layout (ids of up
+ * to 19 digits). Larger messages are dropped.
+ */
+export const MAX_AWARENESS_BYTES = 1024 * 1024;
+
+/** Awareness clientIDs one connection may own (an app uses one per layout it has open). */
+export const MAX_AWARENESS_IDS = 4;
 
 export class DocSession {
   readonly doc: Y.Doc;
@@ -30,17 +43,19 @@ export class DocSession {
   /** Idle timer id; clearTimeout on the next attached client. */
   idleTimer: ReturnType<typeof setTimeout> | null = null;
   /**
-   * Authenticated user id per attached client. Awareness updates that
-   * arrive from a client (origin === that client) have their `user.id`
-   * pinned to this value so a peer can't impersonate someone else.
+   * Authenticated user id per attached client. Awareness entries from a
+   * client get their `user.id` set to this value so a peer can't
+   * impersonate someone else (applyClientAwareness).
    */
   readonly clientUsers = new Map<unknown, string>();
   /**
-   * Awareness clientIDs each attached client has set. Yjs assigns a
-   * random clientID per browser Y.Doc, so we learn them as updates flow
-   * through and remove them when the client disconnects.
+   * Awareness clientIDs each attached client owns. Yjs assigns a random
+   * clientID per Y.Doc, so we learn them as updates flow through and
+   * remove them when the client disconnects.
    */
   readonly clientAwarenessIds = new Map<unknown, Set<number>>();
+  /** The attached client that owns each awareness clientID (the first to set it). */
+  readonly awarenessOwners = new Map<number, unknown>();
   /** Set by DocHub.close(); a closed session never persists or re-arms. */
   closed = false;
   private broadcasting = false;
@@ -80,27 +95,8 @@ export class DocSession {
         changes: { added: number[]; updated: number[]; removed: number[] },
         origin: unknown,
       ) => {
-        // Identity validation: when the change came FROM a specific
-        // client, we know that client's true userId. Overwrite a forged
-        // `user.id` (cursor / selection / displayName are cosmetic and
-        // left alone) and remember the clientID for disconnect cleanup.
-        const userId = this.clientUsers.get(origin);
-        if (userId !== undefined) {
-          let owned = this.clientAwarenessIds.get(origin);
-          if (!owned) {
-            owned = new Set();
-            this.clientAwarenessIds.set(origin, owned);
-          }
-          for (const clientId of [...changes.added, ...changes.updated]) {
-            owned.add(clientId);
-            const state = this.awareness.getStates().get(clientId) as
-              | { user?: { id?: string } }
-              | undefined;
-            if (state?.user?.id && state.user.id !== userId) {
-              state.user.id = userId;
-            }
-          }
-        }
+        // (Who may set which entry, and the user.id on it, is settled
+        // before it is applied: applyClientAwareness.)
         const changedClients = [...changes.added, ...changes.updated, ...changes.removed];
         if (changedClients.length === 0) return;
         const payload = encodeAwarenessUpdate(this.awareness, changedClients);
@@ -110,6 +106,73 @@ export class DocSession {
         }
       },
     );
+  }
+
+  /**
+   * Apply an awareness (presence) message from an attached client. Each
+   * entry is someone's presence, keyed by a clientID; a connection may set
+   * only its own:
+   *   - the first connection to set a clientID owns it until it
+   *     disconnects; entries for one another person's connection owns are
+   *     dropped (the same person's earlier connection hands it over: a
+   *     reconnect before the old socket's close is seen);
+   *   - at most MAX_AWARENESS_IDS clientIDs per connection, and never the
+   *     server's own;
+   *   - `user.id` is always the signed-in user's, whatever was sent;
+   *   - a removal (state null) only of an entry it owns.
+   * The caller drops messages over MAX_AWARENESS_BYTES. Throws on a
+   * message that can't be read (the handler drops it).
+   */
+  applyClientAwareness(client: unknown, bytes: Uint8Array): void {
+    const userId = this.clientUsers.get(client);
+    if (userId === undefined) return;
+    const dec = decoding.createDecoder(bytes);
+    const enc = encoding.createEncoder();
+    const kept: [number, number, string][] = [];
+    let owned = this.clientAwarenessIds.get(client);
+    const count = decoding.readVarUint(dec);
+    for (let i = 0; i < count; i++) {
+      const clientId = decoding.readVarUint(dec);
+      const clock = decoding.readVarUint(dec);
+      const state = JSON.parse(decoding.readVarString(dec)) as unknown;
+      if (clientId === this.awareness.clientID) continue;
+      const owner = this.awarenessOwners.get(clientId);
+      const mine = owner === client;
+      if (!mine && owner !== undefined && this.clientUsers.get(owner) !== userId) continue;
+      if (state === null) {
+        if (!mine) continue;
+        kept.push([clientId, clock, 'null']);
+        continue;
+      }
+      if (typeof state !== 'object' || Array.isArray(state)) continue;
+      if (!mine) {
+        if ((owned?.size ?? 0) >= MAX_AWARENESS_IDS) continue;
+        // Claim it (or take it over from this person's earlier connection).
+        if (owner !== undefined) this.clientAwarenessIds.get(owner)?.delete(clientId);
+        this.awarenessOwners.set(clientId, client);
+        if (!owned) this.clientAwarenessIds.set(client, (owned = new Set()));
+        owned.add(clientId);
+      }
+      const s = state as Record<string, unknown>;
+      const user = s.user !== null && typeof s.user === 'object' && !Array.isArray(s.user) ? (s.user as Record<string, unknown>) : {};
+      kept.push([clientId, clock, JSON.stringify({ ...s, user: { ...user, id: userId } })]);
+    }
+    if (kept.length === 0) return;
+    encoding.writeVarUint(enc, kept.length);
+    for (const [clientId, clock, json] of kept) {
+      encoding.writeVarUint(enc, clientId);
+      encoding.writeVarUint(enc, clock);
+      encoding.writeVarString(enc, json);
+    }
+    applyAwarenessUpdate(this.awareness, encoding.toUint8Array(enc), client);
+  }
+
+  /** Forget what a client owned (it disconnected). Returns the clientIDs it still owned. */
+  releaseAwareness(client: unknown): number[] {
+    const owned = [...(this.clientAwarenessIds.get(client) ?? [])];
+    for (const id of owned) if (this.awarenessOwners.get(id) === client) this.awarenessOwners.delete(id);
+    this.clientAwarenessIds.delete(client);
+    return owned;
   }
 
   /**
@@ -326,7 +389,7 @@ class DocHub {
   async detach(session: DocSession, client: unknown): Promise<void> {
     if (!session.clients.delete(client)) return;
     session.clientUsers.delete(client);
-    session.clientAwarenessIds.delete(client);
+    session.releaseAwareness(client);
     if (session.closed || session.clients.size > 0) return;
     // Final flush so a server restart doesn't lose the last few seconds.
     await session.flushSnapshot();
@@ -367,6 +430,7 @@ class DocHub {
     session.clients.clear();
     session.clientUsers.clear();
     session.clientAwarenessIds.clear();
+    session.awarenessOwners.clear();
     for (const client of clients) {
       if (!isWsPeer(client)) continue;
       try {
