@@ -21,6 +21,7 @@ import type {
 import { writeColorSpec } from './color.js';
 import { formatBool, formatInt, formatNumber } from './format.js';
 import { vanillaPostProcess, XmlBuilder } from './xml.js';
+import { BBM_FORMAT_VERSION } from '@cld/model';
 
 export interface WriteOptions {
   /**
@@ -41,7 +42,10 @@ export function writeBbm(map: BbmMap, opts: WriteOptions = {}): string {
   const b = new XmlBuilder();
   b.prolog();
   b.open('Map');
-  b.textElement('Version', formatInt(map.version));
+  // Always the version written: what's in the file is v9 whatever version
+  // it was read from (an older reader would misread v9's extra elements),
+  // as the desktop does (BbmWriter.cpp writes kCurrentDataVersion).
+  b.textElement('Version', formatInt(BBM_FORMAT_VERSION));
   b.textElement('nbItems', formatInt(nbItems));
   writeColorBlock(b, 'BackgroundColor', map.backgroundColor);
   b.textElement('Author', map.author);
