@@ -6,7 +6,7 @@
 
 export { readBbm, type ReadResult } from './Reader.js';
 export { writeBbm, type WriteOptions } from './Writer.js';
-export { vanillaPostProcess } from './xml.js';
+export { stripInvalidXmlChars, vanillaPostProcess } from './xml.js';
 export { formatBool, formatInt, formatNumber, parseBool } from './format.js';
 export {
   CURRENT_SCHEMA_VERSION,

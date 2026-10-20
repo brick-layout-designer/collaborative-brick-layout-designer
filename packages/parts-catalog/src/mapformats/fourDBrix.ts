@@ -9,7 +9,7 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import type { BbmMap, Brick, Group, LayerBrick } from '@cld/model';
-import { formatNumber } from '@cld/bbm/browser';
+import { formatNumber, stripInvalidXmlChars } from '@cld/bbm/browser';
 import { rebuildConnectivity } from '../connectivity.js';
 import type { PartMetadata } from '../types.js';
 import { MapLibrary, makeId, newBrickLayer, newGridLayer, newMap, type MapReadResult } from './library.js';
@@ -23,7 +23,7 @@ function unescape(s: string): string {
 }
 
 function escape(s: string): string {
-  return s.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll("'", '&apos;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  return stripInvalidXmlChars(s).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll("'", '&apos;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 // BlueBrick's ConnectionTypeList.xml <FourDBrixName>s.
