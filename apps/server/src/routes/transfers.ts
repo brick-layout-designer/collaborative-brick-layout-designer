@@ -21,7 +21,7 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
@@ -34,6 +34,7 @@ import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail, trimmed } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
+import { clearPendingLayoutShares } from '../access/pendingShares.js';
 
 interface InitiateTransferBody {
   /** Recipient kind. Exactly one of `recipientEmail` / `recipientOrgSlug` set. */
@@ -110,9 +111,9 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
             updatedAt: new Date(),
           })
           .where(eq(schema.layouts.id, req.params.id));
-        // Ownership changed: any pending user->user transfer was issued by
+        // Ownership changed: pending transfers and invites were sent by
         // the previous owner and must not be redeemable any more.
-        await deletePendingLayoutTransfers(req.params.id);
+        await clearPendingLayoutShares(req.params.id);
 
         await writeAuditEvent({
           layoutId: req.params.id,
@@ -292,7 +293,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         .update(schema.layoutTransfers)
         .set({ acceptedAt: now })
         .where(eq(schema.layoutTransfers.id, transfer.id));
-      await deletePendingLayoutTransfers(transfer.layoutId, transfer.id);
+      await clearPendingLayoutShares(transfer.layoutId, transfer.id);
 
       // The previous owner (initiator) loses ownership but it's polite
       // to keep them as a collaborator so they don't lose access entirely.
@@ -345,21 +346,4 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     },
   );
-}
-
-/**
- * Delete every not-yet-accepted transfer for a layout (optionally keeping
- * one). Call whenever the layout's owner changes: pending transfers were
- * issued by the previous owner.
- */
-async function deletePendingLayoutTransfers(layoutId: string, exceptId?: string): Promise<void> {
-  await db
-    .delete(schema.layoutTransfers)
-    .where(
-      and(
-        eq(schema.layoutTransfers.layoutId, layoutId),
-        isNull(schema.layoutTransfers.acceptedAt),
-        exceptId ? ne(schema.layoutTransfers.id, exceptId) : undefined,
-      ),
-    );
 }

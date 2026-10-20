@@ -11,6 +11,7 @@ import { and, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { fallbackName, publicName } from '../utils/publicName.js';
+import { handedOverIds } from '../access/pendingShares.js';
 
 export type CreditKind = 'layout' | 'module' | 'custom-part' | 'venue';
 
@@ -23,7 +24,7 @@ export interface Credit {
   club: string | null;
   /** What it was copied from, while that still exists. */
   basedOn: { id: string; title: string; by: string | null } | null;
-  /** The person looking is its author and a member of the club holding it. */
+  /** The person looking is its author (who hasn't handed it to someone else) and a member of the club holding it. */
   canTakeBack: boolean;
   /** The person looking runs the club holding it, and the author's account exists. */
   canGiveBack: boolean;
@@ -107,12 +108,12 @@ export async function creditLookup(
     ? new Map(
         (
           await db
-            .select({ id: schema.users.id, name: schema.users.displayName })
+            .select({ id: schema.users.id, name: schema.users.displayName, email: schema.users.email })
             .from(schema.users)
             .where(inArray(schema.users.id, [...authorIds]))
-        ).map((u) => [u.id, u.name]),
+        ).map((u) => [u.id, u]),
       )
-    : new Map<string, string>();
+    : new Map<string, { id: string; name: string; email: string }>();
   const orgIds = [...new Set(rows.map((r) => r.ownerOrgId).filter((x): x is string => !!x))];
   const orgs = orgIds.length
     ? new Map(
@@ -139,8 +140,16 @@ export async function creditLookup(
     if (!users.has(a)) return fallbackName(a);
     if (inClub && !roles.has(`${inClub}:${a}`)) return 'a former member';
     if (a === viewerId) return 'you';
-    return publicName(a, users.get(a));
+    return publicName(a, users.get(a)!.name);
   };
+
+  // Club-held things whose author handed them to someone else: no take-back or give-back.
+  const authorsOfClubThings = new Map<string, { id: string; email: string }>();
+  for (const r of rows) {
+    const u = r.ownerOrgId && !r.deletedAuthorId && r.createdBy ? users.get(r.createdBy) : undefined;
+    if (u) authorsOfClubThings.set(r.id, u);
+  }
+  const handedOver = await handedOverIds(kind, authorsOfClubThings);
 
   const byId = new Map(rows.map((r) => [r.id, r]));
   return (id) => {
@@ -150,10 +159,10 @@ export async function creditLookup(
     const author = r.deletedAuthorId ? null : r.createdBy;
     const authorExists = !!author && users.has(author);
     const myRole = r.ownerOrgId ? roles.get(`${r.ownerOrgId}:${viewerId}`) : undefined;
-    const kept = isKeptCopy(r, src);
+    const kept = isKeptCopy(r, src) || handedOver.has(r.id);
     return {
       by: nameOf(r, r.ownerOrgId),
-      authorName: authorExists ? publicName(author!, users.get(author!)) : null,
+      authorName: authorExists ? publicName(author!, users.get(author!)!.name) : null,
       club: r.ownerOrgId ? (orgs.get(r.ownerOrgId) ?? null) : null,
       basedOn: src ? { id: src.id, title: src.title, by: nameOf(src, null) } : null,
       canTakeBack: !!r.ownerOrgId && !!myRole && author === viewerId && !kept,

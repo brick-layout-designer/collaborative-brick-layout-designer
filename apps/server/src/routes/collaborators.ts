@@ -152,6 +152,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
         token,
         expiresAt,
         acceptedAt: null,
+        invitedBy: user.id,
       });
 
       const inviteUrl = `${env.publicUrl}/invite/${token}`;

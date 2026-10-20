@@ -4,6 +4,8 @@
 //        The author, while a member of the club that holds it, takes it back.
 //   POST /api/{layouts|modules|custom-parts|venues}/:id/give-back
 //        The club's admins and managers give it back, only ever to its author.
+// An author who handed the thing to someone else (an accepted transfer)
+// gave it away: it doesn't go back to them either way.
 //   POST /api/custom-parts/:id/move   a person's part into a club (or club to club)
 //   POST /api/custom-parts/:id/copy   a copy into your parts or a club's
 //
@@ -38,6 +40,7 @@ import { prepareLayoutCopy } from './layouts.js';
 import { copyPartTo, dropModuleFromCollections } from './collections.js';
 import { postClubNote } from './warnings.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { clearPendingLayoutShares, clearPendingModuleShares, handedOverIds } from '../access/pendingShares.js';
 
 const KINDS: { kind: CreditKind; path: string; token: 'layouts:write' | 'parts:write' | 'venues:write'; word: string }[] = [
   { kind: 'layout', path: 'layouts', token: 'layouts:write', word: 'layout' },
@@ -117,6 +120,15 @@ export async function returnToAuthor(
   }
   const authorUser = author ? await db.select().from(schema.users).where(eq(schema.users.id, author)).get() : undefined;
   if (!authorUser) return refuse(409, 'author_gone', 'The person who made it no longer has an account here.');
+  // An author who handed it to someone else by a transfer gave it away:
+  // it no longer goes back to them.
+  if ((await handedOverIds(kind, new Map([[id, { id: authorUser.id, email: authorUser.email }]]))).has(id)) {
+    return refuse(
+      409,
+      'author_handed_it_over',
+      mode === 'take' ? 'You handed this to someone else, so it stays with the club.' : 'Its author handed it to someone else, so it stays with the club.',
+    );
+  }
   const [source] = row.copiedFromId ? await creditRows(kind, [row.copiedFromId]) : [];
   if (isKeptCopy(row, source)) {
     return refuse(409, 'already_returned', 'This is the club’s copy; its author already has the original.');
@@ -143,6 +155,7 @@ export async function returnToAuthor(
       tx.update(schema.layouts).set({ ownerUserId: authorUser.id, ownerOrgId: null, updatedAt: now }).where(eq(schema.layouts.id, id)).run();
     });
     await prepared.copyBackground();
+    await clearPendingLayoutShares(id);
   } else if (kind === 'module') {
     const src = await db.select().from(schema.modules).where(eq(schema.modules.id, id)).get();
     if (!src) return refuse(404, 'not_found');
@@ -172,6 +185,7 @@ export async function returnToAuthor(
       tx.update(schema.modules).set({ ownerUserId: authorUser.id, ownerOrgId: null, updatedAt: now }).where(eq(schema.modules.id, id)).run();
       followCopy(tx, 'module', id, copyId, orgId);
     });
+    await clearPendingModuleShares(id);
   } else if (kind === 'custom-part') {
     const src = await db.select().from(schema.customParts).where(eq(schema.customParts.id, id)).get();
     if (!src) return refuse(404, 'not_found');

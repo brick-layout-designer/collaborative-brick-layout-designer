@@ -15,6 +15,7 @@ import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
+import { layoutInviteStillValid } from '../access/pendingShares.js';
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   // ---- preview -------------------------------------------------------------
@@ -40,6 +41,9 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.layouts.id, invite.layoutId))
         .get();
       if (!layout) return reply.code(404).send({ error: 'layout_not_found' });
+      if (!(await layoutInviteStillValid(invite))) {
+        return reply.code(410).send({ error: 'invite_no_longer_valid' });
+      }
 
       return {
         invitedEmail: invite.invitedEmail,
@@ -79,6 +83,11 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
       // it controls that mailbox.
       if (!(await hasVerifiedEmail(user))) {
         return reply.code(403).send({ error: 'email_not_verified' });
+      }
+      // An invite holds only while the person who sent it still manages
+      // the layout's sharing (it may have changed hands since).
+      if (!(await layoutInviteStillValid(invite))) {
+        return reply.code(410).send({ error: 'invite_no_longer_valid' });
       }
 
       const now = new Date();
