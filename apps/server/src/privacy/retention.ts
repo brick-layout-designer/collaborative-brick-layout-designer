@@ -100,6 +100,7 @@ export async function purgeRetention(now = new Date()): Promise<RetentionResult>
   res.invites =
     run(db.delete(s.layoutInvites).where(and(isNull(s.layoutInvites.acceptedAt), lt(s.layoutInvites.expiresAt, signInCutoff)))) +
     run(db.delete(s.customPartInvites).where(and(isNull(s.customPartInvites.acceptedAt), lt(s.customPartInvites.expiresAt, signInCutoff)))) +
+    run(db.delete(s.moduleInvites).where(and(isNull(s.moduleInvites.acceptedAt), lt(s.moduleInvites.expiresAt, signInCutoff)))) +
     run(db.delete(s.orgInvites).where(and(isNull(s.orgInvites.acceptedAt), lt(s.orgInvites.expiresAt, signInCutoff))));
   res.transfers =
     run(db.delete(s.layoutTransfers).where(and(isNull(s.layoutTransfers.acceptedAt), lt(s.layoutTransfers.expiresAt, signInCutoff)))) +

@@ -13,16 +13,15 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
-import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
-import { clampTitle, isValidEmail, normalizeEmail, titleTooLong, trimmed } from '../utils/validate.js';
+import { clampTitle, titleTooLong, trimmed } from '../utils/validate.js';
 import { clubModuleRole } from '../access/resolveResourceRole.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { dropModuleFromCollections } from './collections.js';
@@ -83,11 +82,6 @@ interface CreateModuleBody {
   title?: string;
   /** When set, the module is org-owned. Caller must be a member. */
   orgSlug?: string;
-}
-
-interface InviteBody {
-  email: string;
-  role: 'viewer' | 'editor';
 }
 
 /** Whether a module is in any collection (a moderator may see its picture). */
@@ -561,13 +555,22 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
         .from(schema.moduleCollaborators)
         .innerJoin(schema.users, eq(schema.users.id, schema.moduleCollaborators.userId))
         .where(eq(schema.moduleCollaborators.moduleId, req.params.id));
+      const seesEmails = emailsVisible(user, role);
+      // Pending invites are addresses only: for the people who manage sharing.
+      const invites = seesEmails
+        ? await db
+            .select()
+            .from(schema.moduleInvites)
+            .where(and(eq(schema.moduleInvites.moduleId, req.params.id), isNull(schema.moduleInvites.acceptedAt)))
+        : [];
       return {
+        invites: invites.map((i) => ({ id: i.id, invitedEmail: i.invitedEmail, role: i.role, expiresAt: i.expiresAt.getTime() })),
         collaborators: collaborators.map((c) => ({
           userId: c.userId,
           role: c.role,
           addedAt: c.addedAt.getTime(),
           // Addresses: the person themselves, the owners (who manage sharing) and site admins.
-          email: emailsVisible(user, role) || c.userId === user.id ? c.email : '',
+          email: seesEmails || c.userId === user.id ? c.email : '',
           displayName: nameFor(user, c.userId, c.displayName),
           avatarUrl: c.avatarUrl,
         })),
@@ -575,55 +578,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.post<{ Params: { id: string }; Body: InviteBody }>(
-    '/api/modules/:id/invites',
-    async (req, reply) => {
-      const user = requireUser(req);
-      if (isDemoUser(user)) {
-        return reply.code(403).send({ error: 'demo_account_cannot_invite' });
-      }
-      const { role } = await resolveResourceRole(user.id, 'module', req.params.id);
-      if (role === null) return reply.code(404).send({ error: 'not_found' });
-      if (!hasAtLeast(role, 'owner')) {
-        return reply.code(403).send({ error: 'forbidden' });
-      }
-      const { role: inviteRole } = req.body;
-      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
-      if (!isValidEmail(email)) {
-        return reply.code(400).send({ error: 'invalid_email' });
-      }
-      if (inviteRole !== 'viewer' && inviteRole !== 'editor') {
-        return reply.code(400).send({ error: 'invalid_role' });
-      }
-      // Same MVP shape as custom-part invites: immediate add for known
-      // recipients. Token-based pending-accept lands in a follow-up.
-      const recipient = await db
-        .select()
-        .from(schema.users)
-        .where(sql`lower(${schema.users.email}) = ${email}`)
-        .get();
-      if (!recipient) {
-        return reply.code(400).send({ error: 'recipient_not_registered' });
-      }
-      await db
-        .insert(schema.moduleCollaborators)
-        .values({
-          moduleId: req.params.id,
-          userId: recipient.id,
-          role: inviteRole,
-          addedAt: new Date(),
-        })
-        .onConflictDoNothing();
-      await writeAuditEvent({
-        resourceKind: 'module',
-        resourceId: req.params.id,
-        userId: user.id,
-        eventType: 'share',
-        payload: { targetUserId: recipient.id, role: inviteRole },
-      });
-      return { added: true };
-    },
-  );
+  // Invites (POST /api/modules/:id/invites and accepting them) are in moduleInvites.ts.
 
   app.delete<{ Params: { id: string; userId: string } }>(
     '/api/modules/:id/collaborators/:userId',

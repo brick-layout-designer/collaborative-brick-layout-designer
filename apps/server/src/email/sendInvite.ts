@@ -12,6 +12,8 @@ interface SendInviteEmailArgs {
   to: string;
   inviteUrl: string;
   inviterName: string;
+  /** What they're invited to (default a layout). */
+  what?: 'layout' | 'module';
 }
 
 export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolean> {
@@ -26,13 +28,14 @@ export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolea
   const safeName = escapeHtml(args.inviterName);
   const safeUrl = escapeHtml(args.inviteUrl);
 
-  const subject = `${args.inviterName} invited you to a layout`;
+  const what = args.what ?? 'layout';
+  const subject = `${args.inviterName} invited you to a ${what}`;
   const text =
     `${args.inviterName} invited you to collaborate on a Collaborative ` +
-    `Layout Designer layout.\n\nOpen this link to accept:\n\n${args.inviteUrl}\n`;
+    `Layout Designer ${what}.\n\nOpen this link to accept:\n\n${args.inviteUrl}\n`;
   const html =
     `<p>${safeName} invited you to collaborate on a ` +
-    `Collaborative Brick Layout Designer layout.</p>` +
+    `Collaborative Brick Layout Designer ${what}.</p>` +
     `<p><a href="${safeUrl}">Open in Collaborative Brick Layout Designer</a></p>` +
     `<p style="color:#888">Or paste this URL into your browser: ${safeUrl}</p>`;
 

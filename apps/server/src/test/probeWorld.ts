@@ -103,6 +103,8 @@ export async function seedProbeWorld(app: FastifyInstance): Promise<ProbeWorld> 
   await db.insert(schema.privacyRequests).values({ id: request, type: 'access', receivedVia: 'email', receivedAt: now, dueAt: now, status: 'open', subjectUserId: olive.id, createdAt: now, updatedAt: now } as never);
   const invite = randomUUID();
   await db.insert(schema.layoutInvites).values({ id: invite, layoutId: layout, invitedEmail: 'x@example.com', role: 'viewer', token: `inv-${invite}`, expiresAt: new Date(now.getTime() + 86_400_000) });
+  const moduleInvite = randomUUID();
+  await db.insert(schema.moduleInvites).values({ id: moduleInvite, moduleId: mod1, invitedEmail: 'x@example.com', role: 'viewer', token: `minv-${moduleInvite}`, invitedBy: olive.id, expiresAt: new Date(now.getTime() + 86_400_000), createdAt: now });
   const orgInvite = randomUUID();
   await db.insert(schema.orgInvites).values({ id: orgInvite, orgId: club, invitedEmail: 'y@example.com', role: 'member', token: `oinv-${orgInvite}`, invitedBy: olive.id, expiresAt: new Date(now.getTime() + 86_400_000), createdAt: now } as never);
   const transfer = randomUUID();
@@ -119,7 +121,7 @@ export async function seedProbeWorld(app: FastifyInstance): Promise<ProbeWorld> 
     mod,
     demoCookie,
     prefsOnlyToken,
-    ids: { club, layout, module: mod1, part, venue, item, publicItem, version, collection, notice, dataExport, request, invite, orgInvite, transfer, joinRequest, oliveToken },
+    ids: { club, layout, module: mod1, part, venue, item, publicItem, version, collection, notice, dataExport, request, invite, moduleInvite, orgInvite, transfer, joinRequest, oliveToken },
   };
 }
 
@@ -135,7 +137,7 @@ export function concreteUrl(pattern: string, w: ProbeWorld, override?: string): 
       case 'userId':
         return w.olive.id;
       case 'inviteId':
-        return before.startsWith('/api/orgs') ? i.orgInvite! : i.invite!;
+        return before.startsWith('/api/orgs') ? i.orgInvite! : before.startsWith('/api/modules') ? i.moduleInvite! : i.invite!;
       case 'transferId':
         return i.transfer!;
       case 'n':

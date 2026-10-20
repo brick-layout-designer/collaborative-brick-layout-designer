@@ -15,6 +15,7 @@ import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { deviceRoutes } from '../auth/device.js';
 import { moduleRoutes } from '../modules.js';
+import { moduleInviteRoutes } from '../moduleInvites.js';
 import { catalogRoutes } from '../catalog.js';
 import { collectionRoutes } from '../collections.js';
 import { warningRoutes } from '../warnings.js';
@@ -28,6 +29,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(passwordRoutes);
   await app.register(deviceRoutes);
   await app.register(moduleRoutes);
+  await app.register(moduleInviteRoutes);
   await app.register(catalogRoutes);
   await app.register(collectionRoutes);
   await app.register(warningRoutes);

@@ -11,6 +11,7 @@ import { passwordRoutes } from './auth/password.js';
 import { sessionRoutes } from './auth/session.js';
 import { orgRoutes } from './orgs.js';
 import { moduleRoutes } from './modules.js';
+import { moduleInviteRoutes } from './moduleInvites.js';
 import { MAX_THUMBNAIL_BYTES, smallCacheSize } from '../images/thumbnails.js';
 
 /** A real PNG, `w` × `h`, with some detail so it doesn't compress to nothing. */
@@ -28,6 +29,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(sessionRoutes);
   await app.register(orgRoutes);
   await app.register(moduleRoutes);
+  await app.register(moduleInviteRoutes);
   return app;
 }
 
@@ -337,7 +339,8 @@ describe('modules', () => {
       const bobCookie = await registerAndLogin(app, 'bob@example.com');
       const stranger = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: bobCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
       expect(stranger.statusCode).toBe(404);
-      await app.inject({ method: 'POST', url: `/api/modules/${id}/invites`, headers: { cookie: aliceCookie }, payload: { email: 'bob@example.com', role: 'viewer' } });
+      const invited = await app.inject({ method: 'POST', url: `/api/modules/${id}/invites`, headers: { cookie: aliceCookie }, payload: { email: 'bob@example.com', role: 'viewer' } });
+      expect((await app.inject({ method: 'POST', url: `/api/module-invites/${(invited.json() as { token: string }).token}`, headers: { cookie: bobCookie } })).statusCode).toBe(200);
       const viewer = await app.inject({ method: 'PUT', url: `/api/modules/${id}/thumbnail`, headers: { cookie: bobCookie }, payload: { mime: 'image/png', data: PNG.toString('base64') } });
       expect(viewer.statusCode).toBe(403);
     });
@@ -522,7 +525,8 @@ describe('modules', () => {
       const bobCookie = await registerAndLogin(app, 'bob@example.com');
       expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/versions`, headers: { cookie: bobCookie } })).statusCode).toBe(404);
       expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/versions/1/snapshot`, headers: { cookie: bobCookie } })).statusCode).toBe(404);
-      await app.inject({ method: 'POST', url: `/api/modules/${id}/invites`, headers: { cookie: aliceCookie }, payload: { email: 'bob@example.com', role: 'viewer' } });
+      const invited = await app.inject({ method: 'POST', url: `/api/modules/${id}/invites`, headers: { cookie: aliceCookie }, payload: { email: 'bob@example.com', role: 'viewer' } });
+      expect((await app.inject({ method: 'POST', url: `/api/module-invites/${(invited.json() as { token: string }).token}`, headers: { cookie: bobCookie } })).statusCode).toBe(200);
       expect(await versions(bobCookie, id)).toHaveLength(1);
       const r = await app.inject({ method: 'POST', url: `/api/modules/${id}/versions/1/restore`, headers: { cookie: bobCookie }, payload: {} });
       expect(r.statusCode).toBe(403);

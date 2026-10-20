@@ -32,6 +32,7 @@ import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { MODULE_DELETE_WORDING } from '../ui/deleteWording';
 import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
 const ShareDialog = lazyRetry(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
+const ModuleShareDialog = lazyRetry(() => import('../modules/ModuleShareDialog').then((m) => ({ default: m.ModuleShareDialog })));
 
 export function LayoutsPage() {
   const qc = useQueryClient();
@@ -58,6 +59,7 @@ export function LayoutsPage() {
   // A member (not an admin or manager) of a trusted club shares its modules for the club's own review.
   const trustedMember = (m: ModuleSummary) => m.role === 'editor' && !!m.ownerOrgId && !!orgs?.find((o) => o.id === m.ownerOrgId && o.trusted);
   const [sharing, setSharing] = useState<ModuleSummary | null>(null);
+  const [sharingPeople, setSharingPeople] = useState<ModuleSummary | null>(null);
   const catalog = useCatalogStatus();
   const withdraw = useMutation({
     mutationFn: api.catalog.withdraw,
@@ -265,6 +267,9 @@ export function LayoutsPage() {
                       Refresh picture
                     </Link>
                   )}
+                  <button role="menuitem" type="button" onClick={() => setSharingPeople(m)} className={MORE_ITEM}>
+                    {m.role === undefined || m.role === 'owner' ? 'Share with people…' : 'People with access…'}
+                  </button>
                   {(catalog.enabled('module') || catalog.enabled('part')) && (m.role === undefined || m.role === 'owner') && (
                     <button role="menuitem" type="button" onClick={() => setToCollection(m)} className={MORE_ITEM}>
                       Add to a collection…
@@ -343,6 +348,11 @@ export function LayoutsPage() {
       )}
 
       {historyOf && <ModuleVersionsDialog module={historyOf} onClose={() => setHistoryOf(null)} />}
+      {sharingPeople && (
+        <Suspense fallback={null}>
+          <ModuleShareDialog module={sharingPeople} myUserId={myUserId} onClose={() => setSharingPeople(null)} />
+        </Suspense>
+      )}
       {toCollection && <AddToCollectionDialog target={{ kind: 'module', module: toCollection }} onClose={() => setToCollection(null)} />}
       {sharing && (
         <ShareToCatalogDialog

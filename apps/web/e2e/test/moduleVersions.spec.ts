@@ -92,9 +92,11 @@ test.describe('module versions', () => {
     // Someone who can only view it sees the history, without Restore.
     const viewer = `ver-viewer-${ts}-${seq++}@example.com`;
     await ensureUser(viewer, 'Viewer');
-    expect((await page.request.post(`/api/modules/${id}/invites`, { data: { email: viewer, role: 'viewer' } })).ok()).toBe(true);
+    const invited = await page.request.post(`/api/modules/${id}/invites`, { data: { email: viewer, role: 'viewer' } });
+    expect(invited.ok()).toBe(true);
     await page.context().clearCookies();
     await signIn(page, viewer, 'Viewer');
+    expect((await page.request.post(`/api/module-invites/${((await invited.json()) as { token: string }).token}`)).ok()).toBe(true);
     history = await openHistory(page, 'Engine shed');
     await expect(history.getByTestId('module-version')).toHaveCount(3);
     await expect(history.getByRole('button', { name: /^Restore/ })).toHaveCount(0);

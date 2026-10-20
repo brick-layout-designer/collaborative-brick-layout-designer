@@ -374,7 +374,8 @@ export async function eraseUser(userId: string, how: 'self' | 'admin' | 'request
     tx.delete(s.layoutTransfers).where(or(eq(s.layoutTransfers.initiatedBy, userId), eq(s.layoutTransfers.recipientEmail, email))).run();
     tx.delete(s.moduleTransfers).where(or(eq(s.moduleTransfers.initiatedBy, userId), eq(s.moduleTransfers.recipientEmail, email))).run();
     tx.delete(s.orgInvites).where(or(eq(s.orgInvites.invitedBy, userId), eq(s.orgInvites.invitedEmail, email))).run();
-    tx.delete(s.layoutInvites).where(eq(s.layoutInvites.invitedEmail, email)).run();
+    tx.delete(s.layoutInvites).where(or(eq(s.layoutInvites.invitedBy, userId), eq(s.layoutInvites.invitedEmail, email))).run();
+    tx.delete(s.moduleInvites).where(or(eq(s.moduleInvites.invitedBy, userId), eq(s.moduleInvites.invitedEmail, email))).run();
     tx.delete(s.customPartInvites).where(eq(s.customPartInvites.invitedEmail, email)).run();
     // Their own counters and limits.
     tx.delete(s.usageDaily).where(and(eq(s.usageDaily.subjectKind, 'user'), eq(s.usageDaily.subjectId, userId))).run();

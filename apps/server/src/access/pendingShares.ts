@@ -31,9 +31,10 @@ export async function clearPendingLayoutShares(layoutId: string, exceptTransferI
   await db.delete(schema.layoutInvites).where(and(eq(schema.layoutInvites.layoutId, layoutId), isNull(schema.layoutInvites.acceptedAt)));
 }
 
-/** Delete a module's not-yet-accepted transfers. Call whenever the module's owner changes. */
+/** Delete a module's not-yet-accepted transfers and invites. Call whenever the module's owner changes. */
 export async function clearPendingModuleShares(moduleId: string): Promise<void> {
   await db.delete(schema.moduleTransfers).where(and(eq(schema.moduleTransfers.moduleId, moduleId), isNull(schema.moduleTransfers.acceptedAt)));
+  await db.delete(schema.moduleInvites).where(and(eq(schema.moduleInvites.moduleId, moduleId), isNull(schema.moduleInvites.acceptedAt)));
 }
 
 /** Clear pending shares on each of a set of things that just changed hands. */
