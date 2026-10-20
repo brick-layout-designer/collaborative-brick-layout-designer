@@ -21,7 +21,7 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { Awareness } from 'y-protocols/awareness';
 import { canReadDoc, removeDuplicateItems, repairSidecarCache } from '@cld/ydoc';
-import { keepRefusedCopy } from './refusedCopies';
+import { keepRefusedCopy, type RefusedWhy } from './refusedCopies';
 
 export type SaveStatus =
   | { kind: 'connecting' }
@@ -101,6 +101,12 @@ function isFinalClose(event: CloseEvent): boolean {
   return event.code === 4404 || event.code === 1008;
 }
 
+/** Why a final close ended the layout, for the kept copy's card. */
+function whyEnded(event: CloseEvent): RefusedWhy {
+  if (event.reason === MERGE_REFUSED_REASON) return 'merge';
+  return event.code === 4404 ? 'gone' : 'signed_out';
+}
+
 /**
  * Layouts left (another layout opened in the app, Back, the layouts list)
  * with edits the server hasn't got yet: made offline, they reach the
@@ -148,8 +154,9 @@ function finishSending(layoutId: string, provider: WebsocketProvider, doc: Y.Doc
   };
   const onClose = (event: CloseEvent | null): void => {
     if (!event || !isFinalClose(event)) return;
-    // Refused: its edits never got there, so the copy is kept (refusedCopies).
-    done(event.reason === MERGE_REFUSED_REASON && keepRefusedCopy(layoutId, doc));
+    // Ended for good (refused, signed out, the layout gone) with its edits
+    // never sent: the copy is kept (refusedCopies).
+    done(keepRefusedCopy(layoutId, doc, whyEnded(event)));
   };
   provider.on('sync', onSync);
   provider.on('connection-close', onClose);
@@ -271,10 +278,13 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       if (!event) return;
       if (isFinalClose(event)) {
         // Terminal: retrying can't succeed, and y-websocket would
-        // otherwise keep reconnecting with backoff forever.
+        // otherwise keep reconnecting with backoff forever. Edits made
+        // offline never reached the server (signed out meanwhile, or the
+        // layout deleted), so their copy is kept like a refused one.
+        const hadUnsent = unsent;
         unsent = false;
         provider.disconnect();
-        if (event.reason === MERGE_REFUSED_REASON) refused = keepRefusedCopy(layoutId, fresh);
+        if (event.reason === MERGE_REFUSED_REASON || hadUnsent) refused = keepRefusedCopy(layoutId, fresh, whyEnded(event));
         if (syncTimer) {
           clearTimeout(syncTimer);
           syncTimer = null;

@@ -181,6 +181,53 @@ describe('switching layouts', () => {
     unmount();
   });
 
+  // Audit 2026-10-20: offline edits were dropped when the connection came
+  // back to a sign-in that had ended (or a layout deleted) meanwhile.
+  it('edits made offline are kept when the person was signed out meanwhile', () => {
+    const { result, unmount } = renderHook(() => useLayoutDoc('E'));
+    const p = providers.at(-1)!;
+    act(() => p.emit('sync', true));
+    act(() => addLayer(p.doc, 'synced'));
+    p.wsconnected = false;
+    act(() => p.emit('sync', false));
+    act(() => addLayer(p.doc, 'made-offline'));
+    const gone = destroyed(p.doc);
+    act(() => p.emit('connection-close', { code: 1008, reason: 'unauthorized' }));
+    expect(result.current.loadError).not.toBeNull();
+    unmount();
+    expect(gone()).toBe(false);
+    const [copy] = useRefusedCopies.getState().copies;
+    expect(copy?.why).toBe('signed_out');
+    expect(copy?.doc.getArray('layers').toArray()).toEqual(['synced', 'made-offline']);
+    expect(unloadAsks()).toBe(true);
+  });
+
+  it('signed out with nothing unsent keeps no copy', () => {
+    const { unmount } = renderHook(() => useLayoutDoc('F'));
+    const p = providers.at(-1)!;
+    act(() => p.emit('sync', true));
+    act(() => addLayer(p.doc, 'synced'));
+    act(() => p.emit('connection-close', { code: 1008, reason: 'unauthorized' }));
+    unmount();
+    expect(useRefusedCopies.getState().copies).toEqual([]);
+  });
+
+  it('a left layout deleted before its offline edits got there keeps them', () => {
+    const { rerender, unmount } = renderHook(({ id }) => useLayoutDoc(id), { initialProps: { id: 'A' } });
+    const a = providers.at(-1)!;
+    act(() => a.emit('sync', true));
+    a.wsconnected = false;
+    act(() => a.emit('sync', false));
+    act(() => addLayer(a.doc, 'offline-edit'));
+    rerender({ id: 'B' });
+    act(() => a.emit('connection-close', { code: 4404, reason: 'not_found' }));
+    expect(layoutsStillSending()).toEqual([]);
+    const [copy] = useRefusedCopies.getState().copies;
+    expect(copy?.why).toBe('gone');
+    expect(copy?.doc.getArray('layers').toArray()).toEqual(['offline-edit']);
+    unmount();
+  });
+
   it('a refusal before the layout arrived has nothing to keep', () => {
     const { unmount } = renderHook(() => useLayoutDoc('D'));
     const p = providers.at(-1)!;

@@ -8,11 +8,18 @@
 import * as Y from 'yjs';
 import { create } from 'zustand';
 
+/**
+ * Why the server never got the copy's changes: it refused them as a merge,
+ * the person was signed out, or the layout was deleted (or unshared).
+ */
+export type RefusedWhy = 'merge' | 'signed_out' | 'gone';
+
 export interface RefusedCopy {
   /** Unique per copy (one layout can be refused twice). */
   key: number;
   layoutId: string;
   doc: Y.Doc;
+  why: RefusedWhy;
   /** Saved as a new layout or downloaded: safe to let go of. */
   kept: boolean;
 }
@@ -46,12 +53,12 @@ function hasContent(doc: Y.Doc): boolean {
  * Keep a refused layout's doc. The caller hands it over: it must not
  * destroy it. Returns false when there was nothing to keep.
  */
-export function keepRefusedCopy(layoutId: string, doc: Y.Doc): boolean {
+export function keepRefusedCopy(layoutId: string, doc: Y.Doc, why: RefusedWhy = 'merge'): boolean {
   if (!hasContent(doc)) return false;
   const { copies } = useRefusedCopies.getState();
   if (copies.some((c) => c.doc === doc)) return true;
   if (copies.length === 0) guardUnload(true);
-  useRefusedCopies.setState({ copies: [...copies, { key: nextKey++, layoutId, doc, kept: false }] });
+  useRefusedCopies.setState({ copies: [...copies, { key: nextKey++, layoutId, doc, why, kept: false }] });
   return true;
 }
 
