@@ -186,6 +186,11 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       if (!win) { setError('Pop-up blocked — allow pop-ups and try again.'); return; }
       win.document.write(printHtml(safeTitle(layoutTitle), paper, marginMm, tiling.tileMm, tiles));
       win.document.close();
+      // Printed from here, not from a <script> in the page: the new window
+      // inherits the app's CSP, which allows no inline scripts.
+      const print = () => win.setTimeout(() => win.print(), 400);
+      if (win.document.readyState === 'complete') print();
+      else win.addEventListener('load', print, { once: true });
       onClose();
     } catch (e) {
       setError(String(e));
@@ -484,7 +489,6 @@ function printHtml(
 </head>
 <body>
 ${tiles.map((t) => `<div class="page"><img src="${t}"></div>`).join('\n')}
-<script>window.onload = () => { setTimeout(() => window.print(), 400); }</script>
 </body>
 </html>`;
 }

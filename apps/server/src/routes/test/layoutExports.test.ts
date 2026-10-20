@@ -112,6 +112,31 @@ describe('export — .bbm', () => {
     expect(res.headers['content-disposition']).toContain('.bbm');
   });
 
+  it('exports a layout whose title has characters outside Latin-1 (was a 500)', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const id = await createLayout(app, cookie, 'Club show – 2026 ☃', FORDYCE_BBM);
+    for (const [path, ext] of [
+      ['export.bbm', '.bbm'],
+      ['export.zip', '.zip'],
+      ['export.bld-layout', '.bld-layout'],
+    ] as const) {
+      const res = await app.inject({ method: 'GET', url: `/api/layouts/${id}/${path}`, headers: { cookie } });
+      expect(res.statusCode, path).toBe(200);
+      const cd = String(res.headers['content-disposition']);
+      expect(cd).toContain(`filename="Club show _ 2026 _${ext}"`);
+      expect(cd).toContain(`filename*=UTF-8''${encodeURIComponent(`Club show – 2026 ☃${ext}`)}`);
+    }
+  });
+
+  it('keeps quotes and line breaks in a title out of the download header', async () => {
+    const cookie = await registerAndLogin(app, 'owner@example.com');
+    const id = await createLayout(app, cookie, 'a"b\r\nSet-Cookie: x=1', FORDYCE_BBM);
+    const res = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm`, headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['set-cookie']).toBeUndefined();
+    expect(String(res.headers['content-disposition'])).toMatch(/^attachment; filename="a_b_Set-Cookie_ x=1\.bbm"; filename\*=UTF-8''[^\s"]+$/);
+  });
+
   it('in-app layout: export returns 200 (createDefaultLayoutDoc seeds meta.version)', async () => {
     const cookie = await registerAndLogin(app, 'owner@example.com');
     const id = await createLayout(app, cookie, 'In-App Layout');

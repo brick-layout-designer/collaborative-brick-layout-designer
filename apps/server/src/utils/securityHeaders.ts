@@ -11,15 +11,51 @@
 // Images rendered through <img> are unaffected: CSP on an image response
 // only applies when the image itself is navigated to.
 //
-// The SPA (served from `/`) is deliberately NOT covered; it ships its own
-// policy.
+// The SPA's HTML (index.html, served from `/` and as the fallback for
+// client routes) gets SPA_CSP instead: scripts only from our own origin,
+// no plugins, no framing, no <base> tricks. It's a second wall in case a
+// bug ever lets user text reach the page as markup.
 
 import type { FastifyInstance } from 'fastify';
 
 export const SANDBOX_CSP = "default-src 'none'; frame-ancestors 'none'; sandbox";
 
+/**
+ * The policy for the SPA's HTML. Styles allow 'unsafe-inline' because
+ * components set style attributes; images allow https: for sign-in
+ * avatars (GitHub, Google) and data:/blob: for exports and previews.
+ */
+export const SPA_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  // 'self' covers same-origin ws(s): in current browsers; older Safari
+  // needs the scheme spelled out.
+  "connect-src 'self' ws: wss:",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+/**
+ * Whether a request path is API or parts-library bytes. The path is
+ * percent-decoded first: Fastify routes `/%61pi/...` to `/api/...`, so
+ * matching the raw URL let an encoded prefix skip the sandbox.
+ */
 export function isSandboxedPath(url: string): boolean {
-  return url.startsWith('/api/') || url.startsWith('/parts/');
+  const path = url.split('?')[0] ?? '';
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // A malformed escape: Fastify answers 400 itself; match the raw path.
+  }
+  return [path, decoded].some((p) => p.startsWith('/api/') || p.startsWith('/parts/'));
 }
 
 export function registerSecurityHeaders(app: FastifyInstance): void {
@@ -27,7 +63,22 @@ export function registerSecurityHeaders(app: FastifyInstance): void {
     if (isSandboxedPath(req.url)) {
       reply.header('Content-Security-Policy', SANDBOX_CSP);
       reply.header('X-Content-Type-Options', 'nosniff');
+    } else if (String(reply.getHeader('content-type') ?? '').startsWith('text/html')) {
+      reply.header('Content-Security-Policy', SPA_CSP);
     }
     return payload;
   });
 }
+
+/**
+ * Options for the static servers of the part libraries (/parts/*). The
+ * libraries are extracted from zips, so a .git folder, a .env or other
+ * dotfile inside one is never served.
+ */
+export const PARTS_STATIC_OPTIONS = {
+  decorateReply: false,
+  dotfiles: 'deny',
+  cacheControl: true,
+  maxAge: '30d',
+  immutable: true,
+} as const;
