@@ -423,6 +423,27 @@ describe('ExportImageDialog', () => {
     open.mockRestore();
   });
 
+  it('prints from the opener, with no inline script the CSP would block', () => {
+    const { ref } = handle();
+    ref.current.region = () => ({ x: 0, y: 0, width: 10, height: 10 });
+    let html = '';
+    const print = vi.fn();
+    const win = {
+      document: { write: (s: string) => { html += s; }, close: vi.fn(), readyState: 'complete' },
+      setTimeout: (fn: () => void) => { fn(); return 0; },
+      print,
+      addEventListener: vi.fn(),
+    };
+    const open = vi.spyOn(window, 'open').mockReturnValue(win as unknown as Window);
+    render(<ExportImageDialog layoutTitle="t" exportImageRef={ref} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Print (1:1)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Print Preview' }));
+    expect(html).toContain('<img src=');
+    expect(html).not.toMatch(/<script/i);
+    expect(print).toHaveBeenCalledTimes(1);
+    open.mockRestore();
+  });
+
   it('exports a single fitted A3 PDF page', () => {
     const { ref, render: renderFn, canvas } = handle();
     ref.current.region = () => ({ x: 0, y: 0, width: 100, height: 50 });

@@ -19,7 +19,9 @@ import { registerRequestMetrics } from './metrics/activity.js';
 import { startRollup, stopRollup } from './metrics/rollup.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 import { failInterruptedExports } from './privacy/exports.js';
-import { registerSecurityHeaders } from './utils/securityHeaders.js';
+import { registerErrorHandler } from './utils/errorHandler.js';
+import { requestSerializer } from './utils/logRedact.js';
+import { PARTS_STATIC_OPTIONS, registerSecurityHeaders } from './utils/securityHeaders.js';
 import { registerCrossSiteGuard } from './utils/crossSite.js';
 import { registerApiRoutes } from './routes/all.js';
 import { registerChangeHints } from './events/routeHints.js';
@@ -39,10 +41,15 @@ async function main() {
   // plenty of headroom while still rejecting obvious DoS shapes.
   // trustProxy: behind a reverse proxy, req.ip (used by the rate
   // limiter and logs) is otherwise the proxy's address for every client.
-  const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024, trustProxy: env.trustProxy });
+  const app = Fastify({
+    // URLs in the request log have their secret parts masked (logRedact.ts).
+    logger: { serializers: { req: requestSerializer } },
+    bodyLimit: 10 * 1024 * 1024,
+    trustProxy: env.trustProxy,
+  });
 
   await app.register(helmet, {
-    contentSecurityPolicy: false, // SPA sets its own; API responses are JSON
+    contentSecurityPolicy: false, // securityHeaders.ts sets SANDBOX_CSP for /api and /parts, SPA_CSP for the app's HTML
     crossOriginEmbedderPolicy: false,
   });
   // …but /api/* and /parts/* responses (which can carry user-uploaded
@@ -50,6 +57,7 @@ async function main() {
   // instance before any routes so it covers every plugin, including the
   // static /parts/* servers below.
   registerSecurityHeaders(app);
+  registerErrorHandler(app);
   // Browser writes to the API only from this site (crossSite.ts).
   registerCrossSiteGuard(app);
   await app.register(cors, {
@@ -90,7 +98,8 @@ async function main() {
       if (row?.ok !== 1) throw new Error('db ping returned unexpected shape');
       return { ok: true, db: 'ready' };
     } catch (err) {
-      return reply.code(503).send({ ok: false, error: (err as Error).message });
+      app.log.error({ err }, 'readiness check failed');
+      return reply.code(503).send({ ok: false, error: 'db_unavailable' });
     }
   });
 
@@ -106,10 +115,7 @@ async function main() {
     await app.register(fastifyStatic, {
       root: partsRoot,
       prefix: '/parts/',
-      decorateReply: false,
-      cacheControl: true,
-      maxAge: '30d',
-      immutable: true,
+      ...PARTS_STATIC_OPTIONS,
     });
   } else {
     app.log.warn(`parts library not found at ${partsRoot}; /parts/* disabled`);
@@ -123,10 +129,7 @@ async function main() {
     await app.register(fastifyStatic, {
       root: libsRoot,
       prefix: '/parts/libraries/',
-      decorateReply: false,
-      cacheControl: true,
-      maxAge: '30d',
-      immutable: true,
+      ...PARTS_STATIC_OPTIONS,
     });
   }
 
