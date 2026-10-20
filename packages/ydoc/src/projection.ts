@@ -54,7 +54,8 @@ import type {
   RulerItem,
   TextCell,
 } from '@cld/model';
-import { DOC_SCHEMA_VERSION, makeId } from './ids.js';
+import { makeId } from './ids.js';
+import { DOC_BASE_SCHEMA, cellOffsetOf, itemsInOrder, rulerJson } from './shape.js';
 
 // ---------------------------------------------------------------------------
 // Top-level projection
@@ -78,7 +79,7 @@ export function bbmToDoc(map: BbmMap, doc: Y.Doc): void {
     meta.set('comment', map.comment);
     meta.set('exportInfo', cloneExportInfo(map.exportInfo));
     meta.set('selectedLayerIndex', map.selectedLayerIndex);
-    meta.set('schemaVersion', DOC_SCHEMA_VERSION);
+    meta.set('schemaVersion', DOC_BASE_SCHEMA);
 
     const layerOrder = doc.getArray<string>('layers');
     const layerData = doc.getMap<Y.Map<unknown>>('layerData');
@@ -339,10 +340,8 @@ function writeLayerArea(layer: LayerArea, y: Y.Map<unknown>): void {
 }
 
 function writeLayerRuler(layer: LayerRuler, y: Y.Map<unknown>): void {
-  // Ruler items are stored as plain-JSON entries (deep-cloned) for now —
-  // they're not collaboratively edited, just round-tripped through the
-  // doc so saving doesn't drop them. When a ruler-edit UI ships these
-  // become Y.Maps so individual fields can be mutated atomically.
+  // Ruler items are written as plain-JSON entries (shape 1), which every
+  // build reads; the first ruler edit turns them into Y.Maps (shape.ts).
   const rulers = new Y.Array<RulerItem>();
   for (const r of layer.rulerItems) {
     rulers.push([structuredClone(r)]);
@@ -431,7 +430,7 @@ function readLayerBrick(y: Y.Map<unknown>, c: CommonFields, readBrick: BrickRead
     ...c,
     type: 'brick',
     displayBrickElevation: requireScalar(y, 'displayBrickElevation') as boolean,
-    bricks: bricksY ? bricksY.toArray().map(readBrick) : [],
+    bricks: bricksY ? itemsInOrder(bricksY).map(readBrick) : [],
     groups: groupsY ? groupsY.toArray().map(yMapToGroup) : [],
   };
 }
@@ -490,11 +489,13 @@ function yMapToTextCell(cell: Y.Map<unknown> | Record<string, unknown>): TextCel
 
 function readLayerArea(y: Y.Map<unknown>, c: CommonFields): LayerArea {
   const areasY = y.get('areas') as Y.Array<AreaCell> | undefined;
+  // Cells are kept relative to the sheet's offset (shape 2, shape.ts).
+  const off = cellOffsetOf(y);
   return {
     ...c,
     type: 'area',
     areaCellSize: requireScalar(y, 'areaCellSize') as number,
-    areas: areasY ? areasY.toArray().map((a) => ({ ...a })) : [],
+    areas: areasY ? areasY.toArray().map((a) => ({ ...a, x: a.x + off.x, y: a.y + off.y })) : [],
   };
 }
 
@@ -504,7 +505,8 @@ function readLayerRuler(y: Y.Map<unknown>, c: CommonFields): LayerRuler {
   return {
     ...c,
     type: 'ruler',
-    rulerItems: rulersY ? rulersY.toArray().map((r) => structuredClone(r)) : [],
+    // Plain objects (shape 1) or Y.Maps ordered by z (shape 2).
+    rulerItems: rulersY ? itemsInOrder(rulersY as Y.Array<unknown>).map((r) => rulerJson(r) as unknown as RulerItem).filter(Boolean) : [],
     groups: groupsY ? groupsY.toArray().map(yMapToGroup) : [],
   };
 }

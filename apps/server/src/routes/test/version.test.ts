@@ -2,7 +2,7 @@
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DOC_SCHEMA_VERSION } from '@cld/ydoc';
+import { DOC_BASE_SCHEMA, DOC_SCHEMA_VERSION } from '@cld/ydoc';
 import { versionRoutes } from '../version.js';
 import { DESKTOP_DOWNLOAD_URL, DESKTOP_MINIMUM, DESKTOP_RECOMMENDED, FEATURES, resetDesktopPolicy } from '../../compat.js';
 import { resetDb } from '../../test/helpers.js';
@@ -24,15 +24,17 @@ describe('GET /api/version', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       version: '0.0.0',
-      schemaVersion: DOC_SCHEMA_VERSION,
+      // Desktops before doc shape 2 read this one: they still connect.
+      schemaVersion: 1,
       protocols: ['y-websocket/1'],
       desktop: { minimum: DESKTOP_MINIMUM, recommended: DESKTOP_RECOMMENDED, downloadUrl: DESKTOP_DOWNLOAD_URL },
-      doc: { schemaVersion: DOC_SCHEMA_VERSION, minReadable: 1 },
+      doc: { schemaVersion: 2, createdAs: 1, minReadable: 1 },
       sidecar: { schemaVersion: 1 },
       layoutFile: { version: 1 },
       features: [...FEATURES],
     });
-    expect(DOC_SCHEMA_VERSION).toBe(1);
+    expect(DOC_SCHEMA_VERSION).toBe(2);
+    expect(DOC_BASE_SCHEMA).toBe(1);
   });
 
   it('prefers APP_VERSION when set', async () => {

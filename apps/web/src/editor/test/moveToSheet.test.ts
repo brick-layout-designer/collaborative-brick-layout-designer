@@ -3,14 +3,19 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { cellOffsetOf, itemsInOrder, rulerJson } from '@cld/ydoc';
 import { addLayer, ensureBrickLayer, groupBricks, moveBricksToLayer, placeBrick } from '../mutations';
 import { createUndoManager } from '../useUndoManager';
+
+// Ruler entries as plain objects in drawing order (Y.Maps in doc shape 2).
+const plainRulers = (l: Y.Map<unknown>): Record<string, unknown>[] => itemsInOrder(l.get('rulerItems') as Y.Array<unknown>).map((r) => rulerJson(r)!);
 
 const spec = (x: number) => ({ partNumber: '3001.1', x, y: 0, width: 4, height: 2 });
 
 function bricks(doc: Y.Doc, layerId: string): Y.Map<unknown>[] {
   const l = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-  return ((l.get('bricks') as Y.Array<Y.Map<unknown>> | undefined)?.toArray() ?? []);
+  const arr = l.get('bricks') as Y.Array<Y.Map<unknown>> | undefined;
+  return arr ? itemsInOrder(arr) : [];
 }
 function groups(doc: Y.Doc, layerId: string): Y.Map<unknown>[] {
   const l = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
@@ -132,7 +137,7 @@ describe('Bring to Front / Send to Back for text and rulers (BlueBrick)', () => 
     const r1 = addLinearRuler(doc, r, { x: 0, y: 0 }, { x: 5, y: 0 });
     const r2 = addLinearRuler(doc, r, { x: 0, y: 2 }, { x: 5, y: 2 });
     const texts = () => ((doc.getMap('layerData').get(t) as Y.Map<unknown>).get('textCells') as Y.Array<Y.Map<unknown>>).toArray().map((c) => c.get('text'));
-    const rulers = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<{ id: string }>).toArray().map((x) => x.id);
+    const rulers = () => (plainRulers(doc.getMap('layerData').get(r) as Y.Map<unknown>) as { id: string }[]).map((x) => x.id);
     const keys = reorderAnnotations(doc, { texts: [`${t}#0`], rulers: [r1] }, 'front');
     expect(texts()).toEqual(['b', 'c', 'a']);
     expect(rulers()).toEqual([r2, r1]);
@@ -184,7 +189,7 @@ describe('rotating text and rulers (BlueBrick RotateText, RotateRulers)', () => 
     const r = ensureRulerLayer(doc);
     const line = addLinearRuler(doc, r, { x: 0, y: 20 }, { x: 8, y: 20 });
     const ring = addCircularRuler(doc, r, { x: 30, y: 0 }, 3);
-    const rulers = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<Record<string, { x: number; y: number }>>).toArray();
+    const rulers = () => (plainRulers(doc.getMap('layerData').get(r) as Y.Map<unknown>) as Record<string, { x: number; y: number }>[]);
     const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
 
     // Alone, text turns in place.
@@ -230,7 +235,7 @@ describe('scaling a ruler (BlueBrick ScaleRuler)', () => {
     const r = ensureRulerLayer(doc);
     const line = addLinearRuler(doc, r, { x: 0, y: 20 }, { x: 10, y: 20 });
     const ring = addCircularRuler(doc, r, { x: 30, y: 0 }, 3);
-    const items = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<Record<string, unknown>>).toArray();
+    const items = () => (plainRulers(doc.getMap('layerData').get(r) as Y.Map<unknown>) as Record<string, unknown>[]);
     const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
     scaleRuler(doc, r, line, { x: 5, y: 14 });
     expect(items()[0]!.offsetDistance).toBeCloseTo(6);
@@ -252,7 +257,12 @@ describe('moving an area sheet (BlueBrick MoveArea)', () => {
     const doc = new Y.Doc();
     const a = ensureAreaLayer(doc);
     paintAreaCells(doc, a, [{ x: 0, y: 0, color: 'FFFF0000' }, { x: -2, y: 5, color: 'FF0000FF' }]);
-    const cells = () => ((doc.getMap('layerData').get(a) as Y.Map<unknown>).get('areas') as Y.Array<{ x: number; y: number; color: string }>).toArray();
+    // Where the cells are drawn: kept relative to the sheet's offset (doc shape 2).
+    const sheet = () => doc.getMap('layerData').get(a) as Y.Map<unknown>;
+    const cells = () => {
+      const off = cellOffsetOf(sheet());
+      return (sheet().get('areas') as Y.Array<{ x: number; y: number; color: string }>).toArray().map((c) => ({ ...c, x: c.x + off.x, y: c.y + off.y }));
+    };
     const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });
     moveArea(doc, a, 3, -1);
     expect(cells().map((c) => [c.x, c.y, c.color]).sort()).toEqual([[1, 4, 'FF0000FF'], [3, -1, 'FFFF0000']]);
@@ -268,7 +278,7 @@ describe('detaching a ruler (BlueBrick DetachRuler)', () => {
     const doc = new Y.Doc();
     const r = ensureRulerLayer(doc);
     const line = addLinearRuler(doc, r, { x: 0, y: 0 }, { x: 10, y: 0 });
-    const item = () => ((doc.getMap('layerData').get(r) as Y.Map<unknown>).get('rulerItems') as Y.Array<Record<string, unknown>>).get(0);
+    const item = () => (plainRulers(doc.getMap('layerData').get(r) as Y.Map<unknown>)[0] as Record<string, unknown>);
     attachRulerEndpoint(doc, r, line, 0, 'brick-a');
     attachRulerEndpoint(doc, r, line, 1, 'brick-b');
     const undo = new Y.UndoManager([doc.getMap('layerData')], { trackedOrigins: new Set([LOCAL_ORIGIN]) });

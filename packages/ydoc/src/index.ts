@@ -13,14 +13,15 @@ import { BBM_FORMAT_VERSION, type BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import { bbmToDoc, docToBbm } from './projection.js';
 
-import { DOC_SCHEMA_VERSION } from './ids.js';
+import { DOC_BASE_SCHEMA } from './shape.js';
 
 export { bbmToDoc, docToBbm, createDocProjector, type DocProjector } from './projection.js';
+export * from './shape.js';
 export { DOC_MIN_READABLE, DOC_SCHEMA_VERSION, canReadDoc, makeId, upgradeDoc } from './ids.js';
 
 export function createLayoutDoc(): Y.Doc {
   const doc = new Y.Doc();
-  doc.getMap('meta').set('schemaVersion', DOC_SCHEMA_VERSION);
+  doc.getMap('meta').set('schemaVersion', DOC_BASE_SCHEMA);
   doc.getArray('layers');
   doc.getMap('layerData');
   doc.getMap('venue');
@@ -303,9 +304,9 @@ export function removeDuplicateItems(doc: Y.Doc, origin: unknown): number {
 type ItemField = 'bricks' | 'rulerItems' | 'areas';
 
 function itemKey(field: ItemField, v: unknown): string | null {
-  if (field === 'bricks') {
+  if (field === 'bricks' || (field === 'rulerItems' && v instanceof Y.Map)) {
     const id = v instanceof Y.Map ? v.get('id') : undefined;
-    return typeof id === 'string' ? id : null;
+    return typeof id === 'string' && id !== '' ? id : null;
   }
   if (!v || typeof v !== 'object' || v instanceof Y.AbstractType) return null;
   const o = v as Record<string, unknown>;
