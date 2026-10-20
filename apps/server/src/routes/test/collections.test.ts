@@ -170,10 +170,10 @@ describe('catalog collections', () => {
     expect((await list(alice)).collections).toEqual([]);
     expect((await req('GET', `/api/catalog/collections/${id}`, alice)).statusCode).toBe(404);
     expect((await mine(bob))[0]).toMatchObject({ status: 'in_review' });
-    // Bob can't approve his own; the moderator sees it with his email.
+    // Bob can't approve his own; the moderator sees it, without his email (site admins only).
     expect((await req('POST', `/api/moderation/collections/${id}/approve`, bob, {})).statusCode).toBe(403);
     const q = await queue(mod);
-    expect(q).toEqual([expect.objectContaining({ id, title: 'Yard basics', isUpdate: false, email: 'bob@example.com' })]);
+    expect(q).toEqual([expect.objectContaining({ id, title: 'Yard basics', isUpdate: false, email: null })]);
     expect((await req('POST', `/api/moderation/collections/${id}/approve`, mod, {})).statusCode).toBe(200);
     expect((await list(alice)).collections.map((c) => c.title)).toEqual(['Yard basics']);
 

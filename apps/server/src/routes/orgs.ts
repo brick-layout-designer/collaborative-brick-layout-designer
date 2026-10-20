@@ -32,6 +32,7 @@ import { clubReviewCount } from './clubReview.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { maskEmail } from '../utils/maskEmail.js';
 
 interface CreateOrgBody {
   name: string;
@@ -406,7 +407,9 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         })),
         invites: invites.map((i) => ({
           id: i.id,
-          invitedEmail: i.invitedEmail,
+          // An invite can be sent to a person picked by name, so the club's
+          // managers see only a masked address.
+          invitedEmail: user.isGlobalAdmin ? i.invitedEmail : maskEmail(i.invitedEmail),
           role: i.role,
           expiresAt: i.expiresAt.getTime(),
           // Admins only see invites at all; the link lets them send it themselves.

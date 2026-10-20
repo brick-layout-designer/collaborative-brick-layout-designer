@@ -18,6 +18,7 @@ import { hasAtLeast, resolveResourceRole, type ResourceKind } from '../access/re
 import type { AuditResourceKind } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
 import { nameFor, publicName } from '../utils/publicName.js';
+import { maskPayloadEmails } from '../utils/maskEmail.js';
 
 /** Batch-load display names for a set of userIds. Returns a map userId→name. */
 async function loadUserNames(viewer: { id: string; isGlobalAdmin: boolean }, userIds: (string | null)[]): Promise<Map<string, string>> {
@@ -60,7 +61,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         .limit(limit);
       const names = await loadUserNames(user, rows.map((r) => r.userId));
       return {
-        events: rows.map((r) => toWire(r, names)),
+        events: rows.map((r) => toWire(r, names, user)),
       };
     },
   );
@@ -111,7 +112,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         .limit(limit)
         .offset(offset);
       const names = await loadUserNames(user, rows.map((r) => r.userId));
-      return { events: rows.map((r) => toWire(r, names)), limit, offset };
+      return { events: rows.map((r) => toWire(r, names, user)), limit, offset };
     },
   );
 
@@ -152,7 +153,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
           .orderBy(desc(schema.auditEvents.createdAt))
           .limit(limit));
     const names = await loadUserNames(user, rows.map((r) => r.userId));
-    return { events: rows.map((r) => toWire(r, names)) };
+    return { events: rows.map((r) => toWire(r, names, user)) };
   });
 }
 
@@ -178,7 +179,7 @@ function clampOffset(raw: string | undefined): number {
   return Number.isFinite(n) && n >= 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0;
 }
 
-function toWire(row: typeof schema.auditEvents.$inferSelect, names?: Map<string, string>) {
+function toWire(row: typeof schema.auditEvents.$inferSelect, names: Map<string, string>, viewer: { isGlobalAdmin: boolean }) {
   return {
     id: row.id,
     layoutId: row.layoutId,
@@ -186,9 +187,11 @@ function toWire(row: typeof schema.auditEvents.$inferSelect, names?: Map<string,
     resourceId: row.resourceId,
     userId: row.userId,
     // An erased account's rows read "Deleted user #abc123".
-    userName: row.userId ? (names?.get(row.userId) ?? null) : row.actorLabel,
+    userName: row.userId ? (names.get(row.userId) ?? null) : row.actorLabel,
     eventType: row.eventType,
-    payload: safeParse(row.payload),
+    // Addresses in a payload (who was invited) are for site admins only;
+    // club and layout managers see a masked form.
+    payload: viewer.isGlobalAdmin ? safeParse(row.payload) : maskPayloadEmails(safeParse(row.payload)),
     docVersion: row.docVersion,
     createdAt: row.createdAt.getTime(),
   };

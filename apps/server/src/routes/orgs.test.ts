@@ -451,8 +451,10 @@ describe('orgs', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { members: unknown[]; invites: { invitedEmail: string }[] };
     expect(Array.isArray(body.members)).toBe(true);
+    // Club managers see a masked address (an invite can be to someone picked by name).
+    expect(body.invites.some((i) => i.invitedEmail === 'p…@example.com')).toBe(true);
+    expect(JSON.stringify(body.invites)).not.toContain('pending@example.com');
     expect(body.members.length).toBeGreaterThanOrEqual(1);
-    expect(body.invites.some((i) => i.invitedEmail === 'pending@example.com')).toBe(true);
   });
 
   it('non-admin member sees empty invites array', async () => {

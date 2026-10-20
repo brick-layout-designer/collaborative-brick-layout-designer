@@ -47,7 +47,8 @@ test('sign-in, sign-up and invites come back to the link that was followed', asy
   const invitePath = `/org-invite/${invite.token}`;
   const newbie = await (await browser.newContext()).newPage();
   await newbie.goto(invitePath);
-  await newbie.getByRole('link', { name: `Sign in as ${NEWBIE}` }).click();
+  // Signed out, the invite shows a masked address.
+  await newbie.getByRole('link', { name: 'Sign in as j…@example.com' }).click();
   await newbie.getByRole('button', { name: 'Need an account?' }).click();
   await newbie.getByLabel('Your name (shown to others)').fill('Nina');
   await newbie.getByLabel('Email').fill(NEWBIE);

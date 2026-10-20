@@ -20,6 +20,8 @@ import { privacySettings } from '../privacy/settings.js';
 import { clearSessionCookie, requireUser } from '../auth/cookie.js';
 import { confirmMatches, deletionSummary, requestDeletion } from '../privacy/accountDeletion.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { getMembership } from './orgs.js';
+import { readPlan } from '../privacy/clubDeletion.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -86,6 +88,11 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
       const row = await db.select().from(schema.dataExports).where(eq(schema.dataExports.id, req.params.id)).get();
       // Someone else's download is "not found", not "forbidden": it doesn't exist for them.
       if (!row || row.requestedBy !== user.id) return reply.code(404).send({ error: 'not_found' });
+      // A club's download holds its members' data: only for someone who
+      // still runs the club.
+      if (row.subjectKind === 'org' && !(await isClubAdmin(user.id, row.subjectId))) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
       const out = describeExport(row);
       const path = exportPath(row.id);
       if (!out.downloadUrl || !existsSync(path)) return reply.code(410).send({ error: 'export_gone', message: 'This download has expired. Ask for a new one.' });
@@ -104,4 +111,16 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
       return reply.send(createReadStream(path));
     },
   );
+}
+
+/**
+ * Whether `userId` runs club `orgId` now: an admin, or (while the club is
+ * waiting to be deleted and its memberships are set aside) one of its
+ * admins at the time.
+ */
+async function isClubAdmin(userId: string, orgId: string): Promise<boolean> {
+  const m = await getMembership(orgId, userId);
+  if (m) return m.role === 'admin';
+  const org = await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
+  return !!org?.deletionPlan && !!readPlan(org)?.members.some((p) => p.userId === userId && p.role === 'admin');
 }
