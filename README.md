@@ -156,8 +156,12 @@ Cloudflare Tunnel in front, and then set:
 - `PUBLIC_URL` to the address people use (`https://layouts.example.org`).
   Browser WebSockets from any other origin are refused.
 - `COOKIE_SECURE=true`.
-- `TRUST_PROXY` to `true` or to the proxy's address, so rate limits and
-  logs see the real client IPs.
+- `TRUST_PROXY` to the proxy's address or network (`127.0.0.1` for a
+  proxy or Cloudflare Tunnel on the same host, `172.16.0.0/12` for a
+  Docker network), so rate limits and logs see the real client IPs. The
+  client is then the right-most `X-Forwarded-For` address that isn't one
+  of these. Avoid `true`: it trusts every hop, so a client can pick the
+  address the server sees (the server warns about it at start-up).
 
 The server's own rate limits count **per person** for anything signed
 in (a club at a show shares one Wi-Fi address), and per address only for
@@ -298,7 +302,7 @@ when they fall behind.
 | `DB_PATH` | `./data/cbld.sqlite` | — | The SQLite database. `/data/cbld.sqlite` in Docker. |
 | `PARTS_DIR` | `./data/parts` | — | Where part libraries and uploaded parts live. `/parts` in Docker. |
 | `COOKIE_SECURE` | `true` when `NODE_ENV=production` | — | Send sign-in cookies over HTTPS only. Turn on behind TLS. |
-| `TRUST_PROXY` | `false` | — | Behind a reverse proxy: `true`, or the proxy IPs / CIDRs (`10.0.0.0/8,127.0.0.1`), so client IPs come from `X-Forwarded-For`. Leave `false` when exposed directly. |
+| `TRUST_PROXY` | `false` | — | Behind a reverse proxy: the proxy IPs / CIDRs (`127.0.0.1`, `172.16.0.0/12,127.0.0.1`), so client IPs come from `X-Forwarded-For` (the right-most address that isn’t a listed proxy). `true` trusts every hop and lets clients pick their address; the server warns about it. Leave `false` when exposed directly. |
 | `NODE_ENV` | `development` | — | `production` in the Docker image. |
 | `APP_VERSION` | the server package version | — | The version `GET /api/version` reports. |
 | `ENABLE_PASSWORD_AUTH` | `false` | — | Allow email and password accounts. New accounts confirm their email first (see SMTP). |

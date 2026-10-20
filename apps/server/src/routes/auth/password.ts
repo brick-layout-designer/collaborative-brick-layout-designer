@@ -7,6 +7,7 @@ import type { User } from '../../db/schema.js';
 import { createSession, hashToken, invalidateAllSessions } from '../../auth/session.js';
 import { requireUser, setSessionCookie } from '../../auth/cookie.js';
 import { revokeAllApiTokens } from '../../auth/apiTokens.js';
+import { loginWaitMs, noteLoginFailure, noteLoginSuccess } from '../../auth/loginPacing.js';
 import { sendVerificationEmail } from '../../email/sendVerification.js';
 import { sendSignupNoticeEmail } from '../../email/sendSignupNotice.js';
 import { getPlatformSettings } from '../../auth/platformSettings.js';
@@ -374,14 +375,27 @@ export async function passwordRoutes(app: FastifyInstance) {
       if (!email || typeof password !== 'string' || !password || password.length > PASSWORD_MAX) {
         return reply.code(400).send({ error: 'invalid_input' });
       }
+      // Many wrong passwords for one account in a row: each further try
+      // waits a little longer (see auth/loginPacing.ts). Answered at once,
+      // the same for every address, whether it has an account or not.
+      const waitMs = loginWaitMs(email);
+      if (waitMs > 0) {
+        const retryAfter = Math.ceil(waitMs / 1000);
+        return reply.code(429).header('retry-after', String(retryAfter)).send({ error: 'login_paced', retryAfter });
+      }
       const user = await findUserByEmail(email);
       if (!user || !user.passwordHash) {
         // The same argon2 work as a wrong password, so the answer takes as long.
         await verify(await dummyPasswordHash(), password, ARGON_OPTS);
+        noteLoginFailure(email);
         return reply.code(401).send({ error: 'invalid_credentials' });
       }
       const ok = await verify(user.passwordHash, password, ARGON_OPTS);
-      if (!ok) return reply.code(401).send({ error: 'invalid_credentials' });
+      if (!ok) {
+        noteLoginFailure(email);
+        return reply.code(401).send({ error: 'invalid_credentials' });
+      }
+      noteLoginSuccess(email);
       if (!user.emailVerified) {
         // Re-check live: an admin may have turned verification off
         // after this account registered while it was still on. Don't
