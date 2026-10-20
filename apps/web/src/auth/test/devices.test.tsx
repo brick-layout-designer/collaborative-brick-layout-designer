@@ -165,6 +165,14 @@ describe('safeNext', () => {
     expect(safeNext('//evil.example')).toBe('/');
     expect(safeNext('/\\evil.example')).toBe('/');
   });
+
+  it('refuses paths a browser would read as another site', () => {
+    // Browsers drop tabs and line breaks from URLs and read "\\" as "/".
+    for (const raw of ['/\t/evil.example', '/\n/evil.example', '/\r//evil.example', '/x\\..\\', '/\u0000/a']) {
+      expect(safeNext(raw), JSON.stringify(raw)).toBe('/');
+    }
+    expect(safeNext('/layouts/abc?tab=share#x')).toBe('/layouts/abc?tab=share#x');
+  });
 });
 
 describe('scopeSummary (P1b scopes)', () => {
