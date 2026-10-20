@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { safeNext } from './signIn';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,8 +33,11 @@ export function VerifyEmailPage() {
     },
   });
 
+  // A link works once: send it once, even when React runs the effect twice (StrictMode).
+  const sentFor = useRef<string | null>(null);
   useEffect(() => {
-    if (params.token && !verify.isPending && !verify.isSuccess && !verify.isError) {
+    if (params.token && sentFor.current !== params.token) {
+      sentFor.current = params.token;
       verify.mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

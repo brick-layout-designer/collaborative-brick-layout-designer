@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { LoginPage } from '../LoginPage';
 import { VerifyEmailPage } from '../VerifyEmailPage';
@@ -26,6 +27,7 @@ function stubFetch(answers: Record<string, unknown>): Call[] {
 function renderAt(path: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
+    <StrictMode>
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -34,7 +36,8 @@ function renderAt(path: string) {
           <Route path="/" element={<p>Home page</p>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
+    </StrictMode>,
   );
 }
 
@@ -80,6 +83,8 @@ describe('sign-up and verification pages', () => {
     });
     renderAt('/verify-email/abc');
     expect(await screen.findByRole('heading', { name: 'Choose a password' })).toBeTruthy();
+    // The link is sent once, even though StrictMode runs effects twice.
+    expect(calls.filter((c) => c.url.startsWith('/api/auth/password/verify-email/'))).toHaveLength(1);
 
     fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'chosen-password-2' } });
     fireEvent.change(screen.getByLabelText('New password again'), { target: { value: 'not-the-same' } });
