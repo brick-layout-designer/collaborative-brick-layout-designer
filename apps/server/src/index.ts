@@ -58,7 +58,12 @@ async function main() {
     global: false, // applied per-route where needed
   });
   await app.register(cookie);
-  await app.register(fastifyMultipart);
+  // Multipart is only for single-file uploads; each route sets its own
+  // limits too. These defaults keep a route that forgets from holding
+  // many large text fields in memory.
+  await app.register(fastifyMultipart, {
+    limits: { fields: 10, fieldSize: 64 * 1024, files: 1, parts: 11, fileSize: 10 * 1024 * 1024 },
+  });
 
   app.addHook('preHandler', attachUser);
   // Admin dashboard counters (aggregate only — see metrics/rollup.ts).

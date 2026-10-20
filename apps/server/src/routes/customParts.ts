@@ -29,6 +29,7 @@ import { clubThingRole } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
 import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
+import { isImageOfType, MAX_SPRITE_SIDE, pngSize } from '../images/sniff.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -538,6 +539,12 @@ function parsePartBody(body: CreatePartBody): ParsedPartBody {
   }
   if (xmlBlob.length === 0 || spriteBlob.length === 0) return { status: 400, error: 'empty_payload' };
   if (xmlBlob.length + spriteBlob.length > MAX_PART_BLOB_BYTES) return { status: 413, error: 'payload_too_large' };
+  // The sprite is stored and served as sent, so it must be the picture it says it is.
+  if (!isImageOfType(spriteBlob, body.spriteMime)) return { status: 400, error: 'invalid_sprite' };
+  const size = pngSize(spriteBlob);
+  if (size && (size.width === 0 || size.height === 0 || size.width > MAX_SPRITE_SIDE || size.height > MAX_SPRITE_SIDE)) {
+    return { status: 400, error: 'invalid_sprite' };
+  }
   return { partNumber, displayName, xmlBlob: xmlForSprite(xmlBlob, body.spriteMime), spriteBlob };
 }
 

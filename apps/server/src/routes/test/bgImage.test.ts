@@ -11,6 +11,10 @@ import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
 import { layoutRoutes } from '../layouts.js';
 
+/** Bytes that start like a real PNG / JPEG (uploads are checked by their first bytes). */
+const png = (text: string) => bufConcat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(text)]);
+const jpeg = (text: string) => bufConcat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(text)]);
+
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 20 * 1024 * 1024 });
   await app.register(cookie);
@@ -61,20 +65,20 @@ describe('background image upload', () => {
   }
 
   it('a new JPEG replaces an earlier PNG instead of being shadowed by it', async () => {
-    expect((await upload(Buffer.from('png-bytes'), 'image/png', 'a.png')).statusCode).toBe(200);
-    expect((await upload(Buffer.from('jpeg-bytes'), 'image/jpeg', 'b.jpg')).statusCode).toBe(200);
+    expect((await upload(png('png-bytes'), 'image/png', 'a.png')).statusCode).toBe(200);
+    expect((await upload(jpeg('jpeg-bytes'), 'image/jpeg', 'b.jpg')).statusCode).toBe(200);
     const res = await get();
     expect(res.headers['content-type']).toBe('image/jpeg');
-    expect(res.body).toBe('jpeg-bytes');
+    expect(res.rawPayload.equals(jpeg('jpeg-bytes'))).toBe(true);
   });
 
   it('an oversized upload is rejected and leaves the current image intact', async () => {
-    expect((await upload(Buffer.from('original'), 'image/png', 'a.png')).statusCode).toBe(200);
+    expect((await upload(png('original'), 'image/png', 'a.png')).statusCode).toBe(200);
     const big = await upload(Buffer.alloc(10 * 1024 * 1024 + 10, 1), 'image/png', 'big.png');
     expect(big.statusCode).toBe(413);
     const res = await get();
     expect(res.statusCode).toBe(200);
-    expect(res.body).toBe('original');
+    expect(res.rawPayload.equals(png('original'))).toBe(true);
   });
 });
 
@@ -111,13 +115,13 @@ describe('background image from a layout file', () => {
   }
 
   it('keeps the image and points the sidecar at it', async () => {
-    const res = await create({ sidecar, backgroundImage: { type: 'image/png', data: Buffer.from('png-bytes').toString('base64') } });
+    const res = await create({ sidecar, backgroundImage: { type: 'image/png', data: png('png-bytes').toString('base64') } });
     expect(res.statusCode).toBe(201);
     const id = res.json().id as string;
     const image = await app.inject({ method: 'GET', url: `/api/layouts/${id}/background-image`, headers: { cookie: c } });
     expect(image.statusCode).toBe(200);
     expect(image.headers['content-type']).toBe('image/png');
-    expect(image.body).toBe('png-bytes');
+    expect(image.rawPayload.equals(png('png-bytes'))).toBe(true);
     const exported = await app.inject({ method: 'GET', url: `/api/layouts/${id}/export.bbm.bld`, headers: { cookie: c } });
     expect(exported.statusCode).toBe(200);
     const bg = exported.json().backgroundImage;

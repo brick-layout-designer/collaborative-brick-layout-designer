@@ -197,6 +197,14 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       if (data !== undefined) {
         if (!data || typeof data !== 'object') return reply.code(400).send({ error: 'invalid data' });
         updates.data = JSON.stringify(data);
+        // The same storage check as saving a new venue, for what the edit adds.
+        const refusal = await checkGrowth({
+          actor: user,
+          owner: row.ownerOrgId ? { kind: 'org', id: row.ownerOrgId } : { kind: 'user', id: row.ownerUserId ?? user.id },
+          add: { bytes: updates.data.length - row.data.length },
+          uploadBytes: updates.data.length,
+        });
+        if (refusal) return reply.code(refusal.status).send(refusal.body);
       }
       if (Object.keys(updates).length === 0) return reply.code(400).send({ error: 'no updates' });
 
