@@ -17,7 +17,7 @@
     "typecheck": "pnpm -r typecheck",
     "audit": "pnpm audit --prod",
     "scan:secrets": "gitleaks detect --no-banner --redact -v --config .gitleaks.toml",
-    "scan:deps": "npx -y -p osv-scanner@latest osv-scanner scan --recursive --skip-git ./",
+    "scan:deps": "go run github.com/google/osv-scanner/v2/cmd/osv-scanner@v2 scan --recursive ./",
     "prepare": "lefthook install",
     "e2e": "pnpm --filter @cld/web test:e2e"
   },
