@@ -2,6 +2,7 @@
 // (server seeding, the web editor, and — later — the desktop sync client).
 
 import * as Y from 'yjs';
+import { DOC_BASE_SCHEMA } from './shape.js';
 
 /**
  * Version of the Y.Doc layout shape, stored as `meta.schemaVersion`.
@@ -9,8 +10,11 @@ import * as Y from 'yjs';
  * to know the doc is newer than they understand.
  *
  *   1 — text cells carry a stable `id`.
+ *   2 — ruler items are Y.Maps, area sheets may have a `cellOffset`, parts
+ *       and rulers may be ordered by `z` (shape.ts). A doc is stamped 1
+ *       when made and moves to 2 only when an edit needs it.
  */
-export const DOC_SCHEMA_VERSION = 1;
+export const DOC_SCHEMA_VERSION = 2;
 
 /**
  * The oldest `meta.schemaVersion` this code still reads. Raise it only
@@ -78,7 +82,7 @@ export function upgradeDoc(doc: Y.Doc, origin?: unknown): boolean {
   if (missing.length === 0 && !stamp) return false;
   doc.transact(() => {
     for (const cell of missing) cell.set('id', makeId());
-    if (stamp) meta.set('schemaVersion', DOC_SCHEMA_VERSION);
+    if (stamp) meta.set('schemaVersion', DOC_BASE_SCHEMA);
   }, origin);
   return true;
 }

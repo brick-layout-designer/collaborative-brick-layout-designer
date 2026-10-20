@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { itemsInOrder, rulerJson } from '@cld/ydoc';
 import type { SidecarModule } from '@cld/bbm';
 import {
   placeBrick,
@@ -25,6 +26,9 @@ import {
 } from '../mutations';
 import { createUndoManager } from '../useUndoManager';
 
+// Ruler entries as plain objects in drawing order (Y.Maps in doc shape 2).
+const plainRulers = (l: Y.Map<unknown>): Record<string, unknown>[] => itemsInOrder(l.get('rulerItems') as Y.Array<unknown>).map((r) => rulerJson(r)!);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -40,7 +44,7 @@ function docWithBrickLayer(): { doc: Y.Doc; layerId: string } {
 function bricksInLayer(doc: Y.Doc, layerId: string): Y.Map<unknown>[] {
   const layerData = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
   const bricks = layerData.get('bricks') as Y.Array<Y.Map<unknown>>;
-  return bricks.toArray();
+  return itemsInOrder(bricks);
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +221,7 @@ describe('editRulerItem — circular radius', () => {
     const rulerId = addCircularRuler(doc, layerId, { x: 10, y: 10 }, 5);
     editRulerItem(doc, layerId, rulerId, { radius: 8 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ radius: number; displayArea: { width: number } }>).get(0);
+    const item = (plainRulers(layer)[0] as { radius: number; displayArea: { width: number } });
     expect(item?.radius).toBe(8);
     expect(item?.displayArea.width).toBe(16); // 2 * 8
   });
@@ -227,7 +231,7 @@ describe('editRulerItem — circular radius', () => {
     const rulerId = addCircularRuler(doc, layerId, { x: 5, y: 5 }, 4);
     editRulerItem(doc, layerId, rulerId, { radius: -3 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ radius: number }>).get(0);
+    const item = (plainRulers(layer)[0] as { radius: number });
     expect(item?.radius).toBe(0);
   });
 
@@ -236,7 +240,7 @@ describe('editRulerItem — circular radius', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 10, y: 0 });
     editRulerItem(doc, layerId, rulerId, { radius: 99 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ radius?: number }>).get(0);
+    const item = (plainRulers(layer)[0] as { radius?: number });
     // Linear rulers don't have a radius field; it should be absent or undefined.
     expect(item?.radius).toBeUndefined();
   });

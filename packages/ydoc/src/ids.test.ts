@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { readBbm, writeBbm } from '@cld/bbm';
 import { bbmToDoc, docToBbm } from './projection.js';
-import { DOC_SCHEMA_VERSION, makeId, upgradeDoc } from './ids.js';
+import { makeId, upgradeDoc } from './ids.js';
+import { DOC_BASE_SCHEMA } from './shape.js';
 import { createDefaultLayoutDoc, createLayoutDoc, decodeDoc, encodeDoc } from './index.js';
 
 const BBM_FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../bbm/tests/fixtures');
@@ -88,7 +89,7 @@ describe('upgradeDoc', () => {
     expect(upgradeDoc(doc)).toBe(true);
     expect(cells[0]!.get('id')).toBe(kept);
     expect(typeof cells[1]!.get('id')).toBe('string');
-    expect(doc.getMap('meta').get('schemaVersion')).toBe(DOC_SCHEMA_VERSION);
+    expect(doc.getMap('meta').get('schemaVersion')).toBe(DOC_BASE_SCHEMA);
   });
 
   it('is a no-op (no update emitted) on an up-to-date doc', () => {
@@ -108,9 +109,9 @@ describe('upgradeDoc', () => {
 
 describe('meta.schemaVersion', () => {
   it('is written when a doc is created', () => {
-    expect(createDefaultLayoutDoc().getMap('meta').get('schemaVersion')).toBe(DOC_SCHEMA_VERSION);
-    expect(seed(fordyce).getMap('meta').get('schemaVersion')).toBe(DOC_SCHEMA_VERSION);
-    expect(createLayoutDoc().getMap('meta').get('schemaVersion')).toBe(DOC_SCHEMA_VERSION);
+    expect(createDefaultLayoutDoc().getMap('meta').get('schemaVersion')).toBe(DOC_BASE_SCHEMA);
+    expect(seed(fordyce).getMap('meta').get('schemaVersion')).toBe(DOC_BASE_SCHEMA);
+    expect(createLayoutDoc().getMap('meta').get('schemaVersion')).toBe(DOC_BASE_SCHEMA);
   });
 });
 
