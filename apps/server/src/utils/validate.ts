@@ -15,6 +15,14 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * A body field trimmed when it is a string, else undefined. Bodies are
+ * typed but not checked, so `body.title?.trim()` on a number was a 500.
+ */
+export function trimmed(v: unknown): string | undefined {
+  return typeof v === 'string' ? v.trim() : undefined;
+}
+
 /** True when two addresses are the same mailbox after normalisation. */
 export function sameEmail(a: string, b: string): boolean {
   return normalizeEmail(a) === normalizeEmail(b);

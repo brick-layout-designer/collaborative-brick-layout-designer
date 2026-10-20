@@ -174,7 +174,8 @@ function clampLimit(raw: string | undefined): number {
 
 function clampOffset(raw: string | undefined): number {
   const n = raw ? parseInt(raw, 10) : 0;
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  // Past what SQLite holds (a 64-bit integer) it refused the query with a 500.
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0;
 }
 
 function toWire(row: typeof schema.auditEvents.$inferSelect, names?: Map<string, string>) {

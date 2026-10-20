@@ -66,9 +66,10 @@ export async function passwordRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const { password, displayName } = req.body;
-      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
-      if (!email || !password || password.length < 8 || password.length > 128) {
+      const body: Partial<NonNullable<typeof req.body>> = req.body ?? {};
+      const { password, displayName } = body;
+      const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
+      if (!email || typeof password !== 'string' || password.length < 8 || password.length > 128) {
         return reply.code(400).send({ error: 'invalid_input' });
       }
       // Case-insensitive: `Alice@x.com` must not register alongside
@@ -103,7 +104,7 @@ export async function passwordRoutes(app: FastifyInstance) {
         return reply.send({ ok: true, verificationRequired: false });
       }
 
-      await issueVerification(req.log, id, email, safeNextPath(req.body.next));
+      await issueVerification(req.log, id, email, safeNextPath(body.next));
       // No session cookie yet — the account can't log in until verified.
       return reply.send({ ok: true, verificationRequired: true });
     },
@@ -115,7 +116,8 @@ export async function passwordRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
+      const body: Partial<NonNullable<typeof req.body>> = req.body ?? {};
+      const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
       if (!email) return reply.code(400).send({ error: 'invalid_input' });
       const settings = await getPlatformSettings();
       const user = await findUserByEmail(email);
@@ -123,7 +125,7 @@ export async function passwordRoutes(app: FastifyInstance) {
       // already verified — don't let this endpoint be used to enumerate
       // registered emails.
       if (settings.requireEmailVerification && user && user.passwordHash && !user.emailVerified) {
-        await issueVerification(req.log, user.id, user.email, safeNextPath(req.body.next));
+        await issueVerification(req.log, user.id, user.email, safeNextPath(body.next));
       }
       return reply.send({ ok: true });
     },
@@ -165,9 +167,10 @@ export async function passwordRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const { password } = req.body;
-      const email = typeof req.body.email === 'string' ? normalizeEmail(req.body.email) : '';
-      if (!email || !password || password.length > 128) return reply.code(400).send({ error: 'invalid_input' });
+      const body: Partial<NonNullable<typeof req.body>> = req.body ?? {};
+      const { password } = body;
+      const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
+      if (!email || typeof password !== 'string' || !password || password.length > 128) return reply.code(400).send({ error: 'invalid_input' });
       const user = await findUserByEmail(email);
       if (!user || !user.passwordHash) {
         return reply.code(401).send({ error: 'invalid_credentials' });

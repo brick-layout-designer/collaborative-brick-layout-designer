@@ -42,6 +42,13 @@ import { privacyAdminRoutes } from './privacyAdmin.js';
 import { clubDeletionRoutes } from './clubDeletion.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
+  // A JSON body of `null`, a string or a number reads as an empty one:
+  // routes read fields off their body, and `null.title` was a 500.
+  app.addHook('preValidation', async (req) => {
+    const type = req.headers['content-type'];
+    if (typeof type !== 'string' || !/^application\/json\b/i.test(type)) return;
+    if (req.body === null || (req.body !== undefined && typeof req.body !== 'object')) req.body = {};
+  });
   await app.register(versionRoutes);
   await app.register(oauthRoutes);
   await app.register(passwordRoutes);

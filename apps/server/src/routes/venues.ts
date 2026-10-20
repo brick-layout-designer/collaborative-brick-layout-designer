@@ -131,7 +131,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const user = requireUser(req);
       const { name, data, orgSlug } = req.body;
-      if (!name || !data) return reply.code(400).send({ error: 'name and data required' });
+      if (typeof name !== 'string' || !name.trim() || !data) return reply.code(400).send({ error: 'name and data required' });
 
       const dest = await destinationOrg(user.id, orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });

@@ -31,7 +31,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { hasVerifiedEmail } from '../auth/users.js';
-import { sameEmail } from '../utils/validate.js';
+import { sameEmail, trimmed } from '../utils/validate.js';
 import { atLeast } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
 
@@ -56,8 +56,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'forbidden' });
       }
 
-      const recipientEmail = req.body.recipientEmail?.trim().toLowerCase();
-      const recipientOrgSlug = req.body.recipientOrgSlug?.trim().toLowerCase();
+      const recipientEmail = trimmed(req.body.recipientEmail)?.toLowerCase();
+      const recipientOrgSlug = trimmed(req.body.recipientOrgSlug)?.toLowerCase();
       if (!!recipientEmail === !!recipientOrgSlug) {
         return reply.code(400).send({ error: 'specify_recipient_email_xor_org' });
       }

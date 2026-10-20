@@ -23,7 +23,7 @@ import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { isValidEmail, normalizeEmail, trimmed } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clubThingRole } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
@@ -239,7 +239,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
 
     const id = randomUUID();
     const now = new Date();
-    const category = body.category?.trim() || 'Custom';
+    const category = trimmed(body.category) || 'Custom';
     await db.insert(schema.customParts).values({
       id,
       partNumber,
@@ -325,7 +325,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         .set({
           partNumber,
           displayName,
-          ...(req.body.category?.trim() ? { category: req.body.category.trim() } : {}),
+          ...(trimmed(req.body.category) ? { category: trimmed(req.body.category) } : {}),
           xmlBlob,
           spriteBlob,
           spriteMime: req.body.spriteMime,
@@ -522,8 +522,8 @@ type ParsedPartBody =
 
 /** A create / replace body's fields, checked, with the blobs decoded. */
 function parsePartBody(body: CreatePartBody): ParsedPartBody {
-  const partNumber = body.partNumber?.trim();
-  const displayName = body.displayName?.trim();
+  const partNumber = trimmed(body.partNumber);
+  const displayName = trimmed(body.displayName);
   if (!partNumber || !displayName) return { status: 400, error: 'invalid_input' };
   if (body.spriteMime !== 'image/gif' && body.spriteMime !== 'image/png') {
     return { status: 400, error: 'invalid_sprite_mime' };
