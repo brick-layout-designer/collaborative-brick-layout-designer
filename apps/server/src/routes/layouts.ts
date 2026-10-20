@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { withCustomPartNumbers } from '../utils/customPartNumbers.js';
 import { Buffer } from 'node:buffer';
 import { createWriteStream, createReadStream, existsSync, readFileSync } from 'node:fs';
-import { copyFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, open, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { isImageOfType } from '../images/sniff.js';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
@@ -184,6 +185,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       const bytes = Buffer.from(body.backgroundImage.data ?? '', 'base64');
       if (bytes.length === 0) return reply.code(400).send({ error: 'invalid_image' });
       if (bytes.length > BG_MAX_BYTES) return reply.code(413).send({ error: 'file_too_large' });
+      if (!isImageOfType(bytes, body.backgroundImage.type)) return reply.code(415).send({ error: 'unsupported_image_type' });
       background = { ext, bytes };
       if (sidecarText) {
         // The image lives here now; the file named it by entry.
@@ -241,7 +243,8 @@ export async function layoutRoutes(app: FastifyInstance) {
 
     const owner: Subject = ownerOrgId ? { kind: 'org', id: ownerOrgId } : { kind: 'user', id: user.id };
     const addBytes = docSnapshot.length + (sidecarSnapshot?.length ?? 0) + (background?.bytes.length ?? 0);
-    const uploaded = declaredBytes(req.headers);
+    // What was uploaded: the body as received (a chunked request declares no length).
+    const uploaded = Math.max(declaredBytes(req.headers), Buffer.byteLength(JSON.stringify(req.body ?? null)));
     const refusal = await checkGrowth({ actor: user, owner, add: { layouts: 1, bytes: addBytes }, uploadBytes: uploaded });
     if (refusal) return reply.code(refusal.status).send(refusal.body);
     if (body.bbm || background) recordUpload(user.id, owner, uploaded);
@@ -706,15 +709,20 @@ export async function layoutRoutes(app: FastifyInstance) {
         .from(schema.layouts)
         .where(eq(schema.layouts.id, layoutId))
         .get();
-      if (target) {
-        const owner: Subject = target.ownerOrgId ? { kind: 'org', id: target.ownerOrgId } : { kind: 'user', id: target.ownerUserId ?? user.id };
+      const owner: Subject | null = target
+        ? target.ownerOrgId ? { kind: 'org', id: target.ownerOrgId } : { kind: 'user', id: target.ownerUserId ?? user.id }
+        : null;
+      if (owner) {
+        // A quick refusal from the declared size; the real size is checked
+        // again below, since a chunked upload declares none.
         const size = declaredBytes(req.headers);
         const refusal = await checkGrowth({ actor: user, owner, add: { bytes: size }, uploadBytes: size });
         if (refusal) return reply.code(refusal.status).send(refusal.body);
-        recordUpload(user.id, owner, size);
       }
 
-      const data = await req.file({ limits: { fileSize: 10 * 1024 * 1024 } });
+      // One file and nothing else: text fields would otherwise be held in
+      // memory (up to 1000 of 1 MB each by default) before the file arrives.
+      const data = await req.file({ limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0, parts: 1 } });
       if (!data) return reply.code(400).send({ error: 'no_file' });
 
       const mime = data.mimetype ?? '';
@@ -749,6 +757,27 @@ export async function layoutRoutes(app: FastifyInstance) {
         if (data.file.truncated) {
           await unlink(tmp).catch(() => {});
           return reply.code(413).send({ error: 'file_too_large' });
+        }
+        // Stored and served as sent, so it must be the picture it says it is.
+        const head = Buffer.alloc(16);
+        const fh = await open(tmp, 'r');
+        try {
+          await fh.read(head, 0, 16, 0);
+        } finally {
+          await fh.close();
+        }
+        if (!isImageOfType(head, mime)) {
+          await unlink(tmp).catch(() => {});
+          return reply.code(415).send({ error: 'unsupported_image_type' });
+        }
+        if (owner) {
+          const size = (await stat(tmp)).size;
+          const refusal = await checkGrowth({ actor: user, owner, add: { bytes: size }, uploadBytes: size });
+          if (refusal) {
+            await unlink(tmp).catch(() => {});
+            return reply.code(refusal.status).send(refusal.body);
+          }
+          recordUpload(user.id, owner, size);
         }
         await rename(tmp, dest);
       } catch (err) {
