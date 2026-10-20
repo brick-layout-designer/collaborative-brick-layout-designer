@@ -20,6 +20,7 @@ import { startRollup, stopRollup } from './metrics/rollup.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 import { failInterruptedExports } from './privacy/exports.js';
 import { registerSecurityHeaders } from './utils/securityHeaders.js';
+import { registerCrossSiteGuard } from './utils/crossSite.js';
 import { registerApiRoutes } from './routes/all.js';
 import { registerChangeHints } from './events/routeHints.js';
 import { setHintErrorLogger } from './events/audience.js';
@@ -49,6 +50,8 @@ async function main() {
   // instance before any routes so it covers every plugin, including the
   // static /parts/* servers below.
   registerSecurityHeaders(app);
+  // Browser writes to the API only from this site (crossSite.ts).
+  registerCrossSiteGuard(app);
   await app.register(cors, {
     origin: env.publicUrl,
     credentials: true,
