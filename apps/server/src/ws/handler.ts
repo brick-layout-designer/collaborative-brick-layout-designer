@@ -17,7 +17,7 @@ import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import type { DocSession } from './docHub.js';
-import { CLOSE_LAYOUT_GONE, docHub } from './docHub.js';
+import { CLOSE_LAYOUT_GONE, MAX_AWARENESS_BYTES, docHub } from './docHub.js';
 import {
   MESSAGE_AWARENESS,
   MESSAGE_SYNC,
@@ -92,8 +92,8 @@ interface Sender {
  * (the "what am I missing?" request that makes the server answer with the
  * doc), but the server drops any sync step 2 / update they send —
  * preventing a hostile viewer from corrupting the doc. Awareness updates
- * are still accepted from viewers because cursor/selection broadcasting
- * is purely cosmetic.
+ * are still accepted from viewers (their own presence only, see
+ * DocSession.applyClientAwareness): cursor/selection is cosmetic.
  *
  * Persisting and broadcasting doc / awareness updates is done ONCE per
  * layout by the DocSession (see DocSession.startBroadcasting); this
@@ -130,8 +130,8 @@ export async function attachWsHandlers(
     );
   }
 
-  // 3. Doc and awareness updates (persist + fan-out, awareness identity
-  //    pinning) are handled by the session's single listeners.
+  // 3. Doc and awareness updates (persist + fan-out) are handled by the
+  //    session's single listeners.
 
   // 4. Wire up message handling.
   let currentRole = cap(role);
@@ -189,10 +189,11 @@ export async function attachWsHandlers(
 
   return async () => {
     clearInterval(revalidateTimer);
-    // Remove this client's awareness state so others see them disappear.
-    const owned = session.clientAwarenessIds.get(ws);
-    if (owned && owned.size > 0 && !session.closed) {
-      awarenessProtocol.removeAwarenessStates(session.awareness, [...owned], ws);
+    // Remove this client's own awareness entries (only those it still
+    // owns) so others see them disappear.
+    const owned = session.releaseAwareness(ws);
+    if (owned.length > 0 && !session.closed) {
+      awarenessProtocol.removeAwarenessStates(session.awareness, owned, ws);
     }
     await docHub.detach(session, ws);
   };
@@ -268,11 +269,10 @@ function handleMessage(
       break;
     }
     case MESSAGE_AWARENESS: {
-      awarenessProtocol.applyAwarenessUpdate(
-        session.awareness,
-        decoding.readVarUint8Array(decoder),
-        ws,
-      );
+      // Presence: only this connection's own entries, within limits (DocSession.applyClientAwareness).
+      const update = decoding.readVarUint8Array(decoder);
+      if (update.length > MAX_AWARENESS_BYTES) return;
+      session.applyClientAwareness(ws, update);
       break;
     }
     default:
