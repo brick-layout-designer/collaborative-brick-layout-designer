@@ -108,11 +108,17 @@ function readHullProperties(node: Node): HullProperties {
   };
 }
 
+/** What a layer from before v9 (no HullProperties) gets, as on the desktop. */
+function defaultHull(): HullProperties {
+  return { isVisible: false, hullColor: { kind: 'known', name: 'Black' }, hullThickness: 1 };
+}
+
 function readFont(node: Node): FontSpec {
   return {
     family: stringField(node, 'FontFamily'),
     size: parseXmlFloat(stringField(node, 'Size')),
-    style: stringField(node, 'Style'),
+    // <Style> came in v6; the desktop reads older fonts as Regular.
+    style: optionalString(node, 'Style') ?? 'Regular',
   };
 }
 
@@ -132,12 +138,18 @@ function readLayers(layersNode: unknown, warnings: string[]): Layer[] {
     const layerNode = item as Node;
     const type = stringAttr(layerNode, 'type') as LayerType;
     const id = stringAttr(layerNode, 'id');
+    // Older files lack what later versions added, as the desktop reads
+    // them (LayerIO.cpp readCommonField): Transparency came in v5 (an area
+    // sheet had it in its body before; it's read by name either way) and
+    // HullProperties in v9 (BlueBrick 1.9). A BlueBrick 1.8 file has none.
+    const transparency = optionalString(layerNode, 'Transparency');
+    const hull = layerNode.HullProperties;
     const common = {
       id,
       name: optionalString(layerNode, 'Name') ?? '',
       visible: parseBool(stringField(layerNode, 'Visible')),
-      transparency: parseXmlInt(stringField(layerNode, 'Transparency')),
-      hullProperties: readHullProperties(required<Node>(layerNode, 'HullProperties')),
+      transparency: transparency === undefined ? 100 : parseXmlInt(transparency),
+      hullProperties: hull && typeof hull === 'object' ? readHullProperties(hull as Node) : defaultHull(),
     };
 
     switch (type) {
@@ -364,7 +376,8 @@ function readBrick(n: Node): Brick {
     partNumber: stringField(n, 'PartNumber'),
     orientation: parseXmlFloat(stringField(n, 'Orientation')),
     activeConnectionPointIndex: parseXmlInt(stringField(n, 'ActiveConnectionPointIndex')),
-    altitude: parseXmlFloat(stringField(n, 'Altitude')),
+    // <Altitude> came in v3.
+    altitude: parseXmlFloat(optionalString(n, 'Altitude')),
     connexions: readConnexions(n.Connexions),
   };
 }

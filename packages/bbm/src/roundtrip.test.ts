@@ -110,3 +110,41 @@ describe('damaged numbers', () => {
     }
   });
 });
+
+// Audit 2026-10-20: a file from before BlueBrick 1.9 (v8 and older) didn't
+// open at all ("missing required element: HullProperties"). The desktop
+// reads them with defaults for what later versions added
+// (LayerIO.cpp readCommonField, XmlPrimitives.cpp readFont).
+describe('files from older BlueBrick versions', () => {
+  const v9 = readFileSync(resolve(FIXTURES, 'tight-corner.bbm'), 'utf8');
+  const v8 = v9
+    .replace('<Version>9</Version>', '<Version>8</Version>')
+    .replace(/\s*<HullProperties[^>]*>[\s\S]*?<\/HullProperties>/g, '')
+    .replace(/\s*<DisplayBrickElevation>[^<]*<\/DisplayBrickElevation>/g, '');
+  const v5 = v8.replace('<Version>8</Version>', '<Version>5</Version>').replace(/\s*<Style>[^<]*<\/Style>/g, '');
+  const v4 = v5
+    .replace('<Version>5</Version>', '<Version>4</Version>')
+    .replace(/\s*<MyGroup>[^<]*<\/MyGroup>|\s*<MyGroup \/>/g, '')
+    .replace(/\s*<Transparency>[^<]*<\/Transparency>/g, '');
+  const v2 = v4.replace('<Version>4</Version>', '<Version>2</Version>').replace(/\s*<Altitude>[^<]*<\/Altitude>/g, '');
+  const bricks = (m: ReturnType<typeof readBbm>['map']) => m.layers.flatMap((l) => (l.type === 'brick' ? l.bricks : []));
+  const want = bricks(readBbm(v9).map).map((b) => [b.id, b.partNumber, b.displayArea.x, b.orientation]);
+
+  for (const [name, xml] of [['v8', v8], ['v5', v5], ['v4', v4], ['v2', v2]] as const) {
+    it(`${name} opens with the same parts and the desktop's defaults, and saves as v9`, () => {
+      expect(xml).not.toBe(v9);
+      const { map, warnings } = readBbm(xml);
+      expect(warnings).toEqual([]);
+      expect(bricks(map).map((b) => [b.id, b.partNumber, b.displayArea.x, b.orientation])).toEqual(want);
+      for (const l of map.layers) {
+        expect(l.hullProperties).toEqual({ isVisible: false, hullColor: { kind: 'known', name: 'Black' }, hullThickness: 1 });
+        if (name === 'v4' || name === 'v2') expect(l.transparency).toBe(100);
+        if (l.type === 'grid' && name !== 'v8') expect(l.cellIndexFont.style).toBe('Regular');
+      }
+      const out = writeBbm(map);
+      expect(out).toContain('<Version>9</Version>');
+      expect(out).toContain('<HullProperties isVisible="false">');
+      expect(bricks(readBbm(out).map)).toEqual(bricks(map));
+    });
+  }
+});
