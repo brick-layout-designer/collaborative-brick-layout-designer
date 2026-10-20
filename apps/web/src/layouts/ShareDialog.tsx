@@ -229,13 +229,7 @@ function InviteForm({
           >
             {shareUrl}
           </code>
-          <button
-            type="button"
-            onClick={() => navigator.clipboard.writeText(shareUrl)}
-            className="mt-1 text-xs text-accent-text hover:underline"
-          >
-            Copy link
-          </button>
+          <CopyLinkButton url={shareUrl} />
         </div>
       )}
     </form>
@@ -573,13 +567,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
           <code className="mt-1 block break-all rounded-lg bg-bg p-1 text-[11px]">
             {linkResult.url}
           </code>
-          <button
-            type="button"
-            onClick={() => navigator.clipboard.writeText(linkResult.url)}
-            className="mt-1 text-xs text-accent-text hover:underline"
-          >
-            Copy link
-          </button>
+          <CopyLinkButton url={linkResult.url} />
           <button
             type="button"
             disabled={cancelTransfer.isPending}
@@ -666,7 +654,6 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
     queryKey: ['layout', layoutId],
     queryFn: () => api.layouts.get(layoutId),
   });
-  const [copied, setCopied] = useState(false);
 
   const enable = useMutation({
     mutationFn: () => api.layouts.enablePublicShare(layoutId),
@@ -734,20 +721,34 @@ function PublicShareSection({ layoutId }: { layoutId: string }) {
           <code className="block break-all rounded-lg bg-bg p-1 text-[11px]">
             {url}
           </code>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(url);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="mt-1 text-xs text-accent-text hover:underline"
-          >
-            {copied ? 'Copied!' : 'Copy link'}
-          </button>
+          <CopyLinkButton url={url} />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Copy a link, saying whether it worked. The clipboard can refuse (no
+ * permission, or a server reached over plain http, where there is no
+ * clipboard at all); the link stays on screen to copy by hand.
+ */
+export function CopyLinkButton({ url }: { url: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(url);
+      setState('copied');
+    } catch {
+      setState('failed');
+    }
+    setTimeout(() => setState('idle'), 2500);
+  };
+  return (
+    <button type="button" onClick={() => void copy()} className="mt-1 text-xs text-accent-text hover:underline">
+      {state === 'copied' ? 'Copied!' : state === 'failed' ? 'Could not copy; select the link and copy it.' : 'Copy link'}
+    </button>
   );
 }
 
