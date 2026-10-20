@@ -142,6 +142,7 @@ export async function collectUserData(userId: string): Promise<DataSection[]> {
   );
   add('module-versions', 'Module versions you saved.', await select(s.moduleVersions, eq(s.moduleVersions.authorId, userId)));
   add('modules-shared-with-you', 'Other people’s modules shared with you.', await select(s.moduleCollaborators, eq(s.moduleCollaborators.userId, userId)));
+  add('module-invites', 'Invites to a module sent to your email.', await select(s.moduleInvites, eq(s.moduleInvites.invitedEmail, email)));
   add(
     'module-transfers',
     'Modules you offered to someone, or someone offered to you.',
@@ -234,6 +235,7 @@ export const READ_TABLES = [
   'module_versions',
   'module_collaborators',
   'module_transfers',
+  'module_invites',
   'custom_parts',
   'custom_part_collaborators',
   'custom_part_invites',

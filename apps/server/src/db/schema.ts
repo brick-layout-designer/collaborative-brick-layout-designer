@@ -742,6 +742,33 @@ export const moduleCollaborators = sqliteTable(
   }),
 );
 
+// Invites to a module by an emailed link (0034), the same shape as
+// layout_invites: the recipient signs in with the invited, verified email
+// and accepts. Single use, expires, and holds only while its sender still
+// manages the module's sharing. Pending ones go when the module changes
+// hands.
+export const moduleInvites = sqliteTable(
+  'module_invites',
+  {
+    id: text('id').primaryKey(),
+    moduleId: text('module_id')
+      .notNull()
+      .references(() => modules.id, { onDelete: 'cascade' }),
+    invitedEmail: text('invited_email').notNull(),
+    role: text('role', { enum: ['viewer', 'editor'] }).notNull(),
+    token: text('token').notNull().unique(),
+    invitedBy: text('invited_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    moduleIdx: index('module_invites_module_id_idx').on(t.moduleId),
+  }),
+);
+
 // User → user module transfers (mirror of layout_transfers). Org-recipient
 // transfers commit immediately and don't write here.
 export const moduleTransfers = sqliteTable('module_transfers', {

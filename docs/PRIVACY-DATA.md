@@ -44,12 +44,13 @@ host's to keep or not.
 | `layouts` | owner, creator, title, the layout itself; `deleted_author_id` | yes, own layouts as `.bld-layout` files | Background pictures live on disk in `bgimages/<layout id>.<ext>` and go inside the `.bld-layout`. |
 | `layout_updates` | recent edits waiting to be folded in | inside the layout file | |
 | `layout_collaborators` | who a layout is shared with, and their role | yes | |
-| `layout_invites` | invited email | yes (no token) | |
+| `layout_invites` | invited email, who sent it | yes (no token) | Pending ones go when the layout changes hands. |
 | `layout_transfers` | who offered a layout to which email | yes (no token) | |
 | `modules` | owner, creator, title, the module, its picture | yes, own modules as `.bld-layout` + picture | |
 | `module_versions` | who saved each version, and its note | yes (metadata) | |
 | `module_collaborators` | shares | yes | |
 | `module_transfers` | offers | yes (no token) | |
+| `module_invites` | who invited which email to a module, and the role | yes (no token) | Pending ones go when the module changes hands. |
 | `custom_parts` | owner, creator, the part's XML and picture | yes, own parts as XML + picture | The XML may name an author. |
 | `custom_part_collaborators` | shares | yes | |
 | `custom_part_invites` | invited email | yes (no token) | |

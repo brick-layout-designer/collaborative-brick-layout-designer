@@ -1,7 +1,7 @@
 // Modules you can open, change and see: New module opens the module
 // editor, Save module keeps the parts and makes the module's picture, and
 // the picture shows wherever modules are listed. People who can only view
-// a module see it without the Save button.
+// a module (invited by a link they accept) see it without the Save button.
 
 import { test, expect, type Page } from '@playwright/test';
 import { ensureUser, signIn } from '../helpers';
@@ -179,11 +179,28 @@ test.describe('module editor', () => {
     await ensureUser(viewerEmail, 'Module Viewer');
     await signIn(page, `mod-owner-${ts}-${seq++}@example.com`, 'Module Owner');
     const id = await buildModule(page, 'Shared turntable');
-    expect((await page.request.post(`/api/modules/${id}/invites`, { data: { email: viewerEmail, role: 'viewer' } })).ok()).toBe(true);
+    // Share with people: an invite link for the viewer, waiting until they accept.
+    await page.goto('/');
+    const ownerRow = page.getByTestId('module-row').filter({ hasText: 'Shared turntable' });
+    await ownerRow.getByRole('button', { name: 'More for Shared turntable' }).click();
+    await page.getByRole('menuitem', { name: 'Share with people…' }).click();
+    const share = page.getByRole('dialog', { name: 'Share Shared turntable' });
+    await share.getByPlaceholder('alice@example.com').fill(viewerEmail);
+    await share.getByRole('button', { name: 'Invite' }).click();
+    const sent = share.getByRole('status');
+    await expect(sent).toContainText('/module-invite/');
+    await expect(share.getByTestId('module-invites')).toContainText(viewerEmail);
+    const invitePath = /\/module-invite\/[0-9a-f]+/.exec((await sent.textContent()) ?? '')![0];
+    await share.getByRole('button', { name: 'Close' }).click();
 
     const ctx = await browser.newContext();
     const vp = await ctx.newPage();
     await signIn(vp, viewerEmail, 'Module Viewer');
+    // Not theirs until they accept.
+    await vp.goto('/');
+    await expect(vp.getByTestId('module-row').filter({ hasText: 'Shared turntable' })).toHaveCount(0);
+    await vp.goto(invitePath);
+    await expect(vp).toHaveURL(new RegExp(`/modules/${id}$`), { timeout: 15000 });
     await vp.goto('/');
     const row = vp.getByTestId('module-row').filter({ hasText: 'Shared turntable' });
     await expectLoadedPicture(row);

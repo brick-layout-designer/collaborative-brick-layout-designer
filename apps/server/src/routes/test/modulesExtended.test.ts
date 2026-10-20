@@ -4,7 +4,7 @@
 //   PATCH  /api/modules/:id           — rename
 //   DELETE /api/modules/:id           — delete
 //   GET    /api/modules/:id/collaborators  — list collaborators
-//   POST   /api/modules/:id/invites        — add collaborator
+//   POST   /api/modules/:id/invites        — invite by link (accepted in moduleInvites.test.ts)
 //   DELETE /api/modules/:id/collaborators/:userId — remove
 
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -18,6 +18,7 @@ import { passwordRoutes } from '../auth/password.js';
 import { sessionRoutes } from '../auth/session.js';
 import { orgRoutes } from '../orgs.js';
 import { moduleRoutes } from '../modules.js';
+import { moduleInviteRoutes } from '../moduleInvites.js';
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: 10 * 1024 * 1024 });
@@ -27,6 +28,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(sessionRoutes);
   await app.register(orgRoutes);
   await app.register(moduleRoutes);
+  await app.register(moduleInviteRoutes);
   return app;
 }
 
@@ -308,7 +310,7 @@ describe('modules — invite collaborator', () => {
   beforeEach(async () => { resetDb(); app = await buildApp(); });
   afterEach(async () => { await app.close(); });
 
-  it('owner can add a registered user as editor', async () => {
+  it('an invited person becomes an editor once they accept the link', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     const bobCookie = await registerAndLogin(app, 'bob@example.com');
     const id = await createModule(app, aliceCookie);
@@ -320,8 +322,13 @@ describe('modules — invite collaborator', () => {
       payload: { email: 'bob@example.com', role: 'editor' },
     });
     expect(res.statusCode).toBe(200);
-    expect((res.json() as { added: boolean }).added).toBe(true);
+    const { token, inviteUrl } = res.json() as { token: string; inviteUrl: string };
+    expect(inviteUrl).toContain(`/module-invite/${token}`);
+    // Not before accepting.
+    expect((await app.inject({ method: 'GET', url: `/api/modules/${id}`, headers: { cookie: bobCookie } })).statusCode).toBe(404);
 
+    const accept = await app.inject({ method: 'POST', url: `/api/module-invites/${token}`, headers: { cookie: bobCookie } });
+    expect(accept.statusCode).toBe(200);
     const get = await app.inject({ method: 'GET', url: `/api/modules/${id}`, headers: { cookie: bobCookie } });
     expect(get.statusCode).toBe(200);
     expect((get.json() as { role: string }).role).toBe('editor');
@@ -353,7 +360,7 @@ describe('modules — invite collaborator', () => {
     expect((res.json() as { error: string }).error).toBe('invalid_role');
   });
 
-  it('returns 400 for unregistered recipient', async () => {
+  it('invites an address with no account here the same way', async () => {
     const cookie = await registerAndLogin(app, 'alice@example.com');
     const id = await createModule(app, cookie);
     const res = await app.inject({
@@ -362,8 +369,8 @@ describe('modules — invite collaborator', () => {
       headers: { cookie },
       payload: { email: 'ghost@example.com', role: 'editor' },
     });
-    expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toBe('recipient_not_registered');
+    expect(res.statusCode).toBe(200);
+    expect(Object.keys(res.json() as object).sort()).toEqual(['emailDelivered', 'expiresAt', 'id', 'inviteUrl', 'token']);
   });
 
   it('returns 403 for non-owner trying to invite', async () => {

@@ -416,6 +416,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'PUT /api/modules/:id/thumbnail': resource('module'),
   'POST /api/modules/:id/versions/:n/restore': resource('module'),
   'POST /api/modules/:id/invites': resource('module'),
+  'DELETE /api/modules/:id/invites/:inviteId': resource('module'),
+  'POST /api/module-invites/:token': resource('module', { reply: 'moduleId' }),
   'DELETE /api/modules/:id/collaborators/:userId': resource('module', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'POST /api/modules/:id/transfer': resource('module'),
   'POST /api/modules/:id/take-back': returned('module'),

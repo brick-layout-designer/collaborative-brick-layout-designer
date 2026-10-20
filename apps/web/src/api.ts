@@ -79,6 +79,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   author_gone: 'The person who made it no longer has an account here.',
   already_returned: 'This is the club’s copy; its author already has the original.',
   author_handed_it_over: 'Its author handed it to someone else, so it stays with the club.',
+  module_invite_no_longer_valid: 'This invite no longer works: the module changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
+  already_has_access: 'That person already has access.',
   invite_no_longer_valid: 'This invite no longer works: the layout changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
   already_yours: 'It’s already yours.',
   part_number_taken: 'There’s already a part with that number there.',
@@ -896,8 +898,27 @@ export const api = {
     rename: (id: string, title: string) =>
       patch<{ ok: true }>(`/api/modules/${id}`, { title }),
     remove: (id: string) => del(`/api/modules/${id}`),
+    /** Who has it, and (for its owners) the invites still waiting. */
+    collaborators: (id: string) =>
+      get<{ collaborators: CollaboratorSummary[]; invites?: InviteSummary[] }>(`/api/modules/${encodeURIComponent(id)}/collaborators`),
+    /** Invite by email: they get a link to accept (nobody is added before that). */
     invite: (id: string, email: string, role: 'viewer' | 'editor') =>
-      post<{ added: true }>(`/api/modules/${id}/invites`, { email, role }),
+      post<{ id: string; token: string; inviteUrl: string; emailDelivered: boolean; expiresAt: number }>(
+        `/api/modules/${encodeURIComponent(id)}/invites`,
+        { email, role },
+      ),
+    revokeInvite: (id: string, inviteId: string) => del(`/api/modules/${encodeURIComponent(id)}/invites/${encodeURIComponent(inviteId)}`),
+    /** Take someone off it (or leave it yourself). */
+    removeCollaborator: (id: string, userId: string) => del(`/api/modules/${encodeURIComponent(id)}/collaborators/${encodeURIComponent(userId)}`),
+  },
+
+  moduleInvites: {
+    preview: (token: string) =>
+      /** `invitedEmail` is masked unless it's for the account signed in; `forYou` is null signed out. */
+      get<{ invitedEmail: string; forYou?: boolean | null; role: 'viewer' | 'editor'; moduleId: string; moduleTitle: string; expiresAt: number }>(
+        `/api/module-invites/${encodeURIComponent(token)}`,
+      ),
+    accept: (token: string) => post<{ moduleId: string; role: 'viewer' | 'editor' }>(`/api/module-invites/${encodeURIComponent(token)}`),
   },
 
   venues: {

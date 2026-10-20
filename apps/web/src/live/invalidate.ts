@@ -46,7 +46,7 @@ const COLLECTIONS: QueryKey[] = [['catalog-collections'], ['catalog-collection']
 
 const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   layout: () => [['layouts'], ['layout'], ['collaborators'], ['audit'], ['club-summary'], ['transfer-preview'], ...ADMIN_LISTS],
-  module: () => [['modules'], ['module'], ['module-versions'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS, ...ADMIN_LISTS],
+  module: () => [['modules'], ['module'], ['module-versions'], ['module-collaborators'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS, ...ADMIN_LISTS],
   venue: () => [['venues'], ['venue'], ['venue-library'], ['club-summary']],
   'custom-part': () => [['custom-parts'], ['parts-catalog'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS],
   catalog: () => [
@@ -161,7 +161,7 @@ const WRITE_RULES: Array<[RegExp, HintKind[]]> = [
   [/^\/api\/layouts\/[^/]+\/transfer\b|^\/api\/transfers\b/, ['layout', 'transfer']],
   [/^\/api\/(layouts|invites)\b/, ['layout']],
   [/^\/api\/modules\/[^/]+\/transfer\b/, ['module', 'transfer']],
-  [/^\/api\/modules\b/, ['module']],
+  [/^\/api\/(modules|module-invites)\b/, ['module']],
   [/^\/api\/venues\b/, ['venue']],
   [/^\/api\/custom-parts\b/, ['custom-part']],
   // Adding or updating a catalog item puts a module or a part in your things.
