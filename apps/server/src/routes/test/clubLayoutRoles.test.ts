@@ -1,10 +1,7 @@
-// A club where only admins add things ("membersCanCreate" off): its plain
-// members only view its modules, but they are editors of its layouts.
-// Whether layouts should follow the module rule is a product decision
-// (Aaron, audit 2026-10-20), so the expected behavior is recorded as a
-// known failure. To see it: make such a club with an admin and a member,
-// the admin adds a layout and a module; the member can rename the layout
-// and replace its document, but can't rename the module.
+// A club where only admins add things ("membersCanCreate" off): plain
+// members can't add layouts, venues or modules there and only view its
+// modules, but they stay editors of its layouts. Aaron chose this on
+// 2026-10-20; per-club roles will later replace the toggle.
 
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -54,8 +51,8 @@ describe('a club where only admins add things', () => {
     expect((await call(member, 'PATCH', `/api/modules/${moduleId}`, { title: 'renamed' })).statusCode).toBe(403);
   });
 
-  it.fails('makes a plain member a viewer of its layouts too (needs a decision)', async () => {
-    expect((await call(member, 'GET', `/api/layouts/${layoutId}`)).json()).toMatchObject({ role: 'viewer' });
-    expect((await call(member, 'PATCH', `/api/layouts/${layoutId}`, { title: 'renamed' })).statusCode).toBe(403);
+  it('keeps a plain member an editor of its layouts (decided 2026-10-20)', async () => {
+    expect((await call(member, 'GET', `/api/layouts/${layoutId}`)).json()).toMatchObject({ role: 'editor' });
+    expect((await call(member, 'PATCH', `/api/layouts/${layoutId}`, { title: 'renamed' })).statusCode).toBe(200);
   });
 });
