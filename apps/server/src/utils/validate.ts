@@ -23,6 +23,20 @@ export function trimmed(v: unknown): string | undefined {
   return typeof v === 'string' ? v.trim() : undefined;
 }
 
+/** The longest title or name a layout, module or venue may have (renames already used it). */
+export const MAX_TITLE = 200;
+
+/** Whether a title someone typed is too long (in characters, not UTF-16 units). */
+export function titleTooLong(t: string | undefined): boolean {
+  return t !== undefined && [...t].length > MAX_TITLE;
+}
+
+/** A title made up by the server (from a file, or "… (copy)"), cut to MAX_TITLE. */
+export function clampTitle(t: string): string {
+  const chars = [...t];
+  return chars.length > MAX_TITLE ? chars.slice(0, MAX_TITLE).join('').trimEnd() : t;
+}
+
 /** True when two addresses are the same mailbox after normalisation. */
 export function sameEmail(a: string, b: string): boolean {
   return normalizeEmail(a) === normalizeEmail(b);

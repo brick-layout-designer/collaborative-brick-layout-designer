@@ -14,7 +14,10 @@ import { layoutFileBytes } from '../privacy/exportFiles.js';
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/fordyce-2026.bbm');
 
-async function addPart(partNumber: string): Promise<string> {
+/** The part's owner, for naming files with the parts they can see. */
+let lastOwner = '';
+
+async function addPart(partNumber: string, opts: { isGlobal?: boolean } = {}): Promise<string> {
   const now = new Date();
   const owner = randomUUID();
   await db.insert(schema.users).values({ id: owner, email: `${owner}@example.com`, displayName: 'o', createdAt: now });
@@ -28,9 +31,11 @@ async function addPart(partNumber: string): Promise<string> {
     xmlBlob: Buffer.from('<part/>'),
     spriteBlob: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
     spriteMime: 'image/png',
+    isGlobal: opts.isGlobal ?? false,
     createdAt: now,
     updatedAt: now,
   });
+  lastOwner = owner;
   return id;
 }
 
@@ -48,7 +53,7 @@ describe('withCustomPartNumbers', () => {
     layer.bricks[0]!.partNumber = `custom:${id}`;
     layer.bricks[1]!.partNumber = `CUSTOM:${id.toUpperCase()}`;
 
-    const out = await withCustomPartNumbers(map);
+    const out = await withCustomPartNumbers(map, { userId: lastOwner });
     const outLayer = brickLayers(out)[0]!;
     if (outLayer.type !== 'brick') throw new Error('no brick sheet');
     expect(outLayer.bricks[0]!.partNumber).toBe('Ninjago_City_70620');
@@ -61,13 +66,31 @@ describe('withCustomPartNumbers', () => {
 
   it('keeps a key whose part is gone, and returns the same map when there are none', async () => {
     const map = readBbm(readFileSync(FIXTURE, 'utf-8')).map;
-    expect(await withCustomPartNumbers(map)).toBe(map);
+    expect(await withCustomPartNumbers(map, { userId: 'nobody' })).toBe(map);
     const layer = brickLayers(map)[0]!;
     if (layer.type !== 'brick') throw new Error('no brick sheet');
     layer.bricks[0]!.partNumber = 'custom:missing';
-    const out = brickLayers(await withCustomPartNumbers(map))[0]!;
+    const out = brickLayers(await withCustomPartNumbers(map, { userId: 'nobody' }))[0]!;
     if (out.type !== 'brick') throw new Error('no brick sheet');
     expect(out.bricks[0]!.partNumber).toBe('custom:missing');
+  });
+
+  it("names only parts the file's reader may see; global parts for everyone", async () => {
+    const secret = await addPart('Private_1');
+    const owner = lastOwner;
+    const shared = await addPart('Global_1', { isGlobal: true });
+    const map = readBbm(readFileSync(FIXTURE, 'utf-8')).map;
+    const layer = brickLayers(map)[0]!;
+    if (layer.type !== 'brick') throw new Error('no brick sheet');
+    layer.bricks[0]!.partNumber = `custom:${secret}`;
+    layer.bricks[1]!.partNumber = `custom:${shared}`;
+    const forOther = brickLayers(await withCustomPartNumbers(map, { userId: 'someone-else' }))[0]!;
+    if (forOther.type !== 'brick') throw new Error('no brick sheet');
+    expect(forOther.bricks[0]!.partNumber).toBe(`custom:${secret}`);
+    expect(forOther.bricks[1]!.partNumber).toBe('Global_1');
+    const forOwner = brickLayers(await withCustomPartNumbers(map, { userId: owner }))[0]!;
+    if (forOwner.type !== 'brick') throw new Error('no brick sheet');
+    expect(forOwner.bricks[0]!.partNumber).toBe('Private_1');
   });
 });
 
@@ -84,7 +107,7 @@ describe('.bld-layout downloads', () => {
     const out = await layoutFileBytes(encodeDoc(seedFromBbm(map)), null, null, null, (entries) => {
       bbm = Buffer.from(entries.find((e) => e.name === 'layout.bbm')!.data).toString('utf8');
       return new Uint8Array([1]);
-    });
+    }, { userId: lastOwner });
     expect(out).not.toBeNull();
     expect(bbm).toContain('Rivendell_10316');
     expect(bbm).not.toMatch(/custom:/i);

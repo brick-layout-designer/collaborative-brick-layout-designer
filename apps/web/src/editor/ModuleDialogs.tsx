@@ -26,6 +26,7 @@ import { libraryState, publishModuleVersion, saveModuleToLibrary, type MakeThumb
 import { oneSheetName, pickedBySheet } from './moduleSheets';
 import { useDocMap } from './useDocMap';
 import { coarsePointer } from './useViewportSize';
+import { MAX_NAME_LENGTH } from '../ui/RenameDialog';
 
 const FIELD = 'w-full rounded-lg border border-border bg-soft px-3 py-1.5 text-sm outline-hidden focus:border-accent';
 
@@ -193,7 +194,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
         </p>
         <div>
           <label htmlFor="make-module-name" className="mb-1 block text-xs text-muted">Module name</label>
-          <input id="make-module-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Desert corner" className={FIELD} />
+          <input id="make-module-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_NAME_LENGTH} placeholder="e.g. Desert corner" className={FIELD} />
         </div>
         <label className="flex items-center gap-2 text-xs">
           <input type="checkbox" checked={alsoSave} onChange={(e) => setAlsoSave(e.target.checked)} data-testid="make-module-also-save" />
@@ -276,7 +277,7 @@ export function SaveToLibraryDialog({ doc, moduleId, onClose, layoutOwnerOrgId, 
           <>
             <div>
               <label htmlFor="save-module-name" className="mb-1 block text-xs text-muted">Module name</label>
-              <input id="save-module-name" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="My module" className={FIELD} />
+              <input id="save-module-name" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} maxLength={MAX_NAME_LENGTH} placeholder="My module" className={FIELD} />
             </div>
             <SaveToPicker value={owner.slug} onChange={owner.setSlug} orgs={owner.orgs} />
           </>

@@ -124,7 +124,7 @@ describe('venues', () => {
     expect(body.name).toBe('Hall A');
   });
 
-  it('GET /api/venues/:id returns 403 for non-owner', async () => {
+  it('GET /api/venues/:id is not found for a non-owner', async () => {
     const aliceCookie = await registerAndLogin(app, 'alice@example.com');
     const bobCookie = await registerAndLogin(app, 'bob@example.com');
     const create = await app.inject({
@@ -140,7 +140,7 @@ describe('venues', () => {
       url: `/api/venues/${id}`,
       headers: { cookie: bobCookie },
     });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(404);
   });
 
   it('owner can delete their venue', async () => {
@@ -259,7 +259,7 @@ describe('venues', () => {
       url: `/api/venues/${id}`,
       headers: { cookie: Array.isArray(carolCookie) ? carolCookie.join('; ') : (carolCookie ?? '') },
     });
-    expect(carolGet.statusCode).toBe(403);
+    expect(carolGet.statusCode).toBe(404);
   });
 
   it('org-scoped venue: only org admin can delete', async () => {

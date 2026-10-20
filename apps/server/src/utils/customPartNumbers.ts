@@ -4,6 +4,17 @@
 import { inArray } from 'drizzle-orm';
 import type { BbmMap } from '@cld/model';
 import { db, schema } from '../db/index.js';
+import { resolveResourceRole } from '../access/resolveResourceRole.js';
+
+/**
+ * Whose parts a file may be named with: a person (parts they own or that
+ * are shared with them) and/or a club (its parts). Global parts always.
+ * Any other "custom:<id>" stays as it is.
+ */
+export interface PartViewer {
+  userId?: string | null;
+  orgId?: string | null;
+}
 
 const PREFIX = 'custom:';
 
@@ -11,8 +22,11 @@ function customId(partNumber: string | undefined | null): string | null {
   return partNumber && partNumber.toLowerCase().startsWith(PREFIX) ? partNumber.slice(PREFIX.length).toLowerCase() : null;
 }
 
-/** The map with every "custom:<id>" brick and group named by that part's number. Leaves `map` as it is. */
-export async function withCustomPartNumbers(map: BbmMap): Promise<BbmMap> {
+/**
+ * The map with every "custom:<id>" brick and group named by that part's
+ * number, for the parts `viewer` may see. Leaves `map` as it is.
+ */
+export async function withCustomPartNumbers(map: BbmMap, viewer: PartViewer): Promise<BbmMap> {
   const ids = new Set<string>();
   for (const layer of map.layers) {
     if (layer.type !== 'brick') continue;
@@ -27,11 +41,28 @@ export async function withCustomPartNumbers(map: BbmMap): Promise<BbmMap> {
   }
   if (ids.size === 0) return map;
   const rows = await db
-    .select({ id: schema.customParts.id, partNumber: schema.customParts.partNumber })
+    .select({
+      id: schema.customParts.id,
+      partNumber: schema.customParts.partNumber,
+      isGlobal: schema.customParts.isGlobal,
+      ownerUserId: schema.customParts.ownerUserId,
+      ownerOrgId: schema.customParts.ownerOrgId,
+    })
     .from(schema.customParts)
     .where(inArray(schema.customParts.id, [...ids]))
     .all();
-  const numbers = new Map(rows.map((r) => [r.id.toLowerCase(), r.partNumber]));
+  const seen: typeof rows = [];
+  for (const r of rows) {
+    if (
+      r.isGlobal ||
+      (viewer.userId && r.ownerUserId === viewer.userId) ||
+      (viewer.orgId && r.ownerOrgId === viewer.orgId) ||
+      (viewer.userId && (await resolveResourceRole(viewer.userId, 'custom_part', r.id)).role !== null)
+    ) {
+      seen.push(r);
+    }
+  }
+  const numbers = new Map(seen.map((r) => [r.id.toLowerCase(), r.partNumber]));
   const named = (p: string) => {
     const id = customId(p);
     return (id && numbers.get(id)) || p;
