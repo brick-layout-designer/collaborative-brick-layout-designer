@@ -113,4 +113,40 @@ describe('TRUST_PROXY', () => {
       await app.close();
     }
   });
+
+  // A client-written address, then the real client (added by the outer
+  // proxy), then the inner proxy; the request arrives from the inner proxy.
+  const chain = { 'x-forwarded-for': '203.0.113.66, 198.51.100.7, 10.0.0.2' };
+
+  it('with proxy CIDRs, the client is the right-most forwarded address that is not a trusted proxy', async () => {
+    const { default: Fastify } = await import('fastify');
+    const { parseTrustProxy } = await import('./env.js');
+    for (const setting of ['10.0.0.0/8', '10.0.0.0/8, 127.0.0.1', '10.0.0.1,10.0.0.2']) {
+      const app = Fastify({ trustProxy: parseTrustProxy(setting) });
+      app.get('/ip', async (req) => ({ ip: req.ip }));
+      const res = await app.inject({ method: 'GET', url: '/ip', headers: chain, remoteAddress: '10.0.0.1' });
+      expect(res.json().ip, setting).toBe('198.51.100.7');
+      await app.close();
+    }
+    // Sent straight from an untrusted address, forwarded headers are ignored.
+    const app = Fastify({ trustProxy: parseTrustProxy('10.0.0.0/8') });
+    app.get('/ip', async (req) => ({ ip: req.ip }));
+    const direct = await app.inject({ method: 'GET', url: '/ip', headers: chain, remoteAddress: '192.0.2.50' });
+    expect(direct.json().ip).toBe('192.0.2.50');
+    await app.close();
+  });
+
+  it('with TRUST_PROXY=true, the left-most address is used, and the server warns at start-up', async () => {
+    const { default: Fastify } = await import('fastify');
+    const { parseTrustProxy, trustProxyWarning } = await import('./env.js');
+    const app = Fastify({ trustProxy: parseTrustProxy('true') });
+    app.get('/ip', async (req) => ({ ip: req.ip }));
+    const res = await app.inject({ method: 'GET', url: '/ip', headers: chain, remoteAddress: '10.0.0.1' });
+    expect(res.json().ip).toBe('203.0.113.66');
+    await app.close();
+
+    expect(trustProxyWarning(true)).toMatch(/CIDR/);
+    expect(trustProxyWarning(false)).toBeNull();
+    expect(trustProxyWarning('10.0.0.0/8')).toBeNull();
+  });
 });

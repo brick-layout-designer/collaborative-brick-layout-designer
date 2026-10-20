@@ -22,7 +22,7 @@ export const ENV_VARS: readonly EnvVarDoc[] = [
   { name: 'DB_PATH', default: '`./data/cbld.sqlite`', inApp: '', notes: 'The SQLite database. `/data/cbld.sqlite` in Docker.' },
   { name: 'PARTS_DIR', default: '`./data/parts`', inApp: '', notes: 'Where part libraries and uploaded parts live. `/parts` in Docker.' },
   { name: 'COOKIE_SECURE', default: '`true` when `NODE_ENV=production`', inApp: '', notes: 'Send sign-in cookies over HTTPS only. Turn on behind TLS.' },
-  { name: 'TRUST_PROXY', default: '`false`', inApp: '', notes: 'Behind a reverse proxy: `true`, or the proxy IPs / CIDRs (`10.0.0.0/8,127.0.0.1`), so client IPs come from `X-Forwarded-For`. Leave `false` when exposed directly.' },
+  { name: 'TRUST_PROXY', default: '`false`', inApp: '', notes: 'Behind a reverse proxy: the proxy IPs / CIDRs (`127.0.0.1`, `172.16.0.0/12,127.0.0.1`), so client IPs come from `X-Forwarded-For` (the right-most address that isn’t a listed proxy). `true` trusts every hop and lets clients pick their address; the server warns about it. Leave `false` when exposed directly.' },
   { name: 'NODE_ENV', default: '`development`', inApp: '', notes: '`production` in the Docker image.' },
   { name: 'APP_VERSION', default: 'the server package version', inApp: '', notes: 'The version `GET /api/version` reports.' },
   { name: 'ENABLE_PASSWORD_AUTH', default: '`false`', inApp: '', notes: 'Allow email and password accounts. New accounts confirm their email first (see SMTP).' },

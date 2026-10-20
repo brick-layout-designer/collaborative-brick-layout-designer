@@ -9,7 +9,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { db } from './db/index.js';
-import { env } from './env.js';
+import { env, trustProxyWarning } from './env.js';
 import { attachUser } from './auth/cookie.js';
 import { ensureBootstrapAdmin } from './auth/bootstrap.js';
 import { registerDesktopGate } from './compat.js';
@@ -47,6 +47,8 @@ async function main() {
     bodyLimit: 10 * 1024 * 1024,
     trustProxy: env.trustProxy,
   });
+  const proxyWarning = trustProxyWarning(env.trustProxy);
+  if (proxyWarning) app.log.warn(proxyWarning);
 
   await app.register(helmet, {
     contentSecurityPolicy: false, // securityHeaders.ts sets SANDBOX_CSP for /api and /parts, SPA_CSP for the app's HTML

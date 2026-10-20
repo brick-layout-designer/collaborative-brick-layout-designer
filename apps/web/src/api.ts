@@ -149,6 +149,14 @@ export function reach<T>(request: Promise<T>): Promise<T> {
 export const FIREWALL_BLOCKED =
   "The site's firewall blocked this request. Please tell the site admin (what you were doing, and the time).";
 
+/** "Too many tries. Please wait 30 seconds and try again." (`seconds` from Retry-After; null: unknown). */
+export function tooManyTriesMessage(seconds: number | null): string {
+  if (seconds === null) return 'Too many tries. Please wait a little and try again.';
+  const s = Math.ceil(seconds);
+  const wait = s < 60 ? `${s} second${s === 1 ? '' : 's'}` : `${Math.ceil(s / 60)} minute${Math.ceil(s / 60) === 1 ? '' : 's'}`;
+  return `Too many tries. Please wait ${wait} and try again.`;
+}
+
 /** `some_error_code` -> "Some error code." */
 function humanizeErrorCode(code: string): string {
   const words = code.replace(/_/g, ' ');
@@ -175,6 +183,15 @@ async function friendlyErrorMessage(res: Response, method = 'GET', path = res.ur
   if (res.status === 403 && !body) {
     console.warn(`The site's firewall blocked ${method} ${path} (${new Date().toISOString()})`);
     return FIREWALL_BLOCKED;
+  }
+  // Too many tries (sign-in pacing, or the plain per-address limit, which
+  // has no app error code): say how long to wait. Other 429s carry their
+  // own code and sentence.
+  const appCode = typeof body?.error === 'string' && /^[a-z_]+$/.test(body.error);
+  if (res.status === 429 && (body?.error === 'login_paced' || !appCode)) {
+    const fromBody = body && typeof (body as { retryAfter?: unknown }).retryAfter === 'number' ? (body as { retryAfter: number }).retryAfter : NaN;
+    const seconds = Number.isFinite(fromBody) ? fromBody : Number(res.headers.get('retry-after'));
+    return tooManyTriesMessage(Number.isFinite(seconds) && seconds > 0 ? seconds : null);
   }
   if (body) {
     // Limits, suspension and rate limits come with a ready-made sentence

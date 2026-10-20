@@ -24,9 +24,12 @@ function int(value: string | undefined, fallback: number): number {
 /**
  * TRUST_PROXY → Fastify's `trustProxy`. Unset / "false" / "0": don't
  * trust X-Forwarded-* (req.ip is the socket peer). "true": trust any
- * proxy chain. Anything else: a comma-separated list of proxy IPs /
- * CIDRs. A bare hop count is rejected: Fastify dropped hop-count trust
- * because it lets direct clients spoof X-Forwarded-For.
+ * proxy chain, so req.ip is the left-most X-Forwarded-For address, which
+ * the client itself can write. Anything else: a comma-separated list of
+ * proxy IPs / CIDRs; req.ip is then the right-most X-Forwarded-For
+ * address that isn't one of them (the address the trusted proxy saw).
+ * A bare hop count is rejected: Fastify dropped hop-count trust because
+ * it lets direct clients spoof X-Forwarded-For.
  */
 export function parseTrustProxy(value: string | undefined): boolean | string {
   const v = value?.trim() ?? '';
@@ -36,6 +39,16 @@ export function parseTrustProxy(value: string | undefined): boolean | string {
     throw new Error('TRUST_PROXY hop counts are not supported; use "true" or proxy IPs/CIDRs');
   }
   return v;
+}
+
+/** The boot-time warning for a TRUST_PROXY setting, or null when it's fine. */
+export function trustProxyWarning(value: boolean | string): string | null {
+  if (value !== true) return null;
+  return (
+    'TRUST_PROXY=true trusts every X-Forwarded-For hop, so a client can choose the address that ' +
+    'rate limits and logs see. Set TRUST_PROXY to the proxy addresses / CIDRs instead ' +
+    '(e.g. 127.0.0.1 for a proxy on the same host, or 172.16.0.0/12 for a Docker network).'
+  );
 }
 
 /** LIMITS_ENFORCE: 'on' / 'off' forces it; anything else (or unset) leaves it to the admin's switch. */
