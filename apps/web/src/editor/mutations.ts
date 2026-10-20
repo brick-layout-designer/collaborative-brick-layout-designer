@@ -711,33 +711,32 @@ export function paintAreaCells(
     const yAreas = layerData.get('areas');
     if (!(yAreas instanceof Y.Array)) return;
 
-    // Index existing cells by `${x},${y}` for O(1) upsert.
-    const indexByKey = new Map<string, number>();
+    // Index existing cells by `${x},${y}` for O(1) upsert. A cell can be
+    // there twice (two people painted it at once), so erasing or
+    // repainting takes every copy.
+    const indexByKey = new Map<string, number[]>();
     for (let i = 0; i < yAreas.length; i++) {
       const cell = yAreas.get(i) as { x: number; y: number; color: string };
-      indexByKey.set(`${cell.x},${cell.y}`, i);
+      const key = `${cell.x},${cell.y}`;
+      indexByKey.set(key, [...(indexByKey.get(key) ?? []), i]);
     }
 
     // Sort changes so deletions happen highest-index first (so other
     // indices stay valid). Splits into upserts + deletes.
-    const upserts: { x: number; y: number; color: string }[] = [];
+    const upserts = new Map<string, { x: number; y: number; color: string }>();
     const deletes: number[] = [];
     for (const c of changes) {
       const key = `${c.x},${c.y}`;
       const existing = indexByKey.get(key);
-      if (c.color === null) {
-        if (existing !== undefined) deletes.push(existing);
-      } else {
-        if (existing !== undefined) {
-          // Replace in place: delete + push the upsert.
-          deletes.push(existing);
-        }
-        upserts.push({ x: c.x, y: c.y, color: c.color });
-      }
+      // Erase deletes; repaint replaces (delete + push the upsert).
+      if (existing !== undefined) deletes.push(...existing);
+      indexByKey.delete(key);
+      if (c.color !== null) upserts.set(key, { x: c.x, y: c.y, color: c.color });
+      else upserts.delete(key);
     }
     deletes.sort((a, b) => b - a);
     for (const idx of deletes) yAreas.delete(idx, 1);
-    for (const u of upserts) yAreas.push([u]);
+    for (const u of upserts.values()) yAreas.push([u]);
   }, LOCAL_ORIGIN);
 }
 

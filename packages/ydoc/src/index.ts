@@ -282,33 +282,74 @@ function itemsKnownForBlob(items: Y.Map<unknown>, blob: Record<string, unknown>)
  * survive and the part is there twice. This removes the extra copies,
  * keeping the one Yjs made first (lowest client, then clock), so every
  * client keeps the same one whatever order it sees them in. Returns how many
- * it removed. Bricks only, across all part sheets.
+ * it removed. Bricks only, across all part sheets; removeDuplicateItems
+ * also does rulers and painted area cells.
  */
 export function removeDuplicateBricks(doc: Y.Doc, origin: unknown): number {
-  const layerData = doc.getMap('layerData');
-  type Hit = { arr: Y.Array<unknown>; index: number; key: [number, number] };
-  const byId = new Map<string, Hit[]>();
-  for (const id of doc.getArray<string>('layers').toArray()) {
-    const layer = layerData.get(id);
-    if (!(layer instanceof Y.Map)) continue;
-    const bricks = layer.get('bricks');
-    if (!(bricks instanceof Y.Array)) continue;
-    bricks.toArray().forEach((b, index) => {
-      if (!(b instanceof Y.Map)) return;
-      const bid = b.get('id');
-      if (typeof bid !== 'string') return;
-      const item = (b as unknown as { _item: { id: { client: number; clock: number } } | null })._item;
-      const key: [number, number] = item ? [item.id.client, item.id.clock] : [0, 0];
-      const list = byId.get(bid) ?? [];
-      list.push({ arr: bricks as Y.Array<unknown>, index, key });
-      byId.set(bid, list);
-    });
+  return removeDuplicates(doc, origin, ['bricks']);
+}
+
+/**
+ * removeDuplicateBricks for everything edited by delete-and-insert: bricks
+ * and rulers (by id), and painted area cells (by cell). Two people moving
+ * the same ruler at once left it there twice, and deleting it then left
+ * the other copy behind; two people painting the same cell at once left
+ * two cells there, and erasing it left one painted.
+ */
+export function removeDuplicateItems(doc: Y.Doc, origin: unknown): number {
+  return removeDuplicates(doc, origin, ['bricks', 'rulerItems', 'areas']);
+}
+
+type ItemField = 'bricks' | 'rulerItems' | 'areas';
+
+function itemKey(field: ItemField, v: unknown): string | null {
+  if (field === 'bricks') {
+    const id = v instanceof Y.Map ? v.get('id') : undefined;
+    return typeof id === 'string' ? id : null;
   }
+  if (!v || typeof v !== 'object' || v instanceof Y.AbstractType) return null;
+  const o = v as Record<string, unknown>;
+  if (field === 'rulerItems') return typeof o.id === 'string' && o.id !== '' ? o.id : null;
+  return typeof o.x === 'number' && typeof o.y === 'number' ? `${o.x},${o.y}` : null;
+}
+
+// Every live entry of a Y.Array with the id Yjs gave it (one item can hold
+// several plain values: the n-th has the item's clock + n).
+function entriesWithIds(arr: Y.Array<unknown>): { value: unknown; index: number; key: [number, number] }[] {
+  const out: { value: unknown; index: number; key: [number, number] }[] = [];
+  let index = 0;
+  for (let n = arr._start; n; n = n.right) {
+    if (n.deleted || !n.countable) continue;
+    const content = n.content.getContent();
+    for (let k = 0; k < content.length; k++) out.push({ value: content[k], index: index++, key: [n.id.client, n.id.clock + k] });
+  }
+  return out;
+}
+
+type Hit = { arr: Y.Array<unknown>; index: number; key: [number, number] };
+
+function removeDuplicates(doc: Y.Doc, origin: unknown, fields: readonly ItemField[]): number {
+  const layerData = doc.getMap('layerData');
   const extra: Hit[] = [];
-  for (const hits of byId.values()) {
-    if (hits.length < 2) continue;
-    hits.sort((x, y) => x.key[0] - y.key[0] || x.key[1] - y.key[1]);
-    extra.push(...hits.slice(1));
+  for (const field of fields) {
+    // A brick id is unique across all part sheets; rulers and cells per sheet.
+    const shared = new Map<string, Hit[]>();
+    for (const id of doc.getArray<string>('layers').toArray()) {
+      const layer = layerData.get(id);
+      if (!(layer instanceof Y.Map)) continue;
+      const arr = layer.get(field);
+      if (!(arr instanceof Y.Array)) continue;
+      const byKey = field === 'bricks' ? shared : new Map<string, Hit[]>();
+      for (const e of entriesWithIds(arr as Y.Array<unknown>)) {
+        const k = itemKey(field, e.value);
+        if (k === null) continue;
+        const list = byKey.get(k) ?? [];
+        list.push({ arr: arr as Y.Array<unknown>, index: e.index, key: e.key });
+        byKey.set(k, list);
+      }
+      if (byKey !== shared) collectExtra(byKey, extra);
+    }
+    collectExtra(shared, extra);
   }
   if (extra.length === 0) return 0;
   // Highest index first within each array, so earlier indexes stay valid.
@@ -317,6 +358,14 @@ export function removeDuplicateBricks(doc: Y.Doc, origin: unknown): number {
     for (const h of extra) h.arr.delete(h.index, 1);
   }, origin);
   return extra.length;
+}
+
+function collectExtra(byKey: Map<string, Hit[]>, extra: Hit[]): void {
+  for (const hits of byKey.values()) {
+    if (hits.length < 2) continue;
+    hits.sort((x, y) => x.key[0] - y.key[0] || x.key[1] - y.key[1]);
+    extra.push(...hits.slice(1));
+  }
 }
 
 /**
