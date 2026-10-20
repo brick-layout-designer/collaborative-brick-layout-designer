@@ -11,6 +11,7 @@ import { requireUser } from '../auth/cookie.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { atLeast } from '../access/clubRoles.js';
 import { creditLookup } from './credits.js';
+import { titleTooLong } from '../utils/validate.js';
 
 // The desktop app reaches these with an API token too: venues:read to list
 // and download, venues:write to save, rename and delete.
@@ -118,7 +119,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
             ),
           )
           .get()) != null);
-    if (!canRead) return reply.code(403).send({ error: 'Forbidden' });
+    // Someone else's venue is "not found", like a layout or a module.
+    if (!canRead) return reply.code(404).send({ error: 'Not found' });
 
     const credit = (await creditLookup('venue', [row.id], user.id))(row.id);
     return { id: row.id, name: row.name, data: JSON.parse(row.data), credit };
@@ -132,6 +134,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       const user = requireUser(req);
       const { name, data, orgSlug } = req.body;
       if (typeof name !== 'string' || !name.trim() || !data) return reply.code(400).send({ error: 'name and data required' });
+      if (titleTooLong(name.trim())) return reply.code(400).send({ error: 'invalid name' });
 
       const dest = await destinationOrg(user.id, orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
@@ -177,7 +180,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       const updates: { name?: string; data?: string } = {};
       if (name !== undefined) {
         const t = typeof name === 'string' ? name.trim() : '';
-        if (!t) return reply.code(400).send({ error: 'invalid name' });
+        if (!t || titleTooLong(t)) return reply.code(400).send({ error: 'invalid name' });
         // Desktop refuses a rename onto an existing venue's file name
         // (VenueLibraryPanel.cpp:249-252); here, another venue of the same
         // owner with that name, ignoring case.

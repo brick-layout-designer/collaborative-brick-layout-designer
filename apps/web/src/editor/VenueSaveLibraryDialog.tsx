@@ -8,6 +8,7 @@ import { api, type OrgSummary } from '../api';
 import { defaultSaveTo, readOwnerFilter, validOwnerFilter } from '../owners/owners';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { useEscape } from './useEscape';
+import { MAX_NAME_LENGTH } from '../ui/RenameDialog';
 
 interface Props {
   venueName: string;
@@ -42,7 +43,7 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
 
         <label className="block">
           <span className="mb-1 block text-xs text-muted">Name for this venue</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} autoFocus />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_NAME_LENGTH} className={inputCls} autoFocus />
         </label>
 
         <SaveToPicker value={target} onChange={setTarget} orgs={orgs} />

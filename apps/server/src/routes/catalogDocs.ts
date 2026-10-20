@@ -270,7 +270,11 @@ export async function catalogDocRoutes(app: FastifyInstance): Promise<void> {
         doc.destroy();
       }
     }
-    const bytes = await layoutFileBytes(r.v.docSnapshot as Uint8Array, null, null, null, smallZip);
+    // Named with the parts its owner could use when they published it.
+    const bytes = await layoutFileBytes(r.v.docSnapshot as Uint8Array, null, null, null, smallZip, {
+      userId: r.item.ownerUserId,
+      orgId: r.item.ownerOrgId,
+    });
     if (!bytes) return reply.code(404).send({ error: 'not_found' });
     reply.header('Content-Type', 'application/zip');
     reply.header('Content-Disposition', attachment(`${name}.bld-layout`));

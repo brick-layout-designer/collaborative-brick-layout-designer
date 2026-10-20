@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { lazyRetry } from '../ui/lazyRetry';
-import { RenameDialog } from '../ui/RenameDialog';
+import { RenameDialog, MAX_NAME_LENGTH } from '../ui/RenameDialog';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, lowResThumbnail, type LayoutSummary, type ModuleSummary, type OrgSummary } from '../api';
@@ -436,7 +436,7 @@ function NewModuleDialog({
           <span className="mb-1 block text-muted">Title</span>
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)} maxLength={MAX_NAME_LENGTH}
             placeholder="Untitled Module"
             className="w-full rounded-lg border border-border bg-soft px-3 py-2"
           />
@@ -787,7 +787,7 @@ function CreateLayoutDialog({
           <span className="mb-1 block text-muted">Title</span>
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)} maxLength={MAX_NAME_LENGTH}
             placeholder="Untitled Layout"
             className="w-full rounded-lg border border-border bg-soft px-3 py-2"
           />

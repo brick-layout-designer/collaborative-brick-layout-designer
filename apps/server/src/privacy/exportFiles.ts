@@ -5,7 +5,7 @@
 // venues as JSON; collection and catalog item covers as pictures; the
 // layouts and venues published to the catalog, as they are there.
 
-import { withCustomPartNumbers } from '../utils/customPartNumbers.js';
+import { withCustomPartNumbers, type PartViewer } from '../utils/customPartNumbers.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -17,6 +17,8 @@ import { currentDocBytes } from '../routes/layouts.js';
 import { crc32 as crc32Of, type ZipFileWriter } from './zipWriter.js';
 
 export type Owner = { kind: 'user' | 'org'; id: string };
+
+const ownerViewer = (owner: Owner): PartViewer => (owner.kind === 'user' ? { userId: owner.id } : { orgId: owner.id });
 
 const BG_EXTS = ['png', 'jpg', 'gif', 'webp'] as const;
 
@@ -47,13 +49,15 @@ export async function layoutFileBytes(
   background: { bytes: Uint8Array; ext: string } | null,
   source: { layoutId: string; title: string } | null,
   zipOf: (entries: { name: string; data: Uint8Array }[]) => Uint8Array,
+  /** Whose custom parts may be named by part number (customPartNumbers.ts). */
+  viewer: PartViewer,
 ): Promise<Uint8Array | null> {
   const doc = decodeDoc(docBytes);
   try {
     const exported = exportBbmFromDoc(doc);
     if (!exported) return null;
     // Named by part number, so BlueBrick and the desktop find the server's custom parts.
-    const map = await withCustomPartNumbers(exported);
+    const map = await withCustomPartNumbers(exported, viewer);
     const manifest: Record<string, unknown> = { format: 'bld-layout', generator: 'Brick Layout Designer (server data download)', version: 1 };
     if (source) {
       manifest.source = { server: new URL(env.publicUrl).origin, layoutId: source.layoutId, title: source.title, exportedAt: new Date().toISOString() };
@@ -157,6 +161,7 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
       bg ? { bytes: readFileSync(bg.path), ext: bg.ext } : null,
       { layoutId: row.id, title: row.title },
       smallZip,
+      ownerViewer(owner),
     );
     const name = fileTitle(row.title, 'layout');
     if (file) {
@@ -176,7 +181,7 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
     const bytes = row.docSnapshot as Uint8Array;
     let file: Uint8Array | null;
     try {
-      file = await layoutFileBytes(bytes, row.sidecarSnapshot as Uint8Array | null, null, null, smallZip);
+      file = await layoutFileBytes(bytes, row.sidecarSnapshot as Uint8Array | null, null, null, smallZip, ownerViewer(owner));
     } catch {
       file = null;
     }
@@ -252,7 +257,7 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
         zip.add(`catalog/${fileTitle(i.title, 'venue')}.json`, v.doc as Uint8Array);
         counts.catalog++;
       } else {
-        const file = await layoutFileBytes(v.doc as Uint8Array, null, null, null, smallZip);
+        const file = await layoutFileBytes(v.doc as Uint8Array, null, null, null, smallZip, ownerViewer(owner));
         if (file) {
           zip.add(`catalog/${fileTitle(i.title, 'layout')}.bld-layout`, file);
           counts.catalog++;

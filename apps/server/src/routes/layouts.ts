@@ -28,7 +28,7 @@ import { creditLookup, withCredits } from './credits.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { backgroundImagePath, layoutFileBytes, smallZip } from '../privacy/exportFiles.js';
 import { attachment, safeFileName } from '../utils/contentDisposition.js';
-import { trimmed } from '../utils/validate.js';
+import { clampTitle, titleTooLong, trimmed } from '../utils/validate.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -170,6 +170,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const body = req.body ?? {};
 
+    if (titleTooLong(trimmed(body.title))) return reply.code(400).send({ error: 'invalid_title' });
     let title = trimmed(body.title) || 'Untitled Layout';
     let sidecarSnapshot: Uint8Array | null = null;
     const id = randomUUID();
@@ -218,7 +219,7 @@ export async function layoutRoutes(app: FastifyInstance) {
         const parsed = readBbm(body.bbm);
         // If no title was provided, derive one from the .bbm metadata —
         // either the LUG/Event line or fall back to default.
-        if (!trimmed(body.title) && parsed.map.event) title = parsed.map.event;
+        if (!trimmed(body.title) && parsed.map.event) title = clampTitle(parsed.map.event);
         doc = seedFromBbm(parsed.map);
       } catch (e) {
         return reply.code(400).send({ error: 'bbm_parse_failed', detail: (e as Error).message });
@@ -283,7 +284,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       const updates: Partial<typeof schema.layouts.$inferInsert> = {};
       if (req.body.title !== undefined) {
         const t = trimmed(req.body.title);
-        if (!t || t.length > 200) return reply.code(400).send({ error: 'invalid_title' });
+        if (!t || titleTooLong(t)) return reply.code(400).send({ error: 'invalid_title' });
         updates.title = t;
       }
       if (Object.keys(updates).length === 0) {
@@ -327,7 +328,8 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
 
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
-      const title = trimmed(req.body?.title) || (sameOwner ? `${src.title} (copy)` : src.title);
+      if (titleTooLong(trimmed(req.body?.title))) return reply.code(400).send({ error: 'invalid_title' });
+      const title = trimmed(req.body?.title) || clampTitle(sameOwner ? `${src.title} (copy)` : src.title);
       const ownerUserId = dest.orgId ? null : user.id;
       const copyOwner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
       const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
@@ -397,7 +399,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
     const exported = exportBbmFromDoc(doc);
     // Named by part number, so BlueBrick and the desktop find the server's custom parts.
-    const map = exported && (await withCustomPartNumbers(exported));
+    const map = exported && (await withCustomPartNumbers(exported, { userId: user.id }));
     if (!map) {
       // The doc was authored in-app and there's no cached BbmMap yet.
       // Phase 3 fills this in once the editor mutates the Yjs structure
@@ -428,6 +430,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       bg ? { bytes: readFileSync(bg.path), ext: bg.ext } : null,
       { layoutId: layout.id, title: layout.title },
       smallZip,
+      { userId: user.id },
     );
     if (!bytes) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
     rollup.count('exports', 'bld-layout');
@@ -545,7 +548,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
       const exported = exportBbmFromDoc(doc);
       // Named by part number, so BlueBrick and the desktop find the server's custom parts.
-      const map = exported && (await withCustomPartNumbers(exported));
+      const map = exported && (await withCustomPartNumbers(exported, { userId: user.id }));
       const json = sidecarJson(doc, layout.sidecarSnapshot as Uint8Array | null, map ? writeBbm(map) : null);
       if (!json) return reply.code(404).send({ error: 'no_sidecar' });
       rollup.count('exports', 'sidecar');
@@ -574,7 +577,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const doc = decodeDoc(await currentDocBytes(layout.id, layout.docSnapshot as Uint8Array));
     const exported = exportBbmFromDoc(doc);
     // Named by part number, so BlueBrick and the desktop find the server's custom parts.
-    const map = exported && (await withCustomPartNumbers(exported));
+    const map = exported && (await withCustomPartNumbers(exported, { userId: user.id }));
     if (!map) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
 
     const safe = safeFileName(layout.title);
