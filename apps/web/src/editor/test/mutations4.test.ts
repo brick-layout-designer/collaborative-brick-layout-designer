@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { itemsInOrder, rulerJson } from '@cld/ydoc';
 import {
   placeBrick,
   deleteBricks,
@@ -27,6 +28,9 @@ import {
   addCircularRuler,
 } from '../mutations';
 
+// Ruler entries as plain objects in drawing order (Y.Maps in doc shape 2).
+const plainRulers = (l: Y.Map<unknown>): Record<string, unknown>[] => itemsInOrder(l.get('rulerItems') as Y.Array<unknown>).map((r) => rulerJson(r)!);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -44,7 +48,7 @@ function docWithBrickLayer(): { doc: Y.Doc; layerId: string } {
 function bricksInLayer(doc: Y.Doc, layerId: string): Y.Map<unknown>[] {
   const layerData = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
   const bricks = layerData.get('bricks') as Y.Array<Y.Map<unknown>>;
-  return bricks.toArray();
+  return itemsInOrder(bricks);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +489,7 @@ describe('moveRulerItem', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 10, y: 0 });
     moveRulerItem(doc, layerId, rulerId, 0, 0);
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const items = (layer.get('rulerItems') as Y.Array<{ point1: { x: number } }>).toArray();
+    const items = (plainRulers(layer) as { point1: { x: number } }[]);
     expect(items[0]?.point1.x).toBe(0);
   });
 
@@ -494,7 +498,7 @@ describe('moveRulerItem', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 10, y: 0 });
     moveRulerItem(doc, layerId, rulerId, 5, 3);
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ point1: { x: number; y: number }; point2: { x: number; y: number } }>).get(0);
+    const item = (plainRulers(layer)[0] as { point1: { x: number; y: number }; point2: { x: number; y: number } });
     expect(item?.point1.x).toBe(5);
     expect(item?.point1.y).toBe(3);
     expect(item?.point2.x).toBe(15);
@@ -506,7 +510,7 @@ describe('moveRulerItem', () => {
     const rulerId = addCircularRuler(doc, layerId, { x: 10, y: 10 }, 5);
     moveRulerItem(doc, layerId, rulerId, -2, 4);
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ center: { x: number; y: number } }>).get(0);
+    const item = (plainRulers(layer)[0] as { center: { x: number; y: number } });
     expect(item?.center.x).toBe(8);
     expect(item?.center.y).toBe(14);
   });
@@ -534,7 +538,7 @@ describe('moveRulerEndpoint', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 10, y: 0 });
     moveRulerEndpoint(doc, layerId, rulerId, 0, { x: 3, y: 7 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ point1: { x: number; y: number }; attachedBrick1Id: string }>).get(0);
+    const item = (plainRulers(layer)[0] as { point1: { x: number; y: number }; attachedBrick1Id: string });
     expect(item?.point1.x).toBe(3);
     expect(item?.point1.y).toBe(7);
     expect(item?.attachedBrick1Id).toBe('');
@@ -545,7 +549,7 @@ describe('moveRulerEndpoint', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 10, y: 0 });
     moveRulerEndpoint(doc, layerId, rulerId, 1, { x: 20, y: 5 });
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ point2: { x: number; y: number }; attachedBrick2Id: string }>).get(0);
+    const item = (plainRulers(layer)[0] as { point2: { x: number; y: number }; attachedBrick2Id: string });
     expect(item?.point2.x).toBe(20);
     expect(item?.point2.y).toBe(5);
     expect(item?.attachedBrick2Id).toBe('');
@@ -562,7 +566,7 @@ describe('moveRulerEndpoint', () => {
     expect(() => moveRulerEndpoint(doc, layerId, rulerId, 0, { x: 0, y: 0 })).not.toThrow();
     // Center should remain unchanged.
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ center: { x: number } }>).get(0);
+    const item = (plainRulers(layer)[0] as { center: { x: number } });
     expect(item?.center.x).toBe(5);
   });
 });
@@ -583,7 +587,7 @@ describe('attachRulerEndpoint', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 5, y: 0 });
     attachRulerEndpoint(doc, layerId, rulerId, 0, 'brick-abc');
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ attachedBrick1Id: string }>).get(0);
+    const item = (plainRulers(layer)[0] as { attachedBrick1Id: string });
     expect(item?.attachedBrick1Id).toBe('brick-abc');
   });
 
@@ -592,7 +596,7 @@ describe('attachRulerEndpoint', () => {
     const rulerId = addLinearRuler(doc, layerId, { x: 0, y: 0 }, { x: 5, y: 0 });
     attachRulerEndpoint(doc, layerId, rulerId, 1, 'brick-xyz');
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ attachedBrick2Id: string }>).get(0);
+    const item = (plainRulers(layer)[0] as { attachedBrick2Id: string });
     expect(item?.attachedBrick2Id).toBe('brick-xyz');
   });
 
@@ -601,7 +605,7 @@ describe('attachRulerEndpoint', () => {
     const rulerId = addCircularRuler(doc, layerId, { x: 5, y: 5 }, 3);
     attachRulerEndpoint(doc, layerId, rulerId, 0, 'brick-circ');
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ attachedBrickId: string }>).get(0);
+    const item = (plainRulers(layer)[0] as { attachedBrickId: string });
     expect(item?.attachedBrickId).toBe('brick-circ');
   });
 
@@ -611,7 +615,7 @@ describe('attachRulerEndpoint', () => {
     attachRulerEndpoint(doc, layerId, rulerId, 0, 'brick-abc');
     attachRulerEndpoint(doc, layerId, rulerId, 0, '');
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
-    const item = (layer.get('rulerItems') as Y.Array<{ attachedBrick1Id: string }>).get(0);
+    const item = (plainRulers(layer)[0] as { attachedBrick1Id: string });
     expect(item?.attachedBrick1Id).toBe('');
   });
 

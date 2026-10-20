@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { rulerJson } from '@cld/ydoc';
 import {
   ensureBrickLayer,
   ensureRulerLayer,
@@ -389,7 +390,7 @@ describe('addLinearRuler', () => {
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
     const items = layer.get('rulerItems') as Y.Array<unknown>;
     expect(items.length).toBe(1);
-    const item = items.get(0) as { id: string; kind: string };
+    const item = rulerJson(items.get(0)) as unknown as { id: string; kind: string };
     expect(item.id).toBe(id);
     expect(item.kind).toBe('linear');
   });
@@ -420,7 +421,7 @@ describe('addCircularRuler', () => {
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
     const items = layer.get('rulerItems') as Y.Array<unknown>;
     expect(items.length).toBe(1);
-    const item = items.get(0) as { kind: string; radius: number };
+    const item = rulerJson(items.get(0)) as unknown as { kind: string; radius: number };
     expect(item.kind).toBe('circular');
     expect(item.radius).toBe(3);
   });
@@ -468,7 +469,7 @@ describe('deleteRulerItem', () => {
     const layer = doc.getMap('layerData').get(layerId) as Y.Map<unknown>;
     const items = layer.get('rulerItems') as Y.Array<unknown>;
     expect(items.length).toBe(1);
-    expect((items.get(0) as { id: string }).id).toBe(b);
+    expect((rulerJson(items.get(0)) as { id: string }).id).toBe(b);
   });
 });
 

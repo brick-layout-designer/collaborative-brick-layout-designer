@@ -10,7 +10,11 @@
 // order array (add/delete/reorder layer — without it, undoing deleteLayer
 // restored the layer's data but not its id in the order, leaving an
 // invisible layer) and `meta` (general info, background color, and the
-// sidecar cache: venue, anchored labels, modules, background image).
+// sidecar cache: venue, anchored labels, modules, background image) and
+// `sidecarItems` (each module and anchored label under its own key, which
+// is what readers use once two people's changes are merged: undoing only
+// meta.cache left a label someone else's edit had merged in, see
+// @cld/ydoc readSidecarCache).
 // Connectivity write-backs use their own untracked origin, and remote
 // updates carry the provider as origin, so neither lands on the stack.
 
@@ -32,7 +36,7 @@ export interface UndoState {
 /** Build the editor's UndoManager for `doc` (scope + origins above). */
 export function createUndoManager(doc: Y.Doc): Y.UndoManager {
   return new Y.UndoManager(
-    [doc.getMap('layerData'), doc.getArray('layers'), doc.getMap('meta')],
+    [doc.getMap('layerData'), doc.getArray('layers'), doc.getMap('meta'), doc.getMap('sidecarItems')],
     {
       trackedOrigins: new Set([LOCAL_ORIGIN]),
       // 200ms group means rapid keypress-driven edits (e.g. holding Q) all
