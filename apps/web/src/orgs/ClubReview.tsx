@@ -65,6 +65,11 @@ export function ClubReviewTab({ slug, name }: { slug: string; name: string }) {
                   {new Date(q.createdAt).toLocaleString()}
                 </p>
                 {q.description && <p>{q.description}</p>}
+                {q.current && (
+                  <p data-testid="club-review-current" className="text-xs text-muted">
+                    Public now: “{q.current.title}”{q.current.description ? ` · ${q.current.description}` : ''}
+                  </p>
+                )}
                 {q.note && <p className="text-xs">What changed: {q.note}</p>}
               </div>
               <div className="flex basis-full flex-wrap justify-end gap-2 sm:basis-auto sm:flex-col">

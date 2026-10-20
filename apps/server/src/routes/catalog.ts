@@ -17,7 +17,7 @@ import { coverMaxBytes } from '../images/covers.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
@@ -28,7 +28,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg } from './owners.js';
 import { atLeast, type ClubRole } from '../access/clubRoles.js';
 import { recordVersion } from './modules.js';
-import { collectionCounts, dropFromCollections } from './collections.js';
+import { collectionCounts, dropFromCollections, siteHeldCollection } from './collections.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { creditLookup } from './credits.js';
 import { coverQueue, coverState, itemCoverUrl } from './itemCovers.js';
@@ -114,6 +114,20 @@ export async function trustedClubs(orgIds: readonly (string | null | undefined)[
   if (!ids.length) return new Set();
   const rows = await db.select({ id: schema.orgs.id }).from(schema.orgs).where(and(inArray(schema.orgs.id, ids), eq(schema.orgs.trusted, true)));
   return new Set(rows.map((r) => r.id));
+}
+
+/**
+ * Who a takedown is held by: 'site' (only site moderators bring it back),
+ * 'club' (the club's own reviewers may too), or null. One from before the
+ * marker was kept counts as the site's.
+ */
+export function holdOf(x: { status: string; takenDownBy: 'site' | 'club' | null }): 'site' | 'club' | null {
+  return x.takenDownBy ?? (x.status === 'unpublished' ? 'site' : null);
+}
+
+/** The hold a new takedown leaves: a site takedown stays the site's. */
+export function nextHold(current: 'site' | 'club' | null, clubId: string | null): 'site' | 'club' {
+  return current === 'site' || !clubId ? 'site' : 'club';
 }
 
 export async function isTrustedClub(orgId: string | null | undefined): Promise<boolean> {
@@ -247,6 +261,28 @@ export async function ownerNames(
     const author = i.kind && i.sourceId ? authorBy.get(`${i.kind}:${i.sourceId}`) : undefined;
     return author ? `${author} · in ${club}` : club;
   };
+}
+
+/** An item a site moderator took down (or one taken down before who did was kept), in SQL. */
+export const siteHeldItem = sql`(coalesce(${schema.catalogItems.takenDownBy}, CASE WHEN ${schema.catalogItems.status} = 'unpublished' THEN 'site' END, '') = 'site')`;
+
+/**
+ * A waiting version's text, as the queue shows it: what was sent with it,
+ * and (for an update whose text changes) what the public sees now.
+ */
+export function sentText(r: {
+  title: string;
+  description: string;
+  tags: string;
+  sentTitle: string | null;
+  sentDescription: string | null;
+  sentTags: string | null;
+  publicVersion: number;
+}) {
+  const proposed = { title: r.sentTitle ?? r.title, description: r.sentDescription ?? r.description, tags: parseTags(r.sentTags ?? r.tags) };
+  const current = { title: r.title, description: r.description, tags: parseTags(r.tags) };
+  const changed = proposed.title !== current.title || proposed.description !== current.description || proposed.tags.join(',') !== current.tags.join(',');
+  return { ...proposed, /** What's public now, when this update changes the text. */ current: r.publicVersion > 0 && changed ? current : null };
 }
 
 function parseTags(json: string): string[] {
@@ -462,11 +498,18 @@ export async function submitToCatalog(
 
   const review = (await getPlatformSettings()).catalogReview;
   const now = new Date();
-  // An item already shared from this source by the same owner gets a new version.
+  // An item already shared from this source by the same owner gets a new
+  // version; one the source's earlier owner shared stays theirs.
   let item = await db
     .select()
     .from(schema.catalogItems)
-    .where(and(eq(schema.catalogItems.kind, kind), eq(schema.catalogItems.sourceId, sourceId)))
+    .where(
+      and(
+        eq(schema.catalogItems.kind, kind),
+        eq(schema.catalogItems.sourceId, sourceId),
+        src.ownerOrgId ? eq(schema.catalogItems.ownerOrgId, src.ownerOrgId) : and(eq(schema.catalogItems.ownerUserId, src.ownerUserId ?? ''), isNull(schema.catalogItems.ownerOrgId)),
+      ),
+    )
     .get();
   if (!item) {
     const id = randomUUID();
@@ -491,8 +534,19 @@ export async function submitToCatalog(
     .where(eq(schema.catalogItemVersions.itemId, item.id))
     .get();
   const version = (last?.v ?? 0) + 1;
-  // Review off, or a trusted club's admin or manager: public at once.
-  const straight = review === 'none' || (trusted && atLeast(role, 'manager'));
+  // Review off, or a trusted club's admin or manager: public at once. An
+  // item a moderator took down only comes back through review: a site
+  // moderator's takedown through the site's, a club's through the club's
+  // own (its admins and managers bring it back) or the site's.
+  const hold = holdOf(item);
+  const clubReviewer = trusted && atLeast(role, 'manager');
+  const straight = hold === 'site' ? false : hold === 'club' ? clubReviewer : review === 'none' || clubReviewer;
+  // An update without a new description or tags keeps the ones it has.
+  const text = {
+    title,
+    description: b.description === undefined ? item.description : (description ?? ''),
+    tags: b.tags === undefined ? item.tags : JSON.stringify(tags),
+  };
   await db.insert(schema.catalogItemVersions).values({
     id: randomUUID(),
     itemId: item.id,
@@ -502,6 +556,9 @@ export async function submitToCatalog(
     note,
     createdAt: now,
     ...src.values,
+    // The text goes with the version: the item's own (what the public sees)
+    // changes when this version is approved.
+    ...text,
   });
   // Earlier versions still waiting are replaced by this one.
   await db
@@ -518,14 +575,15 @@ export async function submitToCatalog(
   await db
     .update(schema.catalogItems)
     .set({
-      title,
-      // An update without a new description or tags keeps the ones it has.
-      description: b.description === undefined ? item.description : (description ?? ''),
-      tags: b.tags === undefined ? item.tags : JSON.stringify(tags),
+      // Straight away, or nothing approved yet: the text is the item's now.
+      // Otherwise the approved text stays until this version is approved.
+      ...(straight || item.publicVersion === 0 ? text : {}),
       // Straight away: this version is public now. In review: a public
       // item stays public (on its old version) while the update waits.
       status: straight || live ? 'public' : 'in_review',
       publicVersion: straight ? version : item.publicVersion,
+      // A takedown brought back stays back; one waiting for review is kept.
+      takenDownBy: straight ? null : hold,
       reason: null,
       updatedAt: now,
     })
@@ -550,7 +608,8 @@ export async function decideVersion(user: User, versionId: string, approve: bool
   const reason = cleanText(rawReason, MAX_REASON);
   if (reason === undefined) return { code: 400 as const, body: { error: 'invalid_input' } };
   const item = (await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, v.itemId)).get())!;
-  if (clubId && item.ownerOrgId !== clubId) return { code: 404 as const, body: { error: 'not_found' } };
+  // A club decides its own items, except one a site moderator took down.
+  if (clubId && (item.ownerOrgId !== clubId || holdOf(item) === 'site')) return { code: 404 as const, body: { error: 'not_found' } };
   const now = new Date();
   await db
     .update(schema.catalogItemVersions)
@@ -559,12 +618,29 @@ export async function decideVersion(user: User, versionId: string, approve: bool
   if (approve) {
     await db
       .update(schema.catalogItems)
-      .set({ status: 'public', publicVersion: v.version, reason: null, updatedAt: now })
+      .set({
+        status: 'public',
+        publicVersion: v.version,
+        // The text sent with this version becomes the public text.
+        ...(v.title !== null ? { title: v.title } : {}),
+        ...(v.description !== null ? { description: v.description } : {}),
+        ...(v.tags !== null ? { tags: v.tags } : {}),
+        takenDownBy: null,
+        reason: null,
+        updatedAt: now,
+      })
       .where(eq(schema.catalogItems.id, item.id));
   } else if (item.publicVersion === 0) {
     // A first submission declined: the item says why. (A declined update
     // leaves the public version as it is.)
     await db.update(schema.catalogItems).set({ status: 'declined', reason, updatedAt: now }).where(eq(schema.catalogItems.id, item.id));
+  } else if (item.status === 'in_review') {
+    // Asked to come back after a takedown (or a withdrawal), and declined:
+    // it stays out of the catalog.
+    await db
+      .update(schema.catalogItems)
+      .set({ status: holdOf(item) ? 'unpublished' : 'declined', reason, updatedAt: now })
+      .where(eq(schema.catalogItems.id, item.id));
   }
   await writeAuditEvent({
     resourceKind: 'catalog_item',
@@ -582,7 +658,12 @@ export async function unpublishItem(user: User, itemId: string, rawReason: unkno
   if (reason === undefined) return { code: 400, body: { error: 'invalid_input' } };
   const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, itemId)).get();
   if (!item || (clubId && item.ownerOrgId !== clubId)) return { code: 404, body: { error: 'not_found' } };
-  await db.update(schema.catalogItems).set({ status: 'unpublished', reason, updatedAt: new Date() }).where(eq(schema.catalogItems.id, item.id));
+  // A site moderator's takedown only a site moderator undoes; a club's,
+  // the club's reviewers (or a site moderator).
+  await db
+    .update(schema.catalogItems)
+    .set({ status: 'unpublished', takenDownBy: nextHold(holdOf(item), clubId), reason, updatedAt: new Date() })
+    .where(eq(schema.catalogItems.id, item.id));
   await writeAuditEvent({ resourceKind: 'catalog_item', resourceId: item.id, userId: user.id, eventType: 'catalog_unpublish', payload: { reason, ...(clubId ? { byClub: clubId } : {}) } });
   await dropFromCollections(item, clubId ? 'unpublished by the club' : 'unpublished by a moderator', user.id);
   return { code: 200, body: { ok: true } };
@@ -767,11 +848,18 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const ids = rows.map((r) => r.id);
     const pending = ids.length
       ? await db
-          .select({ itemId: schema.catalogItemVersions.itemId, version: schema.catalogItemVersions.version })
+          .select({
+            itemId: schema.catalogItemVersions.itemId,
+            version: schema.catalogItemVersions.version,
+            title: schema.catalogItemVersions.title,
+            description: schema.catalogItemVersions.description,
+            tags: schema.catalogItemVersions.tags,
+          })
           .from(schema.catalogItemVersions)
           .where(and(inArray(schema.catalogItemVersions.itemId, ids), eq(schema.catalogItemVersions.status, 'in_review')))
       : [];
     const waiting = new Map(pending.map((p) => [p.itemId, p.version]));
+    const waitingText = new Map(pending.map((p) => [p.itemId, p]));
     const inCollections = await collectionCounts(ids);
     // The drawn picture: the public version's, else the one waiting.
     const drawnVersion = (r: (typeof rows)[number]) => r.publicVersion || (waiting.get(r.id) ?? 0);
@@ -786,6 +874,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         reason: r.reason,
         version: r.publicVersion,
         pendingVersion: waiting.get(r.id) ?? null,
+        /** The text sent with the version waiting, shown to the public once it's approved. */
+        pendingText: (() => {
+          const p = waitingText.get(r.id);
+          return p ? { title: p.title ?? r.title, description: p.description ?? r.description, tags: parseTags(p.tags ?? r.tags) } : null;
+        })(),
         /** Its drawn picture (the public version's, else the one waiting); '' when it has none. */
         drawnUrl: previewUrlOf(r.id, drawnVersion(r), pictured),
         /** How many public collections it's in. */
@@ -802,7 +895,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     if (!item) return reply.code(404).send({ error: 'not_found' });
     if (!(await manages(user.id, item))) return reply.code(403).send({ error: 'forbidden' });
     const now = new Date();
-    await db.update(schema.catalogItems).set({ status: 'withdrawn', updatedAt: now }).where(eq(schema.catalogItems.id, item.id));
+    // A takedown is remembered through a withdrawal.
+    await db.update(schema.catalogItems).set({ status: 'withdrawn', takenDownBy: holdOf(item), updatedAt: now }).where(eq(schema.catalogItems.id, item.id));
     await db
       .update(schema.catalogItemVersions)
       .set({ status: 'declined', reason: 'Withdrawn', decidedAt: now })
@@ -932,6 +1026,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         title: schema.catalogItems.title,
         description: schema.catalogItems.description,
         tags: schema.catalogItems.tags,
+        sentTitle: schema.catalogItemVersions.title,
+        sentDescription: schema.catalogItemVersions.description,
+        sentTags: schema.catalogItemVersions.tags,
+        itemStatus: schema.catalogItems.status,
+        takenDownBy: schema.catalogItems.takenDownBy,
         publicVersion: schema.catalogItems.publicVersion,
         coverImageId: schema.catalogItems.coverImageId,
         submitterId: schema.users.id,
@@ -960,9 +1059,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         versionId: q.versionId,
         itemId: q.itemId,
         kind: q.kind,
-        title: q.title,
-        description: q.description,
-        tags: parseTags(q.tags),
+        ...sentText(q),
         version: q.version,
         isUpdate: q.publicVersion > 0,
         note: q.note,
@@ -984,13 +1081,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         trustedClub: !!q.ownerOrgId && trusted.has(q.ownerOrgId),
       });
     const covers = await coverQueue();
+    // A club's item a site moderator took down waits in the site's queue.
+    const inClub = (q: (typeof queue)[number]) => !!q.ownerOrgId && trusted.has(q.ownerOrgId) && holdOf({ status: q.itemStatus, takenDownBy: q.takenDownBy }) !== 'site';
     return {
       /** New pictures for public items, waiting for review: what shows now beside the new one. */
       covers: covers.filter((c) => !c.trustedClub),
       trustedCovers: covers.filter((c) => c.trustedClub),
-      queue: queue.filter((q) => !(q.ownerOrgId && trusted.has(q.ownerOrgId))).map(entry),
+      queue: queue.filter((q) => !inClub(q)).map(entry),
       /** Waiting in trusted clubs' own queues. */
-      trustedQueue: queue.filter((q) => q.ownerOrgId && trusted.has(q.ownerOrgId)).map(entry),
+      trustedQueue: queue.filter(inClub).map(entry),
       items: items.map((i) => ({ ...itemOut(i, name(i), pictured), status: i.status, reason: i.reason, owner: ownerRef(i), trustedClub: !!i.ownerOrgId && trusted.has(i.ownerOrgId) })),
     };
   });
@@ -1002,6 +1101,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // changed), sort ('oldest' or 'newest'). `limit` (≤ 100) and `offset`
   // page through it; `total` counts every match.
   const trustedOrg = sql`EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogItems.ownerOrgId} AND o.trusted = 1)`;
+  // Versions a trusted club reviews: its own, except an item a site moderator took down.
+  const clubReviews = sql`(${trustedOrg} AND NOT ${siteHeldItem})`;
   app.get<{ Querystring: { view?: string; kind?: string; q?: string; from?: string; to?: string; sort?: string; limit?: string; offset?: string } }>(
     '/api/moderation/catalog',
     async (req, reply) => {
@@ -1029,7 +1130,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         const at = schema.catalogItemVersions.createdAt;
         const where = and(
           eq(schema.catalogItemVersions.status, 'in_review'),
-          view === 'trusted' ? trustedOrg : sql`NOT ${trustedOrg}`,
+          view === 'trusted' ? clubReviews : sql`NOT ${clubReviews}`,
           kind ? eq(schema.catalogItems.kind, kind as Kind) : undefined,
           text,
           from ? sql`${at} >= ${from}` : undefined,
@@ -1054,6 +1155,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             title: schema.catalogItems.title,
             description: schema.catalogItems.description,
             tags: schema.catalogItems.tags,
+            sentTitle: schema.catalogItemVersions.title,
+            sentDescription: schema.catalogItemVersions.description,
+            sentTags: schema.catalogItemVersions.tags,
             publicVersion: schema.catalogItems.publicVersion,
             coverImageId: schema.catalogItems.coverImageId,
             submitterId: schema.users.id,
@@ -1078,9 +1182,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             versionId: r.versionId,
             itemId: r.itemId,
             kind: r.kind,
-            title: r.title,
-            description: r.description,
-            tags: parseTags(r.tags),
+            ...sentText(r),
             version: r.version,
             isUpdate: r.publicVersion > 0,
             note: r.note,
@@ -1141,7 +1243,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/moderation/counts', async (req) => {
     requireModerator(req);
     const waitingRows = await db
-      .select({ trusted: sql<number>`${trustedOrg}`, n: sql<number>`count(*)` })
+      .select({ trusted: sql<number>`${clubReviews}`, n: sql<number>`count(*)` })
       .from(schema.catalogItemVersions)
       .innerJoin(schema.catalogItems, eq(schema.catalogItems.id, schema.catalogItemVersions.itemId))
       .where(eq(schema.catalogItemVersions.status, 'in_review'))
@@ -1163,7 +1265,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(schema.catalogCollections.audience, 'everyone'),
           or(eq(schema.catalogCollections.status, 'in_review'), and(eq(schema.catalogCollections.status, 'public'), isNotNull(schema.catalogCollections.pending))),
-          sql`NOT EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogCollections.orgId} AND o.trusted = 1)`,
+          // Not in a trusted club's own queue (one a site moderator took down is the site's).
+          or(sql`NOT EXISTS (SELECT 1 FROM orgs o WHERE o.id = ${schema.catalogCollections.orgId} AND o.trusted = 1)`, siteHeldCollection),
         ),
       )
       .get();
@@ -1220,5 +1323,20 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { reason?: unknown } }>('/api/moderation/items/:id/unpublish', async (req, reply) => {
     const r = await unpublishItem(requireModerator(req), req.params.id, req.body?.reason);
     return reply.code(r.code).send(r.body);
+  });
+
+  // Put an unpublished item back in the catalog, on the version it had.
+  // Only site moderators: owners and clubs ask by sharing it again.
+  app.post<{ Params: { id: string } }>('/api/moderation/items/:id/restore', async (req, reply) => {
+    const user = requireModerator(req);
+    const item = await db.select().from(schema.catalogItems).where(eq(schema.catalogItems.id, req.params.id)).get();
+    if (!item) return reply.code(404).send({ error: 'not_found' });
+    if (item.status !== 'unpublished' || item.publicVersion === 0) return reply.code(409).send({ error: 'not_unpublished' });
+    await db
+      .update(schema.catalogItems)
+      .set({ status: 'public', takenDownBy: null, reason: null, updatedAt: new Date() })
+      .where(eq(schema.catalogItems.id, item.id));
+    await writeAuditEvent({ resourceKind: 'catalog_item', resourceId: item.id, userId: user.id, eventType: 'catalog_restore', payload: { version: item.publicVersion } });
+    return { ok: true };
   });
 }

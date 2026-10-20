@@ -133,6 +133,7 @@ function PublishedView({ counts }: { counts?: { public: number; unpublished: num
 type Row = ModerationEntry | ModeratedItem;
 const isEntry = (r: Row): r is ModerationEntry => 'versionId' in r;
 const rowId = (r: Row) => (isEntry(r) ? r.versionId : r.id);
+type ItemAction = 'approve' | 'decline' | 'unpublish' | 'restore';
 
 /** Search, kind, dates and order for a list; the search waits for a pause in typing. */
 function Filters({ f, set, waiting, kinds = true }: { f: ModerationFilter; set: (f: ModerationFilter) => void; waiting: boolean; kinds?: boolean }) {
@@ -215,8 +216,14 @@ function ModerationList({ view, title, total }: { view: ModerationView; title: s
   };
   const fail = (e: Error) => showToast(e.message);
   const one = useMutation({
-    mutationFn: (a: { action: 'approve' | 'decline' | 'unpublish'; id: string; reason?: string }) =>
-      a.action === 'approve' ? api.moderation.approve(a.id) : a.action === 'decline' ? api.moderation.decline(a.id, a.reason ?? '') : api.moderation.unpublish(a.id, a.reason ?? ''),
+    mutationFn: (a: { action: ItemAction; id: string; reason?: string }) =>
+      a.action === 'approve'
+        ? api.moderation.approve(a.id)
+        : a.action === 'restore'
+          ? api.moderation.restore(a.id)
+          : a.action === 'decline'
+            ? api.moderation.decline(a.id, a.reason ?? '')
+            : api.moderation.unpublish(a.id, a.reason ?? ''),
     onSuccess: () => {
       setOpen(null);
       done();
@@ -250,8 +257,18 @@ function ModerationList({ view, title, total }: { view: ModerationView; title: s
             reason: { label: 'Reason (optional)' },
           },
     );
-  const act = async (action: 'approve' | 'decline' | 'unpublish', r: Row) => {
+  const act = async (action: ItemAction, r: Row) => {
     if (action === 'approve') return one.mutate({ action, id: rowId(r) });
+    if (action === 'restore') {
+      const ok = await askConfirm({
+        title: `Restore “${r.title}”?`,
+        removes: 'It goes back into the public catalog, on the version it had.',
+        keeps: 'You can unpublish it again later.',
+        confirmLabel: 'Restore',
+      });
+      if (ok) one.mutate({ action, id: rowId(r) });
+      return;
+    }
     const reason = await ask(action, `“${r.title}”`);
     if (reason !== null) one.mutate({ action, id: rowId(r), reason });
   };
@@ -335,6 +352,7 @@ function ModerationList({ view, title, total }: { view: ModerationView; title: s
                     <span className="text-xs font-normal text-muted">
                       {KIND_WORD[r.kind]}
                       {isEntry(r) ? (r.isUpdate ? `, update, version ${r.version}` : ', new') : ''}
+                      {isEntry(r) && r.current ? ', new text' : ''}
                     </span>
                     {!isEntry(r) && r.trustedClub && <TrustedBadge />}
                   </span>
@@ -356,7 +374,7 @@ function ModerationList({ view, title, total }: { view: ModerationView; title: s
   );
 }
 
-function RowActions({ r, act, busy }: { r: Row; act: (a: 'approve' | 'decline' | 'unpublish', r: Row) => void; busy: boolean }) {
+function RowActions({ r, act, busy }: { r: Row; act: (a: ItemAction, r: Row) => void; busy: boolean }) {
   if (isEntry(r))
     return (
       <span className="flex gap-2">
@@ -371,6 +389,10 @@ function RowActions({ r, act, busy }: { r: Row; act: (a: 'approve' | 'decline' |
   return r.status === 'public' ? (
     <button type="button" disabled={busy} onClick={() => act('unpublish', r)} aria-label={`Unpublish ${r.title}`} className="tap-target rounded-lg border border-border px-3 py-1 text-danger hover:bg-soft disabled:opacity-50">
       Unpublish…
+    </button>
+  ) : r.status === 'unpublished' ? (
+    <button type="button" disabled={busy} onClick={() => act('restore', r)} aria-label={`Restore ${r.title}`} className="tap-target rounded-lg border border-border px-3 py-1 hover:bg-soft disabled:opacity-50">
+      Restore…
     </button>
   ) : null;
 }
@@ -396,7 +418,7 @@ function Pager({ offset, count, rows, setOffset }: { offset: number; count: numb
 }
 
 /** Everything about one entry, in a panel at the side (the whole screen on a phone). */
-function EntryPanel({ r, onClose, act, busy }: { r: Row; onClose: () => void; act: (a: 'approve' | 'decline' | 'unpublish', r: Row) => void; busy: boolean }) {
+function EntryPanel({ r, onClose, act, busy }: { r: Row; onClose: () => void; act: (a: ItemAction, r: Row) => void; busy: boolean }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', key);
@@ -457,6 +479,14 @@ function EntryPanel({ r, onClose, act, busy }: { r: Row; onClose: () => void; ac
           )}
         </dl>
         {r.description && <p className="whitespace-pre-line">{r.description}</p>}
+        {isEntry(r) && r.current && (
+          <figure data-testid="entry-current-text" className="space-y-1 rounded-lg border border-line bg-soft p-2">
+            <figcaption className="text-xs font-semibold uppercase tracking-wide text-muted">Public now (until you approve the new text above)</figcaption>
+            <p className="font-semibold break-words">{r.current.title}</p>
+            {r.current.description && <p className="whitespace-pre-line text-xs">{r.current.description}</p>}
+            {r.current.tags.length > 0 && <p className="text-xs text-muted">Tags: {r.current.tags.join(', ')}</p>}
+          </figure>
+        )}
         {isEntry(r) && r.note && <p className="rounded-lg bg-soft p-2 text-xs">What changed: {r.note}</p>}
         {(r.kind === 'layout' || r.kind === 'venue') && (
           <Link to={`/catalog/items/${itemId}`} className="text-accent-text hover:underline">
@@ -739,6 +769,11 @@ function CollectionList({ view, title, note }: { view: CollView; title: string; 
     onError: fail,
   });
   const feature = useMutation({ mutationFn: (a: { id: string; featured: boolean }) => api.moderation.featureCollection(a.id, a.featured), onSuccess: done, onError: fail });
+  const restore = useMutation({ mutationFn: (id: string) => api.moderation.restoreCollection(id), onSuccess: done, onError: fail });
+  const askRestore = async (r: CollRow) => {
+    const ok = await askConfirm({ title: `Restore “${r.title}”?`, removes: 'It goes back into the public catalog, as it was.', keeps: 'You can unpublish it again later.', confirmLabel: 'Restore' });
+    if (ok) restore.mutate(r.id);
+  };
   const ask = async (action: Action, what: string): Promise<string | null> => {
     if (action === 'approve') return 'ok';
     if (action === 'remove')
@@ -889,6 +924,11 @@ function CollectionList({ view, title, note }: { view: CollView; title: string; 
                   {view === 'listed' && (r as ModeratedCollection).status === 'public' && (
                     <button type="button" disabled={run.isPending} onClick={() => void act('unpublish', r)} aria-label={`Unpublish collection ${r.title}`} className={`${btn} text-danger`}>
                       Unpublish
+                    </button>
+                  )}
+                  {view === 'listed' && (r as ModeratedCollection).status === 'unpublished' && (
+                    <button type="button" disabled={restore.isPending} onClick={() => void askRestore(r)} aria-label={`Restore collection ${r.title}`} className={btn}>
+                      Restore…
                     </button>
                   )}
                   {view === 'club' && (
