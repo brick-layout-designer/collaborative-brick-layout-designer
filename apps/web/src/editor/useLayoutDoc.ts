@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { Awareness } from 'y-protocols/awareness';
-import { canReadDoc, removeDuplicateBricks, repairSidecarCache } from '@cld/ydoc';
+import { canReadDoc, removeDuplicateItems, repairSidecarCache } from '@cld/ydoc';
 import { keepRefusedCopy } from './refusedCopies';
 
 export type SaveStatus =
@@ -314,8 +314,9 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       repairTimer = setTimeout(() => {
         repairTimer = null;
         repairSidecarCache(fresh, SIDECAR_REPAIR_ORIGIN);
-        // Two people moving the same part at once leave it there twice.
-        removeDuplicateBricks(fresh, SIDECAR_REPAIR_ORIGIN);
+        // Two people moving the same part or ruler, or painting the same
+        // cell, at once leave it there twice.
+        removeDuplicateItems(fresh, SIDECAR_REPAIR_ORIGIN);
       }, 50);
     };
     fresh.on('afterTransaction', onTransaction);
