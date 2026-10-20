@@ -11,6 +11,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { db, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
@@ -496,7 +497,7 @@ describe('modules — snapshot PUT', () => {
       method: 'PUT',
       url: `/api/modules/${id}/snapshot`,
       headers: { cookie, 'content-type': 'application/octet-stream' },
-      payload: Buffer.from([1, 2, 3, 4]),
+      payload: Buffer.from(encodeDoc(createDefaultLayoutDoc())),
     });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { ok: boolean }).ok).toBe(true);

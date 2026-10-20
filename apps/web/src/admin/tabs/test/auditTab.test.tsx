@@ -9,7 +9,7 @@ vi.mock('../../../api', () => ({
   api: {
     admin: {
       auditLog: async () => ({
-        total: 2,
+        total: 3,
         limit: 50,
         offset: 0,
         events: [
@@ -35,6 +35,17 @@ vi.mock('../../../api', () => ({
             payload: { foreignLayers: 0, unseenClients: 5 },
             createdAt: Date.now(),
           },
+          {
+            id: 3,
+            layoutId: 'layout-d',
+            resourceKind: null,
+            resourceId: null,
+            userId: 'u1',
+            userName: 'Aaron',
+            eventType: 'layout_update_refused',
+            payload: { kind: 'unreadable', why: 'a string has a NUL character in it', client: 'Mozilla/5.0' },
+            createdAt: Date.now(),
+          },
         ],
       }),
     },
@@ -56,5 +67,10 @@ describe('AuditTab', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText(/came from 5 editors this layout had never seen at once/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Refused a live update the apps can't read (a string has a NUL character in it) (from Mozilla/5.0). Nothing was changed, and that connection was closed.",
+      ),
+    ).toBeTruthy();
   });
 });

@@ -9,13 +9,17 @@ const AUDIT_PAGE = 50;
 
 /** Events an admin should read in words, not as a type name. */
 export function auditSentence(e: AdminAuditEvent): string | null {
-  const p = (e.payload ?? {}) as { foreignLayers?: number; unseenClients?: number; client?: string };
+  const p = (e.payload ?? {}) as { foreignLayers?: number; unseenClients?: number; client?: string; kind?: string; why?: string };
   const from = p.client ? ` (from ${p.client})` : '';
   switch (e.eventType) {
     case 'layout_merge_refused':
       return `Refused a live update that would have mixed another layout into this one: it brought ${p.foreignLayers ?? 'some'} layers from elsewhere${from}. Nothing was changed, and that connection was closed.`;
     case 'layout_merge_suspected':
       return `Applied a live update that came from ${p.unseenClients ?? 'many'} editors this layout had never seen at once${from}. Worth a look: it can mean another layout's edits were mixed in.`;
+    case 'layout_update_refused':
+      return p.kind === 'incomplete'
+        ? `Refused a live update that depended on changes this layout doesn't have, past what a layout keeps waiting${from}. What was waiting from it was dropped, and that connection was closed.`
+        : `Refused a live update the apps can't read${p.why ? ` (${p.why})` : ''}${from}. Nothing was changed, and that connection was closed.`;
     default:
       return null;
   }

@@ -28,6 +28,8 @@ import { resolveResourceRole } from '../access/resolveResourceRole.js';
 import { isCredentialActive, revokedReason, type Credential } from '../auth/credentials.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { checkIncomingUpdate, type MergeCheck } from './mergeGuard.js';
+import { checkStateVector, checkUpdate } from './updateGuard.js';
+import { MAX_PENDING_BYTES, pendingBytes, restorePending, savePending } from './pending.js';
 
 /**
  * Close code and reason for an update refused because it would merge
@@ -38,6 +40,15 @@ import { checkIncomingUpdate, type MergeCheck } from './mergeGuard.js';
  */
 export const CLOSE_MERGE_REFUSED = 1008;
 export const MERGE_REFUSED_REASON = 'layout_merge_refused';
+
+/**
+ * Close reason for an update refused because the apps can't read it
+ * (ws/updateGuard.ts: the desktop's own check), or because it depends on
+ * more changes the layout doesn't have than a room holds (ws/pending.ts).
+ * The same 1008 as above, so neither app sends it again; the name is the
+ * one the desktop gives an update it can't read.
+ */
+export const UPDATE_REFUSED_REASON = 'unreadable_update';
 
 /**
  * How often we re-check whether the connected user still has access to
@@ -67,6 +78,8 @@ interface Sender {
   userId: string;
   client: string;
   credential?: Credential | undefined;
+  /** What this connection has already logged or audited: each once per connection. */
+  noted: Set<string>;
 }
 
 /**
@@ -94,7 +107,7 @@ export async function attachWsHandlers(
   auth: WsAuth = {},
 ): Promise<() => Promise<void>> {
   const { credential, readOnly = false } = auth;
-  const sender: Sender = { layoutId, userId, client: auth.client ?? '', credential };
+  const sender: Sender = { layoutId, userId, client: auth.client ?? '', credential, noted: new Set() };
   const cap = (r: 'owner' | 'editor' | 'viewer') => (readOnly ? 'viewer' : r);
   const session = await docHub.getOrCreate(layoutId);
   docHub.attach(session, ws, userId);
@@ -123,6 +136,9 @@ export async function attachWsHandlers(
   // 4. Wire up message handling.
   let currentRole = cap(role);
   ws.on('message', (data: Buffer) => {
+    // Nothing more is read from a connection being closed (what follows a
+    // refused update, a revoked sign-in's last messages).
+    if (ws.readyState !== ws.OPEN) return;
     try {
       handleMessage(ws, session, new Uint8Array(data), currentRole, sender);
     } catch {
@@ -202,25 +218,48 @@ function handleMessage(
       const syncType = decoding.readVarUint(decoder);
       if (syncType === syncProtocol.messageYjsSyncStep1) {
         // A read ("send me what I'm missing"): how every client, viewers
-        // included, gets the document at all.
-        syncProtocol.readSyncStep1(decoder, encoder, session.doc);
+        // included, gets the document at all. One no app writes is dropped.
+        const stateVector = decoding.readVarUint8Array(decoder);
+        if (checkStateVector(stateVector) !== null) return;
+        syncProtocol.writeSyncStep2(encoder, session.doc, stateVector);
       } else if (syncType === syncProtocol.messageYjsSyncStep2 || syncType === syncProtocol.messageYjsUpdate) {
         // The client's own state / edits: write paths. A viewer's are
         // dropped (a hostile viewer can't corrupt the doc).
         if (role === 'viewer') return;
         const update = decoding.readVarUint8Array(decoder);
-        // Checked before it is applied, so a refused one leaves the doc as it was.
+        // Checked before it is applied, so a refused one leaves the doc as
+        // it was: first that both apps can read it, then what it holds.
+        const unreadable = checkUpdate(update);
+        if (unreadable !== null) {
+          refuseUpdate(ws, session, sender, update.length, 'unreadable', unreadable);
+          return;
+        }
         const check = checkIncomingUpdate(session.doc, update);
         if (check.refuse) {
           refuseMerge(ws, session, sender, check);
           return;
         }
         if (check.suspicious) flagUpdate(session, sender, check);
+        const pending = savePending(session.doc);
         try {
           // Origin = this socket, so our own broadcasts skip this client.
           Y.applyUpdate(session.doc, update, ws);
         } catch (err) {
-          console.error('[ws] could not apply an update', err);
+          if (once(sender, 'apply_error')) {
+            console.error(
+              `[ws] could not apply an update to layout ${session.layoutId} from user ${sender.userId} ` +
+                `(${sender.client || 'unknown client'}; later ones from this connection aren't logged): ${String(err)}`,
+            );
+          }
+        }
+        // What it left waiting for changes the room doesn't have is kept up
+        // to a limit (ws/pending.ts). Past it, what this update left goes;
+        // what it integrated stays (stored and sent like any edit).
+        const nowPending = pendingBytes(session.doc);
+        if (nowPending > MAX_PENDING_BYTES && nowPending > pending.bytes) {
+          restorePending(session.doc, pending);
+          refuseUpdate(ws, session, sender, update.length, 'incomplete', `it leaves ${nowPending} bytes waiting for changes the layout doesn't have`);
+          return;
         }
       }
       if (encoding.length(encoder) > 1) {
@@ -277,8 +316,46 @@ function refuseMerge(ws: WebSocket, session: DocSession, sender: Sender, check: 
   }).catch((err) => console.error('[ws] could not write the layout_merge_refused audit event', err));
 }
 
-/** Applied, but unusual enough for the admins to see (mergeGuard.ts). */
+/** True the first time this connection notes `what`. */
+function once(sender: Sender, what: string): boolean {
+  if (sender.noted.has(what)) return false;
+  sender.noted.add(what);
+  return true;
+}
+
+/**
+ * The update can't be read by both apps, or leaves too much waiting for
+ * changes the layout doesn't have: drop it, end this connection with a
+ * reason both apps treat as final, and say so once in the log and the audit.
+ */
+function refuseUpdate(
+  ws: WebSocket,
+  session: DocSession,
+  sender: Sender,
+  updateBytes: number,
+  kind: 'unreadable' | 'incomplete',
+  why: string,
+): void {
+  try {
+    ws.close(CLOSE_MERGE_REFUSED, UPDATE_REFUSED_REASON);
+  } catch {
+    /* already closed */
+  }
+  if (!once(sender, 'update_refused')) return;
+  console.warn(
+    `[ws] refused an update to layout ${session.layoutId} from user ${sender.userId} (${sender.client || 'unknown client'}): ${why} (${updateBytes} bytes)`,
+  );
+  writeAuditEvent({
+    layoutId: session.layoutId,
+    userId: sender.userId,
+    eventType: 'layout_update_refused',
+    payload: { client: sender.client, via: sender.credential?.kind ?? null, updateBytes, kind, why },
+  }).catch((err) => console.error('[ws] could not write the layout_update_refused audit event', err));
+}
+
+/** Applied, but unusual enough for the admins to see (mergeGuard.ts); once per connection. */
 function flagUpdate(session: DocSession, sender: Sender, check: MergeCheck): void {
+  if (!once(sender, 'merge_suspected')) return;
   console.warn(
     `[ws] layout ${session.layoutId}: an update from user ${sender.userId} (${sender.client || 'unknown client'}) ` +
       `brings items from ${check.unseenClients} clients this layout has never seen (${check.updateBytes} bytes); applied`,

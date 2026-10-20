@@ -16,6 +16,7 @@ import { upgradeDoc } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 import { rollup } from '../metrics/rollup.js';
+import { MAX_PENDING_BYTES, dropPending, pendingBytes } from './pending.js';
 
 export class DocSession {
   readonly doc: Y.Doc;
@@ -146,6 +147,9 @@ export class DocSession {
         // Corrupt updates are ignored — the snapshot is the source of truth.
       }
     }
+    // A snapshot written before rooms had a limit on it may hold more
+    // waiting for changes nobody sent than one may (ws/pending.ts).
+    this.limitPending();
     // Docs created before text cells had ids (schemaVersion 1) get them
     // now, so every live-sync client sees a stable id on every cell. This
     // runs before the persist listener is installed; the change reaches
@@ -179,6 +183,7 @@ export class DocSession {
     if (this.flushing) return;
     this.flushing = true;
     try {
+      this.limitPending();
       const bytes = Y.encodeStateAsUpdate(this.doc);
       await db
         .update(schema.layouts)
@@ -203,6 +208,18 @@ export class DocSession {
     } finally {
       this.flushing = false;
     }
+  }
+
+  /**
+   * Past MAX_PENDING_BYTES, drop what waits for changes the layout doesn't
+   * have, so no snapshot stores (or serves) more than that. The live
+   * handler keeps a room under it; this covers older snapshots.
+   */
+  private limitPending(): void {
+    const bytes = pendingBytes(this.doc);
+    if (bytes <= MAX_PENDING_BYTES) return;
+    console.warn(`[docHub] layout ${this.layoutId}: dropped ${bytes} bytes waiting for changes the layout doesn't have`);
+    dropPending(this.doc);
   }
 
   private async currentVersion(): Promise<number> {

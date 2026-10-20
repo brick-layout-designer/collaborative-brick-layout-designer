@@ -9,6 +9,7 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { db, issueToken, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
 import { passwordRoutes } from '../auth/password.js';
@@ -55,12 +56,13 @@ describe('modules, catalog and notices with API tokens', () => {
     const created = await app.inject({ method: 'POST', url: '/api/modules', headers: bearer(writer), payload: { title: 'Yard' } });
     expect(created.statusCode).toBe(201);
     const id = (created.json() as { id: string }).id;
+    const contents = Buffer.from(encodeDoc(createDefaultLayoutDoc()));
     const put = (note: string) =>
       app.inject({
         method: 'PUT',
         url: `/api/modules/${id}/snapshot?note=${encodeURIComponent(note)}`,
         headers: { ...bearer(writer), 'content-type': 'application/octet-stream' },
-        payload: Buffer.from([1, 2, 3]),
+        payload: contents,
       });
     expect((await put('First')).json()).toMatchObject({ version: 1 });
     expect((await put('Longer siding')).json()).toMatchObject({ version: 2 });
@@ -75,7 +77,7 @@ describe('modules, catalog and notices with API tokens', () => {
       { id, title: 'Freight yard', latestVersion: 2 },
     ]);
     const snap = await app.inject({ method: 'GET', url: `/api/modules/${id}/snapshot`, headers: bearer(reader) });
-    expect([...snap.rawPayload]).toEqual([1, 2, 3]);
+    expect([...snap.rawPayload]).toEqual([...contents]);
     expect((await app.inject({ method: 'GET', url: `/api/modules/${id}/thumbnail`, headers: bearer(reader) })).headers['content-type']).toBe('image/webp');
     const versions = await app.inject({ method: 'GET', url: `/api/modules/${id}/versions`, headers: bearer(reader) });
     expect((versions.json() as { versions: { note: string }[] }).versions.map((v) => v.note)).toEqual(['Longer siding', 'First']);

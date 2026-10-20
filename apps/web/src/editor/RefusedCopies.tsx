@@ -25,6 +25,8 @@ export function RefusedCopies() {
 const WHY: Record<RefusedCopy['why'], string> = {
   merge:
     "The server didn't take your latest changes to this layout, because they looked like another layout's parts going into it. Nothing you did is lost, but it's only on this page: save it as a new layout or download it before you close the page.",
+  unreadable:
+    "The server didn't take your latest changes to this layout, because they hold something the apps can't read. Nothing you did is lost, but it's only on this page: save it as a new layout or download it before you close the page.",
   signed_out:
     'You were signed out before your latest changes to this layout reached the server. Nothing you did is lost, but it’s only on this page: sign in again in another tab and save it as a new layout, or download it, before you close the page.',
   gone:
