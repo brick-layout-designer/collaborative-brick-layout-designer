@@ -26,7 +26,7 @@ import { isDemoUser } from '../demo/demoAccount.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
-import { escapeLike, isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { escapeLike, isValidEmail, normalizeEmail, trimmed } from '../utils/validate.js';
 import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
 import { clubReviewCount } from './clubReview.js';
 import { nameFor, publicName } from '../utils/publicName.js';
@@ -133,8 +133,8 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (isDemoUser(user)) {
       return reply.code(403).send({ error: 'demo_account_cannot_create_org' });
     }
-    const name = req.body.name?.trim();
-    const requestedSlug = req.body.slug?.trim().toLowerCase();
+    const name = trimmed(req.body.name);
+    const requestedSlug = trimmed(req.body.slug)?.toLowerCase();
     if (!name || name.length < 1 || name.length > 80) {
       return reply.code(400).send({ error: 'invalid_name' });
     }

@@ -13,6 +13,7 @@ import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.j
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { atLeast } from '../access/clubRoles.js';
 import { dropModuleFromCollections } from './collections.js';
+import { trimmed } from '../utils/validate.js';
 
 interface InitiateTransferBody {
   recipientOrgSlug?: string;
@@ -30,7 +31,7 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         return reply.code(403).send({ error: 'forbidden' });
       }
 
-      const recipientOrgSlug = req.body.recipientOrgSlug?.trim().toLowerCase();
+      const recipientOrgSlug = trimmed(req.body.recipientOrgSlug)?.toLowerCase();
       if (!recipientOrgSlug) return reply.code(400).send({ error: 'transfer_to_club_only' });
 
       // Org recipient → immediate.

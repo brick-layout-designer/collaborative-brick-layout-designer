@@ -27,6 +27,8 @@ import { clubThingRole } from '../access/clubRoles.js';
 import { creditLookup, withCredits } from './credits.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { backgroundImagePath, layoutFileBytes, smallZip } from '../privacy/exportFiles.js';
+import { attachment, safeFileName } from '../utils/contentDisposition.js';
+import { trimmed } from '../utils/validate.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -168,7 +170,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const body = req.body ?? {};
 
-    let title = body.title?.trim() || 'Untitled Layout';
+    let title = trimmed(body.title) || 'Untitled Layout';
     let sidecarSnapshot: Uint8Array | null = null;
     const id = randomUUID();
 
@@ -216,7 +218,7 @@ export async function layoutRoutes(app: FastifyInstance) {
         const parsed = readBbm(body.bbm);
         // If no title was provided, derive one from the .bbm metadata —
         // either the LUG/Event line or fall back to default.
-        if (!body.title?.trim() && parsed.map.event) title = parsed.map.event;
+        if (!trimmed(body.title) && parsed.map.event) title = parsed.map.event;
         doc = seedFromBbm(parsed.map);
       } catch (e) {
         return reply.code(400).send({ error: 'bbm_parse_failed', detail: (e as Error).message });
@@ -280,7 +282,7 @@ export async function layoutRoutes(app: FastifyInstance) {
 
       const updates: Partial<typeof schema.layouts.$inferInsert> = {};
       if (req.body.title !== undefined) {
-        const t = req.body.title.trim();
+        const t = trimmed(req.body.title);
         if (!t || t.length > 200) return reply.code(400).send({ error: 'invalid_title' });
         updates.title = t;
       }
@@ -325,7 +327,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
 
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
-      const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
+      const title = trimmed(req.body?.title) || (sameOwner ? `${src.title} (copy)` : src.title);
       const ownerUserId = dest.orgId ? null : user.id;
       const copyOwner: Subject = dest.orgId ? { kind: 'org', id: dest.orgId } : { kind: 'user', id: user.id };
       const copyBytes = (src.docSnapshot as Uint8Array).length + ((src.sidecarSnapshot as Uint8Array | null)?.length ?? 0);
@@ -405,10 +407,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const xml = writeBbm(map);
     rollup.count('exports', 'bbm');
     reply.header('Content-Type', 'application/xml; charset=utf-8');
-    reply.header(
-      'Content-Disposition',
-      `attachment; filename="${sanitizeFilename(layout.title)}.bbm"`,
-    );
+    reply.header('Content-Disposition', attachment(`${safeFileName(layout.title)}.bbm`));
     return reply.send(xml);
   });
 
@@ -433,7 +432,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!bytes) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
     rollup.count('exports', 'bld-layout');
     reply.header('Content-Type', 'application/zip');
-    reply.header('Content-Disposition', `attachment; filename="${sanitizeFilename(layout.title)}.bld-layout"`);
+    reply.header('Content-Disposition', attachment(`${safeFileName(layout.title)}.bld-layout`));
     return reply.send(Buffer.from(bytes));
   });
 
@@ -551,10 +550,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       if (!json) return reply.code(404).send({ error: 'no_sidecar' });
       rollup.count('exports', 'sidecar');
       reply.header('Content-Type', 'application/json; charset=utf-8');
-      reply.header(
-        'Content-Disposition',
-        `attachment; filename="${sanitizeFilename(layout.title)}.bbm.bld"`,
-      );
+      reply.header('Content-Disposition', attachment(`${safeFileName(layout.title)}.bbm.bld`));
       return reply.send(json);
     });
   }
@@ -581,7 +577,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const map = exported && (await withCustomPartNumbers(exported));
     if (!map) return reply.code(400).send({ error: 'export_unavailable_for_in_app_layout' });
 
-    const safe = sanitizeFilename(layout.title);
+    const safe = safeFileName(layout.title);
     const entries: { name: string; data: Buffer }[] = [];
 
     const xml = writeBbm(map);
@@ -593,7 +589,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     const zip = buildZip(entries);
     rollup.count('exports', 'zip');
     reply.header('Content-Type', 'application/zip');
-    reply.header('Content-Disposition', `attachment; filename="${safe}.zip"`);
+    reply.header('Content-Disposition', attachment(`${safe}.zip`));
     return reply.send(zip);
   });
 
@@ -1084,14 +1080,6 @@ function crc32Buffer(buf: Buffer): number {
     }
   }
   return (crc ^ 0xffffffff) >>> 0;
-}
-
-function sanitizeFilename(s: string): string {
-  // Strip path-traversal characters and trim. Falls back if the entire
-  // name is non-printable.
-  // eslint-disable-next-line no-control-regex -- control characters are what this strips
-  const cleaned = s.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_').trim();
-  return cleaned.length > 0 ? cleaned.slice(0, 80) : 'layout';
 }
 
 // Silence the unused-import: `or`/`isNull` are reserved for the org-join

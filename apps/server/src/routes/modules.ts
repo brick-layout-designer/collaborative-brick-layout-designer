@@ -22,7 +22,7 @@ import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveRes
 import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
-import { isValidEmail, normalizeEmail } from '../utils/validate.js';
+import { isValidEmail, normalizeEmail, trimmed } from '../utils/validate.js';
 import { clubModuleRole } from '../access/resolveResourceRole.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { dropModuleFromCollections } from './collections.js';
@@ -185,7 +185,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: CreateModuleBody }>('/api/modules', { config: TOKEN_WRITE }, async (req, reply) => {
     const user = requireUser(req);
     const body = req.body ?? {};
-    const title = body.title?.trim() || 'Untitled Module';
+    const title = trimmed(body.title) || 'Untitled Module';
 
     const dest = await destinationOrg(user.id, body.orgSlug);
     if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
@@ -239,7 +239,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       const dest = await destinationOrg(user.id, req.body?.orgSlug);
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
-      const title = req.body?.title?.trim() || (sameOwner ? `${src.title} (copy)` : src.title);
+      const title = trimmed(req.body?.title) || (sameOwner ? `${src.title} (copy)` : src.title);
       const r = await copyModuleTo(user, src, dest.orgId, title);
       if (!r.ok) return reply.code(r.status).send(r.body);
       const id = r.id;
@@ -260,7 +260,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       }
       const updates: Partial<typeof schema.modules.$inferInsert> = {};
       if (req.body.title !== undefined) {
-        const t = req.body.title.trim();
+        const t = trimmed(req.body.title);
         if (!t) return reply.code(400).send({ error: 'invalid_title' });
         updates.title = t;
       }

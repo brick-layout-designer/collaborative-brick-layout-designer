@@ -29,6 +29,7 @@ import { db, schema } from '../db/index.js';
 import { atLeast } from '../access/clubRoles.js';
 import { layoutFileBytes, smallZip } from '../privacy/exportFiles.js';
 import { canModerate, catalogOn, clubRole, isTrustedClub, manages, mayBrowse } from './catalog.js';
+import { attachment, safeFileName } from '../utils/contentDisposition.js';
 
 type Item = typeof schema.catalogItems.$inferSelect;
 type Version = typeof schema.catalogItemVersions.$inferSelect;
@@ -238,11 +239,7 @@ async function versionFor(req: FastifyRequest<{ Params: { id: string }; Querystr
   return { item, v };
 }
 
-const fileName = (s: string) => {
-  // eslint-disable-next-line no-control-regex -- control characters are what this strips
-  const cleaned = s.replace(/[\\/:*?"<>|\x00-\x1F]+/g, '_').trim();
-  return cleaned.length > 0 ? cleaned.slice(0, 80) : 'layout';
-};
+const fileName = (s: string) => safeFileName(s);
 
 export async function catalogDocRoutes(app: FastifyInstance): Promise<void> {
   type Req = { Params: { id: string }; Querystring: { v?: string; format?: string } };
@@ -267,7 +264,7 @@ export async function catalogDocRoutes(app: FastifyInstance): Promise<void> {
         const map = exportBbmFromDoc(doc);
         if (!map) return reply.code(404).send({ error: 'not_found' });
         reply.header('Content-Type', 'application/xml; charset=utf-8');
-        reply.header('Content-Disposition', `attachment; filename="${name}.bbm"`);
+        reply.header('Content-Disposition', attachment(`${name}.bbm`));
         return reply.send(writeBbm(map));
       } finally {
         doc.destroy();
@@ -276,7 +273,7 @@ export async function catalogDocRoutes(app: FastifyInstance): Promise<void> {
     const bytes = await layoutFileBytes(r.v.docSnapshot as Uint8Array, null, null, null, smallZip);
     if (!bytes) return reply.code(404).send({ error: 'not_found' });
     reply.header('Content-Type', 'application/zip');
-    reply.header('Content-Disposition', `attachment; filename="${name}.bld-layout"`);
+    reply.header('Content-Disposition', attachment(`${name}.bld-layout`));
     return reply.send(Buffer.from(bytes));
   });
 

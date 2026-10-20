@@ -39,6 +39,7 @@ import {
 import { dayKey } from '../metrics/rollup.js';
 import { usage as usageCounter } from '../metrics/usage.js';
 import { liveConnectionsByLayout, liveConnectionsByUser } from './ws.js';
+import { trimmed } from '../utils/validate.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -565,7 +566,7 @@ export async function adminLimitsRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     const suspended = typeof body.suspended === 'boolean' ? body.suspended : current.suspended;
-    const reason = suspended ? (body.reason === undefined ? current.reason : body.reason?.trim().slice(0, 500) || null) : null;
+    const reason = suspended ? (body.reason === undefined ? current.reason : trimmed(body.reason)?.slice(0, 500) || null) : null;
     const now = new Date();
     db.insert(schema.limitOverrides)
       .values({ subjectKind: kind, subjectId: id, limits: JSON.stringify(next), suspended, suspendedReason: reason, updatedAt: now, updatedBy: adminId })

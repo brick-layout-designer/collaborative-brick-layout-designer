@@ -25,7 +25,7 @@ import { getPlatformSettings, mergeSmtpConfig, PLATFORM_SETTINGS_ID } from '../a
 import { invalidateLimitCaches } from '../limits/limits.js';
 import { invalidateTransporter } from '../email/transporter.js';
 import { layoutStatsByOrg, layoutStatsByUser, layoutStatsForSingleUser, sizeByLayoutId } from './adminLayoutStats.js';
-import { escapeLike } from '../utils/validate.js';
+import { escapeLike, trimmed } from '../utils/validate.js';
 import { docHub } from '../ws/docHub.js';
 import { safeFetch } from '../utils/safeFetch.js';
 import { env } from '../env.js';
@@ -74,7 +74,8 @@ function clampLimit(raw: string | undefined): number {
 
 function clampOffset(raw: string | undefined): number {
   const n = raw ? parseInt(raw, 10) : 0;
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  // Past what SQLite holds (a 64-bit integer) it refused the query with a 500.
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0;
 }
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
@@ -528,9 +529,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: GlobalPartBody }>('/api/admin/global-parts', async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const body = req.body ?? ({} as GlobalPartBody);
-    const partNumber = body.partNumber?.trim();
-    const displayName = body.displayName?.trim();
-    const category = (body.category ?? 'Custom').trim() || 'Custom';
+    const partNumber = trimmed(body.partNumber);
+    const displayName = trimmed(body.displayName);
+    const category = trimmed(body.category) || 'Custom';
     if (!partNumber || !displayName) return reply.code(400).send({ error: 'invalid_input' });
     if (body.spriteMime !== 'image/gif' && body.spriteMime !== 'image/png') {
       return reply.code(400).send({ error: 'invalid_sprite_mime' });
@@ -687,8 +688,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
     const me = requireGlobalAdmin(req);
     const body = req.body ?? ({} as InstallLibraryBody);
-    const name = body.name?.trim();
-    const slugRaw = body.slug?.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const name = trimmed(body.name);
+    const slugRaw = trimmed(body.slug)?.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     if (!name || !slugRaw) return reply.code(400).send({ error: 'name and slug required' });
     const slug = /^([a-z0-9-]+)$/.exec(slugRaw)?.[1];
     if (!slug) return reply.code(400).send({ error: 'invalid_slug' });
@@ -718,7 +719,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       } catch (e) {
         fetchErr = e instanceof Error ? e.message : 'zip extraction failed';
       }
-    } else if (body.sourceUrl) {
+    } else if (typeof body.sourceUrl === 'string' && body.sourceUrl) {
       // Validate URL before touching the filesystem.
       try { new URL(body.sourceUrl.trim()); } catch {
         await rm(libDir, { recursive: true, force: true });
@@ -842,7 +843,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (existing) return reply.code(409).send({ error: 'already_installed' });
 
     const { env } = await import('../env.js');
-    const partCount = await countXmls(resolve(env.partsDir));
+    let partCount: number;
+    try {
+      partCount = await countXmls(resolve(env.partsDir));
+    } catch {
+      // No base library on disk was a bare 500.
+      return reply.code(409).send({ error: 'parts_dir_missing', message: 'The server has no base parts library folder (PARTS_DIR) to register.' });
+    }
 
     const id = randomUUID();
     const now = new Date();
@@ -882,9 +889,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const me = requireGlobalAdmin(req);
       const body = req.body ?? ({} as DownloadLibraryBody);
-      const name = body.name?.trim();
-      const slugRaw = body.slug?.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
-      const sourceUrl = body.sourceUrl?.trim();
+      const name = trimmed(body.name);
+      const slugRaw = trimmed(body.slug)?.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const sourceUrl = trimmed(body.sourceUrl);
 
       if (!name || !slugRaw || !sourceUrl) {
         return reply.code(400).send({ error: 'name, slug and sourceUrl required' });
