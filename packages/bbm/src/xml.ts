@@ -17,7 +17,18 @@
  * content per spec.
  */
 export function escapeText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return stripInvalidXmlChars(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Characters XML 1.0 doesn't allow at all, not even as `&#x1;`: control
+// characters other than tab, LF and CR, and U+FFFE/U+FFFF. A name or text
+// pasted with one made a file BlueBrick and the desktop refuse to open
+// (both stop at the first invalid character), so they are left out.
+// eslint-disable-next-line no-control-regex
+const INVALID_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;
+
+export function stripInvalidXmlChars(s: string): string {
+  return s.replace(INVALID_XML_CHARS, '');
 }
 
 /** Escape an attribute value. Adds quote escaping on top of escapeText. */

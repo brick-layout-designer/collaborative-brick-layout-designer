@@ -16,6 +16,15 @@ describe('escapeText / escapeAttr', () => {
     // someone "fixing" it the wrong way.
     expect(escapeText('&amp;')).toBe('&amp;amp;');
   });
+
+  it('leaves out characters XML 1.0 forbids, keeping tab, LF and CR', () => {
+    // A name pasted with a control character made a .bbm that BlueBrick
+    // and the desktop refuse to open (audit 2026-10-20).
+    expect(escapeText('a\u0000b\u0001c\u0008d\u000Be\u000Cf\u001Fg￾h￿')).toBe('abcdefgh');
+    expect(escapeText('t\tl\nc\r.')).toBe('t\tl\nc\r.');
+    expect(escapeAttr('x\u0002"y')).toBe('x&quot;y');
+    expect(escapeText('Zürich 駅 🚂')).toBe('Zürich 駅 🚂');
+  });
 });
 
 describe('XmlBuilder', () => {
