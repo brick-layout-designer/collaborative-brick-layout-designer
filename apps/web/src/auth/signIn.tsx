@@ -6,13 +6,23 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 
 /**
+ * Whether `raw` is a path on this site. Browsers drop tabs and line breaks
+ * from URLs and read a backslash as a slash, so "/\t/host" and "/\\host"
+ * would go to another site; control characters and backslashes are
+ * refused. Same rule as the server's safeNextPath.
+ */
+export function isSitePath(raw: string): boolean {
+  // eslint-disable-next-line no-control-regex -- control characters are what this refuses
+  return raw.startsWith('/') && !raw.startsWith('//') && !/[\u0000-\u001f\u007f\\]/.test(raw);
+}
+
+/**
  * `?next=` target to return to after signing in (e.g. /device, /invite/…).
  * Same-origin paths only, so the login page can't be used as an open
  * redirect.
  */
 export function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/';
-  return raw;
+  return raw && isSitePath(raw) ? raw : '/';
 }
 
 /** The sign-in page, coming back to `here` (a path on this site) afterwards. */

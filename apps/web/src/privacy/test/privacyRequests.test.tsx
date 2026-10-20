@@ -110,6 +110,17 @@ describe('the privacy page', () => {
     expect(screen.getByRole('link', { name: 'Download your data' }).getAttribute('href')).toBe('/profile#my-data');
   });
 
+  it('links the contact only to an address or a web page', async () => {
+    const { contactHref } = await import('../PrivacyPage');
+    expect(contactHref('privacy@club.example')).toBe('mailto:privacy@club.example');
+    expect(contactHref('https://club.example/privacy')).toBe('https://club.example/privacy');
+    expect(contactHref("javascript:alert(1)//'://'@x.io")).toBeNull();
+    stub(() => ({ notice: null, contact: "javascript:alert(1)//'://'@x.io" }));
+    wrap(<PrivacyPage />);
+    const contact = await screen.findByTestId('privacy-contact');
+    expect(contact.querySelector('a')).toBeNull();
+  });
+
   it('says so when there is no notice yet', async () => {
     stub(() => ({ notice: null, contact: null }));
     wrap(<PrivacyPage />);
@@ -122,6 +133,8 @@ describe('Markdown', () => {
     expect(safeHref('javascript:alert(1)')).toBeNull();
     expect(safeHref('//evil.example')).toBeNull();
     expect(safeHref('/profile')).toBe('/profile');
+    expect(safeHref('/\\evil.example')).toBeNull();
+    expect(safeHref('/\t/evil.example')).toBeNull();
     expect(safeHref('mailto:a@b.c')).toBe('mailto:a@b.c');
     expect(safeHref('https://club.example/p')).toBe('https://club.example/p');
     render(<Markdown source={'[bad](javascript:alert(1)) and [good](https://club.example) <b>x</b>'} />);

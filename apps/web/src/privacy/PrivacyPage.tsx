@@ -6,7 +6,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../api';
-import { Markdown } from './Markdown';
+import { Markdown, safeHref } from './Markdown';
 
 export interface PrivacyInfo {
   notice: string | null;
@@ -15,8 +15,10 @@ export interface PrivacyInfo {
 
 export const fetchPrivacy = () => apiGet<PrivacyInfo>('/api/privacy');
 
-export function contactHref(contact: string): string {
-  return contact.includes('@') && !contact.includes('://') ? `mailto:${contact}` : contact;
+/** A link for the contact: mailto: for an address, else only an http(s) page (null for anything else). */
+export function contactHref(contact: string): string | null {
+  if (/^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$/.test(contact)) return `mailto:${contact}`;
+  return safeHref(contact);
 }
 
 export function PrivacyPage() {
@@ -57,9 +59,13 @@ export function PrivacyPage() {
             {q.data.contact && (
               <p data-testid="privacy-contact">
                 Contact:{' '}
-                <a href={contactHref(q.data.contact)} className="text-accent-text hover:underline">
-                  {q.data.contact}
-                </a>
+                {contactHref(q.data.contact) ? (
+                  <a href={contactHref(q.data.contact)!} className="text-accent-text hover:underline">
+                    {q.data.contact}
+                  </a>
+                ) : (
+                  q.data.contact
+                )}
               </p>
             )}
           </section>

@@ -4,10 +4,11 @@
 // raw HTML), and links only go to http(s), mailto: or a path on this site.
 
 import { Fragment, type ReactNode } from 'react';
+import { isSitePath } from '../auth/signIn';
 
 export function safeHref(href: string): string | null {
   const h = href.trim();
-  if (h.startsWith('/') && !h.startsWith('//')) return h;
+  if (h.startsWith('/')) return isSitePath(h) ? h : null;
   if (/^mailto:[^\s]+$/i.test(h)) return h;
   try {
     const u = new URL(h);

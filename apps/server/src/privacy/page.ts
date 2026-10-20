@@ -11,7 +11,8 @@ export const CONTACT_MAX = 200;
 /** An email address, or an http(s) address. */
 export function validContact(v: string): boolean {
   if (v.length > CONTACT_MAX || /\s/.test(v)) return false;
-  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return true;
+  // An address has no ':' or '/' (so "javascript:…@x.io" is not one).
+  if (/^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$/.test(v)) return true;
   try {
     const u = new URL(v);
     return u.protocol === 'https:' || u.protocol === 'http:';

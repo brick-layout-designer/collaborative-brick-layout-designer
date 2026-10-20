@@ -198,6 +198,10 @@ describe('Admin › Privacy requests', () => {
   it('the privacy page shows the notice and contact the admin set; the env var forces the contact', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/privacy' })).json()).toEqual({ notice: null, contact: null });
     expect((await app.inject({ method: 'PATCH', url: '/api/admin/settings', headers: h(admin), payload: { privacyContact: 'not a contact' } })).statusCode).toBe(400);
+    // Only an address or an http(s) page; a script link shaped like an address is neither.
+    for (const bad of ["javascript:alert(1)//'://'@x.io", 'javascript:x@y.io', 'data:text/html,a@b.io']) {
+      expect((await app.inject({ method: 'PATCH', url: '/api/admin/settings', headers: h(admin), payload: { privacyContact: bad } })).statusCode, bad).toBe(400);
+    }
     const ok = await app.inject({
       method: 'PATCH',
       url: '/api/admin/settings',
