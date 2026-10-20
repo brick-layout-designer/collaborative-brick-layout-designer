@@ -34,7 +34,7 @@ import { hasScope } from '../auth/apiTokens.js';
 import { blockedDesktopMinimum } from '../compat.js';
 import { env } from '../env.js';
 import { rollup } from '../metrics/rollup.js';
-import { globalLimits, isSuspended, limitsEnforced, overrideFor } from '../limits/limits.js';
+import { globalLimits, limitsEnforced, overrideFor } from '../limits/limits.js';
 import { touchLayoutOpened } from '../metrics/activity.js';
 import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
@@ -179,11 +179,6 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
           ws.close(4429, 'limit_reached');
           return;
         }
-        // A suspended person, or a suspended club's layout, opens read-only.
-        const suspended =
-          enforce &&
-          (isSuspended('user', userId) ||
-            (owner?.ownerOrgId ? isSuspended('org', owner.ownerOrgId) : owner?.ownerUserId ? isSuspended('user', owner.ownerUserId) : false));
         const current = userConnections.get(userId) ?? 0;
         if (current >= MAX_WS_PER_USER) {
           ws.close(4429, 'too_many_connections');
@@ -198,7 +193,8 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
           ? { kind: 'token', id: token.id }
           : { kind: 'session', id: sessionIdForToken(req.cookies[SESSION_COOKIE] ?? '') };
         // A restricted account (privacy) only looks; its own layouts are already viewer-only (resolveResourceRole).
-        const readOnly = suspended || !!req.user.restrictedAt || (token !== null && !hasScope(token.scopes, 'layouts:write'));
+        // (A suspended person, or a suspended owner's layout, is held to viewer by the handler, which checks it again live.)
+        const readOnly = !!req.user.restrictedAt || (token !== null && !hasScope(token.scopes, 'layouts:write'));
         let detach: () => Promise<void>;
         try {
           detach = await attachWsHandlers(ws, layoutId, userId, role.role!, { credential, readOnly, client: req.headers['user-agent'] });

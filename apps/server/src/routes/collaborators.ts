@@ -20,6 +20,7 @@ import { env } from '../env.js';
 import { isValidEmail, normalizeEmail } from '../utils/validate.js';
 import { emailsVisible, nameFor, publicName } from '../utils/publicName.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { notifyAccessChanged } from '../ws/liveAccess.js';
 
 interface InviteBody {
   email: string;
@@ -251,6 +252,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
           eq(schema.layoutCollaborators.userId, req.params.userId),
         ),
       );
+    notifyAccessChanged({ layoutId: req.params.id });
 
     await writeAuditEvent({
       layoutId: req.params.id,
@@ -285,6 +287,7 @@ export async function collaboratorRoutes(app: FastifyInstance): Promise<void> {
           ),
         );
       void result;
+      notifyAccessChanged({ layoutId: req.params.id });
 
       await writeAuditEvent({
         layoutId: req.params.id,

@@ -41,6 +41,7 @@ import { copyPartTo, dropModuleFromCollections } from './collections.js';
 import { postClubNote } from './warnings.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { clearPendingLayoutShares, clearPendingModuleShares, handedOverIds } from '../access/pendingShares.js';
+import { notifyAccessChanged } from '../ws/liveAccess.js';
 
 const KINDS: { kind: CreditKind; path: string; token: 'layouts:write' | 'parts:write' | 'venues:write'; word: string }[] = [
   { kind: 'layout', path: 'layouts', token: 'layouts:write', word: 'layout' },
@@ -154,6 +155,7 @@ export async function returnToAuthor(
       tx.insert(schema.layouts).values(prepared.values).run();
       tx.update(schema.layouts).set({ ownerUserId: authorUser.id, ownerOrgId: null, updatedAt: now }).where(eq(schema.layouts.id, id)).run();
     });
+    notifyAccessChanged({ layoutId: id });
     await prepared.copyBackground();
     await clearPendingLayoutShares(id);
   } else if (kind === 'module') {
