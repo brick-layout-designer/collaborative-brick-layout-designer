@@ -2,10 +2,13 @@
 // parts edited in place, docs in shape 1 read and moved over lazily, and
 // the vectors the desktop checks too (fixtures/contracts/doc-shape.json).
 //
-// BLD_WRITE_CONTRACTS=1 writes the concurrent-edit vectors afresh (then
-// update MANIFEST.sha256 and copy the file to the desktop repo).
+// BLD_WRITE_CONTRACTS=1 writes the concurrent-edit vectors afresh into the
+// copy here (then copy it to fixtures/contracts/, update MANIFEST.sha256 and
+// copy that to the desktop repo).
 
-import contractJson from '../../../../../fixtures/contracts/doc-shape.json';
+// A copy of fixtures/contracts/doc-shape.json (the image build has no
+// fixtures/; the server's contracts test checks the copy is the same).
+import contractJson from './fixtures/doc-shape.json';
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import {
@@ -250,7 +253,7 @@ describe('concurrent edits across the apps (contract)', () => {
         desktop: k.desktop,
         expect: k.expect,
       }));
-      fs.writeFileSync(new URL('../../../../../fixtures/contracts/doc-shape.json', import.meta.url).pathname, `${JSON.stringify(c, null, 2)}\n`);
+      fs.writeFileSync(new URL('./fixtures/doc-shape.json', import.meta.url).pathname, `${JSON.stringify(c, null, 2)}\n`);
     });
     return;
   }
