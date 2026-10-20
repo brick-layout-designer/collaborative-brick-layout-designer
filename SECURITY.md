@@ -45,7 +45,7 @@ This project runs the following automated checks:
 pnpm test          # full unit + integration suite
 pnpm typecheck     # all workspaces
 pnpm audit         # pnpm's built-in vuln check (production deps only)
-pnpm scan:deps     # OSV-Scanner against package manifests + lockfile
+pnpm scan:deps     # OSV-Scanner against package manifests + lockfile (needs Go)
 pnpm scan:secrets  # gitleaks against the full history (requires gitleaks installed)
 ```
 
