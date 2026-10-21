@@ -126,6 +126,13 @@ describe('desktop gate', () => {
     expect((await as('Mozilla/5.0 (X11; Linux x86_64) Firefox/131.0')).statusCode).toBe(200);
   });
 
+  it('knows the desktop under its new name as well as its old one', async () => {
+    expect((await as('CollaborativeBrickLayoutDesigner/1.1.0 (desktop)')).statusCode).toBe(426);
+    expect((await as('CollaborativeBrickLayoutDesigner/1.1.0 (desktop)', '/api/version')).statusCode).toBe(200);
+    expect((await as(`CollaborativeBrickLayoutDesigner/${DESKTOP_MINIMUM} (desktop)`)).statusCode).toBe(200);
+    expect((await as('BrickLayoutDesigner/1.1.0 (desktop)')).statusCode).toBe(426);
+  });
+
   it('follows the minimum an admin sets', async () => {
     await getPlatformSettings();
     db.update(schema.platformSettings)

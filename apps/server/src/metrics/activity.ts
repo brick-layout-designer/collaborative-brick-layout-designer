@@ -59,7 +59,8 @@ export type ClientKind =
 
 /**
  * What kind of client sent a request, from its User-Agent. The desktop
- * app sends `BrickLayoutDesigner/<version> (desktop)`; everything else
+ * app sends `CollaborativeBrickLayoutDesigner/<version> (desktop)` (older
+ * builds `BrickLayoutDesigner/<version> (desktop)`); everything else
  * is the web app, split by device. Only the kind is counted.
  */
 export function classifyClient(userAgent: string | undefined): ClientKind {
