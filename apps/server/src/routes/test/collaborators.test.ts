@@ -279,10 +279,30 @@ describe('collaborators — invite accept (invites route)', () => {
 
     const res = await app.inject({ method: 'GET', url: `/api/invites/${token}` });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { invitedEmail: string; role: string; layoutTitle: string };
-    expect(body.invitedEmail).toBe('alice@example.com');
+    const body = res.json() as { invitedEmail: string; forYou: boolean | null; role: string; layoutTitle: string };
+    // Whoever holds the link sees only a masked address.
+    expect(body.invitedEmail).toBe('a…@example.com');
+    expect(body.forYou).toBeNull();
     expect(body.role).toBe('editor');
     expect(body.layoutTitle).toBe('Test Layout');
+  });
+
+  it('GET /api/invites/:token shows the full address only to the invited account', async () => {
+    const ownerCookie = await registerAndLogin(app, 'owner@example.com');
+    const id = await createLayout(app, ownerCookie);
+    const { token } = await inviteCollaborator(app, ownerCookie, id, 'alice@example.com');
+    const preview = async (cookie?: string) =>
+      (await app.inject({ method: 'GET', url: `/api/invites/${token}`, headers: cookie ? { cookie } : {} })).json() as {
+        invitedEmail: string;
+        forYou: boolean | null;
+      };
+
+    const someoneElse = await registerAndLogin(app, 'mallory@example.com');
+    expect(await preview(someoneElse)).toMatchObject({ invitedEmail: 'a…@example.com', forYou: false });
+    // The sender too: the preview is for whoever holds the link.
+    expect(await preview(ownerCookie)).toMatchObject({ invitedEmail: 'a…@example.com', forYou: false });
+    const alice = await registerAndLogin(app, 'alice@example.com');
+    expect(await preview(alice)).toMatchObject({ invitedEmail: 'alice@example.com', forYou: true });
   });
 
   it('POST /api/invites/:token accepts and grants access', async () => {

@@ -36,18 +36,11 @@ export function InvitePage() {
   });
 
   // Auto-accept once we know the user is signed in with the matching email.
+  // The server says whether it's for this account (the address is masked otherwise).
+  const matches = !!preview.data && !!me.data?.user && preview.data.forYou === true;
   useEffect(() => {
-    if (
-      preview.data &&
-      me.data?.user &&
-      me.data.user.email.toLowerCase() === preview.data.invitedEmail.toLowerCase() &&
-      !accept.isPending &&
-      !accept.isSuccess &&
-      !accept.isError
-    ) {
-      accept.mutate();
-    }
-  }, [preview.data, me.data, accept]);
+    if (matches && !accept.isPending && !accept.isSuccess && !accept.isError) accept.mutate();
+  }, [matches, accept]);
 
   if (!params.token) return <Navigate to="/" replace />;
 
@@ -71,8 +64,7 @@ export function InvitePage() {
 
   const inv = preview.data!;
   const isSignedIn = !!me.data?.user;
-  const wrongUser =
-    isSignedIn && me.data!.user!.email.toLowerCase() !== inv.invitedEmail.toLowerCase();
+  const wrongUser = isSignedIn && !matches;
 
   if (accepted) {
     return <Centered>Joined! Opening the editor…</Centered>;
