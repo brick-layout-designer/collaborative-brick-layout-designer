@@ -79,7 +79,7 @@ const SYNCING_TIMEOUT_MS = 60_000;
 
 /** Why a layout won't open when its doc is newer than this page reads. */
 export const UNREADABLE_LAYOUT =
-  'This layout was saved by a newer version of Brick Layout Designer. Reload the page to get the newest version, then open it again.';
+  'This layout was saved by a newer version of Collaborative Brick Layout Designer. Reload the page to get the newest version, then open it again.';
 
 /** Load errors the editor's error screen words (and offers Sign in for the last). */
 export const LAYOUT_NOT_FOUND = "This layout isn't here: it may have been deleted, or it isn't shared with you. Ask its owner for access.";

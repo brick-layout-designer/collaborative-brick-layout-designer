@@ -37,7 +37,7 @@ test('a visitor follows a shared link, finds the catalog, and is asked to sign i
     await visitor.goto(`/p/${token}`);
     await expect(visitor.getByText(`Harbour ${ts}`)).toBeVisible();
     await visitor.getByRole('link', { name: 'Home' }).click();
-    await expect(visitor.getByRole('heading', { name: 'Sign in to Brick Layout Designer' })).toBeVisible();
+    await expect(visitor.getByRole('heading', { name: 'Sign in to Collaborative Brick Layout Designer' })).toBeVisible();
 
     // ── 2. Just looking: the catalog. ──
     await visitor.getByRole('link', { name: 'Browse the catalog' }).click();

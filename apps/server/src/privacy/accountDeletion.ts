@@ -212,7 +212,7 @@ export async function requestDeletion(user: User, now = new Date()): Promise<{ d
     to: user.email,
     subject: 'Your account will be deleted',
     paragraphs: [
-      `You asked us to delete your Brick Layout Designer account. It will be deleted for good on ${whenText(dueAt)}.`,
+      `You asked us to delete your Collaborative Brick Layout Designer account. It will be deleted for good on ${whenText(dueAt)}.`,
       'Changed your mind? Just sign in before then and your account stays, with everything in it.',
       'If you did not ask for this, sign in now and change your password.',
     ],
@@ -231,7 +231,7 @@ export async function cancelDeletionOnSignIn(userId: string): Promise<boolean> {
   await sendNoticeEmail({
     to: user.email,
     subject: 'Your account will not be deleted',
-    paragraphs: ['You signed in, so your Brick Layout Designer account will not be deleted. Everything in it is just as you left it.'],
+    paragraphs: ['You signed in, so your Collaborative Brick Layout Designer account will not be deleted. Everything in it is just as you left it.'],
   });
   return true;
 }

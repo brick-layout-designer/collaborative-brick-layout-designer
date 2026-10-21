@@ -64,7 +64,7 @@ const open = (props: Partial<Parameters<typeof DownloadAsDialog>[0]> = {}) => {
 describe('Download As', () => {
   it('downloads the layout file by default, without a warning', () => {
     const { onDownloadLayout, onDownloadBbm, onClose } = open();
-    expect((screen.getByLabelText('Brick Layout Designer layout (.bld-layout)') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('Collaborative Brick Layout Designer layout (.bld-layout)') as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByText(/can't store everything/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
     expect(onDownloadLayout).toHaveBeenCalledOnce();

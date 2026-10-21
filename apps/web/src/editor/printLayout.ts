@@ -125,7 +125,7 @@ export function buildImagePdf(
   push(jpeg.bytes);
   push('\nendstream\nendobj\n');
   obj(5, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
-  obj(6, `<< /Title (${esc(title)}) /Producer (Brick Layout Designer) >>`);
+  obj(6, `<< /Title (${esc(title)}) /Producer (Collaborative Brick Layout Designer) >>`);
   const xref = pos;
   let table = `xref\n0 7\n0000000000 65535 f \n`;
   for (let n = 1; n <= 6; n++) table += `${String(offsets[n]).padStart(10, '0')} 00000 n \n`;
