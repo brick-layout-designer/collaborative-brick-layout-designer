@@ -33,6 +33,10 @@ describe('format helpers', () => {
     expect(csvCell('say "hi"')).toBe('"say ""hi"""');
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
     expect(csvCell(-3)).toBe('-3');
+    expect(csvCell(-0.5)).toBe('-0.5');
+    // Starts like a number but runs as a formula.
+    expect(csvCell('-1+cmd')).toBe("'-1+cmd");
+    expect(csvCell('+1')).toBe("'+1");
     expect(csvCell(null)).toBe('');
     expect(toCsv(['Day', 'n'], [['2026-09-01', 3]])).toBe('Day,n\r\n2026-09-01,3\r\n');
   });

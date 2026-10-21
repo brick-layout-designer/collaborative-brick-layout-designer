@@ -655,10 +655,7 @@ export const api = {
   invites: {
     preview: (token: string) =>
       get<{
-        /** Masked ("s…@example.com") unless the invite is for the signed-in account. */
         invitedEmail: string;
-        /** Whether it's for the signed-in account; null when signed out. */
-        forYou: boolean | null;
         role: 'viewer' | 'editor';
         layoutId: string;
         layoutTitle: string;

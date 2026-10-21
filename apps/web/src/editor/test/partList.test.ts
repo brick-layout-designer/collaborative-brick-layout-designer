@@ -6,6 +6,7 @@ import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../../api';
 import { colorName } from '../colorNames';
 import { buildPartList, partListCsv, partListHtml, partListText, percentageBar } from '../partList';
+import { defuseFormula } from '../../csvSafety';
 
 function sampleMap(comment = ''): BbmMap {
   const bricks = (part: string, n: number) => Array.from({ length: n }, () => ({ partNumber: part }));
@@ -86,6 +87,46 @@ describe('text and CSV', () => {
     expect(csv[1]!.endsWith(',10,0,50')).toBe(true);
     expect(csv[2]!.endsWith(',Unbudgeted,1,Unbudgeted')).toBe(true);
     expect(csv[3]!.startsWith('Total,6,,,10,1,50')).toBe(true);
+  });
+});
+
+describe('CSV formula defusing', () => {
+  it('a part name, description or layer name a spreadsheet would run gets a leading quote', () => {
+    const map = {
+      author: '', lug: '', event: '', comment: '',
+      date: { day: 1, month: 1, year: 2026 },
+      layers: [
+        { type: 'brick', name: '=cmd|calc', visible: true, bricks: ['=HYPERLINK(x).1', '+1.1', '@SUM.1', '-cmd.1', '2865.8'].map((partNumber) => ({ partNumber })) },
+      ],
+    } as unknown as BbmMap;
+    const hostile = new Map<string, PartWire>([
+      ['=hyperlink(x).1', { description: '=HYPERLINK("http://evil")' } as PartWire],
+      ['+1.1', { description: '+1' } as PartWire],
+      ['@sum.1', { description: '@SUM(A1)' } as PartWire],
+      ['-cmd.1', { description: '-cmd' } as PartWire],
+      ['2865.8', { description: '\tTabbed' } as PartWire],
+    ]);
+    const csv = partListCsv(buildPartList(map, hostile, { splitPerLayer: true }), false).split('\n');
+    expect(csv[0]).toBe("'=cmd|calc");
+    expect(csv.slice(2, 7)).toEqual([
+      "'+1,1,Blue,'+1,N/A,N/A,N/A",
+      "'-CMD,1,Blue,'-cmd,N/A,N/A,N/A",
+      "2865,1,Dark Gray,'\tTabbed,N/A,N/A,N/A",
+      "'=HYPERLINK(X),1,Blue,'=HYPERLINK(\"http://evil\"),N/A,N/A,N/A",
+      "'@SUM,1,Blue,'@SUM(A1),N/A,N/A,N/A",
+    ]);
+  });
+
+  it('real numbers, negative ones included, stay as they are', () => {
+    for (const n of ['5', '-5', '-0.5', '0.5', '-12.', '-.5', '1250']) expect(defuseFormula(n)).toBe(n);
+    for (const t of ['=1+1', '+1', '-1+1', '-cmd', '@SUM', '\tx', '\rx', '-', '+']) expect(defuseFormula(t)).toBe(`'${t}`);
+    expect(defuseFormula('Baseplate 32 x 32')).toBe('Baseplate 32 x 32');
+    expect(defuseFormula('')).toBe('');
+    // An over-budget layout's usage and missing counts are plain numbers.
+    const map = { author: '', lug: '', event: '', comment: '', date: { day: 1, month: 1, year: 2026 },
+      layers: [{ type: 'brick', name: '', visible: true, bricks: [{ partNumber: '3811.1' }] }] } as unknown as BbmMap;
+    const csv = partListCsv(buildPartList(map, parts, { limits: new Map([['3811.1', 0]]) }), true).split('\n');
+    expect(csv[1]).toBe('3811,1,Blue,Baseplate 32 x 32,0,1,200');
   });
 });
 

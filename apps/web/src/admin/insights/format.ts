@@ -1,5 +1,6 @@
 // Pure helpers for the admin dashboard: number and date text, a plain
 // sentence that sums up a graph (its accessible summary), and CSV.
+import { defuseFormula } from '../../csvSafety';
 import type { PeopleResponse } from './insightsApi';
 
 export function formatBytes(bytes: number): string {
@@ -76,8 +77,7 @@ export function describeSeries(
 
 /** Quote a CSV cell when it needs it (RFC 4180), and defuse spreadsheet formulas. */
 export function csvCell(v: unknown): string {
-  let s = v === null || v === undefined ? '' : String(v);
-  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d/.test(s)) s = `'${s}`;
+  const s = defuseFormula(v === null || v === undefined ? '' : String(v));
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

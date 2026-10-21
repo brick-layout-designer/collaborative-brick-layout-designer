@@ -85,7 +85,7 @@ describe('layout collaborators', () => {
       url: `/api/invites/${invBody.token}`,
     });
     expect(preview.statusCode).toBe(200);
-    expect((preview.json() as { invitedEmail: string }).invitedEmail).toBe('b…@example.com');
+    expect((preview.json() as { invitedEmail: string }).invitedEmail).toBe('bob@example.com');
 
     // Bob registers (with the same email) and accepts.
     const bobCookie = await registerAndLogin(app, 'bob@example.com');
