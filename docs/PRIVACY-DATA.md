@@ -55,7 +55,7 @@ host's to keep or not.
 | `module_invites` | who invited which email to a module, and the role | yes (no token) | Pending ones go when the module changes hands. |
 | `custom_parts` | owner, creator, the part's XML and picture | yes, own parts as XML + picture | The XML may name an author. |
 | `custom_part_collaborators` | shares | yes | |
-| `custom_part_invites` | invited email | yes (no token) | |
+| `custom_part_invites` | who invited which email to a custom part, and the role | yes (no token) | Pending ones go when the part changes hands. |
 | `venue_library` | owner, creator, the venue | yes, own venues as JSON | |
 | `part_libraries` | none | no | Installed by site admins. |
 

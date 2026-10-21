@@ -9,6 +9,7 @@ import { sessionRoutes } from './auth/session.js';
 import { layoutRoutes } from './layouts.js';
 import { collaboratorRoutes } from './collaborators.js';
 import { customPartRoutes } from './customParts.js';
+import { customPartInviteRoutes } from './customPartInvites.js';
 import { auditRoutes } from './audit.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 
@@ -27,6 +28,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await app.register(layoutRoutes);
   await app.register(collaboratorRoutes);
   await app.register(customPartRoutes);
+  await app.register(customPartInviteRoutes);
   await app.register(auditRoutes);
   return app;
 }
@@ -180,22 +182,18 @@ describe('audit endpoints', () => {
       },
     });
     const id = (create.json() as { id: string }).id;
-    await app.inject({
+    const invited = await app.inject({
       method: 'POST',
       url: `/api/custom-parts/${id}/invites`,
       headers: { cookie: aliceCookie },
       payload: { email: 'bob@example.com', role: 'editor' },
     });
-    // Someone without an account isn't sent a link (it had no page): they need one first.
-    const nobody = await app.inject({
+    const accepted = await app.inject({
       method: 'POST',
-      url: `/api/custom-parts/${id}/invites`,
-      headers: { cookie: aliceCookie },
-      payload: { email: 'nobody@example.com', role: 'viewer' },
+      url: `/api/part-invites/${(invited.json() as { token: string }).token}`,
+      headers: { cookie: bobCookie },
     });
-    expect(nobody.statusCode).toBe(404);
-    expect(nobody.json()).toEqual({ error: 'recipient_has_no_account' });
-    expect(await db.select().from(schema.customPartInvites).all()).toHaveLength(0);
+    expect(accepted.statusCode).toBe(200);
     const bob = await db
       .select()
       .from(schema.users)

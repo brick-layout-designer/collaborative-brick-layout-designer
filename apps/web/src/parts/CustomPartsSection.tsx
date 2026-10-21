@@ -3,7 +3,8 @@
 // filter. Upload a new one, download one's XML, or delete one you own.
 // (This used to be the separate Library page.)
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { lazyRetry } from '../ui/lazyRetry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CustomPartSummary, type OrgSummary } from '../api';
 import { matchesOwnerFilter, type OwnerFilter } from '../owners/owners';
@@ -15,6 +16,8 @@ import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { atLeast } from '../orgs/clubRoles';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
+
+const PartShareDialog = lazyRetry(() => import('../modules/ModuleShareDialog').then((m) => ({ default: m.PartShareDialog })));
 
 /** Where the old Library page (/library) now lands: the home page's parts section. */
 export const PARTS_SECTION = { pathname: '/', hash: '#parts' } as const;
@@ -44,6 +47,7 @@ export function CustomPartsSection({
   const [sharing, setSharing] = useState<CustomPartSummary | null>(null);
   const [toCollection, setToCollection] = useState<CustomPartSummary | null>(null);
   const [moving, setMoving] = useState<CustomPartSummary | null>(null);
+  const [sharingPeople, setSharingPeople] = useState<CustomPartSummary | null>(null);
   const hasClubs = (orgs?.length ?? 0) > 0;
   // A member (not an admin or manager) of a trusted club shares its parts for the club's own review.
   const trustedMember = (p: CustomPartSummary) =>
@@ -116,6 +120,9 @@ export function CustomPartsSection({
                 <a role="menuitem" href={api.customParts.spriteUrl(p.id)} download className={MORE_ITEM}>
                   Download picture
                 </a>
+                <button role="menuitem" type="button" onClick={() => setSharingPeople(p)} className={MORE_ITEM}>
+                  {canDeletePart(p, myUserId, orgs) ? 'Share with people…' : 'People with access…'}
+                </button>
                 {(catalog.enabled('part') || catalog.enabled('module')) && canDeletePart(p, myUserId, orgs) && (
                   <button role="menuitem" type="button" onClick={() => setToCollection(p)} className={MORE_ITEM}>
                     Add to a collection…
@@ -179,6 +186,15 @@ export function CustomPartsSection({
           orgs={orgs}
           onClose={() => setMoving(null)}
         />
+      )}
+      {sharingPeople && (
+        <Suspense fallback={null}>
+          <PartShareDialog
+            part={{ ...sharingPeople, role: sharingPeople.role ?? (canDeletePart(sharingPeople, myUserId, orgs) ? 'owner' : 'viewer') }}
+            myUserId={myUserId}
+            onClose={() => setSharingPeople(null)}
+          />
+        </Suspense>
       )}
       {toCollection && <AddToCollectionDialog target={{ kind: 'part', part: toCollection }} onClose={() => setToCollection(null)} />}
       {sharing && (

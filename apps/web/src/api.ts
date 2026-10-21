@@ -81,6 +81,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   author_gone: 'The person who made it no longer has an account here.',
   already_returned: 'This is the club’s copy; its author already has the original.',
   author_handed_it_over: 'Its author handed it to someone else, so it stays with the club.',
+  part_invite_no_longer_valid: 'This invite no longer works: the part changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
   module_invite_no_longer_valid: 'This invite no longer works: the module changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
   already_has_access: 'That person already has access.',
   invite_no_longer_valid: 'This invite no longer works: the layout changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
@@ -101,7 +102,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   rate_limited: 'Too many requests at once. Please wait a minute and try again.',
   verify_email_first: 'Please confirm your email address first.',
   demo_off: 'The demo isn’t available right now.',
-  recipient_has_no_account: 'There’s no account with that email address on this site. Ask them to sign up first.',
   transfer_to_club_only: 'A module can only be moved to a club you’re in. Make a copy for one person instead.',
   demo_account_cannot_invite: 'The demo can’t invite people. Sign up to share with others.',
   demo_account_cannot_share: 'The demo can’t share or hand things over. Sign up to share with others.',
@@ -886,11 +886,33 @@ export const api = {
       post<{ id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
     spriteUrl: (id: string) => `/api/custom-parts/${id}/sprite`,
     xmlUrl: (id: string) => `/api/custom-parts/${id}/xml`,
+    /** Who has it, and (for its owners) the invites still waiting. */
+    collaborators: (id: string) =>
+      get<{ collaborators: CollaboratorSummary[]; invites?: InviteSummary[] }>(`/api/custom-parts/${encodeURIComponent(id)}/collaborators`),
+    /** Invite by email: they get a link to accept (nobody is added before that). */
     invite: (id: string, email: string, role: 'viewer' | 'editor') =>
-      post<{ added?: true; pending?: true; inviteUrl?: string }>(
-        `/api/custom-parts/${id}/invites`,
+      post<{ id: string; token: string; inviteUrl: string; emailDelivered: boolean; expiresAt: number }>(
+        `/api/custom-parts/${encodeURIComponent(id)}/invites`,
         { email, role },
       ),
+    revokeInvite: (id: string, inviteId: string) => del(`/api/custom-parts/${encodeURIComponent(id)}/invites/${encodeURIComponent(inviteId)}`),
+    /** Take someone off it (or leave it yourself). */
+    removeCollaborator: (id: string, userId: string) => del(`/api/custom-parts/${encodeURIComponent(id)}/collaborators/${encodeURIComponent(userId)}`),
+  },
+
+  partInvites: {
+    preview: (token: string) =>
+      /** `invitedEmail` is masked unless it's for the account signed in; `forYou` is null signed out. */
+      get<{
+        invitedEmail: string;
+        forYou?: boolean | null;
+        role: 'viewer' | 'editor';
+        partId: string;
+        partNumber: string;
+        partName: string;
+        expiresAt: number;
+      }>(`/api/part-invites/${encodeURIComponent(token)}`),
+    accept: (token: string) => post<{ partId: string; role: 'viewer' | 'editor' }>(`/api/part-invites/${encodeURIComponent(token)}`),
   },
 
   modules: {
