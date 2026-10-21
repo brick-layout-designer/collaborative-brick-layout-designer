@@ -1,0 +1,19 @@
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2865,1,Dark Gray,Brick 2865.8  Track 9V,N/A,N/A,N/A
+88492,2,Dark Gray,Plate 88492.8,N/A,N/A,N/A
+88493,8,Dark Gray,Plate 88493.8,N/A,N/A,N/A
+Total,11,,,N/A,N/A,N/A
+----
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2865,1,Dark Gray,Brick 2865.8  Track 9V,12,0,8
+88492,2,Dark Gray,Plate 88492.8,Unbudgeted,2,Unbudgeted
+88493,8,Dark Gray,Plate 88493.8,Unbudgeted,8,Unbudgeted
+Total,11,,,12,10,8
+----
+Track
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2865,1,Dark Gray,Brick 2865.8  Track 9V,12,0,8
+88492,2,Dark Gray,Plate 88492.8,0,2,300
+88493,8,Dark Gray,Plate 88493.8,0,8,900
+Total,11,,,12,10,8
+

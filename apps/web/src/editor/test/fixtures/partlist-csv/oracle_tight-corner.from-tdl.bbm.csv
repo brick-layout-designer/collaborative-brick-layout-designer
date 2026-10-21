@@ -1,0 +1,60 @@
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2670,14,Gray,Brick 2670.7  Track 9V,N/A,N/A,N/A
+2671,36,Gray,Plate 2671.7,N/A,N/A,N/A
+2672,4,Gray,Plate 2672.7,N/A,N/A,N/A
+2865,88,Dark Gray,Brick 2865.8  Track 9V,N/A,N/A,N/A
+2889,2,Gray,Plate 2889.7,N/A,N/A,N/A
+2890,2,Gray,Plate 2890.7,N/A,N/A,N/A
+2891,2,Gray,Brick 2891.7  Track 9V,N/A,N/A,N/A
+2892,2,Gray,Plate 2892.7,N/A,N/A,N/A
+3811,6,Blue,Plate 3811.1,N/A,N/A,N/A
+3811,11,Gray,Brick 3811.7  Track 9V,N/A,N/A,N/A
+3857,2,Blue,Plate 3857.1,N/A,N/A,N/A
+3857,9,White,Plate 3857.15,N/A,N/A,N/A
+3867,1,White,Brick 3867.15  Track 9V,N/A,N/A,N/A
+9VHALFSTRAIGHT,12,Dark Gray,Plate 9VHALFSTRAIGHT.8,N/A,N/A,N/A
+Total,191,,,N/A,N/A,N/A
+----
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2670,14,Gray,Brick 2670.7  Track 9V,Unbudgeted,14,Unbudgeted
+2671,36,Gray,Plate 2671.7,Unbudgeted,36,Unbudgeted
+2672,4,Gray,Plate 2672.7,Unbudgeted,4,Unbudgeted
+2865,88,Dark Gray,Brick 2865.8  Track 9V,12,76,733
+2889,2,Gray,Plate 2889.7,Unbudgeted,2,Unbudgeted
+2890,2,Gray,Plate 2890.7,Unbudgeted,2,Unbudgeted
+2891,2,Gray,Brick 2891.7  Track 9V,Unbudgeted,2,Unbudgeted
+2892,2,Gray,Plate 2892.7,Unbudgeted,2,Unbudgeted
+3811,6,Blue,Plate 3811.1,0,6,700
+3811,11,Gray,Brick 3811.7  Track 9V,Unbudgeted,11,Unbudgeted
+3857,2,Blue,Plate 3857.1,Unbudgeted,2,Unbudgeted
+3857,9,White,Plate 3857.15,Unbudgeted,9,Unbudgeted
+3867,1,White,Brick 3867.15  Track 9V,Unbudgeted,1,Unbudgeted
+9VHALFSTRAIGHT,12,Dark Gray,Plate 9VHALFSTRAIGHT.8,Unbudgeted,12,Unbudgeted
+Total,191,,,12,179,783
+----
+Baseplate
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2891,2,Gray,Brick 2891.7  Track 9V,0,2,300
+2892,2,Gray,Plate 2892.7,0,2,300
+3811,6,Blue,Plate 3811.1,0,6,700
+3811,11,Gray,Brick 3811.7  Track 9V,0,11,1,200
+3857,2,Blue,Plate 3857.1,0,2,300
+3857,9,White,Plate 3857.15,0,9,1,000
+3867,1,White,Brick 3867.15  Track 9V,0,1,200
+Total,33,,,0,33,0
+
+Rail
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2865,88,Dark Gray,Brick 2865.8  Track 9V,12,76,733
+9VHALFSTRAIGHT,12,Dark Gray,Plate 9VHALFSTRAIGHT.8,0,12,1,300
+Total,100,,,12,88,733
+
+Monorail
+Part,In Use,Color,Description,Budgeted,Missing,Part Usage %
+2670,14,Gray,Brick 2670.7  Track 9V,0,14,1,500
+2671,36,Gray,Plate 2671.7,0,36,3,700
+2672,4,Gray,Plate 2672.7,0,4,500
+2889,2,Gray,Plate 2889.7,0,2,300
+2890,2,Gray,Plate 2890.7,0,2,300
+Total,58,,,0,58,0
+
