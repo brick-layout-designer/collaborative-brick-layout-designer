@@ -1,6 +1,6 @@
 {
-  "name": "Brick Layout Designer",
-  "short_name": "Brick Layouts",
+  "name": "Collaborative Brick Layout Designer",
+  "short_name": "CBL Designer",
   "description": "Plan LEGO layouts together, on any device.",
   "id": "/",
   "start_url": "/",

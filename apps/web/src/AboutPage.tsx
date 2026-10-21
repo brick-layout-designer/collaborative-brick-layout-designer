@@ -39,11 +39,11 @@ export function AboutPage() {
         <section>
           <h1 className="text-2xl font-semibold">About</h1>
           <p className="mt-3 text-neutral-300">
-            A web port of{' '}
+            The web version of Collaborative Brick Layout Designer. Its{' '}
             <a href={DESKTOP_URL} className="text-accent-text hover:underline">
-              Collaborative Brick Layout Designer
+              desktop app
             </a>{' '}
-            — itself a Qt rebuild of the original{' '}
+            is a Qt rebuild of the original{' '}
             <a href={ORIGINAL_BLUEBRICK_URL} className="text-accent-text hover:underline">
               BlueBrick
             </a>{' '}

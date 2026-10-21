@@ -58,7 +58,7 @@ export async function layoutFileBytes(
     if (!exported) return null;
     // Named by part number, so BlueBrick and the desktop find the server's custom parts.
     const map = await withCustomPartNumbers(exported, viewer);
-    const manifest: Record<string, unknown> = { format: 'bld-layout', generator: 'Brick Layout Designer (server data download)', version: 1 };
+    const manifest: Record<string, unknown> = { format: 'bld-layout', generator: 'Collaborative Brick Layout Designer (server data download)', version: 1 };
     if (source) {
       manifest.source = { server: new URL(env.publicUrl).origin, layoutId: source.layoutId, title: source.title, exportedAt: new Date().toISOString() };
     }

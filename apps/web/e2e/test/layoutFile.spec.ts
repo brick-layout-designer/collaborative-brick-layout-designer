@@ -142,7 +142,7 @@ test.describe('layout file', () => {
     await openEditor(page, id);
     await mapMenu(page, 'Download & export', 'Download as…');
     const dialog = page.getByRole('dialog', { name: 'Download As' });
-    await expect(dialog.getByLabel('Brick Layout Designer layout (.bld-layout)')).toBeChecked();
+    await expect(dialog.getByLabel('Collaborative Brick Layout Designer layout (.bld-layout)', { exact: true })).toBeChecked();
     await dialog.getByLabel('BlueBrick map (.bbm)').check();
     await expect(dialog).toContainText("BlueBrick can't hold anchored labels, the background image");
     const dl = page.waitForEvent('download');

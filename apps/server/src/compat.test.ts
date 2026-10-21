@@ -114,7 +114,7 @@ describe('desktop gate', () => {
     expect(res.statusCode).toBe(426);
     expect(res.json()).toEqual({
       error: 'update_required',
-      message: `This server needs Brick Layout Designer ${DESKTOP_MINIMUM} or newer. Please download the new version.`,
+      message: `This server needs Collaborative Brick Layout Designer ${DESKTOP_MINIMUM} or newer. Please download the new version.`,
       minimum: DESKTOP_MINIMUM,
       downloadUrl: compat.desktop.downloadUrl,
     });

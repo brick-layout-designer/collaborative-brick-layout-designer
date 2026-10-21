@@ -126,7 +126,7 @@ export function resetDesktopPolicy(): void {
 export function updateRequiredBody(minimum: string) {
   return {
     error: 'update_required',
-    message: `This server needs Brick Layout Designer ${minimum} or newer. Please download the new version.`,
+    message: `This server needs Collaborative Brick Layout Designer ${minimum} or newer. Please download the new version.`,
     minimum,
     downloadUrl: DESKTOP_DOWNLOAD_URL,
   };

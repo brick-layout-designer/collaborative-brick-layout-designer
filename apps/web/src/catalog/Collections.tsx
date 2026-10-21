@@ -866,7 +866,7 @@ export function CollectionPage() {
         <AppHeader user={user} />
       ) : (
         <header className="flex items-center justify-between gap-3">
-          <Link to="/" className="tap-target inline-flex items-center font-display text-lg font-bold">Brick Layout Designer</Link>
+          <Link to="/" className="tap-target inline-flex items-center font-display text-lg font-bold">Collaborative Brick Layout Designer</Link>
           <SignInLink className="tap-target rounded-lg bg-accent px-4 py-2 font-semibold text-accent-ink hover:bg-accent-hover">
             Sign in
           </SignInLink>

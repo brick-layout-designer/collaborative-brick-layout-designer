@@ -167,7 +167,7 @@ function readme(args: {
   const site = siteUrl('/');
   const c = args.counts;
   return [
-    args.club ? `Your club's data from Brick Layout Designer` : `Your data from Brick Layout Designer`,
+    args.club ? `Your club's data from Collaborative Brick Layout Designer` : `Your data from Collaborative Brick Layout Designer`,
     `====================================`,
     ``,
     `This is a copy of ${args.about} on ${site}`,
@@ -182,7 +182,7 @@ function readme(args: {
     ``,
     SECTION_README(args.sections),
     ``,
-    `layouts/     ${c.layouts} layout(s) as .bld-layout files. Open them with Brick Layout Designer`,
+    `layouts/     ${c.layouts} layout(s) as .bld-layout files. Open them with Collaborative Brick Layout Designer`,
     `             (the desktop app, or "Open a layout file" on the website).`,
     `modules/     ${c.modules} module(s) as .bld-layout files, with their pictures.`,
     `parts/       ${c.parts} custom part(s): each part's XML and its picture, as BlueBrick uses them.`,
