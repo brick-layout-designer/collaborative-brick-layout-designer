@@ -16,7 +16,7 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { hasAtLeast, resolveResourceRole, type ResourceKind } from '../access/resolveResourceRole.js';
 import type { AuditResourceKind } from '../audit/writeAuditEvent.js';
-import { atLeast } from '../access/clubRoles.js';
+import { clubAccess } from '../access/clubPermissions.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { maskPayloadEmails } from '../utils/maskEmail.js';
 
@@ -79,13 +79,10 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.orgs.slug, req.params.slug.toLowerCase()))
         .get();
       if (!org) return reply.code(404).send({ error: 'not_found' });
-      const membership = await db
-        .select({ role: schema.orgMembers.role })
-        .from(schema.orgMembers)
-        .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, user.id)))
-        .get();
-      if (!membership || !atLeast(membership.role, 'manager')) {
-        return reply.code(403).send({ error: 'forbidden' });
+      // The club's history is for the people who run it: inviting people, or managing members and roles.
+      const membership = await clubAccess(user.id, org.id);
+      if (!membership || !(membership.permissions.has('invite') || membership.permissions.has('manage_members'))) {
+        return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
       }
       const limit = clampLimit(req.query.limit);
       const offset = clampOffset(req.query.offset);

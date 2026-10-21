@@ -24,7 +24,7 @@ import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { atLeast } from '../access/clubRoles.js';
+import { can } from '../access/clubPermissions.js';
 import { publicName } from '../utils/publicName.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { COVER_BODY_LIMIT, readCoverBody } from '../images/covers.js';
@@ -49,13 +49,14 @@ const isLive = (i: Pick<Item, 'status' | 'publicVersion'>) => i.status === 'publ
 async function coverAccess(user: User, item: Item): Promise<{ ok: true; straight: boolean } | { ok: false; out: Outcome }> {
   const role = item.ownerOrgId ? await clubRole(user.id, item.ownerOrgId) : null;
   const trusted = await isTrustedClub(item.ownerOrgId);
-  const may = item.ownerOrgId ? atLeast(role, 'manager') || (trusted && !!role) : item.ownerUserId === user.id;
+  const sends = !!item.ownerOrgId && !!role && (await can(user.id, item.ownerOrgId, 'send_catalog'));
+  const may = item.ownerOrgId ? sends || (trusted && !!role) : item.ownerUserId === user.id;
   if (!may) {
     const visible = isLive(item) || !!role || canModerate(user);
     return { ok: false, out: visible ? { code: 403, body: { error: 'forbidden' } } : { code: 404, body: { error: 'not_found' } } };
   }
   const review = (await getPlatformSettings()).catalogReview;
-  const straight = !isLive(item) || review === 'none' || canModerate(user) || (trusted && atLeast(role, 'manager'));
+  const straight = !isLive(item) || review === 'none' || canModerate(user) || (trusted && sends);
   return { ok: true, straight };
 }
 
@@ -229,7 +230,7 @@ export async function itemCoverRoutes(app: FastifyInstance): Promise<void> {
       if (!showing && !waiting) return reply.code(404).send({ error: 'not_found' });
       const insider = !!user && ((await manages(user.id, item)) || canModerate(user));
       // A trusted club's members see what waits in its review.
-      const clubReviewer = !!user && !!item.ownerOrgId && (await isTrustedClub(item.ownerOrgId)) && atLeast(await clubRole(user.id, item.ownerOrgId), 'member');
+      const clubReviewer = !!user && !!item.ownerOrgId && (await isTrustedClub(item.ownerOrgId)) && !!(await clubRole(user.id, item.ownerOrgId));
       const allowed = showing ? insider || clubReviewer || (isLive(item) && (await mayBrowse(req))) : insider || clubReviewer;
       if (!allowed) return reply.code(404).send({ error: 'not_found' });
       const small = req.query?.size === 'small';

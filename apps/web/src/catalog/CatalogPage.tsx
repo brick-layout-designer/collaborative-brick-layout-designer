@@ -538,7 +538,7 @@ export function AddDialog({ item, onClose, onAdded }: { item: CatalogItem; onClo
         ) : (
           <>
             <p>A copy of “{item.title}” goes to:</p>
-            <SaveToPicker value={owner} onChange={setOwner} orgs={orgs.data?.orgs} />
+            <SaveToPicker value={owner} onChange={setOwner} orgs={orgs.data?.orgs} kind={item.kind} />
             {error && <p className="text-danger">{error}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">

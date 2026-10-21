@@ -26,9 +26,9 @@ import { writeBbm, type Sidecar, type Venue } from '@cld/bbm';
 import type { BbmMap } from '@cld/model';
 import { decodeDoc, encodeDoc, exportBbmFromDoc, exportSidecarFromDoc, seedFromBbm } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
-import { atLeast } from '../access/clubRoles.js';
+import { can } from '../access/clubPermissions.js';
 import { layoutFileBytes, smallZip } from '../privacy/exportFiles.js';
-import { canModerate, catalogOn, clubRole, isTrustedClub, manages, mayBrowse } from './catalog.js';
+import { canModerate, catalogOn, isTrustedClub, manages, mayBrowse } from './catalog.js';
 import { attachment, safeFileName } from '../utils/contentDisposition.js';
 
 type Item = typeof schema.catalogItems.$inferSelect;
@@ -225,7 +225,7 @@ async function versionFor(req: FastifyRequest<{ Params: { id: string }; Querystr
       !!user &&
       ((await manages(user.id, item)) ||
         canModerate(user) ||
-        (!!item.ownerOrgId && (await isTrustedClub(item.ownerOrgId)) && atLeast(await clubRole(user.id, item.ownerOrgId), 'manager')));
+        (!!item.ownerOrgId && (await isTrustedClub(item.ownerOrgId)) && (await can(user.id, item.ownerOrgId, 'send_catalog'))));
     if (!insider) return { code: 404, error: 'not_found' };
   } else if (!(await mayBrowse(req))) {
     return { code: 401, error: 'unauthorized' };

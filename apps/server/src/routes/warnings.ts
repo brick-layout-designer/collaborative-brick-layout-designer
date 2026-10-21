@@ -23,7 +23,7 @@ import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { atLeast, type ClubRole } from '../access/clubRoles.js';
+import { lesserRole, type ClubAccess } from '../access/clubPermissions.js';
 import { canModerate } from './catalog.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { sendWarningEmail } from '../email/sendWarning.js';
@@ -274,17 +274,17 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (!atLeast(mine.role, 'manager')) return reply.code(403).send({ error: 'forbidden' });
+    if (!mine.permissions.has('invite') && !mine.permissions.has('manage_members')) return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
     const b = (req.body ?? {}) as Record<string, unknown>;
     const target = typeof b.userId === 'string' ? b.userId : '';
     if (!target) return reply.code(400).send({ error: 'invalid_subject' });
     if (target === user.id) return reply.code(400).send({ error: 'cannot_warn_yourself' });
     const theirs = await getMembership(org.id, target);
     if (!theirs) return reply.code(404).send({ error: 'not_a_member' });
-    if (!mayWarn(mine.role, theirs.role)) {
+    if (!mayWarn(mine, theirs)) {
       return reply.code(403).send({
         error: 'forbidden',
-        message: mine.role === 'manager' ? 'Managers can warn members only.' : "Admins can't warn other admins.",
+        message: theirs.isAdmin ? "Nobody in the club can warn an admin." : 'You can warn only people whose roles give them less than yours.',
       });
     }
     const input = parseWarningInput(b);
@@ -299,7 +299,7 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (!atLeast(mine.role, 'manager')) return reply.code(403).send({ error: 'forbidden' });
+    if (!mine.permissions.has('invite') && !mine.permissions.has('manage_members')) return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
     const rows = await db
       .select()
       .from(schema.warnings)
@@ -383,9 +383,13 @@ async function noticesFor(userId: string) {
     .all();
 }
 
-/** Managers warn members; admins warn members and managers; nobody warns an admin from inside the club. */
-export function mayWarn(by: ClubRole, target: ClubRole): boolean {
-  if (target === 'admin') return false;
-  if (target === 'manager') return by === 'admin';
-  return atLeast(by, 'manager');
+/**
+ * Nobody warns an admin from inside the club; "manage members and roles"
+ * warns anyone else; "invite people" warns people with less than you (a
+ * Manager warns Members, an Admin warns Managers, as before).
+ */
+export function mayWarn(by: ClubAccess, target: ClubAccess): boolean {
+  if (target.isAdmin) return false;
+  if (by.permissions.has('manage_members')) return true;
+  return by.permissions.has('invite') && lesserRole(target.permissions, by.permissions);
 }

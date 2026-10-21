@@ -526,6 +526,10 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'DELETE /api/orgs/:slug/invites/:inviteId': club(bySlug),
   'POST /api/orgs/:slug/invites/:inviteId/resend': club(bySlug),
   'PATCH /api/orgs/:slug/members/:userId': club(bySlug, (c) => [c.params.userId ?? null]),
+  // Club roles: what a role allows changes what its holders may do, so every member hears.
+  'POST /api/orgs/:slug/roles': club(bySlug),
+  'PATCH /api/orgs/:slug/roles/:roleId': club(bySlug),
+  'DELETE /api/orgs/:slug/roles/:roleId': club(bySlug),
   'DELETE /api/orgs/:slug/members/:userId': club(bySlug, (c) => [c.params.userId ?? null]),
   'PUT /api/orgs/:slug/part-libraries/:libraryId': club(bySlug),
   'DELETE /api/orgs/:slug/part-libraries/:libraryId': club(bySlug),

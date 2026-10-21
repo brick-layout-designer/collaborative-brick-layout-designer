@@ -24,7 +24,7 @@ import { recordUpload, usage } from '../metrics/usage.js';
 import { touchLayoutOpened } from '../metrics/activity.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { compareLayouts, type LayoutSnapshot } from '../sync/compare.js';
-import { clubThingRole } from '../access/clubRoles.js';
+import { clubAccessMap, clubThingAccess } from '../access/clubPermissions.js';
 import { creditLookup, withCredits } from './credits.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { backgroundImagePath, layoutFileBytes, smallZip } from '../privacy/exportFiles.js';
@@ -129,10 +129,12 @@ export async function layoutRoutes(app: FastifyInstance) {
       seen.add(l.id);
       all.push(toListItem(l, 'owner'));
     }
+    const access = await clubAccessMap(user.id);
     for (const { layout, orgName, orgSlug, memberRole } of orgOwned) {
       if (seen.has(layout.id)) continue;
       seen.add(layout.id);
-      all.push(toListItem(layout, clubThingRole(memberRole), orgName, orgSlug));
+      const a = access.get(layout.ownerOrgId ?? '');
+      all.push(toListItem(layout, a ? clubThingAccess(a, 'layout') : memberRole === 'member' ? 'editor' : 'owner', orgName, orgSlug));
     }
     for (const { layout, role } of shared) {
       if (seen.has(layout.id)) continue;
@@ -238,7 +240,7 @@ export async function layoutRoutes(app: FastifyInstance) {
     // Resolve owner — personal by default, or a club if `orgSlug` provided
     // (a member, and an admin when the club lets only admins add things).
     const dest = await destinationOrg(user.id, body.orgSlug);
-    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
     const ownerUserId: string | null = dest.orgId ? null : user.id;
     const ownerOrgId: string | null = dest.orgId;
 
@@ -329,7 +331,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       const src = await db.select().from(schema.layouts).where(eq(schema.layouts.id, req.params.id)).get();
       if (!src) return reply.code(404).send({ error: 'not_found' });
       const dest = await destinationOrg(user.id, req.body?.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
 
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
       if (titleTooLong(trimmed(req.body?.title))) return reply.code(400).send({ error: 'invalid_title' });

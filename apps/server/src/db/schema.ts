@@ -1,4 +1,4 @@
-import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // All timestamps are unix-millis (Drizzle "timestamp_ms" mode). Kept portable to
 // Postgres `timestamptz` later by treating columns as opaque time-ordered ints.
@@ -334,6 +334,47 @@ export const orgMembers = sqliteTable(
   }),
 );
 
+// Club roles (0033): each club sets up its own roles. Every club starts
+// with Admin, Manager, Member and Viewer (`key` names those four; a role a
+// club made itself has no key). `permissions` is a JSON array of
+// permission names (access/clubPermissions.ts); the Admin role always has
+// every one. A member holds one or more roles and gets the union.
+// org_members.role stays as the strongest built-in role a person holds
+// ('member' for custom roles only), for the places that only need that.
+export const clubRoles = sqliteTable(
+  'club_roles',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    key: text('key', { enum: ['admin', 'manager', 'member', 'viewer'] }),
+    name: text('name').notNull(),
+    permissions: text('permissions').notNull(),
+    position: integer('position').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    orgIdx: index('club_roles_org_id_idx').on(t.orgId),
+  }),
+);
+
+export const memberRoles = sqliteTable(
+  'member_roles',
+  {
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    roleId: text('role_id')
+      .notNull()
+      .references(() => clubRoles.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.userId, t.roleId] }),
+    member: foreignKey({ columns: [t.orgId, t.userId], foreignColumns: [orgMembers.orgId, orgMembers.userId] }).onDelete('cascade'),
+    roleIdx: index('member_roles_role_id_idx').on(t.roleId),
+  }),
+);
+
 // Pending org-membership invites. Same shape as layout_invites but for
 // joining an org. Auto-cleared on accept; admins can also revoke.
 export const orgInvites = sqliteTable('org_invites', {
@@ -346,6 +387,8 @@ export const orgInvites = sqliteTable('org_invites', {
     .notNull()
     .references(() => users.id),
   role: text('role', { enum: ['admin', 'manager', 'member'] }).notNull(),
+  /** The club role the invite gives (0033); null: the built-in one `role` names. */
+  roleId: text('role_id'),
   token: text('token').notNull().unique(),
   expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),

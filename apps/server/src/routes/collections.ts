@@ -42,7 +42,8 @@ import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { atLeast, type ClubRole } from '../access/clubRoles.js';
+import { type ClubRole } from '../access/clubRoles.js';
+import { addPermission, can, clubAccessMap, has } from '../access/clubPermissions.js';
 import { destinationOrg } from './owners.js';
 import { type Kind as CatalogKind, canModerate, cleanText, copyItemTo, holdOf, isTrustedClub, nextHold, itemOut, mayBrowse, ownerNames, picturedVersions, previewUrlOf, submitToCatalog, trustedClubs } from './catalog.js';
 import { copyModuleTo } from './modules.js';
@@ -506,7 +507,7 @@ interface Access {
 async function accessTo(user: User | null, c: Collection): Promise<Access> {
   if (!user) return { role: null, curator: false, insider: false };
   const role = c.orgId ? await roleIn(user.id, c.orgId) : null;
-  const curator = c.orgId ? atLeast(role, 'manager') : c.ownerUserId === user.id || (c.official && canModerate(user));
+  const curator = c.orgId ? !!role && (await can(user.id, c.orgId, 'send_catalog')) : c.ownerUserId === user.id || (c.official && canModerate(user));
   return { role, curator, insider: curator || !!role || canModerate(user) };
 }
 
@@ -997,6 +998,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id))
       .orderBy(asc(schema.orgs.name));
+    const access = await clubAccessMap(user.id);
     const wanted = typeof req.query?.club === 'string' && req.query.club ? req.query.club.trim().toLowerCase() : null;
     const clubs = wanted ? mine.filter((m) => m.slug === wanted) : mine;
     if (wanted && !clubs.length) return reply.code(404).send({ error: 'org_not_found' });
@@ -1011,7 +1013,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const curators = await ownerNames(rows.map((c) => ({ ownerUserId: c.ownerUserId, ownerOrgId: null })));
     return {
       clubs: clubs.map((club) => {
-        const curates = atLeast(club.role, 'manager');
+        const curates = has(access.get(club.id), 'send_catalog');
         return {
           id: club.id,
           slug: club.slug,
@@ -1120,7 +1122,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
             : null;
         const role = org ? await roleIn(user.id, org.id) : null;
         if (!org || !role) return reply.code(404).send({ error: 'org_not_found' });
-        if (!atLeast(role, 'manager')) return reply.code(403).send({ error: 'only_club_admins_can_curate' });
+        if (!(await can(user.id, org.id, 'send_catalog'))) return reply.code(403).send({ error: 'only_club_admins_can_curate', permission: 'send_catalog' });
         orgId = org.id;
       }
       const owner = { orgId, ownerUserId: user.id };
@@ -1272,8 +1274,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       const member = a.curator || !!a.role;
       const shown = (await shownOf([c], on, () => member)).get(c.id) ?? [];
       if (!shown.length || (!member && !isListed(c))) return reply.code(404).send({ error: 'not_found' });
-      const dest = await destinationOrg(user.id, req.body?.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      // Each kind it brings needs its own adding permission in the club.
+      const kinds = [...new Set(shown.map((s) => (s.module ? 'module' : s.kind === 'part' ? 'custom_part' : s.kind) as 'module' | 'custom_part' | 'layout' | 'venue'))];
+      let dest = await destinationOrg(user.id, req.body?.orgSlug, kinds.length ? addPermission(kinds[0]!) : undefined);
+      for (const k of kinds.slice(1)) if (dest.ok) dest = await destinationOrg(user.id, req.body?.orgSlug, addPermission(k));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const owner = dest.orgId ? { kind: 'org' as const, id: dest.orgId } : { kind: 'user' as const, id: user.id };
       const haveItems = await alreadyHave(shown.filter((s) => s.source === 'catalog').map((s) => s.id), owner);
       const haveMods = await alreadyHaveModules(shown.flatMap((s) => (s.module ? [s.module] : [])), owner);

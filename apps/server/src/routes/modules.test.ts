@@ -440,7 +440,8 @@ describe('modules', () => {
     const bob = await db.select().from(schema.users).where(eq(schema.users.email, 'bob@example.com')).get();
     const acme = await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'acme')).get();
     await db.insert(schema.orgMembers).values({ orgId: acme!.id, userId: bob!.id, role: 'member', joinedAt: new Date() });
-    await db.update(schema.orgs).set({ membersCanCreate: false }).where(eq(schema.orgs.id, acme!.id));
+    // Through the club's settings, which also take the adding permissions off its Member role.
+    expect((await app.inject({ method: 'PATCH', url: '/api/orgs/acme', headers: { cookie: aliceCookie }, payload: { membersCanCreate: false } })).statusCode).toBe(200);
     // "Save to" offers only the clubs that will take it: Bob can't add here, Alice (its admin) can.
     const canAdd = async (cookie: string) =>
       ((await app.inject({ method: 'GET', url: '/api/orgs', headers: { cookie } })).json() as { orgs: { slug: string; canAdd: boolean }[] }).orgs.find((o) => o.slug === 'acme')?.canAdd;

@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
+  type ClubRoleSummary,
   type AuditEventSummary,
   type JoinPolicy,
   type JoinRequestSummary,
@@ -19,6 +20,8 @@ import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
 import { aRole, atLeast, byRole, CLUB_ROLES, roleLabel, type ClubRole } from './clubRoles';
 import { WarnForm, WarningHistory } from '../notices/Notices';
+import { MemberRoleChips } from './ClubRoles';
+import { clubCan, type ClubPermission } from './clubPermissions';
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 
 const card = 'space-y-3 rounded-section border border-line bg-panel p-4';
@@ -72,23 +75,54 @@ async function copy(text: string, done: (msg: string) => void) {
   }
 }
 
+/** Everything a member's roles allow. */
+function permsOf(m: OrgMemberSummary, roles: ClubRoleSummary[]): Set<ClubPermission> {
+  const held = roles.filter((r) => (m.roleIds ?? []).includes(r.id));
+  return new Set(held.flatMap((r) => r.permissions));
+}
+
+/** Whether someone with only Invite people may act on a person with `target`: no more than yours, and no running of people. */
+function lesser(target: Set<ClubPermission>, mine: Set<ClubPermission>): boolean {
+  if (target.has('invite') || target.has('manage_members')) return false;
+  return [...target].every((p) => mine.has(p));
+}
+
 /**
- * Members with their role and when they joined. Admins change roles and
- * remove anyone; managers remove members; members only look.
+ * Members with their roles and when they joined. People who manage members
+ * give and take roles (chips); people who invite remove and warn those
+ * whose roles do less than theirs; everyone else only looks.
  */
 export function MembersSection({
   slug,
   myUserId,
   myRole,
   members,
+  roles,
+  org,
 }: {
   slug: string;
   myUserId: string;
   /** The viewer's role: what they may change here. */
   myRole: ClubRole;
   members: OrgMemberSummary[];
+  /** The club's roles (servers with club roles). */
+  roles?: ClubRoleSummary[] | undefined;
+  /** The club, for my permissions in it. */
+  org?: OrgDetail | undefined;
 }) {
-  const isAdmin = myRole === 'admin';
+  const isAdmin = org?.isAdmin ?? myRole === 'admin';
+  const withRoles = !!roles && roles.length > 0 && members.every((m) => Array.isArray(m.roleIds));
+  const mine = new Set<ClubPermission>(org?.permissions ?? []);
+  const managesMembers = withRoles ? clubCan(org, 'manage_members') : isAdmin;
+  const invites = withRoles ? clubCan(org, 'invite') : myRole === 'manager';
+  const adminIds = new Set((roles ?? []).filter((r) => r.key === 'admin').map((r) => r.id));
+  const isAdminMember = (m: OrgMemberSummary) => (withRoles ? (m.roleIds ?? []).some((id) => adminIds.has(id)) : m.role === 'admin');
+  const mayRemove = (m: OrgMemberSummary) =>
+    withRoles ? managesMembers || (invites && !isAdminMember(m) && lesser(permsOf(m, roles!), mine)) : isAdmin || (myRole === 'manager' && m.role === 'member');
+  const mayWarnMember = (m: OrgMemberSummary) =>
+    withRoles ? !isAdminMember(m) && (managesMembers || (invites && lesser(permsOf(m, roles!), mine))) : mayWarn(myRole, m.role);
+  // Admins give and take any role; people who manage members, roles with no more than their own.
+  const mayToggle = (r: ClubRoleSummary) => isAdmin || (r.key !== 'admin' && r.permissions.every((p) => mine.has(p)));
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const refresh = () => {
@@ -108,8 +142,15 @@ export function MembersSection({
   const [warning, setWarning] = useState<string | null>(null);
   const sorted = [...members].sort((a, b) => byRole(a.role, b.role) || a.displayName.localeCompare(b.displayName));
   return (
-    <Section title={`Members (${members.length})`} help={atLeast(myRole, 'manager') ? 'club.roles' : undefined}>
-      {isAdmin && (
+    <Section title={`Members (${members.length})`} help={atLeast(myRole, 'manager') || managesMembers ? 'club.roles' : undefined}>
+      {withRoles && (
+        <p className="text-sm text-muted">
+          {managesMembers
+            ? 'Tap a role to give it or take it away. Someone with several roles can do everything those roles allow.'
+            : `You can see everyone’s roles. To change them, ask a club admin for the Manage members and roles permission.`}
+        </p>
+      )}
+      {!withRoles && isAdmin && (
         <ul className="space-y-1 text-sm text-muted" aria-label="What each role can do">
           {CLUB_ROLES.map((r) => (
             <li key={r.value}>
@@ -118,7 +159,7 @@ export function MembersSection({
           ))}
         </ul>
       )}
-      {myRole === 'manager' && (
+      {!withRoles && myRole === 'manager' && (
         <p className="text-sm text-muted">As a manager you can remove members. Only admins change roles.</p>
       )}
       {error && <p className="text-sm text-danger" role="alert">{error}</p>}
@@ -145,7 +186,18 @@ export function MembersSection({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {isAdmin && !self ? (
+                {withRoles ? (
+                  <MemberRoleChips
+                    slug={slug}
+                    userId={m.userId}
+                    name={m.displayName}
+                    held={m.roleIds ?? []}
+                    roles={roles!}
+                    canChange={managesMembers && (!self || isAdmin)}
+                    mayToggle={mayToggle}
+                    onError={setError}
+                  />
+                ) : isAdmin && !self ? (
                   <label className="flex items-center gap-2">
                     <span className="sr-only">Role for {m.displayName}</span>
                     <select
@@ -166,7 +218,7 @@ export function MembersSection({
                 ) : (
                   <RoleBadge role={m.role} />
                 )}
-                {!self && (isAdmin || (myRole === 'manager' && m.role === 'member')) && (
+                {!self && mayRemove(m) && (
                   <button
                     type="button"
                     className={danger}
@@ -184,7 +236,7 @@ export function MembersSection({
                     Remove
                   </button>
                 )}
-                {!self && mayWarn(myRole, m.role) && (
+                {!self && mayWarnMember(m) && (
                   <button
                     type="button"
                     aria-expanded={warning === m.userId}
@@ -242,8 +294,30 @@ export function RoleBadge({ role }: { role: ClubRole }) {
  * Invite by email (or by picking an account), with an expiry; the link can
  * be copied and sent by hand. Managers invite members; admins pick the role.
  */
-export function InviteSection({ slug, myRole = 'admin' }: { slug: string; myRole?: ClubRole }) {
+/** The club roles I may invite people to, or hand out: admins any; Manage members and roles, any but Admin; Invite people, lesser ones. */
+export function rolesICanGive(org: OrgDetail | undefined, roles: ClubRoleSummary[] | undefined): ClubRoleSummary[] {
+  if (!org || !roles) return [];
+  const mine = new Set<ClubPermission>(org.permissions ?? []);
+  if (org.isAdmin) return roles;
+  return roles.filter((r) => r.key !== 'admin' && (mine.has('manage_members') || (mine.has('invite') && lesser(new Set(r.permissions), mine))));
+}
+
+export function InviteSection({
+  slug,
+  myRole = 'admin',
+  org,
+  roles,
+}: {
+  slug: string;
+  myRole?: ClubRole;
+  org?: OrgDetail | undefined;
+  /** The club's roles (servers with club roles): invite to any I may give. */
+  roles?: ClubRoleSummary[] | undefined;
+}) {
   const qc = useQueryClient();
+  const giveable = rolesICanGive(org, roles);
+  const [roleId, setRoleId] = useState<string>('');
+  const pickedRoleId = giveable.some((r) => r.id === roleId) ? roleId : (giveable.find((r) => r.key === 'member') ?? giveable[0])?.id ?? '';
   const [email, setEmail] = useState('');
   const [pickedUserId, setPickedUserId] = useState<string | null>(null);
   const [role, setRole] = useState<ClubRole>('member');
@@ -266,7 +340,8 @@ export function InviteSection({ slug, myRole = 'admin' }: { slug: string; myRole
   });
 
   const invite = useMutation({
-    mutationFn: () => api.orgs.invite(slug, pickedUserId ? { userId: pickedUserId } : { email: email.trim() }, role, days),
+    mutationFn: () =>
+      api.orgs.invite(slug, pickedUserId ? { userId: pickedUserId } : { email: email.trim() }, giveable.length && pickedRoleId ? { roleId: pickedRoleId } : role, days),
     onSuccess: (res) => {
       setMade({ url: res.inviteUrl, emailed: res.emailDelivered });
       setEmail('');
@@ -334,7 +409,18 @@ export function InviteSection({ slug, myRole = 'admin' }: { slug: string; myRole
           )}
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {myRole === 'admin' ? (
+          {giveable.length > 0 ? (
+            <label className="block">
+              <span className="mb-1 block text-muted">Joins as</span>
+              <select value={pickedRoleId} onChange={(e) => setRoleId(e.target.value)} className={field}>
+                {[...giveable].reverse().map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : myRole === 'admin' ? (
             <label className="block">
               <span className="mb-1 block text-muted">Joins as</span>
               <select value={role} onChange={(e) => setRole(e.target.value as ClubRole)} className={field}>
@@ -385,12 +471,19 @@ export function PendingInvitesSection({
   slug,
   invites,
   myRole = 'admin',
+  org,
+  roles,
 }: {
   slug: string;
   invites: OrgInviteSummary[];
   /** Managers look after member invites; the others are the admins'. */
   myRole?: ClubRole;
+  org?: OrgDetail | undefined;
+  roles?: ClubRoleSummary[] | undefined;
 }) {
+  const giveable = rolesICanGive(org, roles);
+  const roleName = (i: OrgInviteSummary) => roles?.find((r) => r.id === i.roleId)?.name ?? roleLabel(i.role);
+  const mayHandle = (i: OrgInviteSummary) => (roles?.length && i.roleId ? giveable.some((r) => r.id === i.roleId) : myRole === 'admin' || i.role === 'member');
   const qc = useQueryClient();
   const [note, setNote] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['org-members', slug] });
@@ -414,7 +507,7 @@ export function PendingInvitesSection({
               <div className="min-w-0">
                 <p className="break-all font-medium">{i.invitedEmail}</p>
                 <p className="text-xs text-muted">
-                  {roleLabel(i.role)} · {daysLeft(i.expiresAt)}
+                  {roleName(i)} · {daysLeft(i.expiresAt)}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -423,7 +516,7 @@ export function PendingInvitesSection({
                     Copy link
                   </button>
                 )}
-                {(myRole === 'admin' || i.role === 'member') && (
+                {mayHandle(i) && (
                   <>
                     <button type="button" className={btn} disabled={resend.isPending} onClick={() => resend.mutate(i.id)}>
                       Send again
@@ -831,6 +924,9 @@ export function LeaveClubButton({ org, myUserId }: { org: OrgDetail; myUserId: s
 }
 
 /** What an audit event means, in a short sentence. */
+/** "the Track crew role", or "a role" when the name is missing. */
+const theRole = (name: unknown) => (typeof name === 'string' && name ? `the ${name} role` : 'a role');
+
 export function describeEvent(e: AuditEventSummary, memberName: (id: string) => string | undefined): string {
   const who = e.userName ?? 'Someone';
   const p = (e.payload ?? {}) as Record<string, unknown>;
@@ -842,6 +938,18 @@ export function describeEvent(e: AuditEventSummary, memberName: (id: string) => 
       return `${who} invited ${typeof p.invitedEmail === 'string' ? p.invitedEmail : 'someone'}`;
     case 'unshare':
       return p.selfRemoved ? `${who} left the club` : `${who} removed ${target}`;
+    case 'role_create':
+      return `${who} made ${theRole(p.roleName)}`;
+    case 'role_edit':
+      return typeof p.fromName === 'string'
+        ? `${who} renamed ${theRole(p.fromName)} to ${typeof p.roleName === 'string' ? p.roleName : 'something new'}`
+        : `${who} changed what ${theRole(p.roleName)} allows`;
+    case 'role_delete':
+      return `${who} deleted ${theRole(p.roleName)}`;
+    case 'role_assign':
+      return `${who} gave ${target} ${theRole(p.roleName)}`;
+    case 'role_unassign':
+      return `${who} took ${theRole(p.roleName)} from ${target}`;
     case 'role_change':
       return `${who} made ${target} ${p.toRole === 'admin' || p.toRole === 'manager' || p.toRole === 'member' ? aRole(p.toRole) : 'a member'}`;
     case 'hand_over':

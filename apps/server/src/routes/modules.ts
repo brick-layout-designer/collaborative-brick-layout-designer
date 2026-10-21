@@ -22,7 +22,7 @@ import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
 import { clampTitle, titleTooLong, trimmed } from '../utils/validate.js';
-import { clubModuleRole } from '../access/resolveResourceRole.js';
+import { addPermission, clubAccessMap, clubThingAccess } from '../access/clubPermissions.js';
 import { HEAD_BYTES, imageSide, MAX_THUMBNAIL_BYTES, reencode, smallCopy, THUMBNAIL_BODY_LIMIT } from '../images/thumbnails.js';
 import { dropModuleFromCollections } from './collections.js';
 import { canModerate } from './catalog.js';
@@ -119,7 +119,7 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.modules)
       .where(eq(schema.modules.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ module: moduleListColumns, memberRole: schema.orgMembers.role, membersCanCreate: schema.orgs.membersCanCreate })
+      .select({ module: moduleListColumns })
       .from(schema.orgMembers)
       .innerJoin(
         schema.modules,
@@ -143,10 +143,12 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       seen.add(m.id);
       all.push({ ...toListItem(m), role: 'owner' });
     }
-    for (const { module, memberRole, membersCanCreate } of orgOwned) {
+    const access = await clubAccessMap(user.id);
+    for (const { module } of orgOwned) {
       if (seen.has(module.id)) continue;
       seen.add(module.id);
-      all.push({ ...toListItem(module), role: clubModuleRole(memberRole, membersCanCreate) });
+      const a = access.get(module.ownerOrgId ?? '');
+      all.push({ ...toListItem(module), role: a ? clubThingAccess(a, 'module') : 'viewer' });
     }
     for (const { module, role } of shared) {
       const i = all.findIndex((m) => m.id === module.id);
@@ -183,8 +185,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
     if (titleTooLong(trimmed(body.title))) return reply.code(400).send({ error: 'invalid_title' });
     const title = trimmed(body.title) || 'Untitled Module';
 
-    const dest = await destinationOrg(user.id, body.orgSlug);
-    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+    const dest = await destinationOrg(user.id, body.orgSlug, addPermission('module'));
+    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
     const ownerUserId: string | null = dest.orgId ? null : user.id;
     const ownerOrgId: string | null = dest.orgId;
 
@@ -232,8 +234,8 @@ export async function moduleRoutes(app: FastifyInstance): Promise<void> {
       if (role === null) return reply.code(404).send({ error: 'not_found' });
       const src = await db.select().from(schema.modules).where(eq(schema.modules.id, req.params.id)).get();
       if (!src) return reply.code(404).send({ error: 'not_found' });
-      const dest = await destinationOrg(user.id, req.body?.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, req.body?.orgSlug, addPermission('module'));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const sameOwner = dest.orgId ? src.ownerOrgId === dest.orgId : src.ownerUserId === user.id;
       if (titleTooLong(trimmed(req.body?.title))) return reply.code(400).send({ error: 'invalid_title' });
       const title = trimmed(req.body?.title) || clampTitle(sameOwner ? `${src.title} (copy)` : src.title);

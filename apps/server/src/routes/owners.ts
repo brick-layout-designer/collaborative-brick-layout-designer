@@ -10,7 +10,7 @@
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { atLeast } from '../access/clubRoles.js';
+import { clubAccess, type ClubPermission } from '../access/clubPermissions.js';
 import { publicName } from '../utils/publicName.js';
 
 export interface OwnerInfo {
@@ -91,27 +91,25 @@ export async function ownerLookup(items: readonly Owned[]): Promise<(item: Owned
 
 /**
  * The club a new, copied or moved item goes to: `orgSlug` must name a club
- * the caller belongs to, and when the club lets only admins add things,
- * the caller must be an admin. Undefined / empty means the caller's own.
+ * the caller belongs to, and the caller's roles there must hold one of
+ * `need` (the adding permission for that kind of thing: "start new club
+ * layouts" by default). Undefined / empty means the caller's own.
  */
 export async function destinationOrg(
   userId: string,
   orgSlug: unknown,
-): Promise<{ ok: true; orgId: string | null } | { ok: false; code: 404 | 403; error: string }> {
+  need: ClubPermission[] = ['start_layouts'],
+): Promise<{ ok: true; orgId: string | null } | { ok: false; code: 404 | 403; error: string; permission?: ClubPermission }> {
   if (orgSlug === undefined || orgSlug === null || orgSlug === '') return { ok: true, orgId: null };
   if (typeof orgSlug !== 'string') return { ok: false, code: 404, error: 'org_not_found' };
   const org = await db
-    .select({ id: schema.orgs.id, membersCanCreate: schema.orgs.membersCanCreate })
+    .select({ id: schema.orgs.id })
     .from(schema.orgs)
     .where(eq(schema.orgs.slug, orgSlug.trim().toLowerCase()))
     .get();
   if (!org) return { ok: false, code: 404, error: 'org_not_found' };
-  const mem = await db
-    .select({ role: schema.orgMembers.role })
-    .from(schema.orgMembers)
-    .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, userId)))
-    .get();
+  const mem = await clubAccess(userId, org.id);
   if (!mem) return { ok: false, code: 403, error: 'not_an_org_member' };
-  if (!org.membersCanCreate && !atLeast(mem.role, 'manager')) return { ok: false, code: 403, error: 'only_club_admins_can_add' };
+  if (!need.some((p) => mem.permissions.has(p))) return { ok: false, code: 403, error: 'only_club_admins_can_add', ...(need[0] ? { permission: need[0] } : {}) };
   return { ok: true, orgId: org.id };
 }

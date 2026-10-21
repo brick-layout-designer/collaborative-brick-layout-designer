@@ -11,7 +11,7 @@ import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { atLeast } from '../access/clubRoles.js';
+import { can } from '../access/clubPermissions.js';
 import { dropModuleFromCollections } from './collections.js';
 import { trimmed } from '../utils/validate.js';
 import { clearPendingModuleShares } from '../access/pendingShares.js';
@@ -56,9 +56,9 @@ export async function moduleTransferRoutes(app: FastifyInstance): Promise<void> 
         if (!myDestMembership) {
           return reply.code(403).send({ error: 'not_a_member_of_recipient_org' });
         }
-        // A club that lets only admins add things takes them only from an admin.
-        if (!dest.membersCanCreate && !atLeast(myDestMembership.role, 'manager')) {
-          return reply.code(403).send({ error: 'only_club_admins_can_add' });
+        // Moving it in needs the club's adding permission.
+        if (!(await can(user.id, dest.id, 'edit_modules'))) {
+          return reply.code(403).send({ error: 'only_club_admins_can_add', permission: 'edit_modules' });
         }
 
         const module = await db

@@ -25,7 +25,7 @@ import { hasAtLeast, resolveResourceRole, type Role } from '../access/resolveRes
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { isValidEmail, normalizeEmail, trimmed } from '../utils/validate.js';
 import { matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
-import { clubThingRole } from '../access/clubRoles.js';
+import { clubAccess, clubAccessMap, clubThingAccess } from '../access/clubPermissions.js';
 import { dropModuleFromCollections } from './collections.js';
 import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
@@ -71,7 +71,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.customParts)
       .where(eq(schema.customParts.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ part: partListColumns, memberRole: schema.orgMembers.role })
+      .select({ part: partListColumns })
       .from(schema.orgMembers)
       .innerJoin(
         schema.customParts,
@@ -94,10 +94,12 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       seen.add(p.id);
       all.push({ ...toListItem(p), role: 'owner' });
     }
-    for (const { part, memberRole } of orgOwned) {
+    const access = await clubAccessMap(user.id);
+    for (const { part } of orgOwned) {
       if (seen.has(part.id)) continue;
       seen.add(part.id);
-      all.push({ ...toListItem(part), role: clubThingRole(memberRole) });
+      const a = access.get(part.ownerOrgId ?? '');
+      all.push({ ...toListItem(part), role: a ? clubThingAccess(a, 'custom_part') : 'viewer' });
     }
     for (const { part, role } of shared) {
       if (seen.has(part.id)) continue;
@@ -192,17 +194,9 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.orgs.slug, body.orgSlug.toLowerCase()))
         .get();
       if (!org) return reply.code(404).send({ error: 'org_not_found' });
-      const membership = await db
-        .select()
-        .from(schema.orgMembers)
-        .where(
-          and(
-            eq(schema.orgMembers.orgId, org.id),
-            eq(schema.orgMembers.userId, user.id),
-          ),
-        )
-        .get();
+      const membership = await clubAccess(user.id, org.id);
       if (!membership) return reply.code(403).send({ error: 'not_an_org_member' });
+      if (!membership.permissions.has('add_parts')) return reply.code(403).send({ error: 'only_club_admins_can_add', permission: 'add_parts' });
       ownerUserId = null;
       ownerOrgId = org.id;
     }

@@ -121,7 +121,7 @@ export function UploadPartDialog({ onClose, filter }: { onClose: () => void; fil
           onChange={setCategory}
         />
 
-        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs.data?.orgs} />
+        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs.data?.orgs} kind="part" />
 
         <label className="block">
           <span className="mb-1 block text-muted">Part XML</span>

@@ -18,7 +18,8 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { atLeast, clubThingRole, type ClubRole } from './clubRoles.js';
+import { atLeast, type ClubRole } from './clubRoles.js';
+import { clubAccess, clubThingAccess } from './clubPermissions.js';
 
 export type Role = 'owner' | 'editor' | 'viewer';
 export type ResourceKind = 'layout' | 'custom_part' | 'module' | 'org';
@@ -35,9 +36,10 @@ function strongerOf(a: Role | null, b: Role | null): Role | null {
 }
 
 /**
- * A club member's role on one of the club's modules. Managers and admins own
- * them; members edit them when the club lets members add things, and
- * otherwise only view them.
+ * A club member's role on one of the club's modules, from the old fixed
+ * roles: managers and admins own them; members edit them when the club
+ * lets members add things, and otherwise only view them. Kept for tests
+ * that pin the migration (the live answer is clubThingAccess).
  */
 export function clubModuleRole(role: ClubRole, membersCanCreate: boolean): Role {
   if (atLeast(role, 'manager')) return 'owner';
@@ -147,19 +149,10 @@ export async function resolveResourceRole(
   // editor. We short-circuit here rather than threading orgs through
   // the loadXxx helpers (which assume the resource has its own row).
   if (kind === 'org') {
-    const membership = await db
-      .select({ role: schema.orgMembers.role })
-      .from(schema.orgMembers)
-      .where(
-        and(
-          eq(schema.orgMembers.orgId, resourceId),
-          eq(schema.orgMembers.userId, userId),
-        ),
-      )
-      .get();
-    if (!membership) return { role: null };
-    // The club itself (its settings) is the admins'; managers run its things, not it.
-    return { role: membership.role === 'admin' ? 'owner' : 'editor' };
+    const access = await clubAccess(userId, resourceId);
+    if (!access) return { role: null };
+    // The club itself (its settings) is the admins'; everyone else in it uses it.
+    return { role: access.isAdmin ? 'owner' : 'editor' };
   }
 
   let res: ResourceTables | null;
@@ -183,23 +176,8 @@ export async function resolveResourceRole(
   }
 
   if (res.ownerOrgId) {
-    const membership = await db
-      .select({ role: schema.orgMembers.role, membersCanCreate: schema.orgs.membersCanCreate })
-      .from(schema.orgMembers)
-      .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
-      .where(
-        and(
-          eq(schema.orgMembers.orgId, res.ownerOrgId),
-          eq(schema.orgMembers.userId, userId),
-        ),
-      )
-      .get();
-    if (membership) {
-      role = strongerOf(
-        role,
-        kind === 'module' ? clubModuleRole(membership.role, membership.membersCanCreate) : clubThingRole(membership.role),
-      );
-    }
+    const access = await clubAccess(userId, res.ownerOrgId);
+    if (access) role = strongerOf(role, clubThingAccess(access, kind));
   }
 
   if (res.collaboratorRole) role = strongerOf(role, res.collaboratorRole);

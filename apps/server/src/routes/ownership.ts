@@ -28,12 +28,12 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
-import { atLeast } from '../access/clubRoles.js';
 import { hasAtLeast, resolveResourceRole } from '../access/resolveResourceRole.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { publicName } from '../utils/publicName.js';
 import type { User } from '../db/schema.js';
 import { getMembership } from './orgs.js';
+import { addPermission } from '../access/clubPermissions.js';
 import { destinationOrg } from './owners.js';
 import { creditRows, isKeptCopy, type CreditKind } from './credits.js';
 import { prepareLayoutCopy } from './layouts.js';
@@ -115,8 +115,8 @@ export async function returnToAuthor(
   if (mode === 'take') {
     if (author !== actor.id) return refuse(403, 'only_the_author_can_take_back', 'Only the person who made it can take it back.');
   } else {
-    if (!atLeast(mine.role, 'manager')) {
-      return refuse(403, 'only_club_admins_can_give_back', 'Only the club’s admins and managers can give it back.');
+    if (!mine.permissions.has('delete_items')) {
+      return refuse(403, 'only_club_admins_can_give_back', 'Giving it back needs the Delete club items permission. Ask a club admin.');
     }
   }
   const authorUser = author ? await db.select().from(schema.users).where(eq(schema.users.id, author)).get() : undefined;
@@ -335,8 +335,8 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'forbidden' });
       }
       if (!req.body?.orgSlug) return reply.code(400).send({ error: 'parts_can_only_move_to_clubs' });
-      const dest = await destinationOrg(user.id, req.body.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, req.body.orgSlug, addPermission('custom_part'));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const orgId = dest.orgId!;
       if (orgId === part.ownerOrgId) return { ok: true, id: part.id };
       const clash = await db
@@ -373,8 +373,8 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
       if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_upload_parts' });
       const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
       if (role === null) return reply.code(404).send({ error: 'not_found' });
-      const dest = await destinationOrg(user.id, req.body?.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, req.body?.orgSlug, addPermission('custom_part'));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const r = await copyPartTo(user, req.params.id, dest.orgId);
       if (!r.ok) return reply.code(r.status).send(r.body);
       return reply.code(201).send({ id: r.id });

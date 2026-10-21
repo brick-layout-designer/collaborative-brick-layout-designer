@@ -25,8 +25,10 @@ import { isDemoUser } from '../demo/demoAccount.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { addPermission } from '../access/clubPermissions.js';
 import { destinationOrg } from './owners.js';
-import { atLeast, type ClubRole } from '../access/clubRoles.js';
+import { type ClubRole } from '../access/clubRoles.js';
+import { can } from '../access/clubPermissions.js';
 import { recordVersion } from './modules.js';
 import { collectionCounts, dropFromCollections, siteHeldCollection } from './collections.js';
 import { nameFor, publicName } from '../utils/publicName.js';
@@ -134,10 +136,10 @@ export async function isTrustedClub(orgId: string | null | undefined): Promise<b
   return !!orgId && (await trustedClubs([orgId])).has(orgId);
 }
 
-/** Whether `user` manages things owned by this person or club: the person themselves, or a club admin / manager. */
+/** Whether `user` manages things owned by this person or club: the person themselves, or "send to the catalog" in the club. */
 export async function manages(userId: string, owner: { ownerUserId: string | null; ownerOrgId: string | null }): Promise<boolean> {
   if (owner.ownerUserId) return owner.ownerUserId === userId;
-  if (owner.ownerOrgId) return atLeast(await clubRole(userId, owner.ownerOrgId), 'manager');
+  if (owner.ownerOrgId) return can(userId, owner.ownerOrgId, 'send_catalog');
   return false;
 }
 
@@ -481,12 +483,13 @@ export async function submitToCatalog(
   if (thumbnail === false) return fail(400, { error: 'invalid_thumbnail' });
   const src = await snapshotSource(kind, sourceId, thumbnail);
   if (!src) return fail(404, { error: 'not_found' });
-  // A club's things: its admins and managers share them; in a trusted club,
-  // members may too (for the club's own review).
+  // A club's things: "send to the catalog" shares them; in a trusted club,
+  // every member may too (for the club's own review).
   const role = src.ownerOrgId ? await clubRole(user.id, src.ownerOrgId) : null;
   const trusted = await isTrustedClub(src.ownerOrgId);
-  const mayShare = src.ownerOrgId ? atLeast(role, 'manager') || (trusted && !!role) : src.ownerUserId === user.id;
-  if (!mayShare) return fail(403, { error: 'forbidden' });
+  const sends = !!src.ownerOrgId && !!role && (await can(user.id, src.ownerOrgId, 'send_catalog'));
+  const mayShare = src.ownerOrgId ? sends || (trusted && !!role) : src.ownerUserId === user.id;
+  if (!mayShare) return fail(403, { error: 'forbidden', permission: 'send_catalog' });
   const title = cleanText(b.title ?? src.title, MAX_TITLE);
   const description = cleanText(b.description, MAX_DESCRIPTION);
   const note = cleanText(b.note, MAX_REASON);
@@ -539,7 +542,7 @@ export async function submitToCatalog(
   // moderator's takedown through the site's, a club's through the club's
   // own (its admins and managers bring it back) or the site's.
   const hold = holdOf(item);
-  const clubReviewer = trusted && atLeast(role, 'manager');
+  const clubReviewer = trusted && sends;
   const straight = hold === 'site' ? false : hold === 'club' ? clubReviewer : review === 'none' || clubReviewer;
   // An update without a new description or tags keeps the ones it has.
   const text = {
@@ -917,8 +920,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (!item || item.status !== 'public' || item.publicVersion === 0 || !(await catalogOn(item.kind))) {
         return reply.code(404).send({ error: 'not_found' });
       }
-      const dest = await destinationOrg(user.id, req.body?.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, req.body?.orgSlug, addPermission(item.kind === 'part' ? 'custom_part' : item.kind));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const r = await copyItemTo(user, item, dest.orgId);
       if (!r.ok) return reply.code(r.code).send(r.body);
       return reply.code(201).send({ kind: item.kind, id: r.id, version: r.version });

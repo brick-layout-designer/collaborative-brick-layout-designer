@@ -27,7 +27,22 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { escapeLike, isValidEmail, normalizeEmail, trimmed } from '../utils/validate.js';
-import { atLeast, isClubRole, type ClubRole } from '../access/clubRoles.js';
+import { isClubRole, type ClubRole } from '../access/clubRoles.js';
+import {
+  adminCount,
+  clubAccess,
+  clubAccessMap,
+  clubRoleList,
+  ensureClubRoles,
+  has,
+  isClubPermission,
+  normalizePermissions,
+  setMemberRoles,
+  lesserRole,
+  type ClubAccess,
+  type ClubPermission,
+  type ClubRoleRow,
+} from '../access/clubPermissions.js';
 import { clubReviewCount } from './clubReview.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
@@ -74,7 +89,9 @@ interface OrgMemberInviteBody {
    */
   email?: string;
   userId?: string;
-  role: ClubRole;
+  role?: ClubRole;
+  /** One of the club's roles by id (custom roles); wins over `role`. */
+  roleId?: string;
   /** How long the invite lasts, 1 to 30 days (default 14). */
   expiresInDays?: number;
 }
@@ -109,9 +126,10 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
 
-    // A trusted club's admins and managers see what waits in its review queue.
+    const access = await clubAccessMap(user.id);
+    // Whoever reviews a trusted club's shares sees what waits in its queue.
     const reviews = new Map<string, number>();
-    for (const r of rows) if (r.trusted && atLeast(r.myRole, 'manager')) reviews.set(r.id, await clubReviewCount(r.id));
+    for (const r of rows) if (r.trusted && has(access.get(r.id), 'send_catalog')) reviews.set(r.id, await clubReviewCount(r.id));
     return {
       orgs: rows.map((r) => ({
         id: r.id,
@@ -123,7 +141,10 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         // May I save new things to it (layouts, modules, venues, parts)?
         // The same rule as destinationOrg (owners.ts), so "Save to" only
         // offers the clubs that will take it.
-        canAdd: r.membersCanCreate || atLeast(r.myRole, 'manager'),
+        canAdd: has(access.get(r.id), 'start_layouts'),
+        // What my roles in it let me do (access/clubPermissions.ts).
+        permissions: [...(access.get(r.id)?.permissions ?? [])],
+        isAdmin: !!access.get(r.id)?.isAdmin,
         ...(reviews.has(r.id) ? { pendingReviews: reviews.get(r.id) } : {}),
       })),
     };
@@ -184,6 +205,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       role: 'admin',
       joinedAt: now,
     });
+    await ensureClubRoles(id);
     await writeAuditEvent({
       resourceKind: 'org',
       resourceId: id,
@@ -200,45 +222,39 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     const org = await loadOrgBySlug(req.params.slug);
     if (!org) return reply.code(404).send({ error: 'not_found' });
 
-    const myMembership = await db
-      .select({ role: schema.orgMembers.role })
-      .from(schema.orgMembers)
-      .where(
-        and(
-          eq(schema.orgMembers.orgId, org.id),
-          eq(schema.orgMembers.userId, user.id),
-        ),
-      )
-      .get();
+    const myMembership = await getMembership(org.id, user.id);
     if (!myMembership) return reply.code(404).send({ error: 'not_found' });
 
     const counts = await db
       .select({ role: schema.orgMembers.role })
       .from(schema.orgMembers)
       .where(eq(schema.orgMembers.orgId, org.id));
+    const perms = myMembership.permissions;
     return {
       id: org.id,
       name: org.name,
       slug: org.slug,
       createdAt: org.createdAt.getTime(),
       myRole: myMembership.role,
+      permissions: [...perms],
+      isAdmin: myMembership.isAdmin,
       description: org.description ?? '',
       membersCanCreate: org.membersCanCreate,
       memberCount: counts.length,
-      adminCount: counts.filter((c) => c.role === 'admin').length,
+      adminCount: await adminCount(org.id),
       joinPolicy: org.joinPolicy,
       trusted: org.trusted,
       listed: org.listed,
       // Admins see how many people are waiting to be let in, and (a
       // trusted club) how many shares wait in its review queue.
-      ...(atLeast(myMembership.role, 'manager')
+      ...(perms.has('invite') || perms.has('manage_members')
         ? {
             pendingRequests: (
               await db.select({ id: schema.orgJoinRequests.id }).from(schema.orgJoinRequests).where(eq(schema.orgJoinRequests.orgId, org.id))
             ).length,
-            ...(org.trusted ? { pendingReviews: await clubReviewCount(org.id) } : {}),
           }
         : {}),
+      ...(org.trusted && perms.has('send_catalog') ? { pendingReviews: await clubReviewCount(org.id) } : {}),
     };
   });
 
@@ -296,6 +312,16 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (Object.keys(updates).length === 0) return reply.code(400).send({ error: 'no_updates' });
 
     await db.update(schema.orgs).set(updates).where(eq(schema.orgs.id, org.id));
+    if (updates.membersCanCreate !== undefined) {
+      // "Members can add things" is the Member role's two adding permissions.
+      const member = (await clubRoleList(org.id)).find((r) => r.key === 'member');
+      if (member) {
+        const without = member.permissions.filter((p) => p !== 'start_layouts' && p !== 'edit_modules');
+        const next = updates.membersCanCreate ? [...without, 'start_layouts', 'edit_modules'] : without;
+        await db.update(schema.clubRoles).set({ permissions: JSON.stringify(next) }).where(eq(schema.clubRoles.id, member.id));
+        await notifyClub(org.id);
+      }
+    }
     await writeAuditEvent({
       resourceKind: 'org',
       resourceId: org.id,
@@ -343,13 +369,12 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       const target = await getMembership(org.id, targetId);
       if (!target) return reply.code(404).send({ error: 'member_not_found' });
 
-      const setRole = (userId: string, role: ClubRole) =>
-        db
-          .update(schema.orgMembers)
-          .set({ role })
-          .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, userId)));
-      await setRole(targetId, 'admin');
-      await setRole(user.id, 'member');
+      // The new admin keeps their other roles; the old one keeps theirs but
+      // Admin (and becomes a Member when that was all they held).
+      const adminId = `${org.id}:admin`;
+      await setMemberRoles(org.id, targetId, [...new Set([...target.roleIds, adminId])]);
+      const left = mine.roleIds.filter((r) => r !== adminId);
+      await setMemberRoles(org.id, user.id, left.length ? left : [`${org.id}:member`]);
       notifyAccessChanged({ userId: targetId });
       notifyAccessChanged({ userId: user.id });
       await writeAuditEvent({
@@ -386,10 +411,19 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         .innerJoin(schema.users, eq(schema.users.id, schema.orgMembers.userId))
         .where(eq(schema.orgMembers.orgId, org.id));
 
-      // Only admins and managers see pending invites (the email list is
-      // somewhat sensitive). Members get an empty array.
+      // Only the people who invite see pending invites (the email list is
+      // somewhat sensitive). Everyone else gets an empty array.
+      const runsMembers = has(myMembership, 'invite') || has(myMembership, 'manage_members');
+      const held = await db
+        .select({ userId: schema.memberRoles.userId, roleId: schema.memberRoles.roleId })
+        .from(schema.memberRoles)
+        .where(eq(schema.memberRoles.orgId, org.id));
+      const rolesOf = (userId: string, legacy: ClubRole): string[] => {
+        const ids = held.filter((h) => h.userId === userId).map((h) => h.roleId);
+        return ids.length ? ids : [`${org.id}:${legacy}`];
+      };
       const invites =
-        atLeast(myMembership.role, 'manager')
+        runsMembers
           ? await db
               .select()
               .from(schema.orgInvites)
@@ -398,13 +432,15 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           : [];
 
       return {
+        roles: await rolesWithCounts(org.id),
         members: members.map((m) => ({
           userId: m.userId,
           role: m.role,
+          roleIds: rolesOf(m.userId, m.role),
           joinedAt: m.joinedAt.getTime(),
           // Members' addresses are for the people who run the club (and the
           // person themselves); everyone else sees only names.
-          email: atLeast(myMembership.role, 'manager') || m.userId === user.id || user.isGlobalAdmin ? m.email : '',
+          email: runsMembers || m.userId === user.id || user.isGlobalAdmin ? m.email : '',
           displayName: nameFor(user, m.userId, m.displayName),
           avatarUrl: m.avatarUrl,
         })),
@@ -414,6 +450,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           // managers see only a masked address.
           invitedEmail: user.isGlobalAdmin ? i.invitedEmail : maskEmail(i.invitedEmail),
           role: i.role,
+          roleId: i.roleId ?? `${org.id}:${i.role}`,
           expiresAt: i.expiresAt.getTime(),
           // Admins only see invites at all; the link lets them send it themselves.
           inviteUrl: `${env.publicUrl}/org-invite/${i.token}`,
@@ -435,16 +472,24 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const myMembership = await getMembership(org.id, user.id);
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-      if (!atLeast(myMembership.role, 'manager')) {
-        return reply.code(403).send({ error: 'forbidden' });
+      if (!has(myMembership, 'invite') && !has(myMembership, 'manage_members')) {
+        return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
       }
 
-      const { role } = req.body;
-      if (!isClubRole(role)) {
+      // A built-in role by name (`role`), or any of the club's roles by id (`roleId`).
+      const roles = await clubRoleList(org.id);
+      const chosen =
+        typeof req.body.roleId === 'string'
+          ? roles.find((r) => r.id === req.body.roleId)
+          : isClubRole(req.body.role)
+            ? roles.find((r) => r.key === req.body.role)
+            : undefined;
+      if (!chosen) {
         return reply.code(400).send({ error: 'invalid_role' });
       }
-      // Managers invite members; only admins invite managers and admins.
-      if (role !== 'member' && myMembership.role !== 'admin') {
+      const role: ClubRole = chosen.key === 'admin' || chosen.key === 'manager' ? chosen.key : 'member';
+      // Without "manage members and roles", people invite only to roles with less than their own.
+      if (!mayGiveRole(myMembership, chosen)) {
         return reply.code(403).send({ error: 'only_admins_set_roles' });
       }
       const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: org.id }, add: { members: 1 } });
@@ -489,6 +534,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         invitedEmail: email,
         invitedBy: user.id,
         role,
+        roleId: chosen.id,
         token,
         expiresAt,
         acceptedAt: null,
@@ -511,7 +557,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         resourceId: org.id,
         userId: user.id,
         eventType: 'share',
-        payload: { invitedEmail: email, role, inviteId: id },
+        payload: { invitedEmail: email, role, roleId: chosen.id, roleName: chosen.name, inviteId: id },
       });
 
       return {
@@ -545,8 +591,8 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const myMembership = await getMembership(org.id, user.id);
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-      if (!atLeast(myMembership.role, 'manager')) {
-        return reply.code(403).send({ error: 'forbidden' });
+      if (!has(myMembership, 'invite') && !has(myMembership, 'manage_members')) {
+        return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
       }
 
       const needle = (req.query.q ?? '').trim();
@@ -598,16 +644,16 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const myMembership = await getMembership(org.id, user.id);
       if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-      if (!atLeast(myMembership.role, 'manager')) {
-        return reply.code(403).send({ error: 'forbidden' });
+      if (!has(myMembership, 'invite') && !has(myMembership, 'manage_members')) {
+        return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
       }
-      // Managers look after member invites; admin and manager invites are the admins'.
+      // People who only invite look after invites to roles with less than theirs.
       const target = await db
-        .select({ role: schema.orgInvites.role })
+        .select({ role: schema.orgInvites.role, roleId: schema.orgInvites.roleId })
         .from(schema.orgInvites)
         .where(and(eq(schema.orgInvites.id, req.params.inviteId), eq(schema.orgInvites.orgId, org.id)))
         .get();
-      if (target && target.role !== 'member' && myMembership.role !== 'admin') {
+      if (target && !mayGiveRole(myMembership, await inviteRole(org.id, target))) {
         return reply.code(403).send({ error: 'only_admins_set_roles' });
       }
       await db
@@ -633,14 +679,14 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const mine = await getMembership(org.id, user.id);
       if (!mine) return reply.code(404).send({ error: 'not_found' });
-      if (!atLeast(mine.role, 'manager')) return reply.code(403).send({ error: 'forbidden' });
+      if (!has(mine, 'invite') && !has(mine, 'manage_members')) return reply.code(403).send({ error: 'forbidden', permission: 'invite' });
       const invite = await db
         .select()
         .from(schema.orgInvites)
         .where(and(eq(schema.orgInvites.id, req.params.inviteId), eq(schema.orgInvites.orgId, org.id)))
         .get();
       if (!invite || invite.acceptedAt !== null) return reply.code(404).send({ error: 'not_found' });
-      if (invite.role !== 'member' && mine.role !== 'admin') return reply.code(403).send({ error: 'only_admins_set_roles' });
+      if (!mayGiveRole(mine, await inviteRole(org.id, invite))) return reply.code(403).send({ error: 'only_admins_set_roles' });
       const ttl = inviteTtlMs(req.body?.expiresInDays);
       if (ttl === null) return reply.code(400).send({ error: 'invalid_expiry' });
       const expiresAt = new Date(Date.now() + ttl);
@@ -657,63 +703,199 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- change member role -------------------------------------------------
+  // Old clients send one built-in `role`: the member then holds that one
+  // instead of their built-in role(s), keeping any custom ones. New
+  // clients send `roleIds`, every role the member holds.
   app.patch<{
     Params: { slug: string; userId: string };
-    Body: { role: ClubRole };
+    Body: { role?: unknown; roleIds?: unknown };
   }>('/api/orgs/:slug/members/:userId', async (req, reply) => {
     const user = requireUser(req);
     const org = await loadOrgBySlug(req.params.slug);
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const myMembership = await getMembership(org.id, user.id);
     if (!myMembership) return reply.code(404).send({ error: 'not_found' });
-    if (myMembership.role !== 'admin') {
-      return reply.code(403).send({ error: 'forbidden' });
+    if (!has(myMembership, 'manage_members')) {
+      return reply.code(403).send({ error: 'forbidden', permission: 'manage_members' });
     }
 
     const targetMembership = await getMembership(org.id, req.params.userId);
     if (!targetMembership) return reply.code(404).send({ error: 'member_not_found' });
 
-    const newRole = req.body.role;
-    if (!isClubRole(newRole)) {
-      return reply.code(400).send({ error: 'invalid_role' });
-    }
-
-    // Prevent removing the last admin (would orphan the org). The
-    // self-demotion case is the dangerous one: an admin shouldn't be
-    // able to demote themselves to 'member' if they're the only admin.
-    if (
-      myMembership.role === 'admin' &&
-      req.params.userId === user.id &&
-      newRole !== 'admin'
-    ) {
-      const adminCount = await countAdmins(org.id);
-      if (adminCount <= 1) {
-        return reply.code(409).send({ error: 'last_admin' });
+    const roles = await clubRoleList(org.id);
+    let next: string[];
+    if (req.body?.roleIds !== undefined) {
+      const ids = req.body.roleIds;
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > roles.length || !ids.every((id) => typeof id === 'string' && roles.some((r) => r.id === id))) {
+        return reply.code(400).send({ error: 'invalid_role', message: 'Pick at least one of the club’s roles.' });
       }
+      next = [...new Set(ids as string[])];
+    } else {
+      const newRole = req.body?.role;
+      if (!isClubRole(newRole)) {
+        return reply.code(400).send({ error: 'invalid_role' });
+      }
+      const builtinIds = new Set(roles.filter((r) => r.key).map((r) => r.id));
+      next = [...targetMembership.roleIds.filter((id) => !builtinIds.has(id)), `${org.id}:${newRole}`];
+    }
+    // Only an Admin gives or takes the Admin role.
+    const adminId = `${org.id}:admin`;
+    const hadAdmin = targetMembership.isAdmin;
+    const getsAdmin = next.includes(adminId);
+    if (hadAdmin !== getsAdmin && !myMembership.isAdmin) {
+      return reply.code(403).send({ error: 'only_admins_set_roles' });
+    }
+    // Someone who isn't an Admin can't change their own roles, nor give or
+    // take a role that has more than they have themselves.
+    if (!myMembership.isAdmin) {
+      if (req.params.userId === user.id) return reply.code(403).send({ error: 'only_admins_set_roles', message: 'Ask a club admin to change your own roles.' });
+      const changed = [...next.filter((id) => !targetMembership.roleIds.includes(id)), ...targetMembership.roleIds.filter((id) => !next.includes(id))];
+      const tooMuch = changed.some((id) => (roles.find((r) => r.id === id)?.permissions ?? []).some((p) => !myMembership.permissions.has(p)));
+      if (tooMuch) return reply.code(403).send({ error: 'only_admins_set_roles', message: 'You can give or take only roles that have no more than your own.' });
+    }
+    // A club always keeps an admin.
+    if (hadAdmin && !getsAdmin && (await adminCount(org.id)) <= 1) {
+      return reply.code(409).send({ error: 'last_admin', message: 'A club needs at least one Admin. Make someone else an Admin first.' });
     }
 
-    await db
-      .update(schema.orgMembers)
-      .set({ role: newRole })
-      .where(
-        and(
-          eq(schema.orgMembers.orgId, org.id),
-          eq(schema.orgMembers.userId, req.params.userId),
-        ),
-      );
+    const before = targetMembership.roleIds.length ? targetMembership.roleIds : [`${org.id}:${targetMembership.role}`];
+    await setMemberRoles(org.id, req.params.userId, next);
+    const after = await getMembership(org.id, req.params.userId);
+    const nameOf = (id: string) => roles.find((r) => r.id === id)?.name ?? 'a role';
+    const added = next.filter((id) => !before.includes(id));
+    const removed = before.filter((id) => !next.includes(id));
+    if (req.body?.roleIds === undefined) {
+      await writeAuditEvent({
+        resourceKind: 'org',
+        resourceId: org.id,
+        userId: user.id,
+        eventType: 'role_change',
+        payload: { targetUserId: req.params.userId, fromRole: targetMembership.role, toRole: after?.role ?? 'member' },
+      });
+    }
+    for (const id of added) {
+      await writeAuditEvent({ resourceKind: 'org', resourceId: org.id, userId: user.id, eventType: 'role_assign', payload: { targetUserId: req.params.userId, roleId: id, roleName: nameOf(id) } });
+    }
+    for (const id of removed) {
+      await writeAuditEvent({ resourceKind: 'org', resourceId: org.id, userId: user.id, eventType: 'role_unassign', payload: { targetUserId: req.params.userId, roleId: id, roleName: nameOf(id) } });
+    }
+    // Open layouts and modules follow at once (read only, or editable again).
     notifyAccessChanged({ userId: req.params.userId });
-    await writeAuditEvent({
-      resourceKind: 'org',
-      resourceId: org.id,
-      userId: user.id,
-      eventType: 'role_change',
-      payload: {
-        targetUserId: req.params.userId,
-        fromRole: targetMembership.role,
-        toRole: newRole,
-      },
-    });
 
+    return { ok: true, roleIds: next, role: after?.role ?? 'member' };
+  });
+
+  // ---- club roles ------------------------------------------------------------
+  // Everyone in the club sees its roles (what each lets people do); only
+  // its Admins make, change and delete them. The Admin role always has
+  // every permission and can't be changed; the four built-in roles can't be
+  // deleted (old clients and invites name them), but all but Admin can be
+  // renamed and re-ticked.
+  app.get<{ Params: { slug: string } }>('/api/orgs/:slug/roles', async (req, reply) => {
+    const user = requireUser(req);
+    const org = await loadOrgBySlug(req.params.slug);
+    if (!org) return reply.code(404).send({ error: 'not_found' });
+    const mine = await getMembership(org.id, user.id);
+    if (!mine) return reply.code(404).send({ error: 'not_found' });
+    return { roles: await rolesWithCounts(org.id), mine: mine.roleIds, permissions: [...mine.permissions], isAdmin: mine.isAdmin };
+  });
+
+  app.post<{ Params: { slug: string }; Body: { name?: unknown; permissions?: unknown } }>(
+    '/api/orgs/:slug/roles',
+    { config: { rateLimit: perPerson(30, '1 minute') } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const mine = await getMembership(org.id, user.id);
+      if (!mine) return reply.code(404).send({ error: 'not_found' });
+      if (!mine.isAdmin) return reply.code(403).send({ error: 'only_admins_edit_roles', message: 'Only club admins make and change roles.' });
+      const roles = await clubRoleList(org.id);
+      if (roles.length >= MAX_ROLES) return reply.code(409).send({ error: 'too_many_roles', message: `A club can have up to ${MAX_ROLES} roles.` });
+      const name = roleName(req.body?.name);
+      if (!name) return reply.code(400).send({ error: 'invalid_name', message: 'Give the role a name (up to 40 letters).' });
+      if (roles.some((r) => r.name.toLowerCase() === name.toLowerCase())) return reply.code(409).send({ error: 'role_name_taken', message: 'The club already has a role with that name.' });
+      const perms = rolePermissions(req.body?.permissions);
+      if (!perms) return reply.code(400).send({ error: 'invalid_permissions' });
+      const id = randomUUID();
+      await db.insert(schema.clubRoles).values({
+        id,
+        orgId: org.id,
+        key: null,
+        name,
+        permissions: JSON.stringify(perms),
+        position: Math.max(0, ...roles.map((r) => r.position)) + 1,
+        createdAt: new Date(),
+      });
+      await writeAuditEvent({ resourceKind: 'org', resourceId: org.id, userId: user.id, eventType: 'role_create', payload: { roleId: id, roleName: name, permissions: perms } });
+      return reply.code(201).send({ id, name, permissions: perms });
+    },
+  );
+
+  app.patch<{ Params: { slug: string; roleId: string }; Body: { name?: unknown; permissions?: unknown } }>(
+    '/api/orgs/:slug/roles/:roleId',
+    async (req, reply) => {
+      const user = requireUser(req);
+      const org = await loadOrgBySlug(req.params.slug);
+      if (!org) return reply.code(404).send({ error: 'not_found' });
+      const mine = await getMembership(org.id, user.id);
+      if (!mine) return reply.code(404).send({ error: 'not_found' });
+      if (!mine.isAdmin) return reply.code(403).send({ error: 'only_admins_edit_roles', message: 'Only club admins make and change roles.' });
+      const roles = await clubRoleList(org.id);
+      const role = roles.find((r) => r.id === req.params.roleId);
+      if (!role) return reply.code(404).send({ error: 'role_not_found' });
+      if (role.key === 'admin') return reply.code(409).send({ error: 'admin_role_fixed', message: 'The Admin role always has every permission, so it can’t be changed.' });
+      const updates: { name?: string; permissions?: string } = {};
+      const before = { name: role.name, permissions: role.permissions };
+      if (req.body?.name !== undefined) {
+        const name = roleName(req.body.name);
+        if (!name) return reply.code(400).send({ error: 'invalid_name', message: 'Give the role a name (up to 40 letters).' });
+        if (roles.some((r) => r.id !== role.id && r.name.toLowerCase() === name.toLowerCase())) return reply.code(409).send({ error: 'role_name_taken', message: 'The club already has a role with that name.' });
+        updates.name = name;
+      }
+      let perms: ClubPermission[] | null = null;
+      if (req.body?.permissions !== undefined) {
+        perms = rolePermissions(req.body.permissions);
+        if (!perms) return reply.code(400).send({ error: 'invalid_permissions' });
+        updates.permissions = JSON.stringify(perms);
+      }
+      if (!Object.keys(updates).length) return reply.code(400).send({ error: 'no_updates' });
+      await db.update(schema.clubRoles).set(updates).where(eq(schema.clubRoles.id, role.id));
+      // The built-in Member role's two adding permissions are the club's
+      // "members can add things" switch; keep the two in step.
+      if (role.key === 'member' && perms) {
+        const adds = perms.includes('start_layouts') && perms.includes('edit_modules');
+        if (adds !== org.membersCanCreate) await db.update(schema.orgs).set({ membersCanCreate: adds }).where(eq(schema.orgs.id, org.id));
+      }
+      await writeAuditEvent({
+        resourceKind: 'org',
+        resourceId: org.id,
+        userId: user.id,
+        eventType: 'role_edit',
+        payload: { roleId: role.id, roleName: updates.name ?? role.name, ...(updates.name ? { fromName: before.name } : {}), ...(perms ? { added: perms.filter((p) => !before.permissions.includes(p)), removed: before.permissions.filter((p) => !perms.includes(p)) } : {}) },
+      });
+      if (perms) await notifyRoleHolders(org.id, role.id);
+      return { ok: true };
+    },
+  );
+
+  app.delete<{ Params: { slug: string; roleId: string } }>('/api/orgs/:slug/roles/:roleId', async (req, reply) => {
+    const user = requireUser(req);
+    const org = await loadOrgBySlug(req.params.slug);
+    if (!org) return reply.code(404).send({ error: 'not_found' });
+    const mine = await getMembership(org.id, user.id);
+    if (!mine) return reply.code(404).send({ error: 'not_found' });
+    if (!mine.isAdmin) return reply.code(403).send({ error: 'only_admins_edit_roles', message: 'Only club admins make and change roles.' });
+    const role = (await rolesWithCounts(org.id)).find((r) => r.id === req.params.roleId);
+    if (!role) return reply.code(404).send({ error: 'role_not_found' });
+    if (role.key) return reply.code(409).send({ error: 'builtin_role', message: `${role.name} is one of the club’s starting roles, so it can’t be deleted. You can rename it or change what it allows.` });
+    if (role.memberCount > 0) {
+      return reply.code(409).send({ error: 'role_in_use', message: `${role.memberCount === 1 ? 'One member has' : `${role.memberCount} members have`} this role. Take it from them first.` });
+    }
+    // Pending invites to it give the Member role instead.
+    await db.update(schema.orgInvites).set({ roleId: null, role: 'member' }).where(and(eq(schema.orgInvites.orgId, org.id), eq(schema.orgInvites.roleId, role.id)));
+    await db.delete(schema.clubRoles).where(eq(schema.clubRoles.id, role.id));
+    await writeAuditEvent({ resourceKind: 'org', resourceId: org.id, userId: user.id, eventType: 'role_delete', payload: { roleId: role.id, roleName: role.name } });
     return { ok: true };
   });
 
@@ -729,17 +911,19 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
 
       const isSelf = req.params.userId === user.id;
       const target = await getMembership(org.id, req.params.userId);
-      // Admins remove anyone; managers remove members only (not managers or admins).
+      // "Manage members and roles" removes anyone; "invite people" removes
+      // only people with less than you (a Manager removes Members, as before).
       const mayRemove =
-        isSelf || myMembership.role === 'admin' || (myMembership.role === 'manager' && target?.role === 'member');
+        isSelf ||
+        has(myMembership, 'manage_members') ||
+        (has(myMembership, 'invite') && !!target && !target.isAdmin && lesserRole(target.permissions, myMembership.permissions));
       if (!mayRemove) {
         return reply.code(403).send({ error: 'forbidden' });
       }
 
       // Last-admin guard same as above.
-      if (target?.role === 'admin') {
-        const adminCount = await countAdmins(org.id);
-        if (adminCount <= 1) {
+      if (target?.isAdmin) {
+        if ((await adminCount(org.id)) <= 1) {
           return reply.code(409).send({ error: 'last_admin' });
         }
       }
@@ -845,7 +1029,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
             explicitOverride: !lib.locked && explicit !== undefined,
           };
         }),
-        isAdmin: membership.role === 'admin',
+        isAdmin: membership.isAdmin,
       };
     },
   );
@@ -862,7 +1046,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       const org = await loadOrgBySlug(req.params.slug);
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const membership = await getMembership(org.id, me.id);
-      if (!membership || membership.role !== 'admin') {
+      if (!membership || !membership.isAdmin) {
         return reply.code(403).send({ error: 'not_org_admin' });
       }
 
@@ -928,7 +1112,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       const org = await loadOrgBySlug(req.params.slug);
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const membership = await getMembership(org.id, me.id);
-      if (!membership || membership.role !== 'admin') {
+      if (!membership || !membership.isAdmin) {
         return reply.code(403).send({ error: 'not_org_admin' });
       }
       const lib = await db
@@ -965,29 +1149,72 @@ export async function loadOrgBySlug(slug: string): Promise<typeof schema.orgs.$i
   return row ?? null;
 }
 
-export async function getMembership(
-  orgId: string,
-  userId: string,
-): Promise<{ role: ClubRole } | null> {
-  const row = await db
-    .select({ role: schema.orgMembers.role })
-    .from(schema.orgMembers)
-    .where(
-      and(
-        eq(schema.orgMembers.orgId, orgId),
-        eq(schema.orgMembers.userId, userId),
-      ),
-    )
-    .get();
-  return row ?? null;
+const MAX_ROLES = 30;
+
+function roleName(v: unknown): string | null {
+  const name = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
+  return name && name.length <= 40 ? name : null;
 }
 
-async function countAdmins(orgId: string): Promise<number> {
-  const rows = await db
-    .select({ role: schema.orgMembers.role })
-    .from(schema.orgMembers)
-    .where(eq(schema.orgMembers.orgId, orgId));
-  return rows.filter((r) => r.role === 'admin').length;
+function rolePermissions(v: unknown): ClubPermission[] | null {
+  if (!Array.isArray(v) || !v.every(isClubPermission)) return null;
+  return normalizePermissions(v);
+}
+
+/** The club's roles, each with how many members hold it. */
+export async function rolesWithCounts(orgId: string): Promise<(ClubRoleRow & { memberCount: number })[]> {
+  const roles = await clubRoleList(orgId);
+  const members = await db.select({ userId: schema.orgMembers.userId, role: schema.orgMembers.role }).from(schema.orgMembers).where(eq(schema.orgMembers.orgId, orgId));
+  const held = await db.select({ userId: schema.memberRoles.userId, roleId: schema.memberRoles.roleId }).from(schema.memberRoles).where(eq(schema.memberRoles.orgId, orgId));
+  const withRows = new Set(held.map((h) => h.userId));
+  return roles.map((r) => ({
+    ...r,
+    memberCount:
+      held.filter((h) => h.roleId === r.id).length + (r.key ? members.filter((m) => !withRows.has(m.userId) && m.role === r.key).length : 0),
+  }));
+}
+
+/** Open live connections of everyone holding the role check their access again at once. */
+async function notifyRoleHolders(orgId: string, roleId: string): Promise<void> {
+  const role = (await clubRoleList(orgId)).find((r) => r.id === roleId);
+  const held = await db.select({ userId: schema.memberRoles.userId }).from(schema.memberRoles).where(eq(schema.memberRoles.roleId, roleId));
+  const ids = new Set(held.map((h) => h.userId));
+  if (role?.key) {
+    // Members with no role rows yet hold their built-in role.
+    const bare = await db.select({ userId: schema.orgMembers.userId, role: schema.orgMembers.role }).from(schema.orgMembers).where(eq(schema.orgMembers.orgId, orgId));
+    const withRows = new Set((await db.select({ userId: schema.memberRoles.userId }).from(schema.memberRoles).where(eq(schema.memberRoles.orgId, orgId))).map((r) => r.userId));
+    for (const m of bare) if (!withRows.has(m.userId) && m.role === role.key) ids.add(m.userId);
+  }
+  for (const userId of ids) notifyAccessChanged({ userId });
+}
+
+/** Every member's open live connections check their access again. */
+async function notifyClub(orgId: string): Promise<void> {
+  const rows = await db.select({ userId: schema.orgMembers.userId }).from(schema.orgMembers).where(eq(schema.orgMembers.orgId, orgId));
+  for (const r of rows) notifyAccessChanged({ userId: r.userId });
+}
+
+/** Who `userId` is in the club (their roles and permissions), or null. */
+export async function getMembership(orgId: string, userId: string): Promise<ClubAccess | null> {
+  return clubAccess(userId, orgId);
+}
+
+/**
+ * Whether `actor` may invite someone to, or give, `role`: anyone with
+ * "manage members and roles" (only an Admin gives Admin); with only
+ * "invite people", roles with strictly less than the actor's own.
+ */
+export function mayGiveRole(actor: ClubAccess, role: ClubRoleRow | undefined): boolean {
+  if (!role) return false;
+  if (role.key === 'admin') return actor.isAdmin;
+  if (actor.permissions.has('manage_members')) return true;
+  return actor.permissions.has('invite') && lesserRole(new Set(role.permissions), actor.permissions);
+}
+
+/** The club role a pending invite gives. */
+export async function inviteRole(orgId: string, invite: { role: ClubRole; roleId: string | null }): Promise<ClubRoleRow | undefined> {
+  const roles = await clubRoleList(orgId);
+  return roles.find((r) => r.id === invite.roleId) ?? roles.find((r) => r.key === invite.role);
 }
 
 /**
