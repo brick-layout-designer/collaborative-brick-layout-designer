@@ -12,8 +12,12 @@ export const DESKTOP_MINIMUM = '1.2.0';
 export const DESKTOP_RECOMMENDED = '1.3.0';
 /** Where a desktop that must update is sent: the desktop's GitHub releases. */
 export const DESKTOP_DOWNLOAD_URL = 'https://github.com/brick-layout-designer/brick-layout-designer/releases/latest';
-/** What the desktop app sends: `BrickLayoutDesigner/<version> (desktop)`. */
-export const DESKTOP_UA = /^BrickLayoutDesigner\/([0-9][0-9A-Za-z.+-]{0,31}) \(desktop\)/;
+/**
+ * What the desktop app sends: `CollaborativeBrickLayoutDesigner/<version> (desktop)`
+ * once it carries the new name, `BrickLayoutDesigner/<version> (desktop)` before.
+ * Both are the desktop app; the older name stays accepted for good.
+ */
+export const DESKTOP_UA = /^(?:Collaborative)?BrickLayoutDesigner\/([0-9][0-9A-Za-z.+-]{0,31}) \(desktop\)/;
 
 /** What this server can do, so a desktop can hide what it lacks. */
 export const FEATURES = [

@@ -87,6 +87,9 @@ describe('classifyClient', () => {
   it('reads the desktop app and its version', () => {
     expect(classifyClient('BrickLayoutDesigner/1.3.0 (desktop)')).toEqual({ kind: 'desktop', version: '1.3.0' });
   });
+  it('reads the desktop app under its new name too', () => {
+    expect(classifyClient('CollaborativeBrickLayoutDesigner/2.0.0 (desktop)')).toEqual({ kind: 'desktop', version: '2.0.0' });
+  });
   it('splits the web app by device', () => {
     expect(classifyClient('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148')).toEqual({ kind: 'web', device: 'phone' });
     // Some in-app browsers drop the "Mobile" token.
