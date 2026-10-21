@@ -73,6 +73,7 @@ export const NO_PERSONAL_DATA: Record<string, string> = {
   catalog_collection_parts: 'Which parts are in a collection.',
   layout_updates: 'Recent edits to a layout, waiting to be folded into it: part of the layout file, which is included.',
   orgs: 'Clubs: the club’s own data. A person’s memberships are listed under clubs.',
+  club_roles: 'A club’s roles and what each allows: the club’s own data (in the club’s download). Who holds them is listed under club-roles.',
   platform_settings: 'Site settings. Only "who last changed them" points at a person, and that is listed under audit-log.',
   erasures: 'The record that an account or club was erased: a pseudonym ("Deleted user #abc123"), when, and how many things went. No personal data.',
   privacy_request_events: 'The history of a privacy request (listed under privacy-requests); the admin who acted is a site admin.',
@@ -114,6 +115,17 @@ export async function collectUserData(userId: string): Promise<DataSection[]> {
     .where(eq(s.orgMembers.userId, userId))
     .all();
   add('clubs', 'Clubs you are in, and your role in each.', memberships);
+  add(
+    'club-roles',
+    'The roles you hold in each club.',
+    (await db
+      .select({ orgId: s.memberRoles.orgId, club: s.orgs.name, role: s.clubRoles.name })
+      .from(s.memberRoles)
+      .innerJoin(s.clubRoles, eq(s.clubRoles.id, s.memberRoles.roleId))
+      .innerJoin(s.orgs, eq(s.orgs.id, s.memberRoles.orgId))
+      .where(eq(s.memberRoles.userId, userId))
+      .all()) as Record<string, unknown>[],
+  );
   add('clubs-started', 'Clubs you started.', await select(s.orgs, eq(s.orgs.createdBy, userId)));
   add(
     'club-invites',
@@ -225,6 +237,7 @@ export const READ_TABLES = [
   'email_verifications',
   'user_preferences',
   'org_members',
+  'member_roles',
   'org_invites',
   'org_join_requests',
   'layouts',
@@ -270,6 +283,17 @@ export async function collectOrgData(orgId: string): Promise<DataSection[]> {
       .from(s.orgMembers)
       .innerJoin(s.users, eq(s.users.id, s.orgMembers.userId))
       .where(eq(s.orgMembers.orgId, orgId))
+      .all()) as Record<string, unknown>[],
+  );
+  add('roles', 'Its roles and what each allows.', await select(s.clubRoles, eq(s.clubRoles.orgId, orgId)));
+  add(
+    'member-roles',
+    'Which roles each member holds.',
+    (await db
+      .select({ userId: s.memberRoles.userId, roleId: s.memberRoles.roleId, role: s.clubRoles.name })
+      .from(s.memberRoles)
+      .innerJoin(s.clubRoles, eq(s.clubRoles.id, s.memberRoles.roleId))
+      .where(eq(s.memberRoles.orgId, orgId))
       .all()) as Record<string, unknown>[],
   );
   add('invites', 'Invites to join that are still open or were used.', await select(s.orgInvites, eq(s.orgInvites.orgId, orgId)));

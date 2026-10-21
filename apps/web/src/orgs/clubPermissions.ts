@@ -39,7 +39,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { value: 'start_layouts', label: 'Start new club layouts', help: 'Make new layouts and collections for the club, or copy and move your own into it.' },
       { value: 'edit_modules', label: 'Add or edit modules', help: 'Save new modules to the club’s library and change the ones it has.' },
       { value: 'add_parts', label: 'Add parts', help: 'Upload custom parts for the club, and change the ones it has.' },
-      { value: 'manage_venues', label: 'Manage venues', help: 'Add, change and delete the club’s venues (the halls and rooms layouts go in).' },
+      { value: 'manage_venues', label: 'Manage venues', help: 'Add, change and delete the club’s venues (the halls layouts go in).' },
       { value: 'delete_items', label: 'Delete club items', help: 'Rename, share, hand over and delete the club’s layouts, modules and parts, and give a thing back to the person who made it.' },
     ],
   },
