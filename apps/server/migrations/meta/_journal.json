@@ -253,6 +253,13 @@
       "when": 1792544457983,
       "tag": "0035_club_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1792552409531,
+      "tag": "0036_custom_part_invite_links",
+      "breakpoints": true
     }
   ]
 }

@@ -117,6 +117,22 @@ describe('Custom parts on the home page', () => {
     expect(within(clubs).queryByRole('menuitem', { name: 'Delete' })).toBeNull();
   });
 
+  it('the ⋯ menu shares a part with people: Share for mine, People with access for others', async () => {
+    renderAt('/');
+    const mine = await row('My Arch');
+    fireEvent.click(within(mine).getByRole('button', { name: 'More for MY.1' }));
+    fireEvent.click(within(mine).getByRole('menuitem', { name: 'Share with people…' }));
+    expect(await screen.findByRole('dialog', { name: 'Share My Arch' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Invite' })).toBeTruthy();
+    await waitFor(() => expect(calls).toContain('GET /api/custom-parts/p1/collaborators'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    const dana = await row('Dana Tree');
+    fireEvent.click(within(dana).getByRole('button', { name: 'More for DANA.1' }));
+    fireEvent.click(within(dana).getByRole('menuitem', { name: 'People with access…' }));
+    expect(await screen.findByRole('dialog', { name: 'Share Dana Tree' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
+  });
+
   it('who may delete: the server’s role, else my own or a club I admin', () => {
     expect(canDeletePart(PARTS[0]!, 'u1', [CLUB])).toBe(true);
     expect(canDeletePart(PARTS[1]!, 'u1', [CLUB])).toBe(false);

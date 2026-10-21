@@ -40,7 +40,7 @@ import { prepareLayoutCopy } from './layouts.js';
 import { copyPartTo, dropModuleFromCollections } from './collections.js';
 import { postClubNote } from './warnings.js';
 import { perPerson } from '../utils/rateLimits.js';
-import { clearPendingLayoutShares, clearPendingModuleShares, handedOverIds } from '../access/pendingShares.js';
+import { clearPendingLayoutShares, clearPendingModuleShares, clearPendingPartShares, handedOverIds } from '../access/pendingShares.js';
 import { notifyAccessChanged } from '../ws/liveAccess.js';
 
 const KINDS: { kind: CreditKind; path: string; token: 'layouts:write' | 'parts:write' | 'venues:write'; word: string }[] = [
@@ -228,6 +228,7 @@ export async function returnToAuthor(
       tx.update(schema.customParts).set({ ownerUserId: authorUser.id, ownerOrgId: null, updatedAt: now }).where(eq(schema.customParts.id, id)).run();
       followCopy(tx, 'part', id, copyId, orgId);
     });
+    await clearPendingPartShares(id);
   } else {
     const src = await db.select().from(schema.venueLibrary).where(eq(schema.venueLibrary.id, id)).get();
     if (!src) return refuse(404, 'not_found');
@@ -349,6 +350,7 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
       const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: orgId }, add: { customParts: 1, bytes } });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
       await db.update(schema.customParts).set({ ownerUserId: null, ownerOrgId: orgId, updatedAt: new Date() }).where(eq(schema.customParts.id, part.id));
+      await clearPendingPartShares(part.id);
       if (part.ownerOrgId) await dropModuleFromCollections({ id: part.id, title: part.displayName }, 'moved to another club', orgId, user.id, 'part');
       await writeAuditEvent({
         resourceKind: 'custom_part',

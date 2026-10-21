@@ -37,11 +37,17 @@ export async function clearPendingModuleShares(moduleId: string): Promise<void> 
   await db.delete(schema.moduleInvites).where(and(eq(schema.moduleInvites.moduleId, moduleId), isNull(schema.moduleInvites.acceptedAt)));
 }
 
+/** Delete a custom part's pending invites. Call whenever the part's owner changes. */
+export async function clearPendingPartShares(partId: string): Promise<void> {
+  await db.delete(schema.customPartInvites).where(and(eq(schema.customPartInvites.customPartId, partId), isNull(schema.customPartInvites.acceptedAt)));
+}
+
 /** Clear pending shares on each of a set of things that just changed hands. */
-export async function clearPendingSharesFor(kind: 'layouts' | 'modules', ids: readonly string[]): Promise<void> {
+export async function clearPendingSharesFor(kind: 'layouts' | 'modules' | 'custom-parts', ids: readonly string[]): Promise<void> {
   for (const id of ids) {
     if (kind === 'layouts') await clearPendingLayoutShares(id);
-    else await clearPendingModuleShares(id);
+    else if (kind === 'modules') await clearPendingModuleShares(id);
+    else await clearPendingPartShares(id);
   }
 }
 

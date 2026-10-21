@@ -13,7 +13,7 @@ interface SendInviteEmailArgs {
   inviteUrl: string;
   inviterName: string;
   /** What they're invited to (default a layout). */
-  what?: 'layout' | 'module';
+  what?: 'layout' | 'module' | 'part';
 }
 
 export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolean> {
@@ -28,7 +28,7 @@ export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolea
   const safeName = escapeHtml(args.inviterName);
   const safeUrl = escapeHtml(args.inviteUrl);
 
-  const what = args.what ?? 'layout';
+  const what = args.what === 'part' ? 'custom part' : (args.what ?? 'layout');
   const subject = `${args.inviterName} invited you to a ${what}`;
   const text =
     `${args.inviterName} invited you to collaborate on a Collaborative ` +

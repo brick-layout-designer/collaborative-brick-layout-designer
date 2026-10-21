@@ -437,6 +437,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'PUT /api/custom-parts/:id': resource('custom-part'),
   'DELETE /api/custom-parts/:id': resource('custom-part'),
   'POST /api/custom-parts/:id/invites': resource('custom-part'),
+  'DELETE /api/custom-parts/:id/invites/:inviteId': resource('custom-part'),
+  'POST /api/part-invites/:token': resource('custom-part', { reply: 'partId' }),
   'PATCH /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'DELETE /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'POST /api/custom-parts/:id/move': resource('custom-part'),

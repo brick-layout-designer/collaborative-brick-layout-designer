@@ -166,7 +166,11 @@ export async function collectUserData(userId: string): Promise<DataSection[]> {
     await select(s.customParts, or(eq(s.customParts.ownerUserId, userId), eq(s.customParts.createdBy, userId))),
   );
   add('custom-parts-shared-with-you', 'Other people’s parts shared with you.', await select(s.customPartCollaborators, eq(s.customPartCollaborators.userId, userId)));
-  add('custom-part-invites', 'Invites to a part sent to your email.', await select(s.customPartInvites, eq(s.customPartInvites.invitedEmail, email)));
+  add(
+    'custom-part-invites',
+    'Invites to a custom part you sent, or that were sent to your email.',
+    await select(s.customPartInvites, or(eq(s.customPartInvites.invitedBy, userId), eq(s.customPartInvites.invitedEmail, email))),
+  );
   add(
     'venues',
     'Venues (rooms) you saved, and club venues you made. Your own are also in the venues folder.',

@@ -684,17 +684,31 @@ export const customPartCollaborators = sqliteTable(
 // Pending custom-part invites for unregistered emails (Phase 7 backlog).
 // Once the recipient registers + accepts, accepted_at is set and a
 // custom_part_collaborators row is created.
-export const customPartInvites = sqliteTable('custom_part_invites', {
-  id: text('id').primaryKey(),
-  customPartId: text('custom_part_id')
-    .notNull()
-    .references(() => customParts.id, { onDelete: 'cascade' }),
-  invitedEmail: text('invited_email').notNull(),
-  role: text('role', { enum: ['viewer', 'editor'] }).notNull(),
-  token: text('token').notNull().unique(),
-  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
-  acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
-});
+// Invites to a custom part by an emailed link, the same shape as
+// module_invites: the recipient signs in with the invited, verified email
+// and accepts. Single use, expires, and holds only while its sender still
+// manages the part's sharing. Pending ones go when the part changes hands.
+// `invited_by` and `created_at` came with invite links (0036); the table
+// had no writer before, so a null sender never holds.
+export const customPartInvites = sqliteTable(
+  'custom_part_invites',
+  {
+    id: text('id').primaryKey(),
+    customPartId: text('custom_part_id')
+      .notNull()
+      .references(() => customParts.id, { onDelete: 'cascade' }),
+    invitedEmail: text('invited_email').notNull(),
+    role: text('role', { enum: ['viewer', 'editor'] }).notNull(),
+    token: text('token').notNull().unique(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+    invitedBy: text('invited_by').references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => ({
+    partIdx: index('custom_part_invites_custom_part_id_idx').on(t.customPartId),
+  }),
+);
 
 // Reusable named module: a saved selection of bricks (and their relative
 // positions / per-brick metadata) that can be dropped into any layout the

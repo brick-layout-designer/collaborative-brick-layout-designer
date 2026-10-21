@@ -16,6 +16,7 @@ import { adminInsightsRoutes } from './adminInsights.js';
 import { adminLimitsRoutes } from './adminLimits.js';
 import { collaboratorRoutes } from './collaborators.js';
 import { customPartRoutes } from './customParts.js';
+import { customPartInviteRoutes } from './customPartInvites.js';
 import { inviteRoutes } from './invites.js';
 import { moduleInviteRoutes } from './moduleInvites.js';
 import { layoutRoutes } from './layouts.js';
@@ -62,6 +63,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(collaboratorRoutes);
   await app.register(inviteRoutes);
   await app.register(moduleInviteRoutes);
+  await app.register(customPartInviteRoutes);
   await app.register(orgRoutes);
   await app.register(orgInviteRoutes);
   await app.register(clubJoinRoutes);
