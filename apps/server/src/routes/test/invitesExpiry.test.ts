@@ -197,7 +197,7 @@ describe('layout invite — GET preview edge cases', () => {
     const res = await app.inject({ method: 'GET', url: `/api/invites/${token}` });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { invitedEmail: string; layoutTitle: string };
-    expect(body.invitedEmail).toBe('i…@example.com');
+    expect(body.invitedEmail).toBe('invitee@example.com');
     expect(body.layoutTitle).toBe('Invite Layout');
   });
 });

@@ -7,6 +7,7 @@ import type { PartWire } from '../api';
 import { colorName } from './colorNames';
 import { effectiveLimit, limitFor } from './budgetUsage';
 import { libraryItems } from './sets';
+import { defuseFormula } from '../csvSafety';
 
 export const COLUMN_TITLES = ['Part', 'In Use', 'Color', 'Description', 'Budgeted', 'Missing', 'Part Usage %'] as const;
 
@@ -186,11 +187,13 @@ export function partListCsv(groups: readonly PartListGroup[], hasBudget: boolean
     c[0] = c[0]!.replaceAll(',', ' ');
     // Just the number, as BlueBrick.
     if (hasBudget && (isTotal || r.usage >= 0)) c[6] = c[6]!.slice(11, -1);
-    return c.join(',') + '\n';
+    // Otherwise BlueBrick's bytes, but a name a spreadsheet would run as a
+    // formula ("=HYPERLINK(…)", "+1", "@SUM", "-cmd") gets a leading '.
+    return c.map(defuseFormula).join(',') + '\n';
   };
   let out = '';
   for (const g of groups) {
-    if (g.name) out += `${g.name}\n`;
+    if (g.name) out += `${defuseFormula(g.name)}\n`;
     out += COLUMN_TITLES.join(',') + '\n';
     for (const r of g.rows) out += row(r, false);
     out += row(g.total, true);
