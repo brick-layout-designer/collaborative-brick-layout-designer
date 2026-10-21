@@ -6,9 +6,9 @@
 
 A web app for planning LEGO train and town layouts together: live editing in
 the browser, clubs, shared modules, venues, custom parts and a public catalog.
-It is the server for the
-[Brick Layout Designer desktop app](https://github.com/brick-layout-designer/brick-layout-designer)
-too, and reads and writes the same files (`.bld-layout`, and BlueBrick's
+It is also the server for the
+[Collaborative Brick Layout Designer desktop app](https://github.com/brick-layout-designer/brick-layout-designer),
+and reads and writes the same files (`.bld-layout`, and BlueBrick's
 `.bbm`). Self-hosted as one Docker container.
 
 ---
@@ -230,7 +230,7 @@ paths in a parser (`/etc/crowdsec/parsers/s02-enrich/cld-whitelist.yaml`):
 
 ```yaml
 name: local/cld-app-paths
-description: "Brick Layout Designer: the app's own paths may 404 now and then"
+description: "Collaborative Brick Layout Designer: the app's own paths may 404 now and then"
 whitelist:
   reason: "app paths that may answer 401/403/404 in normal use"
   expression:

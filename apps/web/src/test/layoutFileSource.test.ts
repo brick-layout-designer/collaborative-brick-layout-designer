@@ -34,7 +34,7 @@ describe('layout file source', () => {
     expect(withSource.source).toEqual(SHARED);
     const local = await manifestOf(await buildLayoutFile({ bbm: '<Map/>', sidecar: null }));
     expect(local).not.toHaveProperty('source');
-    expect(local).toEqual({ format: 'bld-layout', generator: 'Brick Layout Designer (web)', version: 1 });
+    expect(local).toEqual({ format: 'bld-layout', generator: 'Collaborative Brick Layout Designer (web)', version: 1 });
   });
 
   it('names this server, the layout and the time for a web download', () => {
@@ -59,7 +59,7 @@ describe('layout file source', () => {
     expect(m.futureField).toEqual({ kept: true });
     expect(m.source).toEqual(SHARED);
     // Its own fields are this version's, whatever the kept manifest said.
-    expect(m).toMatchObject({ format: 'bld-layout', version: 1, generator: 'Brick Layout Designer (web)' });
+    expect(m).toMatchObject({ format: 'bld-layout', version: 1, generator: 'Collaborative Brick Layout Designer (web)' });
     expect((await readLayoutFile(again)).source).toEqual(SHARED);
   });
 

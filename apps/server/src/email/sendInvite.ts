@@ -32,7 +32,7 @@ export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolea
   const subject = `${args.inviterName} invited you to a ${what}`;
   const text =
     `${args.inviterName} invited you to collaborate on a Collaborative ` +
-    `Layout Designer ${what}.\n\nOpen this link to accept:\n\n${args.inviteUrl}\n`;
+    `Brick Layout Designer ${what}.\n\nOpen this link to accept:\n\n${args.inviteUrl}\n`;
   const html =
     `<p>${safeName} invited you to collaborate on a ` +
     `Collaborative Brick Layout Designer ${what}.</p>` +
