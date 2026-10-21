@@ -207,8 +207,8 @@ test('an account named by its email is asked for a name, and its club never sees
   // Ada's member list: "Builder #…" for Pat, never the address as a name
   // (as the club's admin she may see addresses, on their own line).
   await page.goto(`/orgs/${slug}/admin`);
-  await expect(page.getByRole('combobox', { name: /^Role for Builder #[0-9a-f]{6}$/ })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole('combobox', { name: `Role for ${PAT}` })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: /^Roles for Builder #[0-9a-f]{6}$/ })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('group', { name: `Roles for ${PAT}` })).toHaveCount(0);
 
   // Pat signs in: "What should we call you?", prefilled from the email.
   await pat.goto('/');
@@ -226,6 +226,6 @@ test('an account named by its email is asked for a name, and its club never sees
   await pat.keyboard.press('Escape');
 
   // Ada sees the new name without reloading.
-  await expect(page.getByRole('combobox', { name: `Role for Pat Plates ${ts}` })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('group', { name: `Roles for Pat Plates ${ts}` })).toBeVisible({ timeout: 15000 });
   await pat.close();
 });

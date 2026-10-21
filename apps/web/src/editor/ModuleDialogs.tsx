@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { readSidecarFromDoc } from '@cld/ydoc';
 import type { BbmMap } from '@cld/model';
 import { api } from '../api';
+import { clubCanAdd } from '../orgs/clubPermissions';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { moveToClubWording } from '../owners/owners';
 import { ModuleThumb } from '../modules/ModuleThumb';
@@ -109,7 +110,7 @@ function useOwner(layoutOwnerOrgId: string | null | undefined) {
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const [picked, setPicked] = useState<string | null>(null);
   // Not a club that keeps adding to its admins, for one of its members.
-  const layoutClub = orgs.data?.orgs.find((o) => o.id === layoutOwnerOrgId && o.canAdd !== false)?.slug ?? '';
+  const layoutClub = orgs.data?.orgs.find((o) => o.id === layoutOwnerOrgId && clubCanAdd(o, 'module'))?.slug ?? '';
   const slug = picked ?? layoutClub;
   const clubName = slug ? (orgs.data?.orgs.find((o) => o.slug === slug)?.name ?? slug) : null;
   return { slug, setSlug: setPicked, orgs: orgs.data?.orgs, clubName };
@@ -202,7 +203,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
         </label>
         {alsoSave && (
           <>
-            <SaveToPicker value={owner.slug} onChange={owner.setSlug} orgs={owner.orgs} />
+            <SaveToPicker value={owner.slug} onChange={owner.setSlug} orgs={owner.orgs} kind="module" />
             {map && <SheetsNote map={map} members={members} oneSheet={oneSheet} setOneSheet={setOneSheet} />}
           </>
         )}
@@ -279,7 +280,7 @@ export function SaveToLibraryDialog({ doc, moduleId, onClose, layoutOwnerOrgId, 
               <label htmlFor="save-module-name" className="mb-1 block text-xs text-muted">Module name</label>
               <input id="save-module-name" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} maxLength={MAX_NAME_LENGTH} placeholder="My module" className={FIELD} />
             </div>
-            <SaveToPicker value={owner.slug} onChange={owner.setSlug} orgs={owner.orgs} />
+            <SaveToPicker value={owner.slug} onChange={owner.setSlug} orgs={owner.orgs} kind="module" />
           </>
         ) : (
           <div role="radiogroup" aria-label="Module to update" className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-line p-1">

@@ -1,5 +1,6 @@
 import type { FourDBrixRemap, LDrawRemap, TrackDesignerRemap } from '@cld/parts-catalog/browser';
 import type { ClubRole } from './orgs/clubRoles';
+import { askForPermission, isClubPermission, type ClubPermission } from './orgs/clubPermissions';
 import type { Venue } from '@cld/bbm';
 
 export type ProviderId = 'google' | 'github' | 'oidc';
@@ -60,7 +61,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_a_member_of_recipient_org: 'You are not in that club.',
   org_not_found: 'That club was not found.',
   recipient_org_not_found: 'That club was not found.',
-  only_club_admins_can_add: 'Only the club’s admins can add things to this club.',
+  only_club_admins_can_add: 'Your roles in this club can’t add this here. Ask a club admin.',
+  only_admins_set_roles: 'Only club admins give that role.',
   last_admin: 'A club needs at least one admin. Make someone else an admin first, or hand the club over.',
   confirm_name_mismatch: 'Type the club’s name exactly to delete it.',
   slug_taken: 'Another club already uses that address.',
@@ -126,7 +128,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /** Errors whose server message is the sentence to show (privacy: "You can ask again after …"). */
-const MESSAGE_ERRORS = new Set(['export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required', 'heir_not_member']);
+const MESSAGE_ERRORS = new Set(['only_admins_edit_roles', 'admin_role_fixed', 'builtin_role', 'role_in_use', 'role_name_taken', 'too_many_roles', 'only_admins_set_roles', 'last_admin', 'only_club_admins_can_give_back', 'export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required', 'heir_not_member']);
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
 /** What a request says when it never reached the server (no Wi-Fi, server down). */
@@ -209,6 +211,9 @@ async function friendlyErrorMessage(res: Response, method = 'GET', path = res.ur
     ) {
       return body.message;
     }
+    // A club permission the caller's roles don't give: name it, and who to ask.
+    const perm = (body as { permission?: unknown }).permission;
+    if (res.status === 403 && isClubPermission(perm)) return askForPermission(perm);
     if (typeof body.error === 'string' && body.error) {
       return ERROR_MESSAGES[body.error] ?? humanizeErrorCode(body.error);
     }
@@ -694,14 +699,28 @@ export const api = {
       ),
     get: (slug: string) => get<OrgDetail>(`/api/orgs/${slug}`),
     members: (slug: string) =>
-      get<{ members: OrgMemberSummary[]; invites: OrgInviteSummary[] }>(
+      get<{ members: OrgMemberSummary[]; invites: OrgInviteSummary[]; roles?: ClubRoleSummary[] }>(
         `/api/orgs/${slug}/members`,
       ),
+    /** The club's roles (everyone in it sees them), and mine. */
+    roles: (slug: string) =>
+      get<{ roles: ClubRoleSummary[]; mine: string[]; permissions: ClubPermission[]; isAdmin: boolean }>(`/api/orgs/${slug}/roles`),
+    /** Admins: a new role. */
+    createRole: (slug: string, name: string, permissions: ClubPermission[]) =>
+      post<{ id: string; name: string; permissions: ClubPermission[] }>(`/api/orgs/${slug}/roles`, { name, permissions }),
+    /** Admins: rename a role or change what it allows (not the Admin role). */
+    updateRole: (slug: string, roleId: string, body: { name?: string; permissions?: ClubPermission[] }) =>
+      patch<{ ok: true }>(`/api/orgs/${slug}/roles/${encodeURIComponent(roleId)}`, body),
+    /** Admins: delete a role nobody holds (not the four starting ones). */
+    deleteRole: (slug: string, roleId: string) => del(`/api/orgs/${slug}/roles/${encodeURIComponent(roleId)}`),
+    /** Every role a member holds (at least one). */
+    setMemberRoles: (slug: string, userId: string, roleIds: string[]) =>
+      patch<{ ok: true; roleIds: string[]; role: ClubRole }>(`/api/orgs/${slug}/members/${userId}`, { roleIds }),
     /** Invite by email, OR by userId (the autocomplete path — see searchUsers). Pass exactly one. */
     invite: (
       slug: string,
       target: { email: string } | { userId: string },
-      role: ClubRole,
+      role: ClubRole | { roleId: string },
       /** 1 to 30; the server's default is 14. */
       expiresInDays?: number,
     ) =>
@@ -711,7 +730,7 @@ export const api = {
         inviteUrl: string;
         emailDelivered: boolean;
         expiresAt: number;
-      }>(`/api/orgs/${slug}/invites`, { ...target, role, ...(expiresInDays ? { expiresInDays } : {}) }),
+      }>(`/api/orgs/${slug}/invites`, { ...target, ...(typeof role === 'string' ? { role } : role), ...(expiresInDays ? { expiresInDays } : {}) }),
     /** Send an invite again, with a fresh expiry. */
     resendInvite: (slug: string, inviteId: string, expiresInDays?: number) =>
       post<{ ok: true; inviteUrl: string; emailDelivered: boolean; expiresAt: number }>(
@@ -1860,6 +1879,20 @@ export interface OrgSummary {
   canAdd?: boolean;
   /** A trusted club's admins and managers: how much waits in its review queue. */
   pendingReviews?: number;
+  /** What my roles in it let me do (older servers leave it out: see clubCan). */
+  permissions?: ClubPermission[];
+  /** I hold its Admin role. */
+  isAdmin?: boolean;
+}
+
+/** One of a club's roles. `key` names the four it starts with; a club's own roles have none. */
+export interface ClubRoleSummary {
+  id: string;
+  key: 'admin' | 'manager' | 'member' | 'viewer' | null;
+  name: string;
+  permissions: ClubPermission[];
+  position: number;
+  memberCount: number;
 }
 
 export interface ModerationClub {
@@ -1935,6 +1968,8 @@ export interface JoinRequestSummary {
 export interface OrgMemberSummary {
   userId: string;
   role: ClubRole;
+  /** Every role they hold (older servers leave it out). */
+  roleIds?: string[];
   joinedAt: number;
   email: string;
   displayName: string;
@@ -1945,6 +1980,8 @@ export interface OrgInviteSummary {
   id: string;
   invitedEmail: string;
   role: ClubRole;
+  /** The club role it gives (older servers leave it out). */
+  roleId?: string;
   expiresAt: number;
   /** The invite's link, for the admin to send themselves. */
   inviteUrl?: string;

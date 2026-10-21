@@ -7,7 +7,8 @@ import { ModuleThumb } from '../modules/ModuleThumb';
 import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
 import { ClubPublicView } from './ClubDirectory';
-import { aRole, atLeast } from './clubRoles';
+import { aRole } from './clubRoles';
+import { runsClub } from './clubPermissions';
 import { ClubCollectionsSection } from '../catalog/Collections';
 import { TrustedBadge } from '../catalog/TrustedBadge';
 import { creditText } from '../owners/owners';
@@ -37,7 +38,7 @@ function OrgDetail({ slug }: { slug: string }) {
 
   const org = detail.data!;
   // Admins and managers both run the club from its Manage page.
-  const isAdmin = atLeast(org.myRole, 'manager');
+  const isAdmin = runsClub(org);
   const myUserId = me.data.user.id;
 
   return (

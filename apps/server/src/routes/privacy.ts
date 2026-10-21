@@ -120,7 +120,8 @@ export async function privacyRoutes(app: FastifyInstance): Promise<void> {
  */
 async function isClubAdmin(userId: string, orgId: string): Promise<boolean> {
   const m = await getMembership(orgId, userId);
-  if (m) return m.role === 'admin';
+  // "Download the club's data" (an Admin always has it).
+  if (m) return m.permissions.has('export_data');
   const org = await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
   return !!org?.deletionPlan && !!readPlan(org)?.members.some((p) => p.userId === userId && p.role === 'admin');
 }

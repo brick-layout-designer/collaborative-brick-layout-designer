@@ -46,7 +46,7 @@ export function VenueSaveLibraryDialog({ venueName, orgs, onSave, onClose }: Pro
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_NAME_LENGTH} className={inputCls} autoFocus />
         </label>
 
-        <SaveToPicker value={target} onChange={setTarget} orgs={orgs} />
+        <SaveToPicker value={target} onChange={setTarget} orgs={orgs} kind="venue" />
 
         <div className="flex justify-end gap-2 pt-1">
           <button

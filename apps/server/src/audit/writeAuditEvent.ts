@@ -106,6 +106,14 @@ export type AuditEventType =
   // Trusted clubs: a site admin or moderator trusts a club (its own admins
   // and managers then review what's published under its name) or stops.
   // Subject is the club.
+  // Club roles (0035): a role made, changed (name or permissions) or
+  // deleted, and given to or taken from a member (payload: roleId,
+  // roleName, targetUserId). Subject is the club.
+  | 'role_create'
+  | 'role_edit'
+  | 'role_delete'
+  | 'role_assign'
+  | 'role_unassign'
   | 'club_trust'
   | 'club_untrust'
   // Warnings: a site admin or moderator warned a person or club ('warn'),

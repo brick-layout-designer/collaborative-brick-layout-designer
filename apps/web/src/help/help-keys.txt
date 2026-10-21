@@ -64,6 +64,7 @@ club.whoCanJoin
 club.listed
 club.requests
 club.roles
+club.permissions
 club.find
 catalog.featured
 catalog.collections

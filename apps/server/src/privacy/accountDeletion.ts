@@ -28,6 +28,7 @@ import { and, asc, count, eq, inArray, isNotNull, like, lte, ne, or, sql } from 
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
+import { addBuiltinRole } from '../access/clubPermissions.js';
 import { invalidateAllSessions } from '../auth/session.js';
 import { notifyCredentialRevoked } from '../auth/revocation.js';
 import { docHub } from '../ws/docHub.js';
@@ -300,7 +301,8 @@ export async function eraseUser(userId: string, how: 'self' | 'admin' | 'request
       .orderBy(sql`case ${s.orgMembers.role} when 'manager' then 0 else 1 end`, asc(s.orgMembers.joinedAt))
       .get();
     if (!heir) continue;
-    await db.update(s.orgMembers).set({ role: 'admin' }).where(and(eq(s.orgMembers.orgId, c.id), eq(s.orgMembers.userId, heir.u)));
+    // The heir gets the club's Admin role on top of the roles they hold.
+    await addBuiltinRole(c.id, heir.u, 'admin');
     await writeAuditEvent({ resourceKind: 'org', resourceId: c.id, userId: null, eventType: 'hand_over', payload: { toUserId: heir.u, reason: 'admin_account_deleted' } });
     await postPersonalNote(heir.u, `${c.name}'s only admin deleted their account, so you're now its admin. You can make others admins too.`, `/orgs/${c.slug}`, {
       clubOrgId: c.id,

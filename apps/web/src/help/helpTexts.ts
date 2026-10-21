@@ -374,8 +374,13 @@ export const HELP_TEXTS = {
   },
   'club.roles': {
     title: 'Roles in the club',
-    short: 'Admins run the club, managers run its day to day, members use it.',
-    more: 'Admins change the club’s settings and roles, and can hand over or delete the club. Managers invite people, answer requests to join, remove members and look after the club’s things. Members use and add the club’s layouts, venues, modules and parts.',
+    short: 'Roles decide what people can do in the club, and someone can hold several.',
+    more: 'Every club starts with Admin, Manager, Member and Viewer, and its admins can change them or add their own, such as Track crew. Someone with several roles can do everything those roles allow. A layout or module shared with someone still works on top of their roles.',
+  },
+  'club.permissions': {
+    title: 'What a role allows',
+    short: 'Tick what people with this role may do in the club.',
+    more: 'Everyone in the club can view its things. The other boxes add to that: editing layouts, adding modules or parts, inviting people and so on. Changes reach people at once, even in a layout they have open.',
   },
   'club.find': {
     title: 'Find a club',

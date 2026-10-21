@@ -8,8 +8,9 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
+import { addPermission } from '../access/clubPermissions.js';
 import { destinationOrg, matchesOwner, ownerLookup, resolveOwnerFilter } from './owners.js';
-import { atLeast } from '../access/clubRoles.js';
+import { clubAccess, clubAccessMap, has } from '../access/clubPermissions.js';
 import { creditLookup } from './credits.js';
 import { titleTooLong } from '../utils/validate.js';
 
@@ -38,7 +39,7 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
     };
     const personal = await db.select(cols).from(schema.venueLibrary).where(eq(schema.venueLibrary.ownerUserId, user.id));
     const orgOwned = await db
-      .select({ venue: cols, memberRole: schema.orgMembers.role })
+      .select({ venue: cols })
       .from(schema.orgMembers)
       .innerJoin(schema.venueLibrary, eq(schema.venueLibrary.ownerOrgId, schema.orgMembers.orgId))
       .where(eq(schema.orgMembers.userId, user.id));
@@ -69,11 +70,12 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       seen.add(v.id);
       all.push(listed(v, true));
     }
-    for (const { venue, memberRole } of orgOwned) {
+    const access = await clubAccessMap(user.id);
+    for (const { venue } of orgOwned) {
       if (seen.has(venue.id)) continue;
       seen.add(venue.id);
-      // Same rights as PATCH / DELETE: a club's venues are its managers' and admins' to change.
-      all.push(listed(venue, atLeast(memberRole, 'manager')));
+      // Same rights as PATCH / DELETE: "manage venues" in the club.
+      all.push(listed(venue, has(access.get(venue.ownerOrgId ?? ''), 'manage_venues')));
     }
     const shown = all.filter((v) => matchesOwner(v, filter, user.id));
     const ownerOf = await ownerLookup(shown);
@@ -136,8 +138,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       if (typeof name !== 'string' || !name.trim() || !data) return reply.code(400).send({ error: 'name and data required' });
       if (titleTooLong(name.trim())) return reply.code(400).send({ error: 'invalid name' });
 
-      const dest = await destinationOrg(user.id, orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, orgSlug, addPermission('venue'));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const ownerOrgId = dest.orgId;
       const refusal = await checkGrowth({
         actor: user,
@@ -240,8 +242,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       const user = requireUser(req);
       const row = await db.select().from(schema.venueLibrary).where(eq(schema.venueLibrary.id, req.params.id)).get();
       if (!row || !(await canRead(row, user.id))) return reply.code(404).send({ error: 'not_found' });
-      const dest = await destinationOrg(user.id, req.body?.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, req.body?.orgSlug, addPermission('venue'));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       const ownerUserId = dest.orgId ? null : user.id;
       const refusal = await checkGrowth({
         actor: user,
@@ -278,8 +280,8 @@ export async function venueRoutes(app: FastifyInstance): Promise<void> {
       if (!row || !(await canRead(row, user.id))) return reply.code(404).send({ error: 'not_found' });
       if (!(await canManage(row, user.id))) return reply.code(403).send({ error: 'forbidden' });
       if (!req.body?.orgSlug) return reply.code(400).send({ error: 'org_owned_rooms_can_only_move_to_orgs' });
-      const dest = await destinationOrg(user.id, req.body.orgSlug);
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error });
+      const dest = await destinationOrg(user.id, req.body.orgSlug, addPermission('venue'));
+      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
       if (dest.orgId === row.ownerOrgId) return { ok: true, id: row.id, name: row.name };
       const taken = await db
         .select({ id: schema.venueLibrary.id, name: schema.venueLibrary.name })
@@ -329,21 +331,14 @@ async function freeName(name: string, ownerUserId: string | null, ownerOrgId: st
   }
 }
 
-/** Only the owner (personal venue) or an org admin (org venue) may change or delete it. */
+/** Only the owner (personal venue), or "manage venues" in its club, may change or delete it. */
 async function canManage(
   row: { ownerUserId: string | null; ownerOrgId: string | null },
   userId: string,
 ): Promise<boolean> {
   if (row.ownerUserId && row.ownerUserId !== userId) return false;
   if (row.ownerOrgId) {
-    const mem = await db
-      .select()
-      .from(schema.orgMembers)
-      .where(
-        and(eq(schema.orgMembers.orgId, row.ownerOrgId), eq(schema.orgMembers.userId, userId)),
-      )
-      .get();
-    if (!mem || !atLeast(mem.role, 'manager')) return false;
+    if (!has(await clubAccess(userId, row.ownerOrgId), 'manage_venues')) return false;
   }
   return true;
 }

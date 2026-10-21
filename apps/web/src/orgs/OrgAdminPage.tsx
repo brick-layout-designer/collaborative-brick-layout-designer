@@ -19,7 +19,9 @@ import {
 } from './ClubManage';
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
-import { aRole, atLeast } from './clubRoles';
+import { aRole } from './clubRoles';
+import { clubCan, runsClub } from './clubPermissions';
+import { RolesSection } from './ClubRoles';
 import { ClubReviewTab } from './ClubReview';
 import { ClubGoneNotice, DeleteClubSection } from './DeleteClub';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
@@ -31,8 +33,8 @@ export function OrgAdminPage() {
   return <OrgAdmin slug={params.slug} />;
 }
 
-type Tab = 'people' | 'settings' | 'parts' | 'review' | 'activity';
-const TAB_IDS: readonly Tab[] = ['people', 'settings', 'parts', 'review', 'activity'];
+type Tab = 'people' | 'roles' | 'settings' | 'parts' | 'review' | 'activity';
+const TAB_IDS: readonly Tab[] = ['people', 'roles', 'settings', 'parts', 'review', 'activity'];
 
 function OrgAdmin({ slug }: { slug: string }) {
   // ?tab=settings#hand-over (the "Delete my account" guide links there).
@@ -42,11 +44,11 @@ function OrgAdmin({ slug }: { slug: string }) {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const detail = useQuery({ queryKey: ['org', slug], queryFn: () => api.orgs.get(slug) });
   const members = useQuery({ queryKey: ['org-members', slug], queryFn: () => api.orgs.members(slug) });
-  const isAdmin = atLeast(detail.data?.myRole, 'manager');
+  const answersRequests = clubCan(detail.data, 'invite') || clubCan(detail.data, 'manage_members');
   const requests = useQuery({
     queryKey: ['org-join-requests', slug],
     queryFn: () => api.orgs.joinRequests(slug),
-    enabled: isAdmin,
+    enabled: answersRequests,
   });
   useHashScroll(!!detail.data && !!members.data);
 
@@ -71,22 +73,27 @@ function OrgAdmin({ slug }: { slug: string }) {
   }
 
   const org = detail.data!;
-  if (!atLeast(org.myRole, 'manager')) return <Navigate to={`/orgs/${slug}`} replace />;
-  // Managers run the people, the club's custom parts and see the activity;
-  // settings and the part-library switches are the admins'.
-  const isClubAdmin = org.myRole === 'admin';
+  if (!runsClub(org)) return <Navigate to={`/orgs/${slug}`} replace />;
+  // What shows is what my roles allow: people (invite, manage members),
+  // roles (everyone who gets here sees them; admins change them), the
+  // club's parts, activity; settings and the part-library switches are the admins'.
+  const isClubAdmin = org.isAdmin ?? org.myRole === 'admin';
+  const runsPeople = answersRequests;
+  const roles = members.data?.roles;
   const myUserId = me.data.user.id;
   const memberList = members.data?.members ?? [];
 
   const requestList = requests.data?.requests ?? [];
   const waiting = requestList.length;
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'people', label: waiting > 0 ? `People (${waiting} waiting)` : 'People' },
+    ...(runsPeople ? [{ id: 'people' as const, label: waiting > 0 ? `People (${waiting} waiting)` : 'People' }] : []),
+    ...(roles ? [{ id: 'roles' as const, label: 'Roles' }] : []),
     ...(isClubAdmin ? [{ id: 'settings' as const, label: 'Settings' }] : []),
     { id: 'parts', label: 'Parts' },
-    ...(org.trusted ? [{ id: 'review' as const, label: 'Review' }] : []),
-    { id: 'activity', label: 'Activity' },
+    ...(org.trusted && clubCan(org, 'send_catalog') ? [{ id: 'review' as const, label: 'Review' }] : []),
+    ...(runsPeople ? [{ id: 'activity' as const, label: 'Activity' }] : []),
   ];
+  const shownTab: Tab = TABS.some((t) => t.id === tab) ? tab : TABS[0]!.id;
 
   return (
     <div className="h-full overflow-y-auto bg-bg p-4 text-ink sm:p-8">
@@ -107,10 +114,10 @@ function OrgAdmin({ slug }: { slug: string }) {
             <button
               key={t.id}
               role="tab"
-              aria-selected={tab === t.id}
+              aria-selected={shownTab === t.id}
               onClick={() => setTab(t.id)}
               className={`tap-target shrink-0 rounded-t px-4 py-2 text-sm font-semibold ${
-                tab === t.id ? 'border-b-2 border-accent text-accent-text' : 'text-muted hover:text-ink'
+                shownTab === t.id ? 'border-b-2 border-accent text-accent-text' : 'text-muted hover:text-ink'
               }`}
             >
               {t.label}
@@ -127,7 +134,7 @@ function OrgAdmin({ slug }: { slug: string }) {
           ))}
         </nav>
 
-        {tab === 'people' && (
+        {shownTab === 'people' && (
           <div className="space-y-5">
             {(waiting > 0 || (org.joinPolicy ?? 'invite') === 'request') && (
               <JoinRequestsSection slug={slug} requests={requestList} />
@@ -135,14 +142,15 @@ function OrgAdmin({ slug }: { slug: string }) {
             {members.isLoading ? (
               <p className="text-sm text-muted">Loading…</p>
             ) : (
-              <MembersSection slug={slug} myUserId={myUserId} myRole={org.myRole} members={memberList} />
+              <MembersSection slug={slug} myUserId={myUserId} myRole={org.myRole} members={memberList} roles={roles} org={org} />
             )}
-            <InviteSection slug={slug} myRole={org.myRole} />
-            <PendingInvitesSection slug={slug} myRole={org.myRole} invites={members.data?.invites ?? []} />
+            <InviteSection slug={slug} myRole={org.myRole} org={org} roles={roles} />
+            <PendingInvitesSection slug={slug} myRole={org.myRole} invites={members.data?.invites ?? []} org={org} roles={roles} />
             <ClubWarningsSection slug={slug} />
           </div>
         )}
-        {tab === 'settings' && isClubAdmin && (
+        {shownTab === 'roles' && <RolesSection slug={slug} isAdmin={isClubAdmin} />}
+        {shownTab === 'settings' && isClubAdmin && (
           <div className="space-y-5">
             <SettingsSection key={`${org.slug}:${org.name}`} org={org} />
             <JoinSettingsSection key={`join:${org.slug}`} org={org} />
@@ -153,7 +161,7 @@ function OrgAdmin({ slug }: { slug: string }) {
             <DeleteClubSection org={org} myUserId={myUserId} />
           </div>
         )}
-        {tab === 'parts' && (
+        {shownTab === 'parts' && (
           <div className="space-y-5">
             {isClubAdmin && (
               <Section title="Part libraries" hint="Which part libraries the club’s members see in the parts panel.">
@@ -165,8 +173,8 @@ function OrgAdmin({ slug }: { slug: string }) {
             </Section>
           </div>
         )}
-        {tab === 'review' && org.trusted && <ClubReviewTab slug={slug} name={org.name} />}
-        {tab === 'activity' && <ActivitySection slug={slug} members={memberList} />}
+        {shownTab === 'review' && org.trusted && <ClubReviewTab slug={slug} name={org.name} />}
+        {shownTab === 'activity' && <ActivitySection slug={slug} members={memberList} />}
       </main>
     </div>
   );

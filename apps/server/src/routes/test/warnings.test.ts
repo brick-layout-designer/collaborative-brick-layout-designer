@@ -13,6 +13,7 @@ import { attachUser } from '../../auth/cookie.js';
 import { registerApiRoutes } from '../all.js';
 import { ROUTE_HINTS, registerChangeHints, type HintCtx } from '../../events/routeHints.js';
 import { mayWarn, parseWarningInput } from '../warnings.js';
+import { builtinAccess } from '../../access/clubPermissions.js';
 
 type Who = { cookie: string; id: string };
 
@@ -43,12 +44,12 @@ describe('parseWarningInput', () => {
 
 describe('mayWarn', () => {
   it('managers warn members; admins warn members and managers; nobody warns an admin', () => {
-    expect(mayWarn('manager', 'member')).toBe(true);
-    expect(mayWarn('manager', 'manager')).toBe(false);
-    expect(mayWarn('admin', 'manager')).toBe(true);
-    expect(mayWarn('admin', 'member')).toBe(true);
-    expect(mayWarn('admin', 'admin')).toBe(false);
-    expect(mayWarn('member', 'member')).toBe(false);
+    expect(mayWarn(builtinAccess('manager'), builtinAccess('member'))).toBe(true);
+    expect(mayWarn(builtinAccess('manager'), builtinAccess('manager'))).toBe(false);
+    expect(mayWarn(builtinAccess('admin'), builtinAccess('manager'))).toBe(true);
+    expect(mayWarn(builtinAccess('admin'), builtinAccess('member'))).toBe(true);
+    expect(mayWarn(builtinAccess('admin'), builtinAccess('admin'))).toBe(false);
+    expect(mayWarn(builtinAccess('member'), builtinAccess('member'))).toBe(false);
   });
 });
 
@@ -154,8 +155,8 @@ describe('warnings', () => {
       await db.insert(schema.orgMembers).values({ orgId, userId: mod.id, role: 'member', joinedAt: new Date() });
       const refused = await w(cat, mod.id);
       expect(refused.statusCode).toBe(403);
-      // …and isn't told about admins and managers: just no.
-      expect(refused.json()).toEqual({ error: 'forbidden' });
+      // …and isn't told about admins and managers: only which permission it needs.
+      expect(refused.json()).toEqual({ error: 'forbidden', permission: 'invite' });
       expect((await w(ann, dan.id)).statusCode).toBe(404);
       expect((await w(dan, cat.id)).statusCode).toBe(404);
       await db.insert(schema.orgMembers).values({ orgId, userId: dan.id, role: 'manager', joinedAt: new Date() });

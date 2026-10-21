@@ -62,9 +62,14 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
   const requests = page.getByRole('region', { name: /Requests to join/ });
   await requests.getByRole('button', { name: 'Approve' }).click();
   await expect(requests.getByText('Rita Rails is now a member.')).toBeVisible();
-  await page.getByLabel('Role for Rita Rails').selectOption({ label: 'Manager' });
+  // Her roles are chips: give her Manager, then take Member away.
+  const ritaRoles = page.getByRole('group', { name: 'Roles for Rita Rails' });
+  await ritaRoles.getByRole('button', { name: '+ Manager' }).click();
+  await expect(ritaRoles.getByRole('button', { name: '✓ Manager' })).toBeVisible();
+  await ritaRoles.getByRole('button', { name: '✓ Member' }).click();
+  await expect(ritaRoles.getByRole('button', { name: '+ Member' })).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel('Role for Rita Rails')).toHaveValue('manager');
+  await expect(page.getByRole('group', { name: 'Roles for Rita Rails' }).getByRole('button', { name: '✓ Manager' })).toBeVisible();
 
   // ── Rita, a Manager: the club's things on Home; a club layout. ──
   await rita.goto('/');

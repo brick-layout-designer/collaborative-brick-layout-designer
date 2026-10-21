@@ -21,7 +21,6 @@ import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireGlobalAdmin, requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { atLeast } from '../access/clubRoles.js';
 import { docHub } from '../ws/docHub.js';
 import { publish } from '../events/audience.js';
 import { catalogChoice, getMembership, loadOrgBySlug } from './orgs.js';
@@ -54,7 +53,8 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+    // "Download the club's data" (an Admin always has it).
+    if (!mine.permissions.has('export_data')) return reply.code(403).send({ error: 'forbidden', permission: 'export_data' });
     const subject = { kind: 'org' as const, id: org.id };
     return { exports: await listExports(user.id, subject), nextAllowedAt: await nextExportAllowedAt(user.id, subject) };
   });
@@ -65,7 +65,8 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+    // "Download the club's data" (an Admin always has it).
+    if (!mine.permissions.has('export_data')) return reply.code(403).send({ error: 'forbidden', permission: 'export_data' });
     const subject = { kind: 'org' as const, id: org.id };
     const next = await nextExportAllowedAt(user.id, subject);
     if (next !== null) {
@@ -102,7 +103,7 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
         if (!dest || dest.id === org.id) return reply.code(404).send({ error: 'org_not_found' });
         const there = await getMembership(dest.id, user.id);
         if (!there) return reply.code(403).send({ error: 'not_an_org_member' });
-        if (!dest.membersCanCreate && !atLeast(there.role, 'manager')) return reply.code(403).send({ error: 'only_club_admins_can_add' });
+        if (!there.permissions.has('start_layouts')) return reply.code(403).send({ error: 'only_club_admins_can_add', permission: 'start_layouts' });
         to = { ownerUserId: null, ownerOrgId: dest.id };
       } else {
         return reply.code(400).send({ error: 'invalid_input' });

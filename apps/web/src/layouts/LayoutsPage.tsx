@@ -451,7 +451,7 @@ function NewModuleDialog({
             className="w-full rounded-lg border border-border bg-soft px-3 py-2"
           />
         </label>
-        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs} />
+        <SaveToPicker value={ownerSlug} onChange={setOwnerSlug} orgs={orgs} kind="module" />
         {error && <p className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="tap-target rounded-lg border border-border px-4 py-2 hover:bg-soft">

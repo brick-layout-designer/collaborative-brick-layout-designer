@@ -9,7 +9,8 @@
 
 import { and, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { atLeast, type ClubRole } from '../access/clubRoles.js';
+import { type ClubRole } from '../access/clubRoles.js';
+import { clubAccessMap, has } from '../access/clubPermissions.js';
 import { fallbackName, publicName } from '../utils/publicName.js';
 import { handedOverIds } from '../access/pendingShares.js';
 
@@ -151,6 +152,7 @@ export async function creditLookup(
   }
   const handedOver = await handedOverIds(kind, authorsOfClubThings);
 
+  const mineIn = orgIds.length ? await clubAccessMap(viewerId, orgIds) : new Map();
   const byId = new Map(rows.map((r) => [r.id, r]));
   return (id) => {
     const r = byId.get(id);
@@ -166,7 +168,7 @@ export async function creditLookup(
       club: r.ownerOrgId ? (orgs.get(r.ownerOrgId) ?? null) : null,
       basedOn: src ? { id: src.id, title: src.title, by: nameOf(src, null) } : null,
       canTakeBack: !!r.ownerOrgId && !!myRole && author === viewerId && !kept,
-      canGiveBack: !!r.ownerOrgId && atLeast(myRole, 'manager') && authorExists && author !== viewerId && !kept,
+      canGiveBack: !!r.ownerOrgId && !!myRole && has(mineIn.get(r.ownerOrgId), 'delete_items') && authorExists && author !== viewerId && !kept,
     };
   };
 }

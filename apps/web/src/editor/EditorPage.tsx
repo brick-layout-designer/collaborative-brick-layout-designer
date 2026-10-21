@@ -71,6 +71,7 @@ import { mapFontsReady } from './render/mapText';
 import { scaleBar } from './scaleBar';
 import { areaForPivot, areaSize, pivotOf } from './brickGeometry';
 import { imageOffset } from '@cld/parts-catalog/browser';
+import { askForPermission } from '../orgs/clubPermissions';
 import { canAddToBudget, countUsage, overBudgetCount, withinBudget } from './budgetUsage';
 import { BudgetReachedDialog, BUDGET_REFUSED_STATUS } from './BudgetReachedDialog';
 import { venueAfterDraw, VENUE_MIN_POINTS_MESSAGE } from './venueValidator';
@@ -362,6 +363,8 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   const myOrgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const undo = useUndoManager(doc);
   const role = meta.data?.role ?? 'viewer';
+  // A club's layout or module the club's roles only let me look at: say which permission would let me edit it.
+  const viewOnlyReason = role === 'viewer' && meta.data?.layout.ownerOrgId ? askForPermission(moduleMode ? 'edit_modules' : 'edit_layouts') : undefined;
   // A phone opens a layout in View mode (the phone viewer). People who
   // can edit get a View / Edit switch in the header; Edit turns on touch
   // editing. The choice is kept per layout for this visit (sessionStorage).
@@ -831,7 +834,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             </span>
           )}
           <SavePill status={status} />
-          {role === 'viewer' ? <ViewOnlyPill /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
+          {role === 'viewer' ? <ViewOnlyPill reason={viewOnlyReason} /> : viewport.isMobile && <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           <div className="ml-auto flex items-center gap-2">
             {role !== 'viewer' && !viewport.isMobile && (
               <input
@@ -946,7 +949,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                 />
               )}
             </div>
-            {role === 'viewer' ? <ViewOnlyPill /> : <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
+            {role === 'viewer' ? <ViewOnlyPill reason={viewOnlyReason} /> : <ModeSwitch edit={phoneEdit} onChange={setPhoneEdit} />}
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
             <SavePill status={status} />
@@ -5612,14 +5615,17 @@ function ViewsMenuItems({
 }
 
 /** Shown to anyone who can look but not change: viewers, and everyone on a phone. */
-function ViewOnlyPill() {
+/** "View only", with why when the club's roles are the reason (hover, or read out). */
+function ViewOnlyPill({ reason }: { reason?: string | undefined }) {
   return (
     <span
       data-testid="view-only"
       data-tour="view.edit"
+      title={reason}
       className="shrink-0 whitespace-nowrap rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-bold text-amber-300"
     >
       View only
+      {reason && <span className="sr-only">. {reason}</span>}
     </span>
   );
 }

@@ -9,6 +9,8 @@
 import type { FastifyInstance } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { clubAccess, setMemberRoles } from '../access/clubPermissions.js';
+import { inviteRole, mayGiveRole } from './orgs.js';
 import { checkGrowth } from '../limits/limits.js';
 import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
@@ -87,18 +89,10 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
       // org, the invite is void —
       // otherwise a removed admin's outstanding invites (possibly for
       // role 'admin') would still let people in.
-      const inviter = await db
-        .select({ role: schema.orgMembers.role })
-        .from(schema.orgMembers)
-        .where(
-          and(
-            eq(schema.orgMembers.orgId, invite.orgId),
-            eq(schema.orgMembers.userId, invite.invitedBy),
-          ),
-        )
-        .get();
-      // Admins may invite anyone as anything; managers, members only.
-      const stillAllowed = inviter?.role === 'admin' || (inviter?.role === 'manager' && invite.role === 'member');
+      const inviter = await clubAccess(invite.invitedBy, invite.orgId);
+      // The inviter must still be allowed to give the role (routes/orgs.ts mayGiveRole).
+      const giving = await inviteRole(invite.orgId, invite);
+      const stillAllowed = !!inviter && (inviter.permissions.has('invite') || inviter.permissions.has('manage_members')) && mayGiveRole(inviter, giving);
       if (!stillAllowed) {
         await db.delete(schema.orgInvites).where(eq(schema.orgInvites.id, invite.id));
         return reply.code(409).send({ error: 'invite_revoked' });
@@ -124,6 +118,7 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
           joinedAt: now,
         })
         .onConflictDoNothing();
+      if (!already && giving) await setMemberRoles(invite.orgId, user.id, [giving.id]);
       // Any request to join is answered now.
       await db
         .delete(schema.orgJoinRequests)

@@ -64,8 +64,9 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
     // Deleting a club: Clubs › Being deleted, and the delete screen.
     ['clubs-deleting'], ['club-deletion'],
     ['org-part-libraries'], ['org-user-search'], ['club-summary'], ['club-directory'],
-    // Joining or leaving a club changes which layouts, modules, rooms and parts you see.
-    ['layouts'], ['modules'], ['venues'], ['venue-library'], ['custom-parts'],
+    // Joining or leaving a club changes which layouts, modules, rooms and parts you see,
+    // and a change to your club roles what you may do with the open one.
+    ['layouts'], ['layout'], ['modules'], ['module'], ['venues'], ['venue-library'], ['custom-parts'], ['org-roles'],
     // …and its collections.
     ...COLLECTIONS,
     // …and whether it's trusted (its Review tab, its badge).

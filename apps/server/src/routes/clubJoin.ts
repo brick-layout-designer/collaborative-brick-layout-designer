@@ -30,7 +30,7 @@ import { checkGrowth } from '../limits/limits.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { escapeLike } from '../utils/validate.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
-import { atLeast, type ClubRole } from '../access/clubRoles.js';
+import { type ClubRole } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
 import { perPerson } from '../utils/rateLimits.js';
 
@@ -90,8 +90,9 @@ async function asManager(slug: string, userId: string, reply: { code: (n: number
     reply.code(404).send({ error: 'not_found' });
     return null;
   }
-  if (!atLeast(mine.role, 'manager')) {
-    reply.code(403).send({ error: 'forbidden' });
+  // Join requests are for whoever invites people (or manages members).
+  if (!mine.permissions.has('invite') && !mine.permissions.has('manage_members')) {
+    reply.code(403).send({ error: 'forbidden', permission: 'invite' });
     return null;
   }
   return org;

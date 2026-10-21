@@ -21,7 +21,7 @@ import type { User } from '../db/schema.js';
 import { requireUser } from '../auth/cookie.js';
 import { escapeLike } from '../utils/validate.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { atLeast } from '../access/clubRoles.js';
+import { clubAccess } from '../access/clubPermissions.js';
 import { canModerate, decideVersion, itemOut, ownerNames, picturedVersions, previewUrlOf, sentText, siteHeldItem, unpublishItem } from './catalog.js';
 import { decideCollection, textQueue, unpublishCollection, collectionOwnerNames, shownForQueue, siteHeldCollection } from './collections.js';
 import { publicName } from '../utils/publicName.js';
@@ -40,13 +40,9 @@ async function reviewer(req: FastifyRequest<{ Params: { slug: string } }>): Prom
   const user = requireUser(req);
   const org = await loadOrg(req.params.slug);
   if (!org) return { code: 404, body: { error: 'not_found' } };
-  const m = await db
-    .select({ role: schema.orgMembers.role })
-    .from(schema.orgMembers)
-    .where(and(eq(schema.orgMembers.orgId, org.id), eq(schema.orgMembers.userId, user.id)))
-    .get();
+  const m = await clubAccess(user.id, org.id);
   if (!m) return { code: 404, body: { error: 'not_found' } };
-  if (!atLeast(m.role, 'manager')) return { code: 403, body: { error: 'forbidden' } };
+  if (!m.permissions.has('send_catalog')) return { code: 403, body: { error: 'forbidden', permission: 'send_catalog' } };
   if (!org.trusted) return { code: 403, body: { error: 'club_not_trusted' } };
   return { user, org };
 }

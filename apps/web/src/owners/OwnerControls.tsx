@@ -10,6 +10,7 @@ import { creditText, moveToClubWording, ownerLabel, type OwnedItem, type OwnerFi
 import { askConfirm, showToast } from '../ui/ConfirmDialog';
 import { invalidateFor } from '../live/invalidate';
 import { MORE_ITEM } from '../ui/MoreMenu';
+import { addPermissionFor, askForPermission, clubCanAdd, type AddKind } from '../orgs/clubPermissions';
 
 /** "by Sam · in ArkLUG", and for a copy "based on Yard by Sam": a small line under the name. */
 export function CreditLine({ credit, className = '' }: { credit: Credit | null | undefined; className?: string }) {
@@ -135,9 +136,28 @@ export function OwnerFilterBar({
   );
 }
 
-/** The clubs I may save new things to (a club that keeps adding to its admins is left out for its members). */
-export function clubsICanAddTo<T extends Pick<OrgSummary, 'canAdd'>>(orgs: readonly T[] | undefined): T[] {
-  return (orgs ?? []).filter((o) => o.canAdd !== false);
+/** The clubs my roles let me save this kind of thing to (a layout by default). */
+export function clubsICanAddTo<T extends Pick<OrgSummary, 'canAdd' | 'permissions' | 'myRole'>>(orgs: readonly T[] | undefined, kind: AddKind = 'layout'): T[] {
+  return (orgs ?? []).filter((o) => clubCanAdd(o, kind));
+}
+
+/** Clubs I'm in that won't take this kind of thing from me, for a plain note under the picker. */
+export function clubsLeftOut(orgs: readonly OrgSummary[] | undefined, kind: AddKind): OrgSummary[] {
+  return (orgs ?? []).filter((o) => !clubCanAdd(o, kind));
+}
+
+/** "Olive Club isn’t listed: your roles there can’t add modules. Ask a club admin for the Add or edit modules permission." */
+export function LeftOutNote({ orgs, kind }: { orgs: readonly OrgSummary[] | undefined; kind: AddKind }) {
+  const out = clubsLeftOut(orgs, kind);
+  if (!out.length) return null;
+  const names = out.map((o) => o.name);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  const what = kind === 'module' ? 'modules' : kind === 'part' ? 'parts' : kind === 'venue' ? 'venues' : kind === 'collection' ? 'collections' : 'layouts';
+  return (
+    <p className="mt-1 text-xs text-muted" data-testid="clubs-left-out">
+      {list} {names.length === 1 ? 'isn’t' : 'aren’t'} listed: your roles there can’t add {what}. {askForPermission(addPermissionFor(kind))}
+    </p>
+  );
 }
 
 /**
@@ -153,16 +173,19 @@ export function SaveToPicker({
   label = 'Save to',
   exclude,
   className = '',
+  kind = 'layout',
 }: {
   value: string;
   onChange: (slug: string) => void;
   orgs: readonly OrgSummary[] | undefined;
   label?: string;
+  /** What is being saved: only clubs whose roles let me add it are offered. */
+  kind?: AddKind;
   /** Owners not to offer ('' = Me). */
   exclude?: readonly string[];
   className?: string;
 }) {
-  const options = [{ value: '', label: 'Me' }, ...clubsICanAddTo(orgs).map((o) => ({ value: o.slug, label: o.name }))].filter(
+  const options = [{ value: '', label: 'Me' }, ...clubsICanAddTo(orgs, kind).map((o) => ({ value: o.slug, label: o.name }))].filter(
     (o) => !exclude?.includes(o.value),
   );
   const offered = options.some((o) => o.value === value);
@@ -172,7 +195,15 @@ export function SaveToPicker({
     if (orgs && !offered && first !== undefined) onChange(first);
   }, [orgs, offered, first, onChange]);
   // Nothing to choose: no clubs, or only Me.
-  if (!orgs || options.length === 0 || (options.length === 1 && first === '')) return null;
+  if (!orgs || options.length === 0 || (options.length === 1 && first === '')) {
+    // Only Me: say so when a club of mine is left out, so it isn't a silent dead end.
+    return orgs && clubsLeftOut(orgs, kind).length > 0 ? (
+      <div className={`text-sm ${className}`}>
+        <p className="text-muted">It’s saved to your own things.</p>
+        <LeftOutNote orgs={orgs} kind={kind} />
+      </div>
+    ) : null;
+  }
   return (
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-muted">{label}</span>
@@ -187,6 +218,7 @@ export function SaveToPicker({
           </option>
         ))}
       </select>
+      <LeftOutNote orgs={orgs} kind={kind} />
     </label>
   );
 }
@@ -218,10 +250,11 @@ export function MoveCopyDialog({
 }) {
   const qc = useQueryClient();
   const currentSlug = item.ownerOrgId ? (orgs.find((o) => o.id === item.ownerOrgId)?.slug ?? null) : '';
-  const moveTargets = clubsICanAddTo(orgs).filter((o) => o.slug !== currentSlug);
+  const addKind: AddKind = kind === 'room' ? 'venue' : kind;
+  const moveTargets = clubsICanAddTo(orgs, addKind).filter((o) => o.slug !== currentSlug);
   const moveAllowed = canMove && moveTargets.length > 0;
   const [mode, setMode] = useState<'copy' | 'move'>('copy');
-  const [dest, setDest] = useState(() => (item.ownerOrgId ? '' : (clubsICanAddTo(orgs)[0]?.slug ?? '')));
+  const [dest, setDest] = useState(() => (item.ownerOrgId ? '' : (clubsICanAddTo(orgs, addKind)[0]?.slug ?? '')));
   const [error, setError] = useState<string | null>(null);
   const word = KIND_WORD[kind];
 

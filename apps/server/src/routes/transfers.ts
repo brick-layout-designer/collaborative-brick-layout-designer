@@ -32,7 +32,7 @@ import { sendInviteEmail } from '../email/sendInvite.js';
 import { env } from '../env.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail, trimmed } from '../utils/validate.js';
-import { atLeast } from '../access/clubRoles.js';
+import { can } from '../access/clubPermissions.js';
 import { publicName } from '../utils/publicName.js';
 import { clearPendingLayoutShares } from '../access/pendingShares.js';
 import { notifyAccessChanged } from '../ws/liveAccess.js';
@@ -88,9 +88,9 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         if (!myDestMembership) {
           return reply.code(403).send({ error: 'not_a_member_of_recipient_org' });
         }
-        // A club that lets only admins add things takes them only from an admin.
-        if (!dest.membersCanCreate && !atLeast(myDestMembership.role, 'manager')) {
-          return reply.code(403).send({ error: 'only_club_admins_can_add' });
+        // Moving it in needs the club's adding permission.
+        if (!(await can(user.id, dest.id, 'start_layouts'))) {
+          return reply.code(403).send({ error: 'only_club_admins_can_add', permission: 'start_layouts' });
         }
 
         const layout = await db
