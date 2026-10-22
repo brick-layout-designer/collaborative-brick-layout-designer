@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
+# Node is pinned to a release and its digest, so a rebuild never picks up an
+# older or unexpected Node: 26.12.1 carries the 2026-10-21 security fixes.
+ARG NODE_IMAGE=node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe
+
 # ---- builder ---------------------------------------------------------------
-FROM node:26-bookworm-slim AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 ENV LEFTHOOK=0
 
@@ -48,8 +52,10 @@ RUN pnpm --filter @cld/model        build \
 RUN pnpm --filter @cld/server deploy --prod --legacy /app/server-deploy
 
 # ---- runtime ---------------------------------------------------------------
-FROM node:26-bookworm-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
+# Refuse to build on a Node older than the security release.
+RUN node -e "const [a,b,c]=process.versions.node.split('.').map(Number);if(a<26||(a===26&&(b<12||(b===12&&c<1)))){console.error('Node '+process.version+' is older than 26.12.1');process.exit(1)}"
 # Which build this is, for GET /api/version: the release version, or
 # nightly-<short sha> (set by the image workflows).
 ARG APP_VERSION=unknown
