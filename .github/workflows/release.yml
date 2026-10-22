@@ -27,9 +27,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lower-case repo name
+      - name: Image names
         id: repo
-        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        # Every image goes out under two names while the project is renamed:
+        # <owner>/web (the new name) and <owner>/collaborative-brick-layout-designer
+        # (the name existing deploys pull). Both follow the org if it is renamed.
+        run: |
+          owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "name=$owner/collaborative-brick-layout-designer" >> "$GITHUB_OUTPUT"
+          echo "web=$owner/web" >> "$GITHUB_OUTPUT"
 
       - name: Extract version
         id: ver
@@ -45,6 +51,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.repo.outputs.name }}:v${{ steps.ver.outputs.version }}
             ghcr.io/${{ steps.repo.outputs.name }}:latest
+            ghcr.io/${{ steps.repo.outputs.web }}:v${{ steps.ver.outputs.version }}
+            ghcr.io/${{ steps.repo.outputs.web }}:latest
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.version }}
           cache-from: type=gha
