@@ -32,6 +32,7 @@ import { checkStateVector, checkUpdate } from './updateGuard.js';
 import { MAX_PENDING_BYTES, pendingBytes, restorePending, savePending } from './pending.js';
 import { newPace, type Pace } from './pacing.js';
 import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
+import { checkGridSizes } from './gridGuard.js';
 
 /**
  * Close code and reason for an update refused because it would merge
@@ -266,6 +267,11 @@ function handleMessage(
         const unreadable = checkUpdate(update);
         if (unreadable !== null) {
           refuseUpdate(ws, session, sender, update.length, 'unreadable', unreadable);
+          return;
+        }
+        const badGrid = checkGridSizes(session.doc, update);
+        if (badGrid !== null) {
+          refuseUpdate(ws, session, sender, update.length, 'unreadable', badGrid);
           return;
         }
         const check = checkIncomingUpdate(session.doc, update);

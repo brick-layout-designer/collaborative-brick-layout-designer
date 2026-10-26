@@ -15,6 +15,10 @@ change in one repo fails until the other has the same copy.
 - `update-guard.json`: updates and state vectors (hex) and whether the
   update guard refuses them (web apps/server/src/ws/updateGuard.ts, desktop
   src/sync/UpdateGuard.cpp), with the limits both use.
+  Its `gridSize` part: updates (on a base document) and whole documents,
+  and whether the server refuses them for a grid size both apps can't
+  draw (web apps/server/src/ws/gridGuard.ts); the desktop checks it reads
+  them all.
 - `part-naming.json`: a server custom part, placed on the website as
   `custom:<id>`, which every export names by its part number and the
   desktop's parts cache finds by either.

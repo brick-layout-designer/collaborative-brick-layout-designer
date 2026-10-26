@@ -207,6 +207,33 @@ describe('WS update guard', () => {
     expect(await next.closed).toEqual([1008, 'unreadable_update']);
   });
 
+  it('closes on an update that leaves a grid with a size the apps do not draw, and takes a valid size', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const id = await create();
+    const gridOf = (doc: Y.Doc) =>
+      [...doc.getMap<Y.Map<unknown>>('layerData').values()].find((l) => l instanceof Y.Map && l.get('type') === 'grid')!;
+    const peer = await rawSocket(port, id, cookieStr);
+    await sleep(100);
+    const before = gridOf(room(id).doc).get('gridSizeInStud');
+    const edit = (size: unknown): Uint8Array => {
+      const mine = new Y.Doc();
+      Y.applyUpdate(mine, Y.encodeStateAsUpdate(room(id).doc));
+      const sv = Y.encodeStateVector(mine);
+      gridOf(mine).set('gridSizeInStud', size);
+      return Y.encodeStateAsUpdate(mine, sv);
+    };
+    peer.ws.send(updateMsg(edit(48)));
+    for (let i = 0; i < 50 && gridOf(room(id).doc).get('gridSizeInStud') !== 48; i++) await sleep(20);
+    expect(gridOf(room(id).doc).get('gridSizeInStud')).toBe(48);
+    expect(before).not.toBe(48);
+    peer.ws.send(updateMsg(edit(0)));
+    expect(await peer.closed).toEqual([1008, 'unreadable_update']);
+    expect(gridOf(room(id).doc).get('gridSizeInStud')).toBe(48);
+    const refused = audits('layout_update_refused');
+    expect(refused).toHaveLength(1);
+    expect(JSON.parse(refused[0]!.payload!)).toMatchObject({ kind: 'unreadable' });
+  });
+
   it('drops what an update leaves waiting past the limit, closes that connection, and never stores more', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const id = await create();
@@ -303,5 +330,11 @@ describe('WS update guard', () => {
     expect(bad.statusCode).toBe(400);
     expect(bad.json()).toEqual({ error: 'unreadable_snapshot' });
     expect((await put(`/api/modules/${modId}/snapshot`, good)).statusCode).toBe(200);
+    // A document whose grid has no size both apps draw.
+    const zeroGrid = createDefaultLayoutDoc();
+    for (const l of zeroGrid.getMap<Y.Map<unknown>>('layerData').values()) if (l.get('type') === 'grid') l.set('gridSizeInStud', 0);
+    const zero = Buffer.from(encodeDoc(zeroGrid));
+    expect((await put(`/api/layouts/${id}/snapshot`, zero)).json()).toEqual({ error: 'unreadable_snapshot' });
+    expect((await put(`/api/modules/${modId}/snapshot`, zero)).json()).toEqual({ error: 'unreadable_snapshot' });
   });
 });

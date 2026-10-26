@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { readBbm } from '@cld/bbm';
-import { bbmToDoc, docToBbm } from './projection.js';
+import { bbmToDoc, docToBbm, drawableGridSize } from './projection.js';
 
 // Same vendored sample `.bbm` files as packages/bbm uses. Symlinking into
 // ydoc would be finicky in CI; just navigate up to the bbm package.
@@ -96,6 +96,31 @@ describe('grid cellIndexCorner', () => {
       }
       expect(patched).toBe(1);
       expect(gridOf(docToBbm(doc)).cellIndexCorner).toEqual({ x: 0, y: 0 });
+    }
+  });
+});
+
+describe('grid size', () => {
+  it('writes a size both apps draw, whatever the file says', () => {
+    const xml = readFileSync(resolve(BBM_FIXTURES, 'tight-corner.bbm'), 'utf8');
+    const map = readBbm(xml).map;
+    for (const [from, to] of [
+      [0, 1],
+      [-8, 1],
+      [0.5, 1],
+      [Number.NaN, 32],
+      [Number.POSITIVE_INFINITY, 2147483647],
+      [Number.NEGATIVE_INFINITY, 1],
+      [1e12, 2147483647],
+      [48, 48],
+    ] as const) {
+      const layers = map.layers.map((l) => (l.type === 'grid' ? { ...l, gridSizeInStud: from } : l));
+      const doc = new Y.Doc();
+      bbmToDoc({ ...map, layers }, doc);
+      let size: unknown;
+      for (const [, y] of doc.getMap<Y.Map<unknown>>('layerData')) if (y.get('type') === 'grid') size = y.get('gridSizeInStud');
+      expect(size).toBe(to);
+      expect(drawableGridSize(from)).toBe(to);
     }
   });
 });
