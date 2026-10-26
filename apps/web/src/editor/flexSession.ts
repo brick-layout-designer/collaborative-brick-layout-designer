@@ -22,6 +22,10 @@ import { pinnedAmong } from './moduleEdit';
 
 const PX = 8;
 
+type StudPoint = { studX: number; studY: number };
+const samePoints = (a: readonly StudPoint[], b: readonly StudPoint[]) =>
+  a.length === b.length && a.every((p, i) => p.studX === b[i]!.studX && p.studY === b[i]!.studY);
+
 /** Write the chain's new poses into the doc as one undo step. */
 export function commitFlex(doc: Y.Doc, layerId: string, states: readonly FlexState[]): void {
   if (states.length === 0) return;
@@ -94,10 +98,21 @@ export function startFlexSession(opts: {
     const w = stage.getAbsoluteTransform().copy().invert().point(p);
     return { x: w.x / PX, y: w.y / PX };
   };
+  // The chain's nodes, found once (a find walks the whole stage).
+  const nodes = new Map<string, Konva.Node | undefined>();
+  const nodeOf = (id: string) => {
+    if (!nodes.has(id)) nodes.set(id, stage.findOne(`.brick-${id}`));
+    return nodes.get(id);
+  };
   const draw = () => {
+    // Only the sheets the chain is drawn on: redrawing every layer of the
+    // stage on each move is what made a slow phone fall behind the finger.
+    const layers = new Set<Konva.Layer>();
     for (const s of flex.currentState()) {
-      const node = stage.findOne(`.brick-${s.id}`);
+      const node = nodeOf(s.id);
       if (!node) continue;
+      const l = node.getLayer();
+      if (l) layers.add(l);
       const b = layer.bricks.find((x) => x.id === s.id);
       const part = b ? partsByKey.get(b.partNumber.toLowerCase()) : undefined;
       const off = part ? imageOffset(part, s.orientation) : { x: 0, y: 0 };
@@ -107,7 +122,7 @@ export function startFlexSession(opts: {
         y: (s.displayArea.y + s.displayArea.height / 2 + off.y) * PX,
       });
     }
-    stage.batchDraw();
+    for (const l of layers) l.batchDraw();
   };
   // The end snaps like a dragged part's grabbed end (snap.ts, #240): it
   // joins the nearest free end of its type at any angle, reach measured
@@ -156,8 +171,12 @@ export function startFlexSession(opts: {
     }
     moved = true;
     const at = joined && pick ? targets[pick.index]!.world : null;
-    useEditorStore.getState().setLiveSnap(at ? { studX: at.x, studY: at.y } : null);
-    useEditorStore.getState().setHingeLimits(flex.hingesAtLimit().map((p) => ({ studX: p.x, studY: p.y })));
+    // Only when they change: each change redraws the overlays' layers.
+    const store = useEditorStore.getState();
+    const live = at ? { studX: at.x, studY: at.y } : null;
+    if (!samePoints(store.liveSnap ? [store.liveSnap] : [], live ? [live] : [])) store.setLiveSnap(live);
+    const limits = flex.hingesAtLimit().map((p) => ({ studX: p.x, studY: p.y }));
+    if (!samePoints(store.hingeLimits, limits)) store.setHingeLimits(limits);
     draw();
   };
   const onMove = (e?: { evt?: Event & { altKey?: boolean } }) => {
