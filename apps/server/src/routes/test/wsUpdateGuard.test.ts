@@ -152,7 +152,7 @@ describe('WS update guard', () => {
         `500 offline edits: one ${offlineBytes}-byte step 2; left waiting: 0 bytes each`,
     );
     await back.leave();
-  }, 30_000); // A whole Fordyce sync, a 1000-part paste and an offline replay: several seconds on a busy CI runner.
+  });
 
   it('applies an update that arrives before the one it follows once that one arrives', async () => {
     const id = await create();

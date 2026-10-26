@@ -27,12 +27,13 @@ import {
 import { resolveResourceRole } from '../access/resolveResourceRole.js';
 import { isCredentialActive, revokedReason, type Credential } from '../auth/credentials.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { checkIncomingUpdate, type MergeCheck } from './mergeGuard.js';
+import { checkIncomingDecoded, type MergeCheck } from './mergeGuard.js';
 import { checkStateVector, checkUpdate } from './updateGuard.js';
 import { MAX_PENDING_BYTES, pendingBytes, restorePending, savePending } from './pending.js';
 import { newPace, type Pace } from './pacing.js';
 import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
-import { checkGridSizes } from './gridGuard.js';
+import { checkGridSizesDecoded } from './gridGuard.js';
+import { decodeIncoming } from './decoded.js';
 
 /**
  * Close code and reason for an update refused because it would merge
@@ -269,12 +270,15 @@ function handleMessage(
           refuseUpdate(ws, session, sender, update.length, 'unreadable', unreadable);
           return;
         }
-        const badGrid = checkGridSizes(session.doc, update);
+        // Decoded once for the checks that read its structs (ws/decoded.ts).
+        // One Yjs can't decode passes them; Yjs refuses it on its own below.
+        const decoded = decodeIncoming(update);
+        const badGrid = decoded ? checkGridSizesDecoded(session.doc, update, decoded) : null;
         if (badGrid !== null) {
           refuseUpdate(ws, session, sender, update.length, 'unreadable', badGrid);
           return;
         }
-        const check = checkIncomingUpdate(session.doc, update);
+        const check = checkIncomingDecoded(session.doc, update, decoded);
         if (check.refuse) {
           refuseMerge(ws, session, sender, check);
           return;
