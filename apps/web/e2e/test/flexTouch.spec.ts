@@ -482,6 +482,20 @@ test.describe('bending flex track with a real, shaky finger', () => {
     await tap(page, touch, { x: 104, y: 60 });
     await expect.poll(() => handleCount(page)).toBe(2);
     const [, end] = await runEnds(page, '900', last);
+    // Which sheets of the stage draw while bending: only the parts' and the
+    // bend handles'. Redrawing every layer on each move (each a full-screen
+    // canvas) is what made a slowed phone fall behind the finger.
+    await page.evaluate(() => {
+      const K = (window as unknown as { Konva: { Layer: { prototype: Record<string, (...a: unknown[]) => unknown> } } }).Konva;
+      const draws: Record<string, number> = {};
+      (window as unknown as { layerDraws_: typeof draws }).layerDraws_ = draws;
+      const orig = K.Layer.prototype.drawScene!;
+      K.Layer.prototype.drawScene = function (this: { name: () => string }, ...a: unknown[]) {
+        const k = this.name() || '(unnamed)';
+        draws[k] = (draws[k] ?? 0) + 1;
+        return orig.apply(this, a);
+      };
+    });
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     // A seeded wobble with uneven gaps and pressure-only moves (as Android
@@ -518,8 +532,13 @@ test.describe('bending flex track with a real, shaky finger', () => {
       if (r() < 0.4) await samePoint(p);
       await page.waitForTimeout(i % 15 === 14 ? 220 : 8 + Math.floor(r() * 33));
     }
+    const draws = await page.evaluate(() => ({ ...(window as unknown as { layerDraws_: Record<string, number> }).layerDraws_ }));
     await touch('touchEnd', []);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    expect(draws['parts-layer'] ?? 0, 'the parts draw as the chain bends').toBeGreaterThan(10);
+    for (const [name, n] of Object.entries(draws)) {
+      if (name !== 'parts-layer' && name !== 'bend-layer') expect(n, `${name} stays as it was while bending`).toBeLessThanOrEqual(3);
+    }
 
     type F = { decision: string; target: string | null; kind: string };
     const frames = (await page.evaluate(() => (window as unknown as { __cldSnapTrace: () => unknown[] }).__cldSnapTrace())) as F[];
