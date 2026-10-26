@@ -164,6 +164,9 @@ export async function partsManifestRoutes(app: FastifyInstance): Promise<void> {
           hash: hashes.get(r.id)!,
           updatedAt: r.updatedAt.getTime(),
           xmlUrl: `/api/custom-parts/${r.id}/xml`,
+          // A set has no picture (an empty one is served for older desktops):
+          // it is kept as `<partNumber>.set.xml`.
+          ...(r.spriteMime === '' ? { kind: 'set' as const } : {}),
           spriteUrl: `/api/custom-parts/${r.id}/sprite`,
         })),
     };

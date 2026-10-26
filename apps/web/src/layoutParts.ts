@@ -15,7 +15,8 @@ function customPartFor(partNumber: string, parts: readonly PartWire[]): PartWire
   const pn = partNumber.toLowerCase();
   // A bundled part of that key wins, as in the editor.
   if (parts.some((p) => p.source === 'bundled' && p.key.toLowerCase() === pn)) return undefined;
-  return parts.find((p) => p.source === 'custom' && p.partNumber.toLowerCase() === pn);
+  // By its number, or by the `custom:<id>` the website places it as.
+  return parts.find((p) => p.source === 'custom' && (p.partNumber.toLowerCase() === pn || p.key.toLowerCase() === pn));
 }
 
 export interface PartFetcher {
@@ -46,18 +47,20 @@ export async function layoutPartFiles(
   const used = new Map<string, PartWire>();
   for (const layer of map.layers) {
     if (layer.type !== 'brick') continue;
-    for (const b of layer.bricks) {
-      const part = customPartFor(b.partNumber, parts);
+    // Placed parts, and the custom sets they were placed from.
+    for (const id of [...layer.bricks.map((b) => b.partNumber), ...(layer.groups ?? []).map((g) => g.partNumber)]) {
+      const part = id ? customPartFor(id, parts) : undefined;
       if (part) used.set(part.partNumber.toLowerCase(), part);
     }
   }
   const files: Record<string, Uint8Array> = {};
   for (const part of used.values()) {
     const stem = part.kind === 'group' ? `${part.partNumber}.set` : part.partNumber;
-    const [xml, sprite] = await Promise.all([fetcher.xml(part.customPartId!), fetcher.sprite(part.customPartId!)]);
     if (!isLayoutPartFileName(`${stem}.xml`)) continue;
+    // A set has no picture of its own: its XML only.
+    const [xml, sprite] = await Promise.all([fetcher.xml(part.customPartId!), part.noSprite ? undefined : fetcher.sprite(part.customPartId!)]);
     files[`${stem}.xml`] = xml;
-    files[`${stem}.${sprite.type === 'image/gif' ? 'gif' : 'png'}`] = sprite.data;
+    if (sprite) files[`${stem}.${sprite.type === 'image/gif' ? 'gif' : 'png'}`] = sprite.data;
   }
   return files;
 }
@@ -66,8 +69,9 @@ export interface PartUpload {
   partNumber: string;
   displayName: string;
   xml: Uint8Array;
-  sprite: Uint8Array;
-  spriteMime: 'image/gif' | 'image/png';
+  /** Absent for a set (`.set.xml`): its parts draw it. */
+  sprite?: Uint8Array;
+  spriteMime?: 'image/gif' | 'image/png';
 }
 
 export interface PartsPlan {
@@ -109,7 +113,9 @@ export function planLayoutParts(files: Record<string, Uint8Array>, parts: readon
       continue;
     }
     const sprite = spriteOf(files, stem);
-    if (!sprite) {
+    // A set without a picture goes up as a set (newer servers take those).
+    const isSet = /\.set$/i.test(stem) && /<group[\s>]/i.test(new TextDecoder().decode(files[name]!));
+    if (!sprite && !isSet) {
       plan.skipped.push(partNumber);
       continue;
     }
@@ -136,8 +142,7 @@ export async function uploadLayoutParts(
         partNumber: p.partNumber,
         displayName: p.displayName,
         xmlBase64: toBase64(p.xml),
-        spriteBase64: toBase64(p.sprite),
-        spriteMime: p.spriteMime,
+        ...(p.sprite && p.spriteMime ? { spriteBase64: toBase64(p.sprite), spriteMime: p.spriteMime } : {}),
         ...(orgSlug ? { orgSlug } : {}),
       });
     } catch {

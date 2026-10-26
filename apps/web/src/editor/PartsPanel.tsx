@@ -118,7 +118,8 @@ export const PartsPanel = memo(function PartsPanel({
       }
       // Same fuzzy hay as desktop (PartsBrowser.cpp:242):
       //   "<key> <description>" lowercased.
-      const hay = `${p.key} ${p.description}`.toLowerCase();
+      // A custom part's key is "custom:<id>": its number is what people know it by, as on desktop.
+      const hay = (p.source === 'custom' ? `${p.partNumber} ${p.key} ${p.description}` : `${p.key} ${p.description}`).toLowerCase();
       const score = fuzzyScore(needle, hay);
       if (score <= 0) continue;
       // A part is budgeted when its limit is above 0 (BudgetSession::isBudgeted).

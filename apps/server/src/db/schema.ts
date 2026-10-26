@@ -643,7 +643,9 @@ export const customParts = sqliteTable(
   xmlBlob: blob('xml_blob').notNull(),
   /** Sprite bytes (gif/png). */
   spriteBlob: blob('sprite_blob').notNull(),
-  spriteMime: text('sprite_mime', { enum: ['image/gif', 'image/png'] }).notNull(),
+  // '' (with an empty sprite_blob) for a set: a <group> of other parts,
+  // drawn by them. The enum is TypeScript's only, so no migration.
+  spriteMime: text('sprite_mime', { enum: ['image/gif', 'image/png', ''] }).notNull(),
   /**
    * Author credit (0024). `copiedFromId`: the item this one was copied
    * from (no FK: the original may go), shown as "based on ‹title› by
