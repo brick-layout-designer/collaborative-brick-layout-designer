@@ -11,6 +11,8 @@
 // and only when the update could leave a grid layer without a valid size is
 // the result worked out, on a copy of the room's document. That is when it:
 //   - writes a layer's type as 'grid' (or as something not a plain value);
+//     an item's key is the one Yjs gives it: its own, else its origin's,
+//     else (no origin) its right origin's;
 //   - writes a grid size that isn't one plain valid number, or deletes the
 //     value it writes;
 //   - deletes the grid size of a layer that is a grid and stays;
@@ -50,15 +52,26 @@ export function invalidGridLayers(doc: Y.Doc): Set<string> {
 /** Could this write of a layer's type make it a grid? */
 function mayWriteGrid(content: unknown): boolean {
   if (content instanceof Y.ContentDeleted) return false; // a type taken away: not a grid
-  if (content instanceof Y.ContentAny || content instanceof Y.ContentJSON) return content.arr.includes('grid');
-  return true; // some other kind of value: work it out
+  if (content instanceof Y.ContentAny) return content.arr.includes('grid');
+  return true; // some other kind of value (JSON content, which the apps read differently, too): work it out
+}
+
+/**
+ * Does the update's delete set take any of `item` away? Every range is
+ * looked at: Y.isDeleted searches them as if sorted, and a hand-made update
+ * may list them in any order (Yjs applies them all).
+ */
+function deletes(ds: DeleteSet, item: Y.Item): boolean {
+  const { client, clock } = item.id;
+  const end = clock + item.length;
+  return (ds.clients.get(client) ?? []).some((r) => r.clock < end && clock < r.clock + r.len);
 }
 
 /** Is this write of a grid size one valid number that stays? */
 function writesValidSize(item: Y.Item, ds: DeleteSet): boolean {
   const c = item.content;
-  if (!(c instanceof Y.ContentAny || c instanceof Y.ContentJSON)) return false;
-  return item.length === 1 && c.arr.length === 1 && validGridSize(c.arr[0]) && !Y.isDeleted(ds, item.id);
+  if (!(c instanceof Y.ContentAny)) return false;
+  return item.length === 1 && c.arr.length === 1 && validGridSize(c.arr[0]) && !deletes(ds, item);
 }
 
 /** Could `update` leave a grid layer of `doc` without a valid size? (False: certainly not.) */
@@ -130,7 +143,7 @@ function mayBreakGrid(doc: Y.Doc | null, update: DecodedUpdate): boolean {
           const layer = s.parent;
           if (!(layer instanceof Y.Map) || layer.get(TYPE_KEY) !== 'grid') continue;
           const layerItem = layer._item;
-          if (layerItem && (layerItem.deleted || Y.isDeleted(ds, layerItem.id))) continue;
+          if (layerItem && (layerItem.deleted || deletes(ds, layerItem))) continue;
           return true;
         }
       }

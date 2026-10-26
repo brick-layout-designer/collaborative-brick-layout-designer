@@ -197,4 +197,25 @@ describe('grid guard', () => {
     expect(checkGridSizes(doc, both)).toMatch(/cell size/);
     expect(guardWork.docCopies - before).toBe(1);
   });
+
+  it('sees a written size its own update deletes, whatever order the deleted ranges come in', () => {
+    const doc = room();
+    const mine = new Y.Doc();
+    Y.applyUpdate(mine, Y.encodeStateAsUpdate(doc));
+    mine.clientID = 77;
+    const sv = Y.encodeStateVector(mine);
+    gridOf(mine).set('gridSizeInStud', 48); // client 77, clock 0: replaces the room's size
+    const update = Y.encodeStateAsUpdate(mine, sv);
+    // The update ends with mine's whole delete set: the same bytes as an update with no structs.
+    const ds = Y.encodeStateAsUpdate(mine, Y.encodeStateVector(mine)).subarray(1);
+    expect(update.subarray(update.length - ds.length)).toEqual(ds);
+    // Hand-made: client 77's deleted ranges out of order, clock 5 then clock 0 (the new size).
+    const crafted = new Uint8Array([...update.subarray(0, update.length - ds.length), 1, 77, 2, 5, 1, 0, 1]);
+    expect(checkUpdate(crafted)).toBeNull();
+    const after = new Y.Doc();
+    Y.applyUpdate(after, Y.encodeStateAsUpdate(doc));
+    Y.applyUpdate(after, crafted);
+    expect(gridOf(after).has('gridSizeInStud')).toBe(false);
+    expect(checkGridSizes(doc, crafted)).toMatch(/cell size/);
+  });
 });
