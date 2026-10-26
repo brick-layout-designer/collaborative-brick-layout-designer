@@ -31,7 +31,7 @@
     { "id": "uploadSets", "label": "Uploading sets of your own parts" }
   ],
   "serverFeatures": ["liveSync", "signIn", "publish", "clubs", "venues", "partsManifest", "partFilesWithToken", "uploadParts", "preferences", "ownerTags", "limits", "layoutDownload", "catalogShare", "uploadSets"],
-  "desktopUses": ["liveSync", "signIn", "publish", "clubs", "venues", "partsManifest", "partFilesWithToken", "uploadParts", "preferences", "ownerTags", "uploadSets"],
+  "desktopUses": ["liveSync", "signIn", "publish", "clubs", "venues", "partsManifest", "partFilesWithToken", "uploadParts", "preferences", "ownerTags"],
   "assumedWhenUnlisted": ["liveSync", "signIn"],
   "cases": {
     "versionCompare": [
