@@ -1,7 +1,8 @@
 // Grid sizes the apps draw (ws/gridGuard.ts): the shared vectors
 // (fixtures/contracts/update-guard.json, gridSize), every layout fixture as
-// the server seeds it, a layout already holding such a size, and changes
-// that wait for others before they apply.
+// the server seeds it, a layout already holding such a size, changes that
+// wait for others before they apply, and which updates are worked out on a
+// copy of the room's document (only those that could break a grid).
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { readBbm } from '@cld/bbm';
 import { createDefaultLayoutDoc, seedFromBbm } from '@cld/ydoc';
 import { checkGridSizes, invalidGridLayers, validGridSize } from './gridGuard.js';
+import { decodeIncoming, guardWork } from './decoded.js';
 import { checkUpdate } from './updateGuard.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -111,5 +113,88 @@ describe('grid guard', () => {
     Y.applyUpdate(doc, later);
     expect(doc.store.pendingStructs).not.toBeNull();
     expect(checkGridSizes(doc, earlier)).toMatch(/cell size/);
+  });
+
+  it('works out on a copy only the updates that could leave a grid without a valid size', () => {
+    const doc = room();
+    const edit = (fn: (d: Y.Doc) => void) => {
+      const mine = new Y.Doc();
+      Y.applyUpdate(mine, Y.encodeStateAsUpdate(doc));
+      const sv = Y.encodeStateVector(mine);
+      fn(mine);
+      return Y.encodeStateAsUpdate(mine, sv);
+    };
+    const copies = (update: Uint8Array): [string | null, number] => {
+      const before = guardWork.docCopies;
+      const why = checkGridSizes(doc, update);
+      return [why, guardWork.docCopies - before];
+    };
+    const parts = (d: Y.Doc, n: number) => {
+      const layer = new Y.Map<unknown>();
+      layer.set('type', 'brick');
+      const list = new Y.Array<Y.Map<unknown>>();
+      layer.set('bricks', list);
+      d.getMap('layerData').set('P', layer);
+      d.getArray<string>('layers').push(['P']);
+      list.push(
+        Array.from({ length: n }, (_, i) => {
+          const y = new Y.Map<unknown>();
+          y.set('id', `p${i}`);
+          y.set('orientation', 0);
+          return y;
+        }),
+      );
+    };
+    // No copy: parts, a layer of another kind, a title, a type taken away, a grid layer deleted.
+    expect(copies(edit((d) => parts(d, 2000)))).toEqual([null, 0]);
+    expect(copies(edit((d) => d.getMap('meta').set('title', 'Yard')))).toEqual([null, 0]);
+    expect(copies(edit((d) => gridOf(d).delete('type')))).toEqual([null, 0]);
+    expect(copies(edit((d) => gridOf(d).set('type', 'brick')))).toEqual([null, 0]);
+    expect(copies(edit((d) => d.getMap('layerData').forEach((l, id) => l === gridOf(d) && d.getMap('layerData').delete(id))))).toEqual([null, 0]);
+    // A copy: a new size (valid: taken), a layer turned into a grid, a grid size deleted.
+    expect(copies(edit((d) => gridOf(d).set('gridSizeInStud', 48)))).toEqual([null, 1]);
+    expect(copies(edit((d) => gridOf(d).set('gridSizeInStud', 0)))[1]).toBe(1);
+    expect(copies(edit((d) => gridOf(d).delete('gridSizeInStud')))).toEqual([expect.stringMatching(/cell size/), 1]);
+    expect(
+      copies(
+        edit((d) =>
+          d.transact(() => {
+            gridOf(d).set('gridSizeInStud', 48);
+            gridOf(d).delete('gridSizeInStud');
+          }),
+        ),
+      ),
+    ).toEqual([expect.stringMatching(/cell size/), 1]);
+    expect(copies(edit((d) => {
+      const g = new Y.Map<unknown>();
+      d.getMap('layerData').set('G2', g);
+      g.set('type', 'grid');
+    }))).toEqual([expect.stringMatching(/cell size/), 1]);
+  });
+
+  it('works out the hand-made update with two structs for one id on a copy', () => {
+    const doc = room();
+    // Two blocks for client 77 from clock 0: the first a note, the second a
+    // grid size of 0. (Yjs reads the second; a lookup by id might find the first.)
+    const block = (fn: (d: Y.Doc) => void): Uint8Array => {
+      const mine = new Y.Doc();
+      Y.applyUpdate(mine, Y.encodeStateAsUpdate(doc));
+      mine.clientID = 77;
+      const sv = Y.encodeStateVector(mine);
+      fn(mine);
+      const u = Y.encodeStateAsUpdate(mine, sv);
+      expect(u[0]).toBe(1); // one client
+      return u.subarray(1);
+    };
+    // The first's delete set is empty (a new key): drop it; the second's follows its block.
+    const a = block((d) => d.getMap('meta').set('note', 'x'));
+    expect(a.at(-1)).toBe(0);
+    const b = block((d) => gridOf(d).set('gridSizeInStud', 0));
+    const both = new Uint8Array([2, ...a.subarray(0, a.length - 1), ...b]);
+    expect(checkUpdate(both)).toBeNull();
+    expect(decodeIncoming(both)?.overlapping).toBe(true);
+    const before = guardWork.docCopies;
+    expect(checkGridSizes(doc, both)).toMatch(/cell size/);
+    expect(guardWork.docCopies - before).toBe(1);
   });
 });
