@@ -23,8 +23,8 @@
 //     this layout (items the room has, or edits placed among them);
 //   - a brand-new layout (no layer order yet): allowed whatever it holds.
 //
-// It is cheap: one decode of the update and lookups against the room's
-// state vector, no copy of the doc.
+// It is cheap: one decode of the update (shared with the grid guard,
+// ws/decoded.ts) and lookups against the room's store, no copy of the doc.
 //
 // A second, softer signal is only reported: one update carrying new items
 // from many clients this room has never seen. A merge of two layouts that
@@ -33,6 +33,7 @@
 // restoring its cache after a server restore, so it is flagged, not refused.
 
 import * as Y from 'yjs';
+import { decodeIncoming, findStruct, type DecodedUpdate, type Struct } from './decoded.js';
 
 /** What the check found in one incoming update. */
 export interface MergeCheck {
@@ -54,35 +55,15 @@ export const SUSPICIOUS_UNSEEN_CLIENTS = 4;
 
 const LAYERS = 'layers';
 
-type Struct = Y.Item | Y.GC | Y.Skip;
-
-/** The new structs of an update, per client, sorted by clock. */
-function byClient(structs: Struct[]): Map<number, Struct[]> {
-  const out = new Map<number, Struct[]>();
-  for (const s of structs) {
-    let list = out.get(s.id.client);
-    if (!list) out.set(s.id.client, (list = []));
-    list.push(s);
-  }
-  for (const list of out.values()) list.sort((a, b) => a.id.clock - b.id.clock);
-  return out;
-}
-
-function find(list: Struct[] | undefined, clock: number): Struct | null {
-  if (!list) return null;
-  let lo = 0;
-  let hi = list.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const s = list[mid]!;
-    if (clock < s.id.clock) hi = mid - 1;
-    else if (clock >= s.id.clock + s.length) lo = mid + 1;
-    else return s;
-  }
-  return null;
-}
-
 export function checkIncomingUpdate(doc: Y.Doc, update: Uint8Array): MergeCheck {
+  return checkIncomingDecoded(doc, update, decodeIncoming(update));
+}
+
+/**
+ * checkIncomingUpdate with the update already decoded (the live handler
+ * shares one decode); null when Yjs can't read it.
+ */
+export function checkIncomingDecoded(doc: Y.Doc, update: Uint8Array, decoded: DecodedUpdate | null): MergeCheck {
   const order = doc.share.get(LAYERS);
   const result: MergeCheck = {
     refuse: false,
@@ -92,21 +73,17 @@ export function checkIncomingUpdate(doc: Y.Doc, update: Uint8Array): MergeCheck 
     docLayers: order ? order._length : 0,
     updateBytes: update.length,
   };
-  let structs: Struct[];
-  try {
-    structs = Y.decodeUpdate(update).structs as Struct[];
-  } catch {
-    return result; // unreadable: Yjs will reject it on its own
-  }
-  if (structs.length === 0) return result;
+  if (!decoded) return result; // unreadable: Yjs will reject it on its own
+  if (decoded.structs.length === 0) return result;
 
-  const sv = Y.decodeStateVector(Y.encodeStateVector(doc));
-  const known = (id: Y.ID): boolean => id.clock < (sv.get(id.client) ?? 0);
-  const clients = byClient(structs);
-  const inUpdate = (id: Y.ID): Struct | null => find(clients.get(id.client), id.clock);
+  // The room's state per client, read from its store (no state vector copy).
+  const state = (client: number): number => Y.getState(doc.store, client);
+  const known = (id: Y.ID): boolean => id.clock < state(id.client);
+  const clients = decoded.byClient;
+  const inUpdate = (id: Y.ID): Struct | null => findStruct(clients.get(id.client), id.clock);
 
   for (const [client, list] of clients) {
-    if ((sv.get(client) ?? 0) === 0 && list.some((s) => s instanceof Y.Item)) result.unseenClients += 1;
+    if (state(client) === 0 && list.some((s) => s instanceof Y.Item)) result.unseenClients += 1;
   }
   result.suspicious = result.unseenClients >= SUSPICIOUS_UNSEEN_CLIENTS;
 
