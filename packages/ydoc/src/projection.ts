@@ -251,12 +251,23 @@ function writeLayer(layer: Layer, y: Y.Map<unknown>): void {
   }
 }
 
+/**
+ * A grid's cell size as both apps draw it: 1 to the largest 32-bit int (the
+ * server refuses anything else, apps/server/src/ws/gridGuard.ts). A file's
+ * size below 1 becomes 1 (as the desktop draws it), one too big the
+ * largest, and one that isn't a number BlueBrick's default 32.
+ */
+export function drawableGridSize(size: number): number {
+  if (typeof size !== 'number' || Number.isNaN(size)) return 32;
+  return Math.min(2147483647, Math.max(1, size));
+}
+
 function writeLayerGrid(layer: LayerGrid, y: Y.Map<unknown>): void {
   y.set('gridColor', layer.gridColor);
   y.set('gridThickness', layer.gridThickness);
   y.set('subGridColor', layer.subGridColor);
   y.set('subGridThickness', layer.subGridThickness);
-  y.set('gridSizeInStud', layer.gridSizeInStud);
+  y.set('gridSizeInStud', drawableGridSize(layer.gridSizeInStud));
   y.set('subDivisionNumber', layer.subDivisionNumber);
   y.set('displayGrid', layer.displayGrid);
   y.set('displaySubGrid', layer.displaySubGrid);

@@ -31,6 +31,7 @@ import { backgroundImagePath, layoutFileBytes, smallZip } from '../privacy/expor
 import { attachment, safeFileName } from '../utils/contentDisposition.js';
 import { clampTitle, titleTooLong, trimmed } from '../utils/validate.js';
 import { checkUpdate } from '../ws/updateGuard.js';
+import { checkGridSizes } from '../ws/gridGuard.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -489,7 +490,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       return reply.code(413).send({ error: 'snapshot_too_large' });
     }
     // Only a document both apps can read (the live editor's check).
-    if (checkUpdate(bytes) !== null) return reply.code(400).send({ error: 'unreadable_snapshot' });
+    if (checkUpdate(bytes) !== null || checkGridSizes(null, bytes) !== null) return reply.code(400).send({ error: 'unreadable_snapshot' });
     // While the layout is open in the realtime editor, the in-memory doc
     // is authoritative and its next flush would silently overwrite a
     // wholesale replacement written here. Refuse instead of losing it.

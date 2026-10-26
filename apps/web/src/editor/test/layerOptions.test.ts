@@ -104,6 +104,24 @@ describe('layerOptionsPatch', () => {
     expect(layerById<LayerGrid>(doc, id).gridSizeInStud).toBe(32);
   });
 
+  it('keeps the grid size from 1 to 512 studs, and a size that is not a number as it was', () => {
+    for (const [typed, kept] of [
+      [0, 1],
+      [-8, 1],
+      [0.4, 1],
+      [100000, 512],
+      [Number.NaN, 32],
+      [Number.POSITIVE_INFINITY, 32],
+    ] as const) {
+      const doc = new Y.Doc();
+      const id = addLayer(doc, 'grid');
+      const layer = layerById<LayerGrid>(doc, id);
+      const f = formFromLayer(layer);
+      applyLayerOptions(doc, id, layerOptionsPatch(layer, { ...f, grid: { ...f.grid!, gridSizeInStud: typed } }));
+      expect(layerById<LayerGrid>(doc, id).gridSizeInStud).toBe(kept);
+    }
+  });
+
   it('sets the area paint cell size (1-256)', () => {
     const doc = new Y.Doc();
     ensureBrickLayer(doc); // seeds the map header
