@@ -67,10 +67,8 @@ describe('Text and ruler dialogs keep alpha and named colors', () => {
     const ruler = () => docToBbm(doc).layers.flatMap((l) => (l.type === 'ruler' ? l.rulerItems : []))[0]!;
     // A known guideline color must survive an edit of another field.
     doc.transact(() => {
-      const items = (doc.getMap('layerData').get(layerId) as import('yjs').Map<unknown>).get('rulerItems') as import('yjs').Array<Record<string, unknown>>;
-      const r = items.get(0);
-      items.delete(0, 1);
-      items.insert(0, [{ ...r, guidelineColor: { kind: 'known', name: 'Gray' } }]);
+      const items = (doc.getMap('layerData').get(layerId) as import('yjs').Map<unknown>).get('rulerItems') as import('yjs').Array<import('yjs').Map<unknown>>;
+      items.get(0).set('guidelineColor', { kind: 'known', name: 'Gray' });
     });
     render(<EditRulerDialog item={ruler()} layerId={layerId} doc={doc} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText('Line color alpha'), { target: { value: '64' } });

@@ -12,7 +12,19 @@ import { readSidecarCache as readMergedSidecar, writeSidecarCache as writeMerged
 import * as Y from 'yjs';
 import type { ColorSpec, FontSpec, Group, Layer, RectangleF } from '@cld/model';
 import type { AnchoredLabel, BackgroundImage, SavedView, SidecarModule } from '@cld/bbm';
-import { DOC_SCHEMA_VERSION, makeId } from '@cld/ydoc';
+import {
+  DOC_BASE_SCHEMA,
+  cellOffsetOf,
+  itemsInOrder,
+  makeId,
+  markShapeInPlace,
+  pushOnTop,
+  reorderByZ,
+  rulerJson,
+  rulersInPlace,
+  setItemFields,
+  toItemMap,
+} from '@cld/ydoc';
 import { moduleCopy } from './moduleCopy';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
 import { imageOffset } from '@cld/parts-catalog/browser';
@@ -63,7 +75,7 @@ export function placeBrick(
     yBrick.set('activeConnectionPointIndex', spec.activeConnectionPointIndex ?? 0);
     yBrick.set('altitude', spec.altitude ?? 0);
     yBrick.set('connexions', []);
-    bricks.push([yBrick]);
+    pushOnTop(bricks, [yBrick]);
   }, LOCAL_ORIGIN);
   return id;
 }
@@ -266,7 +278,7 @@ export function insertBricks(
       yBrick.set('activeConnectionPointIndex', 0);
       yBrick.set('altitude', b.altitude ?? 0);
       yBrick.set('connexions', []);
-      yBricks.push([yBrick]);
+      pushOnTop(yBricks, [yBrick]);
     }
     const yGroups = layerData.get('groups');
     if (groups.length > 0 && yGroups instanceof Y.Array) {
@@ -511,10 +523,11 @@ export function rotateSelection(
     const wanted = new Set(anno.rulers);
     for (const lid of doc.getArray<string>('layers').toArray()) {
       const layerData = doc.getMap('layerData').get(lid);
-      const yItems = layerData instanceof Y.Map ? layerData.get('rulerItems') : undefined;
-      if (!(yItems instanceof Y.Array)) continue;
+      // Turned in place (shape 2): converted first, in its own step.
+      const yItems = layerData instanceof Y.Map ? rulersInPlace(doc, layerData) : null;
+      if (!yItems) continue;
       yItems.forEach((r) => {
-        const ruler = r as RulerLike | undefined;
+        const ruler = rulerJson(r) as RulerLike | null;
         if (ruler && wanted.has(ruler.id)) rulers.push({ yItems: yItems as Y.Array<unknown>, ruler });
       });
     }
@@ -574,8 +587,7 @@ export function rotateSelection(
         const c = turnedPoint(ruler.center, pivot, degrees);
         turned = { ...ruler, center: c, displayArea: rectAroundCircle(c, ruler.radius) };
       }
-      yItems.delete(idx, 1);
-      yItems.insert(idx, [turned]);
+      writeRuler(yItems, idx, turned);
     }
   }, LOCAL_ORIGIN);
 }
@@ -710,6 +722,9 @@ export function paintAreaCells(
     if (!(layerData instanceof Y.Map)) return;
     const yAreas = layerData.get('areas');
     if (!(yAreas instanceof Y.Array)) return;
+    // Cells are kept relative to the sheet's offset (doc shape 2).
+    const off = cellOffsetOf(layerData);
+    const rel = changes.map((c) => ({ ...c, x: c.x - off.x, y: c.y - off.y }));
 
     // Index existing cells by `${x},${y}` for O(1) upsert. A cell can be
     // there twice (two people painted it at once), so erasing or
@@ -725,7 +740,7 @@ export function paintAreaCells(
     // indices stay valid). Splits into upserts + deletes.
     const upserts = new Map<string, { x: number; y: number; color: string }>();
     const deletes: number[] = [];
-    for (const c of changes) {
+    for (const c of rel) {
       const key = `${c.x},${c.y}`;
       const existing = indexByKey.get(key);
       // Erase deletes; repaint replaces (delete + push the upsert).
@@ -759,14 +774,14 @@ export const AREA_CELL_SIZE_DEFAULT = 32;
  */
 export function moveArea(doc: Y.Doc, layerId: string, dx: number, dy: number): void {
   if (dx === 0 && dy === 0) return;
+  const layerData = doc.getMap('layerData').get(layerId);
+  if (!(layerData instanceof Y.Map) || !(layerData.get('areas') instanceof Y.Array)) return;
+  // The sheet's offset changes, not every cell (doc shape 2), so two people
+  // moving it at once leave each cell once.
+  markShapeInPlace(doc);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yAreas = layerData.get('areas');
-    if (!(yAreas instanceof Y.Array)) return;
-    const moved = (yAreas.toArray() as { x: number; y: number; color: string }[]).map((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
-    yAreas.delete(0, yAreas.length);
-    yAreas.insert(0, moved);
+    const off = cellOffsetOf(layerData);
+    layerData.set('cellOffset', { x: off.x + dx, y: off.y + dy });
   }, LOCAL_ORIGIN);
 }
 
@@ -1096,17 +1111,14 @@ export function addLinearRuler(
   point2: { x: number; y: number },
 ): string {
   const id = makeId();
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const minX = Math.min(point1.x, point2.x);
     const minY = Math.min(point1.y, point2.y);
     const maxX = Math.max(point1.x, point2.x);
     const maxY = Math.max(point1.y, point2.y);
-    yItems.push([
-      {
+    pushOnTop(yItems, [toItemMap({
         id,
         kind: 'linear',
         displayArea: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
@@ -1118,8 +1130,7 @@ export function addLinearRuler(
         attachedBrick2Id: '',
         offsetDistance: 0,
         allowOffset: false,
-      },
-    ]);
+      })]);
   }, LOCAL_ORIGIN);
   return id;
 }
@@ -1132,14 +1143,11 @@ export function addCircularRuler(
   radiusStuds: number,
 ): string {
   const id = makeId();
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const r = Math.max(0, radiusStuds);
-    yItems.push([
-      {
+    pushOnTop(yItems, [toItemMap({
         id,
         kind: 'circular',
         displayArea: { x: centre.x - r, y: centre.y - r, width: 2 * r, height: 2 * r },
@@ -1148,8 +1156,7 @@ export function addCircularRuler(
         center: centre,
         radius: r,
         attachedBrickId: '',
-      },
-    ]);
+      })]);
   }, LOCAL_ORIGIN);
   return id;
 }
@@ -1166,20 +1173,37 @@ export function addCircularRuler(
  * Returns -1 if not found. Used by every ruler verb below.
  */
 function findRulerIndex(yItems: Y.Array<unknown>, rulerId: string): number {
-  for (let i = 0; i < yItems.length; i++) {
-    const item = yItems.get(i) as { id?: string } | undefined;
-    if (item && item.id === rulerId) return i;
-  }
+  for (let i = 0; i < yItems.length; i++) if (itemId(yItems.get(i)) === rulerId) return i;
   return -1;
+}
+
+/**
+ * A ruler sheet's items, turned into Y.Maps first when they're plain
+ * objects (doc shape 2, @cld/ydoc shape.ts), in a step of their own, so
+ * every ruler edit changes the entry in place and merges with someone
+ * else's edit or delete. Call before the edit's transaction.
+ */
+function rulerSheet(doc: Y.Doc, layerId: string): Y.Array<unknown> | null {
+  const layer = doc.getMap('layerData').get(layerId);
+  return layer instanceof Y.Map ? rulersInPlace(doc, layer) : null;
+}
+
+/** Change a ruler entry to `next`, in place when it's a Y.Map. */
+function writeRuler(yItems: Y.Array<unknown>, idx: number, next: Record<string, unknown>): void {
+  const m = yItems.get(idx);
+  if (m instanceof Y.Map) {
+    setItemFields(m, next);
+    return;
+  }
+  yItems.delete(idx, 1);
+  yItems.insert(idx, [next]);
 }
 
 /** Delete a ruler item. */
 export function deleteRulerItem(doc: Y.Doc, layerId: string, rulerId: string): void {
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const idx = findRulerIndex(yItems, rulerId);
     if (idx >= 0) yItems.delete(idx, 1);
   }, LOCAL_ORIGIN);
@@ -1198,36 +1222,29 @@ export function moveRulerItem(
   dyStuds: number,
 ): void {
   if (dxStuds === 0 && dyStuds === 0) return;
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const idx = findRulerIndex(yItems, rulerId);
     if (idx < 0) return;
-    const cur = yItems.get(idx) as RulerLike;
+    const cur = rulerJson(yItems.get(idx)) as RulerLike | null;
     if (!cur) return;
-    yItems.delete(idx, 1);
     if (cur.kind === 'linear') {
       const p1 = { x: cur.point1.x + dxStuds, y: cur.point1.y + dyStuds };
       const p2 = { x: cur.point2.x + dxStuds, y: cur.point2.y + dyStuds };
-      yItems.insert(idx, [
-        {
+      writeRuler(yItems, idx, {
           ...cur,
           point1: p1,
           point2: p2,
           displayArea: rectFromTwoPoints(p1, p2),
-        } as unknown as Record<string, unknown>,
-      ]);
+        });
     } else {
       const c = { x: cur.center.x + dxStuds, y: cur.center.y + dyStuds };
-      yItems.insert(idx, [
-        {
+      writeRuler(yItems, idx, {
           ...cur,
           center: c,
           displayArea: rectAroundCircle(c, cur.radius),
-        } as unknown as Record<string, unknown>,
-      ]);
+        });
     }
   }, LOCAL_ORIGIN);
 }
@@ -1248,22 +1265,19 @@ export function scaledRulerValue(r: Pick<RulerLike, 'kind' | 'point1' | 'point2'
 
 /** Drag a ruler's offset or a circle's radius to `at` (studs): ScaleRuler. */
 export function scaleRuler(doc: Y.Doc, layerId: string, rulerId: string, at: { x: number; y: number }): void {
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const idx = findRulerIndex(yItems, rulerId);
     if (idx < 0) return;
-    const cur = yItems.get(idx) as RulerLike;
+    const cur = rulerJson(yItems.get(idx)) as RulerLike | null;
     if (!cur) return;
     const value = scaledRulerValue(cur, at);
     const next =
       cur.kind === 'circular'
         ? { ...cur, radius: Math.max(0, value), displayArea: rectAroundCircle(cur.center, Math.max(0, value)) }
         : { ...cur, offsetDistance: value };
-    yItems.delete(idx, 1);
-    yItems.insert(idx, [next as unknown as Record<string, unknown>]);
+    writeRuler(yItems, idx, next);
   }, LOCAL_ORIGIN);
 }
 
@@ -1281,16 +1295,13 @@ export function moveRulerEndpoint(
   which: 0 | 1,
   newPoint: { x: number; y: number },
 ): void {
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const idx = findRulerIndex(yItems, rulerId);
     if (idx < 0) return;
-    const cur = yItems.get(idx) as RulerLike;
+    const cur = rulerJson(yItems.get(idx)) as RulerLike | null;
     if (!cur || cur.kind !== 'linear') return;
-    yItems.delete(idx, 1);
     const next = { ...cur };
     if (which === 0) {
       next.point1 = { ...newPoint };
@@ -1300,7 +1311,7 @@ export function moveRulerEndpoint(
       next.attachedBrick2Id = '';
     }
     next.displayArea = rectFromTwoPoints(next.point1, next.point2);
-    yItems.insert(idx, [next as unknown as Record<string, unknown>]);
+    writeRuler(yItems, idx, next);
   }, LOCAL_ORIGIN);
 }
 
@@ -1317,24 +1328,21 @@ export function attachRulerEndpoint(
   which: 0 | 1,
   brickId: string,
 ): void {
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const idx = findRulerIndex(yItems, rulerId);
     if (idx < 0) return;
-    const cur = yItems.get(idx) as RulerLike;
+    const cur = rulerJson(yItems.get(idx)) as RulerLike | null;
     if (!cur) return;
-    yItems.delete(idx, 1);
     if (cur.kind === 'linear') {
       const next = { ...cur };
       if (which === 0) next.attachedBrick1Id = brickId;
       else next.attachedBrick2Id = brickId;
-      yItems.insert(idx, [next as unknown as Record<string, unknown>]);
+      writeRuler(yItems, idx, next);
     } else {
       const next = { ...cur, attachedBrickId: brickId };
-      yItems.insert(idx, [next as unknown as Record<string, unknown>]);
+      writeRuler(yItems, idx, next);
     }
   }, LOCAL_ORIGIN);
 }
@@ -1368,16 +1376,13 @@ export function editRulerItem(
   rulerId: string,
   patch: EditRulerPatch,
 ): void {
+  const yItems = rulerSheet(doc, layerId);
   doc.transact(() => {
-    const layerData = doc.getMap('layerData').get(layerId);
-    if (!(layerData instanceof Y.Map)) return;
-    const yItems = layerData.get('rulerItems');
-    if (!(yItems instanceof Y.Array)) return;
+    if (!yItems) return;
     const idx = findRulerIndex(yItems, rulerId);
     if (idx < 0) return;
-    const cur = yItems.get(idx) as RulerLike;
+    const cur = rulerJson(yItems.get(idx)) as RulerLike | null;
     if (!cur) return;
-    yItems.delete(idx, 1);
     const next: Record<string, unknown> = { ...cur };
     for (const k of [
       'color',
@@ -1403,7 +1408,7 @@ export function editRulerItem(
         next.displayArea = rectAroundCircle(cur.center, r);
       }
     }
-    yItems.insert(idx, [next]);
+    writeRuler(yItems, idx, next);
   }, LOCAL_ORIGIN);
 }
 
@@ -1655,6 +1660,9 @@ export function editBrick(
   brickId: string,
   patch: EditBrickPatch,
 ): void {
+  // A new altitude may reorder the sheet, by z (doc shape 2).
+  const before = findBrick(doc, layerId, brickId);
+  if (before && patch.altitude !== undefined && patch.altitude !== before.get('altitude')) markShapeInPlace(doc);
   doc.transact(() => {
     const yBrick = findBrick(doc, layerId, brickId);
     if (!yBrick) return;
@@ -1673,7 +1681,6 @@ export function editBrick(
         y: patch.y ?? area.y,
       });
     }
-    // Last: the sort makes new Y.Maps, so the edits above go first.
     if (newAltitude) sortLayerByAltitude(doc, layerId);
   }, LOCAL_ORIGIN);
 }
@@ -1745,7 +1752,7 @@ function reorderYItems(yArr: Y.Array<unknown>, targetIds: readonly string[]): vo
   const keep = new Set<number>();
   for (let k = tails.length ? tails[tails.length - 1]! : -1; k >= 0; k = prev[k]!) keep.add(k);
   // Copy the movers first (a deleted Y.Map reads as empty), then take them out.
-  // (Text cells and bricks are Y.Maps; ruler items are plain objects.)
+  // (Text cells are Y.Maps, or plain objects in old docs.)
   const movers = new Map<string, { json: Record<string, unknown>; map: boolean }>();
   for (let i = 0; i < cur.length; i++) {
     if (keep.has(i)) continue;
@@ -1795,6 +1802,12 @@ export function reorderAnnotations(
     textsByLayer.set(layerId, set);
   }
   const newKeys: string[] = [];
+  if (rulerIds.size) {
+    for (const lid of doc.getArray<string>('layers').toArray()) {
+      const layer = doc.getMap('layerData').get(lid);
+      if (layer instanceof Y.Map && layer.get('type') === 'ruler') rulersInPlace(doc, layer);
+    }
+  }
   doc.transact(() => {
     for (const lid of doc.getArray<string>('layers').toArray()) {
       const layer = doc.getMap('layerData').get(lid);
@@ -1808,8 +1821,16 @@ export function reorderAnnotations(
         reorderYItems(arr, to === 'front' ? [...stay, ...move] : [...move, ...stay]);
         return move;
       };
+      // Rulers by z, in place (shape 2): a concurrent edit or delete stays.
       const rulers = layer.get('rulerItems');
-      if (rulerIds.size && rulers instanceof Y.Array) order(rulers as Y.Array<unknown>, (id) => rulerIds.has(id));
+      if (rulerIds.size && rulers instanceof Y.Array) {
+        const ids = itemsInOrder(rulers as Y.Array<unknown>).map(itemId);
+        const move = ids.filter((id) => rulerIds.has(id));
+        if (move.length && !ids.some((id) => !id) && new Set(ids).size === ids.length) {
+          const stay = ids.filter((id) => !rulerIds.has(id));
+          reorderByZ(rulers as Y.Array<unknown>, to === 'front' ? [...stay, ...move] : [...move, ...stay]);
+        }
+      }
       const cells = layer.get('textCells');
       const indexes = textsByLayer.get(lid);
       if (indexes && cells instanceof Y.Array) {
@@ -1840,6 +1861,9 @@ export function reorderBricks(
 ): void {
   if (brickIds.length === 0) return;
   const idSet = new Set(brickIds);
+  // By z, in place (doc shape 2): the parts keep their entries, so someone
+  // else deleting or dragging one at the same time isn't undone.
+  markShapeInPlace(doc);
   doc.transact(() => {
     // Reorder within each layer that contains any of the selected bricks.
     // Iterating all layers handles cross-layer selections correctly.
@@ -1849,19 +1873,12 @@ export function reorderBricks(
       if (!(layerData instanceof Y.Map)) continue;
       const yBricks = layerData.get('bricks');
       if (!(yBricks instanceof Y.Array)) continue;
-
-      const moving: number[] = [];
-      for (let i = 0; i < yBricks.length; i++) {
-        const b = yBricks.get(i);
-        if (b instanceof Y.Map && idSet.has(b.get('id') as string)) moving.push(i);
-      }
-      if (moving.length === 0) continue;
-
-      const ids = yBricks.toArray().map((b) => (b instanceof Y.Map ? (b.get('id') as string) : ''));
-      const movingSet = new Set(moving);
-      const movingIds = moving.map((i) => ids[i]!);
-      const stationary = ids.filter((_, i) => !movingSet.has(i));
-      reorderYItems(yBricks as Y.Array<unknown>, to === 'front' ? [...stationary, ...movingIds] : [...movingIds, ...stationary]);
+      const ids = itemsInOrder(yBricks as Y.Array<unknown>).map(itemId);
+      const movingIds = ids.filter((id) => idSet.has(id));
+      if (movingIds.length === 0) continue;
+      if (ids.some((id) => !id) || new Set(ids).size !== ids.length) continue;
+      const stationary = ids.filter((id) => !idSet.has(id));
+      reorderByZ(yBricks as Y.Array<unknown>, to === 'front' ? [...stationary, ...movingIds] : [...movingIds, ...stationary]);
     }
   }, LOCAL_ORIGIN);
 }
@@ -1919,7 +1936,7 @@ export function moveBricksToLayer(doc: Y.Doc, byLayer: Map<string, string[]>, ta
       }
       const copy = (m: Y.Map<unknown>): Y.Map<unknown> => {
         const y = new Y.Map<unknown>();
-        for (const [k, v] of Object.entries(m.toJSON() as Record<string, unknown>)) y.set(k, v);
+        for (const [k, v] of Object.entries(m.toJSON() as Record<string, unknown>)) if (k !== 'z') y.set(k, v); // z: its place on the new sheet
         return y;
       };
       // Copied before the originals go (a deleted Y.Map reads as empty).
@@ -1948,7 +1965,7 @@ export function moveBricksToLayer(doc: Y.Doc, byLayer: Map<string, string[]>, ta
         yBricks.delete(i, 1);
       }
       if (newGroups.length) tGroups.push(newGroups);
-      if (newBricks.length) tBricks.push(newBricks);
+      if (newBricks.length) pushOnTop(tBricks as Y.Array<unknown>, newBricks);
       moved += newBricks.length;
       if (yGroups instanceof Y.Array) {
         for (let i = yGroups.length - 1; i >= 0; i--) {
@@ -2054,10 +2071,12 @@ function sortLayerByAltitude(doc: Y.Doc, layerId: string): void {
   if (!(layerData instanceof Y.Map)) return;
   const yBricks = layerData.get('bricks');
   if (!(yBricks instanceof Y.Array)) return;
-  const all = yBricks.toArray().filter((b): b is Y.Map<unknown> => b instanceof Y.Map);
+  const all = itemsInOrder(yBricks as Y.Array<unknown>).filter((b): b is Y.Map<unknown> => b instanceof Y.Map);
   const alt = (b: Y.Map<unknown>) => (typeof b.get('altitude') === 'number' ? (b.get('altitude') as number) : 0);
   const sorted = all.map((b, i) => [b, i] as const).sort((a, c) => alt(a[0]) - alt(c[0]) || a[1] - c[1]);
-  reorderYItems(yBricks as Y.Array<unknown>, sorted.map(([b]) => b.get('id') as string));
+  if (sorted.every(([, i], k) => i === k)) return;
+  // By z, in place (doc shape 2): the caller marks the doc first.
+  reorderByZ(yBricks as Y.Array<unknown>, sorted.map(([b]) => b.get('id') as string));
 }
 
 /** Normalise to [0, 360) without losing fractional precision. */
@@ -2232,7 +2251,7 @@ function seedDefaultMeta(meta: Y.Map<unknown>): void {
     exportConnectionPoints: false,
   });
   meta.set('selectedLayerIndex', 0);
-  meta.set('schemaVersion', DOC_SCHEMA_VERSION);
+  meta.set('schemaVersion', DOC_BASE_SCHEMA);
 }
 
 // ---------------------------------------------------------------------------
@@ -2720,7 +2739,7 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
         yNew.set('activeConnectionPointIndex', 0);
         yNew.set('myGroup', myGroup);
         yNew.set('connexions', []);
-        bricks.push([yNew]);
+        pushOnTop(bricks, [yNew]);
       }
       const yGroups = layerData.get('groups');
       if (yGroups instanceof Y.Array) {

@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CURRENT_SCHEMA_VERSION as SIDECAR_SCHEMA_VERSION } from '@cld/bbm';
-import { DOC_MIN_READABLE, DOC_SCHEMA_VERSION, canReadDoc } from '@cld/ydoc';
+import { DOC_BASE_SCHEMA, DOC_MIN_READABLE, DOC_SCHEMA_VERSION, canReadDoc } from '@cld/ydoc';
 import { PLATFORM_SETTINGS_ID, getPlatformSettings } from './auth/platformSettings.js';
 import {
   DESKTOP_DOWNLOAD_URL,
@@ -26,7 +26,7 @@ import { db, resetDb, schema } from './test/helpers.js';
 
 interface Compat {
   desktop: { minimum: string; recommended: string; downloadUrl: string; userAgentPattern: string };
-  doc: { schemaVersion: number; minReadable: number };
+  doc: { schemaVersion: number; createdAs: number; minReadable: number };
   sidecar: { schemaVersion: number };
   layoutFile: { version: number };
   protocols: string[];
@@ -51,6 +51,7 @@ describe('compat/compat.json', () => {
     expect(DESKTOP_DOWNLOAD_URL).toBe(compat.desktop.downloadUrl);
     expect(DESKTOP_UA.source).toBe(new RegExp(compat.desktop.userAgentPattern).source);
     expect(DOC_SCHEMA_VERSION).toBe(compat.doc.schemaVersion);
+    expect(DOC_BASE_SCHEMA).toBe(compat.doc.createdAs);
     expect(DOC_MIN_READABLE).toBe(compat.doc.minReadable);
     expect(SIDECAR_SCHEMA_VERSION).toBe(compat.sidecar.schemaVersion);
     expect(LAYOUT_FILE_VERSION).toBe(compat.layoutFile.version);

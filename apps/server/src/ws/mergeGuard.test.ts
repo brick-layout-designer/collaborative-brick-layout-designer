@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { readBbm } from '@cld/bbm';
-import { bbmToDoc, createDefaultLayoutDoc, writeSidecarCache } from '@cld/ydoc';
+import { bbmToDoc, createDefaultLayoutDoc, markShapeInPlace, reorderByZ, rulersInPlace, writeSidecarCache } from '@cld/ydoc';
 import { checkIncomingUpdate, SUSPICIOUS_UNSEEN_CLIENTS } from './mergeGuard.js';
+import { checkUpdate } from './updateGuard.js';
 import { planUnmerge } from '../ops/unmergeLayouts.js';
 
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures');
@@ -204,7 +205,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       const bricks = brickLayer(second);
       second.transact(() => bricks.push(Array.from({ length: 500 }, (_, n) => brick(n))));
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
   });
 
   it('adding a layer at the top, the bottom, and after deleting every layer', () => {
@@ -216,7 +221,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       web.getArray('layers').delete(0, web.getArray('layers').length);
       addLayer(web, 'only', 0);
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
     expect(server.getArray('layers').toArray()).toEqual(['only']);
   });
 
@@ -229,7 +238,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       web.transact(() => writeSidecarCache(web, { schemaVersion: 1, bbmHashSha256: '', modules: [{ id: 'mod-new', name: 'Yard', brickIds: ['pasted-1'] }] }));
       web.getMap('sidecarItems').set('m:mod-new', { id: 'mod-new', name: 'Yard' });
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
   });
 
   it('undo of a big delete (layers and bricks)', () => {
@@ -245,7 +258,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       }, 'local');
       undo.undo();
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
     expect(server.getArray('layers').length).toBe(fixture('fordyce-2026.bbm').layers.length);
   });
 
@@ -325,5 +342,46 @@ describe('checkIncomingUpdate: normal work passes', () => {
     expect(check.refuse).toBe(false);
     expect(check.suspicious).toBe(true);
     expect(check.unseenClients).toBe(SUSPICIOUS_UNSEEN_CLIENTS);
+  });
+});
+
+describe('checkIncomingUpdate: doc shape 2 (@cld/ydoc shape.ts)', () => {
+  it('passes a client moving a layout to shape 2: rulers to Y.Maps, z order, an area offset', () => {
+    const server = serverLayout(100, 'fordyce-2026.bbm');
+    server.transact(() => {
+      const data = server.getMap<Y.Map<unknown>>('layerData');
+      const r = new Y.Map<unknown>();
+      r.set('id', 'rulers');
+      r.set('type', 'ruler');
+      const items = new Y.Array<unknown>();
+      items.push([{ id: 'r1', kind: 'linear', point1: { x: 0, y: 0 }, point2: { x: 1, y: 0 } }]);
+      r.set('rulerItems', items);
+      data.set('rulers', r);
+      const a = new Y.Map<unknown>();
+      a.set('id', 'area');
+      a.set('type', 'area');
+      const cells = new Y.Array<unknown>();
+      cells.push([{ x: 1, y: 1, color: 'FF000000' }]);
+      a.set('areas', cells);
+      data.set('area', a);
+      server.getArray<string>('layers').push(['rulers', 'area']);
+    });
+    const client = synced(server, 200);
+    const updates = recording(client, () => {
+      const data = client.getMap<Y.Map<unknown>>('layerData');
+      rulersInPlace(client, data.get('rulers')!);
+      markShapeInPlace(client);
+      const bricks = brickLayer(client);
+      const ids = bricks.toArray().map((b) => b.get('id') as string);
+      client.transact(() => reorderByZ(bricks as Y.Array<unknown>, [...ids.slice(1), ids[0]!]));
+      client.transact(() => data.get('area')!.set('cellOffset', { x: 1, y: 0 }));
+    });
+    expect(updates.length).toBeGreaterThan(0);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
+    expect(server.getMap('meta').get('schemaVersion')).toBe(2);
   });
 });

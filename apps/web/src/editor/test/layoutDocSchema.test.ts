@@ -58,7 +58,7 @@ describe('useLayoutDoc and the layout schema', () => {
     const { result } = renderHook(() => useLayoutDoc('b'));
     const p = providers.at(-1)!;
     act(() => {
-      p.doc.getMap('meta').set('schemaVersion', 2);
+      p.doc.getMap('meta').set('schemaVersion', 3);
       p.emit('sync', true);
     });
     expect(result.current.loadError?.message).toBe(UNREADABLE_LAYOUT);

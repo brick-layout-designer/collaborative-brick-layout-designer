@@ -330,7 +330,8 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
     // read meta.cache (the desktop) see both (@cld/ydoc repairSidecarCache).
     let repairTimer: ReturnType<typeof setTimeout> | null = null;
     const onTransaction = (tr: Y.Transaction) => {
-      if (tr.origin !== provider || repairTimer) return;
+      // (Also after an undo: it can take back items meta.cache still has.)
+      if ((tr.origin !== provider && !(tr.origin instanceof Y.UndoManager)) || repairTimer) return;
       repairTimer = setTimeout(() => {
         repairTimer = null;
         repairSidecarCache(fresh, SIDECAR_REPAIR_ORIGIN);

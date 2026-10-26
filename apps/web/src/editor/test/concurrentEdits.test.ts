@@ -1,9 +1,9 @@
 // Two people editing the same thing at once (audit 2026-10-20, track B).
-// Yjs has no "move": rulers, area cells and reordered parts are edited by
-// deleting the entry and inserting a changed copy, so two concurrent edits
-// leave two copies. removeDuplicateItems (run by every editor after
-// someone else's change) keeps one; the it.fails cases below are the
-// edits that are still lost and need a decision (see each one).
+// Yjs has no "move", so an edit made by deleting an entry and inserting a
+// changed copy loses a concurrent edit or delete. Doc shape 2 (@cld/ydoc
+// shape.ts) edits rulers, area sheets and the order of parts in place;
+// removeDuplicateItems (run by every editor after someone else's change)
+// still cleans up copies in docs and from builds that predate it.
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
@@ -53,7 +53,8 @@ function settle(a: Y.Doc, b: Y.Doc): void {
 const list = (d: Y.Doc, layerId: string, field: string): unknown[] =>
   ((d.getMap('layerData').get(layerId) as Y.Map<unknown>).get(field) as Y.Array<unknown>).toArray();
 const cells = (d: Y.Doc, layerId: string) => list(d, layerId, 'areas') as { x: number; y: number; color: string }[];
-const rulers = (d: Y.Doc, layerId: string) => list(d, layerId, 'rulerItems') as { id: string; point1: { x: number; y: number } }[];
+const rulers = (d: Y.Doc, layerId: string) =>
+  list(d, layerId, 'rulerItems').map((r) => (r instanceof Y.Map ? r.toJSON() : r)) as { id: string; point1: { x: number; y: number } }[];
 const brick = { partNumber: '3001.1', width: 4, height: 2 };
 
 describe('rulers', () => {
@@ -75,12 +76,9 @@ describe('rulers', () => {
     expect(rulers(b, L)).toHaveLength(0);
   });
 
-  // Needs Aaron: a ruler is a plain value in the array, so a move is a
-  // delete plus a new copy and the copy outlives a concurrent delete.
-  // Fixing it means rulers stored as Y.Maps edited in place (as text cells
-  // and parts are), a doc change the desktop must make too.
-  // Repro: A deletes a ruler while B (offline or at the same moment) drags it.
-  it.fails('a ruler one person deletes while another moves it stays deleted', () => {
+  // A ruler is a Y.Map edited in place (doc shape 2), so the move lands
+  // on the deleted entry. Repro: A deletes a ruler while B drags it.
+  it('a ruler one person deletes while another moves it stays deleted', () => {
     let L = '';
     let R = '';
     const { a, b } = pair((d) => {
@@ -135,10 +133,8 @@ describe('area cells', () => {
     expect(cells(doc, L).map((c) => `${c.x},${c.y},${c.color}`).sort()).toEqual(['0,0,FF0000FF', '1,1,FF00FF00']);
   });
 
-  // Needs Aaron: moveArea rewrites every cell, so two people moving the
-  // same area sheet at once get both moved copies (the area doubles).
-  // Repro: two editors drag the same area sheet at the same moment.
-  it.fails('two people moving the same area sheet at once leave each cell once', () => {
+  // Moving a sheet sets its cellOffset (doc shape 2): one wins, cells once.
+  it('two people moving the same area sheet at once leave each cell once', () => {
     let L = '';
     const { a, b } = pair((d) => {
       L = ensureAreaLayer(d);
@@ -152,11 +148,8 @@ describe('area cells', () => {
 });
 
 describe('parts', () => {
-  // Needs Aaron: Bring to Front / Send to Back delete the part and insert
-  // a copy (Yjs can't move), so a concurrent delete or move of that part is
-  // lost. reorderBricks already moves as few parts as it can (#300).
-  // Repro: A deletes (or drags) a part while B brings the same part to front.
-  it.fails('a part one person deletes while another brings it to front stays deleted', () => {
+  // Bring to Front / Send to Back set z on the same entry (doc shape 2).
+  it('a part one person deletes while another brings it to front stays deleted', () => {
     let L = '';
     let p = '';
     const { a, b } = pair((d) => {
@@ -170,7 +163,7 @@ describe('parts', () => {
     expect(list(a, L, 'bricks')).toHaveLength(1);
   });
 
-  it.fails('a part one person drags while another brings it to front keeps the drag', () => {
+  it('a part one person drags while another brings it to front keeps the drag', () => {
     let L = '';
     let p = '';
     const { a, b } = pair((d) => {
@@ -211,14 +204,9 @@ describe('undo with someone else editing', () => {
     expect(area.x).toBe(38);
   });
 
-  // Needs Aaron: labels and modules live in the sidecar blob (meta.cache)
-  // plus per-item keys (sidecarItems, outside the undo manager's scope).
-  // Once another person's label is merged in, the repair rewrites
-  // meta.cache, so undoing my label does nothing (and uses up the step).
-  // Fixing it means undoing the per-item keys and rebuilding the blob from
-  // them, which touches what the desktop reads.
-  // Repro: A adds a label, B adds another at the same time, A presses Undo.
-  it.fails('undoing my label removes it after someone else added one at the same time', () => {
+  // sidecarItems is in the undo manager's scope: undoing my label takes
+  // its key back, and readers merge from the keys.
+  it('undoing my label removes it after someone else added one at the same time', () => {
     const { a, b } = pair((d) => {
       ensureBrickLayer(d);
       addAnchoredLabel(d, label('L0'));

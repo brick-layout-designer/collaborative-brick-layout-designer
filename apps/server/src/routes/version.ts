@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { CURRENT_SCHEMA_VERSION as SIDECAR_SCHEMA_VERSION } from '@cld/bbm';
-import { DOC_MIN_READABLE, DOC_SCHEMA_VERSION } from '@cld/ydoc';
+import { DOC_BASE_SCHEMA, DOC_MIN_READABLE, DOC_SCHEMA_VERSION } from '@cld/ydoc';
 import { DESKTOP_DOWNLOAD_URL, FEATURES, desktopPolicy } from '../compat.js';
 import { perPerson } from '../utils/rateLimits.js';
 
@@ -39,9 +39,12 @@ export function appVersion(): string {
 export async function versionRoutes(app: FastifyInstance) {
   const fixed = {
     version: appVersion(),
-    schemaVersion: DOC_SCHEMA_VERSION,
+    // The shape a layout is made in (and stays in until an edit needs
+    // shape 2): desktops before shape 2 check this one and still connect;
+    // a layout already in shape 2 refuses them on its own (meta.schemaVersion).
+    schemaVersion: DOC_BASE_SCHEMA,
     protocols: [...PROTOCOLS],
-    doc: { schemaVersion: DOC_SCHEMA_VERSION, minReadable: DOC_MIN_READABLE },
+    doc: { schemaVersion: DOC_SCHEMA_VERSION, createdAs: DOC_BASE_SCHEMA, minReadable: DOC_MIN_READABLE },
     sidecar: { schemaVersion: SIDECAR_SCHEMA_VERSION },
     layoutFile: { version: LAYOUT_FILE_VERSION },
     features: [...FEATURES],
