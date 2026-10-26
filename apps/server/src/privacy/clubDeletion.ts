@@ -8,7 +8,8 @@
 //                          close, and every member gets a notice saying who
 //                          deleted it, when it goes for good, and that its
 //                          admins or a site admin can restore it
-//   restoreClub()          puts the memberships back, as they were
+//   restoreClub()          puts the memberships back, as they were, with
+//                          the roles each member held (custom ones too)
 //   eraseClub()            after the wait (or a site admin's "Erase now"):
 //                          the public catalog choice is applied (hand items
 //                          and collections to a member, or take them down),
@@ -35,7 +36,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export type CatalogChoice = 'hand' | 'takedown';
 
 export interface DeletionPlan {
-  members: { userId: string; role: 'admin' | 'manager' | 'member'; joinedAt: number }[];
+  /** roleIds: the club roles each held (member_roles goes with the membership rows). Absent in plans made before it was kept. */
+  members: { userId: string; role: 'admin' | 'manager' | 'member'; joinedAt: number; roleIds?: string[] }[];
   listed: boolean;
   catalog: CatalogChoice;
   /** Who gets the public catalog items and collections ('hand'). */
@@ -126,8 +128,13 @@ export async function requestClubDeletion(
   const { deletionGraceDays } = await privacySettings(now.getTime());
   const dueAt = new Date(now.getTime() + deletionGraceDays * DAY_MS);
   const members = await db.select().from(s.orgMembers).where(eq(s.orgMembers.orgId, org.id)).all();
+  // Deleting the memberships below takes their role rows with them (cascade), so the plan keeps them.
+  const held = new Map<string, string[]>();
+  for (const r of await db.select().from(s.memberRoles).where(eq(s.memberRoles.orgId, org.id)).all()) {
+    held.set(r.userId, [...(held.get(r.userId) ?? []), r.roleId]);
+  }
   const plan: DeletionPlan = {
-    members: members.map((m) => ({ userId: m.userId, role: m.role, joinedAt: m.joinedAt.getTime() })),
+    members: members.map((m) => ({ userId: m.userId, role: m.role, joinedAt: m.joinedAt.getTime(), roleIds: held.get(m.userId) ?? [] })),
     listed: org.listed,
     catalog: choice.catalog,
     heirUserId: choice.heirUserId,
@@ -178,14 +185,21 @@ export async function restoreClub(org: Org, actor: { id: string; displayName: st
     ? new Set((await db.select({ id: s.users.id }).from(s.users).where(inArray(s.users.id, members.map((m) => m.userId))).all()).map((u) => u.id))
     : new Set<string>();
   const back = members.filter((m) => alive.has(m.userId));
+  // The club's roles stay while it waits; any that went meanwhile are skipped.
+  const roleIds = new Set((await db.select({ id: s.clubRoles.id }).from(s.clubRoles).where(eq(s.clubRoles.orgId, org.id)).all()).map((r) => r.id));
   // A club always has an admin: if none of its admins is still here, its longest member becomes one.
   if (back.length && !back.some((m) => m.role === 'admin')) {
     const first = [...back].sort((a, b) => a.joinedAt - b.joinedAt)[0]!;
     first.role = 'admin';
+    if (first.roleIds) first.roleIds = [...first.roleIds, `${org.id}:admin`];
   }
   db.transaction((tx) => {
     for (const m of back) {
       tx.insert(s.orgMembers).values({ orgId: org.id, userId: m.userId, role: m.role, joinedAt: new Date(m.joinedAt) }).onConflictDoNothing().run();
+      // Older plans have no roleIds: those members get the built-in role org_members.role names (ensureClubRoles).
+      for (const roleId of new Set(m.roleIds ?? [])) {
+        if (roleIds.has(roleId)) tx.insert(s.memberRoles).values({ orgId: org.id, userId: m.userId, roleId }).onConflictDoNothing().run();
+      }
     }
     tx.update(s.orgs)
       .set({ deletionRequestedAt: null, deletionDueAt: null, deletedBy: null, deletionPlan: null, listed: plan?.listed ?? false })

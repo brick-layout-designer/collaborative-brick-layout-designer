@@ -6,7 +6,8 @@
 // The club disappears for Ben at once, and he gets a notice saying Ada
 // deleted it, when it goes for good, and that it can be restored. Ben
 // can't restore it himself; Ada restores it from Clubs › Being deleted,
-// and it's back for both of them.
+// and it's back for both of them, with Ben still holding the club's own
+// Track crew role.
 
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { signIn } from '../../helpers';
@@ -44,6 +45,12 @@ test('a club admin deletes a club handing its public module to a member; the mem
   const mod = await post(ada, '/api/modules', { title: `Signal box ${ts}`, orgSlug: club.slug });
   const item = await post(ada, '/api/catalog/submissions', { kind: 'module', sourceId: mod.id, title: `Signal box ${ts}` });
   expect(item.status).toBe('public');
+  // A role of the club's own, which Ben holds.
+  await post(ada, `/api/orgs/${club.slug}/roles`, { name: 'Track crew', permissions: ['edit_layouts'] });
+  await ada.goto(`/orgs/${club.slug}/admin?tab=people`);
+  const benRoles = ada.getByRole('group', { name: 'Roles for Ben' });
+  await benRoles.getByRole('button', { name: '+ Track crew' }).click();
+  await expect(benRoles.getByRole('button', { name: '✓ Track crew' })).toBeVisible();
 
   // ---- Ada deletes it ---------------------------------------------------------
   await ada.goto(`/orgs/${club.slug}/admin?tab=settings`);
@@ -90,4 +97,8 @@ test('a club admin deletes a club handing its public module to a member; the mem
   await ben.goto('/orgs');
   await expect(ben.getByRole('link', { name: CLUB })).toBeVisible();
   expect((await ben.request.get(`/api/orgs/${club.slug}`)).status()).toBe(200);
+  // Ben still holds Track crew, and Member.
+  await ada.goto(`/orgs/${club.slug}/admin?tab=people`);
+  await expect(benRoles.getByRole('button', { name: '✓ Track crew' })).toBeVisible();
+  await expect(benRoles.getByRole('button', { name: '✓ Member' })).toBeVisible();
 });
