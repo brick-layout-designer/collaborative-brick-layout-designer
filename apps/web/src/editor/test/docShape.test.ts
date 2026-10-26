@@ -177,6 +177,27 @@ interface Contract {
     desktop: string;
     expect: Record<string, unknown>;
   }[];
+  /** A doc in shape 1 with two plain-object rulers (r1, r2), an area sheet and two parts. */
+  shapeOne: string;
+}
+
+function shapeOneDoc(): Y.Doc {
+  const d = layoutDoc(1);
+  const R = ensureRulerLayer(d);
+  const ruler = (id: string, y: number) => ({
+    id, kind: 'linear', displayArea: { x: 0, y, width: 10, height: 0 }, myGroup: '',
+    color: { kind: 'known', name: 'Red' }, lineThickness: 1, displayDistance: true, displayUnit: true,
+    guidelineColor: { kind: 'known', name: 'Black' }, guidelineThickness: 1, guidelineDashPattern: [], unit: 0,
+    measureFont: { family: 'Arial', size: 8, style: 'Regular' }, measureFontColor: { kind: 'known', name: 'Black' },
+    point1: { x: 0, y }, point2: { x: 10, y }, attachedBrick1Id: '', attachedBrick2Id: '', offsetDistance: 0, allowOffset: false,
+  });
+  d.transact(() => ((d.getMap('layerData').get(R) as Y.Map<unknown>).get('rulerItems') as Y.Array<unknown>).push([ruler('r1', 0), ruler('r2', 20)]));
+  const A = ensureAreaLayer(d);
+  paintAreaCells(d, A, [{ x: 1, y: 1, color: 'FF000000' }]);
+  const L = ensureBrickLayer(d);
+  placeBrick(d, L, { ...brick, x: 0, y: 0 });
+  placeBrick(d, L, { ...brick, x: 10, y: 0 });
+  return d;
 }
 
 // Found by what they are, not by id (the vectors' ids were minted once).
@@ -246,6 +267,7 @@ describe('concurrent edits across the apps (contract)', () => {
     it('writes the vectors', async () => {
       const fs = (await import(/* @vite-ignore */ 'node:fs' as string)) as { writeFileSync: (p: string, s: string) => void };
       const c: Contract = { ...contract };
+      c.shapeOne = b64(Y.encodeStateAsUpdate(shapeOneDoc()));
       c.concurrent = concurrentCases().map((k) => ({
         name: k.name,
         base: b64(Y.encodeStateAsUpdate(k.base)),
@@ -253,11 +275,21 @@ describe('concurrent edits across the apps (contract)', () => {
         desktop: k.desktop,
         expect: k.expect,
       }));
-      fs.writeFileSync(new URL('./fixtures/doc-shape.json', import.meta.url).pathname, `${JSON.stringify(c, null, 2)}\n`);
+      const cwd = (globalThis as unknown as { process: { cwd: () => string } }).process.cwd(); // apps/web
+      fs.writeFileSync(`${cwd}/src/editor/test/fixtures/doc-shape.json`, `${JSON.stringify(c, null, 2)}\n`);
     });
     return;
   }
   const c = contract;
+  it('the shape-1 doc reads, and the first ruler edit moves it to shape 2 keeping both rulers', () => {
+    const d = decoded(c.shapeOne);
+    expect(schema(d)).toBe(1);
+    const R = sheetOf(d, 'ruler');
+    expect(layer<LayerRuler>(d, R).rulerItems.map((r) => r.id)).toEqual(['r1', 'r2']);
+    moveRulerItem(d, R, 'r1', 0, 5);
+    expect(schema(d)).toBe(2);
+    expect(layer<LayerRuler>(d, R).rulerItems.map((r) => r.id)).toEqual(['r1', 'r2']);
+  });
   const local = new Map(concurrentCases().map((k) => [k.name, k.local] as const));
   it.each(c.concurrent)('$name', ({ name, base, web, expect: want }) => {
     // The web's edit, and (standing in for the desktop's) the same edit made

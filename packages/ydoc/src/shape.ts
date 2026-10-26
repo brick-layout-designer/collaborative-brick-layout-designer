@@ -21,6 +21,12 @@
 // entries wrong, refuse the doc instead of corrupting it. A doc nobody
 // edits that way stays shape 1 and keeps working with older builds.
 //
+// One limit: two people making the very first ruler edit of a shape-1 sheet
+// at the same instant both convert it, leaving each ruler there twice
+// (removeDuplicateItems, and the desktop's next write, keep one); an edit
+// one of them made to the copy that goes is lost. After the conversion,
+// ruler edits merge.
+//
 // The desktop (src/sync/DocShape.cpp) does the same; the order and z rules
 // have shared vectors in fixtures/contracts/doc-shape.json.
 
