@@ -10,6 +10,7 @@ import * as Y from 'yjs';
 import { readBbm } from '@cld/bbm';
 import { bbmToDoc, createDefaultLayoutDoc, markShapeInPlace, reorderByZ, rulersInPlace, writeSidecarCache } from '@cld/ydoc';
 import { checkIncomingUpdate, SUSPICIOUS_UNSEEN_CLIENTS } from './mergeGuard.js';
+import { checkUpdate } from './updateGuard.js';
 import { planUnmerge } from '../ops/unmergeLayouts.js';
 
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures');
@@ -204,7 +205,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       const bricks = brickLayer(second);
       second.transact(() => bricks.push(Array.from({ length: 500 }, (_, n) => brick(n))));
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
   });
 
   it('adding a layer at the top, the bottom, and after deleting every layer', () => {
@@ -216,7 +221,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       web.getArray('layers').delete(0, web.getArray('layers').length);
       addLayer(web, 'only', 0);
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
     expect(server.getArray('layers').toArray()).toEqual(['only']);
   });
 
@@ -229,7 +238,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       web.transact(() => writeSidecarCache(web, { schemaVersion: 1, bbmHashSha256: '', modules: [{ id: 'mod-new', name: 'Yard', brickIds: ['pasted-1'] }] }));
       web.getMap('sidecarItems').set('m:mod-new', { id: 'mod-new', name: 'Yard' });
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
   });
 
   it('undo of a big delete (layers and bricks)', () => {
@@ -245,7 +258,11 @@ describe('checkIncomingUpdate: normal work passes', () => {
       }, 'local');
       undo.undo();
     });
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
     expect(server.getArray('layers').length).toBe(fixture('fordyce-2026.bbm').layers.length);
   });
 
@@ -360,7 +377,11 @@ describe('checkIncomingUpdate: doc shape 2 (@cld/ydoc shape.ts)', () => {
       client.transact(() => data.get('area')!.set('cellOffset', { x: 1, y: 0 }));
     });
     expect(updates.length).toBeGreaterThan(0);
-    for (const u of updates) expect(deliver(server, u).refuse).toBe(false);
+    for (const u of updates) {
+      // The update guard (updateGuard.ts) reads them too.
+      expect(checkUpdate(u)).toBeNull();
+      expect(deliver(server, u).refuse).toBe(false);
+    }
     expect(server.getMap('meta').get('schemaVersion')).toBe(2);
   });
 });
