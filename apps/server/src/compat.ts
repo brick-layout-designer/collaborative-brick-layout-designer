@@ -11,7 +11,7 @@ export const DESKTOP_MINIMUM = '1.2.0';
 /** The desktop this server suggests; older ones are asked to update. */
 export const DESKTOP_RECOMMENDED = '1.3.0';
 /** Where a desktop that must update is sent: the desktop's GitHub releases. */
-export const DESKTOP_DOWNLOAD_URL = 'https://github.com/brick-layout-designer/brick-layout-designer/releases/latest';
+export const DESKTOP_DOWNLOAD_URL = 'https://github.com/collaborative-brick-layout-designer/desktop/releases/latest';
 /**
  * What the desktop app sends: `CollaborativeBrickLayoutDesigner/<version> (desktop)`
  * once it carries the new name, `BrickLayoutDesigner/<version> (desktop)` before.

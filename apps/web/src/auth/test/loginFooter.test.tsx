@@ -39,8 +39,8 @@ describe('sign-in footer', () => {
     expect(footer.textContent).toContain('AGPL-3.0-or-later');
     const web = within(footer).getByRole('link', { name: 'Website' });
     const desktop = within(footer).getByRole('link', { name: 'Desktop app' });
-    expect(web.getAttribute('href')).toBe('https://github.com/brick-layout-designer/collaborative-brick-layout-designer');
-    expect(desktop.getAttribute('href')).toBe('https://github.com/brick-layout-designer/brick-layout-designer');
+    expect(web.getAttribute('href')).toBe('https://github.com/collaborative-brick-layout-designer/web');
+    expect(desktop.getAttribute('href')).toBe('https://github.com/collaborative-brick-layout-designer/desktop');
     for (const a of [web, desktop]) {
       expect(a.getAttribute('target')).toBe('_blank');
       expect(a.getAttribute('rel')).toBe('noopener noreferrer');

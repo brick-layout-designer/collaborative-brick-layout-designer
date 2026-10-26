@@ -7,7 +7,7 @@
 A web app for planning LEGO train and town layouts together: live editing in
 the browser, clubs, shared modules, venues, custom parts and a public catalog.
 It is also the server for the
-[Collaborative Brick Layout Designer desktop app](https://github.com/brick-layout-designer/brick-layout-designer),
+[Collaborative Brick Layout Designer desktop app](https://github.com/collaborative-brick-layout-designer/desktop),
 and reads and writes the same files (`.bld-layout`, and BlueBrick's
 `.bbm`). Self-hosted as one Docker container.
 
@@ -94,15 +94,15 @@ their Profile; nobody else ever sees their email address. See
 
 ```sh
 mkdir brick-layouts && cd brick-layouts
-curl -fsSLO https://raw.githubusercontent.com/brick-layout-designer/collaborative-brick-layout-designer/main/docker-compose.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/brick-layout-designer/collaborative-brick-layout-designer/main/.env.example
+curl -fsSLO https://raw.githubusercontent.com/collaborative-brick-layout-designer/web/main/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/collaborative-brick-layout-designer/web/main/.env.example
 # Edit .env: PUBLIC_URL, BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD,
 # and a way to sign in (an OAuth provider, or ENABLE_PASSWORD_AUTH=true with SMTP).
 docker compose up -d
 ```
 
 Then open `PUBLIC_URL` (by default http://localhost:3000) and sign in as the
-bootstrap admin. The image is `ghcr.io/brick-layout-designer/collaborative-brick-layout-designer`:
+bootstrap admin. The image is `ghcr.io/collaborative-brick-layout-designer/web`:
 `:latest` is the newest release, `:nightly` follows `main`, and `:vX.Y.Z`
 pins a release.
 
@@ -428,7 +428,7 @@ include.
 Requirements: **Node.js 24+** and **pnpm 10+**.
 
 ```sh
-git clone https://github.com/brick-layout-designer/collaborative-brick-layout-designer.git
+git clone https://github.com/collaborative-brick-layout-designer/web.git
 cd collaborative-brick-layout-designer
 pnpm install
 cp .env.example .env      # set BOOTSTRAP_ADMIN_*, and ENABLE_PASSWORD_AUTH=true for local sign-in

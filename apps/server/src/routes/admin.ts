@@ -791,7 +791,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         const res = await safeFetch(indexUrl, {
           headers: {
             'User-Agent':
-              'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
+              'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/collaborative-brick-layout-designer/web)',
           },
           signal: AbortSignal.timeout(20_000),
           maxBytes: 1024 * 1024,
@@ -919,7 +919,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         const res = await safeFetch(sourceUrl, {
           headers: {
             'User-Agent':
-              'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/brick-layout-designer/collaborative-brick-layout-designer)',
+              'Mozilla/5.0 (compatible; Collaborative Brick Layout Designer/1.0; +https://github.com/collaborative-brick-layout-designer/web)',
           },
           signal: AbortSignal.timeout(120_000),
         });
