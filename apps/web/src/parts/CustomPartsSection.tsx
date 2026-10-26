@@ -15,6 +15,7 @@ import { UploadPartDialog } from './UploadPartDialog';
 import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { atLeast } from '../orgs/clubRoles';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { PartPicture } from './PartPicture';
 import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
 
 const PartShareDialog = lazyRetry(() => import('../modules/ModuleShareDialog').then((m) => ({ default: m.PartShareDialog })));
@@ -96,12 +97,7 @@ export function CustomPartsSection({
           {list.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
               <div className="flex min-w-0 items-center gap-3">
-                <img
-                  src={api.customParts.spriteUrl(p.id)}
-                  alt=""
-                  className="h-10 w-10 shrink-0 object-contain"
-                  loading="lazy"
-                />
+                <PartPicture part={p} className="h-10 w-10" />
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="break-words font-medium">{p.displayName || p.partNumber}</span>
@@ -114,12 +110,19 @@ export function CustomPartsSection({
                 </div>
               </div>
               <MoreMenu label={`More for ${p.partNumber}`}>
-                <a role="menuitem" href={api.customParts.xmlUrl(p.id)} download={`${p.partNumber}.xml`} className={MORE_ITEM}>
+                <a
+                  role="menuitem"
+                  href={api.customParts.xmlUrl(p.id)}
+                  download={p.kind === 'set' ? `${p.partNumber}.set.xml` : `${p.partNumber}.xml`}
+                  className={MORE_ITEM}
+                >
                   Download XML
                 </a>
-                <a role="menuitem" href={api.customParts.spriteUrl(p.id)} download className={MORE_ITEM}>
-                  Download picture
-                </a>
+                {p.kind !== 'set' && (
+                  <a role="menuitem" href={api.customParts.spriteUrl(p.id)} download className={MORE_ITEM}>
+                    Download picture
+                  </a>
+                )}
                 <button role="menuitem" type="button" onClick={() => setSharingPeople(p)} className={MORE_ITEM}>
                   {canDeletePart(p, myUserId, orgs) ? 'Share with people…' : 'People with access…'}
                 </button>

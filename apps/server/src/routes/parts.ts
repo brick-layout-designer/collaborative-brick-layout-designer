@@ -93,6 +93,8 @@ interface PartWire {
    * lookup. Always null for bundled parts.
    */
   customPartId: string | null;
+  /** A custom set: no sprite of its own (its parts draw it); absent otherwise. */
+  noSprite?: true;
   /** Earlier part numbers that resolve to this part (<OldNameList>); omitted when none. */
   oldNames?: string[];
   /** Sprite size in pixels, for the BlueBrick footprint; omitted when unreadable. */
@@ -260,6 +262,8 @@ const customCatalogColumns = {
   isGlobal: schema.customParts.isGlobal,
   ownerOrgId: schema.customParts.ownerOrgId,
   category: schema.customParts.category,
+  /** '' for a set (no sprite of its own). */
+  spriteMime: schema.customParts.spriteMime,
   updatedAt: schema.customParts.updatedAt,
 };
 export type CustomCatalogRow = {
@@ -270,6 +274,8 @@ interface ParsedCustomXml {
   connections: ConnectionPointWire[];
   pxPerStud: number;
   kind: 'leaf' | 'group';
+  subparts?: SubPartWire[];
+  canUngroup?: false;
   hullPts: { x: number; y: number }[];
   snapMargin?: PartWire['snapMargin'];
   pickShape?: PartWire['pickShape'];
@@ -440,6 +446,8 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
   let connections: ConnectionPointWire[] = [];
   let pxPerStud = 8;
   let kind: 'leaf' | 'group' = 'leaf';
+  let subparts: SubPartWire[] = [];
+  let canUngroup: false | undefined;
   let hullPts: { x: number; y: number }[] = [];
   let remaps: MapRemaps = {};
   let snapMargin: PartWire['snapMargin'];
@@ -462,6 +470,8 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
     }));
     pxPerStud = parsed.pxPerStud;
     kind = parsed.kind;
+    subparts = parsed.subparts.map((s) => ({ subKey: s.subKey, x: s.x, y: s.y, angle: s.angle }));
+    if (parsed.kind === 'group' && parsed.canUngroup === false) canUngroup = false;
     hullPts = parsed.hullPts;
     snapMargin = parsed.snapMargin;
     pickShape = parsed.pickShape;
@@ -470,11 +480,11 @@ function parseCustomXml(partNumber: string, xmlBlob: Uint8Array): ParsedCustomXm
   } catch {
     /* malformed — fall back to defaults; the part still renders as a sprite */
   }
-  return { connections, pxPerStud, kind, hullPts, remaps, ...(snapMargin ? { snapMargin } : {}), ...(pickShape ? { pickShape } : {}), ...(designer ? { designer } : {}) };
+  return { connections, pxPerStud, kind, ...(subparts.length ? { subparts } : {}), ...(canUngroup === false ? { canUngroup } : {}), hullPts, remaps, ...(snapMargin ? { snapMargin } : {}), ...(pickShape ? { pickShape } : {}), ...(designer ? { designer } : {}) };
 }
 
 function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefined): PartWire {
-  const { connections, pxPerStud, kind, hullPts, snapMargin, pickShape, designer, spriteSize, remaps } = parsed ?? {
+  const { connections, pxPerStud, kind, subparts, canUngroup, hullPts, snapMargin, pickShape, designer, spriteSize, remaps } = parsed ?? {
     connections: [],
     pxPerStud: 8,
     kind: 'leaf' as const,
@@ -498,9 +508,10 @@ function customRowToWire(p: CustomCatalogRow, parsed: ParsedCustomXml | undefine
     pxPerStud,
     category: p.category || 'Custom',
     connections,
-    // Custom parts don't currently expose subparts (the upload is a
-    // single XML + sprite). Leave empty so the type matches.
-    subparts: [],
+    // A set (uploaded without a sprite) lists its parts, by part number.
+    subparts: subparts ?? [],
+    ...(canUngroup === false ? { canUngroup } : {}),
+    ...(p.spriteMime === '' ? { noSprite: true as const } : {}),
     hullPts,
     ...(snapMargin ? { snapMargin } : {}),
     ...(designer ? { designer } : {}),

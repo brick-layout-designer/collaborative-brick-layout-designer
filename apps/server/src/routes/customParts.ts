@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { xmlForGifSprite } from '@cld/parts-catalog';
+import { parsePartXml, xmlForGifSprite } from '@cld/parts-catalog';
 import { db, schema } from '../db/index.js';
 import { checkGrowth, type Subject } from '../limits/limits.js';
 import { recordUpload } from '../metrics/usage.js';
@@ -36,9 +36,10 @@ interface CreatePartBody {
   displayName: string;
   /** Base64-encoded XML payload. Bodies stay in JSON for simplicity. */
   xmlBase64: string;
-  /** Base64-encoded sprite (gif or png). */
-  spriteBase64: string;
-  spriteMime: 'image/gif' | 'image/png';
+  /** Base64-encoded sprite (gif or png); empty or absent for a set. */
+  spriteBase64?: string;
+  /** Absent for a set (a `<group>` XML): its parts draw it. */
+  spriteMime?: 'image/gif' | 'image/png';
   /** When set, the part is org-owned. Caller must be a member of the org. */
   orgSlug?: string;
   /** Parts-browser category label. Defaults to 'Custom'. */
@@ -138,8 +139,14 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.customParts.id, req.params.id))
         .get();
       if (!part) return reply.code(404).send({ error: 'not_found' });
-      reply.header('Content-Type', part.spriteMime);
       reply.header('Cache-Control', 'private, max-age=300');
+      // A set has no picture of its own (its parts draw it): an empty one,
+      // so an older desktop or a list still gets an image.
+      if (isSetRow(part)) {
+        reply.header('Content-Type', 'image/gif');
+        return reply.send(EMPTY_GIF);
+      }
+      reply.header('Content-Type', part.spriteMime);
       return reply.send(Buffer.from(part.spriteBlob as Uint8Array));
     },
   );
@@ -178,7 +185,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
 
     const parsed = parsePartBody(body);
     if ('error' in parsed) return reply.code(parsed.status).send({ error: parsed.error });
-    const { partNumber, displayName, xmlBlob, spriteBlob } = parsed;
+    const { partNumber, displayName, xmlBlob, spriteBlob, spriteMime } = parsed;
 
     let ownerUserId: string | null = user.id;
     let ownerOrgId: string | null = null;
@@ -240,7 +247,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       createdBy: user.id,
       xmlBlob,
       spriteBlob,
-      spriteMime: body.spriteMime,
+      spriteMime,
       createdAt: now,
       updatedAt: now,
     });
@@ -269,7 +276,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       if (!hasAtLeast(role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
       const parsed = parsePartBody(req.body ?? ({} as CreatePartBody));
       if ('error' in parsed) return reply.code(parsed.status).send({ error: parsed.error });
-      const { partNumber, displayName, xmlBlob, spriteBlob } = parsed;
+      const { partNumber, displayName, xmlBlob, spriteBlob, spriteMime } = parsed;
 
       const current = await db
         .select({
@@ -318,7 +325,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
           ...(trimmed(req.body.category) ? { category: trimmed(req.body.category) } : {}),
           xmlBlob,
           spriteBlob,
-          spriteMime: req.body.spriteMime,
+          spriteMime,
           updatedAt: new Date(),
         })
         .where(eq(schema.customParts.id, req.params.id));
@@ -467,14 +474,48 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
 }
 
 type ParsedPartBody =
-  | { partNumber: string; displayName: string; xmlBlob: Buffer; spriteBlob: Buffer }
+  | { partNumber: string; displayName: string; xmlBlob: Buffer; spriteBlob: Buffer; spriteMime: '' | 'image/gif' | 'image/png' }
   | { status: 400 | 413; error: string };
+
+/** A 1x1 transparent GIF: what a set's sprite URL serves. */
+export const EMPTY_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+/**
+ * A set (a `<group>` XML of other parts, as BlueBrick's `.set.xml`) is
+ * stored without a sprite: an empty sprite blob and MIME type.
+ */
+export function isSetRow(p: { spriteMime: string }): boolean {
+  return p.spriteMime === '';
+}
+
+/** Whether `xml` is a set: a `<group>` with at least one sub-part. */
+export function isSetXml(xml: Buffer): boolean {
+  try {
+    const parsed = parsePartXml(stripImportSource(xml).toString('utf8'), { partNumber: 'set', colorCode: '', spritePath: '' });
+    return parsed.kind === 'group' && parsed.subparts.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /** A create / replace body's fields, checked, with the blobs decoded. */
 function parsePartBody(body: CreatePartBody): ParsedPartBody {
   const partNumber = trimmed(body.partNumber);
   const displayName = trimmed(body.displayName);
   if (!partNumber || !displayName) return { status: 400, error: 'invalid_input' };
+  // A set: its XML only. Its parts are uploaded on their own.
+  if (!body.spriteMime && !body.spriteBase64) {
+    let xmlBlob: Buffer;
+    try {
+      xmlBlob = Buffer.from(body.xmlBase64 ?? '', 'base64');
+    } catch {
+      return { status: 400, error: 'invalid_base64' };
+    }
+    if (xmlBlob.length === 0) return { status: 400, error: 'empty_payload' };
+    if (xmlBlob.length > MAX_PART_BLOB_BYTES) return { status: 413, error: 'payload_too_large' };
+    if (!isSetXml(xmlBlob)) return { status: 400, error: 'invalid_set' };
+    return { partNumber, displayName, xmlBlob: stripImportSource(xmlBlob), spriteBlob: Buffer.alloc(0), spriteMime: '' };
+  }
   if (body.spriteMime !== 'image/gif' && body.spriteMime !== 'image/png') {
     return { status: 400, error: 'invalid_sprite_mime' };
   }
@@ -482,7 +523,7 @@ function parsePartBody(body: CreatePartBody): ParsedPartBody {
   let spriteBlob: Buffer;
   try {
     xmlBlob = Buffer.from(body.xmlBase64, 'base64');
-    spriteBlob = Buffer.from(body.spriteBase64, 'base64');
+    spriteBlob = Buffer.from(body.spriteBase64 ?? '', 'base64');
   } catch {
     return { status: 400, error: 'invalid_base64' };
   }
@@ -494,7 +535,7 @@ function parsePartBody(body: CreatePartBody): ParsedPartBody {
   if (size && (size.width === 0 || size.height === 0 || size.width > MAX_SPRITE_SIDE || size.height > MAX_SPRITE_SIDE)) {
     return { status: 400, error: 'invalid_sprite' };
   }
-  return { partNumber, displayName, xmlBlob: xmlForSprite(xmlBlob, body.spriteMime), spriteBlob };
+  return { partNumber, displayName, xmlBlob: xmlForSprite(xmlBlob, body.spriteMime), spriteBlob, spriteMime: body.spriteMime };
 }
 
 /**
@@ -536,6 +577,7 @@ function toListItem(
     ownerUserId: p.ownerUserId,
     ownerOrgId: p.ownerOrgId,
     spriteMime: p.spriteMime,
+    ...(isSetRow(p) ? { kind: 'set' as const } : {}),
     createdAt: p.createdAt.getTime(),
     updatedAt: p.updatedAt.getTime(),
   };

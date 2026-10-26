@@ -21,6 +21,7 @@ import {
 import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { buildPartList } from '../partList';
+import { indexParts } from '../partIndex';
 import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, libraryItems, selectedSet, setAnchorOrder, ungroupState } from '../sets';
 
 const part = (key: string, connections: unknown[], extra: Partial<PartWire> = {}) =>
@@ -103,6 +104,35 @@ describe('placing a set', () => {
     expect(L.bricks[0]!.displayArea.x + L.bricks[0]!.displayArea.width / 2).toBeCloseTo(9.2);
     expect(L.bricks[0]!.connexions[1]!.linkedTo).toBe(L.bricks[1]!.connexions[1]!.id);
     expect(readSidecarFromDoc(doc)?.modules ?? []).toEqual([]);
+  });
+
+  it('places a custom set (an uploaded Brick Track Designer export) by its parts’ custom ids', () => {
+    const plate = (id: string) =>
+      part(`custom:${id}`, [
+        { type: '1', x: 0, y: -4, angle: -90, electricPlug: 0 },
+        { type: '1', x: 0, y: 4, angle: 90, electricPlug: 0 },
+      ], { partNumber: `Yard.${id}`, source: 'custom', customPartId: id } as Partial<PartWire>);
+    const set = part('custom:w', [], {
+      partNumber: 'Yard.whole',
+      kind: 'group',
+      source: 'custom',
+      customPartId: 'w',
+      noSprite: true,
+      // As the server lists them: by part number, lower-cased.
+      subparts: [
+        { subKey: 'yard.plate1', x: 0, y: 0, angle: 0 },
+        { subKey: 'yard.plate2', x: 0, y: 8, angle: 0 },
+      ],
+    } as Partial<PartWire>);
+    const all = [plate('plate1'), plate('plate2'), set];
+    const parts = indexParts(all);
+    const { doc, layerId } = newDoc();
+    insertSet(doc, layerId, expandSet(parts, 'Yard.whole', { x: 0, y: 0 }, 0, makeId));
+    recomputeConnectivity(doc, catalogFromParts(all));
+    const L = layerOf(doc);
+    expect(L.groups.map((g) => g.partNumber)).toEqual(['custom:w']);
+    expect(L.bricks.map((b) => b.partNumber)).toEqual(['custom:plate1', 'custom:plate2']);
+    expect(L.bricks[0]!.connexions[1]!.linkedTo).toBe(L.bricks[1]!.connexions[0]!.id);
   });
 
   it('makes a nested set a child group, and a click picks the whole', () => {

@@ -37,6 +37,8 @@ export const FEATURES = [
   'layoutDownload',
   // POST /api/catalog/submissions and GET /api/catalog/mine take the desktop's API token.
   'catalogShare',
+  // POST /api/custom-parts takes a set (a <group> XML, no sprite), and the catalog and manifest list it.
+  'uploadSets',
 ] as const;
 
 interface Parsed {

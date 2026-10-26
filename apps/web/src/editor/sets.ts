@@ -11,6 +11,11 @@ import { areaSize, connectionWorld, pivotOf, rotated, type Pt } from './brickGeo
 
 type Parts = ReadonlyMap<string, PartWire>;
 const partOf = (parts: Parts, key: string) => parts.get(key.toLowerCase());
+/**
+ * The id a placed part or set goes by: BlueBrick's upper-cased key, or a
+ * custom part's `custom:<id>` as is, as placing one part does.
+ */
+const placedKey = (p: PartWire) => (p.source === 'custom' ? p.key : p.key.toUpperCase());
 
 /** `id` and its parents, innermost first (cycles and dangling ids stop it). */
 export function groupChain(groups: readonly Group[] | undefined, id: string | undefined): Group[] {
@@ -149,7 +154,7 @@ export function expandSet(
   const top = partOf(parts, key);
   if (!top || top.kind !== 'group' || top.subparts.length === 0) return out;
   const visit = (set: PartWire, at: Pt, turn: number, parent: string, depth: number) => {
-    const group: Group = { id: newId(), partNumber: set.key.toUpperCase(), myGroup: parent };
+    const group: Group = { id: newId(), partNumber: placedKey(set), myGroup: parent };
     out.groups.push(group);
     for (const sp of set.subparts) {
       const r = rotated({ x: sp.x, y: sp.y }, turn);
@@ -163,7 +168,7 @@ export function expandSet(
       const orientation = normalised(turned);
       const size = sizeOf(sub, orientation);
       out.bricks.push({
-        partNumber: sub ? sub.key.toUpperCase() : sp.subKey.toUpperCase(),
+        partNumber: sub ? placedKey(sub) : sp.subKey.toUpperCase(),
         displayArea: { x: pos.x - size.width / 2, y: pos.y - size.height / 2, width: size.width, height: size.height },
         orientation,
         myGroup: group.id,

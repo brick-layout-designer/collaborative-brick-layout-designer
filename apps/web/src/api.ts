@@ -464,6 +464,8 @@ export interface PartWire {
   source: 'bundled' | 'custom';
   /** Set on source: 'custom' so the editor can build the sprite URL. */
   customPartId: string | null;
+  /** A custom set: no sprite of its own (its parts draw it). */
+  noSprite?: true;
   /** Earlier part numbers that resolve to this part (<OldNameList>); absent when none. */
   oldNames?: string[];
   /** Sprite size in pixels, for the BlueBrick footprint; absent when unreadable. */
@@ -476,6 +478,7 @@ export interface PartWire {
 
 /** Resolve the sprite URL for any part, regardless of source. */
 export function spriteUrlFor(part: PartWire): string {
+  if (part.noSprite) return '';
   if (part.source === 'custom' && part.customPartId) {
     return `/api/custom-parts/${part.customPartId}/sprite`;
   }
@@ -853,12 +856,13 @@ export const api = {
       get<{ part: CustomPartSummary; role: 'owner' | 'editor' | 'viewer' }>(
         `/api/custom-parts/${id}`,
       ),
+    /** A set (a `<group>` XML) is sent without a sprite. */
     create: (body: {
       partNumber: string;
       displayName: string;
       xmlBase64: string;
-      spriteBase64: string;
-      spriteMime: 'image/gif' | 'image/png';
+      spriteBase64?: string;
+      spriteMime?: 'image/gif' | 'image/png';
       orgSlug?: string;
       category?: string;
     }) =>
@@ -873,8 +877,8 @@ export const api = {
         partNumber: string;
         displayName: string;
         xmlBase64: string;
-        spriteBase64: string;
-        spriteMime: 'image/gif' | 'image/png';
+        spriteBase64?: string;
+        spriteMime?: 'image/gif' | 'image/png';
       },
     ) => put<{ id: string; partNumber: string; displayName: string }>(`/api/custom-parts/${id}`, body),
     remove: (id: string) => del(`/api/custom-parts/${id}`),
@@ -1830,7 +1834,10 @@ export interface CustomPartSummary {
   role?: 'owner' | 'editor' | 'viewer';
   /** Who owns it, by name (newer servers). */
   owner?: OwnerInfo | null;
-  spriteMime: 'image/gif' | 'image/png';
+  /** Empty for a set. */
+  spriteMime: 'image/gif' | 'image/png' | '';
+  /** A set of other parts: no picture of its own (newer servers). */
+  kind?: 'set';
   createdAt: number;
   updatedAt: number;
   credit?: Credit | null;

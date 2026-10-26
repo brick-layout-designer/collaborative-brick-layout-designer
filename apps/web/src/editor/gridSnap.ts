@@ -145,7 +145,9 @@ export function grabSnapCorner(layer: Pick<LayerBrick, 'bricks' | 'groups'>, bri
     minX = Math.min(minX, m.displayArea.x);
     minY = Math.min(minY, m.displayArea.y);
     if (turn !== null || !meta || m.myGroup !== top) continue;
-    const sp = meta.subparts.find((p) => p.subKey.toLowerCase() === m.partNumber.toLowerCase());
+    // (A custom set's parts are placed as `custom:<id>`: the same part either way.)
+    const placed = partOf(parts, m.partNumber);
+    const sp = meta.subparts.find((p) => p.subKey.toLowerCase() === m.partNumber.toLowerCase() || (!!placed && partOf(parts, p.subKey) === placed));
     if (sp) turn = m.orientation - sp.angle;
   }
   const off = snapOffset(meta?.snapMargin, turn ?? 0);

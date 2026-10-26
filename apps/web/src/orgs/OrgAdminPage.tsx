@@ -25,6 +25,7 @@ import { RolesSection } from './ClubRoles';
 import { ClubReviewTab } from './ClubReview';
 import { ClubGoneNotice, DeleteClubSection } from './DeleteClub';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { PartPicture } from '../parts/PartPicture';
 import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
 
 export function OrgAdminPage() {
@@ -307,12 +308,7 @@ function OrgCustomPartsTab({ slug, orgId }: { slug: string; orgId: string }) {
               key={p.id}
               className="flex flex-col items-center rounded-lg border border-line p-2 text-xs"
             >
-              <img
-                src={api.customParts.spriteUrl(p.id)}
-                alt=""
-                className="h-16 w-16 object-contain"
-                loading="lazy"
-              />
+              <PartPicture part={p} className="h-16 w-16" />
               <p className="mt-1 line-clamp-1 font-mono">{p.partNumber}</p>
               <p className="line-clamp-1 text-muted">{p.displayName}</p>
               <button

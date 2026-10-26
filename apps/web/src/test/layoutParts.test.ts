@@ -72,6 +72,17 @@ describe('layout parts', () => {
     expect(new TextDecoder().decode(files['MINE.1.png'])).toBe('sprite-a');
   });
 
+  it('carries a custom set its groups were placed from, as its XML only', async () => {
+    const catalog = [...CATALOG, part({ key: 'custom:w', partNumber: 'Yard.whole', source: 'custom', customPartId: 'w', kind: 'group', noSprite: true })];
+    const map = {
+      layers: [{ type: 'brick', bricks: [{ partNumber: 'MINE.1' }], groups: [{ id: 'g', partNumber: 'custom:w', myGroup: '' }] }],
+    } as unknown as BbmMap;
+    const sprite = vi.fn(fetcher.sprite);
+    const files = await layoutPartFiles(map, catalog, { ...fetcher, sprite });
+    expect(Object.keys(files).sort()).toEqual(['MINE.1.png', 'MINE.1.xml', 'Yard.whole.set.xml']);
+    expect(sprite).not.toHaveBeenCalledWith('w');
+  });
+
   it('goes into the file under parts/, and comes out again', async () => {
     const parts = { 'MINE.1.xml': xml('Mine'), 'MINE.1.png': bytes('png') };
     const file = await buildLayoutFile({ bbm: '<Map/>', sidecar: null, parts });
@@ -119,6 +130,18 @@ describe('layout parts', () => {
       ['SET.1', 'A set', 'image/gif'],
     ]);
     expect(new TextDecoder().decode(plan.upload[0]!.sprite)).toBe('png'); // the .png, as the desktop prefers
+  });
+
+  it('plans a set without a picture (a Brick Track Designer export) as a set, but not a part without one', () => {
+    const plan = planLayoutParts({ 'Yard.whole.set.xml': xml('Yard', 'group'), 'LONE.1.set.xml': xml('Not a set') }, CATALOG);
+    expect(plan.upload.map((u) => [u.partNumber, u.sprite, u.spriteMime])).toEqual([['Yard.whole', undefined, undefined]]);
+    expect(plan.skipped).toEqual(['LONE.1']);
+  });
+
+  it('uploads a set without a sprite', async () => {
+    const create = vi.spyOn(api.customParts, 'create').mockResolvedValue({ id: 'x', partNumber: 'Yard.whole', displayName: 'Yard' });
+    await uploadLayoutParts({ 'Yard.whole.set.xml': xml('Yard', 'group') }, async () => CATALOG);
+    expect(create.mock.calls[0]![0]).toEqual({ partNumber: 'Yard.whole', displayName: 'Yard', xmlBase64: btoa(new TextDecoder().decode(xml('Yard', 'group'))) });
   });
 
   it('uploads them as custom parts and says what happened', async () => {
