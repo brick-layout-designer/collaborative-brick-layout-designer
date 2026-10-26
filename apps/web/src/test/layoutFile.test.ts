@@ -77,12 +77,12 @@ describe('layout file', () => {
   });
 
   it('refuses what is not a layout file', async () => {
-    await expect(readLayoutFile(enc.encode('<Map/>'))).rejects.toThrow('not a Brick Layout Designer layout file');
+    await expect(readLayoutFile(enc.encode('<Map/>'))).rejects.toThrow('This is not a Collaborative Brick Layout Designer layout file.');
     const other = buildZip([
       { name: 'manifest.json', data: enc.encode('{"format":"something-else","version":1}') },
       { name: 'layout.bbm', data: enc.encode('<Map/>') },
     ]);
-    await expect(readLayoutFile(other)).rejects.toThrow('not a Brick Layout Designer layout file');
+    await expect(readLayoutFile(other)).rejects.toThrow('This is not a Collaborative Brick Layout Designer layout file.');
     const empty = buildZip([{ name: 'manifest.json', data: enc.encode('{"format":"bld-layout","version":1}') }]);
     await expect(readLayoutFile(empty)).rejects.toThrow('no layout');
   });
@@ -113,6 +113,7 @@ describe('layout file', () => {
     expect(l.warnings).toEqual([]);
     expect(readBbm(l.bbm).map.layers.length).toBeGreaterThan(0);
     const manifest = JSON.parse(dec.decode((await readZip(fixture('web-made.bld-layout')))[0]!.data)) as { generator: string };
+    // Written before the rename; the fixture keeps the old name.
     expect(manifest.generator).toBe('Brick Layout Designer (web)');
     expect(JSON.parse(l.sidecar!).backgroundImage).toEqual({ opacity: 0.3, rect: [-10, -20, 300, 200] });
     expect(l.background?.type).toBe('image/png');

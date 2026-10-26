@@ -45,7 +45,7 @@ test('Chrome can install it, and Settings says how', async ({ page, browserName 
       const manifest = (await cdp.send('Page.getAppManifest')) as { url: string; data?: string; errors: unknown[] };
       return manifest.data ? (JSON.parse(manifest.data) as { name: string }).name : null;
     })
-    .toBe('Brick Layout Designer');
+    .toBe('Collaborative Brick Layout Designer');
   const { installabilityErrors } = (await cdp.send('Page.getInstallabilityErrors')) as {
     installabilityErrors: { errorId: string }[];
   };

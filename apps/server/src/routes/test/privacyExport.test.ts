@@ -97,7 +97,7 @@ describe('Download my data', () => {
     expect(dl.statusCode).toBe(200);
     expect(dl.headers['content-type']).toBe('application/zip');
     const zip = readZip(dl.rawPayload);
-    expect(zip.get('README.txt')!.toString()).toContain('Your data from Brick Layout Designer');
+    expect(zip.get('README.txt')!.toString()).toContain('Your data from Collaborative Brick Layout Designer');
     const account = JSON.parse(zip.get('data/account.json')!.toString()) as { rows: Record<string, unknown>[] };
     expect(account.rows[0]!.email).toBe('ann@example.com');
     expect(account.rows[0]!.hasPassword).toBe(true);

@@ -73,7 +73,7 @@ export function AppHeader({ user }: Props) {
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-section border border-line bg-panel px-4 py-3">
       <Link to="/" className="tap-target flex min-w-0 flex-1 items-center gap-3 sm:flex-none">
         <img src="/logo.png" alt="" className="h-9 w-9 shrink-0 rounded-[9px]" />
-        <span className="truncate font-display text-base font-bold text-ink sm:text-xl">Brick Layout Designer</span>
+        <span className="line-clamp-2 font-display text-base font-bold leading-tight text-ink sm:text-xl">Collaborative Brick Layout Designer</span>
       </Link>
       {/* One menu for everything that isn't a page: Help, Account, Look and
           Admin settings; on a phone the page links go in it too. */}

@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/brick-layout-designer/collaborative-brick-layout-designer:latest
+    image: ghcr.io/collaborative-brick-layout-designer/web:latest
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-3000}:3000"

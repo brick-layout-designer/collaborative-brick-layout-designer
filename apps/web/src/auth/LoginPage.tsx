@@ -35,7 +35,7 @@ export function LoginPage() {
         {deleting > 0 && <DeletingNotice dueAt={deleting} />}
         <div className="space-y-6 rounded-lg border border-line bg-panel p-8 shadow-sm">
           <img src="/logo.png" alt="" className="mx-auto h-12 w-12 rounded-lg" />
-          <h1 className="text-center text-xl font-semibold">Sign in to Brick Layout Designer</h1>
+          <h1 className="text-center text-xl font-semibold">Sign in to Collaborative Brick Layout Designer</h1>
           {failed && (
             <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
               {SIGN_IN_ERRORS[failed] ?? SIGN_IN_ERRORS.oauth_error}

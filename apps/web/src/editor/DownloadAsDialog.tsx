@@ -104,7 +104,7 @@ export function DownloadAsDialog({ map, parts, title, onDownloadLayout, onDownlo
         <fieldset className="mt-4 space-y-1 text-sm">
           <legend className="sr-only">Format</legend>
           {[
-            { format: 'layout' as const, label: 'Brick Layout Designer layout (.bld-layout)', help: 'download.layout' as const },
+            { format: 'layout' as const, label: 'Collaborative Brick Layout Designer layout (.bld-layout)', help: 'download.layout' as const },
             { format: 'bbm' as const, label: 'BlueBrick map (.bbm)', help: 'download.bbm' as const },
             ...MAP_FORMATS,
           ].map((f) => (

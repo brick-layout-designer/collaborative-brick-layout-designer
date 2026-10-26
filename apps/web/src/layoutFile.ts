@@ -108,7 +108,7 @@ export async function readLayoutFile(bytes: Uint8Array): Promise<LayoutFileConte
   try {
     entries = await readZip(bytes);
   } catch {
-    throw new Error('This is not a Brick Layout Designer layout file.');
+    throw new Error('This is not a Collaborative Brick Layout Designer layout file.');
   }
   const dec = new TextDecoder();
   const entry = (name: string) => entries.find((e) => e.name === name)?.data;
@@ -118,7 +118,7 @@ export async function readLayoutFile(bytes: Uint8Array): Promise<LayoutFileConte
   } catch {
     /* refused below */
   }
-  if (manifest.format !== FORMAT) throw new Error('This is not a Brick Layout Designer layout file.');
+  if (manifest.format !== FORMAT) throw new Error('This is not a Collaborative Brick Layout Designer layout file.');
   const layout = entry('layout.bbm');
   if (!layout) throw new Error('The layout file has no layout in it.');
 
@@ -127,7 +127,7 @@ export async function readLayoutFile(bytes: Uint8Array): Promise<LayoutFileConte
   if (source) out.source = source;
   if (typeof manifest.version === 'number' && manifest.version > LAYOUT_FILE_VERSION) {
     out.warnings.push(
-      "The file was made by a newer version of Brick Layout Designer; anything this version doesn't know is left out.",
+      "The file was made by a newer version of Collaborative Brick Layout Designer; anything this version doesn't know is left out.",
     );
   }
   const sidecarBytes = entry('sidecar.json');
@@ -182,7 +182,7 @@ function manifestFor(input: LayoutFileInput): Record<string, unknown> {
   const { format: _f, version: _v, generator: _g, source: _s, ...kept } = input.keepManifest ?? {};
   const manifest: Record<string, unknown> = {
     format: FORMAT,
-    generator: 'Brick Layout Designer (web)',
+    generator: 'Collaborative Brick Layout Designer (web)',
     version: LAYOUT_FILE_VERSION,
     ...kept,
   };
