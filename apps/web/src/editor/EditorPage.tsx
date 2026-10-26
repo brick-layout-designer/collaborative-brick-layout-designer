@@ -1458,6 +1458,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
       {showSaveAsSet && doc && (
         <SaveAsSetDialog
           doc={doc}
+          viewOnly={role === 'viewer'}
           onClose={() => setShowSaveAsSet(false)}
         />
       )}

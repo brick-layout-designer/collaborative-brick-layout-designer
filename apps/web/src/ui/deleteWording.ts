@@ -18,3 +18,8 @@ export const CUSTOM_PART_DELETE_WORDING: DeleteWording = {
   removes: 'The part is deleted from your custom parts.',
   keeps: 'Layouts that use it show a placeholder in its place.',
 };
+
+export const SET_DELETE_WORDING: DeleteWording = {
+  removes: 'The set is deleted from your custom parts, so it can’t be placed again.',
+  keeps: 'Layouts that use it keep the parts it put down.',
+};

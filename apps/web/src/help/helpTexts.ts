@@ -181,6 +181,11 @@ export const HELP_TEXTS = {
     short: 'A module keeps the sheets its parts were on, like Track and Buildings.',
     more: 'When you add it to a layout, each sheet’s parts go on the layout’s sheet with the same name. If the layout has no sheet by that name, you choose where they go: the picked sheet, or a new sheet with that name. Put everything on one sheet saves the module with a single sheet instead.',
   },
+  'set.about': {
+    title: 'Sets',
+    short: 'A set is a group of parts saved together, to place again in one go.',
+    more: 'Save selection as set keeps the parts you picked, as they sit, under one name. Then you can place it in any layout as one group, and share it like one of your own parts.',
+  },
 
   // Opening files
   'open.formats': {

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api, spriteUrlFor, type PartWire } from '../api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, spriteUrlFor, type CustomPartSummary, type PartWire } from '../api';
 import { ensureSetThumbnail, getSetThumbnailSync } from './render/setThumbnail';
 import { indexParts } from './partIndex';
 import type { BbmMap } from '@cld/model';
@@ -9,6 +9,10 @@ import { useEditorStore } from './editorStore';
 import { UploadPartDialog } from '../parts/UploadPartDialog';
 import { CatalogPartsDialog } from '../catalog/CatalogPartsDialog';
 import { IconSizeSlider, tileMinWidth, useListIconSize, useResizeGestures } from './listIconSize';
+import { RenameDialog } from '../ui/RenameDialog';
+import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
+import { SET_DELETE_WORDING } from '../ui/deleteWording';
+import { renameSet } from '../parts/setActions';
 
 interface PartContextMenu {
   part: PartWire;
@@ -50,6 +54,16 @@ export const PartsPanel = memo(function PartsPanel({
   const catalogSettings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings, staleTime: 60_000 });
   const usage = useMemo(() => (hasBudget && showNumbers ? countUsage(map) : null), [hasBudget, showNumbers, map]);
   const [ctxMenu, setCtxMenu] = useState<PartContextMenu | null>(null);
+  const [renaming, setRenaming] = useState<CustomPartSummary | null>(null);
+  const qc = useQueryClient();
+  // Your custom parts, with your role on each: a set you made can be renamed or deleted here.
+  const mine = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list, enabled: canUploadPart });
+  const ownSet = (p: PartWire): CustomPartSummary | undefined =>
+    p.source === 'custom' && p.kind === 'group' && p.noSprite
+      ? mine.data?.parts.find((c) => c.id === p.customPartId && (c.role === 'owner' || c.role === 'editor'))
+      : undefined;
+  const changedParts = () =>
+    Promise.all([qc.invalidateQueries({ queryKey: ['custom-parts'] }), qc.invalidateQueries({ queryKey: ['parts-catalog'] })]);
   const menuRef = useRef<HTMLDivElement>(null);
   // Picture size: the slider, Ctrl/⌘ + wheel or a pinch over the list.
   const [iconSize, setIconSize] = useListIconSize();
@@ -269,7 +283,35 @@ export const PartsPanel = memo(function PartsPanel({
             void navigator.clipboard.writeText(ctxMenu.part.partNumber);
             setCtxMenu(null);
           }}
+          ownSet={ownSet(ctxMenu.part)}
+          onRenameSet={(set) => {
+            setRenaming(set);
+            setCtxMenu(null);
+          }}
+          onDeleteSet={async (set) => {
+            setCtxMenu(null);
+            const name = set.displayName || set.partNumber;
+            if (!(await confirmDelete(name, SET_DELETE_WORDING))) return;
+            try {
+              await api.customParts.remove(set.id);
+              await changedParts();
+              toastDeleted(name);
+            } catch (e) {
+              useEditorStore.getState().showNotice(`Could not delete the set: ${(e as Error).message}`, 'error', 7000);
+            }
+          }}
           onClose={() => setCtxMenu(null)}
+        />
+      )}
+      {renaming && (
+        <RenameDialog
+          heading="Rename set"
+          current={renaming.displayName || renaming.partNumber}
+          onSave={async (name) => {
+            await renameSet(renaming, name);
+            await changedParts();
+          }}
+          onClose={() => setRenaming(null)}
         />
       )}
     </aside>
@@ -280,12 +322,19 @@ function PartContextMenuPopup({
   menu,
   onAddToMap,
   onCopyPartNumber,
+  ownSet,
+  onRenameSet,
+  onDeleteSet,
   onClose,
   ref,
 }: {
   menu: PartContextMenu;
   onAddToMap: () => void;
   onCopyPartNumber: () => void;
+  /** A set you made (or may edit): it can be renamed, and by its owner deleted. */
+  ownSet: CustomPartSummary | undefined;
+  onRenameSet: (set: CustomPartSummary) => void;
+  onDeleteSet: (set: CustomPartSummary) => void;
   onClose: () => void;
   ref: React.Ref<HTMLDivElement>;
 }) {
@@ -303,6 +352,19 @@ function PartContextMenuPopup({
       <button className={itemCls} onClick={onCopyPartNumber}>
         Copy part number
       </button>
+      {ownSet && (
+        <>
+          <hr className="my-1 border-border" />
+          <button className={itemCls} onClick={() => onRenameSet(ownSet)}>
+            Rename set…
+          </button>
+          {ownSet.role === 'owner' && (
+            <button className={itemCls + ' text-danger'} onClick={() => onDeleteSet(ownSet)}>
+              Delete set…
+            </button>
+          )}
+        </>
+      )}
       <hr className="my-1 border-border" />
       <button className={itemCls + ' text-muted'} onClick={onClose}>
         Cancel
