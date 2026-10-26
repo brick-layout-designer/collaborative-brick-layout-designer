@@ -106,10 +106,10 @@ describe('WS perf budget', () => {
   const room = (id: string) => docHub.peek(id)!;
   const work = () => ({ ...guardWork });
   const since = (before: typeof guardWork) => ({ decodes: guardWork.decodes - before.decodes, docCopies: guardWork.docCopies - before.docCopies });
-  /** Until `done`, polling; the time it took. */
+  /** Until `done`, polling (for up to 4 s: a busy runner is slow, and only the counts are checked). */
   async function until(done: () => boolean): Promise<number> {
     const t = performance.now();
-    for (let i = 0; i < 250 && !done(); i++) await sleep(4);
+    while (!done() && performance.now() - t < 4000) await sleep(4);
     expect(done()).toBe(true);
     return performance.now() - t;
   }
