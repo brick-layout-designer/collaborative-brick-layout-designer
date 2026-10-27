@@ -101,11 +101,63 @@ jobs:
   # At night: every spec, split across shards that run side by side. Each
   # shard is its own machine with its own server and database, and runs its
   # specs one at a time, because several of them change site-wide settings
-  # (catalogs, limits) that the others would see. The shards split by file,
-  # so a spec's tests stay together and in order.
-  every-spec:
-    name: Every e2e spec (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+  # (catalogs, limits) that the others would see.
+  #
+  # The plan packs whole spec files into shards of about 12 minutes each, by
+  # how long each took the night before (.github/scripts/e2e-shards.mjs).
+  # Playwright's --shard=i/n splits by the number of tests instead, and ours
+  # take from a second to a minute each: its shards ran 0 to 19 minutes.
+  every-spec-plan:
+    name: Every e2e spec (plan)
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      count: ${{ steps.plan.outputs.count }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The timings the last finished run on main wrote; the copy in the
+      # repo if there is none.
+      - name: Last run's timings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh run list -R "$GITHUB_REPOSITORY" -w journeys.yml -b main -s completed -L 10 --json databaseId -q '.[].databaseId'); do
+            if gh run download "$id" -R "$GITHUB_REPOSITORY" -n e2e-timings -D .e2e-timings 2>/dev/null; then
+              echo "Timings from run $id"
+              break
+            fi
+          done
+          if [ -f .e2e-timings/shard-timings.json ]; then
+            mv .e2e-timings/shard-timings.json timings.json
+          else
+            echo "Timings from apps/web/e2e/shard-timings.json"
+            cp apps/web/e2e/shard-timings.json timings.json
+          fi
+
+      - name: Plan the shards
+        id: plan
+        run: |
+          plan=$(node .github/scripts/e2e-shards.mjs plan apps/web/e2e timings.json 12 12)
+          echo "$plan" | jq '.matrix[] | {shard, minutes, specs: (.files | split(" ") | length)}'
+          echo "count=$(echo "$plan" | jq -c .count)" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(echo "$plan" | jq -c .matrix)" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the timings it used
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-timings-plan
+          path: timings.json
+          retention-days: 3
+
+  every-spec:
+    name: Every e2e spec (shard ${{ matrix.shard }}/${{ needs.every-spec-plan.outputs.count }})
+    needs: every-spec-plan
     runs-on: ubuntu-latest
     # The specs stop themselves at 25 minutes (--global-timeout) and still
     # write their report; this is the backstop for a hung setup.
@@ -113,9 +165,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Sized so each shard's specs take about 15 minutes. Keep the
-        # report job's SHARDS in step with this list.
-        shard: [1, 2, 3, 4, 5, 6]
+        include: ${{ fromJSON(needs.every-spec-plan.outputs.matrix) }}
     env: *e2e-env
     steps:
       - uses: actions/checkout@v7
@@ -124,11 +174,12 @@ jobs:
         with:
           parts-sha: ${{ env.BLUEBRICK_PARTS_SHA }}
 
-      - name: Every e2e spec
+      - name: Every e2e spec (about ${{ matrix.minutes }} min)
         working-directory: apps/web
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: report-${{ matrix.shard }}.zip
         run: >
-          npx playwright test
-          --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          npx playwright test ${{ matrix.files }}
           --workers=1 --retries=1 --global-timeout=1500000
           --reporter=list,blob
 
@@ -151,15 +202,14 @@ jobs:
           retention-days: 14
 
   # One report for the whole night: every shard's results merged into one
-  # HTML report and one summary on the run page.
+  # HTML report and one summary on the run page, and the timings for the
+  # next night's plan.
   every-spec-report:
     name: Every e2e spec (report)
-    needs: every-spec
-    if: ${{ !cancelled() && needs.every-spec.result != 'skipped' }}
+    needs: [every-spec-plan, every-spec]
+    if: ${{ !cancelled() && needs.every-spec-plan.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      SHARDS: 6
     steps:
       - uses: actions/checkout@v7
 
@@ -181,6 +231,12 @@ jobs:
           merge-multiple: true
           path: apps/web/all-blob-reports
 
+      - name: Download the timings the plan used
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-timings-plan
+          path: .e2e-timings
+
       - name: Merge the reports
         working-directory: apps/web
         env:
@@ -194,10 +250,29 @@ jobs:
 
       - name: Summary
         working-directory: apps/web
+        env:
+          PLAN: ${{ needs.every-spec-plan.outputs.matrix }}
         run: |
           node ../../.github/scripts/e2e-summary.mjs merged.json all-blob-reports \
-            "$SHARDS" >> "$GITHUB_STEP_SUMMARY"
+            "${{ needs.every-spec-plan.outputs.count }}" >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
+
+      # This night's times over the ones the plan used, so a spec that
+      # didn't run keeps its old time.
+      - name: Timings for the next run
+        if: ${{ hashFiles('apps/web/merged.json') != '' }}
+        run: |
+          node .github/scripts/e2e-shards.mjs timings apps/web/merged.json > new.json
+          jq -s '.[0] * .[1]' .e2e-timings/timings.json new.json > shard-timings.json
+          echo "$(jq length shard-timings.json) specs timed"
+
+      - name: Upload the timings
+        if: ${{ hashFiles('shard-timings.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-timings
+          path: shard-timings.json
+          retention-days: 30
 
       - name: Upload the merged HTML report
         if: ${{ !cancelled() }}

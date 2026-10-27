@@ -3,6 +3,8 @@
 // flaky test with its first error line. Written for $GITHUB_STEP_SUMMARY.
 //
 //   node e2e-summary.mjs <report.json> <blob dir> <shard count>
+//
+// PLAN (the plan's matrix, as JSON) adds each shard's planned minutes.
 
 import { readFileSync, readdirSync } from 'node:fs';
 
@@ -37,6 +39,21 @@ out.push(
   `Shards reported: **${reported.size} of ${shardCount}**` +
     (missing.length ? ` (no report from shard ${missing.join(', ')})` : ''),
 );
+
+let plan = [];
+try {
+  plan = JSON.parse(process.env.PLAN ?? '[]');
+} catch {
+  /* no plan */
+}
+if (plan.length) {
+  out.push('');
+  out.push('| Shard | Specs | Planned | Report |');
+  out.push('|---|---|---|---|');
+  for (const p of plan) {
+    out.push(`| ${p.shard} | ${p.files.split(' ').length} | ${p.minutes} min | ${reported.has(p.shard) ? 'yes' : '**none**'} |`);
+  }
+}
 
 if (report) {
   const failed = [];
