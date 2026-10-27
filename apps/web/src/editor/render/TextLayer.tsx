@@ -141,7 +141,7 @@ function FittedTextCell({
   // rotates around (x, y); offsetX/Y shift the local bbox so its centre
   // lands on (x, y).
   // Too small to read on screen (phone viewer only): leave it out.
-  const readable = useEditorStore((st) => textReadable(layout.fontPx, st.zoom, st.minTextPx));
+  const readable = useEditorStore((st) => textReadable(layout.fontPx, st.stageView.zoom, st.minTextPx));
 
 
   return (

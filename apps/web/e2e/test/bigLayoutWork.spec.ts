@@ -8,6 +8,9 @@
 //    (viewBitmap.ts): a 60-frame pan draws no part, the parts are drawn
 //    sharp again when it stops, an edit during the pan shows during the pan,
 //    and a click straight after the pan picks the part under it.
+//  - And while it moves, the canvases themselves are moved by CSS: a
+//    60-frame pan commits nothing in React (it rendered the map's canvas on
+//    every frame), and Konva's stage stays put until the pan ends.
 //  - Dragging a box redraws no part: only the box. It used to redraw every
 //    part (and the grid) on each mouse move, as the rulers and grid lines
 //    came along with new point arrays.
@@ -223,4 +226,108 @@ test('a big layout: while the view moves the map is one moving picture, kept up 
   await page.mouse.up({ button: 'middle' });
   expect(edited.partsScene, 'the map is drawn again for the picture once the part is gone').toBeGreaterThan(900);
   expect(edited.partsScene, 'once or twice, not on every frame').toBeLessThan(3 * 940);
+});
+
+/** Counts React commits (both renderers: the page and the map's react-konva) through the devtools hook, from page load. */
+async function countReactCommits(page: Page): Promise<() => Promise<number>> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __commits: number; __REACT_DEVTOOLS_GLOBAL_HOOK__?: unknown };
+    w.__commits = 0;
+    let id = 0;
+    w.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      supportsFiber: true,
+      isDisabled: false,
+      renderers: new Map(),
+      inject: () => ++id,
+      checkDCE: () => {},
+      onScheduleFiberRoot: () => {},
+      onCommitFiberRoot: () => {
+        w.__commits++;
+      },
+      onPostCommitFiberRoot: () => {},
+      onCommitFiberUnmount: () => {},
+    };
+  });
+  return () => page.evaluate(() => (window as unknown as { __commits: number }).__commits);
+}
+
+test('a big layout: a pan renders nothing in React and moves the canvas, not the stage', async ({ page }) => {
+  test.setTimeout(180_000);
+  const commits = await countReactCommits(page);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await signIn(page, `big-css-${Date.now()}@example.com`, 'Big CSS');
+  const res = await page.request.post('/api/layouts', { data: { title: 'Big CSS pan', bbm: FORDYCE_BBM } });
+  expect(res.ok()).toBe(true);
+  const { id } = (await res.json()) as { id: string };
+  await page.goto(`/editor/${id}`);
+  await expect(page.getByTestId('loading-card')).toBeHidden({ timeout: 60000 });
+  await expect(page.getByText('940 pieces').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  await page.waitForTimeout(1500);
+  expect(await commits(), 'the hook sees React commit').toBeGreaterThan(10);
+  const area = (await page.locator('.konvajs-content').first().boundingBox())!;
+  const c = { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+
+  const stageAt = () =>
+    page.evaluate(() => {
+      const st = (window as unknown as { Konva: { stages: { x: () => number; y: () => number }[] } }).Konva.stages[0]!;
+      const canvases = [...document.querySelectorAll<HTMLCanvasElement>('.konvajs-content canvas')];
+      return {
+        x: st.x(),
+        y: st.y(),
+        moved: canvases.filter((el) => !('viewBitmap' in el.dataset) && el.style.transform !== '' && el.style.transform !== 'none').length,
+        picture: canvases.filter((el) => 'viewBitmap' in el.dataset && el.style.display !== 'none').length,
+      };
+    });
+  const before = await stageAt();
+
+  // ── 60 frames of panning with the middle button. ──
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.down({ button: 'middle' });
+  await panHeld(page, c, 2);
+  const start = await commits();
+  await panHeld(page, { x: c.x + 8, y: c.y + 4 }, 60);
+  const during = (await commits()) - start;
+  const mid = await stageAt();
+  expect(during, 'React commits during a 60-frame pan (it was one or more every frame)').toBeLessThanOrEqual(3);
+  expect(mid.x, 'the stage stays where it was drawn').toBe(before.x);
+  expect(mid.moved, 'the canvases are moved by CSS instead').toBeGreaterThan(2);
+  expect(mid.picture, 'with the picture of the map under them').toBe(1);
+  await page.mouse.up({ button: 'middle' });
+  await page.waitForTimeout(400);
+
+  // ── When it stops, the stage is where the view went, and the CSS is gone. ──
+  const after = await stageAt();
+  expect(after.x - before.x).toBeCloseTo(8 + 60 * 4, 0);
+  expect(after.y - before.y).toBeCloseTo(4 + 60 * 2, 0);
+  expect(after.moved, 'no canvas is left moved').toBe(0);
+  expect(after.picture, 'and the picture is hidden').toBe(0);
+  const view = await page.evaluate(() => {
+    const st = (window as unknown as { Konva: { stages: { x: () => number }[] } }).Konva.stages[0]!;
+    return st.x();
+  });
+  expect(view).toBe(after.x);
+
+  // ── A pan further than the picture's margin: the stage catches up now and then, not every frame. ──
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.down({ button: 'middle' });
+  const farStart = await commits();
+  await panHeld(page, c, 60, { x: -25, y: 0 });
+  const far = (await commits()) - farStart;
+  await page.mouse.up({ button: 'middle' });
+  expect(far, 'a 1,500 px pan catches up a few times (a 700 px margin each side)').toBeLessThanOrEqual(12);
+  await page.waitForTimeout(400);
+  expect((await stageAt()).moved).toBe(0);
+
+  // ── A click straight after picks the part under it. ──
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  await page.waitForTimeout(500);
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.down({ button: 'middle' });
+  await panHeld(page, c, 10);
+  await page.mouse.up({ button: 'middle' });
+  const part = await partNearCentre(page);
+  expect(part).not.toBeNull();
+  await page.mouse.click(part!.x, part!.y);
+  await expect(page.locator('footer')).toContainText(/selected: 1\b/);
 });
