@@ -145,7 +145,9 @@ function AdminNav({
         </select>
       </label>
       <nav aria-label="Admin sections" className="hidden md:block">
-        <div className="sticky top-4 space-y-4">
+        {/* On a short screen (a phone on its side) the list scrolls by itself:
+            stuck to the top, its lower sections were out of reach. */}
+        <div className="sticky top-4 max-h-[calc(100dvh-2rem)] space-y-4 overflow-y-auto overscroll-contain">
           {groups.map((g) => (
             <div key={g.label}>
               <h2 className="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-muted">{g.label}</h2>

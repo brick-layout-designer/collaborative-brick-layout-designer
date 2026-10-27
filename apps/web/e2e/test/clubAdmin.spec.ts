@@ -40,7 +40,9 @@ test('an admin changes settings, invites with an expiry and sees it in the activ
   await page.getByRole('button', { name: 'Send invite' }).click();
   await expect(page.getByRole('button', { name: 'Copy link' }).first()).toBeVisible();
   const pending = page.getByRole('region', { name: /Waiting to join/ });
-  await expect(pending.getByText(`new-${ts}@example.com`)).toBeVisible();
+  // Shown masked: only a site admin, or the person it's for, sees the whole address.
+  await expect(pending.getByText('n…@example.com')).toBeVisible();
+  await expect(pending.getByText(`new-${ts}@example.com`)).toHaveCount(0);
   await expect(pending.getByText(/expires in 7 days/)).toBeVisible();
 
   // Settings: a description, and only admins may add things.
@@ -53,7 +55,7 @@ test('an admin changes settings, invites with an expiry and sees it in the activ
   expect(res.status()).toBe(403);
 
   await page.getByRole('tab', { name: 'Activity' }).click();
-  await expect(page.getByText(`Ada Admin invited new-${ts}@example.com`)).toBeVisible();
+  await expect(page.getByText('Ada Admin invited n…@example.com')).toBeVisible();
   await expect(page.getByText('Ada Admin changed the club’s settings')).toBeVisible();
 
   // The member sees the description, no admin tools, and can leave.
