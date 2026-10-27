@@ -36,6 +36,19 @@ export function yourRolesText(o: { myRole: ClubRole; roleNames?: string[] }): st
 }
 
 /**
+ * The Manage page's line about you: "You’re a viewer of this club." for
+ * one of the four roles a club starts with, else "Your roles: Viewer,
+ * Track crew." Older servers send no role names: the strongest fixed role.
+ */
+export function yourRolesSentence(o: { myRole: ClubRole; roleNames?: string[] }): string {
+  const names = o.roleNames ?? [];
+  if (names.length === 0) return `You’re ${aRole(o.myRole)} of this club.`;
+  const a = names.length === 1 ? BUILTIN_A[names[0]!.toLowerCase()] : undefined;
+  if (a) return `You’re ${a} of this club.`;
+  return `${names.length === 1 ? 'Your role' : 'Your roles'}: ${names.join(', ')}.`;
+}
+
+/**
  * How an invite says the role it gives: "as a viewer" (one of the four a
  * club starts with), "with the role Track crew" (a club's own), or, from
  * an older server, the fixed role.
