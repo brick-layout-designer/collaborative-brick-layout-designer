@@ -86,3 +86,49 @@ describe('a set holding custom sets', () => {
     expect(out[0]!.setVersion).toBe(nestedSetVersion('1111111111111111', [{ subKey: 'B', version: nestedSetVersion('2222222222222222', []) }]));
   });
 });
+
+describe('a set naming the same set many times', () => {
+  type P = { key: string; partNumber: string; kind: string; subparts?: { subKey: string }[]; setVersion?: string };
+  // Each worked out every time, as before (no limit, no reuse): the versions the catalog must still give.
+  const naive = (parts: P[]): P[] => {
+    const index = new Map(parts.map((p) => [p.partNumber.toLowerCase(), p]));
+    const versionOf = (set: P, outer: P[]): string => {
+      const chain = [...outer, set];
+      const inner: { subKey: string; version: string }[] = [];
+      for (const sp of set.subparts ?? []) {
+        const sub = index.get(sp.subKey.toLowerCase());
+        if (!sub || sub.kind !== 'group' || !sub.setVersion || chain.includes(sub) || chain.length >= 16) continue;
+        inner.push({ subKey: sp.subKey, version: versionOf(sub, chain) });
+      }
+      return nestedSetVersion(set.setVersion!, inner);
+    };
+    return parts.map((p) => (p.kind === 'group' && p.setVersion ? { ...p, setVersion: versionOf(p, []) } : p));
+  };
+
+  it('gets the same versions, each inner one worked out once', () => {
+    // a names b three times and c; b names c twice and a (a cycle); c names a and b.
+    const parts: P[] = [
+      { key: 'custom:a', partNumber: 'a', kind: 'group', subparts: [{ subKey: 'b' }, { subKey: 'B' }, { subKey: 'c' }, { subKey: 'b' }], setVersion: '1111111111111111' },
+      { key: 'custom:b', partNumber: 'b', kind: 'group', subparts: [{ subKey: 'c' }, { subKey: 'a' }, { subKey: 'c' }], setVersion: '2222222222222222' },
+      { key: 'custom:c', partNumber: 'c', kind: 'group', subparts: [{ subKey: 'a' }, { subKey: 'b' }, { subKey: 'leaf' }], setVersion: '3333333333333333' },
+      { key: 'leaf', partNumber: 'leaf', kind: 'leaf' },
+    ];
+    expect(withNestedSetVersions(parts).map((p) => p.setVersion)).toEqual(naive(parts).map((p) => p.setVersion));
+  });
+
+  it('keeps a set’s own version when its sets inside need too much working out', () => {
+    // 20 sets each naming every other one: far more chains than the budget.
+    const n = 20;
+    const parts: P[] = Array.from({ length: n }, (_, i) => ({
+      key: `custom:${i}`,
+      partNumber: `s${i}`,
+      kind: 'group',
+      subparts: Array.from({ length: n }, (_, j) => ({ subKey: `s${j}` })).filter((_, j) => j !== i),
+      setVersion: String(i).padStart(16, '0'),
+    }));
+    const started = performance.now();
+    const out = withNestedSetVersions(parts);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(out).toHaveLength(n);
+  });
+});
