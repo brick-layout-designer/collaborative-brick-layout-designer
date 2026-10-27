@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { DeadLinkHelp, SwitchAccountButton } from '../auth/signIn';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../api';
+import { asRole } from './clubRoles';
 
 /**
  * /org-invite/:token landing — same shape as the layout-invite page,
@@ -72,7 +73,7 @@ export function OrgInvitePage() {
       <Box>
         <h1 className="text-lg font-semibold">You're invited</h1>
         <p className="mt-2 text-sm text-muted">
-          You've been invited to join <strong>{inv.orgName}</strong> as a {inv.role}.
+          You've been invited to join <strong>{inv.orgName}</strong> {asRole(inv.role, inv.roleName)}.
         </p>
         {!isSignedIn && (
           <Link

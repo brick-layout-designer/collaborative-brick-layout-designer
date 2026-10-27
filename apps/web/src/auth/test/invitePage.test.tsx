@@ -35,3 +35,25 @@ describe('layout invite page', () => {
     expect(screen.getByText(/the layout changed hands, or the person who sent it no longer manages it/)).toBeTruthy();
   });
 });
+
+describe('layout invite page wording', () => {
+  it('an invite to edit says "as an editor"', async () => {
+    vi.stubGlobal('fetch', async (input: string) => {
+      const body =
+        input === '/api/auth/me'
+          ? { user: null }
+          : { invitedEmail: 'b…@example.com', forYou: null, role: 'editor', layoutId: 'l1', layoutTitle: 'Yard', expiresAt: Date.now() + 86_400_000 };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/invite/abc']}>
+          <Routes>
+            <Route path="/invite/:token" element={<InvitePage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect((await screen.findByText(/You've been invited to/)).textContent).toBe("You've been invited to Yard as an editor.");
+  });
+});

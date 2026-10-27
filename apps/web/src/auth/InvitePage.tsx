@@ -83,7 +83,7 @@ export function InvitePage() {
       <div className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6">
         <h1 className="text-lg font-semibold">You're invited</h1>
         <p className="text-sm text-muted">
-          You've been invited to <strong>{inv.layoutTitle}</strong> as a {inv.role}.
+          You've been invited to <strong>{inv.layoutTitle}</strong> as {inv.role === 'editor' ? 'an editor' : 'a viewer'}.
         </p>
 
         {!isSignedIn && (

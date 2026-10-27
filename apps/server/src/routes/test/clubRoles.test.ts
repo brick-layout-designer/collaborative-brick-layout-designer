@@ -157,6 +157,8 @@ describe('club roles', () => {
     const crew = await makeRole('Track crew', ['edit_layouts']);
     const inv = await as(ann, 'POST', '/api/orgs/rail-club/invites', { email: 'dee@x.com', roleId: crew });
     expect(inv.statusCode, inv.body).toBe(200);
+    // The invite page says the role by its name.
+    expect((await app.inject({ method: 'GET', url: `/api/org-invites/${inv.json().token}` })).json()).toMatchObject({ roleName: 'Track crew' });
     const dee = await loginAs(app, 'dee@x.com');
     const accepted = await as(dee, 'POST', `/api/org-invites/${inv.json().token}`);
     expect(accepted.statusCode, accepted.body).toBeLessThan(300);
