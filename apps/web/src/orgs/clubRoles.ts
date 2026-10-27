@@ -1,3 +1,5 @@
+import type { ClubRoleSummary, OrgMemberSummary } from '../api';
+
 // Club roles, strongest first (the server's access/clubRoles.ts):
 // Admin runs the club, Manager runs its day to day, Member uses it.
 
@@ -62,3 +64,36 @@ export function asRole(role: ClubRole, roleName?: string | null): string {
 
 /** Strongest first, for member lists. */
 export const byRole = (a: ClubRole, b: ClubRole) => RANK[b] - RANK[a];
+
+/**
+ * Member lists, strongest first: anyone holding the Admin role, then by how
+ * many permissions their roles grant together, then by name. The desktop's
+ * Members view sorts the same way (ClubMembers::sorted). Without club roles
+ * (an older server), the fixed role, then the name.
+ */
+export function byStrongestRole(roles: ClubRoleSummary[] | undefined): (a: OrgMemberSummary, b: OrgMemberSummary) => number {
+  const byId = new Map((roles ?? []).map((r) => [r.id, r]));
+  const withRoles = byId.size > 0;
+  const rank = (m: OrgMemberSummary): [number, number] => {
+    const held = (m.roleIds ?? []).flatMap((id) => byId.get(id) ?? []);
+    return [held.some((r) => r.key === 'admin') ? 1 : 0, new Set(held.flatMap((r) => r.permissions)).size];
+  };
+  return (a, b) => {
+    if (withRoles && Array.isArray(a.roleIds) && Array.isArray(b.roleIds)) {
+      const [aAdmin, aPerms] = rank(a);
+      const [bAdmin, bPerms] = rank(b);
+      if (aAdmin !== bAdmin) return bAdmin - aAdmin;
+      if (aPerms !== bPerms) return bPerms - aPerms;
+    } else {
+      const r = byRole(a.role, b.role);
+      if (r) return r;
+    }
+    return a.displayName.localeCompare(b.displayName);
+  };
+}
+
+/** The names of the roles a member holds, in the club's order (empty without club roles). */
+export function memberRoleNames(m: OrgMemberSummary, roles: ClubRoleSummary[] | undefined): string[] {
+  const held = new Set(m.roleIds ?? []);
+  return [...(roles ?? [])].sort((a, b) => a.position - b.position).filter((r) => held.has(r.id)).map((r) => r.name);
+}

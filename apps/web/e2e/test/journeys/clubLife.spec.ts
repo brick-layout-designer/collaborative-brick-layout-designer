@@ -120,7 +120,7 @@ test('a club from creation to hand-over', async ({ page, browser }) => {
   // ── Ada hands the club over to Rita. ──
   await page.goto(`/orgs/${slug}/admin`);
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.getByLabel('New admin').selectOption({ label: 'Rita Rails (a manager)' });
+  await page.getByLabel('New admin').selectOption({ label: 'Rita Rails (Manager)' });
   await page.getByRole('button', { name: 'Hand over' }).click();
   await confirmInDialog(page);
   await expect(page).toHaveURL(new RegExp(`/orgs/${slug}$`));
