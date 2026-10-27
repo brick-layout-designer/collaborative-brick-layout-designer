@@ -125,7 +125,7 @@ import { SetUpdatesBar } from './SetUpdatesBar';
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
-import { hasClipboardBricks, pasteOffset, pasteTarget, readClipboard, writeBricksToClipboard, type ClipboardEntry } from './clipboard';
+import { hasClipboardBricks, pasteOffset, pasteTarget, readClipboardStatus, writeBricksToClipboard, type ClipboardEntry, type SystemClipboard } from './clipboard';
 import { moduleCopy, wholeModule } from './moduleCopy';
 import { pxToStud, studToPx } from './render/coords';
 import { SNAP_MARKS } from './render/selectionStyle';
@@ -1288,6 +1288,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               delete: () => canvasActionsRef.current?.delete(),
             }}
             onAddPart={() => setShowAddPart(true)}
+            onPaste={() => canvasActionsRef.current?.clipboardByTouch('paste')}
             onSheets={() => setShowTouchSheets(true)}
             onEditText={openTouchText}
             onModule={isViewer || !doc ? undefined : () => {
@@ -1306,6 +1307,9 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
           <TouchPickedSheet
             onClose={() => setShowTouchPicked(false)}
             actions={{
+              copy: () => canvasActionsRef.current?.clipboardByTouch('copy'),
+              cut: () => canvasActionsRef.current?.clipboardByTouch('cut'),
+              paste: () => canvasActionsRef.current?.clipboardByTouch('paste'),
               saveAsSet: () => setShowSaveAsSet(true),
               group: () => canvasActionsRef.current?.group(),
               ungroup: () => canvasActionsRef.current?.ungroup(),
@@ -1704,6 +1708,8 @@ function Canvas({
       y: pxToStud((p.y + area.top - box.top - st.panY) / st.zoom),
     };
   };
+  /** Where a long press on empty map offers "Paste here": the spot on the canvas area, and in studs. */
+  const [pasteSpot, setPasteSpot] = useState<{ x: number; y: number; studs: Pt } | null>(null);
   useTouchView(
     touchEl,
     () => {
@@ -1744,7 +1750,10 @@ function Canvas({
       },
       // Drawn once when they let go (in the same frame as the last view's
       // redraw, so only once).
-      onViewMoving: (moving) => setViewMoving(moving),
+      onViewMoving: (moving) => {
+        if (moving) setPasteSpot(null);
+        setViewMoving(moving);
+      },
       onPinchStart: () => {
         // A part being dragged by the first finger stays where it is.
         const stage = stageRef.current;
@@ -1755,6 +1764,7 @@ function Canvas({
         }
       },
       onTap: (p) => {
+        setPasteSpot(null);
         if (isViewer) return;
         const st = useEditorStore.getState();
         if (st.tool !== 'select' || st.touchSelectMore) return;
@@ -1764,7 +1774,13 @@ function Canvas({
       onLongPress: (p) => {
         if (isViewer || useEditorStore.getState().tool !== 'select') return;
         const hit = brickAt(p);
-        if (!hit) return;
+        if (!hit) {
+          // Held down on empty map: offer to paste there.
+          if (itemAt(p)) return;
+          const at = areaStuds(p);
+          if (at) setPasteSpot({ x: p.x, y: p.y, studs: at });
+          return;
+        }
         // Held down: pick this part as well, and keep picking more with taps.
         const st = useEditorStore.getState();
         if (!st.selection.includes(hit.id)) useEditorStore.setState({ selection: shapeSelectionIds([...st.selection, hit.id]) });
@@ -3348,8 +3364,9 @@ function Canvas({
   // Clipboard — port of MapViewClipboard.cpp (29-132).
   // ---------------------------------------------------------------------
 
-  async function copySelection(): Promise<void> {
-    if (selection.length === 0 || !map) return;
+  /** Copies the picked parts; says whether the system clipboard took them too (null: nothing to copy). */
+  async function copySelection(): Promise<SystemClipboard | null> {
+    if (selection.length === 0 || !map) return null;
     const sel = new Set(selection);
     const entries: ClipboardEntry[] = [];
     const anchors = linksByAnchor(readSidecarFromDoc(doc) as Record<string, unknown> | null);
@@ -3378,7 +3395,7 @@ function Canvas({
       }
     }
     // Exactly one module picked: a paste makes a copy of the module.
-    await writeBricksToClipboard(entries, pickedWholeModule());
+    return writeBricksToClipboard(entries, pickedWholeModule());
   }
 
   /** The one module the picked parts are exactly, outside Edit module (where parts join the edited module instead). */
@@ -3393,11 +3410,12 @@ function Canvas({
     addSidecarModule(doc, moduleCopy(module, ids));
   }
 
-  async function cutSelection(): Promise<void> {
-    await copySelection();
-    if (selection.length === 0) return;
+  async function cutSelection(): Promise<SystemClipboard | null> {
+    const copied = await copySelection();
+    if (selection.length === 0) return copied;
     deleteBricksAcrossLayers(doc, selectionByLayer());
     setSelection([]);
+    return copied;
   }
 
   /** A set may be split unless its <CanUngroup> is false (flex track). */
@@ -3521,15 +3539,20 @@ function Canvas({
     return pasteTarget(pointerStuds(), { width, height, panX: livePanX, panY: livePanY, zoom: liveZoom });
   }
 
-  async function pasteAtCursor(): Promise<void> {
-    const read = await readClipboard();
+  /**
+   * Pastes the copied parts, their centre under the cursor, or on `at`
+   * (studs: a touch's spot, or the middle of the view). Says how many it
+   * placed, whether there was anything to paste, and whether the browser
+   * let it read the system clipboard.
+   */
+  async function pasteAtCursor(at?: { x: number; y: number }): Promise<{ pasted: number; found: boolean; system: SystemClipboard }> {
+    const { content: read, system } = await readClipboardStatus();
     const clipped = read?.entries;
-    if (!clipped || clipped.length === 0) return;
-    if (!map) return;
+    if (!clipped || clipped.length === 0 || !map) return { pasted: 0, found: false, system };
     // The group's centre lands under the cursor (MapViewClipboard.cpp:62-73).
-    const { dx, dy } = pasteOffset(clipped.map((e) => e.brick.displayArea), currentPasteTarget());
+    const { dx, dy } = pasteOffset(clipped.map((e) => e.brick.displayArea), at ?? currentPasteTarget());
     const entries = keepWithinBudget(clipped, (e) => e.brick.partNumber);
-    if (entries.length === 0) return;
+    if (entries.length === 0) return { pasted: 0, found: true, system };
 
     // Group entries by source-layer name; find or create a brick layer
     // with that name in the current map.
@@ -3570,6 +3593,45 @@ function Canvas({
     }, LOCAL_ORIGIN);
     absorbIntoEditedModule(doc, newIds);
     if (newIds.length > 0) setSelection(newIds);
+    return { pasted: newIds.length, found: true, system };
+  }
+
+  /**
+   * Copy, Cut and Paste by touch: the same clipboard as Ctrl+C / Ctrl+V,
+   * so a copy on a phone pastes on a tablet or computer and back, when the
+   * browser shares its clipboard. What happened is said in plain words,
+   * since a phone has no status bar.
+   */
+  async function clipboardByTouch(what: 'copy' | 'cut' | 'paste', at?: { x: number; y: number }): Promise<void> {
+    if (isViewer) return;
+    const notice = useEditorStore.getState().showNotice;
+    const parts = (n: number) => (n === 1 ? '1 part' : `${n} parts`);
+    if (what === 'paste') {
+      const target = at ?? viewCentreStuds({ width, height });
+      const { pasted, found, system } = await pasteAtCursor(target);
+      if (pasted > 0) notice(`Pasted ${parts(pasted)}.`, 'done', 4000);
+      else if (!found) {
+        notice(
+          system === 'blocked'
+            ? 'Nothing to paste yet. Your browser didn’t let the app read the clipboard, so only parts copied in this tab can be pasted.'
+            : 'Nothing to paste yet. Pick parts, then tap Actions and Copy.',
+          'error',
+          7000,
+        );
+      }
+      return;
+    }
+    const n = selection.length;
+    const system = what === 'cut' ? await cutSelection() : await copySelection();
+    if (!system) return;
+    const done = `${what === 'cut' ? 'Cut' : 'Copied'} ${parts(n)}.`;
+    notice(
+      system === 'ok'
+        ? `${done} To place ${n === 1 ? 'it' : 'them'}, tap Paste, in this layout or another.`
+        : `${done} Your browser keeps the copy in this tab only, so paste it in this tab, in this layout or another.`,
+      'done',
+      7000,
+    );
   }
 
   async function duplicateSelection(beside = false): Promise<void> {
@@ -4019,6 +4081,7 @@ function Canvas({
     cut: () => void cutSelection(),
     copy: () => void copySelection(),
     paste: () => void pasteAtCursor(),
+    clipboardByTouch: (what) => void clipboardByTouch(what),
     delete: () => deleteSelection(),
     duplicate: (beside) => void duplicateSelection(beside),
     // Toolbar Rotate CCW / CW and Send to Back / Bring to Front
@@ -4445,6 +4508,17 @@ function Canvas({
   return (
     <>
       {stageNode}
+      {pasteSpot && !isViewer && (
+        <PasteHere
+          at={pasteSpot}
+          area={{ width, height }}
+          onPaste={() => {
+            setPasteSpot(null);
+            void clipboardByTouch('paste', pasteSpot.studs);
+          }}
+          onClose={() => setPasteSpot(null)}
+        />
+      )}
       <ModuleEditBar doc={doc} awareness={awareness} />
       {lookModuleId && (
         <Suspense fallback={null}>
@@ -5845,11 +5919,57 @@ function sheetsOfSelection(map: import('@cld/model').BbmMap, selection: readonly
 /** Keyboard / View-menu zoom step (desktop MainWindowMenus.cpp:493-498). */
 const ZOOM_STEP = 1.2;
 
+/**
+ * After a long press on empty map by touch: "Paste here", by the finger,
+ * kept inside the map. A tap anywhere else on the map closes it.
+ */
+function PasteHere({ at, area, onPaste, onClose }: {
+  at: { x: number; y: number };
+  area: { width: number; height: number };
+  onPaste: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  // Above the finger, so it isn't hidden under it; inside the map's edges.
+  const w = 196;
+  const left = Math.max(8, Math.min(at.x - w / 2, area.width - w - 8));
+  const top = Math.max(8, at.y - 76);
+  return (
+    <div
+      role="dialog"
+      aria-label="Paste here"
+      data-testid="paste-here"
+      data-no-gesture
+      className="absolute z-20 flex items-center gap-1 rounded-control border border-line bg-panel p-1 shadow-pop"
+      style={{ left, top, width: w }}
+    >
+      <button
+        type="button"
+        onClick={onPaste}
+        className="flex min-h-12 flex-1 items-center justify-center rounded-control bg-accent px-3 text-base font-bold text-accent-ink hover:bg-accent-hover"
+      >
+        Paste here
+      </button>
+      <button type="button" aria-label="Close" onClick={onClose} className="flex min-h-12 min-w-11 items-center justify-center rounded-control text-lg font-bold hover:bg-soft">
+        ×
+      </button>
+    </div>
+  );
+}
+
 /** Imperative canvas actions shared with the header toolbar and menus. */
 interface CanvasActions {
   cut: () => void;
   copy: () => void;
   paste: () => void;
+  /** Copy, Cut or Paste (in the middle of the view) by touch, with a notice saying what happened. */
+  clipboardByTouch: (what: 'copy' | 'cut' | 'paste') => void;
   delete: () => void;
   /** Duplicate the selection: under the cursor, or `beside` the original (touch). */
   duplicate: (beside?: boolean) => void;

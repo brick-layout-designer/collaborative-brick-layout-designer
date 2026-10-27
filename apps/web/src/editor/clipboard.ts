@@ -5,10 +5,12 @@
 //     across tabs and reloads. The desktop's in-process clipboard works
 //     fine because it's a single window; the web port's natural multi-
 //     tab use case wants a real shared buffer.
-//   - Falls back to a module-level in-memory store when the browser
-//     clipboard API is unavailable or denied (e.g. http:// localhost
-//     contexts in Firefox without permission). Same data shape so
-//     paste-from-self always works.
+//   - Also keeps this tab's own copy (in memory and sessionStorage, so
+//     it survives opening another layout or a reload in the same tab)
+//     for when the browser clipboard API is unavailable or denied (e.g.
+//     a phone browser that won't let a page read the clipboard). Same
+//     data shape, so paste-from-self always works; a paste takes the
+//     newer of the two.
 //
 // Wire format: a JSON object tagged with a fixed `kind` discriminator
 // so we can refuse foreign clipboard payloads.
@@ -35,26 +37,77 @@ interface ClipboardPayload {
   entries: ClipboardEntry[];
   /** The copied parts were exactly this module: a paste makes a copy of it. */
   module?: SidecarModule;
+  /** When it was copied (ms since 1970), so the newer of the system's and this tab's copies is pasted. */
+  copiedAt?: number;
 }
 
+/** What a paste found: the parts, and, when they were exactly one module, that module. */
+export interface ClipboardContent {
+  entries: ClipboardEntry[];
+  module: SidecarModule | null;
+}
+
+/**
+ * Whether the browser let the app use the system clipboard: `ok` (the
+ * copy is there for other tabs, apps and devices), or `blocked` (denied,
+ * or no clipboard here), so only this tab has it.
+ */
+export type SystemClipboard = 'ok' | 'blocked';
+
+/** This tab's own copy, kept for the tab's life (a reload or another layout too), whatever the browser allows. */
+const TAB_KEY = 'cbld-clipboard';
 let memoryFallback: ClipboardPayload | null = null;
 
-/** Serialise a snapshot of `entries` into the OS clipboard + memory fallback. */
-export async function writeBricksToClipboard(entries: ClipboardEntry[], module?: SidecarModule | null): Promise<void> {
+function tabCopy(): ClipboardPayload | null {
+  if (memoryFallback) return memoryFallback;
+  try {
+    const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(TAB_KEY) : null;
+    const parsed = raw ? parsePayload(raw) : null;
+    if (parsed) memoryFallback = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function parsePayload(raw: string): ClipboardPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<ClipboardPayload>;
+    if (parsed && parsed.kind === CLIPBOARD_KIND && Array.isArray(parsed.entries)) return parsed as ClipboardPayload;
+  } catch {
+    /* not ours */
+  }
+  return null;
+}
+
+/**
+ * Copies `entries` to the system clipboard and to this tab's own
+ * clipboard. Says whether the system clipboard took it.
+ */
+export async function writeBricksToClipboard(entries: ClipboardEntry[], module?: SidecarModule | null): Promise<SystemClipboard> {
   const payload: ClipboardPayload = {
     kind: CLIPBOARD_KIND,
     version: 1,
     entries,
     ...(module ? { module } : {}),
+    copiedAt: Date.now(),
   };
   memoryFallback = payload;
+  const text = JSON.stringify(payload);
+  try {
+    sessionStorage.setItem(TAB_KEY, text);
+  } catch {
+    /* too big, or storage off: the copy in memory still pastes in this tab */
+  }
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(payload));
+      await navigator.clipboard.writeText(text);
+      return 'ok';
     } catch {
-      /* permission denied / unsupported → memory fallback wins */
+      /* permission denied / unsupported → this tab's copy */
     }
   }
+  return 'blocked';
 }
 
 /** Read previously-written bricks. Returns null if clipboard is empty/foreign. */
@@ -63,19 +116,29 @@ export async function readBricksFromClipboard(): Promise<ClipboardEntry[] | null
 }
 
 /** The copied bricks and, when they were exactly one module, that module. */
-export async function readClipboard(): Promise<{ entries: ClipboardEntry[]; module: SidecarModule | null } | null> {
+export async function readClipboard(): Promise<ClipboardContent | null> {
+  return (await readClipboardStatus()).content;
+}
+
+/**
+ * What there is to paste: the newer of the system clipboard's copy (from
+ * another tab, app or device) and this tab's own, and whether the browser
+ * let the app read the system clipboard.
+ */
+export async function readClipboardStatus(): Promise<{ content: ClipboardContent | null; system: SystemClipboard }> {
+  let fromSystem: ClipboardPayload | null = null;
+  let system: SystemClipboard = 'blocked';
   if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
     try {
-      const raw = await navigator.clipboard.readText();
-      const parsed = JSON.parse(raw) as Partial<ClipboardPayload>;
-      if (parsed && parsed.kind === CLIPBOARD_KIND && Array.isArray(parsed.entries)) {
-        return { entries: parsed.entries as ClipboardEntry[], module: parsed.module ?? null };
-      }
+      fromSystem = parsePayload(await navigator.clipboard.readText());
+      system = 'ok';
     } catch {
-      /* fall through to memory fallback */
+      /* denied → this tab's copy */
     }
   }
-  return memoryFallback ? { entries: memoryFallback.entries, module: memoryFallback.module ?? null } : null;
+  const tab = tabCopy();
+  const newer = fromSystem && tab && (tab.copiedAt ?? 0) > (fromSystem.copiedAt ?? 0) ? tab : (fromSystem ?? tab);
+  return { content: newer ? { entries: newer.entries, module: newer.module ?? null } : null, system };
 }
 
 /**
@@ -85,7 +148,17 @@ export async function readClipboard(): Promise<{ entries: ClipboardEntry[]; modu
  * only this tab's copies; Ctrl+V still reads the system clipboard.
  */
 export function hasClipboardBricks(): boolean {
-  return (memoryFallback?.entries.length ?? 0) > 0;
+  return (tabCopy()?.entries.length ?? 0) > 0;
+}
+
+/** For tests: forget this tab's copy. */
+export function clearTabClipboard(): void {
+  memoryFallback = null;
+  try {
+    sessionStorage.removeItem(TAB_KEY);
+  } catch {
+    /* nothing kept */
+  }
 }
 
 export type { ClipboardEntry };

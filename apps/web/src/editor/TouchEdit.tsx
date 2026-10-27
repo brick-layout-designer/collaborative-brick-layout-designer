@@ -91,6 +91,7 @@ const svg = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke:
 const RotLeft = () => (<svg {...svg}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 3v5h5" /></svg>);
 const RotRight = () => (<svg {...svg}><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v5h-5" /></svg>);
 const Copy = () => (<svg {...svg}><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></svg>);
+const PasteIcon = () => (<svg {...svg}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="M9 11h6M9 15h4" /></svg>);
 const Trash = () => (<svg {...svg}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 15h10l1-15" /></svg>);
 const Check = () => (<svg {...svg}><path d="M5 12l5 5L20 7" /></svg>);
 const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
@@ -126,10 +127,14 @@ export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo
  * The bar along the bottom of the map while editing by touch. With parts
  * picked: Rotate left / right, Duplicate, Module (make one, or the picked
  * module's menu), More actions (Save as set, Group, Ungroup and the rest:
- * TouchPickedSheet), Delete, Select more, Select area and Done. With nothing picked: Add part, Select more and Select area.
+ * TouchPickedSheet: Copy, Cut and Paste are there too), Delete, Select
+ * more, Select area and Done. With nothing picked: Add part, Paste, Select
+ * more, Select area and Sheets.
  */
-export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onModule, onMore }: {
+export function TouchActionBar({ actions, onAddPart, onPaste, onSheets, onEditText, onModule, onMore }: {
   actions: Actions;
+  /** Paste what was copied (in this layout, another one, or another device), in the middle of the view. */
+  onPaste?: (() => void) | undefined;
   /** The picked parts' other actions (TouchPickedSheet). */
   onMore?: (() => void) | undefined;
   /** The picked parts' module: Make a module, or the picked module's own menu. */
@@ -206,6 +211,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
             <Plus />
             Add part
           </button>
+          {onPaste && <BarButton label="Paste" onClick={onPaste} testId="touch-paste"><PasteIcon /></BarButton>}
           <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
           {areaButton()}
           {onSheets && <BarButton label="Sheets" onClick={onSheets} testId="touch-sheets"><Layers /></BarButton>}

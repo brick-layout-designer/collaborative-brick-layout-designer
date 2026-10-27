@@ -135,6 +135,7 @@ describe('clipboard — browser clipboard API', () => {
 describe('hasClipboardBricks', () => {
   it('is true once this session has copied bricks', async () => {
     vi.resetModules();
+    sessionStorage.clear();
     const clip = await import('../clipboard');
     expect(clip.hasClipboardBricks()).toBe(false);
     await clip.writeBricksToClipboard([]);
@@ -143,6 +144,51 @@ describe('hasClipboardBricks', () => {
       { sourceLayerName: 'Bricks', brick: { partNumber: '3001.1' } } as never,
     ]);
     expect(clip.hasClipboardBricks()).toBe(true);
+  });
+});
+
+describe('the system clipboard and this tab\'s copy', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('says whether the system clipboard took the copy, and whether a paste could read it', async () => {
+    const clip = await import('../clipboard');
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn(async () => {}), readText: vi.fn(async () => '') } });
+    expect(await clip.writeBricksToClipboard(SAMPLE)).toBe('ok');
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn(async () => { throw new Error('denied'); }), readText: vi.fn(async () => { throw new Error('denied'); }) } });
+    expect(await clip.writeBricksToClipboard(SAMPLE)).toBe('blocked');
+    const read = await clip.readClipboardStatus();
+    expect(read.system).toBe('blocked');
+    expect(read.content?.entries).toEqual(SAMPLE);
+    vi.stubGlobal('navigator', {});
+    expect((await clip.readClipboardStatus()).system).toBe('blocked');
+  });
+
+  it('survives a reload of the module in the same tab (another layout, a reload)', async () => {
+    vi.stubGlobal('navigator', {});
+    vi.resetModules();
+    const first = await import('../clipboard');
+    await first.writeBricksToClipboard(SAMPLE);
+    vi.resetModules();
+    const again = await import('../clipboard');
+    expect(again.hasClipboardBricks()).toBe(true);
+    expect((await again.readClipboard())?.entries).toEqual(SAMPLE);
+    again.clearTabClipboard();
+    expect(again.hasClipboardBricks()).toBe(false);
+  });
+
+  it('pastes the newer of the two copies', async () => {
+    const clip = await import('../clipboard');
+    const older = { kind: 'cbld-bricks/v1', version: 1, entries: [{ ...SAMPLE[0]!, sourceLayerName: 'Old' }], copiedAt: 1 };
+    let system = JSON.stringify(older);
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn(async () => { throw new Error('denied'); }), readText: vi.fn(async () => system) } });
+    // This tab copied after the system clipboard's copy (which the browser didn't let it replace).
+    await clip.writeBricksToClipboard(SAMPLE);
+    expect((await clip.readClipboard())?.entries[0]?.sourceLayerName).toBe('Track Layer');
+    // Another device or tab copied later.
+    system = JSON.stringify({ ...older, copiedAt: Date.now() + 60_000 });
+    expect((await clip.readClipboard())?.entries[0]?.sourceLayerName).toBe('Old');
   });
 });
 
