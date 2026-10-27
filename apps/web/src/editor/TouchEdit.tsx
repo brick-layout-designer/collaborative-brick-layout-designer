@@ -76,8 +76,8 @@ function BarButton({ label, short, onClick, children, pressed, danger, testId }:
       {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
       {...(testId ? { 'data-testid': testId } : {})}
       onClick={onClick}
-      // Sized to its word (not equal shares), so eight fit across a phone without the words running into each other.
-      className={`flex min-h-14 min-w-11 shrink-0 grow flex-col items-center justify-center gap-0.5 rounded-control px-1 text-[11px] font-bold leading-tight ${
+      // Sized to its word (not equal shares), so nine fit across a Pixel 7 without the words running into each other.
+      className={`flex min-h-14 min-w-11 shrink-0 grow flex-col items-center justify-center gap-0.5 rounded-control px-0.5 text-[11px] font-bold leading-tight ${
         pressed ? 'bg-accent text-accent-ink' : danger ? 'text-red-600 hover:bg-soft dark:text-red-400' : 'text-ink hover:bg-soft'
       }`}
     >
@@ -97,6 +97,7 @@ const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
 const More = () => (<svg {...svg}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M17.5 14v7M14 17.5h7" /></svg>);
 const Area = () => (<svg {...svg}><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><path d="M9 9h6v6H9z" /></svg>);
 const ModuleIcon = () => (<svg {...svg}><rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 3" /><rect x="8" y="8" width="8" height="8" rx="1" /></svg>);
+const Dots = () => (<svg {...svg}><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>);
 const Layers = () => (<svg {...svg}><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></svg>);
 const Pencil = () => (<svg {...svg}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13 7l4 4" /></svg>);
 const UndoIcon = () => (<svg {...svg}><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>);
@@ -124,10 +125,13 @@ export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo
 /**
  * The bar along the bottom of the map while editing by touch. With parts
  * picked: Rotate left / right, Duplicate, Module (make one, or the picked
- * module's menu), Delete, Select more, Select area and Done. With nothing picked: Add part, Select more and Select area.
+ * module's menu), More actions (Save as set, Group, Ungroup and the rest:
+ * TouchPickedSheet), Delete, Select more, Select area and Done. With nothing picked: Add part, Select more and Select area.
  */
-export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onModule }: {
+export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onModule, onMore }: {
   actions: Actions;
+  /** The picked parts' other actions (TouchPickedSheet). */
+  onMore?: (() => void) | undefined;
   /** The picked parts' module: Make a module, or the picked module's own menu. */
   onModule?: (() => void) | undefined;
   onAddPart?: (() => void) | undefined;
@@ -156,7 +160,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
       data-testid="touch-bar"
       data-tour="touch.bar"
       className="absolute inset-x-0 bottom-0 z-10 border-t border-line bg-panel/95 pt-1 shadow-pop backdrop-blur"
-      style={{ paddingLeft: 'max(0.5rem, env(safe-area-inset-left))', paddingRight: 'max(0.5rem, env(safe-area-inset-right))', paddingBottom: '0.25rem' }}
+      style={{ paddingLeft: 'max(0.25rem, env(safe-area-inset-left))', paddingRight: 'max(0.25rem, env(safe-area-inset-right))', paddingBottom: '0.25rem' }}
       // A tap here is a button press, never a gesture on the map below.
       data-no-gesture
     >
@@ -167,7 +171,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
       )}
       {count > 0 ? (
         // On the narrowest phones the row scrolls sideways rather than squeezing the words together.
-        <div className="flex items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        <div className="flex items-stretch overflow-x-auto [scrollbar-width:none]">
           {oneText && onEditText && <BarButton label="Edit text" onClick={onEditText} testId="edit-text"><Pencil /></BarButton>}
           {parts > 0 && (
             <>
@@ -175,6 +179,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
               <BarButton label="Rotate right" short="Right" onClick={() => actions.rotate(true)}><RotRight /></BarButton>
               <BarButton label="Duplicate" onClick={() => actions.duplicate(true)}><Copy /></BarButton>
               {onModule && <BarButton label="Module" onClick={onModule} testId="touch-module"><ModuleIcon /></BarButton>}
+              {onMore && <BarButton label="More actions" short="Actions" onClick={onMore} testId="touch-more"><Dots /></BarButton>}
             </>
           )}
           <BarButton label="Delete" danger onClick={() => actions.delete()}><Trash /></BarButton>

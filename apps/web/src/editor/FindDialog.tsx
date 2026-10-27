@@ -79,7 +79,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
       aria-modal="false"
       aria-label="Find & Replace"
       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
-      className="fixed right-4 top-16 z-40 w-152 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel p-5 shadow-xl"
+      className="fixed right-4 top-16 z-40 max-h-[calc(100dvh-4.5rem)] w-152 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-line bg-panel p-5 shadow-xl"
     >
       <div>
         <h2 className="text-base font-semibold">Find &amp; Replace</h2>
@@ -118,7 +118,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
         </div>
 
         {/* Replace row */}
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="w-16 text-right text-xs text-muted">Replace</span>
           <input
             value={replacement}

@@ -105,10 +105,10 @@ test.describe('the Map menu on a phone', () => {
     await expect(page.getByRole('dialog', { name: 'Download As' })).toBeVisible();
     await page.getByRole('dialog', { name: 'Download As' }).getByRole('button', { name: 'Cancel' }).tap();
 
-    // Editing: Insert ▸ Text… and the venue designer too.
+    // Editing: Insert ▸ Text… and the Venue ▸ entries too.
     await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).tap();
     await openMap();
-    await expect(page.getByRole('menu').last().getByRole('menuitem', { name: 'Venue designer…' })).toBeVisible();
+    await expect(page.getByRole('menu').last().getByRole('menuitem', { name: 'Venue' })).toBeVisible();
     await page.getByRole('menu').last().getByRole('menuitem', { name: 'Insert' }).tap();
     await page.getByRole('menu').last().getByRole('menuitem', { name: 'Text…' }).tap();
     await expect(page.getByRole('dialog', { name: 'Add text' })).toBeVisible();

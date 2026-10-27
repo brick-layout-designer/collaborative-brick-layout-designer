@@ -162,31 +162,113 @@ export function mapMenuEntries(a: MapMenuActions, t: MapMenuToggles, mod = modKe
   ];
 }
 
-/** What a phone's Map menu does: a few of the Map menu's actions. */
-export type PhoneMapActions = Pick<MapMenuActions, 'openFile' | 'downloadLayout' | 'downloadAs' | 'exportImage' | 'insertText' | 'insertLabel' | 'venueDesigner'>;
+/** What a phone's Map menu does: the Map menu's actions that work by touch. */
+export type PhoneMapActions = Pick<
+  MapMenuActions,
+  | 'openFile'
+  | 'generalInfo'
+  | 'backgroundColor'
+  | 'backgroundImage'
+  | 'find'
+  | 'insertText'
+  | 'insertLabel'
+  | 'saveAsSet'
+  | 'importBbm'
+  | 'venueDesigner'
+  | 'venueDimensions'
+  | 'venueProps'
+  | 'venueSaveToLibrary'
+  | 'venueExportFile'
+  | 'venueLoadFromFile'
+  | 'venueClear'
+  | 'fit'
+  | 'budget'
+  | 'downloadLayout'
+  | 'downloadAs'
+  | 'exportImage'
+  | 'exportCsv'
+  | 'preferences'
+>;
+
+/** A phone has no status bar to show or hide. */
+export type PhoneMapToggles = Omit<MapMenuToggles, 'statusBar'>;
 
 /**
- * The phone's Map menu (from the layout-name menu): Open a file…, Download & export ▸,
- * Insert ▸ and the venue designer, in the Map menu's own words. Insert and
- * the venue designer only while editing (`editing`).
+ * The phone's Map menu (from the layout-name menu), in the Map menu's own
+ * words. It leaves out what has another way in by touch: drawing the venue's
+ * outline and obstacles on the map (the venue designer draws them by
+ * touch), Make a module (the touch bar's Module button), zooming by steps
+ * (pinch, and the zoom buttons) and the status bar (a phone has none).
+ * What changes the layout shows only while editing (`editing`).
  */
-export function phoneMapEntries(a: PhoneMapActions, editing: boolean): MenuEntry<MapMenuContext>[] {
+export function phoneMapEntries(a: PhoneMapActions, t: PhoneMapToggles, editing: boolean): MenuEntry<MapMenuContext>[] {
   const viewing = () => !editing;
+  const sep: MenuEntry<MapMenuContext> = { kind: 'separator' };
   return [
     { kind: 'item', id: 'open-file', label: 'Open a file…', onSelect: a.openFile },
-    {
-      kind: 'submenu', id: 'export', label: 'Download & export', items: [
-        { kind: 'item', id: 'download-layout', label: 'Download layout (.bld-layout)', hidden: notInModule, onSelect: a.downloadLayout },
-        { kind: 'item', id: 'download-as', label: 'Download as…', onSelect: a.downloadAs },
-        { kind: 'item', id: 'export-image', label: 'Export as image…', onSelect: a.exportImage },
-      ],
-    },
+    sep,
+    { kind: 'item', id: 'general-info', label: 'General info…', hidden: viewing, onSelect: a.generalInfo },
+    { kind: 'item', id: 'background-color', label: 'Background color…', hidden: viewing, onSelect: a.backgroundColor },
+    { kind: 'item', id: 'background-image', label: 'Background image…', hidden: viewing, onSelect: a.backgroundImage },
+    { kind: 'item', id: 'find', label: 'Find…', onSelect: a.find },
+    sep,
     {
       kind: 'submenu', id: 'insert', label: 'Insert', hidden: viewing, items: [
         { kind: 'item', id: 'insert-text', label: 'Text…', onSelect: a.insertText },
         { kind: 'item', id: 'insert-label', label: 'Anchored label…', onSelect: a.insertLabel },
       ],
     },
-    { kind: 'item', id: 'venue-designer', label: 'Venue designer…', hidden: (c) => viewing() || c.moduleMode, onSelect: a.venueDesigner },
+    {
+      kind: 'submenu', id: 'modules', label: 'Modules & sets', hidden: viewing, items: [
+        { kind: 'item', id: 'save-set', label: 'Save selection as set…', onSelect: a.saveAsSet },
+        { kind: 'item', id: 'import-bbm', label: 'Import .bbm as module…', onSelect: a.importBbm },
+      ],
+    },
+    {
+      kind: 'submenu', id: 'venue', label: 'Venue', hidden: (c) => viewing() || c.moduleMode, items: [
+        { kind: 'item', id: 'venue-designer', label: 'Open venue designer…', onSelect: a.venueDesigner },
+        { kind: 'item', id: 'venue-dimensions', label: 'Draw outline by dimensions…', onSelect: a.venueDimensions },
+        sep,
+        { kind: 'item', id: 'venue-props', label: 'Edit venue properties…', onSelect: a.venueProps },
+        { kind: 'item', id: 'venue-save-library', label: 'Save to venue library…', onSelect: a.venueSaveToLibrary },
+        { kind: 'item', id: 'venue-export', label: 'Export venue as file…', onSelect: a.venueExportFile },
+        { kind: 'item', id: 'venue-load', label: 'Load venue from file…', onSelect: a.venueLoadFromFile },
+        sep,
+        { kind: 'item', id: 'venue-clear', label: 'Clear venue…', onSelect: a.venueClear },
+      ],
+    },
+    {
+      kind: 'submenu', id: 'view', label: 'View', items: [
+        { kind: 'item', id: 'fit', label: 'Fit to view', onSelect: a.fit },
+        sep,
+        check('show-grid', 'Grid', t.grid),
+        check('show-connection-points', 'Connection points', t.connectionPoints),
+        check('always-show-connections', 'Always show connections', t.alwaysShowConnections),
+        check('show-electric', 'Electric circuits', t.electricCircuits),
+        check('show-ruler-points', 'Ruler attach points', t.rulerAttachPoints),
+        check('show-hulls', 'Brick hulls', t.brickHulls),
+        check('show-elevation', 'Brick elevation labels', t.brickElevation),
+        check('show-module-names', 'Module names', t.moduleNames),
+      ],
+    },
+    {
+      kind: 'submenu', id: 'budget', label: 'Budget', hidden: notInModule, items: [
+        { kind: 'item', id: 'edit-budget', label: 'Edit budget…', hidden: viewing, onSelect: a.budget },
+        sep,
+        check('budget-limit', 'Stop at the budget limits', t.budgetLimit),
+        check('budget-only', 'Show only parts in the budget', t.budgetOnly),
+        check('budget-numbers', 'Show budget numbers', t.budgetNumbers),
+      ],
+    },
+    {
+      kind: 'submenu', id: 'export', label: 'Download & export', items: [
+        { kind: 'item', id: 'download-layout', label: 'Download layout (.bld-layout)', hidden: notInModule, onSelect: a.downloadLayout },
+        { kind: 'item', id: 'download-as', label: 'Download as…', onSelect: a.downloadAs },
+        { kind: 'item', id: 'export-image', label: 'Export as image…', onSelect: a.exportImage },
+        { kind: 'item', id: 'export-part-list', label: 'Export part list…', onSelect: a.exportCsv },
+      ],
+    },
+    sep,
+    { kind: 'item', id: 'preferences', label: 'Preferences…', onSelect: a.preferences },
   ];
 }

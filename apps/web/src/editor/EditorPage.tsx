@@ -59,6 +59,7 @@ import { useElementSize } from './useElementSize';
 import { useTouchView } from './useTouchView';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
+import { TouchPickedSheet } from './TouchPickedSheet';
 import { SheetsSheet, TextEditSheet } from './TouchSheets';
 import { placeModuleAsking, SheetChoiceHost } from './SheetChoiceDialog';
 import { addSidecarModule, editAnchoredLabel, editTextCell, setExportElectricCircuit, updateSidecarModule } from './mutations';
@@ -184,7 +185,7 @@ import type { Credit } from '../api';
 import { useShallow } from 'zustand/react/shallow';
 import { Menu } from '../ui/menu/Menu';
 import { resolveMenu } from '../ui/menu/menuModel';
-import { mapMenuEntries, phoneMapEntries } from './mapMenu';
+import { mapMenuEntries, phoneMapEntries, type MapMenuToggles } from './mapMenu';
 import { openFilePicker } from '../open/FileOpener';
 import { OpenedSummaryCard } from '../open/OpenedSummary';
 // Dialogs and infrequently-used panels — lazy-loaded so they don't bloat
@@ -441,6 +442,9 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   const [showImportBbm, setShowImportBbm] = useState(false);
   const [showAddLabel, setShowAddLabel] = useState(false);
   const [showSaveAsSet, setShowSaveAsSet] = useState(false);
+  const mapToggles = useMapMenuToggles();
+  /** The touch bar's More actions sheet (TouchPickedSheet). */
+  const [showTouchPicked, setShowTouchPicked] = useState(false);
   const [showVenueProps, setShowVenueProps] = useState(false);
   const [showVenueDesigner, setShowVenueDesigner] = useState(false);
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
@@ -812,6 +816,57 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   };
   const showRail = !viewport.isMobile && !isViewer;
 
+  // The Map menu's Venue ▸ entries that aren't a dialog (the Map menu and the phone's).
+  async function venueClear(): Promise<void> {
+    if (!doc) return;
+    if (!(await askConfirm({
+      title: 'Remove the venue from this layout?',
+      removes: 'The venue’s outline, walls, doors and obstacles leave this layout.',
+      keeps: 'Your parts stay where they are, and the venue stays in the Venue library if you saved it there.',
+      undo: 'You can undo this with Ctrl+Z.',
+      confirmLabel: 'Remove',
+    }))) return;
+    setVenue(doc, null);
+  }
+  function venueSaveToLibrary(): void {
+    if (!doc) return;
+    const venue = readSidecarFromDoc(doc)?.venue;
+    if (!venue) { alert('No venue defined on this layout.'); return; }
+    setShowVenueSaveLibrary(true);
+  }
+  function venueExportFile(): void {
+    if (!doc) return;
+    const venue = readSidecarFromDoc(doc)?.venue;
+    if (!venue) { alert('No venue defined on this layout.'); return; }
+    // Desktop format (VenueIO.cpp): *.bld-venue, schema bld-venue/1.
+    const blob = new Blob([writeVenueFile(venue)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${venue.name || 'venue'}${VENUE_FILE_EXT}`;
+    a.click();
+    noticeDownloaded(a.download);
+    URL.revokeObjectURL(url);
+  }
+  function venueLoadFromFile(): void {
+    if (!doc) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = VENUE_FILE_ACCEPT;
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      file.text().then((text) => {
+        try {
+          setVenue(doc, parseVenueFile(text));
+        } catch (e) {
+          alert(`Could not load venue file: ${(e as Error).message}`);
+        }
+      });
+    };
+    input.click();
+  }
+
   return (
     <div
       // dvh, not vh: on a phone 100vh is the height with the browser bars
@@ -942,13 +997,30 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                     phoneMapEntries(
                       {
                         openFile: openFilePicker,
+                        generalInfo: () => setShowGeneralInfo(true),
+                        backgroundColor: () => setShowBackgroundColor(true),
+                        backgroundImage: () => setShowBackgroundImage(true),
+                        find: () => setShowFind(true),
+                        insertText: () => canvasActionsRef.current?.insertText(),
+                        insertLabel: () => setShowAddLabel(true),
+                        saveAsSet: () => setShowSaveAsSet(true),
+                        importBbm: () => setShowImportBbm(true),
+                        venueDesigner: () => setShowVenueDesigner(true),
+                        venueDimensions: () => setShowVenueDimensions(true),
+                        venueProps: () => setShowVenueProps(true),
+                        venueSaveToLibrary,
+                        venueExportFile,
+                        venueLoadFromFile,
+                        venueClear: () => void venueClear(),
+                        fit: () => canvasActionsRef.current?.fit(),
+                        budget: () => setShowBudget(true),
                         downloadLayout: () => void downloadLocalLayout(doc, layoutId, meta.data?.layout.title ?? 'layout', catalog.data?.parts),
                         downloadAs: () => setShowDownloadAs(true),
                         exportImage: onExportImage,
-                        insertText: () => canvasActionsRef.current?.insertText(),
-                        insertLabel: () => setShowAddLabel(true),
-                        venueDesigner: () => setShowVenueDesigner(true),
+                        exportCsv: () => setShowPartList(true),
+                        preferences: () => setShowPreferences(true),
                       },
+                      mapToggles,
                       !isViewer,
                     ),
                     { moduleMode },
@@ -1121,17 +1193,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               onVenueProps={() => setShowVenueProps(true)}
               onVenueDesigner={() => setShowVenueDesigner(true)}
               onVenueDimensions={() => setShowVenueDimensions(true)}
-              onVenueClear={async () => {
-                if (!doc) return;
-                if (!(await askConfirm({
-      title: 'Remove the venue from this layout?',
-      removes: 'The venue’s outline, walls, doors and obstacles leave this layout.',
-      keeps: 'Your parts stay where they are, and the venue stays in the Venue library if you saved it there.',
-      undo: 'You can undo this with Ctrl+Z.',
-      confirmLabel: 'Remove',
-    }))) return;
-                setVenue(doc, null);
-              }}
+              onVenueClear={() => void venueClear()}
               onVenueDrawOutline={() => {
                 useEditorStore.getState().setTool('venueOutline');
               }}
@@ -1139,44 +1201,9 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
                 useEditorStore.getState().setTool('venueObstacle');
               }}
               onBudget={() => setShowBudget((v) => !v)}
-              onVenueSaveToLibrary={() => {
-                if (!doc) return;
-                const venue = readSidecarFromDoc(doc)?.venue;
-                if (!venue) { alert('No venue defined on this layout.'); return; }
-                setShowVenueSaveLibrary(true);
-              }}
-              onVenueExportFile={() => {
-                if (!doc) return;
-                const venue = readSidecarFromDoc(doc)?.venue;
-                if (!venue) { alert('No venue defined on this layout.'); return; }
-                // Desktop format (VenueIO.cpp): *.bld-venue, schema bld-venue/1.
-                const blob = new Blob([writeVenueFile(venue)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${venue.name || 'venue'}${VENUE_FILE_EXT}`;
-                a.click();
-                noticeDownloaded(a.download);
-                URL.revokeObjectURL(url);
-              }}
-              onVenueLoadFromFile={() => {
-                if (!doc) return;
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = VENUE_FILE_ACCEPT;
-                input.onchange = () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  file.text().then((text) => {
-                    try {
-                      setVenue(doc, parseVenueFile(text));
-                    } catch (e) {
-                      alert(`Could not load venue file: ${(e as Error).message}`);
-                    }
-                  });
-                };
-                input.click();
-              }}
+              onVenueSaveToLibrary={venueSaveToLibrary}
+              onVenueExportFile={venueExportFile}
+              onVenueLoadFromFile={venueLoadFromFile}
             />
           )}
           {!isViewer && (
@@ -1266,6 +1293,21 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
               const whole = first && first.members.length === sel.length && sel.every((id) => byPart.get(id)?.id === first.id);
               if (whole && !useEditorStore.getState().editingModuleId) setTouchModuleId(first.id);
               else openMakeModule(doc);
+            }}
+            onMore={isViewer || !doc ? undefined : () => setShowTouchPicked(true)}
+          />
+        )}
+        {showTouchPicked && !isViewer && (
+          <TouchPickedSheet
+            onClose={() => setShowTouchPicked(false)}
+            actions={{
+              saveAsSet: () => setShowSaveAsSet(true),
+              group: () => canvasActionsRef.current?.group(),
+              ungroup: () => canvasActionsRef.current?.ungroup(),
+              ungroupState: () => canvasActionsRef.current?.ungroupState() ?? 'nothing',
+              selectConnected: () => canvasActionsRef.current?.selectConnected(),
+              reorder: (to) => canvasActionsRef.current?.reorder(to),
+              moveToSheet: () => setShowTouchSheets(true),
             }}
           />
         )}
@@ -3315,6 +3357,21 @@ function Canvas({
     rotateSelection(doc, map ? bricksByLayer(map, st.selection) : new Map(), st.annoSelection, degrees, partOf);
   }
 
+  /** Also pick every part connected to the picked ones (Select Connected). */
+  function selectConnected(): void {
+    if (!map) return;
+    const adj = buildConnectedAdj(map);
+    const visited = new Set<string>(selection);
+    const queue = [...selection];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      for (const nb of adj.get(id) ?? []) {
+        if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
+      }
+    }
+    setSelection([...visited]);
+  }
+
   function selectionByLayer(): Map<string, string[]> {
     return map ? bricksByLayer(map, selection) : new Map();
   }
@@ -3884,6 +3941,14 @@ function Canvas({
       rotatePicked(cw ? rotationStepDegrees : -rotationStepDegrees);
     },
     reorder: (to) => reorderPicked(to),
+    group: () => {
+      if (!isViewer) groupBricksAcrossLayers(doc, selectionByLayer());
+    },
+    ungroup: () => {
+      if (!isViewer) ungroupSelection();
+    },
+    ungroupState: () => ungroupState(map, selection, canUngroupSet),
+    selectConnected: () => selectConnected(),
     moveToSheet: (target) => moveSelectionToSheet(target),
     // View ▸ Zoom In / Zoom Out / Fit (MainWindowMenus.cpp:493-503).
     zoom: (factor) => {
@@ -4386,19 +4451,7 @@ function Canvas({
             const u = updateForSelection(map, setUpdates, selection);
             return u ? { name: u.name, onUpdate: () => updatePlacedSets([u]) } : null;
           })()}
-          onSelectConnected={() => {
-            if (!map) return;
-            const adj = buildConnectedAdj(map);
-            const visited = new Set<string>(selection);
-            const queue = [...selection];
-            while (queue.length > 0) {
-              const id = queue.shift()!;
-              for (const nb of adj.get(id) ?? []) {
-                if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
-              }
-            }
-            setSelection([...visited]);
-          }}
+          onSelectConnected={selectConnected}
           textCellRef={ctxMenu.textCellRef}
           rulerRef={ctxMenu.rulerRef}
           brickIdUnderCursor={ctxMenu.brickIdUnderCursor}
@@ -5341,23 +5394,7 @@ function MapMenu({
   /** The module editor: no venue, budget or layout download. */
   moduleMode?: boolean;
 }) {
-  const store = useEditorStore(
-    useShallow((s) => ({
-      showGrid: s.showGrid, setShowGrid: s.setShowGrid,
-      showConnectionPoints: s.showConnectionPoints, setShowConnectionPoints: s.setShowConnectionPoints,
-      showBrickHulls: s.showBrickHulls, setShowBrickHulls: s.setShowBrickHulls,
-      showBrickElevation: s.showBrickElevation, setShowBrickElevation: s.setShowBrickElevation,
-      showRulerAttachPoints: s.showRulerAttachPoints, setShowRulerAttachPoints: s.setShowRulerAttachPoints,
-      alwaysShowConnections: s.alwaysShowConnections, setAlwaysShowConnections: s.setAlwaysShowConnections,
-      showModuleNames: s.showModuleNames, setShowModuleNames: s.setShowModuleNames,
-      showElectricCircuits: s.showElectricCircuits, setShowElectricCircuits: s.setShowElectricCircuits,
-      showStatusBar: s.showStatusBar, setShowStatusBar: s.setShowStatusBar,
-      useBudgetLimitation: s.useBudgetLimitation, setUseBudgetLimitation: s.setUseBudgetLimitation,
-      showOnlyBudgetedParts: s.showOnlyBudgetedParts, setShowOnlyBudgetedParts: s.setShowOnlyBudgetedParts,
-      showBudgetNumbers: s.showBudgetNumbers, setShowBudgetNumbers: s.setShowBudgetNumbers,
-    })),
-  );
-  const toggle = (on: boolean, set: (v: boolean) => void) => ({ on, set });
+  const toggles = useMapMenuToggles();
   const entries = resolveMenu(
     mapMenuEntries(
       {
@@ -5390,24 +5427,46 @@ function MapMenu({
         exportCsv: onExportCsv,
         preferences: onPreferences,
       },
-      {
-        grid: toggle(store.showGrid, store.setShowGrid),
-        connectionPoints: toggle(store.showConnectionPoints, store.setShowConnectionPoints),
-        brickHulls: toggle(store.showBrickHulls, store.setShowBrickHulls),
-        brickElevation: toggle(store.showBrickElevation, store.setShowBrickElevation),
-        rulerAttachPoints: toggle(store.showRulerAttachPoints, store.setShowRulerAttachPoints),
-        alwaysShowConnections: toggle(store.alwaysShowConnections, store.setAlwaysShowConnections),
-        moduleNames: toggle(store.showModuleNames, store.setShowModuleNames),
-        electricCircuits: toggle(store.showElectricCircuits, store.setShowElectricCircuits),
-        statusBar: toggle(store.showStatusBar, store.setShowStatusBar),
-        budgetLimit: toggle(store.useBudgetLimitation, store.setUseBudgetLimitation),
-        budgetOnly: toggle(store.showOnlyBudgetedParts, store.setShowOnlyBudgetedParts),
-        budgetNumbers: toggle(store.showBudgetNumbers, store.setShowBudgetNumbers),
-      },
+      toggles,
     ),
     { moduleMode },
   );
   return <Menu label="Map" entries={entries} buttonClassName="rounded-lg border border-border px-2 py-1 text-xs hover:bg-soft" />;
+}
+
+/** The Map menu's View ▸ and Budget ▸ ticks, from the editor store (the Map menu and the phone's). */
+function useMapMenuToggles(): MapMenuToggles {
+  const store = useEditorStore(
+    useShallow((s) => ({
+      showGrid: s.showGrid, setShowGrid: s.setShowGrid,
+      showConnectionPoints: s.showConnectionPoints, setShowConnectionPoints: s.setShowConnectionPoints,
+      showBrickHulls: s.showBrickHulls, setShowBrickHulls: s.setShowBrickHulls,
+      showBrickElevation: s.showBrickElevation, setShowBrickElevation: s.setShowBrickElevation,
+      showRulerAttachPoints: s.showRulerAttachPoints, setShowRulerAttachPoints: s.setShowRulerAttachPoints,
+      alwaysShowConnections: s.alwaysShowConnections, setAlwaysShowConnections: s.setAlwaysShowConnections,
+      showModuleNames: s.showModuleNames, setShowModuleNames: s.setShowModuleNames,
+      showElectricCircuits: s.showElectricCircuits, setShowElectricCircuits: s.setShowElectricCircuits,
+      showStatusBar: s.showStatusBar, setShowStatusBar: s.setShowStatusBar,
+      useBudgetLimitation: s.useBudgetLimitation, setUseBudgetLimitation: s.setUseBudgetLimitation,
+      showOnlyBudgetedParts: s.showOnlyBudgetedParts, setShowOnlyBudgetedParts: s.setShowOnlyBudgetedParts,
+      showBudgetNumbers: s.showBudgetNumbers, setShowBudgetNumbers: s.setShowBudgetNumbers,
+    })),
+  );
+  const toggle = (on: boolean, set: (v: boolean) => void) => ({ on, set });
+  return {
+    grid: toggle(store.showGrid, store.setShowGrid),
+    connectionPoints: toggle(store.showConnectionPoints, store.setShowConnectionPoints),
+    brickHulls: toggle(store.showBrickHulls, store.setShowBrickHulls),
+    brickElevation: toggle(store.showBrickElevation, store.setShowBrickElevation),
+    rulerAttachPoints: toggle(store.showRulerAttachPoints, store.setShowRulerAttachPoints),
+    alwaysShowConnections: toggle(store.alwaysShowConnections, store.setAlwaysShowConnections),
+    moduleNames: toggle(store.showModuleNames, store.setShowModuleNames),
+    electricCircuits: toggle(store.showElectricCircuits, store.setShowElectricCircuits),
+    statusBar: toggle(store.showStatusBar, store.setShowStatusBar),
+    budgetLimit: toggle(store.useBudgetLimitation, store.setUseBudgetLimitation),
+    budgetOnly: toggle(store.showOnlyBudgetedParts, store.setShowOnlyBudgetedParts),
+    budgetNumbers: toggle(store.showBudgetNumbers, store.setShowBudgetNumbers),
+  };
 }
 
 function LayersPanelHost({ doc, isViewer }: { doc: import('yjs').Doc; isViewer: boolean }) {
@@ -5705,6 +5764,14 @@ interface CanvasActions {
   duplicate: (beside?: boolean) => void;
   rotate: (cw: boolean) => void;
   reorder: (to: 'front' | 'back') => void;
+  /** Group the picked parts (one undo step). */
+  group: () => void;
+  /** Ungroup them, keeping whole the sets that are always used whole. */
+  ungroup: () => void;
+  /** What Ungroup would do with what's picked. */
+  ungroupState: () => 'nothing' | 'splits' | 'whole';
+  /** Also pick every part connected to the picked ones. */
+  selectConnected: () => void;
   /** Move the selected parts to that part sheet, or (null) to a new one. One undo step. */
   moveToSheet: (sheetId: string | null) => void;
   zoom: (factor: number) => void;

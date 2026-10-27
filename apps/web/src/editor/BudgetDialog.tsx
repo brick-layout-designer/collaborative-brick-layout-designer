@@ -116,7 +116,12 @@ export function BudgetDialog({ map, limits, onLimitsChange, resolvePart = (id) =
   }
 
   return (
-    <div className="fixed bottom-8 right-8 z-40 flex w-[540px] flex-col rounded-lg border border-border bg-panel shadow-2xl text-sm">
+    <div
+      role="dialog"
+      aria-label="Budget"
+      // On a phone it spans the screen's width, above the touch bar.
+      className="fixed inset-x-2 bottom-[calc(0.5rem+var(--touch-bar-h,0px))] z-40 flex flex-col rounded-lg border border-border bg-panel text-sm shadow-2xl sm:inset-x-auto sm:bottom-8 sm:right-8 sm:w-[540px]"
+    >
       {/* Title bar */}
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <span className="flex items-center gap-2">

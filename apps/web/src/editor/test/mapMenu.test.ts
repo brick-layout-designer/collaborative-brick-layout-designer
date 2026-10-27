@@ -2,7 +2,7 @@
 // ticks and shortcuts.
 
 import { describe, expect, it, vi } from 'vitest';
-import { mapMenuEntries, modKey, phoneMapEntries, type MapMenuActions, type PhoneMapActions, type MapMenuToggles } from '../mapMenu';
+import { mapMenuEntries, modKey, phoneMapEntries, type MapMenuActions, type PhoneMapActions, type PhoneMapToggles, type MapMenuToggles } from '../mapMenu';
 import { activate, resolveMenu, type ResolvedEntry } from '../../ui/menu/menuModel';
 
 function setup(moduleMode = false) {
@@ -65,11 +65,42 @@ describe('Map menu', () => {
     for (const editing of [true, false]) {
       const openFile = vi.fn();
       const a = new Proxy({ openFile } as Record<string, () => void>, { get: (t, k: string) => (t[k] ??= vi.fn()) });
-      const menu = resolveMenu(phoneMapEntries(a as unknown as PhoneMapActions, editing), { moduleMode: false });
+      const t = new Proxy({}, { get: () => ({ on: false, set: vi.fn() }) });
+      const menu = resolveMenu(phoneMapEntries(a as unknown as PhoneMapActions, t as unknown as PhoneMapToggles, editing), { moduleMode: false });
       expect(menu[0]).toMatchObject({ kind: 'item', label: 'Open a file…' });
       activate(menu[0]!);
       expect(openFile).toHaveBeenCalledTimes(1);
     }
+  });
+
+  // No dead ends: everything in the Map menu has a way in on a phone, in the
+  // phone's Map sheet or by touch elsewhere.
+  it("on a phone, the Map sheet has every Map menu entry but those with another way in by touch", () => {
+    const ids = (es: ResolvedEntry[]): string[] =>
+      es.flatMap((e) => (e.kind === 'separator' ? [] : e.kind === 'submenu' ? ids(e.items) : [e.id]));
+    const { menu } = setup();
+    const t = new Proxy({}, { get: () => ({ on: false, set: vi.fn() }) });
+    const a = new Proxy({} as Record<string, () => void>, { get: (o, k: string) => (o[k] ??= vi.fn()) });
+    const phone = resolveMenu(phoneMapEntries(a as unknown as PhoneMapActions, t as unknown as PhoneMapToggles, true), { moduleMode: false });
+    const missing = ids(menu).filter((id) => !ids(phone).includes(id));
+    expect(missing.sort()).toEqual([
+      'file-download-as', // the same Download as… is under Download & export
+      'make-module', // the touch bar's Module button
+      'show-status-bar', // a phone has no status bar
+      'venue-obstacle', // drawn on the map with a mouse; the venue designer draws them by touch
+      'venue-outline',
+      'zoom-in', // pinch, and the zoom buttons on the map
+      'zoom-out',
+    ]);
+    // Viewing: only what doesn't change the layout.
+    const viewing = resolveMenu(phoneMapEntries(a as unknown as PhoneMapActions, t as unknown as PhoneMapToggles, false), { moduleMode: false });
+    expect(ids(viewing)).not.toContain('save-set');
+    expect(ids(viewing)).not.toContain('general-info');
+    expect(ids(viewing)).toContain('find');
+    expect(ids(viewing)).toContain('export-part-list');
+    // Modules & sets ▸ Save selection as set… does what the Map menu's does.
+    activate(find(phone, 'Modules & sets', 'Save selection as set…'));
+    expect(a.saveAsSet).toHaveBeenCalledTimes(1);
   });
 
   it('in the module editor: no Venue, no Budget, no Download layout, and no double separators', () => {

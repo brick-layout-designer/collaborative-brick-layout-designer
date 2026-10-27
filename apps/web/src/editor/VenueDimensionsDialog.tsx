@@ -220,7 +220,7 @@ export function VenueDimensionsDialog({ doc, onClose }: Props) {
                     <input
                       value={seg.label}
                       onChange={(e) => patchSeg(i, { label: e.target.value })}
-                      className="w-full rounded-lg border border-border bg-soft px-1 py-0.5"
+                      className="w-full min-w-24 rounded-lg border border-border bg-soft px-1 py-0.5"
                     />
                   </td>
                 </tr>
