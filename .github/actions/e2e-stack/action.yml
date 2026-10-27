@@ -36,10 +36,55 @@ runs:
       shell: bash
       run: pnpm -r --filter "./packages/*" build
 
+    # Chromium and the system packages it needs (mostly fonts) come from
+    # caches. On a slow day the Azure apt mirror took 4 to 8 minutes for
+    # those 25 MB of fonts, so a night's shards waited on it one by one.
+    - name: Playwright version and runner image
+      id: pw
+      shell: bash
+      working-directory: apps/web
+      run: |
+        echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "image-os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright's browsers
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+
+    # apt keeps the .deb files it downloads in this folder instead of
+    # /var/cache/apt/archives. With them there, apt downloads only what
+    # changed since: nothing, when the runner image is the same.
+    - name: Point apt at the package cache
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.cache/playwright-apt/partial"
+        printf '%s\n' \
+          "Dir::Cache::Archives \"$HOME/.cache/playwright-apt/\";" \
+          'APT::Keep-Downloaded-Packages "true";' \
+          'APT::Sandbox::User "root";' \
+          | sudo tee /etc/apt/apt.conf.d/99-playwright-cache > /dev/null
+
+    - name: Cache the apt packages Playwright needs
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/playwright-apt/*.deb
+        key: playwright-apt-${{ runner.arch }}-${{ steps.pw.outputs.image }}-${{ steps.pw.outputs.version }}
+        restore-keys: |
+          playwright-apt-${{ runner.arch }}-${{ steps.pw.outputs.image-os }}-
+
     - name: Install Chromium for Playwright
       shell: bash
       working-directory: apps/web
-      run: npx playwright install --with-deps chromium
+      run: |
+        npx playwright install --with-deps chromium
+        # Drop the files an older image's cache brought that this one no
+        # longer offers, so the cache doesn't grow week by week, and leave
+        # the rest readable for the cache step, which runs as this user.
+        sudo apt-get autoclean -qq
+        sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/playwright-apt"
 
     - name: Start the API server
       shell: bash
