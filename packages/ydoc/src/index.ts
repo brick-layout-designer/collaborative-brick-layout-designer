@@ -12,11 +12,13 @@ import * as Y from 'yjs';
 import { BBM_FORMAT_VERSION, type BbmMap } from '@cld/model';
 import type { Sidecar } from '@cld/bbm';
 import { bbmToDoc, docToBbm } from './projection.js';
+import { keepDrawnSettingsInRange } from './drawnLimits.js';
 
 import { DOC_BASE_SCHEMA } from './shape.js';
 
 export { bbmToDoc, docToBbm, createDocProjector, type DocProjector } from './projection.js';
 export * from './shape.js';
+export { DRAWN_LIMITS, keepDrawnSettingsInRange } from './drawnLimits.js';
 export { DOC_MIN_READABLE, DOC_SCHEMA_VERSION, canReadDoc, makeId, upgradeDoc } from './ids.js';
 
 export function createLayoutDoc(): Y.Doc {
@@ -116,7 +118,9 @@ export function createSidecarDoc(): Y.Doc {
  */
 export function seedFromBbm(map: BbmMap): Y.Doc {
   const doc = new Y.Doc();
-  bbmToDoc(map, doc);
+  // Drawing settings out of range (a hand-edited or damaged file) are put
+  // back in range, as the desktop does on reading one (drawnLimits.ts).
+  bbmToDoc(keepDrawnSettingsInRange(map), doc);
   return doc;
 }
 
