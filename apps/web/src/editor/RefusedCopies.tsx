@@ -31,6 +31,8 @@ const WHY: Record<RefusedCopy['why'], string> = {
     'You were signed out before your latest changes to this layout reached the server. Nothing you did is lost, but it’s only on this page: sign in again in another tab and save it as a new layout, or download it, before you close the page.',
   gone:
     'This layout was deleted, or is no longer shared with you, before your latest changes reached the server. Nothing you did is lost, but it’s only on this page: save it as a new layout or download it before you close the page.',
+  view_only:
+    'Your access to this layout changed to view only before your latest changes reached the server, so it didn’t take them. Nothing you did is lost, but it’s only on this page: save it as a new layout or download it before you close the page.',
 };
 
 function CopyCard({ copy }: { copy: RefusedCopy }) {

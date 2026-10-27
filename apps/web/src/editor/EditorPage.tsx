@@ -236,7 +236,9 @@ export function ModuleEditorPage() {
 }
 
 function LayoutEditor({ layoutId }: { layoutId: string }) {
-  const docState = useLayoutDoc(layoutId);
+  // (The same query the editor reads its role from.)
+  const meta = useQuery({ queryKey: ['layout', layoutId], queryFn: () => api.layouts.get(layoutId) });
+  const docState = useLayoutDoc(layoutId, meta.data ? meta.data.role !== 'viewer' : undefined);
   return <Editor layoutId={layoutId} docState={docState} moduleMode={false} />;
 }
 
