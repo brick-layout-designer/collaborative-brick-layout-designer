@@ -110,6 +110,12 @@ describe('parts manifest', () => {
     expect(((await get('/api/parts/manifest', { cookie: other.cookie })).json() as { customParts: unknown[] }).customParts).toEqual([]);
   });
 
+  it('is kept only by the browser that asked, and asked for again every time', async () => {
+    const res = await get('/api/parts/manifest', { cookie: user.cookie });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, no-cache');
+  });
+
   it('needs parts:read on a token', async () => {
     const token = await issueToken(app, user.cookie, 'layouts:read');
     const res = await get('/api/parts/manifest', { authorization: `Bearer ${token}` });

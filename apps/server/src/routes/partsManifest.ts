@@ -147,7 +147,10 @@ onPartsCacheInvalidated(invalidateManifestCache);
 export async function partsManifestRoutes(app: FastifyInstance): Promise<void> {
   const config = { apiToken: 'parts:read', rateLimit: perPerson(60, '1 minute') } as const;
 
-  app.get('/api/parts/manifest', { config }, async (req) => {
+  app.get('/api/parts/manifest', { config }, async (req, reply) => {
+    // It lists the custom parts this person gets: a browser or a proxy
+    // must not keep it for anyone else, nor answer from an old copy.
+    reply.header('cache-control', 'private, no-cache');
     const libs = await libraries();
     const rows = await visibleCustomParts(req.user?.id ?? null);
     const hashes = await customPartHashes(rows);
