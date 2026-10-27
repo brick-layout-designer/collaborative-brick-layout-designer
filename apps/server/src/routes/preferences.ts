@@ -44,6 +44,11 @@ export interface Preferences {
    * active (today, this week, this month) in the club's members list.
    */
   shareLastActive: boolean;
+  /**
+   * Whether to email you when someone asks to join a club where your roles
+   * answer requests to join (Settings › Email).
+   */
+  emailJoinRequests: boolean;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -55,6 +60,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   toursSeen: [],
   connectionSnap: 'gentle',
   shareLastActive: true,
+  emailJoinRequests: true,
 };
 
 /**
@@ -80,6 +86,7 @@ export function validatePreferences(input: unknown): { ok: Partial<Preferences> 
       case 'expertMode':
       case 'helpIcons':
       case 'shareLastActive':
+      case 'emailJoinRequests':
         if (typeof value !== 'boolean') return { error: `${key} must be true or false` };
         out[key] = value;
         break;
@@ -132,6 +139,15 @@ export async function hidingLastActive(userIds: string[]): Promise<Set<string>> 
   if (userIds.length === 0) return out;
   const rows = await db.select().from(schema.userPreferences).where(inArray(schema.userPreferences.userId, userIds));
   for (const r of rows) if (!fromStored(r.prefs).shareLastActive) out.add(r.userId);
+  return out;
+}
+
+/** Which of `userIds` turned off the join-request emails (emailJoinRequests off). */
+export async function noJoinRequestEmails(userIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (userIds.length === 0) return out;
+  const rows = await db.select().from(schema.userPreferences).where(inArray(schema.userPreferences.userId, userIds));
+  for (const r of rows) if (!fromStored(r.prefs).emailJoinRequests) out.add(r.userId);
   return out;
 }
 

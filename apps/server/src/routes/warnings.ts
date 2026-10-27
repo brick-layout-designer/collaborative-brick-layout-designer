@@ -10,9 +10,13 @@
 //
 // Who sees what:
 //   - a site warning to a person: that person, site admins and moderators
-//   - a site warning to a club: the club's admins and managers, site admins and moderators
-//   - a club warning to a member: that member, the club's admins and
-//     managers, and site admins
+//   - a site warning to a club: the club's members whose roles invite people
+//     or manage members (and its Admins), site admins and moderators
+//   - a club warning to a member: that member, the club's members whose
+//     roles invite people or manage members (and its Admins), and site admins
+//   - a club note (an author took back their thing): the members whose roles
+//     delete club items (and its Admins)
+// (access/clubNotices.ts: who hears about what, by permission.)
 // Managers warn members only; admins warn members and managers. Nobody
 // warns themselves. Everything is audit-logged and rate-limited; the next
 // steps (read-only, limits) stay with site admins, on the same pages.
@@ -24,6 +28,7 @@ import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { lesserRole, type ClubAccess } from '../access/clubPermissions.js';
+import { clubAudience, clubsHearing, type ClubNotice } from '../access/clubNotices.js';
 import { canModerate } from './catalog.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { sendWarningEmail } from '../email/sendWarning.js';
@@ -61,21 +66,27 @@ export function parseWarningInput(body: unknown): Input | { error: string } {
   return { severity: severity as Severity, reason, link };
 }
 
-/** Who must see a warning: the person, or a club's admins and managers. */
-export async function recipientsOf(w: Pick<schema.Warning, 'subjectUserId' | 'subjectOrgId'>): Promise<string[]> {
-  if (w.subjectUserId) return [w.subjectUserId];
-  if (!w.subjectOrgId) return [];
-  const rows = await db
-    .select({ u: schema.orgMembers.userId })
-    .from(schema.orgMembers)
-    .where(and(eq(schema.orgMembers.orgId, w.subjectOrgId), inArray(schema.orgMembers.role, ['admin', 'manager'])))
-    .all();
-  return rows.map((r) => r.u);
+/**
+ * Which club notice a row to a club is: from the site team (a warning or
+ * note to the club), or the club's own note about its things (postClubNote).
+ */
+function clubNoticeOf(w: Pick<schema.Warning, 'scope'>): ClubNotice {
+  return w.scope === 'site' ? 'club_warning' : 'club_note';
 }
 
-/** The club's admins and managers (for a club warning: they see what the club sent). */
+/**
+ * Who must see a warning: the person, or, for one to a club, the members
+ * whose roles hear that kind of notice (access/clubNotices.ts), each once.
+ */
+export async function recipientsOf(w: Pick<schema.Warning, 'subjectUserId' | 'subjectOrgId' | 'scope'>): Promise<string[]> {
+  if (w.subjectUserId) return [w.subjectUserId];
+  if (!w.subjectOrgId) return [];
+  return clubAudience(w.subjectOrgId, clubNoticeOf(w));
+}
+
+/** Who sees the club's Warnings list (for a club warning: they see what the club sent). */
 export async function clubRunners(orgId: string): Promise<string[]> {
-  return recipientsOf({ subjectUserId: null, subjectOrgId: orgId });
+  return clubAudience(orgId, 'member_warning');
 }
 
 async function emailsOf(userIds: string[]): Promise<string[]> {
@@ -168,7 +179,8 @@ async function issue(args: {
 }
 
 /**
- * A note to a club's admins and managers about something that happened to
+ * A note to the members who look after a club's things (delete club items,
+ * and its Admins) about something that happened to
  * the club's things (an author took back a module, say). It shows with
  * their notices, to read and acknowledge; it's not a warning to anyone,
  * so no email. The caller audit-logs what happened.
@@ -360,22 +372,20 @@ export async function warningRoutes(app: FastifyInstance): Promise<void> {
   });
 }
 
-/** What I received: my own, and those to a club I run (newest first). */
+/** What I received: my own, and those to a club where my roles hear them (newest first). */
 async function noticesFor(userId: string) {
-  const run = await db
-    .select({ o: schema.orgMembers.orgId })
-    .from(schema.orgMembers)
-    .where(and(eq(schema.orgMembers.userId, userId), inArray(schema.orgMembers.role, ['admin', 'manager'])))
-    .all();
-  const clubs = run.map((r) => r.o);
+  // The same rule as recipientsOf, from my side: site warnings to a club
+  // where I run its people, and the club's notes where I look after its things.
+  const warned = await clubsHearing(userId, 'club_warning');
+  const noted = await clubsHearing(userId, 'club_note');
   return db
     .select()
     .from(schema.warnings)
     .where(
       or(
         eq(schema.warnings.subjectUserId, userId),
-        // Site warnings to a club I run, and the club's own notes to its runners (postClubNote).
-        clubs.length ? inArray(schema.warnings.subjectOrgId, clubs) : undefined,
+        warned.length ? and(inArray(schema.warnings.subjectOrgId, warned), eq(schema.warnings.scope, 'site')) : undefined,
+        noted.length ? and(inArray(schema.warnings.subjectOrgId, noted), eq(schema.warnings.scope, 'club')) : undefined,
       ),
     )
     .orderBy(desc(schema.warnings.createdAt))

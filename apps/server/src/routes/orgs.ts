@@ -44,6 +44,7 @@ import {
   type ClubRoleRow,
 } from '../access/clubPermissions.js';
 import { clubReviewCount } from './clubReview.js';
+import { hears } from '../access/clubNotices.js';
 import { nameFor, publicName } from '../utils/publicName.js';
 import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion.js';
 import { perPerson } from '../utils/rateLimits.js';
@@ -267,7 +268,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       logoUrl: (await clubLogoUrls([org])).get(org.id) ?? null,
       // Admins see how many people are waiting to be let in, and (a
       // trusted club) how many shares wait in its review queue.
-      ...(perms.has('invite') || perms.has('manage_members')
+      ...(hears(myMembership, 'join_request')
         ? {
             pendingRequests: (
               await db.select({ id: schema.orgJoinRequests.id }).from(schema.orgJoinRequests).where(eq(schema.orgJoinRequests.orgId, org.id))

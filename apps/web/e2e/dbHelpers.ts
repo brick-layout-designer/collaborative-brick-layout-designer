@@ -125,3 +125,31 @@ export function clearModuleThumbnail(moduleId: string): void {
     db.close();
   }
 }
+
+type SmtpRow = { smtp_host: string | null; smtp_port: number | null; smtp_user: string | null; smtp_pass: string | null; smtp_from: string | null };
+
+/**
+ * Point the site's email at `to` (a local mail sink, e2e/mailSink.ts),
+ * as Admin › Settings › Email would, and return a function that puts the
+ * previous setting back. The server reads this row on every send.
+ */
+export function useSmtp(to: { host: string; port: number; from: string }): () => void {
+  const db = new Database(dbPath());
+  try {
+    db.prepare(`INSERT OR IGNORE INTO platform_settings (id, require_email_verification) VALUES ('singleton', 1)`).run();
+    const before = db.prepare(`SELECT smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from FROM platform_settings WHERE id = 'singleton'`).get() as SmtpRow;
+    db.prepare(`UPDATE platform_settings SET smtp_host = ?, smtp_port = ?, smtp_user = NULL, smtp_pass = NULL, smtp_from = ? WHERE id = 'singleton'`).run(to.host, to.port, to.from);
+    return () => {
+      const again = new Database(dbPath());
+      try {
+        again
+          .prepare(`UPDATE platform_settings SET smtp_host = ?, smtp_port = ?, smtp_user = ?, smtp_pass = ?, smtp_from = ? WHERE id = 'singleton'`)
+          .run(before.smtp_host, before.smtp_port, before.smtp_user, before.smtp_pass, before.smtp_from);
+      } finally {
+        again.close();
+      }
+    };
+  } finally {
+    db.close();
+  }
+}
