@@ -172,4 +172,14 @@ describe('permissions in the rest of the app', () => {
     await expect(api.orgs.createRole('rail', 'x', [])).rejects.toThrow(askForPermission('edit_modules'));
     expect(askForPermission('edit_modules')).toBe('Ask a club admin for the Add or edit modules permission.');
   });
+
+  it('older refusals without a permission still name one, not “admins and managers”', async () => {
+    for (const [error, text] of [
+      ['only_club_admins_can_curate', 'Ask a club admin for the Send to the catalog permission.'],
+      ['only_club_admins_can_give_back', 'Ask a club admin for the Delete club items permission.'],
+    ] as const) {
+      vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error }), { status: 403, headers: { 'content-type': 'application/json' } }));
+      await expect(api.orgs.createRole('rail', 'x', [])).rejects.toThrow(text);
+    }
+  });
 });

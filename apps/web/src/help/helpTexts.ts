@@ -433,14 +433,14 @@ export const HELP_TEXTS = {
   },
   'catalog.clubCollections': {
     title: 'Your clubs’ collections',
-    short: 'Collections your clubs made: every member sees them, and admins and managers change them.',
+    short: 'Collections your clubs made: every member sees them, and people whose roles may send to the catalog change them.',
     more: 'A club can keep a collection to itself, like its show standards, or share it with everyone in the catalog under the club’s name. Pinned ones come first.',
     learnMoreUrl: '/help#collections',
   },
   'club.trusted': {
     title: 'Trusted club',
-    short: 'A trusted club’s own admins and managers check what it shares, instead of the site’s moderators.',
-    more: 'What an admin or manager shares under the club’s name goes public at once; what a member shares waits in the club’s own review. The site’s moderators can still see and take down anything, and can stop trusting a club.',
+    short: 'A trusted club checks what it shares itself, instead of the site’s moderators.',
+    more: 'Members whose roles may send to the catalog review it: what they share under the club’s name goes public at once, and what other members share waits in the club’s own review. The site’s moderators can still see and take down anything, and can stop trusting a club.',
     learnMoreUrl: '/help#collections',
   },
   'collection.audience': {

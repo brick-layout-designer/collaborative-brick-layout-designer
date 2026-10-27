@@ -108,7 +108,7 @@ export function ShareToCatalogDialog({
   /** Already shared: this is an update. */
   existing?: MyCatalogItem | undefined;
   onClose: () => void;
-  /** A trusted club's name, when its own admins and managers review this. */
+  /** A trusted club's name, when the club reviews this itself. */
   clubReview?: string | undefined;
   /** A layout's picture for its card (the editor draws it). */
   makeThumbnail?: () => Promise<{ mime: string; data: string } | null>;
@@ -167,7 +167,7 @@ export function ShareToCatalogDialog({
               {share.data.status === 'public'
                 ? 'Shared: it’s in the public catalog now.'
                 : clubReview
-                  ? `Sent to ${clubReview}’s own review: its admins and managers check it before it appears in the catalog.`
+                  ? `Sent to ${clubReview}’s own review: the club checks it before it appears in the catalog.`
                   : 'Sent for review. A moderator looks at it before it appears in the catalog.'}
             </p>
             <p className="text-muted">Cards show its drawn picture. You can upload your own instead, like a photo of the real thing.</p>

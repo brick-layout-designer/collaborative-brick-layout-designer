@@ -281,13 +281,13 @@ export function mayWarn(by: ClubRole, target: ClubRole): boolean {
   return atLeast(by, 'manager');
 }
 
-/** The warnings this club sent its members (admins and managers). */
+/** The warnings this club sent its members (for those who may invite people or manage members). */
 export function ClubWarningsSection({ slug }: { slug: string }) {
   const list = useQuery({ queryKey: ['org-warnings', slug], queryFn: () => api.warnings.clubHistory(slug) });
   return (
     <Section title="Warnings sent">
       <p className="text-sm text-muted">
-        Warnings the club's admins and managers sent to members, and whether they've read them. Site admins can see them too.
+        Warnings the people who run the club sent to members, and whether they've read them. Site admins can see them too.
       </p>
       {list.isLoading ? <p className="text-sm text-muted">Loading…</p> : <WarningHistory warnings={list.data?.warnings ?? []} showTo />}
     </Section>

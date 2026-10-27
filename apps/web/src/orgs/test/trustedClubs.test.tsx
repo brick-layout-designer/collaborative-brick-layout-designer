@@ -94,7 +94,7 @@ describe('sharing under a trusted club', () => {
     show(<ShareToCatalogDialog kind="module" sourceId="m" title="Bench" onClose={() => undefined} clubReview="ArkLUG" />);
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /Share|Send/ }));
-    expect((await screen.findByRole('status')).textContent).toBe('Sent to ArkLUG’s own review: its admins and managers check it before it appears in the catalog.');
+    expect((await screen.findByRole('status')).textContent).toBe('Sent to ArkLUG’s own review: the club checks it before it appears in the catalog.');
   });
 });
 

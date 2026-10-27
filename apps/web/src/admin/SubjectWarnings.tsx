@@ -15,7 +15,7 @@ export function SubjectWarnings({ subject, name }: { subject: WarningSubject; na
       <WarnForm label={`Warn ${name}`} onSend={(input) => api.warnings.send(subject, input)} />
       <p className="text-xs text-muted">
         {subject.kind === 'org'
-          ? "The club's admins and managers see it and must say they've read it."
+          ? "The people who run the club see it and must say they've read it."
           : "They see it on every page until they say they've read it."}{' '}
         To go further, make them read-only or set limits below.
       </p>
