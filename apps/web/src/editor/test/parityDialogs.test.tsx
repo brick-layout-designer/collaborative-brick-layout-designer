@@ -312,7 +312,11 @@ describe('ExportImageDialog', () => {
 
   function handle() {
     const canvas = document.createElement('canvas');
+    // Encoded with toBlob (off the main thread), not toDataURL.
     canvas.toDataURL = vi.fn(() => 'data:,');
+    canvas.toBlob = vi.fn((done: BlobCallback) => done(new Blob(['png']))) as unknown as HTMLCanvasElement['toBlob'];
+    URL.createObjectURL ??= () => 'blob:x';
+    URL.revokeObjectURL ??= () => undefined;
     const render = vi.fn(() => ({ canvas, pixelRatio: 1 }));
     const h: ExportHandle = { render, sceneSize: () => ({ width: 400, height: 100 }) };
     return { ref: { current: h }, render, canvas };
@@ -379,7 +383,8 @@ describe('ExportImageDialog', () => {
       antialias: false,
       watermark: false,
     });
-    expect(canvas.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.7);
+    expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.7);
+    expect(canvas.toDataURL).not.toHaveBeenCalled();
   });
 
   it('exports a transparent PNG', () => {
@@ -388,7 +393,7 @@ describe('ExportImageDialog', () => {
     fireEvent.click(screen.getByLabelText('Transparent background'));
     fireEvent.click(screen.getByRole('button', { name: 'Export PNG' }));
     expect(renderFn).toHaveBeenCalledWith({ pixelRatio: 1, size: { width: 800, height: 200 }, transparent: true, antialias: true, watermark: false });
-    expect(canvas.toDataURL).toHaveBeenCalledWith('image/png');
+    expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png', undefined);
   });
 
   it('the watermark is a per-export checkbox, remembered for next time', () => {

@@ -1695,16 +1695,9 @@ function Canvas({
         if (Math.hypot(to.x - from.x, to.y - from.y) < 8) return;
         commitMarquee(band, useEditorStore.getState().touchSelectMore);
       },
-      onViewMoving: (moving) => {
-        // While fingers move the view, Konva needn't redraw its hit canvas
-        // (what a touch would land on) every frame: on a big layout that
-        // was about a third of each frame. Drawn once when they let go (in
-        // the same frame as the last view's redraw, so only once).
-        const stage = stageRef.current;
-        if (!stage) return;
-        stage.listening(!moving);
-        if (!moving) for (const layer of stage.getLayers()) layer.batchDraw();
-      },
+      // Drawn once when they let go (in the same frame as the last view's
+      // redraw, so only once).
+      onViewMoving: (moving) => setViewMoving(moving),
       onPinchStart: () => {
         // A part being dragged by the first finger stays where it is.
         const stage = stageRef.current;
@@ -1943,6 +1936,28 @@ function Canvas({
   // MapView.cpp:446-451 ("if (e->button() == Qt::MiddleButton)").
   // While held, mousemove translates panX/panY by the cursor delta.
   const middlePanRef = useRef<{ lastX: number; lastY: number } | null>(null);
+  /**
+   * While the view moves (a middle-button pan, a turn of the wheel, fingers
+   * on a touch screen) Konva needn't redraw its hit canvas (what a click
+   * would land on) every frame: on a big layout that was about a third of
+   * each frame. It's drawn once when the view stops.
+   */
+  const viewStillTimer = useRef<number | null>(null);
+  function setViewMoving(moving: boolean): void {
+    const stage = stageRef.current;
+    if (!stage || stage.listening() === !moving) return;
+    stage.listening(!moving);
+    if (!moving) for (const layer of stage.getLayers()) layer.batchDraw();
+  }
+  /** The wheel has no "let go": the view counts as still once it stops turning for a moment. */
+  function viewMovingFor(ms: number): void {
+    setViewMoving(true);
+    if (viewStillTimer.current !== null) window.clearTimeout(viewStillTimer.current);
+    viewStillTimer.current = window.setTimeout(() => {
+      viewStillTimer.current = null;
+      setViewMoving(false);
+    }, ms);
+  }
 
   // Wheel-zoom coalescer. Multiple wheel events landing inside the same
   // animation frame (common on high-res trackpads — they fire 60+ Hz)
@@ -1990,6 +2005,29 @@ function Canvas({
   // changes, and unchanged bricks keep their identity across edits so the
   // memoised brick glyphs skip re-rendering.
   const map = useDocMap(doc);
+  const hasMap = !!map;
+  // A press right after a turn of the wheel lands on what's under it: the
+  // hit canvas is brought up to date first, before Konva looks at it.
+  useEffect(() => {
+    const el = stageRef.current?.container();
+    if (!el) return;
+    const settle = () => {
+      if (viewStillTimer.current === null) return;
+      window.clearTimeout(viewStillTimer.current);
+      viewStillTimer.current = null;
+      const stage = stageRef.current;
+      if (!stage) return;
+      stage.listening(true);
+      for (const layer of stage.getLayers()) if (layer.isListening()) layer.drawHit();
+    };
+    el.addEventListener('pointerdown', settle, true);
+    el.addEventListener('mousedown', settle, true);
+    return () => {
+      el.removeEventListener('pointerdown', settle, true);
+      el.removeEventListener('mousedown', settle, true);
+      if (viewStillTimer.current !== null) window.clearTimeout(viewStillTimer.current);
+    };
+  }, [hasMap]);
   const mapRef = useRef(map);
   mapRef.current = map;
   // A saved view being looked at shows only its sheets (savedViews.ts).
@@ -2525,7 +2563,6 @@ function Canvas({
   // hasn't moved the view since, so Yjs updates and the user's own pan /
   // zoom are never clobbered.
   const autoFittedRef = useRef(false);
-  const hasMap = !!map;
   useEffect(() => {
     if (!hasMap || width <= 0 || height <= 0) return;
     if (autoFittedRef.current) {
@@ -2924,6 +2961,7 @@ function Canvas({
     if (evt.button === 1) {
       evt.preventDefault();
       middlePanRef.current = { lastX: evt.clientX, lastY: evt.clientY };
+      setViewMoving(true);
       return;
     }
 
@@ -3051,6 +3089,7 @@ function Canvas({
 
   function handleStageMouseLeave() {
     dispatchCursorLeave();
+    if (middlePanRef.current) setViewMoving(false);
     middlePanRef.current = null;
     paintStrokeRef.current = null;
     areaMoveRef.current = null;
@@ -3090,6 +3129,7 @@ function Canvas({
     if (evt.button === 1 && middlePanRef.current) {
       middlePanRef.current = null;
       flushPointerMove();
+      setViewMoving(false);
       return;
     }
     paintStrokeRef.current = null;
@@ -3909,6 +3949,7 @@ function Canvas({
         const ptr = stage.getPointerPosition();
         if (!ptr) return;
         if (e.evt.deltaY === 0) return;
+        viewMovingFor(200);
 
         const acc = zoomAccumRef.current;
         acc.deltaY += e.evt.deltaY;

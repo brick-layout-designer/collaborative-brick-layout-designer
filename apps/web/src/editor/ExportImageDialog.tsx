@@ -78,6 +78,13 @@ const PAPER_SIZES: Record<string, { w: number; h: number; label: string }> = {
   letterl: { w: 279, h: 216, label: 'Letter Landscape (279 × 216 mm)' },
 };
 
+/** The canvas as an image file, encoded off the main thread. */
+function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('The picture is too big to save. Try a smaller size.'))), type, quality),
+  );
+}
+
 export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Props) {
   useEscape(onClose);
   const [mode, setMode] = useState<'image' | 'print' | 'pdf'>('image');
@@ -143,18 +150,21 @@ export function ExportImageDialog({ layoutTitle, exportImageRef, onClose }: Prop
       if (!result) { setError('The map is empty.'); return; }
       useEditorStore.getState().setShowExportWatermark(watermark);
       saveExportSettings({ width, height, keepAspect, transparent, antialias, format, quality });
-      const dataUrl = jpeg
-        ? result.canvas.toDataURL('image/jpeg', quality / 100)
-        : result.canvas.toDataURL('image/png');
+      // toBlob, not toDataURL: the browser encodes the picture off the main
+      // thread, and there's no base64 copy of it. A big layout's export
+      // (16,384 px wide) froze the page for seconds while it encoded.
+      const blob = await canvasBlob(result.canvas, jpeg ? 'image/jpeg' : 'image/png', jpeg ? quality / 100 : undefined);
+      const url = URL.createObjectURL(blob);
       const safe = safeTitle(layoutTitle);
       const a = document.createElement('a');
-      a.href = dataUrl;
+      a.href = url;
       a.download = `${safe}.${jpeg ? 'jpg' : 'png'}`;
       a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       noticeDownloaded(a.download);
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (swap) flushSync(() => useEditorStore.setState({ showElectricCircuits: shown }));
       setExporting(false);

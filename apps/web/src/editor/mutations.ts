@@ -261,6 +261,9 @@ export function insertBricks(
     if (!(layerData instanceof Y.Map)) return;
     const yBricks = layerData.get('bricks');
     if (!(yBricks instanceof Y.Array)) return;
+    // All on top in one push: one per part scanned the whole sheet each
+    // time (a paste of 500 parts into 5,000 read 2.5 million entries).
+    const added: Y.Map<unknown>[] = [];
     for (const b of bricks) {
       const id = makeId();
       ids.push(id);
@@ -278,8 +281,9 @@ export function insertBricks(
       yBrick.set('activeConnectionPointIndex', 0);
       yBrick.set('altitude', b.altitude ?? 0);
       yBrick.set('connexions', []);
-      pushOnTop(yBricks, [yBrick]);
+      added.push(yBrick);
     }
+    pushOnTop(yBricks, added);
     const yGroups = layerData.get('groups');
     if (groups.length > 0 && yGroups instanceof Y.Array) {
       for (const g of groups) {
@@ -2753,6 +2757,7 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
         snap.map((src) => ({ src, myGroup: (src.get('myGroup') as string) || '' })),
         makeId,
       );
+      const added: Y.Map<unknown>[] = [];
       for (const { src, myGroup } of copied.bricks) {
         const area = src.get('displayArea') as RectangleF;
         const newId = makeId();
@@ -2766,8 +2771,9 @@ export function cloneModuleBricks(doc: Y.Doc, module: SidecarModule): void {
         yNew.set('activeConnectionPointIndex', 0);
         yNew.set('myGroup', myGroup);
         yNew.set('connexions', []);
-        pushOnTop(bricks, [yNew]);
+        added.push(yNew);
       }
+      pushOnTop(bricks, added);
       const yGroups = layerData.get('groups');
       if (yGroups instanceof Y.Array) {
         for (const g of copied.groups) {

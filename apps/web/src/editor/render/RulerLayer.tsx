@@ -19,7 +19,7 @@
 // Inputs are in stud-space; everything multiplies by `studToPx()` (8)
 // at the leaves.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../editorStore';
 import { snapBypassed } from '../snapFeel';
 import {
@@ -118,6 +118,25 @@ export function RulerLayers({
     return m;
   }, [map, partsByKey]);
 
+  // The editor re-renders this on every frame of a box-select drag. The
+  // handlers it passes are new each time, so they're called through a ref
+  // and each ruler is memoised on what it draws: a ruler redraws (and its
+  // sheet with every part on it) only when it changes. New point arrays on
+  // every render used to redraw the whole parts layer on each mouse move.
+  const live = useRef({ onRulerSelect, drag, onRulerDoubleClick, onEndpointDrag, onScaleDrag });
+  live.current = { onRulerSelect, drag, onRulerDoubleClick, onEndpointDrag, onScaleDrag };
+  const stable = useMemo(
+    () => ({
+      select: (id: string, additive: boolean) => live.current.onRulerSelect?.(id, additive),
+      drag: {
+        start: (kind, id, node) => live.current.drag?.start(kind, id, node),
+        move: (node, evt) => live.current.drag?.move(node, evt),
+        end: (node) => live.current.drag?.end(node),
+      } satisfies AnnoDragHandlers,
+    }),
+    [],
+  );
+
   if (layers.length === 0) return null;
   return (
     <Group>
@@ -143,15 +162,15 @@ export function RulerLayers({
                 brickCentres,
                 selected: sel,
                 showHandles: item.id === handleRulerId,
-                rootProps: rulerRootProps(item.id, sel, onRulerSelect, drag),
+                rootProps: rulerRootProps(item.id, sel, onRulerSelect && stable.select, drag && stable.drag),
               };
               if (onRulerSelect) props.onClick = () => undefined;
-              if (onRulerDoubleClick) props.onDoubleClick = () => onRulerDoubleClick(item.id);
+              if (onRulerDoubleClick) props.onDoubleClick = () => live.current.onRulerDoubleClick?.(item.id);
               if (onEndpointDrag) {
                 props.onEndpointDrag = (which, sx, sy, free) =>
-                  onEndpointDrag(item.id, which, sx, sy, free);
+                  live.current.onEndpointDrag?.(item.id, which, sx, sy, free);
               }
-              if (onScaleDrag) props.onScaleDrag = (sx, sy) => onScaleDrag(item.id, sx, sy);
+              if (onScaleDrag) props.onScaleDrag = (sx, sy) => live.current.onScaleDrag?.(item.id, sx, sy);
               return item.kind === 'linear' ? (
                 <LinearRulerView key={item.id} item={item} {...props} />
               ) : (
@@ -214,7 +233,32 @@ function resolveAnchor(
   return brickCentres.get(attachedBrickId) ?? fallback;
 }
 
-function LinearRulerView({
+/**
+ * Whether a ruler view would draw the same: everything but the handlers,
+ * which RulerLayers routes through a ref (so a new one is the same one),
+ * compared by being there or not.
+ */
+export function sameRulerView(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    const x = a[k];
+    const y = b[k];
+    if (typeof x === 'function' || typeof y === 'function') {
+      if (typeof x !== typeof y) return false;
+      continue;
+    }
+    if (k === 'rootProps') {
+      const p = x as RulerRootProps;
+      const q = y as RulerRootProps;
+      if (p.name !== q.name || p.draggable !== q.draggable || !p.onMouseDown !== !q.onMouseDown || !p.onDragStart !== !q.onDragStart) return false;
+      continue;
+    }
+    if (x !== y) return false;
+  }
+  return true;
+}
+
+const LinearRulerView = memo(function LinearRulerView({
   item,
   brickCentres,
   selected,
@@ -505,7 +549,7 @@ function LinearRulerView({
       )}
     </Group>
   );
-}
+}, sameRulerView);
 
 /** BlueBrick ScaleRuler's handle: the offset line's middle, or a circle's rim. */
 function ScaleHandle({ x, y, onDrag }: { x: number; y: number; onDrag: (studX: number, studY: number) => void }) {
@@ -574,7 +618,7 @@ function EndpointHandle({
   );
 }
 
-function CircularRulerView({
+const CircularRulerView = memo(function CircularRulerView({
   item,
   brickCentres,
   selected,
@@ -676,7 +720,7 @@ function CircularRulerView({
       {showHandles && onScaleDrag && <ScaleHandle x={cx + rPx} y={cy} onDrag={onScaleDrag} />}
     </Group>
   );
-}
+}, sameRulerView);
 
 function parseFontStyle(style: string | undefined): string {
   const s = (style ?? '').toLowerCase();

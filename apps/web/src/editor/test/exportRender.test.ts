@@ -126,7 +126,10 @@ describe('renderMapToCanvas output size and antialias', () => {
       toCanvas,
       batchDraw: () => {},
     } as unknown as Konva.Stage;
-    const ctx = { imageSmoothingEnabled: true, fillRect: vi.fn(), drawImage: vi.fn(), fillText: vi.fn(), fillStyle: '', font: '', textAlign: '', textBaseline: '' };
+    const ctx = {
+      imageSmoothingEnabled: true, fillRect: vi.fn(), drawImage: vi.fn(), fillText: vi.fn(), fillStyle: '', font: '', textAlign: '', textBaseline: '',
+      globalCompositeOperation: 'source-over', save: vi.fn(), restore: vi.fn(), setTransform: vi.fn(),
+    };
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
     return { map: docToBbm(doc), stage, toCanvas, ctx };
   }
@@ -145,10 +148,48 @@ describe('renderMapToCanvas output size and antialias', () => {
 
   it('turns image smoothing off when antialias is off, and skips the background when transparent', () => {
     const { map, stage, toCanvas, ctx } = setup();
-    renderMapToCanvas(stage, map, null, { pixelRatio: 2, transparent: true, antialias: false });
-    expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ pixelRatio: 2, imageSmoothingEnabled: false }));
+    renderMapToCanvas(stage, map, null, { pixelRatio: 2, transparent: true, antialias: false, size: { width: 300, height: 300 } });
+    expect(toCanvas).toHaveBeenCalledWith(expect.objectContaining({ pixelRatio: 3.75, imageSmoothingEnabled: false }));
     expect(ctx.imageSmoothingEnabled).toBe(false);
     expect(ctx.fillRect).not.toHaveBeenCalled();
+  });
+
+  it('at the picture\'s own size: the background goes under it in place, with no second canvas', () => {
+    const { map, stage, toCanvas, ctx } = setup();
+    const made = vi.spyOn(document, 'createElement');
+    const out = renderMapToCanvas(stage, map, null, { pixelRatio: 2, transparent: false })!;
+    expect(out.canvas).toBe(toCanvas.mock.results[0]!.value);
+    expect(made.mock.calls.filter(([tag]) => tag === 'canvas')).toHaveLength(0);
+    expect(ctx.drawImage).not.toHaveBeenCalled();
+    // Under the picture: drawn with destination-over, then put back.
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 240, 160);
+    expect(ctx.save).toHaveBeenCalled();
+    expect(ctx.restore).toHaveBeenCalled();
+  });
+
+  it('leaves out the layers with nothing to draw while it renders, and puts them back', () => {
+    const { map, stage, toCanvas } = setup();
+    const layer = (shapes: boolean) => {
+      let shown = true;
+      return {
+        visible: (v?: boolean) => (v === undefined ? shown : ((shown = v), undefined)),
+        findOne: () => (shapes ? { nodeType: 'Shape' } : undefined),
+      };
+    };
+    const parts = layer(true);
+    const empty = layer(false);
+    (stage as unknown as { getLayers: () => unknown[] }).getLayers = () => [parts, empty];
+    let during: boolean[] = [];
+    toCanvas.mockImplementationOnce(() => {
+      during = [parts.visible() as boolean, empty.visible() as boolean];
+      const c = document.createElement('canvas');
+      c.width = 120;
+      c.height = 80;
+      return c;
+    });
+    renderMapToCanvas(stage, map, null, { pixelRatio: 1, transparent: false });
+    expect(during).toEqual([true, false]);
+    expect([parts.visible(), empty.visible()]).toEqual([true, true]);
   });
 
   it('renders just a print tile region, even past the content', () => {
