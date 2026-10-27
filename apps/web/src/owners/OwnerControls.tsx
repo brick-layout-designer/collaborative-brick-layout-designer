@@ -29,7 +29,7 @@ const RETURN_WORD: Record<OwnableKind, string> = { layouts: 'layout', modules: '
 
 /**
  * "Take back to mine" (the author, in the club) and "Give back to ‹author›"
- * (the club's admins and managers), for a ⋯ menu. The club keeps its own
+ * (people whose club roles may Delete club items), for a ⋯ menu. The club keeps its own
  * copy, so nothing it built with it changes. Shows nothing when neither
  * applies.
  */
@@ -51,7 +51,7 @@ export function ReturnMenuItems({ kind, id, title, credit }: { kind: OwnableKind
     const ok = await askConfirm({
       title: mode === 'take' ? `Take “${title}” back?` : `Give “${title}” back to ${who}?`,
       removes: mode === 'take' ? `The ${word} becomes yours again, and only yours.` : `The ${word} goes back to ${who}, who made it.`,
-      keeps: `${club} keeps its own copy, credited to ${mode === 'take' ? 'you' : who}, so nothing the club built with it changes. Its admins and managers are told.`,
+      keeps: `${club} keeps its own copy, credited to ${mode === 'take' ? 'you' : who}, so nothing the club built with it changes. Members with the Delete club items permission are told.`,
       undo: mode === 'take' ? 'To share it again, move it back to the club.' : `${who} can move it back to the club.`,
       confirmLabel: mode === 'take' ? 'Take back' : 'Give back',
       danger: false,

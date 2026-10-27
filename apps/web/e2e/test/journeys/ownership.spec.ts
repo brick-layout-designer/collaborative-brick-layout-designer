@@ -48,7 +48,7 @@ test('a module moves to the club with its author credited, Sam takes it back, an
     await sam.page.getByRole('button', { name: 'Move', exact: true }).click();
     const dialog = sam.page.getByTestId('confirm-dialog');
     await expect(dialog.getByRole('heading')).toHaveText(`Move it to ${CLUB}?`);
-    await expect(dialog).toContainText(`${CLUB} will own this. Its admins and managers can change or delete it.`);
+    await expect(dialog).toContainText(`${CLUB} will own this. Members with the Delete club items permission can rename, share or delete it.`);
     await expect(dialog).toContainText('You stay credited as the author, and you can take it back while you’re a member.');
     await dialog.getByRole('button', { name: 'Move' }).click();
 

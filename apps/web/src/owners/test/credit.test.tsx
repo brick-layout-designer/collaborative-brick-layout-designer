@@ -46,7 +46,7 @@ describe('credit words', () => {
   });
   it('moving into a club says what that means', () => {
     const w = moveToClubWording('ArkLUG');
-    expect(w.removes).toBe('ArkLUG will own this. Its admins and managers can change or delete it.');
+    expect(w.removes).toBe('ArkLUG will own this. Members with the Delete club items permission can rename, share or delete it.');
     expect(w.keeps).toBe('You stay credited as the author, and you can take it back while you’re a member.');
   });
 });
@@ -65,6 +65,9 @@ describe('Take back / Give back', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Take back to mine' }));
     await waitFor(() => expect(asked.titles).toEqual(['Take “Yard” back?']));
     expect(asked.texts[0]).toContain('ArkLUG keeps its own copy');
+    // Who hears of it goes by permission (#410), not by fixed roles.
+    expect(asked.texts[0]).toContain('Members with the Delete club items permission are told.');
+    expect(asked.texts[0]).not.toContain('admins and managers');
     await new Promise((r) => setTimeout(r, 20));
     expect(take).not.toHaveBeenCalled();
     autoConfirm(true);
@@ -80,6 +83,7 @@ describe('Take back / Give back', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Give back to Sam' }));
     await waitFor(() => expect(give).toHaveBeenCalledWith('venues', 'v1'));
     expect(asked.titles).toEqual(['Give “Hall” back to Sam?']);
+    expect(asked.texts[0]).toContain('Members with the Delete club items permission are told.');
     expect(take).not.toHaveBeenCalled();
   });
 });
