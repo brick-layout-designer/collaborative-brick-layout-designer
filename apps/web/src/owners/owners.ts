@@ -159,7 +159,7 @@ export function creditText(credit: Credit | null | undefined): { line: string | 
 export function moveToClubWording(clubName: string): { title: string; removes: string; keeps: string } {
   return {
     title: `Move it to ${clubName}?`,
-    removes: `${clubName} will own this. Its admins and managers can change or delete it.`,
+    removes: `${clubName} will own this. Members with the Delete club items permission can rename, share or delete it.`,
     keeps: 'You stay credited as the author, and you can take it back while you’re a member.',
   };
 }
