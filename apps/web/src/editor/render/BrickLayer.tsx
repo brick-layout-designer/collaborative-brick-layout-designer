@@ -329,25 +329,30 @@ const BrickGlyph = memo(function BrickGlyph({
   const spriteUrl = meta ? spriteUrlFor(meta) : '';
   const groupRef = useRef<Konva.Group | null>(null);
 
-  // Ensure the sprite gets loaded into the sync cache. A successful load
-  // bumps a counter so this component re-renders and renders the image.
+  // Ensure the sprite gets loaded into the sync cache. When it arrives (or
+  // later, after a Retry on the loading card) this re-renders once to draw
+  // it; a part whose picture is already here doesn't re-render at all.
   const [, setRev] = useState(0);
+  const drewSprite = spriteUrl ? getSpriteSync(spriteUrl) !== null : true;
   useEffect(() => {
     if (!spriteUrl) return;
     let cancelled = false;
-    ensureSprite(spriteUrl)
-      .then(() => {
-        if (!cancelled) setRev((r) => r + 1);
-      })
-      .catch(() => undefined);
-    // A failed picture can arrive later, after a Retry on the loading card.
-    const off = onSpriteReady(spriteUrl, () => {
+    const redraw = () => {
       if (!cancelled) setRev((r) => r + 1);
-    });
+    };
+    const off = onSpriteReady(spriteUrl, redraw);
+    if (getSpriteSync(spriteUrl)) {
+      // It arrived between the render and now.
+      if (!drewSprite) redraw();
+    } else {
+      void ensureSprite(spriteUrl).catch(() => undefined);
+    }
     return () => {
       cancelled = true;
       off();
     };
+    // drewSprite: what the render that ran this saw.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spriteUrl]);
 
   const w = studToPx(brick.displayArea.width);
