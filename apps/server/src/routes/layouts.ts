@@ -32,6 +32,7 @@ import { attachment, safeFileName } from '../utils/contentDisposition.js';
 import { clampTitle, titleTooLong, trimmed } from '../utils/validate.js';
 import { checkUpdate } from '../ws/updateGuard.js';
 import { checkGridSizes } from '../ws/gridGuard.js';
+import { applyStoredUpdate, snapshotWork } from '../ws/yjsWork.js';
 
 interface CreateLayoutBody {
   title?: string;
@@ -490,7 +491,7 @@ export async function layoutRoutes(app: FastifyInstance) {
       return reply.code(413).send({ error: 'snapshot_too_large' });
     }
     // Only a document both apps can read (the live editor's check).
-    if (checkUpdate(bytes) !== null || checkGridSizes(null, bytes) !== null) return reply.code(400).send({ error: 'unreadable_snapshot' });
+    if (checkUpdate(bytes) !== null || checkGridSizes(null, bytes) !== null || snapshotWork(bytes) !== null) return reply.code(400).send({ error: 'unreadable_snapshot' });
     // While the layout is open in the realtime editor, the in-memory doc
     // is authoritative and its next flush would silently overwrite a
     // wholesale replacement written here. Refuse instead of losing it.
@@ -998,13 +999,8 @@ export async function currentDocBytes(layoutId: string, snapshot: Uint8Array): P
   const doc = new Y.Doc();
   try {
     if (snapshot.length > 0) Y.applyUpdate(doc, snapshot);
-    for (const u of updates) {
-      try {
-        Y.applyUpdate(doc, u.updateBytes as Uint8Array);
-      } catch {
-        // Corrupt update — skipped, as in DocSession.hydrate.
-      }
-    }
+    // Corrupt or too costly to apply — skipped, as in DocSession.hydrate.
+    for (const u of updates) applyStoredUpdate(doc, u.updateBytes as Uint8Array, `layout ${layoutId}`);
     return Y.encodeStateAsUpdate(doc);
   } finally {
     doc.destroy();

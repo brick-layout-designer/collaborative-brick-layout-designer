@@ -30,10 +30,11 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { checkIncomingDecoded, type MergeCheck } from './mergeGuard.js';
 import { checkStateVector, checkUpdate } from './updateGuard.js';
 import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, pendingBytes, pendingDsBytes, restorePending, savePending } from './pending.js';
-import { copyBudget, newPace, type Pace } from './pacing.js';
+import { copyBudget, newPace, workBudget, type Pace } from './pacing.js';
 import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
 import { COPY_BUDGET_SPENT, checkGridSizesDecoded } from './gridGuard.js';
 import { decodeIncoming, guardWork } from './decoded.js';
+import { MAX_UPDATE_WORK, yjsWork } from './yjsWork.js';
 
 /**
  * Close code and reason for an update refused because it would merge
@@ -273,6 +274,21 @@ function handleMessage(
         // Decoded once for the checks that read its structs (ws/decoded.ts).
         // One Yjs can't decode passes them; Yjs refuses it on its own below.
         const decoded = decodeIncoming(update);
+        // What applying it costs (ws/yjsWork.ts): within a limit per
+        // update, and per person (ws/pacing.ts workBudget: past it, they slow down).
+        if (decoded) {
+          const work = yjsWork(session.doc, decoded);
+          if (work > MAX_UPDATE_WORK) {
+            refuseUpdate(ws, session, sender, update.length, 'unreadable', `applying it would take ${work} steps, more than ${MAX_UPDATE_WORK}`);
+            return;
+          }
+          const allowance = workBudget(sender.userId);
+          if (!allowance.available()) {
+            slowDown(ws, session, sender, update.length);
+            return;
+          }
+          allowance.charge(work);
+        }
         // The few it works out on a copy of the layout count against the
         // sender's copy budget (ws/pacing.ts): past it, they slow down.
         const budget = copyBudget(sender.userId);
