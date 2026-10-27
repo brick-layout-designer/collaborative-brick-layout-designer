@@ -369,6 +369,24 @@ function returned(kind: ResourceKind): HintSpec {
   };
 }
 
+/**
+ * Your settings; and when you show or hide when you were last active,
+ * the members lists of your clubs.
+ */
+const preferences: HintSpec = {
+  after: async (ctx) => {
+    const out = await me.after(ctx);
+    const prefs = ctx.body.prefs as Record<string, unknown> | undefined;
+    if (ctx.userId && prefs && typeof prefs === 'object' && 'shareLastActive' in prefs) {
+      const clubs = await db.select({ o: schema.orgMembers.orgId }).from(schema.orgMembers).where(eq(schema.orgMembers.userId, ctx.userId)).all();
+      for (const { o } of clubs) {
+        out.push({ hint: { kind: 'club', owner: { kind: 'org', id: o }, id: o, action: 'update:members' }, reach: { users: await memberIds(o) } });
+      }
+    }
+    return out;
+  },
+};
+
 export const ROUTE_HINTS: Record<string, HintSpec> = {
   // ---- account (other tabs and the desktop app of the same person)
   'PATCH /api/auth/me': rename,
@@ -377,7 +395,7 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'POST /api/auth/device/approve': me,
   'POST /api/auth/device/deny': me,
   'DELETE /api/tokens/:id': me,
-  'PUT /api/me/preferences': me,
+  'PUT /api/me/preferences': preferences,
   'POST /api/me/privacy/exports': me,
   'POST /api/me/deletion': adminOnly('admin', (c) => c.userId),
   'POST /api/admin/privacy/requests': adminOnly('admin'),

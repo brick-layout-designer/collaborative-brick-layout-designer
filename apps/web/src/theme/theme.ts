@@ -21,6 +21,8 @@ export interface Preferences {
   partsIconSize?: number;
   /** Connection Snap strength (off / gentle / strong); absent until set, which means gentle. */
   connectionSnap?: SnapStrength;
+  /** Whether the people who run your clubs see roughly when you were last active; absent means yes. */
+  shareLastActive?: boolean;
 }
 
 export const PARTS_ICON_MIN = 32;
@@ -110,6 +112,7 @@ export function sanitizePreferences(input: unknown): Preferences {
     out.partsIconSize = Math.round(Math.min(PARTS_ICON_MAX, Math.max(PARTS_ICON_MIN, o.partsIconSize)));
   }
   if (isSnapStrength(o.connectionSnap)) out.connectionSnap = o.connectionSnap;
+  if (typeof o.shareLastActive === 'boolean') out.shareLastActive = o.shareLastActive;
   return out;
 }
 

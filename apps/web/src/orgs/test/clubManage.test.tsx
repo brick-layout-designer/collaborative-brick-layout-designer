@@ -70,6 +70,17 @@ function show(ui: ReactNode) {
 const writes = () => calls.filter((c) => c.method !== 'GET');
 
 describe('club management', () => {
+  it('shows roughly when each member was last active, when the server says', () => {
+    const withActive: OrgMemberSummary[] = [
+      { ...MEMBERS[0]!, lastActive: 'today' },
+      { ...MEMBERS[1]!, lastActive: 'month' },
+      { userId: 'u3', role: 'member', joinedAt: 0, email: '', displayName: 'Lee', avatarUrl: null, lastActive: null },
+    ];
+    show(<MembersSection slug="arklug" myUserId="u1" myRole="admin" members={withActive} />);
+    const shown = screen.getAllByTestId('last-active').map((e) => e.textContent);
+    expect(shown).toEqual([' · active today', ' · active this month']);
+  });
+
   it('settings send only what changed', async () => {
     show(<SettingsSection org={ORG} />);
     const save = screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement;

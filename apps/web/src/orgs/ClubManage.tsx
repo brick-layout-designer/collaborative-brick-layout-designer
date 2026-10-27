@@ -32,6 +32,14 @@ const field = 'min-h-11 w-full rounded-lg border border-border bg-soft px-3 py-2
 
 export const EXPIRY_CHOICES = [1, 7, 14, 30] as const;
 
+/** "Last active" in the members list: roughly, never the exact time (Settings › Privacy can hide it). */
+const LAST_ACTIVE: Record<NonNullable<OrgMemberSummary['lastActive']>, string> = {
+  today: 'active today',
+  week: 'active this week',
+  month: 'active this month',
+  older: 'not active for a month or more',
+};
+
 export function Section({
   title,
   children,
@@ -182,6 +190,7 @@ export function MembersSection({
                   </p>
                   <p className="break-all text-xs text-muted">
                     {m.email ? `${m.email} · ` : ''}joined {new Date(m.joinedAt).toLocaleDateString()}
+                    {m.lastActive && <span data-testid="last-active"> · {LAST_ACTIVE[m.lastActive]}</span>}
                   </p>
                 </div>
               </div>

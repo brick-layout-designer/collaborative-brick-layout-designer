@@ -2003,6 +2003,11 @@ export interface OrgMemberSummary {
   email: string;
   displayName: string;
   avatarUrl: string | null;
+  /**
+   * Roughly when they were last active, for the people who run the club
+   * (and yourself); null when it isn't shown (older servers leave it out).
+   */
+  lastActive?: 'today' | 'week' | 'month' | 'older' | null;
 }
 
 export interface OrgInviteSummary {

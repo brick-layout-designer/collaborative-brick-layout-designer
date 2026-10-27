@@ -11,7 +11,7 @@
 // own copy and keeps the newer one.
 
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 
@@ -39,6 +39,11 @@ export interface Preferences {
    * sends only the keys a server returns (the desktop) knows it can save it.
    */
   connectionSnap: (typeof CONNECTION_SNAP)[number];
+  /**
+   * Whether the people who run your clubs see roughly when you were last
+   * active (today, this week, this month) in the club's members list.
+   */
+  shareLastActive: boolean;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -49,6 +54,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   helpIcons: true,
   toursSeen: [],
   connectionSnap: 'gentle',
+  shareLastActive: true,
 };
 
 /**
@@ -73,6 +79,7 @@ export function validatePreferences(input: unknown): { ok: Partial<Preferences> 
       case 'largeText':
       case 'expertMode':
       case 'helpIcons':
+      case 'shareLastActive':
         if (typeof value !== 'boolean') return { error: `${key} must be true or false` };
         out[key] = value;
         break;
@@ -117,6 +124,28 @@ async function load(userId: string): Promise<{ prefs: Preferences; updatedAt: st
   const row = await db.select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, userId)).get();
   if (!row) return { prefs: { ...DEFAULT_PREFERENCES }, updatedAt: null };
   return { prefs: fromStored(row.prefs), updatedAt: row.updatedAt.toISOString() };
+}
+
+/** Which of `userIds` hide when they were last active from their clubs (shareLastActive off). */
+export async function hidingLastActive(userIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (userIds.length === 0) return out;
+  const rows = await db.select().from(schema.userPreferences).where(inArray(schema.userPreferences.userId, userIds));
+  for (const r of rows) if (!fromStored(r.prefs).shareLastActive) out.add(r.userId);
+  return out;
+}
+
+/** Roughly when someone was last active: what a club's members list shows. */
+export type LastActive = 'today' | 'week' | 'month' | 'older';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+export function lastActiveBucket(seenAt: Date | null, now = Date.now()): LastActive {
+  if (!seenAt) return 'older';
+  const ago = now - seenAt.getTime();
+  if (ago < DAY_MS) return 'today';
+  if (ago < 7 * DAY_MS) return 'week';
+  if (ago < 30 * DAY_MS) return 'month';
+  return 'older';
 }
 
 export async function preferencesRoutes(app: FastifyInstance): Promise<void> {
