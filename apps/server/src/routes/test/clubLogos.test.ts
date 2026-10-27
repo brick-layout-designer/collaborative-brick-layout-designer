@@ -101,6 +101,8 @@ describe('club logos', () => {
       svg('<SCRIPT>alert(1)</SCRIPT>'),
       svg('<image href="https://example.com/x.png" width="10" height="10"/>'),
       svg('<image xlink:href="file:///etc/passwd"/>'),
+      svg('<image xmlns:z="http://www.w3.org/1999/xlink" z:href="https://example.com/x.png" width="10" height="10"/>'),
+      svg('<image xmlns:a.b-c="http://www.w3.org/1999/xlink" a.b-c:href="https://example.com/x.png"/>'),
       svg('<rect style="fill:url(https://example.com/x)" width="1" height="1"/>'),
       svg('<rect onload="x()" width="1" height="1"/>'),
       svg('<foreignObject><div/></foreignObject>'),
