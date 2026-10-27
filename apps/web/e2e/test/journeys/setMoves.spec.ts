@@ -199,3 +199,63 @@ test('a placed set moves whole: dragged by any of its parts, nudged, turned, und
     .toBe(true);
   await peer.close();
 });
+
+test('turning a set with R in the middle of a drag turns every part of it, and it goes on following the mouse', async ({ page }) => {
+  test.setTimeout(120_000);
+  await signIn(page, `j-setmove-${ts}@example.com`, 'Set Mover');
+  const res = await page.request.post('/api/layouts', { data: { title: 'Set turned mid-drag' } });
+  const { id } = (await res.json()) as { id: string };
+  await page.goto(`/editor/${id}`);
+  await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+  await page.getByPlaceholder(/Fuzzy filter/).fill('Single_Crossover_Left');
+  const tile = page.locator('aside li button[draggable="true"]').filter({ hasText: /Single Crossover Left/ }).first();
+  await expect(tile).toBeVisible({ timeout: 15000 });
+  await tile.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await placed(page)).length).toBe(4);
+  await page.waitForTimeout(600);
+  const start = await placed(page);
+  await deselect(page);
+
+  // Press, move, R, move on, let go.
+  const from = await onScreen(page, start[0]!.id);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 4; i++) {
+    await page.mouse.move(from.x + i * 20, from.y + i * 10);
+    await page.waitForTimeout(25);
+  }
+  await page.keyboard.press('r');
+  await page.waitForTimeout(300);
+  const turnedMidDrag = await placed(page);
+  for (let i = 1; i <= 4; i++) {
+    await page.mouse.move(from.x + 80 + i * 20, from.y + 40 + i * 10);
+    await page.waitForTimeout(25);
+  }
+  await page.waitForTimeout(200);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const dropped = await placed(page);
+
+  // Every part turned the same way (the set's other parts too), the set kept its shape…
+  const turns = moves(start, dropped).map((m) => ((Math.round(m.dr) % 360) + 360) % 360);
+  expect(new Set(turns)).toEqual(new Set([270]));
+  expectSameShape(start, dropped);
+  // …and it went on following the mouse after the turn.
+  const after = moves(turnedMidDrag, dropped);
+  for (const m of after) {
+    expect(m.dx).toBeCloseTo(80, 0);
+    expect(m.dy).toBeCloseTo(40, 0);
+  }
+
+  // What's drawn is what the layout has: opened again, every part is where it was.
+  await page.reload();
+  await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+  await expect.poll(async () => (await placed(page)).length, { timeout: 15000 }).toBe(4);
+  const again = new Map((await placed(page)).map((p) => [p.id, p]));
+  for (const p of dropped) {
+    expect(again.get(p.id)!.x).toBeCloseTo(p.x, 1);
+    expect(again.get(p.id)!.y).toBeCloseTo(p.y, 1);
+    expect((((again.get(p.id)!.rot - p.rot) % 360) + 360) % 360).toBeCloseTo(0, 1);
+  }
+});

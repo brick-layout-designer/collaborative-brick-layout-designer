@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { shapeSelectionIds, useEditorStore, type AnnoSelection, type Tool } from '../editorStore';
 import { groupMembersOf } from '../sets';
+import { brickDrag } from '../brickDrag';
 import { connectionHingeAngle } from '@cld/parts-catalog/browser';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
@@ -656,6 +657,13 @@ const BrickGlyph = memo(function BrickGlyph({
         if (outline) moduleOutlineRef.current = { moduleId: editing.id, name: editing.name, outline, areas };
       }
     }
+    brickDrag.started(e.target, brick.id, pointerKindRef.current !== 'touch');
+    // Picked up again after a turn (brickDrag.ts): no press came first, so
+    // the grabbed end is the one nearest the pointer now.
+    if (grabConnRef.current < 0) {
+      const p = pointerStuds(e.target.getStage());
+      if (p) grabConnRef.current = nearestConnectionIndex(brick, meta, p.x, p.y, grabKeys());
+    }
     const { selection, annoSelection } = useEditorStore.getState();
     // Selected rulers and labels move with the bricks (mixed selection,
     // MapViewDrag.cpp:124-153); only when this brick is part of it.
@@ -968,6 +976,7 @@ const BrickGlyph = memo(function BrickGlyph({
   }
 
   function handleDragEnd(e: KonvaEventObject<DragEvent>) {
+    brickDrag.ended(e.target);
     // The drop: one last snap at the normal reach, so a join the fast
     // drag held back happens now (and a held one stays).
     let finalSnap: DragSnapResult | null = null;
@@ -1111,6 +1120,14 @@ const BrickGlyph = memo(function BrickGlyph({
       if (leaving.length > 0) void askTakeOut(edit.moduleId, edit.name, leaving);
     }
   }
+
+  // A turn in mid-drag dropped the parts (brickDrag.ts): now that they're
+  // drawn turned, the drag picks up again, the mouse still down.
+  useEffect(() => {
+    if (!brickDrag.takeResume(brick.id)) return;
+    const node = groupRef.current;
+    if (node && !isViewer && tool === 'select') node.startDrag();
+  }, [brick, isViewer, tool]);
 
   /** The drag is over: the pose goes at once (nothing moved) or once the layout has redrawn. */
   function endPose(now: boolean) {
