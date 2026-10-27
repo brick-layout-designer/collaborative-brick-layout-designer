@@ -128,7 +128,8 @@ import { hasClipboardBricks, pasteOffset, pasteTarget, readClipboard, writeBrick
 import { moduleCopy, wholeModule } from './moduleCopy';
 import { pxToStud, studToPx } from './render/coords';
 import { SNAP_MARKS } from './render/selectionStyle';
-import { ensureSprite, getSpriteSync, resetSpriteProgress, wantSprites } from './render/spriteCache';
+import { ensureSprite, getSpriteSync, resetSpriteProgress, subscribeSpriteProgress, wantSprites } from './render/spriteCache';
+import { ViewBitmap, VIEW_LIVE } from './render/viewBitmap';
 import { layoutSpriteUrls } from './render/layoutSprites';
 import { MapLoadingCard, OpeningLayoutScreen } from './LoadingCard';
 import { PlaceGhost } from './render/PlaceGhost';
@@ -284,6 +285,10 @@ function creditLabel(credit: Credit | null | undefined): string | null {
 
 /** Panels a module has no use for (it has no venue and no saved views). */
 const NOT_IN_MODULES = new Set(['views', 'venuelibrary', 'modules']);
+/** The sheets shown as one moving picture while the view moves (viewBitmap.ts), bottom first. */
+const VIEW_BITMAP_LAYERS = ['background-layer', 'parts-layer', 'module-layer'];
+/** One empty module list, so a layout without modules doesn't hand the map's layers a new one on every render (and frame of a pan). */
+const NO_MODULES: NonNullable<NonNullable<ReturnType<typeof readSidecarFromDoc>>['modules']> = [];
 
 function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState: LayoutDocState; moduleMode: boolean }) {
   const { doc, awareness, loadError, loading, status, saveNow: checkSaved } = docState;
@@ -1261,7 +1266,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             onModule={isViewer || !doc ? undefined : () => {
               // One whole module picked: its menu. Otherwise make one.
               const sel = useEditorStore.getState().selection;
-              const byPart = moduleByPart(readSidecarFromDoc(doc)?.modules ?? []);
+              const byPart = moduleByPart(readSidecarFromDoc(doc)?.modules ?? NO_MODULES);
               const first = sel[0] ? byPart.get(sel[0]) : undefined;
               const whole = first && first.members.length === sel.length && sel.every((id) => byPart.get(id)?.id === first.id);
               if (whole && !useEditorStore.getState().editingModuleId) setTouchModuleId(first.id);
@@ -1799,14 +1804,14 @@ function Canvas({
   useEffect(() => {
     // A set (or a user's group) picks whole, then modules as before.
     setSelectionShaper((ids) =>
-      shapeSelection(expandToGroups(ids, mapRef.current), readSidecarFromDoc(doc)?.modules ?? [], useEditorStore.getState().editingModuleId),
+      shapeSelection(expandToGroups(ids, mapRef.current), readSidecarFromDoc(doc)?.modules ?? NO_MODULES, useEditorStore.getState().editingModuleId),
     );
     return () => setSelectionShaper(null);
   }, [doc]);
   // The module being edited was deleted (here or by someone else), or the
   // viewer can't edit: back to the whole layout.
   const editedModuleGone =
-    editingModuleId !== null && (isViewer || !(readSidecarFromDoc(doc)?.modules ?? []).some((m) => m.id === editingModuleId));
+    editingModuleId !== null && (isViewer || !(readSidecarFromDoc(doc)?.modules ?? NO_MODULES).some((m) => m.id === editingModuleId));
   useEffect(() => {
     if (editedModuleGone) leaveModuleEdit();
   }, [editedModuleGone]);
@@ -1943,11 +1948,17 @@ function Canvas({
    * each frame. It's drawn once when the view stops.
    */
   const viewStillTimer = useRef<number | null>(null);
+  /** The map as one moving picture while the view moves (viewBitmap.ts). */
+  const viewBitmapRef = useRef<ViewBitmap | null>(null);
   function setViewMoving(moving: boolean): void {
     const stage = stageRef.current;
     if (!stage || stage.listening() === !moving) return;
     stage.listening(!moving);
-    if (!moving) for (const layer of stage.getLayers()) layer.batchDraw();
+    if (moving) viewBitmapRef.current?.freeze();
+    else {
+      viewBitmapRef.current?.thaw();
+      for (const layer of stage.getLayers()) layer.batchDraw();
+    }
   }
   /** The wheel has no "let go": the view counts as still once it stops turning for a moment. */
   function viewMovingFor(ms: number): void {
@@ -2018,6 +2029,10 @@ function Canvas({
       const stage = stageRef.current;
       if (!stage) return;
       stage.listening(true);
+      if (viewBitmapRef.current?.isFrozen) {
+        viewBitmapRef.current.thaw();
+        for (const layer of stage.getLayers()) layer.batchDraw();
+      }
       for (const layer of stage.getLayers()) if (layer.isListening()) layer.drawHit();
     };
     el.addEventListener('pointerdown', settle, true);
@@ -2028,6 +2043,34 @@ function Canvas({
       if (viewStillTimer.current !== null) window.clearTimeout(viewStillTimer.current);
     };
   }, [hasMap]);
+  // The moving picture: made with the stage, and told when the map's
+  // drawing changes so a move shows someone else's edit as it lands.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const vb = new ViewBitmap(stage, () => stage.getLayers().filter((l) => VIEW_BITMAP_LAYERS.some((n) => l.hasName(n))));
+    vb.watchLayers();
+    viewBitmapRef.current = vb;
+    const changed = () => vb.invalidate();
+    doc.on('update', changed);
+    const offSprites = subscribeSpriteProgress(changed);
+    const offStore = useEditorStore.subscribe((s, prev) => {
+      if (
+        s.selection !== prev.selection ||
+        s.annoSelection !== prev.annoSelection ||
+        s.tool !== prev.tool ||
+        s.editingModuleId !== prev.editingModuleId ||
+        s.viewFilter !== prev.viewFilter
+      ) changed();
+    });
+    return () => {
+      doc.off('update', changed);
+      offSprites();
+      offStore();
+      vb.dispose();
+      if (viewBitmapRef.current === vb) viewBitmapRef.current = null;
+    };
+  }, [hasMap, doc]);
   const mapRef = useRef(map);
   mapRef.current = map;
   // A saved view being looked at shows only its sheets (savedViews.ts).
@@ -2221,7 +2264,7 @@ function Canvas({
     if (isViewer || !map || partsByKey.size === 0 || setsCheckedRef.current === doc) return;
     if (!map.layers.some((l) => l.type === 'brick' && l.bricks.length > 0)) return;
     setsCheckedRef.current = doc;
-    const fromModules = findSetModules(map, readSidecarFromDoc(doc)?.modules ?? [], partsByKey, makeId);
+    const fromModules = findSetModules(map, readSidecarFromDoc(doc)?.modules ?? NO_MODULES, partsByKey, makeId);
     const taken = new Set(fromModules.flatMap((s) => [...s.parentOf.keys()]));
     const loose = findLooseSets(map, partsByKey, makeId, taken);
     if (fromModules.length + loose.length === 0) return;
@@ -2976,7 +3019,7 @@ function Canvas({
       // a sheet's paint; parts handle their own) goes back to the whole layout.
       const onPart = !!e.target.findAncestor((n: Konva.Node) => /^brick-/.test(n.name()), true);
       const at = pointerStuds();
-      const frame = editedModuleFrame(map, readSidecarFromDoc(doc)?.modules ?? [], editingModuleId);
+      const frame = editedModuleFrame(map, readSidecarFromDoc(doc)?.modules ?? NO_MODULES, editingModuleId);
       if (!onPart && at && (!frame || at.x < frame.x || at.y < frame.y || at.x > frame.x + frame.width || at.y > frame.y + frame.height)) {
         leaveModuleEdit();
         return;
@@ -3254,7 +3297,7 @@ function Canvas({
   /** The one module the picked parts are exactly, outside Edit module (where parts join the edited module instead). */
   function pickedWholeModule() {
     if (useEditorStore.getState().editingModuleId) return null;
-    return wholeModule(readSidecarFromDoc(doc)?.modules ?? [], selection);
+    return wholeModule(readSidecarFromDoc(doc)?.modules ?? NO_MODULES, selection);
   }
 
   /** Register `ids` as a copy of `module` ("X (copy)", its look, unlinked, unpinned). */
@@ -4085,9 +4128,11 @@ function Canvas({
           Konva ANDs `listening` down the ancestor chain, so a hard
           `listening={false}` here would permanently defeat the child
           Group's `listening={!isViewer}`. */}
-      <KonvaLayer listening={!isViewer} perfectDrawEnabled={false}>
-        {/* View-only (desktop paints it in drawBackground): hidden on export. */}
-        <Group name={EXPORT_HIDE} listening={false}>
+      <KonvaLayer name="background-layer" listening={!isViewer} perfectDrawEnabled={false}>
+        {/* View-only (desktop paints it in drawBackground): hidden on export.
+            Drawn for the screen only, so it stays live under the moving
+            picture while the view moves (viewBitmap.ts). */}
+        <Group name={`${EXPORT_HIDE} ${VIEW_LIVE}`} listening={false}>
           <GridLayer
             map={map}
             {...(viewFilter ? { showGrid: viewFilter.grid } : {})}
@@ -4122,7 +4167,7 @@ function Canvas({
             doc={doc}
             selection={selection}
             partsByKey={partsByKey}
-            modules={readSidecarFromDoc(doc)?.modules ?? []}
+            modules={readSidecarFromDoc(doc)?.modules ?? NO_MODULES}
             editingModuleId={editingModuleId}
             touch={coarsePointer()}
           />
@@ -4175,12 +4220,12 @@ function Canvas({
             }}
           />
           {viewFilter && !viewFilter.labels ? null : isViewer
-            ? <AnchoredLabels map={map} partsByKey={partsByKey} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? []} zoom={zoom} />
+            ? <AnchoredLabels map={map} partsByKey={partsByKey} labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []} modules={readSidecarFromDoc(doc)?.modules ?? NO_MODULES} zoom={zoom} />
             : <AnchoredLabels
                 partsByKey={partsByKey}
                 map={map}
                 labels={readSidecarFromDoc(doc)?.anchoredLabels ?? []}
-                modules={readSidecarFromDoc(doc)?.modules ?? []}
+                modules={readSidecarFromDoc(doc)?.modules ?? NO_MODULES}
                 zoom={zoom}
                 onDoubleClick={setEditingLabel}
                 selectedIds={selectedLabelIds}
@@ -4194,7 +4239,7 @@ function Canvas({
           moves them every frame (liveDragPose.ts) redraws only them, not
           every part on the map. */}
       <KonvaLayer name="module-layer" listening={false} perfectDrawEnabled={false}>
-        <ModuleOverlay map={shown} modules={readSidecarFromDoc(doc)?.modules ?? []} />
+        <ModuleOverlay map={shown} modules={readSidecarFromDoc(doc)?.modules ?? NO_MODULES} />
       </KonvaLayer>
       {/* The parts being dragged move here for the drag (BrickLayer), so
           only they are drawn again every frame. */}
@@ -4209,7 +4254,7 @@ function Canvas({
             doc={doc}
             selection={selection}
             partsByKey={partsByKey}
-            modules={readSidecarFromDoc(doc)?.modules ?? []}
+            modules={readSidecarFromDoc(doc)?.modules ?? NO_MODULES}
             editingModuleId={editingModuleId}
             touch={coarsePointer()}
           />
@@ -4237,7 +4282,7 @@ function Canvas({
           />
         )}
         {editingModuleId && map && (
-          <ModuleEditDim frame={editedModuleFrame(shown, readSidecarFromDoc(doc)?.modules ?? [], editingModuleId)} />
+          <ModuleEditDim frame={editedModuleFrame(shown, readSidecarFromDoc(doc)?.modules ?? NO_MODULES, editingModuleId)} />
         )}
         <MarqueeOverlay marquee={marquee} />
         <SnapRing />
@@ -4279,7 +4324,7 @@ function Canvas({
   // a whole module that is the selection.
   const ctxModule = (() => {
     if (!ctxMenu) return null;
-    const mods = readSidecarFromDoc(doc)?.modules ?? [];
+    const mods = readSidecarFromDoc(doc)?.modules ?? NO_MODULES;
     const byPart = moduleByPart(mods);
     if (ctxMenu.brickIdUnderCursor) return byPart.get(ctxMenu.brickIdUnderCursor) ?? null;
     const first = selection[0] ? byPart.get(selection[0]) : undefined;

@@ -46,6 +46,7 @@ export interface FlexEnd {
  * run. Returns their free ends — none for a run joined at both ends.
  */
 export function flexRunEnds(map: Pick<BbmMap, 'layers'>, selection: readonly string[], parts: ReadonlyMap<string, PartWire>): FlexEnd[] {
+  if (selection.length === 0) return [];
   const want = new Set(selection);
   const out: FlexEnd[] = [];
   for (const layer of map.layers) {
