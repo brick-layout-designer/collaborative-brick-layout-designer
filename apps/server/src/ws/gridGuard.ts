@@ -119,6 +119,18 @@ function deletes(ds: DeleteSet, item: Y.Item): boolean {
   return (ds.clients.get(client) ?? []).some((r) => r.clock < end && clock < r.clock + r.len);
 }
 
+/**
+ * Could this list entry be a ruler (a nested type, or plain JSON: rulerView)?
+ * Only strings, deletions, formatting and values with no object in them
+ * can't. Embeds and JSON content hold JSON too, though neither app writes
+ * them, so they are worked out like values holding an object.
+ */
+function mayHoldRuler(content: unknown): boolean {
+  if (content instanceof Y.ContentDeleted || content instanceof Y.ContentString || content instanceof Y.ContentFormat) return false;
+  if (content instanceof Y.ContentAny) return content.arr.some((v) => v !== null && typeof v === 'object');
+  return true;
+}
+
 /** Is this write of a grid size one valid number that stays? */
 function writesValidSize(item: Y.Item, ds: DeleteSet): boolean {
   const c = item.content;
@@ -182,7 +194,7 @@ function mayBreakGrid(doc: Y.Doc | null, update: DecodedUpdate): boolean {
     if (key === TYPE_KEY && mayWriteGrid(s.content)) return true;
     // Another drawing setting (a sheet's or a ruler's), or a list entry that may be a ruler.
     if (key !== null && (SHEET_KEYS.has(key) || RULER_KEYS.has(key) || key === RULERS_KEY)) return true;
-    if (key === null && (s.content instanceof Y.ContentType || (s.content instanceof Y.ContentAny && s.content.arr.some((v) => v !== null && typeof v === 'object')))) return true;
+    if (key === null && mayHoldRuler(s.content)) return true;
   }
   // Deleting the grid size of a layer that is a grid, unless the layer goes too.
   if (doc) {
