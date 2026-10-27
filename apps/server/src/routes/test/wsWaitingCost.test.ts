@@ -117,6 +117,9 @@ describe('changes left waiting on another editor', () => {
   }
 
   it('never slow down the editor they land with', { timeout: 120_000 }, async () => {
+    // No refill while the test runs, however long it takes: the count of copies is the budgets'.
+    wsPacing.roomCopyBytesPerSecond = 0;
+    wsPacing.copyBytesPerSecond = 0;
     const id = await layout();
     const editor = new Peer(port, id, owner.cookie, new Y.Doc());
     await editor.synced;
