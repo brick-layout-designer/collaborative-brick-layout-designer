@@ -10,7 +10,7 @@
 // Sharing tiers mirror layouts: owner / editor / viewer; org ownership
 // available; explicit collaborators via `custom_part_collaborators`.
 
-import { stripImportSource } from '../utils/partXml.js';
+import { stripImportSource, withNotListed } from '../utils/partXml.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance } from 'fastify';
@@ -342,6 +342,46 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         payload: { partNumber, displayName },
       });
       return { id: req.params.id, partNumber, displayName };
+    },
+  );
+
+  // ---- listed, or only used inside sets ------------------------------------
+  // BlueBrick's <NotListedInLibrary>: a part that only makes sense inside
+  // its sets (a cut piece, a flex half) isn't listed in the Parts panel or
+  // placed by itself. Its XML gets (or loses) the tag, so the desktop and
+  // vanilla BlueBrick read it the same way.
+  app.patch<{ Params: { id: string }; Body: { notListed?: unknown } }>(
+    '/api/custom-parts/:id/listing',
+    { config: { apiToken: 'parts:write' } },
+    async (req, reply) => {
+      const user = requireUser(req);
+      if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_upload_parts' });
+      const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
+      if (role === null) return reply.code(404).send({ error: 'not_found' });
+      if (!hasAtLeast(role, 'editor')) return reply.code(403).send({ error: 'forbidden' });
+      if (typeof req.body?.notListed !== 'boolean') return reply.code(400).send({ error: 'invalid_input' });
+      const part = await db
+        .select({ xmlBlob: schema.customParts.xmlBlob, partNumber: schema.customParts.partNumber })
+        .from(schema.customParts)
+        .where(eq(schema.customParts.id, req.params.id))
+        .get();
+      if (!part) return reply.code(404).send({ error: 'not_found' });
+      const before = Buffer.from(part.xmlBlob as Uint8Array).toString('utf8');
+      const after = withNotListed(before, req.body.notListed);
+      if (after !== before) {
+        await db
+          .update(schema.customParts)
+          .set({ xmlBlob: Buffer.from(after, 'utf8'), updatedAt: new Date() })
+          .where(eq(schema.customParts.id, req.params.id));
+        await writeAuditEvent({
+          resourceKind: 'custom_part',
+          resourceId: req.params.id,
+          userId: user.id,
+          eventType: 'edit',
+          payload: { partNumber: part.partNumber, notListed: req.body.notListed },
+        });
+      }
+      return { id: req.params.id, notListed: req.body.notListed };
     },
   );
 

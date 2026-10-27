@@ -457,6 +457,8 @@ export interface PartWire {
   noSprite?: true;
   /** A custom set: its version, so placed copies can say "Update available" when it changes (editor/setUpdates.ts). */
   setVersion?: string;
+  /** BlueBrick's <NotListedInLibrary>: only placed inside its sets, not listed or placed by itself (editor/hiddenParts.ts). */
+  notListed?: true;
   /** Earlier part numbers that resolve to this part (<OldNameList>); absent when none. */
   oldNames?: string[];
   /** Sprite size in pixels, for the BlueBrick footprint; absent when unreadable. */
@@ -886,6 +888,9 @@ export const api = {
     /** What moving a set to the club `orgSlug` does with your custom parts in it. */
     movePlan: (id: string, orgSlug: string) =>
       get<{ parts: SetMovePlan }>(`/api/custom-parts/${encodeURIComponent(id)}/move-plan?orgSlug=${encodeURIComponent(orgSlug)}`),
+    /** List it in the Parts panel, or (notListed) keep it for the sets that use it. */
+    setListing: (id: string, notListed: boolean) =>
+      patch<{ id: string; notListed: boolean }>(`/api/custom-parts/${encodeURIComponent(id)}/listing`, { notListed }),
     /** Copy into your own parts (no `orgSlug`) or a club's. */
     copy: (id: string, orgSlug?: string) =>
       post<{ id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
