@@ -47,6 +47,21 @@ export function groupMates(layer: Pick<LayerBrick, 'bricks' | 'groups'>, brick: 
   return layer.bricks.filter((b) => topGroupId(layer.groups, b.myGroup) === top).map((b) => b.id);
 }
 
+/**
+ * Every part under the same outermost group as an item whose parent is
+ * `groupId`, on whichever sheet holds that group (a set inside a set, or
+ * inside a user's group, picks whole); [] when there's no such group.
+ * What a click or a press-and-drag on a part of a set takes.
+ */
+export function groupMembersOf(map: Pick<BbmMap, 'layers'>, groupId: string): string[] {
+  if (!groupId) return [];
+  for (const layer of map.layers) {
+    if (layer.type !== 'brick' || !layer.groups?.some((g) => g.id === groupId)) continue;
+    return groupMates(layer, { id: '', myGroup: groupId }).filter((id) => id !== '');
+  }
+  return [];
+}
+
 /** `ids` with every brick of the same outermost groups (a set picks whole, as in BlueBrick). */
 export function expandToGroups(ids: readonly string[], map: Pick<BbmMap, 'layers'> | null | undefined): string[] {
   if (!map || ids.length === 0) return [...ids];

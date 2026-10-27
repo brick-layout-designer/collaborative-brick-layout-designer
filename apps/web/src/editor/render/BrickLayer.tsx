@@ -7,7 +7,7 @@ import type { BbmMap, Brick, LayerBrick } from '@cld/model';
 import { useQuery } from '@tanstack/react-query';
 import { api, spriteUrlFor, type PartWire } from '../../api';
 import { shapeSelectionIds, useEditorStore, type AnnoSelection, type Tool } from '../editorStore';
-import { groupMates } from '../sets';
+import { groupMembersOf } from '../sets';
 import { connectionHingeAngle } from '@cld/parts-catalog/browser';
 import { useShallow } from 'zustand/react/shallow';
 import { readSidecarFromDoc } from '@cld/ydoc';
@@ -394,7 +394,7 @@ const BrickGlyph = memo(function BrickGlyph({
         brick.id,
         getModules(),
         useEditorStore.getState().editingModuleId,
-        brick.myGroup ? collectGroupMembers(getMap(), brick.myGroup) : [],
+        groupMembersOf(getMap(), brick.myGroup),
       );
 
       if (additive) {
@@ -627,8 +627,11 @@ const BrickGlyph = memo(function BrickGlyph({
       // pinned module doesn't move as a whole.
       const st = useEditorStore.getState();
       const modules = getModules();
+      // Pressed on a part not picked yet: it's picked now with its set (or
+      // its group), as a click picks it, so the whole set moves; dragging
+      // only the pressed part left the rest of the set behind.
       if (!st.selection.includes(brick.id)) {
-        const unit = selectionUnit(brick.id, modules, st.editingModuleId, []);
+        const unit = selectionUnit(brick.id, modules, st.editingModuleId, groupMembersOf(map, brick.myGroup));
         if (unit.length > 1) st.setSelection(unit);
       }
       const pinned = pinnedAmong(
@@ -1411,16 +1414,6 @@ function hullColorToCss(c: import('@cld/model').ColorSpec): string {
  * Walk the map and return every brick id sharing the given `myGroup`.
  * Empty groupId returns an empty list.
  */
-function collectGroupMembers(map: BbmMap, groupId: string): string[] {
-  if (!groupId) return [];
-  // Every brick under the same outermost group (a set inside a user's group too).
-  for (const layer of map.layers) {
-    if (layer.type !== 'brick' || !layer.groups.some((g) => g.id === groupId)) continue;
-    return groupMates(layer, { id: '', myGroup: groupId }).filter((id) => id !== '');
-  }
-  return [];
-}
-
 /**
  * Selection halo colors: the selection tint, or desktop's green while a
  * connection snap is live (SelectionOverlay.cpp:26-29).
