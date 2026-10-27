@@ -30,10 +30,10 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { checkIncomingDecoded, type MergeCheck } from './mergeGuard.js';
 import { checkStateVector, checkUpdate } from './updateGuard.js';
 import { MAX_PENDING_BYTES, pendingBytes, restorePending, savePending } from './pending.js';
-import { newPace, type Pace } from './pacing.js';
+import { copyBudget, newPace, type Pace } from './pacing.js';
 import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
-import { checkGridSizesDecoded } from './gridGuard.js';
-import { decodeIncoming } from './decoded.js';
+import { COPY_BUDGET_SPENT, checkGridSizesDecoded } from './gridGuard.js';
+import { decodeIncoming, guardWork } from './decoded.js';
 
 /**
  * Close code and reason for an update refused because it would merge
@@ -273,7 +273,16 @@ function handleMessage(
         // Decoded once for the checks that read its structs (ws/decoded.ts).
         // One Yjs can't decode passes them; Yjs refuses it on its own below.
         const decoded = decodeIncoming(update);
-        const badGrid = decoded ? checkGridSizesDecoded(session.doc, update, decoded) : null;
+        // The few it works out on a copy of the layout count against the
+        // sender's copy budget (ws/pacing.ts): past it, they slow down.
+        const budget = copyBudget(sender.userId);
+        const copied = guardWork.copyBytes;
+        const badGrid = decoded ? checkGridSizesDecoded(session.doc, update, decoded, () => budget.available()) : null;
+        budget.charge(guardWork.copyBytes - copied);
+        if (badGrid === COPY_BUDGET_SPENT) {
+          slowDown(ws, session, sender, update.length);
+          return;
+        }
         if (badGrid !== null) {
           refuseUpdate(ws, session, sender, update.length, 'unreadable', badGrid);
           return;

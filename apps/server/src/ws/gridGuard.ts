@@ -232,14 +232,23 @@ export function checkGridSizes(doc: Y.Doc | null, update: Uint8Array): string | 
   return decoded ? checkGridSizesDecoded(doc, update, decoded) : null;
 }
 
-/** checkGridSizes with the update already decoded (the live handler shares one decode). */
-export function checkGridSizesDecoded(doc: Y.Doc | null, update: Uint8Array, decoded: DecodedUpdate): string | null {
+/** checkGridSizesDecoded's answer when the update needs a copy and `mayCopy` says no: slow the sender down. */
+export const COPY_BUDGET_SPENT = 'it needs a copy of the layout, and its sender has used up their copies for now';
+
+/**
+ * checkGridSizes with the update already decoded (the live handler shares
+ * one decode). `mayCopy`, when given, is asked before working an update
+ * out on a copy of the room's document (the live handler's per-person
+ * budget, ws/pacing.ts); no gives COPY_BUDGET_SPENT.
+ */
+export function checkGridSizesDecoded(doc: Y.Doc | null, update: Uint8Array, decoded: DecodedUpdate, mayCopy?: () => boolean): string | null {
   if (!mayBreakGrid(doc, decoded)) return null;
   const exact = exactVerdict(doc, update, decoded);
   if (exact !== UNSURE) {
     guardWork.gridExact += 1;
     return exact;
   }
+  if (mayCopy && !mayCopy()) return COPY_BUDGET_SPENT;
   return checkGridSizesOnCopy(doc, update);
 }
 
@@ -249,7 +258,11 @@ export function checkGridSizesOnCopy(doc: Y.Doc | null, update: Uint8Array): str
   const before = doc ? drawingProblems(doc) : new Set<string>();
   const after = new Y.Doc();
   try {
-    if (doc) Y.applyUpdate(after, Y.encodeStateAsUpdate(doc));
+    if (doc) {
+      const state = Y.encodeStateAsUpdate(doc);
+      guardWork.copyBytes += state.length;
+      Y.applyUpdate(after, state);
+    }
     Y.applyUpdate(after, update);
     for (const p of drawingProblems(after)) if (!before.has(p)) return refusal(p);
     return null;

@@ -21,7 +21,7 @@ import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import { eq } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createDefaultLayoutDoc, encodeDoc } from '@cld/ydoc';
 import { db, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { attachUser } from '../../auth/cookie.js';
@@ -32,6 +32,7 @@ import { wsRoutes } from '../ws.js';
 import { docHub } from '../../ws/docHub.js';
 import { MAX_PENDING_BYTES, pendingBytes } from '../../ws/pending.js';
 import { Peer } from './wsPeer.js';
+import { resetCopyBudgets, wsPacing } from '../../ws/pacing.js';
 
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../packages/bbm/tests/fixtures');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -239,6 +240,15 @@ describe('WS update guard', () => {
     const id = await create();
     const peer = await rawSocket(port, id, cookieStr);
     await sleep(100);
+    // Each update here is worked out on a copy of the room (it has changes
+    // waiting): room enough in the copy budget (ws/pacing.ts) to reach the limit.
+    const budget = wsPacing.copyByteBurst;
+    wsPacing.copyByteBurst = 1024 * 1024 * 1024;
+    resetCopyBudgets();
+    onTestFinished(() => {
+      wsPacing.copyByteBurst = budget;
+      resetCopyBudgets();
+    });
     const d = new Y.Doc();
     d.clientID = 123456;
     d.getMap('p').set('seed', 1); // never sent: everything after it waits
