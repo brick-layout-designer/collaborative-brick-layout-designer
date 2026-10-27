@@ -35,5 +35,17 @@ export function yourRolesText(o: { myRole: ClubRole; roleNames?: string[] }): st
   return `${names.length === 1 ? 'your role' : 'your roles'}: ${names.join(', ')}`;
 }
 
+/**
+ * How an invite says the role it gives: "as a viewer" (one of the four a
+ * club starts with), "with the role Track crew" (a club's own), or, from
+ * an older server, the fixed role.
+ */
+export function asRole(role: ClubRole, roleName?: string | null): string {
+  if (!roleName) return `as ${aRole(role)}`;
+  const builtin: Record<string, string> = { admin: 'an admin', manager: 'a manager', member: 'a member', viewer: 'a viewer' };
+  const a = builtin[roleName.toLowerCase()];
+  return a ? `as ${a}` : `with the role ${roleName}`;
+}
+
 /** Strongest first, for member lists. */
 export const byRole = (a: ClubRole, b: ClubRole) => RANK[b] - RANK[a];

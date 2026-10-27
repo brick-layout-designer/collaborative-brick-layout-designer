@@ -809,6 +809,8 @@ export const api = {
         /** Whether it's for the signed-in account; null when signed out. */
         forYou: boolean | null;
         role: ClubRole;
+        /** The role it gives, by name (older servers leave it out). */
+        roleName?: string | null;
         orgId: string;
         orgName: string;
         orgSlug: string;

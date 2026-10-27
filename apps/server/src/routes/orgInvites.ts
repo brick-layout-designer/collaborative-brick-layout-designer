@@ -48,6 +48,8 @@ export async function orgInviteRoutes(app: FastifyInstance): Promise<void> {
         invitedEmail: forYou ? invite.invitedEmail : maskEmail(invite.invitedEmail),
         forYou,
         role: invite.role,
+        // The role it gives, by the club's name for it (a Viewer, or a club's own role).
+        roleName: (await inviteRole(invite.orgId, invite))?.name ?? null,
         orgId: invite.orgId,
         orgName: org.name,
         orgSlug: org.slug,
