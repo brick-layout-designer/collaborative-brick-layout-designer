@@ -181,7 +181,7 @@ describe('scopeSummary (P1b scopes)', () => {
     expect(scopeSummary({ scopes: ['layouts:read'] })).toBe('Read only');
     expect(scopeSummary({ scopes: ['layouts:read', 'layouts:write'] })).toBe('Read & edit');
     expect(scopeSummary({ scopes: ['layouts:write', 'layouts:create', 'parts:read'] })).toBe('Read & edit, publish layouts, download parts');
-    expect(scopeSummary({ scopes: ['layouts:read', 'parts:read', 'parts:write'] })).toBe('Read only, upload parts');
+    expect(scopeSummary({ scopes: ['layouts:read', 'parts:read', 'parts:write'] })).toBe('Read only, upload & delete parts');
     expect(scopeSummary({ scopes: ['layouts:read', 'venues:read'] })).toBe('Read only, download venues');
     expect(scopeSummary({ scopes: ['layouts:read', 'venues:read', 'venues:write'] })).toBe('Read only, save venues');
     expect(scopeSummary({ scopes: ['layouts:read', 'account:prefs'] })).toBe('Read only, sync settings');
@@ -199,6 +199,8 @@ describe('scopeSummary (P1b scopes)', () => {
       'venues:read',
       'venues:write',
     ]);
+    // The desktop can delete your parts and sets on the server too (deletePartsFromDesktop).
+    expect(SCOPE_LABELS['parts:write']).toBe('Upload, change and delete your custom parts and sets');
   });
 });
 

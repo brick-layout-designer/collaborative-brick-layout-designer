@@ -10,7 +10,7 @@ export function scopeSummary(t: Pick<ApiTokenSummary, 'scopes'>): string {
   const has = (s: ApiTokenSummary['scopes'][number]) => t.scopes.includes(s);
   const parts = [has('layouts:write') ? 'Read & edit' : 'Read only'];
   if (has('layouts:create')) parts.push('publish layouts');
-  if (has('parts:write')) parts.push('upload parts');
+  if (has('parts:write')) parts.push('upload & delete parts');
   else if (has('parts:read')) parts.push('download parts');
   if (has('venues:write')) parts.push('save venues');
   else if (has('venues:read')) parts.push('download venues');

@@ -343,8 +343,12 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- delete -------------------------------------------------------------
+  // The desktop deletes your own part or set with its API token
+  // (parts:write, the deletePartsFromDesktop feature), under exactly the
+  // website's checks: the owner, or a club role that manages its parts.
   app.delete<{ Params: { id: string } }>(
     '/api/custom-parts/:id',
+    { config: { apiToken: 'parts:write' } },
     async (req, reply) => {
       const user = requireUser(req);
       const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
