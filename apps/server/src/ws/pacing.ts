@@ -20,6 +20,14 @@ export const wsPacing = {
   step1Burst: 5,
   /** ...then one every this many milliseconds. */
   step1EveryMs: 10_000,
+  /**
+   * Bytes of the room's document one person's updates may have the grid
+   * guard copy (ws/gridGuard.ts, the few updates it can't work out from the
+   * keys they touch): a burst of this many, across their connections...
+   */
+  copyByteBurst: 16 * 1024 * 1024,
+  /** ...then this many a second (a copy takes roughly 0.1 ms per KB). */
+  copyBytesPerSecond: 1024 * 1024,
 };
 
 export class TokenBucket {
@@ -43,6 +51,41 @@ export class TokenBucket {
     this.tokens -= n;
     return true;
   }
+
+  /** Whether any tokens are left (none after a charge took it below zero). */
+  available(now: number = Date.now()): boolean {
+    return this.take(0, now) && this.tokens > 0;
+  }
+
+  /** Take `n` tokens after the fact, below zero if need be (work already done). */
+  charge(n: number, now: number = Date.now()): void {
+    this.take(0, now);
+    this.tokens -= n;
+  }
+
+  /** Whether it has refilled completely (nothing owed, nothing to remember). */
+  full(now: number = Date.now()): boolean {
+    this.take(0, now);
+    return this.tokens >= this.capacity;
+  }
+}
+
+const copyBuckets = new Map<string, TokenBucket>();
+
+/** The grid guard's copy budget of one person (wsPacing.copyByteBurst / copyBytesPerSecond), shared by their connections. */
+export function copyBudget(userId: string, now: number = Date.now()): TokenBucket {
+  let bucket = copyBuckets.get(userId);
+  if (!bucket) {
+    if (copyBuckets.size >= 10_000) for (const [id, b] of copyBuckets) if (b.full(now)) copyBuckets.delete(id);
+    bucket = new TokenBucket(wsPacing.copyByteBurst, wsPacing.copyBytesPerSecond / 1000, now);
+    copyBuckets.set(userId, bucket);
+  }
+  return bucket;
+}
+
+/** Forget every copy budget (tests). */
+export function resetCopyBudgets(): void {
+  copyBuckets.clear();
 }
 
 /** One connection's buckets. */
