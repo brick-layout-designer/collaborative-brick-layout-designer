@@ -203,7 +203,7 @@ export function CustomPartsSection({
       {moving && orgs && (
         <MoveCopyDialog
           kind="part"
-          item={{ id: moving.id, title: moving.displayName || moving.partNumber, ownerOrgId: moving.ownerOrgId }}
+          item={{ id: moving.id, title: moving.displayName || moving.partNumber, ownerOrgId: moving.ownerOrgId, isSet: moving.kind === 'set' }}
           canMove={moving.ownerOrgId ? canDeletePart(moving, myUserId, orgs) : moving.ownerUserId === myUserId}
           orgs={orgs}
           onClose={() => setMoving(null)}

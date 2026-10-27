@@ -22,7 +22,7 @@ export interface SetPart {
 }
 
 /** The part numbers (lower-cased) a set's XML names, or none when it isn't a set. */
-function subPartNumbers(xml: Uint8Array): string[] {
+export function subPartNumbers(xml: Uint8Array): string[] {
   try {
     const parsed = parsePartXml(stripImportSource(Buffer.from(xml)).toString('utf8'), { partNumber: 'set', colorCode: '', spritePath: '' });
     return parsed.kind === 'group' ? parsed.subparts.map((s) => s.subKey) : [];

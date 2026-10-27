@@ -5,8 +5,9 @@
 
 import { ClubLogo } from '../orgs/ClubLogo';
 import { useEffect, useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Credit, type OrgSummary, type OwnableKind } from '../api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, type Credit, type OrgSummary, type OwnableKind, type SetMovePlan, type SetPartSummary } from '../api';
+import { HelpButton } from '../help/HelpButton';
 import { creditText, moveToClubWording, ownerLabel, type OwnedItem, type OwnerFilter } from './owners';
 import { askConfirm, showToast } from '../ui/ConfirmDialog';
 import { invalidateFor } from '../live/invalidate';
@@ -248,7 +249,8 @@ export function MoveCopyDialog({
   onClose,
 }: {
   kind: MovableKind;
-  item: { id: string; title: string; ownerOrgId: string | null };
+  /** `isSet`: a custom set, whose own custom parts move with it (the dialog lists them). */
+  item: { id: string; title: string; ownerOrgId: string | null; isSet?: boolean };
   /** The caller may move it (its owner, or an admin of the club holding it). */
   canMove: boolean;
   orgs: readonly OrgSummary[];
@@ -263,6 +265,12 @@ export function MoveCopyDialog({
   const [dest, setDest] = useState(() => (item.ownerOrgId ? '' : (clubsICanAddTo(orgs, addKind)[0]?.slug ?? '')));
   const [error, setError] = useState<string | null>(null);
   const word = KIND_WORD[kind];
+  const setMove = kind === 'part' && !!item.isSet && mode === 'move' && !!dest;
+  const plan = useQuery({
+    queryKey: ['set-move-plan', item.id, dest],
+    queryFn: () => api.customParts.movePlan(item.id, dest),
+    enabled: setMove,
+  });
 
   const run = useMutation({
     mutationFn: async () => {
@@ -279,9 +287,15 @@ export function MoveCopyDialog({
       if (kind === 'part') return api.customParts.move(item.id, slug);
       return api.venues.move(item.id, slug);
     },
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       const key = kind === 'layout' ? 'layouts' : kind === 'module' ? 'modules' : kind === 'part' ? 'custom-parts' : 'venues';
       await qc.invalidateQueries({ queryKey: [key] });
+      if (kind === 'part') await qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+      const moved = res && typeof res === 'object' && 'parts' in res ? (res as { parts?: { moved?: string[] } }).parts?.moved?.length ?? 0 : 0;
+      if (moved > 0) {
+        const club = orgs.find((o) => o.slug === dest)?.name ?? 'the club';
+        showToast(`Moved “${item.title}” and ${moved === 1 ? '1 of your parts' : `${moved} of your parts`} in it to ${club}.`);
+      }
       onClose();
     },
     onError: (e: Error) => setError(e.message),
@@ -358,6 +372,7 @@ export function MoveCopyDialog({
           orgs={orgs}
           exclude={mode === 'move' ? ['', ...(currentSlug ? [currentSlug] : [])] : []}
         />
+        {setMove && <SetMoveParts plan={plan.data?.parts} loading={plan.isLoading} failed={plan.isError} />}
         {item.ownerOrgId && (
           <p className="text-xs text-muted">
             A club’s {word}s stay with the club. Its author can take one back from the ⋯ menu; anyone can make a copy.
@@ -378,6 +393,41 @@ export function MoveCopyDialog({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+const partName = (p: SetPartSummary) => (p.displayName && p.displayName !== p.partNumber ? `${p.displayName} (${p.partNumber})` : p.partNumber);
+
+/** What moving a set does with the custom parts in it: which come along, which stay (the club gets a copy), which the club has. */
+function SetMoveParts({ plan, loading, failed }: { plan: SetMovePlan | undefined; loading: boolean; failed: boolean }) {
+  if (loading) return <p className="text-xs text-muted">Checking the parts in this set…</p>;
+  if (failed || !plan) return <p className="text-xs text-muted">Couldn’t check the parts in this set. Your custom parts in it still move with it.</p>;
+  const groups: [string, SetPartSummary[]][] = [
+    [plan.move.length === 1 ? 'This custom part of yours moves with the set:' : `These ${plan.move.length} custom parts of yours move with the set:`, plan.move],
+    ['These stay yours, because another of your sets uses them. The club gets its own copy:', plan.copy],
+    ['The club already has parts with these numbers, so the set uses the club’s:', plan.inClub],
+    ['These aren’t yours to move, so they stay where they are:', plan.notYours],
+  ];
+  const shown = groups.filter(([, list]) => list.length > 0);
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-soft/40 p-3 text-sm" data-testid="set-move-parts">
+      <p className="flex items-start gap-1">
+        <span>{shown.length === 0 ? 'This set has no custom parts of yours in it, so only the set moves.' : 'Your custom parts in this set:'}</span>
+        <HelpButton helpKey="set.moving" />
+      </p>
+      {shown.map(([label, list]) => (
+        <div key={label}>
+          <p className="text-xs">{label}</p>
+          <ul className="mt-1 list-inside list-disc text-xs">
+            {list.map((p) => (
+              <li key={p.id} className="break-words">
+                {partName(p)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
