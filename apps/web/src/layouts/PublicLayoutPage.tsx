@@ -232,7 +232,7 @@ export function LayoutViewer({
   const btn = 'flex h-11 min-w-11 items-center justify-center rounded-control border border-border bg-panel/95 px-3 text-base font-bold text-ink shadow';
 
   return (
-    <div className="relative h-screen supports-[height:100dvh]:h-dvh w-full overflow-hidden bg-panel">
+    <div className="h-app relative w-full overflow-hidden bg-panel">
       {/* Banner — minimal, kept up so the user knows they're on a public link. */}
       <div
         className="absolute z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-panel/90 px-3 py-1.5 text-sm"

@@ -339,7 +339,7 @@ export function MoveCopyDialog({
         <fieldset className="space-y-2">
           <legend className="mb-1 text-muted">What to do</legend>
           <label className={radio}>
-            <input type="radio" name="mode" checked={mode === 'copy'} onChange={() => pickMode('copy')} />
+            <input type="radio" name="mode" checked={mode === 'copy'} onChange={() => pickMode('copy')} className="shrink-0" />
             <span>
               <span className="font-semibold">Copy</span>
               <span className="block text-xs text-muted">Keep this one where it is and make a copy.</span>
@@ -349,6 +349,7 @@ export function MoveCopyDialog({
             <input
               type="radio"
               name="mode"
+              className="shrink-0"
               checked={mode === 'move'}
               disabled={!moveAllowed}
               onChange={() => pickMode('move')}

@@ -196,7 +196,7 @@ export function TouchActionBar({ actions, onAddPart, onSheets, onEditText, onMod
             type="button"
             onClick={onAddPart}
             data-testid="add-part"
-            className="flex min-h-14 flex-[2] items-center justify-center gap-2 rounded-control bg-accent px-4 text-base font-bold text-accent-ink hover:bg-accent-hover"
+            className="flex min-h-14 flex-[2] items-center whitespace-nowrap justify-center gap-2 rounded-control bg-accent px-4 text-base font-bold text-accent-ink hover:bg-accent-hover"
           >
             <Plus />
             Add part

@@ -313,6 +313,20 @@ body,
   height: 100%;
   overflow: hidden;
 }
+/* The "new version" bar (SiteVersionBar.tsx) sets --site-bar-space while it
+   shows: the page ends above it instead of under it. */
+#root {
+  box-sizing: border-box;
+  padding-bottom: var(--site-bar-space, 0px);
+}
+.h-app {
+  height: calc(100vh - var(--site-bar-space, 0px));
+}
+@supports (height: 100dvh) {
+  .h-app {
+    height: calc(100dvh - var(--site-bar-space, 0px));
+  }
+}
 
 /* "Show me" on a help popover: the control it explains pulses its outline
    (src/help/HelpButton.tsx). A steady outline when motion is turned down. */
