@@ -22,7 +22,7 @@ import { catalogFromParts, recomputeConnectivity } from '../useConnectivity';
 import { LOCAL_ORIGIN } from '../useLayoutDoc';
 import { buildPartList } from '../partList';
 import { indexParts } from '../partIndex';
-import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, libraryItems, selectedSet, setAnchorOrder, ungroupState } from '../sets';
+import { cloneGroups, expandSet, expandToGroups, groupMembersOf, findLooseSets, findSetModules, setsAgainNotice, libraryItems, selectedSet, setAnchorOrder, ungroupState } from '../sets';
 
 const part = (key: string, connections: unknown[], extra: Partial<PartWire> = {}) =>
   ({
@@ -148,6 +148,26 @@ describe('placing a set', () => {
     expect(house.displayArea.x + house.displayArea.width / 2).toBeCloseTo(10);
     expect(expandToGroups([house.id], docToBbm(doc)).sort()).toEqual(L.bricks.map((b) => b.id).sort());
     expect(libraryItems(L)).toEqual(['TOWN.GROUP']);
+  });
+});
+
+describe('pressing on a part of a placed set', () => {
+  it('takes every part of the set, through nested sets, and nothing else', () => {
+    const { doc, layerId } = newDoc();
+    place(doc, layerId, 'town.group', { x: 0, y: 0 });
+    place(doc, layerId, 'flex.group', { x: 0, y: 40 });
+    const L = layerOf(doc);
+    const map = docToBbm(doc);
+    const town = L.groups.find((g) => g.partNumber === 'TOWN.GROUP')!;
+    const inTown = L.bricks.filter((b) => b.myGroup === town.id || L.groups.find((g) => g.id === b.myGroup)?.myGroup === town.id);
+    expect(inTown.length).toBeGreaterThan(1);
+    // A part of the nested house, and one of the town itself: the whole town.
+    for (const b of inTown) expect(groupMembersOf(map, b.myGroup).sort()).toEqual(inTown.map((t) => t.id).sort());
+    // The flex track beside it is its own set.
+    const flex = L.bricks.filter((b) => !inTown.includes(b));
+    expect(groupMembersOf(map, flex[0]!.myGroup).sort()).toEqual(flex.map((b) => b.id).sort());
+    // A loose part has no set.
+    expect(groupMembersOf(map, '')).toEqual([]);
   });
 });
 
