@@ -445,14 +445,16 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
             .where(and(eq(schema.customPartInvites.customPartId, req.params.id), isNull(schema.customPartInvites.acceptedAt)))
         : [];
       // A set: its own custom parts, which come along when it's shared.
-      // A part: who has it only through a shared set, and which.
-      const setParts = await setPartsFor(req.params.id);
+      // A part: who has it only through a shared set, and which. Both are
+      // for the people who manage sharing (the owner's other parts and
+      // sets aren't everyone's to see); each person sees their own sets.
+      const setParts = seesEmails ? await setPartsFor(req.params.id) : [];
       const viaSets = await setsBringing(req.params.id);
       return {
         invites: invites.map((i) => ({ id: i.id, invitedEmail: i.invitedEmail, role: i.role, expiresAt: i.expiresAt.getTime() })),
         ...(setParts.length > 0 ? { setParts: setParts.map((p) => ({ id: p.id, partNumber: p.partNumber, displayName: p.displayName })) } : {}),
         collaborators: collaborators.map((c) => ({
-          ...(viaSets.has(c.userId) ? { viaSets: viaSets.get(c.userId) } : {}),
+          ...(viaSets.has(c.userId) && (seesEmails || c.userId === user.id) ? { viaSets: viaSets.get(c.userId) } : {}),
           userId: c.userId,
           role: c.role,
           addedAt: c.addedAt.getTime(),
