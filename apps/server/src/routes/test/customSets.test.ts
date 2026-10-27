@@ -152,6 +152,18 @@ describe('a set of custom parts', () => {
     expect((await upload({ partNumber: 'NOPE', displayName: 'Nope', xmlBase64: b64(PART_XML), spriteMime: 'image/gif' })).statusCode).toBe(400);
   });
 
+  it('refuses a set named like one of its own parts, which would nest copies of itself when placed', async () => {
+    const res = await upload({ partNumber: 'left_switch_cut_150.SWITCH-BASE2', displayName: 'Base 2', xmlBase64: b64(SET_XML) });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'set_named_like_its_part' });
+    // Renaming one to such a number is refused too; keeping the number (a rename) still works.
+    const { id } = (await uploadSet()).json() as { id: string };
+    const renumbered = await upload({ partNumber: 'Left_switch_cut_150.switch-base1', displayName: 'Base 1', xmlBase64: b64(SET_XML) }, 'PUT', id);
+    expect(renumbered.json()).toEqual({ error: 'set_named_like_its_part' });
+    const renamed = await upload({ partNumber: 'Left_switch_cut_150.whole', displayName: 'Renamed', xmlBase64: b64(SET_XML) }, 'PUT', id);
+    expect(renamed.statusCode).toBe(200);
+  });
+
   // Save selection as set, as the website sends it: a stock part and one of
   // your own parts (by its number), in "My sets", and later renamed.
   const WEB_SET = `<?xml version="1.0" encoding="utf-8"?>

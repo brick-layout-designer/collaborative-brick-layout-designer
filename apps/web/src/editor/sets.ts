@@ -17,6 +17,22 @@ const partOf = (parts: Parts, key: string) => parts.get(key.toLowerCase());
  */
 const placedKey = (p: PartWire) => (p.source === 'custom' ? p.key : p.key.toUpperCase());
 
+/**
+ * The part a set's sub-part `subKey` names, never the set itself or a set
+ * it sits in (`outer`): a set named like one of its own parts would
+ * otherwise find itself for that part and nest copies of itself. Then the
+ * part with that number is used, or none.
+ */
+export function subpartOf(parts: Parts, subKey: string, outer: readonly PartWire[]): PartWire | undefined {
+  const found = partOf(parts, subKey);
+  if (!found || !outer.includes(found)) return found;
+  const want = subKey.toLowerCase();
+  for (const p of parts.values()) {
+    if (p.kind !== 'group' && (p.key.toLowerCase() === want || p.partNumber.toLowerCase() === want)) return p;
+  }
+  return undefined;
+}
+
 /** `id` and its parents, innermost first (cycles and dangling ids stop it). */
 export function groupChain(groups: readonly Group[] | undefined, id: string | undefined): Group[] {
   if (!groups || groups.length === 0 || !id) return [];
@@ -168,16 +184,17 @@ export function expandSet(
   const out: ExpandedSet = { bricks: [], groups: [] };
   const top = partOf(parts, key);
   if (!top || top.kind !== 'group' || top.subparts.length === 0) return out;
-  const visit = (set: PartWire, at: Pt, turn: number, parent: string, depth: number) => {
+  const visit = (set: PartWire, at: Pt, turn: number, parent: string, outer: readonly PartWire[]) => {
     const group: Group = { id: newId(), partNumber: placedKey(set), myGroup: parent };
     out.groups.push(group);
+    const inside = [...outer, set];
     for (const sp of set.subparts) {
       const r = rotated({ x: sp.x, y: sp.y }, turn);
       const pos = { x: at.x + r.x, y: at.y + r.y };
       const turned = turn + sp.angle;
-      const sub = partOf(parts, sp.subKey);
-      if (sub && sub.kind === 'group' && depth < 16) {
-        visit(sub, pos, turned, group.id, depth + 1);
+      const sub = subpartOf(parts, sp.subKey, inside);
+      if (sub && sub.kind === 'group' && inside.length < 16) {
+        visit(sub, pos, turned, group.id, inside);
         continue;
       }
       const orientation = normalised(turned);
@@ -190,7 +207,7 @@ export function expandSet(
       });
     }
   };
-  visit(top, centre, angle, '', 0);
+  visit(top, centre, angle, '', []);
   return out;
 }
 

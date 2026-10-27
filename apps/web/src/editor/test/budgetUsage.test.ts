@@ -76,6 +76,14 @@ describe('Use Budget Limitation (desktop canAddToBudget)', () => {
     expect(canAddToBudget(new Map([['3710.1', 2]]), usage, 'inner.set', 1, true, index)).toBe(false);
   });
 
+  it('a set named like one of its own parts counts that part once, not copies of itself', () => {
+    const own = new Map<string, PartWire>([
+      ['yard', group('yard', ['yard', '3710.1'])],
+      ['3710.1', leaf('3710.1')],
+    ]);
+    expect([...setLeafParts(own, 'yard')]).toEqual([['yard', 1], ['3710.1', 1]]);
+  });
+
   it('paste keeps bricks in order while they fit and counts the rest as refused', () => {
     const pasted = ['3710.1', '3001.1', '3710.1', '3710.1', '3710.1', '3710.1'].map((p, i) => ({ p, i }));
     const { kept, refused } = withinBudget(limits, map, pasted, (b) => b.p, true);

@@ -87,6 +87,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invite_no_longer_valid: 'This invite no longer works: the layout changed hands, or the person who sent it no longer manages it. Ask its owner for a new one.',
   already_yours: 'It’s already yours.',
   part_number_taken: 'There’s already a part with that number there.',
+  set_named_like_its_part: 'A set can’t have the same name as a part inside it. Pick another name.',
   invalid_email: 'Enter a valid email address.',
   forbidden: "You don't have permission to do that.",
   not_found: 'That item could not be found.',

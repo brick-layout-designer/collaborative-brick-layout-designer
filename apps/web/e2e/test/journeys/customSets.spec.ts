@@ -1,10 +1,10 @@
 // Journey — a set of your own, made on the website.
 //
 //   Pick two parts → Map ▸ Modules & sets ▸ Save selection as set… saves
-//   them to your custom parts → the set is in the Parts panel straight away
-//   (no refresh) → it places as one group of its two parts → right-click ▸
-//   Rename set… → right-click ▸ Delete set…, which says the layouts that
-//   use it keep their parts.
+//   them to your custom parts (not under the number of a part inside it) →
+//   the set is in the Parts panel straight away (no refresh) → it places as
+//   one group of its two parts → right-click ▸ Rename set… → right-click ▸
+//   Delete set…, which says the layouts that use it keep their parts.
 
 import { test, expect, type Page } from '@playwright/test';
 import { mapMenu, signIn } from '../../helpers';
@@ -44,6 +44,10 @@ test('save a selection as a set, place it, rename it and delete it', async ({ pa
   await expect(dialog).toContainText('A set is a group of parts saved together, to place again in one go.');
   await expect(dialog).toContainText('2 parts selected.');
   await expect(dialog.getByRole('button', { name: 'Download .set.xml' })).toBeEnabled();
+  // A set can't be named like a part inside it: placing it would nest copies of itself.
+  await dialog.getByLabel('Set name').fill(PART);
+  await dialog.getByRole('button', { name: 'Save set' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('is a part in this set, so the set can’t have that name too');
   await dialog.getByLabel('Set name').fill(SET);
   await dialog.getByRole('button', { name: 'Save set' }).click();
   await expect(dialog).toHaveCount(0);

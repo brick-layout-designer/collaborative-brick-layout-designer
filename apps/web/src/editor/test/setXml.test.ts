@@ -6,7 +6,7 @@ import { parsePartXml } from '@cld/parts-catalog/browser';
 import type { Brick } from '@cld/model';
 import type { PartWire } from '../../api';
 import { indexParts } from '../partIndex';
-import { buildSetXml, renameSetXml, setPartNumber, setSubparts } from '../setXml';
+import { buildSetXml, partNamedLikeSet, renameSetXml, setPartNumber, setSubparts } from '../setXml';
 
 const brick = (partNumber: string, x: number, y: number, orientation = 0): Brick => ({
   id: `${partNumber}-${x}`,
@@ -49,6 +49,14 @@ describe('save selection as set', () => {
     expect(setPartNumber('a/b: c?')).toBe('a_b_ c_');
     expect(setPartNumber('Yard.set')).toBe('Yard');
     expect(setPartNumber(' . ')).toBe('Set');
+  });
+
+  it('refuses a name that is one of its own parts’ numbers, whatever the case', () => {
+    const subs = setSubparts([brick('3001.1', 0, 0), brick('custom:abc', 16, 0)], index);
+    expect(partNamedLikeSet(setPartNumber('my_station'), subs)).toBe('MY_STATION');
+    expect(partNamedLikeSet(setPartNumber('3001.1'), subs)).toBe('3001.1');
+    expect(partNamedLikeSet(setPartNumber('My station yard'), subs)).toBeNull();
+    expect(partNamedLikeSet(setPartNumber('3001'), subs)).toBeNull();
   });
 
   it('renaming changes only the English name', () => {
