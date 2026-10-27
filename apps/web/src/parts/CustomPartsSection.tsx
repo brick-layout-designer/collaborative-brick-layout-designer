@@ -16,7 +16,9 @@ import { AddToCollectionDialog } from '../catalog/AddToCollection';
 import { atLeast } from '../orgs/clubRoles';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { PartPicture } from './PartPicture';
-import { CUSTOM_PART_DELETE_WORDING } from '../ui/deleteWording';
+import { CUSTOM_PART_DELETE_WORDING, SET_DELETE_WORDING } from '../ui/deleteWording';
+import { RenameDialog } from '../ui/RenameDialog';
+import { renameSet } from './setActions';
 
 const PartShareDialog = lazyRetry(() => import('../modules/ModuleShareDialog').then((m) => ({ default: m.PartShareDialog })));
 
@@ -49,6 +51,7 @@ export function CustomPartsSection({
   const [toCollection, setToCollection] = useState<CustomPartSummary | null>(null);
   const [moving, setMoving] = useState<CustomPartSummary | null>(null);
   const [sharingPeople, setSharingPeople] = useState<CustomPartSummary | null>(null);
+  const [renamingSet, setRenamingSet] = useState<CustomPartSummary | null>(null);
   const hasClubs = (orgs?.length ?? 0) > 0;
   // A member (not an admin or manager) of a trusted club shares its parts for the club's own review.
   const trustedMember = (p: CustomPartSummary) =>
@@ -123,6 +126,11 @@ export function CustomPartsSection({
                     Download picture
                   </a>
                 )}
+                {p.kind === 'set' && (p.role === 'owner' || p.role === 'editor') && (
+                  <button role="menuitem" type="button" onClick={() => setRenamingSet(p)} className={MORE_ITEM}>
+                    Rename set…
+                  </button>
+                )}
                 <button role="menuitem" type="button" onClick={() => setSharingPeople(p)} className={MORE_ITEM}>
                   {canDeletePart(p, myUserId, orgs) ? 'Share with people…' : 'People with access…'}
                 </button>
@@ -167,7 +175,7 @@ export function CustomPartsSection({
                     type="button"
                     className={`${MORE_ITEM} text-danger`}
                     onClick={async () => {
-                      if (await confirmDelete(p.partNumber, CUSTOM_PART_DELETE_WORDING))
+                      if (await confirmDelete(p.partNumber, p.kind === 'set' ? SET_DELETE_WORDING : CUSTOM_PART_DELETE_WORDING))
                         remove.mutate(p.id, { onSuccess: () => toastDeleted(p.partNumber) });
                     }}
                   >
@@ -180,6 +188,17 @@ export function CustomPartsSection({
         </ul>
       )}
       {/* It saves to the club being shown, like New layout. */}
+      {renamingSet && (
+        <RenameDialog
+          heading="Rename set"
+          current={renamingSet.displayName || renamingSet.partNumber}
+          onSave={async (name) => {
+            await renameSet(renamingSet, name);
+            await Promise.all([qc.invalidateQueries({ queryKey: ['custom-parts'] }), qc.invalidateQueries({ queryKey: ['parts-catalog'] })]);
+          }}
+          onClose={() => setRenamingSet(null)}
+        />
+      )}
       {uploading && <UploadPartDialog filter={filter} onClose={() => setUploading(false)} />}
       {moving && orgs && (
         <MoveCopyDialog

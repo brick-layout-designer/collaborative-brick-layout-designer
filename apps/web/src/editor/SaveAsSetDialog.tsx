@@ -1,22 +1,41 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import * as Y from 'yjs';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { docToBbm } from '@cld/ydoc';
-import { noticeDownloaded, useEditorStore } from './editorStore';
 import type { LayerBrick } from '@cld/model';
+import { api, toBase64 } from '../api';
+import { HelpButton } from '../help/HelpButton';
+import { noticeDownloaded, useEditorStore } from './editorStore';
+import { indexParts } from './partIndex';
+import { buildSetXml, setPartNumber, setSubparts } from './setXml';
 import { useEscape } from './useEscape';
 
 interface Props {
   doc: Y.Doc;
   onClose: () => void;
+  /** Only looking at this layout: say why the set can't be saved. */
+  viewOnly?: boolean;
 }
 
-export function SaveAsSetDialog({ doc, onClose }: Props) {
+/**
+ * Save selection as set: the picked parts, as they sit, saved to your
+ * custom parts as a set, so the Parts panel can place them again in any
+ * layout (and they can be shared like a part). Download .set.xml still
+ * gives the file, for BlueBrick or a parts folder.
+ */
+export function SaveAsSetDialog({ doc, onClose, viewOnly = false }: Props) {
   useEscape(onClose);
+  const qc = useQueryClient();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const selection = useEditorStore((s) => s.selection);
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const catalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 60_000 });
+  const mine = useQuery({ queryKey: ['custom-parts'], queryFn: api.customParts.list, enabled: !!me.data?.user });
+  const index = useMemo(() => indexParts(catalog.data?.parts), [catalog.data]);
 
-  // Collect selected bricks from all brick layers.
+  // The selected parts, on every parts sheet.
   const map = docToBbm(doc);
   const selSet = new Set(selection);
   const picked = map.layers
@@ -24,55 +43,81 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
     .flatMap((l) => l.bricks)
     .filter((b) => selSet.has(b.id));
 
-  function submit(e: FormEvent) {
+  const user = me.data?.user;
+  const cannotSave = me.isLoading
+    ? 'Checking your account…'
+    : !user
+      ? 'Sign in to save sets to your custom parts. You can still download it as a file.'
+      : user.isDemoAccount
+        ? 'The demo account can’t save parts. Make your own account to save sets; you can still download it as a file.'
+        : viewOnly
+          ? 'You can only look at this layout, so saving from it is turned off. You can still download it as a file.'
+          : null;
+
+  const trimmedName = () => name.trim() || 'New Set';
+  const setXml = () => buildSetXml(trimmedName(), setSubparts(picked, index));
+
+  async function save(e: FormEvent) {
     e.preventDefault();
     if (picked.length === 0) {
-      setError('Select one or more bricks first.');
+      setError('Select one or more parts first.');
       return;
     }
-    const trimmed = name.trim() || 'New Set';
-
-    // Compute centroid of display-area centres (equivalent to hull-bbox
-    // centres for parts without an explicit mOffset, which covers all
-    // standard BlueBrickParts shapes).
-    let sumX = 0, sumY = 0;
-    for (const b of picked) {
-      sumX += b.displayArea.x + b.displayArea.width / 2;
-      sumY += b.displayArea.y + b.displayArea.height / 2;
+    if (cannotSave) return;
+    const displayName = trimmedName();
+    const partNumber = setPartNumber(displayName);
+    const taken = mine.data?.parts.some((p) => p.ownerUserId === user?.id && p.partNumber.toLowerCase() === partNumber.toLowerCase());
+    if (taken) {
+      setError(`You already have a part or set called “${partNumber}”. Pick another name.`);
+      return;
     }
-    const cx = sumX / picked.length;
-    const cy = sumY / picked.length;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.customParts.create({
+        partNumber,
+        displayName,
+        xmlBase64: toBase64(new TextEncoder().encode(setXml())),
+        category: 'My sets',
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['custom-parts'] }),
+        qc.invalidateQueries({ queryKey: ['parts-catalog'] }),
+      ]);
+      useEditorStore.getState().showNotice(`Saved the set “${displayName}”. It’s in the Parts panel, under My sets.`, 'done', 7000);
+      onClose();
+    } catch (err) {
+      setError(`Could not save the set: ${(err as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
 
-    const xml = buildSetXml(trimmed, picked.map((b) => ({
-      partKey: b.partNumber,
-      x: (b.displayArea.x + b.displayArea.width / 2) - cx,
-      y: (b.displayArea.y + b.displayArea.height / 2) - cy,
-      angle: b.orientation,
-    })));
-
-    // Sanitise filename — mirror desktop's rules.
-    // Control characters are what we're stripping out here.
-    // eslint-disable-next-line no-control-regex
-    let safe = trimmed.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
-    safe = safe.replace(/^[. ]+|[. ]+$/g, '') || 'Set';
-    if (!safe.toLowerCase().endsWith('.set')) safe += '.set';
-    downloadText(safe + '.xml', xml);
+  function download() {
+    if (picked.length === 0) {
+      setError('Select one or more parts first.');
+      return;
+    }
+    downloadText(`${setPartNumber(trimmedName())}.set.xml`, setXml());
     onClose();
   }
 
   return (
     <div role="dialog" aria-label="Save selection as set" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <form
-        onSubmit={submit}
-        className="w-80 space-y-3 rounded-lg border border-border bg-panel p-5 text-sm shadow-xl"
+        onSubmit={save}
+        className="w-96 max-w-[calc(100vw-2rem)] space-y-3 rounded-lg border border-border bg-panel p-5 text-sm shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-base font-semibold">Save Selection as Set</h3>
-        {picked.length === 0 && (
-          <p className="text-xs text-amber-400">No bricks selected. Select bricks first.</p>
-        )}
-        {picked.length > 0 && (
-          <p className="text-xs text-muted">{picked.length} brick{picked.length !== 1 ? 's' : ''} selected.</p>
+        <h3 className="text-base font-semibold">Save selection as set</h3>
+        <p className="flex items-start gap-1 text-xs text-muted">
+          <span>A set is a group of parts saved together, to place again in one go. It goes to your custom parts.</span>
+          <HelpButton helpKey="set.about" />
+        </p>
+        {picked.length === 0 ? (
+          <p className="text-xs text-amber-400">No parts selected. Select the parts for the set first.</p>
+        ) : (
+          <p className="text-xs text-muted">{picked.length} part{picked.length !== 1 ? 's' : ''} selected.</p>
         )}
         <label className="block">
           <span className="mb-1 block text-muted">Set name</span>
@@ -84,60 +129,31 @@ export function SaveAsSetDialog({ doc, onClose }: Props) {
             autoFocus
           />
         </label>
-        {error && <p className="text-xs text-danger">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-1.5 hover:bg-soft"
-          >
+        {cannotSave && picked.length > 0 && <p className="text-xs text-amber-400">{cannotSave}</p>}
+        {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-1.5 hover:bg-soft">
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
+            onClick={download}
             disabled={picked.length === 0}
-            className="rounded-lg bg-accent text-accent-ink px-4 py-1.5 hover:bg-accent-hover disabled:opacity-40"
+            className="rounded-lg border border-border px-4 py-1.5 hover:bg-soft disabled:opacity-40"
           >
             Download .set.xml
+          </button>
+          <button
+            type="submit"
+            disabled={picked.length === 0 || !!cannotSave || saving}
+            className="rounded-lg bg-accent px-4 py-1.5 text-accent-ink hover:bg-accent-hover disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save set'}
           </button>
         </div>
       </form>
     </div>
   );
-}
-
-function buildSetXml(
-  name: string,
-  subparts: { partKey: string; x: number; y: number; angle: number }[],
-): string {
-  const lines: string[] = [];
-  lines.push('<?xml version="1.0" encoding="utf-8"?>');
-  lines.push('<group>');
-  lines.push(`\t<Author>Collaborative Brick Layout Designer</Author>`);
-  lines.push(`\t<Description>`);
-  lines.push(`\t\t<en>${escXml(name)}</en>`);
-  lines.push(`\t</Description>`);
-  lines.push(`\t<CanUngroup>true</CanUngroup>`);
-  lines.push(`\t<SubPartList>`);
-  for (const sp of subparts) {
-    lines.push(`\t\t<SubPart id="${escXml(sp.partKey)}">`);
-    lines.push(`\t\t\t<position>`);
-    lines.push(`\t\t\t\t<x>${sp.x.toFixed(6)}</x>`);
-    lines.push(`\t\t\t\t<y>${sp.y.toFixed(6)}</y>`);
-    lines.push(`\t\t\t</position>`);
-    lines.push(`\t\t\t<angle>${sp.angle.toFixed(4)}</angle>`);
-    lines.push(`\t\t</SubPart>`);
-  }
-  lines.push(`\t</SubPartList>`);
-  lines.push('</group>');
-  return lines.join('\n') + '\n';
-}
-
-// Control characters XML 1.0 doesn't allow (a pasted name with one made a
-// file BlueBrick won't open) are left out, as @cld/bbm's writer does.
-function escXml(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function downloadText(filename: string, text: string) {

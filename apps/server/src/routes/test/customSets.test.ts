@@ -152,6 +152,101 @@ describe('a set of custom parts', () => {
     expect((await upload({ partNumber: 'NOPE', displayName: 'Nope', xmlBase64: b64(PART_XML), spriteMime: 'image/gif' })).statusCode).toBe(400);
   });
 
+  // Save selection as set, as the website sends it: a stock part and one of
+  // your own parts (by its number), in "My sets", and later renamed.
+  const WEB_SET = `<?xml version="1.0" encoding="utf-8"?>
+<group>
+	<Author>Collaborative Brick Layout Designer</Author>
+	<Description>
+		<en>Station yard</en>
+	</Description>
+	<CanUngroup>true</CanUngroup>
+	<SubPartList>
+		<SubPart id="3001.1">
+			<position>
+				<x>-8.000000</x>
+				<y>0.000000</y>
+			</position>
+			<angle>90.0000</angle>
+		</SubPart>
+		<SubPart id="Left_switch_cut_150.switch-base1">
+			<position>
+				<x>8.000000</x>
+				<y>0.000000</y>
+			</position>
+			<angle>0.0000</angle>
+		</SubPart>
+	</SubPartList>
+</group>
+`;
+  // The desktop's Save selection as set (saveload::writeSetXml), sent by its
+  // "Also put it on the server": XML only, named as its file.
+  const DESKTOP_SET = `<?xml version="1.0" encoding="UTF-8"?>
+<group>
+ <Author>Collaborative Brick Layout Designer</Author>
+ <Description>
+  <en>Desktop yard</en>
+ </Description>
+ <CanUngroup>true</CanUngroup>
+ <SubPartList>
+  <SubPart id="3001.1">
+   <position>
+    <x>-4</x>
+    <y>0</y>
+   </position>
+   <angle>0</angle>
+  </SubPart>
+  <SubPart id="3001.1">
+   <position>
+    <x>4</x>
+    <y>0</y>
+   </position>
+   <angle>0</angle>
+  </SubPart>
+ </SubPartList>
+</group>
+`;
+
+  it('takes a set saved on the website, of stock and custom parts, renames it and deletes it', async () => {
+    const res = await upload({ partNumber: 'Station yard', displayName: 'Station yard', xmlBase64: b64(WEB_SET), category: 'My sets' });
+    expect(res.statusCode).toBe(201);
+    const { id } = res.json() as { id: string };
+    const listed = (await catalog()).find((p) => p.partNumber === 'Station yard') as WirePart & { category: string; description: string };
+    expect(listed).toMatchObject({ kind: 'group', noSprite: true, category: 'My sets', description: 'Station yard' });
+    expect(listed.subparts.map((s) => s.subKey)).toEqual(['3001.1', 'left_switch_cut_150.switch-base1']);
+    expect(listed.subparts[0]).toMatchObject({ x: -8, y: 0, angle: 90 });
+
+    // Rename: the same number, a new name in the lists and in its XML.
+    const renamed = await upload({ partNumber: 'Station yard', displayName: 'North yard', xmlBase64: b64(WEB_SET.replace('Station yard', 'North yard')) }, 'PUT', id);
+    expect(renamed.statusCode).toBe(200);
+    invalidatePartsCache();
+    const after = (await catalog()).find((p) => p.partNumber === 'Station yard') as WirePart & { category: string; description: string };
+    expect(after).toMatchObject({ description: 'North yard', category: 'My sets', kind: 'group' });
+    const xml = await app.inject({ method: 'GET', url: `/api/custom-parts/${id}/xml`, headers: { cookie: cookieHeader } });
+    expect(xml.body).toContain('<en>North yard</en>');
+
+    // The same name again is refused, so the website asks for another.
+    expect((await upload({ partNumber: 'Station yard', displayName: 'Again', xmlBase64: b64(WEB_SET) })).json()).toEqual({ error: 'part_number_taken' });
+
+    const gone = await app.inject({ method: 'DELETE', url: `/api/custom-parts/${id}`, headers: { cookie: cookieHeader } });
+    expect(gone.statusCode).toBe(200);
+    invalidatePartsCache();
+    expect((await catalog()).some((p) => p.partNumber === 'Station yard')).toBe(false);
+  });
+
+  it('takes a set saved on the desktop and lists it as a set you own', async () => {
+    const res = await upload({ partNumber: 'Desktop yard', displayName: 'Desktop yard', xmlBase64: b64(DESKTOP_SET) });
+    expect(res.statusCode).toBe(201);
+    const listed = (await catalog()).find((p) => p.partNumber === 'Desktop yard')!;
+    expect(listed).toMatchObject({ kind: 'group', noSprite: true });
+    expect(listed.subparts).toHaveLength(2);
+    expect(listed.subparts.map((s) => s.x)).toEqual([-4, 4]);
+    const list = (await app.inject({ method: 'GET', url: '/api/custom-parts', headers: { cookie: cookieHeader } })).json() as {
+      parts: { partNumber: string; kind?: string; role: string }[];
+    };
+    expect(list.parts.find((p) => p.partNumber === 'Desktop yard')).toMatchObject({ kind: 'set', role: 'owner' });
+  });
+
   it('servers say they take sets, so a desktop knows to send them', () => {
     expect(FEATURES).toContain('uploadSets');
   });
