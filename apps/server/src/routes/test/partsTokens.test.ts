@@ -77,12 +77,17 @@ describe('parts routes with API tokens', () => {
 
     const reader = await issueToken(app, user.cookie, 'parts:read');
     expect((await upload(bearer(reader))).json().error).toBe('insufficient_scope');
-    // Deleting a part is not on the token allow-list at all.
+    // Deleting a part takes parts:write (deletePartsFromDesktop), not parts:read.
     const writer = await issueToken(app, user.cookie, 'parts:write');
     const id = ((await upload(bearer(writer))).json() as { id: string }).id;
-    const del = await app.inject({ method: 'DELETE', url: `/api/custom-parts/${id}`, headers: bearer(writer) });
-    expect(del.statusCode).toBe(403);
-    expect(del.json().error).toBe('token_not_allowed');
+    const refused = await app.inject({ method: 'DELETE', url: `/api/custom-parts/${id}`, headers: bearer(reader) });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error).toBe('insufficient_scope');
+    expect((await app.inject({ method: 'DELETE', url: `/api/custom-parts/${id}`, headers: bearer(writer) })).statusCode).toBe(200);
+    // Who it's shared with is not on the token allow-list at all.
+    const people = await app.inject({ method: 'GET', url: `/api/custom-parts/${id}/collaborators`, headers: bearer(writer) });
+    expect(people.statusCode).toBe(403);
+    expect(people.json().error).toBe('token_not_allowed');
   });
 
   it('serves public part files to a desktop that sends its token with them', async () => {
@@ -100,8 +105,8 @@ describe('parts routes with API tokens', () => {
       expect(got.statusCode).toBe(200);
       expect(got.body).toBe('<part/>');
       // Anything else still refuses a token it isn't allowed.
-      const del = await files.inject({ method: 'DELETE', url: '/api/custom-parts/x', headers: bearer(reader) });
-      expect(del.json().error).toBe('token_not_allowed');
+      const people = await files.inject({ method: 'GET', url: '/api/custom-parts/x/collaborators', headers: bearer(reader) });
+      expect(people.json().error).toBe('token_not_allowed');
       await files.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

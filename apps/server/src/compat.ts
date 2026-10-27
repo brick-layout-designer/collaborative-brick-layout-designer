@@ -39,6 +39,8 @@ export const FEATURES = [
   'catalogShare',
   // POST /api/custom-parts takes a set (a <group> XML, no sprite), and the catalog and manifest list it.
   'uploadSets',
+  // DELETE /api/custom-parts/:id takes the desktop's API token (parts:write), with the website's checks.
+  'deletePartsFromDesktop',
 ] as const;
 
 interface Parsed {

@@ -10,7 +10,7 @@ export const SCOPE_LABELS: Record<ApiScope, string> = {
   'layouts:write': 'Edit your layouts (live sync) and save modules',
   'layouts:create': 'Publish new layouts to your account or your clubs',
   'parts:read': 'Download the parts library and custom parts',
-  'parts:write': 'Upload custom parts',
+  'parts:write': 'Upload, change and delete your custom parts and sets',
   'venues:read': 'See your saved venues and download them',
   'venues:write': 'Save, rename and delete your venues',
   'account:prefs': 'Keep your look and help settings in step with this account',
