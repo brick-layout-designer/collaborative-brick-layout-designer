@@ -18,7 +18,7 @@ import type {
   LinearRulerItem,
   RulerItem,
 } from '@cld/model';
-import { attachRulerEndpoint, editRulerItem } from './mutations';
+import { RULER_LIMITS, attachRulerEndpoint, editRulerItem } from './mutations';
 import { ColorAlphaInput } from './ColorAlphaInput';
 import { colorSpecToArgb } from './layerOptions';
 import { HelpButton } from '../help/HelpButton';
@@ -124,7 +124,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             <ColorAlphaInput label="Line color" value={color} onChange={setColor} />
           </Row>
           <Row label="Thickness">
-            <NumberField value={lineThickness} setValue={setLineThickness} step={0.5} min={0.5} />
+            <NumberField value={lineThickness} setValue={setLineThickness} step={0.5} min={RULER_LIMITS.lineThickness.min} max={RULER_LIMITS.lineThickness.max} />
           </Row>
         </fieldset>
 
@@ -169,7 +169,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
             />
           </Row>
           <Row label="Size">
-            <NumberField value={fontSize} setValue={setFontSize} step={1} min={1} />
+            <NumberField value={fontSize} setValue={setFontSize} step={1} min={RULER_LIMITS.fontSize.min} max={RULER_LIMITS.fontSize.max} />
           </Row>
           <Row label="Style">
             <div className="flex items-center gap-3 text-xs">
@@ -198,11 +198,13 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               value={guidelineThickness}
               setValue={setGuidelineThickness}
               step={0.5}
-              min={0.5}
+              min={RULER_LIMITS.guidelineThickness.min}
+              max={RULER_LIMITS.guidelineThickness.max}
             />
           </Row>
           <Row label="Dash (px,px,…)">
             <input
+              aria-label="Dash pattern"
               value={dashCsv}
               onChange={(e) => setDashCsv(e.target.value)}
               className="w-32 rounded-lg border border-border bg-soft px-2 py-1"
@@ -221,7 +223,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
               />
             </Row>
             <Row label="Offset (studs)">
-              <NumberField value={offsetDistance} setValue={setOffsetDistance} step={0.5} />
+              <NumberField value={offsetDistance} setValue={setOffsetDistance} step={0.5} min={-RULER_LIMITS.distance} max={RULER_LIMITS.distance} />
             </Row>
             <Row label="Endpoint 1">
               <span className="text-xs text-muted">
@@ -254,7 +256,7 @@ export function EditRulerDialog({ item, layerId, doc, onClose }: Props) {
           <fieldset className="mt-3 space-y-2 rounded-lg border border-line p-3 text-sm">
             <legend className="px-1 text-xs uppercase tracking-wider text-muted">Circular</legend>
             <Row label="Radius (studs)">
-              <NumberField value={radius} setValue={setRadius} step={0.5} min={0} />
+              <NumberField value={radius} setValue={setRadius} step={0.5} min={0} max={RULER_LIMITS.distance} />
             </Row>
             <Row label="Centre">
               <span className="text-xs text-muted">
@@ -304,11 +306,13 @@ function NumberField({
   setValue,
   step,
   min,
+  max,
 }: {
   value: number;
   setValue: (v: number) => void;
   step: number;
   min?: number;
+  max?: number;
 }) {
   return (
     <input
@@ -316,6 +320,7 @@ function NumberField({
       value={value}
       step={step}
       min={min}
+      max={max}
       onChange={(e) => {
         const n = parseFloat(e.target.value);
         if (Number.isFinite(n)) setValue(n);
