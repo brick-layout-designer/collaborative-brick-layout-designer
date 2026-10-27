@@ -335,8 +335,9 @@ async function joinRequester(id: string): Promise<string | null> {
 
 /**
  * A warning: to whoever received it, and whoever may see it. Site
- * warnings: site admins and moderators. Club warnings: the club's admins
- * and managers, and site admins (not moderators).
+ * warnings: site admins and moderators. Club warnings: the club's members
+ * whose roles see its Warnings list (access/clubNotices.ts), and site
+ * admins (not moderators).
  */
 function warningHint(idFrom: (ctx: HintCtx) => string | null): HintSpec {
   return {
@@ -358,7 +359,7 @@ function warningHint(idFrom: (ctx: HintCtx) => string | null): HintSpec {
 /**
  * A club's thing handed back to its author (routes/ownership.ts): the
  * thing's hints (the club, which also gains its copy, and the author),
- * and the note to the club's admins and managers.
+ * and the note to the members who look after the club's things.
  */
 function returned(kind: ResourceKind): HintSpec {
   const r = resource(kind);

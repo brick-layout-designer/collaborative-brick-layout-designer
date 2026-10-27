@@ -23,6 +23,8 @@ export interface Preferences {
   connectionSnap?: SnapStrength;
   /** Whether the people who run your clubs see roughly when you were last active; absent means yes. */
   shareLastActive?: boolean;
+  /** Whether to email you when someone asks to join a club where your roles answer requests; absent means yes. */
+  emailJoinRequests?: boolean;
 }
 
 export const PARTS_ICON_MIN = 32;
@@ -113,6 +115,7 @@ export function sanitizePreferences(input: unknown): Preferences {
   }
   if (isSnapStrength(o.connectionSnap)) out.connectionSnap = o.connectionSnap;
   if (typeof o.shareLastActive === 'boolean') out.shareLastActive = o.shareLastActive;
+  if (typeof o.emailJoinRequests === 'boolean') out.emailJoinRequests = o.emailJoinRequests;
   return out;
 }
 

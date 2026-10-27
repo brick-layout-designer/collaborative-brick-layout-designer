@@ -223,6 +223,35 @@ export async function clubAccessMap(userId: string, orgIds?: string[]): Promise<
   return out;
 }
 
+/**
+ * Who each member of the club is (their roles and permissions), keyed by
+ * user id: the same rows and fallbacks as clubAccessMap, for the whole
+ * club at once (who hears about what: access/clubNotices.ts).
+ */
+export async function clubMembersAccess(orgId: string): Promise<Map<string, ClubAccess>> {
+  const out = new Map<string, ClubAccess>();
+  const org = await db.select({ membersCanCreate: schema.orgs.membersCanCreate }).from(schema.orgs).where(eq(schema.orgs.id, orgId)).get();
+  if (!org) return out;
+  const members = await db.select({ userId: schema.orgMembers.userId, role: schema.orgMembers.role }).from(schema.orgMembers).where(eq(schema.orgMembers.orgId, orgId));
+  if (members.length === 0) return out;
+  const roles = await db
+    .select({ id: schema.clubRoles.id, orgId: schema.clubRoles.orgId, key: schema.clubRoles.key, permissions: schema.clubRoles.permissions })
+    .from(schema.clubRoles)
+    .where(eq(schema.clubRoles.orgId, orgId));
+  const byId = new Map(roles.map((r) => [r.id, r]));
+  const held = new Map<string, RoleDef[]>();
+  for (const h of await db.select({ userId: schema.memberRoles.userId, roleId: schema.memberRoles.roleId }).from(schema.memberRoles).where(eq(schema.memberRoles.orgId, orgId))) {
+    const def = byId.get(h.roleId);
+    if (def) held.set(h.userId, [...(held.get(h.userId) ?? []), def]);
+  }
+  for (const m of members) {
+    // No role rows yet: the stored built-in role org_members.role names, as clubAccessMap does.
+    const defs = held.get(m.userId) ?? roles.filter((r) => r.key === m.role);
+    out.set(m.userId, accessFrom(orgId, m.role, defs, org.membersCanCreate));
+  }
+  return out;
+}
+
 /** Who `userId` is in the club, or null when they aren't in it. */
 export async function clubAccess(userId: string, orgId: string): Promise<ClubAccess | null> {
   return (await clubAccessMap(userId, [orgId])).get(orgId) ?? null;

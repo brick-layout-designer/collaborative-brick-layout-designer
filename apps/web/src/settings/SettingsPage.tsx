@@ -323,6 +323,24 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
           </Section>
         )}
 
+        {syncedToAccount && (
+          <Section id="email" title="Email">
+            <div className="flex items-center justify-between gap-6">
+              <div>
+                <div className="text-[15px] font-semibold">Email me about requests to join</div>
+                <div className="text-sm text-muted">
+                  When someone asks to join a club where your roles let people in. The request also waits on the club’s People page.
+                </div>
+              </div>
+              <Switch
+                label="Email me about requests to join"
+                checked={prefs.emailJoinRequests !== false}
+                onChange={(v) => setPrefs({ emailJoinRequests: v })}
+              />
+            </div>
+          </Section>
+        )}
+
         <Section id="account" title="Account">
           {syncedToAccount ? (
             <p className="text-[15px] text-muted">

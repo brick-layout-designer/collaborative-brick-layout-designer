@@ -19,6 +19,11 @@
 //   POST   /api/orgs/:slug/join-requests/:id/approve   (managers and admins)
 //   POST   /api/orgs/:slug/join-requests/:id/decline   (managers and admins)
 //   GET    /api/join-requests/count          requests waiting in the clubs you run
+//
+// A new request emails the members whose roles answer requests to join
+// (invite people, or manage members and roles; and the club's Admins),
+// each once, unless they turned that off in Settings › Email
+// (access/clubNotices.ts).
 
 import { clubLogoUrls } from './clubLogos.js';
 import { randomUUID } from 'node:crypto';
@@ -32,6 +37,9 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { escapeLike } from '../utils/validate.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
 import { clubAccessMap } from '../access/clubPermissions.js';
+import { clubAudience, hears } from '../access/clubNotices.js';
+import { noJoinRequestEmails } from './preferences.js';
+import { sendNoticeEmail } from '../email/sendNotice.js';
 import { type ClubRole } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
 import { perPerson } from '../utils/rateLimits.js';
@@ -81,7 +89,38 @@ async function statusOf(orgId: string, userId: string) {
   return (await myRequest(orgId, userId)) ? ('requested' as const) : null;
 }
 
-/** The club, as one of its managers or admins sees it; otherwise the reply has been sent. */
+/**
+ * Email the people who answer the club's requests to join that `asker`
+ * asked. Best effort, after the reply: no SMTP, or a failed send, changes
+ * nothing (the Clubs badge and the People tab show the request anyway).
+ */
+export async function emailJoinRequest(org: Org, asker: { id: string; displayName: string | null }, message: string): Promise<void> {
+  try {
+    const audience = (await clubAudience(org.id, 'join_request')).filter((id) => id !== asker.id);
+    const off = await noJoinRequestEmails(audience);
+    const to = audience.filter((id) => !off.has(id));
+    if (to.length === 0) return;
+    const rows = await db.select({ email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, to));
+    const name = publicName(asker.id, asker.displayName);
+    for (const r of rows) {
+      await sendNoticeEmail({
+        to: r.email,
+        subject: `${name} asked to join ${org.name}`,
+        paragraphs: [
+          `${name} asked to join ${org.name}.`,
+          ...(message ? [`Their note: “${message}”`] : []),
+          'You can let them in or decline on the club’s People page.',
+          'You get this email because your roles in the club answer requests to join. To stop these emails, turn off “Email me about requests to join” in Settings › Email.',
+        ],
+        link: { text: 'See the request', path: `/orgs/${org.slug}/admin?tab=people` },
+      });
+    }
+  } catch {
+    // The request itself is what counts.
+  }
+}
+
+/** The club, as one of the people who answer its requests sees it; otherwise the reply has been sent. */
 async function asManager(slug: string, userId: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) {
   const org = await loadOrgBySlug(slug);
   if (!org) {
@@ -94,7 +133,7 @@ async function asManager(slug: string, userId: string, reply: { code: (n: number
     return null;
   }
   // Join requests are for whoever invites people (or manages members).
-  if (!mine.permissions.has('invite') && !mine.permissions.has('manage_members')) {
+  if (!hears(mine, 'join_request')) {
     reply.code(403).send({ error: 'forbidden', permission: 'invite' });
     return null;
   }
@@ -211,10 +250,12 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
           message: `You’re waiting to hear from ${OPEN_REQUESTS_MAX} clubs already. Take some requests back, or wait for an answer.`,
         });
       }
-      await db
+      const made = db
         .insert(schema.orgJoinRequests)
         .values({ id: randomUUID(), orgId: org.id, userId: user.id, message: message || null, createdAt: new Date() })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .run();
+      if (made.changes > 0) void emailJoinRequest(org, user, message);
       return { status: 'requested' as const, slug: org.slug };
     },
   );
@@ -328,9 +369,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/join-requests/count', async (req) => {
     const user = requireUser(req);
     // The clubs where my roles answer requests (asManager's rule: invite people, or manage members).
-    const answering = [...(await clubAccessMap(user.id)).values()]
-      .filter((a) => a.permissions.has('invite') || a.permissions.has('manage_members'))
-      .map((a) => a.orgId);
+    const answering = [...(await clubAccessMap(user.id)).values()].filter((a) => hears(a, 'join_request')).map((a) => a.orgId);
     if (answering.length === 0) return { count: 0, clubs: [] };
     const rows = await db
       .select({ slug: schema.orgs.slug, n: count() })
