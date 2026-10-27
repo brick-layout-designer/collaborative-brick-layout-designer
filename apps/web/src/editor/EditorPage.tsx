@@ -119,6 +119,8 @@ import {
 } from './mutations';
 import { brickDrag } from './brickDrag';
 import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, groupChain, selectedSet, setAnchorOrder, subpartOf, ungroupState } from './sets';
+import { applySetUpdate, copyPlacedSets, findSetUpdates, linksByAnchor, placedSetLink, trackedSet, updateForSelection, writePlacedSets, type SetUpdate } from './setUpdates';
+import { SetUpdatesBar } from './SetUpdatesBar';
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
@@ -2189,6 +2191,11 @@ function Canvas({
     wantSprites(layoutSpriteUrls(m, partsByKey));
   }, [shownMap, map, partsByKey, catalog.data]);
   const linkCatalog = useMemo(() => catalogFromParts(catalog.data?.parts), [catalog.data]);
+  // Placed custom sets whose set changed since (sidecar `sets`, editor/setUpdates.ts).
+  const setUpdates = useMemo(
+    () => (isViewer ? [] : findSetUpdates(map, readSidecarFromDoc(doc) as Record<string, unknown> | null, partsByKey)),
+    [map, partsByKey, doc, isViewer],
+  );
 
   /** Unrotated sprite size of a brick in studs, once its sprite is loaded (marquee shape near 45°). */
   function brickSpriteStuds(b: { partNumber: string }): { w: number; h: number } | null {
@@ -3167,6 +3174,7 @@ function Canvas({
     if (selection.length === 0 || !map) return;
     const sel = new Set(selection);
     const entries: ClipboardEntry[] = [];
+    const anchors = linksByAnchor(readSidecarFromDoc(doc) as Record<string, unknown> | null);
     // Walk every brick layer in declaration order so within-layer
     // z-order survives copy/paste — same as desktop's
     // MapViewClipboard.cpp:42-49.
@@ -3186,6 +3194,8 @@ function Canvas({
           },
           // The sets (groups) it is in, so a pasted set stays a set.
           groups: groupChain(layer.groups, b.myGroup),
+          // A placed custom set's anchor part: the pasted set keeps track of its version.
+          ...(anchors.has(b.id) ? { placedSet: anchors.get(b.id)! } : {}),
         });
       }
     }
@@ -3361,6 +3371,7 @@ function Canvas({
       );
       const ids = insertBricks(doc, targetLayerId, copied.bricks, { dx, dy }, copied.groups);
       newIds.push(...ids);
+      copyPlacedSets(doc, layerEntries.flatMap((e, i) => (e.placedSet && ids[i] ? [{ brick: ids[i], link: e.placedSet }] : [])));
     }
     if (read.module && entries.length === clipped.length) addModuleCopy(read.module, newIds);
     }, LOCAL_ORIGIN);
@@ -3376,18 +3387,24 @@ function Canvas({
     if (!map) return;
     const sel = new Set(selection);
     const perLayer = new Map<string, Parameters<typeof insertBricks>[2]>();
+    // Each copy's original, so a placed set's copy keeps track of its version too.
+    const sourceOf = new Map<object, string>();
     const groupsOf = new Map(map.layers.flatMap((l) => (l.type === 'brick' ? [[l.id, l.groups] as const] : [])));
     for (const layer of map.layers) {
       if (layer.type !== 'brick') continue;
       const bricks = layer.bricks
         .filter((b) => sel.has(b.id))
-        .map((b) => ({
-          partNumber: b.partNumber,
-          displayArea: { ...b.displayArea },
-          orientation: b.orientation,
-          altitude: b.altitude,
-          myGroup: b.myGroup,
-        }));
+        .map((b) => {
+          const copy = {
+            partNumber: b.partNumber,
+            displayArea: { ...b.displayArea },
+            orientation: b.orientation,
+            altitude: b.altitude,
+            myGroup: b.myGroup,
+          };
+          sourceOf.set(copy, b.id);
+          return copy;
+        });
       if (bricks.length > 0) perLayer.set(layer.id, bricks);
     }
     const areas = [...perLayer.values()].flat().map((b) => b.displayArea);
@@ -3403,15 +3420,20 @@ function Canvas({
     const groupsPerLayer = new Map<string, BrickGroup[]>();
     for (const [layerId, bricks] of perLayer) {
       const copied = cloneGroups(groupsOf.get(layerId) ?? [], bricks, makeId);
+      copied.bricks.forEach((b, i) => sourceOf.set(b, sourceOf.get(bricks[i]!) ?? ''));
       perLayer.set(layerId, copied.bricks);
       groupsPerLayer.set(layerId, copied.groups);
     }
     const whole = pickedWholeModule();
     const kept = [...perLayer.values()].reduce((n, b) => n + b.length, 0);
     let ids: string[] = [];
+    const anchors = linksByAnchor(readSidecarFromDoc(doc) as Record<string, unknown> | null);
     doc.transact(() => {
       ids = insertBricksAcrossLayers(doc, perLayer, offset, groupsPerLayer);
       if (whole && kept === whole.members.length) addModuleCopy(whole, ids);
+      // (insertBricksAcrossLayers adds the layers' parts in this order.)
+      const originals = [...perLayer.values()].flat().map((b) => sourceOf.get(b) ?? '');
+      copyPlacedSets(doc, originals.flatMap((from, i) => (anchors.has(from) && ids[i] ? [{ brick: ids[i], link: anchors.get(from)! }] : [])));
     }, LOCAL_ORIGIN);
     absorbIntoEditedModule(doc, ids);
     if (ids.length > 0) setSelection(ids);
@@ -3644,11 +3666,57 @@ function Canvas({
     if (!layout) return;
     const { set, placed } = layout;
     const setName = group.description || group.key;
-    const newIds = insertSet(doc, layerId, { bricks: placed.map((b) => ({ ...b, orientation: b.orientation ?? 0 })), groups: set.groups });
+    let newIds: string[] = [];
+    doc.transact(() => {
+      newIds = insertSet(doc, layerId, { bricks: placed.map((b) => ({ ...b, orientation: b.orientation ?? 0 })), groups: set.groups });
+      // A custom set keeps track of the version it came from (sidecar only).
+      const link = trackedSet(partsByKey, group.key) ? placedSetLink(partsByKey, group, set.groups[0]?.id ?? '', newIds[0]) : null;
+      if (link) writePlacedSets(doc, [link]);
+    }, LOCAL_ORIGIN);
     recomputeConnectivity(doc, linkCatalog);
     absorbIntoEditedModule(doc, newIds);
     if (newIds.length > 0) setSelection(newIds);
     useEditorStore.getState().showStatusMessage(`Placed set: ${setName} (${newIds.length} parts)`, 3000);
+  }
+
+  /** Update placed custom sets to their set's current version, where each sits now: one undo step. */
+  function updatePlacedSets(list: readonly SetUpdate[]) {
+    if (!map || list.length === 0) return;
+    const sizeOf = (part: PartWire | undefined, angle: number) => {
+      if (part?.spriteSize) return areaSize(part, angle);
+      const img = part ? getSpriteSync(spriteUrlFor(part)) : null;
+      return img && part ? { width: img.naturalWidth / part.pxPerStud, height: img.naturalHeight / part.pxPerStud } : { width: 2, height: 2 };
+    };
+    const ids: string[] = [];
+    doc.transact(() => {
+      for (const u of list) ids.push(...applySetUpdate(doc, map, u, partsByKey, makeId, sizeOf));
+    }, LOCAL_ORIGIN);
+    recomputeConnectivity(doc, linkCatalog);
+    if (ids.length > 0) setSelection(ids);
+    const names = [...new Set(list.map((u) => u.name))];
+    useEditorStore
+      .getState()
+      .showNotice(
+        names.length === 1 ? `Updated “${names[0]}” to its newest version. Undo (Ctrl+Z) puts it back.` : `Updated ${list.length} sets to their newest versions. Undo (Ctrl+Z) puts them back.`,
+        'done',
+        7000,
+      );
+  }
+
+  /** Pick these placed copies, and bring them into view. */
+  function showPlacedSets(list: readonly SetUpdate[]) {
+    if (!map) return;
+    const want = new Set(list.map((u) => u.group.id));
+    const picked = map.layers.flatMap((l) => (l.type === 'brick' ? l.bricks.filter((b) => groupChain(l.groups, b.myGroup).some((g) => want.has(g.id))) : []));
+    if (picked.length === 0) return;
+    setSelection(picked.map((b) => b.id));
+    const bounds = unionStudRects(
+      null,
+      picked.map((b) => ({ ...b.displayArea })),
+    );
+    // Not closer than now (or 1:1), so a small set isn't blown up to fill the screen.
+    const fit = fitView(bounds, width, height, { min: MIN_ZOOM, max: Math.min(MAX_ZOOM, Math.max(1, useEditorStore.getState().zoom)) });
+    if (fit) useEditorStore.setState(fit);
   }
 
   // Keep the imperative "place at view center" handle fresh every render
@@ -4233,6 +4301,7 @@ function Canvas({
         />
       )}
       </Suspense>
+      <SetUpdatesBar updates={setUpdates} onUpdate={updatePlacedSets} onShow={showPlacedSets} lifted={phone || coarsePointer()} />
       {ctxMenu && !isViewer && (
         <CanvasContextMenu
           x={ctxMenu.x}
@@ -4259,6 +4328,10 @@ function Canvas({
           onGroup={() => groupBricksAcrossLayers(doc, selectionByLayer())}
           onUngroup={() => ungroupSelection()}
           ungroup={ungroupState(map, selection, canUngroupSet)}
+          setUpdate={(() => {
+            const u = updateForSelection(map, setUpdates, selection);
+            return u ? { name: u.name, onUpdate: () => updatePlacedSets([u]) } : null;
+          })()}
           onSelectConnected={() => {
             if (!map) return;
             const adj = buildConnectedAdj(map);
@@ -4383,6 +4456,7 @@ function CanvasContextMenu({
   onClose, onCopy, onCut, onPaste, onDuplicate, onDelete,
   onRotateCCW, onRotateCW, onBringToFront, onSendToBack, onMoveToSheet,
   onGroup, onUngroup, ungroup, onSelectConnected, onAddTextHere, onProperties, onMakeModule,
+  setUpdate,
   module, editingModuleId, onEditModule, onDoneEditing, onPinModule, onModuleShowName, onModuleLook,
 }: {
   module: import('@cld/bbm').SidecarModule | null;
@@ -4411,6 +4485,8 @@ function CanvasContextMenu({
   onGroup: () => void; onUngroup: () => void; onSelectConnected: () => void;
   /** What Ungroup would do: nothing grouped (hidden), split, or only sets always used whole (greyed out). */
   ungroup: 'nothing' | 'splits' | 'whole';
+  /** The picked placed set's set has changed since it was placed: offer to update it. */
+  setUpdate: { name: string; onUpdate: () => void } | null;
   onAddTextHere: () => void; onProperties: () => void; onMakeModule: () => void;
 }) {
   const libraryEntries = useLibraryEntries(doc);
@@ -4477,6 +4553,17 @@ function CanvasContextMenu({
     entries.push(sep('sm1'));
     for (const e of libraryEntries(module)) entries.push(item(e.label, e.onSelect, !!e.disabled));
     entries.push(sep('sm2'));
+  }
+
+  // A placed custom set whose set changed since: Update available.
+  if (setUpdate) {
+    entries.push(
+      <div key="su" className="truncate px-3 pb-0.5 pt-1 text-[11px] uppercase tracking-wide text-muted">
+        Update available
+      </div>,
+    );
+    entries.push(item(`Update set “${setUpdate.name}”`, setUpdate.onUpdate));
+    entries.push(sep('su1'));
   }
 
   // Ruler-attach flow: when a ruler is selected and the cursor is on a

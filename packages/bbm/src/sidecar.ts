@@ -175,6 +175,25 @@ export interface SavedView {
   [extra: string]: unknown;
 }
 
+/**
+ * A custom set placed in the layout (a named group of the .bbm): which
+ * version of it its parts came from, so the editor can say "Update
+ * available" when the set changes. Vanilla BlueBrick never sees it. Both
+ * apps write it (the desktop's core::PlacedSet).
+ */
+export interface PlacedSet {
+  /** The set's outermost group in the .bbm. */
+  id: string;
+  /** The set's version (the server's `setVersion`) when it was placed or last updated. */
+  version: string;
+  /**
+   * One of its parts, and where that part sits in the set (studs, degrees),
+   * so the set's place and turn can be found however it was moved since.
+   */
+  anchor?: { brick: string; x: number; y: number; angle: number };
+  [extra: string]: unknown;
+}
+
 export interface Sidecar {
   schemaVersion: number;
   /** Lowercase hex of the .bbm bytes at write time, or empty when unknown. */
@@ -185,6 +204,8 @@ export interface Sidecar {
   backgroundImage?: BackgroundImage;
   /** Saved views, in list order. */
   views?: SavedView[];
+  /** Custom sets placed in the layout, with the version each came from. */
+  sets?: PlacedSet[];
   /** Unknown top-level fields preserved verbatim across round-trip. */
   extras?: Record<string, unknown>;
 }
@@ -219,6 +240,11 @@ export function readSidecar(raw: string): Sidecar {
   if (Array.isArray(parsed.views)) {
     sidecar.views = parsed.views.map(readView).filter((v): v is SavedView => v !== null);
   }
+  if (Array.isArray(parsed.sets)) {
+    sidecar.sets = parsed.sets.filter(
+      (v): v is PlacedSet => !!v && typeof v === 'object' && typeof (v as PlacedSet).id === 'string' && typeof (v as PlacedSet).version === 'string',
+    );
+  }
 
   const knownKeys = new Set([
     'schemaVersion',
@@ -228,6 +254,7 @@ export function readSidecar(raw: string): Sidecar {
     'venue',
     'backgroundImage',
     'views',
+    'sets',
   ]);
   const extras: Record<string, unknown> = {};
   for (const key of Object.keys(parsed)) {
@@ -269,6 +296,7 @@ export function writeSidecar(sidecar: Sidecar, opts: WriteSidecarOptions = {}): 
   if (sidecar.venue) out.venue = sidecar.venue;
   if (sidecar.backgroundImage) out.backgroundImage = encodeBackgroundImage(sidecar.backgroundImage);
   if (sidecar.views) out.views = sidecar.views;
+  if (sidecar.sets && sidecar.sets.length > 0) out.sets = sidecar.sets;
   if (sidecar.extras) {
     for (const [k, v] of Object.entries(sidecar.extras)) out[k] = v;
   }

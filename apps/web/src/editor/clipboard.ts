@@ -14,7 +14,7 @@
 // so we can refuse foreign clipboard payloads.
 
 import type { Brick, Group, RectangleF } from '@cld/model';
-import type { SidecarModule } from '@cld/bbm';
+import type { PlacedSet, SidecarModule } from '@cld/bbm';
 
 const CLIPBOARD_KIND = 'cbld-bricks/v1';
 
@@ -25,6 +25,8 @@ interface ClipboardEntry {
   brick: Pick<Brick, 'partNumber' | 'displayArea' | 'orientation' | 'altitude' | 'activeConnectionPointIndex'> & { myGroup?: string };
   /** The groups (sets) the brick is in, innermost first, so a pasted set stays a set. */
   groups?: Group[];
+  /** The brick is the anchor part of a placed custom set: its link, so the pasted set keeps track of its version. */
+  placedSet?: PlacedSet;
 }
 
 interface ClipboardPayload {

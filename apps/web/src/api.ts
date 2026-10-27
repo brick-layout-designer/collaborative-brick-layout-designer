@@ -455,6 +455,8 @@ export interface PartWire {
   customPartId: string | null;
   /** A custom set: no sprite of its own (its parts draw it). */
   noSprite?: true;
+  /** A custom set: its version, so placed copies can say "Update available" when it changes (editor/setUpdates.ts). */
+  setVersion?: string;
   /** Earlier part numbers that resolve to this part (<OldNameList>); absent when none. */
   oldNames?: string[];
   /** Sprite size in pixels, for the BlueBrick footprint; absent when unreadable. */
