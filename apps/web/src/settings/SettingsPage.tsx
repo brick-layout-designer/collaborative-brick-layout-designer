@@ -112,6 +112,11 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
             Install the app
           </a>
         )}
+        {syncedToAccount && (
+          <a href="#privacy" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
+            Privacy
+          </a>
+        )}
         <a href="#account" className="rounded-control px-3 py-2.5 font-semibold text-muted hover:bg-soft">
           Account
         </a>
@@ -296,6 +301,25 @@ export function SettingsContent({ onClose }: { onClose?: () => void }) {
         {mobile && (
           <Section id="install" title="Install the app">
             <InstallApp />
+          </Section>
+        )}
+
+        {syncedToAccount && (
+          <Section id="privacy" title="Privacy">
+            <div className="flex items-center justify-between gap-6">
+              <div>
+                <div className="text-[15px] font-semibold">Show club admins when I was last active</div>
+                <div className="text-sm text-muted">
+                  The people who run your clubs see roughly when you last used the site (today, this week or this month) in the club’s
+                  members list, never the exact time.
+                </div>
+              </div>
+              <Switch
+                label="Show club admins when I was last active"
+                checked={prefs.shareLastActive !== false}
+                onChange={(v) => setPrefs({ shareLastActive: v })}
+              />
+            </div>
           </Section>
         )}
 

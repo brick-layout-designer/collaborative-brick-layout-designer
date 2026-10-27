@@ -49,6 +49,7 @@ import { requestClubDeletion, type CatalogChoice } from '../privacy/clubDeletion
 import { perPerson } from '../utils/rateLimits.js';
 import { maskEmail } from '../utils/maskEmail.js';
 import { notifyAccessChanged } from '../ws/liveAccess.js';
+import { hidingLastActive, lastActiveBucket, type LastActive } from './preferences.js';
 
 interface CreateOrgBody {
   name: string;
@@ -406,6 +407,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           email: schema.users.email,
           displayName: schema.users.displayName,
           avatarUrl: schema.users.avatarUrl,
+          lastSeenAt: schema.users.lastSeenAt,
         })
         .from(schema.orgMembers)
         .innerJoin(schema.users, eq(schema.users.id, schema.orgMembers.userId))
@@ -414,6 +416,15 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       // Only the people who invite see pending invites (the email list is
       // somewhat sensitive). Everyone else gets an empty array.
       const runsMembers = has(myMembership, 'invite') || has(myMembership, 'manage_members');
+      // Roughly when each was last active, for the people who run the club
+      // (and each person about themselves), unless they turned it off
+      // (Settings › Privacy). Never the exact time.
+      const hiding = runsMembers || user.isGlobalAdmin ? await hidingLastActive(members.map((m) => m.userId)) : new Set<string>();
+      const lastActiveOf = (m: { userId: string; lastSeenAt: Date | null }): LastActive | null => {
+        if (m.userId === user.id) return 'today'; // looking at it now
+        if (!(runsMembers || user.isGlobalAdmin) || hiding.has(m.userId)) return null;
+        return lastActiveBucket(m.lastSeenAt);
+      };
       const held = await db
         .select({ userId: schema.memberRoles.userId, roleId: schema.memberRoles.roleId })
         .from(schema.memberRoles)
@@ -443,6 +454,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           email: runsMembers || m.userId === user.id || user.isGlobalAdmin ? m.email : '',
           displayName: nameFor(user, m.userId, m.displayName),
           avatarUrl: m.avatarUrl,
+          lastActive: lastActiveOf(m),
         })),
         invites: invites.map((i) => ({
           id: i.id,
