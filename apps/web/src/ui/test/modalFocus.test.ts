@@ -43,6 +43,17 @@ describe('installModalFocus', () => {
     expect(document.activeElement?.id).toBe('name');
   });
 
+  it('on a touch screen, does not start in a text field (the keyboard would pop up)', async () => {
+    const was = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q === '(pointer: coarse)' })) as unknown as typeof window.matchMedia;
+    try {
+      await openDialog('<input id="name"><button id="ok">OK</button>');
+      expect(document.activeElement?.id).toBe('ok');
+    } finally {
+      window.matchMedia = was;
+    }
+  });
+
   it('leaves a dialog that focused its own field alone', async () => {
     const wrap = document.createElement('div');
     wrap.innerHTML = '<div role="dialog" aria-modal="true"><button id="a">A</button><input id="b"></div>';

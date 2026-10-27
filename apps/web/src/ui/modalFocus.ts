@@ -42,6 +42,12 @@ export function tabbables(root: HTMLElement): HTMLElement[] {
   return all.filter((el) => !(el instanceof HTMLInputElement) || el.type !== 'radio' || !el.name || radios.get(`${el.form?.id ?? ''}|${el.name}`) === el);
 }
 
+/** A field the on-screen keyboard comes up for. */
+function typesText(el: HTMLElement): boolean {
+  if (el instanceof HTMLTextAreaElement || el.isContentEditable) return true;
+  return el instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image'].includes(el.type);
+}
+
 // jsdom lays nothing out, so every element has no boxes there.
 const isJsdom = () => typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
 
@@ -69,8 +75,11 @@ export function installModalFocus(doc: Document = document): () => void {
       if (!el.isConnected || el.contains(doc.activeElement) || top() !== el) return;
       // The first control, passing over the ⓘ help buttons (focused, one
       // shows its tip at once): a field, a choice, the dialog's own buttons.
-      const items = tabbables(el);
-      const first = el.querySelector<HTMLElement>('[autofocus]') ?? items.find((i) => !i.hasAttribute('data-help-key')) ?? items[0];
+      // On a touch screen not a text field: that would pop the on-screen
+      // keyboard up over the dialog before anyone asked to type.
+      const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+      const items = tabbables(el).filter((i) => !i.hasAttribute('data-help-key') && !(touch && typesText(i)));
+      const first = el.querySelector<HTMLElement>('[autofocus]') ?? items[0];
       if (first) first.focus();
       else {
         if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
