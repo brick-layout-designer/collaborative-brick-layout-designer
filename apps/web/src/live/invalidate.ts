@@ -47,7 +47,7 @@ const KEYS: Record<HintKind, (h: Hint) => QueryKey[]> = {
   layout: () => [['layouts'], ['layout'], ['collaborators'], ['audit'], ['club-summary'], ['transfer-preview'], ...ADMIN_LISTS],
   module: () => [['modules'], ['module'], ['module-versions'], ['module-collaborators'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS, ...ADMIN_LISTS],
   venue: () => [['venues'], ['venue'], ['venue-library'], ['club-summary']],
-  'custom-part': () => [['custom-parts'], ['custom-part-collaborators'], ['parts-catalog'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS],
+  'custom-part': () => [['custom-parts'], ['custom-part-collaborators'], ['set-move-plan'], ['parts-catalog'], ['catalog-copies'], ['club-summary'], ...COLLECTIONS],
   catalog: () => [
     ['catalog-items'], ['catalog-mine'], ['catalog-copies'], ['moderation'], ['modules'], ['custom-parts'],
     // A layout's or venue's own page: its details, and its published copy.

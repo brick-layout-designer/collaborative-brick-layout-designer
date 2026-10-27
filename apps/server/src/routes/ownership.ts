@@ -6,7 +6,9 @@
 //        The club's admins and managers give it back, only ever to its author.
 // An author who handed the thing to someone else (an accepted transfer)
 // gave it away: it doesn't go back to them either way.
-//   POST /api/custom-parts/:id/move   a person's part into a club (or club to club)
+//   POST /api/custom-parts/:id/move   a person's part into a club (or club to club);
+//                                     a set brings its owner's parts in it (access/setMoves.ts)
+//   GET  /api/custom-parts/:id/move-plan?orgSlug=   what a set's move would do with its parts
 //   POST /api/custom-parts/:id/copy   a copy into your parts or a club's
 //
 // No other club→person move exists. When a thing goes back, the club keeps
@@ -23,7 +25,7 @@ import { stripImportSource } from '../utils/partXml.js';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { requireUser } from '../auth/cookie.js';
 import { isDemoUser } from '../demo/demoAccount.js';
@@ -42,6 +44,7 @@ import { postClubNote } from './warnings.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { clearPendingLayoutShares, clearPendingModuleShares, clearPendingPartShares, handedOverIds } from '../access/pendingShares.js';
 import { notifyAccessChanged } from '../ws/liveAccess.js';
+import { emptyPlan, planSetMove, type SetMovePlan } from '../access/setMoves.js';
 
 const KINDS: { kind: CreditKind; path: string; token: 'layouts:write' | 'parts:write' | 'venues:write'; word: string }[] = [
   { kind: 'layout', path: 'layouts', token: 'layouts:write', word: 'layout' },
@@ -320,25 +323,27 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
   // ---- a custom part into a club --------------------------------------------
   // Like a layout's or module's transfer to a club: a person's own part, or
   // (club to club) one the caller runs. A club's part never moves out to one
-  // person here: its author takes it back, or the club gives it back.
+  // person here: its author takes it back, or the club gives it back. A set
+  // brings the custom parts in it (access/setMoves.ts); the move dialog
+  // shows which first (move-plan).
+  app.get<{ Params: { id: string }; Querystring: { orgSlug?: string } }>('/api/custom-parts/:id/move-plan', async (req, reply) => {
+    const user = requireUser(req);
+    const checked = await movable(user, req.params.id, req.query.orgSlug);
+    if (!checked.ok) return reply.code(checked.code).send(checked.body);
+    const { part, orgId } = checked;
+    if (orgId === part.ownerOrgId) return { parts: emptyPlan() };
+    return { parts: await planSetMove(part.id, user.id, orgId) };
+  });
+
   app.post<{ Params: { id: string }; Body: { orgSlug?: string } }>(
     '/api/custom-parts/:id/move',
     { config: { apiToken: 'parts:write' } },
     async (req, reply) => {
       const user = requireUser(req);
       if (isDemoUser(user)) return reply.code(403).send({ error: 'demo_account_cannot_share' });
-      const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
-      if (role === null) return reply.code(404).send({ error: 'not_found' });
-      const part = await db.select().from(schema.customParts).where(eq(schema.customParts.id, req.params.id)).get();
-      if (!part || part.isGlobal) return reply.code(404).send({ error: 'not_found' });
-      // A person's part moves only by its owner (a share is not ownership); a club's by its runners.
-      if (part.ownerUserId ? part.ownerUserId !== user.id : !hasAtLeast(role, 'owner')) {
-        return reply.code(403).send({ error: 'forbidden' });
-      }
-      if (!req.body?.orgSlug) return reply.code(400).send({ error: 'parts_can_only_move_to_clubs' });
-      const dest = await destinationOrg(user.id, req.body.orgSlug, addPermission('custom_part'));
-      if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
-      const orgId = dest.orgId!;
+      const checked = await movable(user, req.params.id, req.body?.orgSlug);
+      if (!checked.ok) return reply.code(checked.code).send(checked.body);
+      const { part, orgId } = checked;
       if (orgId === part.ownerOrgId) return { ok: true, id: part.id };
       const clash = await db
         .select({ id: schema.customParts.id })
@@ -346,23 +351,78 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
         .where(and(eq(schema.customParts.ownerOrgId, orgId), eq(schema.customParts.partNumber, part.partNumber)))
         .get();
       if (clash) return reply.code(409).send({ error: 'part_number_taken', message: `The club already has a part numbered ${part.partNumber}.` });
-      const bytes = (part.xmlBlob as Uint8Array).length + (part.spriteBlob as Uint8Array).length;
-      const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: orgId }, add: { customParts: 1, bytes } });
+      // A set: the parts of its owner's in it come along (or a copy of them).
+      const plan: SetMovePlan = part.spriteMime === '' ? await planSetMove(part.id, user.id, orgId) : emptyPlan();
+      const along = [...plan.move, ...plan.copy].map((p) => p.id);
+      const sizes = along.length
+        ? await db
+            .select({ id: schema.customParts.id, bytes: sql<number>`length(${schema.customParts.xmlBlob}) + length(${schema.customParts.spriteBlob})`.mapWith(Number) })
+            .from(schema.customParts)
+            .where(inArray(schema.customParts.id, along))
+            .all()
+        : [];
+      const bytes = (part.xmlBlob as Uint8Array).length + (part.spriteBlob as Uint8Array).length + sizes.reduce((n, r) => n + r.bytes, 0);
+      const refusal = await checkGrowth({ actor: user, owner: { kind: 'org', id: orgId }, add: { customParts: 1 + along.length, bytes } });
       if (refusal) return reply.code(refusal.status).send(refusal.body);
-      await db.update(schema.customParts).set({ ownerUserId: null, ownerOrgId: orgId, updatedAt: new Date() }).where(eq(schema.customParts.id, part.id));
-      await clearPendingPartShares(part.id);
-      if (part.ownerOrgId) await dropModuleFromCollections({ id: part.id, title: part.displayName }, 'moved to another club', orgId, user.id, 'part');
-      await writeAuditEvent({
-        resourceKind: 'custom_part',
-        resourceId: part.id,
-        userId: user.id,
-        eventType: 'transfer',
-        payload: {
-          from: part.ownerUserId ? { kind: 'user', userId: part.ownerUserId } : { kind: 'org', orgId: part.ownerOrgId },
-          to: { kind: 'org', orgId },
-        },
+      const moving = [part.id, ...plan.move.map((p) => p.id)];
+      const copies = plan.copy.length
+        ? await db.select().from(schema.customParts).where(inArray(schema.customParts.id, plan.copy.map((p) => p.id))).all()
+        : [];
+      const now = new Date();
+      const copyIds = new Map(copies.map((c) => [c.id, randomUUID()]));
+      db.transaction((tx) => {
+        tx.update(schema.customParts).set({ ownerUserId: null, ownerOrgId: orgId, updatedAt: now }).where(inArray(schema.customParts.id, moving)).run();
+        for (const src of copies) {
+          tx.insert(schema.customParts)
+            .values({
+              id: copyIds.get(src.id)!,
+              partNumber: src.partNumber,
+              displayName: src.displayName,
+              category: src.category,
+              ownerUserId: null,
+              ownerOrgId: orgId,
+              createdBy: src.createdBy ?? user.id,
+              xmlBlob: stripImportSource(Buffer.from(src.xmlBlob as Uint8Array)),
+              spriteBlob: Buffer.from(src.spriteBlob as Uint8Array),
+              spriteMime: src.spriteMime,
+              copiedFromId: src.id,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run();
+        }
       });
-      return { ok: true, id: part.id };
+      const from = part.ownerUserId ? { kind: 'user', userId: part.ownerUserId } : { kind: 'org', orgId: part.ownerOrgId };
+      for (const id of moving) {
+        // Invites still waiting were sent by someone who may no longer manage it.
+        await clearPendingPartShares(id);
+        const title = id === part.id ? part.displayName : plan.move.find((p) => p.id === id)!.displayName;
+        if (part.ownerOrgId) await dropModuleFromCollections({ id, title }, 'moved to another club', orgId, user.id, 'part');
+        await writeAuditEvent({
+          resourceKind: 'custom_part',
+          resourceId: id,
+          userId: user.id,
+          eventType: 'transfer',
+          payload: { from, to: { kind: 'org', orgId }, ...(id === part.id ? {} : { withSet: part.id }) },
+        });
+      }
+      for (const src of copies) {
+        await writeAuditEvent({
+          resourceKind: 'custom_part',
+          resourceId: copyIds.get(src.id)!,
+          userId: user.id,
+          eventType: 'create',
+          payload: { copiedFrom: src.id, owner: { kind: 'org', id: orgId }, withSet: part.id },
+        });
+      }
+      const names = (list: { partNumber: string }[]) => list.map((p) => p.partNumber);
+      return {
+        ok: true,
+        id: part.id,
+        ...(part.spriteMime === ''
+          ? { parts: { moved: names(plan.move), copied: names(plan.copy), inClub: names(plan.inClub), notYours: names(plan.notYours) } }
+          : {}),
+      };
     },
   );
 
@@ -382,4 +442,28 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(201).send({ id: r.id });
     },
   );
+}
+
+/**
+ * The part `id`, when `user` may move it to the club `orgSlug` names: a
+ * person's part by its owner (a share is not ownership), a club's by its
+ * runners, into a club where they may add parts.
+ */
+async function movable(
+  user: User,
+  id: string,
+  orgSlug: string | undefined,
+): Promise<
+  | { ok: true; part: typeof schema.customParts.$inferSelect; orgId: string }
+  | { ok: false; code: number; body: { error: string; permission?: string } }
+> {
+  const { role } = await resolveResourceRole(user.id, 'custom_part', id);
+  if (role === null) return { ok: false, code: 404, body: { error: 'not_found' } };
+  const part = await db.select().from(schema.customParts).where(eq(schema.customParts.id, id)).get();
+  if (!part || part.isGlobal) return { ok: false, code: 404, body: { error: 'not_found' } };
+  if (part.ownerUserId ? part.ownerUserId !== user.id : !hasAtLeast(role, 'owner')) return { ok: false, code: 403, body: { error: 'forbidden' } };
+  if (!orgSlug) return { ok: false, code: 400, body: { error: 'parts_can_only_move_to_clubs' } };
+  const dest = await destinationOrg(user.id, orgSlug, addPermission('custom_part'));
+  if (!dest.ok) return { ok: false, code: dest.code, body: { error: dest.error, ...(dest.permission ? { permission: dest.permission } : {}) } };
+  return { ok: true, part, orgId: dest.orgId! };
 }

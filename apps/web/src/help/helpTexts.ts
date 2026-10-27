@@ -191,6 +191,11 @@ export const HELP_TEXTS = {
     short: 'Your own custom parts in a set come along when you share it.',
     more: 'The people you invite also get the custom parts of yours that the set uses, so it places properly for them, to look at and place but not change. Taking the set back takes those parts back too, unless you shared them on their own.',
   },
+  'set.moving': {
+    title: 'Moving a set to a club',
+    short: 'Your own custom parts in a set move to the club with it.',
+    more: 'Everyone in the club can then place the set with all its parts. A part that another of your sets also uses stays yours, so that set keeps working, and the club gets its own copy of it. If the club already has a part with the same number, the set uses the club’s.',
+  },
   'set.updates': {
     title: 'Set updates',
     short: 'A set you placed knows when the set changes, so you can bring in the new version.',

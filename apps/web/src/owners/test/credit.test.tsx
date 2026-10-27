@@ -103,6 +103,29 @@ describe('moving your own thing into a club', () => {
     await waitFor(() => expect(move).toHaveBeenCalledWith('p1', 'arklug'));
   });
 
+  it('a set lists which of your parts move with it, stay yours, or are the club’s', async () => {
+    const sp = (id: string, partNumber: string, displayName = partNumber) => ({ id, partNumber, displayName });
+    const planned = vi.spyOn(api.customParts, 'movePlan').mockResolvedValue({
+      parts: { move: [sp('a', 'TOWER', 'Signal tower'), sp('b', 'SHED')], copy: [sp('c', 'LAMP')], inClub: [sp('d', 'GATE')], notYours: [] },
+    });
+    const move = vi.spyOn(api.customParts, 'move').mockResolvedValue({ ok: true, id: 'p1' });
+    autoConfirm(true);
+    wrap(<MoveCopyDialog kind="part" item={{ id: 'p1', title: 'Yard', ownerOrgId: null, isSet: true }} canMove orgs={ORGS} onClose={() => {}} />);
+    // Copying lists nothing.
+    expect(screen.queryByTestId('set-move-parts')).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Move to a club/));
+    const box = await screen.findByTestId('set-move-parts');
+    await waitFor(() => expect(box.textContent).toContain('These 2 custom parts of yours move with the set:'));
+    expect(planned).toHaveBeenCalledWith('p1', 'arklug');
+    expect(box.textContent).toContain('Signal tower (TOWER)');
+    expect(box.textContent).toContain('These stay yours, because another of your sets uses them. The club gets its own copy:LAMP');
+    expect(box.textContent).toContain('so the set uses the club’s:GATE');
+    expect(box.textContent).not.toContain('aren’t yours');
+    expect(screen.getByRole('button', { name: /help/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+    await waitFor(() => expect(move).toHaveBeenCalledWith('p1', 'arklug'));
+  });
+
   it('copying asks nothing', async () => {
     const copy = vi.spyOn(api.customParts, 'copy').mockResolvedValue({ id: 'p2' });
     const asked = autoConfirm(false);

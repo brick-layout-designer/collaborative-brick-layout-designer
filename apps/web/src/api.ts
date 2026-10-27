@@ -883,6 +883,9 @@ export const api = {
     /** Hand a part to a club (a club's part goes back only to its author). */
     move: (id: string, orgSlug: string) =>
       post<{ ok: true; id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/move`, { orgSlug }),
+    /** What moving a set to the club `orgSlug` does with your custom parts in it. */
+    movePlan: (id: string, orgSlug: string) =>
+      get<{ parts: SetMovePlan }>(`/api/custom-parts/${encodeURIComponent(id)}/move-plan?orgSlug=${encodeURIComponent(orgSlug)}`),
     /** Copy into your own parts (no `orgSlug`) or a club's. */
     copy: (id: string, orgSlug?: string) =>
       post<{ id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
@@ -2048,6 +2051,18 @@ export interface SetPartSummary {
   id: string;
   partNumber: string;
   displayName: string;
+}
+
+/** What moving a set to a club does with the custom parts in it (server access/setMoves.ts). */
+export interface SetMovePlan {
+  /** Move with it. */
+  move: SetPartSummary[];
+  /** Stay where they are, as another of your sets uses them; the club gets its own copy. */
+  copy: SetPartSummary[];
+  /** The club already has a part with that number; the set uses the club's. */
+  inClub: SetPartSummary[];
+  /** Not yours to move; they stay where they are. */
+  notYours: SetPartSummary[];
 }
 
 export interface InviteSummary {
