@@ -186,6 +186,11 @@ export const HELP_TEXTS = {
     short: 'A set is a group of parts saved together, to place again in one go.',
     more: 'Save selection as set keeps the parts you picked, as they sit, under one name. Then you can place it in any layout as one group, and share it like one of your own parts.',
   },
+  'set.sharing': {
+    title: 'Sharing a set',
+    short: 'Your own custom parts in a set come along when you share it.',
+    more: 'The people you invite also get the custom parts of yours that the set uses, so it places properly for them, to look at and place but not change. Taking the set back takes those parts back too, unless you shared them on their own.',
+  },
 
   // Opening files
   'open.formats': {

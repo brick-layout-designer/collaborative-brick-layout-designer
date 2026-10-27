@@ -894,9 +894,11 @@ export const api = {
       post<{ id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
     spriteUrl: (id: string) => `/api/custom-parts/${id}/sprite`,
     xmlUrl: (id: string) => `/api/custom-parts/${id}/xml`,
-    /** Who has it, and (for its owners) the invites still waiting. */
+    /** Who has it, and (for its owners) the invites still waiting. A set also lists its own custom parts, which come along when it's shared. */
     collaborators: (id: string) =>
-      get<{ collaborators: CollaboratorSummary[]; invites?: InviteSummary[] }>(`/api/custom-parts/${encodeURIComponent(id)}/collaborators`),
+      get<{ collaborators: CollaboratorSummary[]; invites?: InviteSummary[]; setParts?: SetPartSummary[] }>(
+        `/api/custom-parts/${encodeURIComponent(id)}/collaborators`,
+      ),
     /** Invite by email: they get a link to accept (nobody is added before that). */
     invite: (id: string, email: string, role: 'viewer' | 'editor') =>
       post<{ id: string; token: string; inviteUrl: string; emailDelivered: boolean; expiresAt: number }>(
@@ -919,8 +921,11 @@ export const api = {
         partNumber: string;
         partName: string;
         expiresAt: number;
+        /** A set: the sender's own parts in it, which come along. */
+        setParts?: { partNumber: string; displayName: string }[];
       }>(`/api/part-invites/${encodeURIComponent(token)}`),
-    accept: (token: string) => post<{ partId: string; role: 'viewer' | 'editor' }>(`/api/part-invites/${encodeURIComponent(token)}`),
+    accept: (token: string) =>
+      post<{ partId: string; role: 'viewer' | 'editor'; setParts?: { id: string; partNumber: string }[] }>(`/api/part-invites/${encodeURIComponent(token)}`),
   },
 
   modules: {
@@ -2036,6 +2041,15 @@ export interface CollaboratorSummary {
   email: string;
   displayName: string;
   avatarUrl: string | null;
+  /** A custom part they have only because these shared sets brought it. */
+  viaSets?: string[];
+}
+
+/** A custom part that comes along when its set is shared. */
+export interface SetPartSummary {
+  id: string;
+  partNumber: string;
+  displayName: string;
 }
 
 export interface InviteSummary {

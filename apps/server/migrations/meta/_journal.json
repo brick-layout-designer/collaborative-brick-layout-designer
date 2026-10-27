@@ -267,6 +267,13 @@
       "when": 1793067328374,
       "tag": "0037_club_logos",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1793072564586,
+      "tag": "0038_custom_part_set_shares",
+      "breakpoints": true
     }
   ]
 }

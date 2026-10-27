@@ -31,6 +31,7 @@ module.make
 module.library
 module.sheets
 set.about
+set.sharing
 open.formats
 open.desktop
 download.formats

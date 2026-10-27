@@ -57,6 +57,7 @@ host's to keep or not.
 | `custom_parts` | owner, creator, the part's XML and picture | yes, own parts as XML + picture | The XML may name an author. |
 | `custom_part_collaborators` | shares | yes | |
 | `custom_part_invites` | who invited which email to a custom part, and the role | yes (no token) | Pending ones go when the part changes hands. |
+| `custom_part_set_shares` | which custom parts someone has only because a set of them was shared with them | yes | Go with the set's share: taking the set back, leaving it or deleting it removes them, and the parts too. |
 | `venue_library` | owner, creator, the venue | yes, own venues as JSON | |
 | `part_libraries` | none | no | Installed by site admins. |
 

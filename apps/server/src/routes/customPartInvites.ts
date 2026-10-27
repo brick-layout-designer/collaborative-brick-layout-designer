@@ -27,6 +27,7 @@ import { isValidEmail, normalizeEmail, sameEmail } from '../utils/validate.js';
 import { publicName } from '../utils/publicName.js';
 import { maskEmail } from '../utils/maskEmail.js';
 import { perPerson } from '../utils/rateLimits.js';
+import { forgetSetShares, grantSetParts, onlyThroughSets, shareableSetParts } from '../access/setShares.js';
 
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -71,7 +72,12 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
         .from(schema.users)
         .where(sql`lower(${schema.users.email}) = ${email}`)
         .get();
-      if (existingUser && (await resolveResourceRole(existingUser.id, 'custom_part', req.params.id)).role !== null) {
+      // (Someone who has it only through a shared set can be given it on its own.)
+      if (
+        existingUser &&
+        (await resolveResourceRole(existingUser.id, 'custom_part', req.params.id)).role !== null &&
+        !(await onlyThroughSets(req.params.id, existingUser.id))
+      ) {
         return reply.code(409).send({ error: 'already_has_access' });
       }
 
@@ -145,7 +151,10 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
     // Whoever holds the link sees a masked address, and whether the invite
     // is for the account they're signed in with.
     const forYou = req.user ? sameEmail(invite!.invitedEmail, req.user.email) : null;
+    // A set: the sender's own parts in it, which come along.
+    const setParts = await shareableSetParts(invite!.customPartId, invite!.invitedBy);
     return {
+      ...(setParts.length > 0 ? { setParts: setParts.map((p) => ({ partNumber: p.partNumber, displayName: p.displayName })) } : {}),
       invitedEmail: forYou ? invite!.invitedEmail : maskEmail(invite!.invitedEmail),
       forYou,
       role: invite!.role,
@@ -174,10 +183,21 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
       .where(and(eq(schema.customPartInvites.id, inv.id), isNull(schema.customPartInvites.acceptedAt)))
       .returning({ id: schema.customPartInvites.id });
     if (claimed.length === 0) return reply.code(410).send({ error: 'invite_already_accepted' });
-    await db
-      .insert(schema.customPartCollaborators)
-      .values({ customPartId: inv.customPartId, userId: user.id, role: inv.role, addedAt: now })
-      .onConflictDoNothing();
+    if (await onlyThroughSets(inv.customPartId, user.id)) {
+      // They had it through a shared set: now it's theirs on its own, as invited.
+      await forgetSetShares(inv.customPartId, user.id);
+      await db
+        .insert(schema.customPartCollaborators)
+        .values({ customPartId: inv.customPartId, userId: user.id, role: inv.role, addedAt: now })
+        .onConflictDoUpdate({ target: [schema.customPartCollaborators.customPartId, schema.customPartCollaborators.userId], set: { role: inv.role } });
+    } else {
+      await db
+        .insert(schema.customPartCollaborators)
+        .values({ customPartId: inv.customPartId, userId: user.id, role: inv.role, addedAt: now })
+        .onConflictDoNothing();
+    }
+    // A set: the sender's own parts in it come along, to look at and place.
+    const withParts = await grantSetParts(inv.customPartId, user.id, inv.invitedBy);
     await writeAuditEvent({
       resourceKind: 'custom_part',
       resourceId: inv.customPartId,
@@ -185,6 +205,14 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
       eventType: 'share',
       payload: { invitedEmail: inv.invitedEmail, role: inv.role, inviteId: inv.id, accepted: true },
     });
-    return { partId: inv.customPartId, role: inv.role };
+    for (const p of withParts)
+      await writeAuditEvent({
+        resourceKind: 'custom_part',
+        resourceId: p.id,
+        userId: user.id,
+        eventType: 'share',
+        payload: { role: 'viewer', withSet: inv.customPartId, inviteId: inv.id, accepted: true },
+      });
+    return { partId: inv.customPartId, role: inv.role, ...(withParts.length > 0 ? { setParts: withParts.map((p) => ({ id: p.id, partNumber: p.partNumber })) } : {}) };
   });
 }

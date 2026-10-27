@@ -30,6 +30,7 @@ import { dropModuleFromCollections } from './collections.js';
 import { emailsVisible, nameFor } from '../utils/publicName.js';
 import { creditLookup, withCredits } from './credits.js';
 import { isImageOfType, MAX_SPRITE_SIDE, pngSize } from '../images/sniff.js';
+import { forgetSetShares, revokeSetParts, setPartsFor, setsBringing } from '../access/setShares.js';
 
 interface CreatePartBody {
   partNumber: string;
@@ -42,7 +43,7 @@ interface CreatePartBody {
   spriteMime?: 'image/gif' | 'image/png';
   /** When set, the part is org-owned. Caller must be a member of the org. */
   orgSlug?: string;
-  /** Parts-browser category label. Defaults to 'Custom'. */
+  /** Parts-browser category label. Defaults to 'Custom' for a part, 'My sets' for a set. */
   category?: string;
 }
 
@@ -236,7 +237,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
 
     const id = randomUUID();
     const now = new Date();
-    const category = trimmed(body.category) || 'Custom';
+    // Sets go in "My sets" whichever app made them (the website names it; a desktop may not).
+    const category = trimmed(body.category) || (spriteMime === '' ? 'My sets' : 'Custom');
     await db.insert(schema.customParts).values({
       id,
       partNumber,
@@ -353,6 +355,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
       // Collections it's in lose it; their curators get a note.
       const gone = await db.select({ id: schema.customParts.id, title: schema.customParts.displayName }).from(schema.customParts).where(eq(schema.customParts.id, req.params.id)).get();
       if (gone) await dropModuleFromCollections(gone, 'deleted', null, user.id, 'part');
+      // A set going: the parts it brought along to the people it was shared with go too.
+      await revokeSetParts(req.params.id);
       await db.delete(schema.customParts).where(eq(schema.customParts.id, req.params.id));
       await writeAuditEvent({
         resourceKind: 'custom_part',
@@ -393,9 +397,15 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
             .from(schema.customPartInvites)
             .where(and(eq(schema.customPartInvites.customPartId, req.params.id), isNull(schema.customPartInvites.acceptedAt)))
         : [];
+      // A set: its own custom parts, which come along when it's shared.
+      // A part: who has it only through a shared set, and which.
+      const setParts = await setPartsFor(req.params.id);
+      const viaSets = await setsBringing(req.params.id);
       return {
         invites: invites.map((i) => ({ id: i.id, invitedEmail: i.invitedEmail, role: i.role, expiresAt: i.expiresAt.getTime() })),
+        ...(setParts.length > 0 ? { setParts: setParts.map((p) => ({ id: p.id, partNumber: p.partNumber, displayName: p.displayName })) } : {}),
         collaborators: collaborators.map((c) => ({
+          ...(viaSets.has(c.userId) ? { viaSets: viaSets.get(c.userId) } : {}),
           userId: c.userId,
           role: c.role,
           addedAt: c.addedAt.getTime(),
@@ -461,13 +471,25 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
             eq(schema.customPartCollaborators.userId, req.params.userId),
           ),
         );
+      // Off a set: the parts it brought them go too (unless shared on their
+      // own). Off a part they had through a set: no set holds it any more.
+      const takenBack = await revokeSetParts(req.params.id, req.params.userId);
+      await forgetSetShares(req.params.id, req.params.userId);
       await writeAuditEvent({
         resourceKind: 'custom_part',
         resourceId: req.params.id,
         userId: user.id,
         eventType: 'unshare',
-        payload: { targetUserId: req.params.userId, selfRemoved: isSelf },
+        payload: { targetUserId: req.params.userId, selfRemoved: isSelf, ...(takenBack.length > 0 ? { setPartsTakenBack: takenBack } : {}) },
       });
+      for (const partId of takenBack)
+        await writeAuditEvent({
+          resourceKind: 'custom_part',
+          resourceId: partId,
+          userId: user.id,
+          eventType: 'unshare',
+          payload: { targetUserId: req.params.userId, withSet: req.params.id },
+        });
       return { ok: true };
     },
   );
