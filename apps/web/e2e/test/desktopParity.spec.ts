@@ -830,13 +830,17 @@ test.describe('connection points', () => {
   test('free connection dots show only on the selected brick by default', async ({ page }) => {
     const id = await createLayout(page);
     await openEditor(page, id);
+    // Dots a part draws itself (the Connection Points view), plus the
+    // picked parts' dots the selection overlay drew last.
     const dots = () =>
       page.evaluate(() => {
-        type Node = { getClassName: () => string; isVisible: () => boolean; getParent: () => { name: () => string } | null };
-        const K = (window as unknown as { Konva: { stages: { find: (s: (n: Node) => boolean) => Node[] }[] } }).Konva;
-        return K.stages
+        type Node = { getClassName: () => string; isVisible: () => boolean; getParent: () => { name: () => string } | null; attrs: { drawn?: { dots: number } } };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string | ((n: Node) => boolean)) => Node[] }[] } }).Konva;
+        const own = K.stages
           .flatMap((st) => st.find((n: Node) => n.getClassName() === 'Circle'))
           .filter((c) => c.isVisible() && (c.getParent()?.name() ?? '').startsWith('brick-')).length;
+        const overlay = K.stages.flatMap((st) => st.find('.selection-overlay')).reduce((n, o) => n + (o.attrs.drawn?.dots ?? 0), 0);
+        return own + overlay;
       });
 
     // A placed piece is selected: its two free ends show.
@@ -1086,13 +1090,15 @@ test.describe('selection while snapping', () => {
     await tile.dblclick();
     await expect.poll(bricks).toBe(2);
 
+    // The halos the selection overlay drew last (and its copy on the drag layer, mid-drag).
     const haloStrokes = () =>
       page.evaluate(() => {
-        type Node = { getClassName: () => string; stroke: () => string; strokeWidth: () => number };
-        const K = (window as unknown as { Konva: { stages: { find: (s: (n: Node) => boolean) => Node[] }[] } }).Konva;
+        type Node = { attrs: { drawn?: { halos: number; stroke: string | null } } };
+        const K = (window as unknown as { Konva: { stages: { find: (s: string) => Node[] }[] } }).Konva;
         return K.stages
-          .flatMap((st) => st.find((n: Node) => n.getClassName() === 'Rect' && n.strokeWidth() === 2.5))
-          .map((r) => r.stroke());
+          .flatMap((st) => st.find('.selection-overlay'))
+          .filter((o) => (o.attrs.drawn?.halos ?? 0) > 0)
+          .map((o) => o.attrs.drawn!.stroke);
       });
     // The new piece is selected; drag it left until its free end is half a
     // stud from the other's.

@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, Group, Image as KonvaImage, Line, Rect, Text as KonvaText } from 'react-konva';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Circle, Group, Image as KonvaImage, Line, Rect, Shape, Text as KonvaText } from 'react-konva';
 import * as Y from 'yjs';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type Konva from 'konva';
@@ -25,7 +25,7 @@ import { studToPx } from './coords';
 import { unknownPartLook } from './unknownPart';
 import { MAP_FONT_STACK, MAP_LINE_HEIGHT } from './mapText';
 import { ensureSprite, getSpriteSync, onSpriteReady } from './spriteCache';
-import { ringPoints, tracePickShape } from './pickShape';
+import { tracePickShape } from './pickShape';
 import { linkKeys, liveDragSnap, nearestConnectionIndex, type DragSnapResult } from '../snap';
 import { grabSnapCorner } from '../gridSnap';
 import { SnapSession, applyGroupTurn, holdReach, snapBypassed, type GroupTurn } from '../snapFeel';
@@ -37,6 +37,7 @@ import { indexParts } from '../partIndex';
 import { pivotOf } from '../brickGeometry';
 import { startFlexSession } from '../flexSession';
 import { SELECTION } from './selectionStyle';
+import { drawSelection, SELECTION_OVERLAY, type GlyphInfo } from './SelectionOverlay';
 import { useLiveDragPose, type DragPose } from '../liveDragPose';
 import { isTouchEvent, tapGuard } from '../touchGesture';
 import type { SidecarModule } from '@cld/bbm';
@@ -83,8 +84,14 @@ export function liftForDrag(nodes: readonly Konva.Node[]): () => void {
     .map((node) => ({ node, parent: node.getParent(), z: node.zIndex() }))
     .filter((w): w is { node: Konva.Node; parent: NonNullable<typeof w.parent>; z: number } => !!w.parent);
   const layers = new Set(was.map((w) => w.node.getLayer()).filter((l): l is Konva.Layer => !!l));
+  // The selection overlay draws only the parts on its own layer: the drag
+  // layer gets a copy, above the parts, for the ones that move there.
+  const overlay = [...layers].map((l) => l.findOne<Konva.Shape>(`.${SELECTION_OVERLAY}`)).find((n) => !!n);
   for (const w of was) w.node.moveTo(layer);
+  const overlayCopy = overlay?.clone() as Konva.Shape | undefined;
+  if (overlayCopy) layer.add(overlayCopy);
   return () => {
+    overlayCopy?.destroy();
     for (const w of [...was].sort((a, b) => a.z - b.z)) {
       if (w.node.getParent() !== layer) continue; // gone meanwhile
       w.node.moveTo(w.parent);
@@ -163,6 +170,12 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
     })),
   );
   const selectedIds = useMemo(() => new Set(selection), [selection]);
+  // Each part keeps what the selection overlay needs here (SelectionOverlay.ts).
+  const [glyphs] = useState(() => new Map<string, GlyphInfo>());
+  // While the Connection Points view draws every part's dots, the parts
+  // draw their own (bright when picked); otherwise the overlay draws the
+  // picked parts' dots, and picking re-renders no part.
+  const dotsInParts = !isViewer && (view.showConnectionPoints || view.alwaysShowConnections);
   // Modules act as one piece (moduleEdit.ts): their look and pins live in
   // the sidecar (meta), so follow it as well as the map.
   useYjsSnapshot(doc.getMap('meta') as unknown as Y.AbstractType<unknown>);
@@ -189,6 +202,27 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
   const getMap = useCallback(() => mapRef.current, []);
 
   const brickLayers = map.layers.filter((l): l is LayerBrick => l.type === 'brick');
+
+  // The picked parts' halos (not a module picked whole: ModuleOverlay
+  // shows that) and dots, one shape over every part, like the desktop.
+  const haloIds = useMemo(() => (isViewer ? [] : selection.filter((id) => !inPickedModule.has(id))), [isViewer, selection, inPickedModule]);
+  const tint = view.selectionTint;
+  const drawPicked = useCallback(
+    (ctx: Konva.Context, shape: Konva.Shape) => {
+      drawSelection(ctx, shape, {
+        glyphs,
+        haloIds,
+        dotIds: isViewer || dotsInParts ? [] : selection,
+        // Read when drawn: a copy on the drag layer turns green as a snap starts.
+        colors: () => selectionHalo(tint, useEditorStore.getState().liveSnap !== null),
+        bendHandles: view.tool === 'select',
+      });
+    },
+    // view.snapActive: a new function redraws the layer when a snap starts or ends.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [glyphs, haloIds, isViewer, dotsInParts, selection, tint, view.tool, view.snapActive],
+  );
+
   return (
     <Group>
       {brickLayers.map((layer) => {
@@ -215,8 +249,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   doc={doc}
                   meta={partsByKey.get(lower) ?? byBarePartNumber.get(lower)}
                   isViewer={isViewer}
-                  isSelected={!isViewer && selectedIds.has(brick.id)}
-                  halo={!inPickedModule.has(brick.id)}
+                  isSelected={dotsInParts && selectedIds.has(brick.id)}
                   tool={isViewer ? 'select' : view.tool}
                   showConnectionPoints={!isViewer && view.showConnectionPoints}
                   alwaysShowConnections={!isViewer && view.alwaysShowConnections}
@@ -225,15 +258,12 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
                   hullThickness={hull.hullThickness}
                   showElevation={showElevation}
                   opacity={opacity}
-                  selectionTint={isViewer ? 'ffcc00' : view.selectionTint}
-                  // Only a selected glyph shows the halo, so only it re-renders
-                  // when a snap starts or ends.
-                  snapActive={!isViewer && view.snapActive && selectedIds.has(brick.id)}
                   getMap={getMap}
                   getModules={getModules}
                   dragOk={canDragPart(brick.id, modules, editingModuleId)}
                   outside={outsideEdit(brick.id, modules, editingModuleId)}
                   partsByKey={partsByKey}
+                  glyphs={glyphs}
                   {...(onEditBrick ? { onEditBrick } : {})}
                 />
               );
@@ -241,6 +271,7 @@ export const BrickLayer = memo(function BrickLayer({ map, doc, isViewer = false,
           </Group>
         );
       })}
+      <Shape name={`${EXPORT_HIDE} ${SELECTION_OVERLAY}`} listening={false} perfectDrawEnabled={false} sceneFunc={drawPicked} />
     </Group>
   );
 });
@@ -252,7 +283,6 @@ const BrickGlyph = memo(function BrickGlyph({
   meta,
   isViewer,
   isSelected,
-  halo,
   tool,
   showConnectionPoints,
   alwaysShowConnections,
@@ -261,13 +291,12 @@ const BrickGlyph = memo(function BrickGlyph({
   hullThickness,
   showElevation,
   opacity,
-  selectionTint,
-  snapActive,
   getMap,
   getModules,
   dragOk,
   outside,
   partsByKey,
+  glyphs,
   onEditBrick,
 }: {
   brick: Brick;
@@ -275,9 +304,8 @@ const BrickGlyph = memo(function BrickGlyph({
   doc: Y.Doc;
   isViewer: boolean;
   meta: PartWire | undefined;
+  /** Picked, while the part draws its own connection dots (the Connection Points view); the halo is the overlay's. */
   isSelected: boolean;
-  /** Draw its own selection halo (not when its whole module is picked: the module is highlighted instead). */
-  halo: boolean;
   tool: Tool;
   showConnectionPoints: boolean;
   alwaysShowConnections: boolean;
@@ -287,9 +315,6 @@ const BrickGlyph = memo(function BrickGlyph({
   showElevation: boolean;
   /** The sheet's transparency, 0..1. */
   opacity: number;
-  selectionTint: string;
-  /** A connection snap is live: the halo turns green (SelectionOverlay.cpp:26-29). */
-  snapActive: boolean;
   getMap: () => BbmMap;
   getModules: () => readonly SidecarModule[];
   /** It may be dragged: not out of reach while a module is edited, and not in a pinned module. */
@@ -297,6 +322,8 @@ const BrickGlyph = memo(function BrickGlyph({
   /** A module is being edited and this part isn't in it: dimmed and out of reach. */
   outside: boolean;
   partsByKey: Map<string, PartWire>;
+  /** Where the part tells the selection overlay what it needs (SelectionOverlay.ts). */
+  glyphs: Map<string, GlyphInfo>;
   onEditBrick?: (brick: Brick, layerId: string, meta: PartWire | undefined) => void;
 }) {
   const spriteUrl = meta ? spriteUrlFor(meta) : '';
@@ -345,6 +372,21 @@ const BrickGlyph = memo(function BrickGlyph({
   const spriteScale = 8 / authoredPxPerStud; // STUD_PX / authoredPxPerStud
   const spriteWpx = sprite ? sprite.naturalWidth * spriteScale : w;
   const spriteHpx = sprite ? sprite.naturalHeight * spriteScale : h;
+
+  // What the selection overlay draws this part's halo and dots from, kept
+  // current on every render (no re-render needed when it's picked).
+  const info = useRef<GlyphInfo>({ group: groupRef, brick, meta, spriteW: spriteWpx, spriteH: spriteHpx });
+  info.current.brick = brick;
+  info.current.meta = meta;
+  info.current.spriteW = spriteWpx;
+  info.current.spriteH = spriteHpx;
+  useLayoutEffect(() => {
+    const mine = info.current;
+    glyphs.set(brick.id, mine);
+    return () => {
+      if (glyphs.get(brick.id) === mine) glyphs.delete(brick.id);
+    };
+  }, [glyphs, brick.id]);
 
   function handleClick(e: KonvaEventObject<MouseEvent | TouchEvent>) {
     // Right-click: if the clicked brick is already selected keep the whole
@@ -1293,57 +1335,6 @@ const BrickGlyph = memo(function BrickGlyph({
           />
         );
       })}
-      {isSelected && halo && meta?.pickShape && (
-        // An imported part: the halo follows its real outline.
-        <>
-          {meta.pickShape.map((ring, i) => (
-            <Line key={`po-${i}`} name={EXPORT_HIDE} points={ringPoints(ring, 8)} closed
-              stroke={SELECTION.partOuter} strokeWidth={SELECTION.partOuterWidth} strokeScaleEnabled={false}
-              listening={false} perfectDrawEnabled={false} fillEnabled={false} />
-          ))}
-          {meta.pickShape.map((ring, i) => (
-            <Line key={`pi-${i}`} name={EXPORT_HIDE} points={ringPoints(ring, 8)} closed
-              stroke={selectionHalo(selectionTint, snapActive).stroke} strokeWidth={SELECTION.partInnerWidth}
-              strokeScaleEnabled={false} listening={false} perfectDrawEnabled={false} fillEnabled={false} />
-          ))}
-        </>
-      )}
-      {isSelected && halo && !meta?.pickShape && (
-        // Two-stroke gold halo, port of SelectionOverlay::paint
-        // (ui/SelectionOverlay.cpp:21-48):
-        //   - 5px black outer outline (visible on light backgrounds)
-        //   - 2.5px inner gold outline + translucent gold fill
-        // Sized to the sprite's natural footprint so the halo follows
-        // the rotated brick's silhouette rather than the AABB.
-        <>
-          <Rect
-            name={EXPORT_HIDE}
-            x={-spriteWpx / 2 - SELECTION.partPadPx}
-            y={-spriteHpx / 2 - SELECTION.partPadPx}
-            width={spriteWpx + 2 * SELECTION.partPadPx}
-            height={spriteHpx + 2 * SELECTION.partPadPx}
-            stroke={SELECTION.partOuter}
-            strokeWidth={SELECTION.partOuterWidth}
-            strokeScaleEnabled={false}
-            listening={false}
-            perfectDrawEnabled={false}
-            fillEnabled={false}
-          />
-          <Rect
-            name={EXPORT_HIDE}
-            x={-spriteWpx / 2 - SELECTION.partPadPx}
-            y={-spriteHpx / 2 - SELECTION.partPadPx}
-            width={spriteWpx + 2 * SELECTION.partPadPx}
-            height={spriteHpx + 2 * SELECTION.partPadPx}
-            stroke={selectionHalo(selectionTint, snapActive).stroke}
-            strokeWidth={SELECTION.partInnerWidth}
-            strokeScaleEnabled={false}
-            fill={selectionHalo(selectionTint, snapActive).fill}
-            listening={false}
-            perfectDrawEnabled={false}
-          />
-        </>
-      )}
       {/* Hull outline — per-layer hullProperties; drawn when view/brickHulls is on
           OR when the layer's own hullProperties.isVisible flag is set.
           When meta.hullPts is non-empty we draw the actual polygon (pixel coords

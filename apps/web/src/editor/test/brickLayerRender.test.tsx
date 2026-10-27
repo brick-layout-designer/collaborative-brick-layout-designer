@@ -1,7 +1,8 @@
 // Regression: the brick layer must only re-render what changed. With
 // thousands of bricks, every canvas re-render (pan, marquee, HUD), every
 // selection change and every one-brick edit used to re-render every
-// glyph (2000+ Konva primitives for 1000 bricks).
+// glyph (2000+ Konva primitives for 1000 bricks). Picking parts (Select
+// all on a thousand) re-renders none: the selection overlay draws them.
 
 import { describe, expect, it, vi } from 'vitest';
 import { act, createElement as h, Fragment, type ReactNode } from 'react';
@@ -16,7 +17,7 @@ vi.mock('react-konva', () => {
     prims++;
     return h(Fragment, null, p.children);
   };
-  return { Group: mk(), Image: mk(), Rect: mk(), Circle: mk(), Line: mk(), Text: mk() };
+  return { Group: mk(), Image: mk(), Rect: mk(), Circle: mk(), Line: mk(), Text: mk(), Shape: mk() };
 });
 
 import { moveBrick, placeBrick } from '../mutations';
@@ -53,11 +54,20 @@ describe('BrickLayer re-render scope', () => {
     await act(async () => root.render(render(map)));
     expect(prims).toBe(0);
 
-    // Selecting one brick re-renders the layer groups + that one glyph.
+    // Selecting one brick re-renders the layer groups and the overlay, no glyph.
     prims = 0;
     await act(async () => useEditorStore.getState().setSelection([ids[0]!]));
-    // (An unknown part is 5 primitives: its clear box, the cross and its number.)
-    expect(prims).toBeLessThan(15);
+    expect(prims).toBeLessThanOrEqual(3);
+
+    // Select all (Ctrl+A) on a thousand parts: still no glyph. It used to
+    // re-render every one and make two halo shapes each (7000+ here).
+    prims = 0;
+    await act(async () => useEditorStore.getState().setSelection([...ids]));
+    expect(prims).toBeLessThanOrEqual(3);
+    prims = 0;
+    await act(async () => useEditorStore.getState().setSelection([]));
+    expect(prims).toBeLessThanOrEqual(3);
+    await act(async () => useEditorStore.getState().setSelection([ids[0]!]));
 
     // Moving one brick: new projection, but only that glyph re-renders.
     moveBrick(doc, layerId, ids[5]!, 3, 3);
@@ -68,12 +78,12 @@ describe('BrickLayer re-render scope', () => {
     await act(async () => root.render(render(map)));
     expect(prims).toBeLessThan(15);
 
-    // A snap starting re-renders only the selected glyph (its halo turns
-    // green); further live-snap updates during the drag touch no glyph.
+    // A snap starting redraws the overlay (the halo turns green) and no
+    // glyph; further live-snap updates during the drag touch nothing.
     prims = 0;
     await act(async () => useEditorStore.getState().setLiveSnap({ studX: 1, studY: 0 }));
     expect(prims).toBeGreaterThan(0);
-    expect(prims).toBeLessThan(15);
+    expect(prims).toBeLessThanOrEqual(3);
     prims = 0;
     await act(async () => useEditorStore.getState().setLiveSnap({ studX: 2, studY: 0 }));
     expect(prims).toBe(0);
