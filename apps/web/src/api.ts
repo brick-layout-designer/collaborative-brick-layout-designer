@@ -111,6 +111,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   demo_account_cannot_submit: 'The demo can’t add to the public catalog.',
   collection_empty: 'Pick at least one item for the collection.',
   invalid_cover: 'That picture can’t be used. Choose a PNG, JPEG or WebP photo.',
+  logo_too_large: 'That picture is too big for a logo. Choose a smaller one.',
   cover_too_large: 'That picture is too big. Choose a smaller one.',
   collection_too_big: 'A collection can hold up to 60 items.',
   item_not_public: 'One of the items isn’t in the public catalog any more. Take it out and try again.',
@@ -128,7 +129,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /** Errors whose server message is the sentence to show (privacy: "You can ask again after …"). */
-const MESSAGE_ERRORS = new Set(['only_admins_edit_roles', 'admin_role_fixed', 'builtin_role', 'role_in_use', 'role_name_taken', 'too_many_roles', 'only_admins_set_roles', 'last_admin', 'only_club_admins_can_give_back', 'export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required', 'heir_not_member']);
+const MESSAGE_ERRORS = new Set(['invalid_logo', 'only_club_admins', 'only_admins_edit_roles', 'admin_role_fixed', 'builtin_role', 'role_in_use', 'role_name_taken', 'too_many_roles', 'only_admins_set_roles', 'last_admin', 'only_club_admins_can_give_back', 'export_too_soon', 'export_gone', 'demo_account', 'confirm_mismatch', 'deletion_blocked', 'account_pending_deletion', 'account_restricted', 'invalid_contact', 'no_account', 'subject_required', 'heir_not_member']);
 
 /** A 403 the site's firewall answered (empty or non-JSON body), not the app. */
 /** What a request says when it never reached the server (no Wi-Fi, server down). */
@@ -690,6 +691,9 @@ export const api = {
 
   orgs: {
     list: () => get<{ orgs: OrgSummary[] }>('/api/orgs'),
+    /** A club admin sets the club's logo: PNG, JPEG, WebP or SVG, as base64. */
+    setLogo: (slug: string, body: { mime: string; data: string }) => put<{ ok: true; logoUrl: string | null }>(`/api/orgs/${encodeURIComponent(slug)}/logo`, body),
+    removeLogo: (slug: string) => del(`/api/orgs/${encodeURIComponent(slug)}/logo`),
     /**
      * Create an org. `slug` is optional — when omitted, the server
      * auto-derives one from `name` and disambiguates with a numeric
@@ -1912,6 +1916,8 @@ export interface OrgSummary {
   permissions?: ClubPermission[];
   /** I hold its Admin role. */
   isAdmin?: boolean;
+  /** Its logo's address, or null (older servers leave it out). */
+  logoUrl?: string | null;
 }
 
 /** One of a club's roles. `key` names the four it starts with; a club's own roles have none. */
@@ -1983,6 +1989,8 @@ export interface ClubSummary {
   joinPolicy: JoinPolicy;
   listed: boolean;
   myStatus: ClubRole | 'requested' | null;
+  /** Its logo's address, or null (older servers leave it out). */
+  logoUrl?: string | null;
 }
 
 export interface JoinRequestSummary {

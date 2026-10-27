@@ -42,6 +42,7 @@ import { ownershipRoutes } from './ownership.js';
 import { privacyRoutes } from './privacy.js';
 import { privacyAdminRoutes } from './privacyAdmin.js';
 import { clubDeletionRoutes } from './clubDeletion.js';
+import { clubLogoRoutes } from './clubLogos.js';
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   // A JSON body of `null`, a string or a number reads as an empty one:
@@ -90,4 +91,5 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
   await app.register(privacyRoutes);
   await app.register(privacyAdminRoutes);
   await app.register(clubDeletionRoutes);
+  await app.register(clubLogoRoutes);
 }

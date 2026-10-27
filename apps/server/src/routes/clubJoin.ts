@@ -20,6 +20,7 @@
 //   POST   /api/orgs/:slug/join-requests/:id/decline   (managers and admins)
 //   GET    /api/join-requests/count          requests waiting in the clubs you run
 
+import { clubLogoUrls } from './clubLogos.js';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
@@ -58,7 +59,7 @@ async function myRequest(orgId: string, userId: string) {
 }
 
 /** What anyone signed in may see of a listed club. */
-function summary(org: Org, members: number, status: ClubRole | 'requested' | null) {
+function summary(org: Org, members: number, status: ClubRole | 'requested' | null, logoUrl: string | null = null) {
   return {
     id: org.id,
     name: org.name,
@@ -69,6 +70,7 @@ function summary(org: Org, members: number, status: ClubRole | 'requested' | nul
     listed: org.listed,
     /** You: your role when you're in it, 'requested' when you've asked. */
     myStatus: status,
+    logoUrl,
   };
 }
 
@@ -140,8 +142,9 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
             .where(and(eq(schema.orgJoinRequests.userId, user.id), inArray(schema.orgJoinRequests.orgId, ids)))
         ).map((r) => r.orgId),
       );
+      const logos = await clubLogoUrls(orgs);
       return {
-        clubs: orgs.map((o) => summary(o, counts.get(o.id) ?? 0, mine.get(o.id) ?? (asked.has(o.id) ? 'requested' : null))),
+        clubs: orgs.map((o) => summary(o, counts.get(o.id) ?? 0, mine.get(o.id) ?? (asked.has(o.id) ? 'requested' : null), logos.get(o.id) ?? null)),
       };
     },
   );
@@ -157,7 +160,7 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
       const status = await statusOf(org.id, user.id);
       // Unlisted clubs stay hidden from everyone outside them.
       if (!org.listed && (status === null || status === 'requested')) return reply.code(404).send({ error: 'not_found' });
-      return summary(org, await memberCount(org.id), status);
+      return summary(org, await memberCount(org.id), status, (await clubLogoUrls([org])).get(org.id) ?? null);
     },
   );
 

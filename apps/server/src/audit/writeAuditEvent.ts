@@ -148,6 +148,9 @@ export type AuditEventType =
   // good (payload.ref "Deleted club #…", what happened to its public items).
   | 'club_delete_request'
   | 'club_restore'
+  // A club's logo set or removed by one of its admins.
+  | 'club_logo_set'
+  | 'club_logo_remove'
   | 'club_erased';
 
 export type AuditResourceKind =

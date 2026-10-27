@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { ClubLogo } from './ClubLogo';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { SignInFirst } from '../auth/signIn';
 import { useHashScroll } from '../ui/useHashScroll';
@@ -16,6 +17,7 @@ import {
   PendingInvitesSection,
   Section,
   SettingsSection,
+  LogoSection,
 } from './ClubManage';
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
@@ -106,7 +108,10 @@ function OrgAdmin({ slug }: { slug: string }) {
               ← {org.name}
             </Link>
           </p>
-          <h1 className="text-2xl font-semibold">Manage {org.name}</h1>
+          <h1 className="flex items-center gap-3 text-2xl font-semibold">
+            <ClubLogo name={org.name} logoUrl={org.logoUrl} size={40} />
+            Manage {org.name}
+          </h1>
           <p className="text-sm text-muted">You’re {aRole(org.myRole)} of this club.</p>
         </div>
 
@@ -154,6 +159,7 @@ function OrgAdmin({ slug }: { slug: string }) {
         {shownTab === 'settings' && isClubAdmin && (
           <div className="space-y-5">
             <SettingsSection key={`${org.slug}:${org.name}`} org={org} />
+            <LogoSection org={org} />
             <JoinSettingsSection key={`join:${org.slug}`} org={org} />
             <HandOverSection slug={slug} myUserId={myUserId} members={memberList} />
             <Section title="Leave the club">

@@ -34,6 +34,7 @@ host's to keep or not.
 | `orgs` | `created_by` (who started it) | as "clubs-started" | The club's own data otherwise. |
 | `org_members` | membership and role | yes | |
 | `member_roles` | which club roles a member holds | yes | Go with the membership. |
+| `club_logos` | a club's logo picture (WebP), who set it and when | no (the club's own data; in the club's download as club-logo.webp) | |
 | `club_roles` | a club's roles and what each allows | no (the club's own data; in the club's download) | |
 | `org_invites` | invited email, who invited | yes (no token) | Either side's. |
 | `org_join_requests` | request and its note | yes | |

@@ -50,6 +50,7 @@ import { perPerson } from '../utils/rateLimits.js';
 import { maskEmail } from '../utils/maskEmail.js';
 import { notifyAccessChanged } from '../ws/liveAccess.js';
 import { hidingLastActive, lastActiveBucket, type LastActive } from './preferences.js';
+import { clubLogoUrls } from './clubLogos.js';
 
 interface CreateOrgBody {
   name: string;
@@ -128,6 +129,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.orgMembers.userId, user.id));
 
     const access = await clubAccessMap(user.id);
+    const logos = await clubLogoUrls(rows);
     // Whoever reviews a trusted club's shares sees what waits in its queue.
     const reviews = new Map<string, number>();
     for (const r of rows) if (r.trusted && has(access.get(r.id), 'send_catalog')) reviews.set(r.id, await clubReviewCount(r.id));
@@ -146,6 +148,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         // What my roles in it let me do (access/clubPermissions.ts).
         permissions: [...(access.get(r.id)?.permissions ?? [])],
         isAdmin: !!access.get(r.id)?.isAdmin,
+        logoUrl: logos.get(r.id) ?? null,
         ...(reviews.has(r.id) ? { pendingReviews: reviews.get(r.id) } : {}),
       })),
     };
@@ -246,6 +249,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       joinPolicy: org.joinPolicy,
       trusted: org.trusted,
       listed: org.listed,
+      logoUrl: (await clubLogoUrls([org])).get(org.id) ?? null,
       // Admins see how many people are waiting to be let in, and (a
       // trusted club) how many shares wait in its review queue.
       ...(perms.has('invite') || perms.has('manage_members')
