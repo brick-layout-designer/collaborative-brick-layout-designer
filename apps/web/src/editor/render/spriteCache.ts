@@ -117,6 +117,10 @@ export async function ensureSprite(url: string, opts: { count?: boolean } = {}):
   if (opts.count !== false) track(url);
   try {
     const img = await loadSprite(url);
+    // Every caller waiting on the same picture gets here: the listeners hear
+    // of it once, when it first arrives. (Each of 5,000 parts sharing nine
+    // pictures used to tell every other one: 2.7 million re-renders.)
+    if (ready.has(url)) return ready.get(url)!;
     ready.set(url, img);
     if (batchWanted.has(url)) {
       batchLoaded.add(url);
