@@ -105,7 +105,7 @@ export function AboutPage() {
             </li>
             <li>
               <a href={DESKTOP_URL} className="tap-target inline-flex items-center text-accent-text hover:underline">
-                Desktop CLD (Qt)
+                The desktop app (Windows, Mac and Linux)
               </a>
             </li>
             <li>

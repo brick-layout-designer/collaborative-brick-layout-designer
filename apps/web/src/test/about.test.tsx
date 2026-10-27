@@ -36,3 +36,18 @@ describe('About page privacy note', () => {
     expect(screen.getByText(/kept for 90 days/)).toBeTruthy();
   });
 });
+
+describe('About page links', () => {
+  it('names the desktop app plainly, without the old short name', () => {
+    cleanup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <AboutPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('link', { name: 'The desktop app (Windows, Mac and Linux)' })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/\b[BC]LD\b/);
+  });
+});
