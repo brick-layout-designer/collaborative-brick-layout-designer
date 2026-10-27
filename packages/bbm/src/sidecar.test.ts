@@ -42,6 +42,21 @@ describe('module look fields', () => {
   });
 });
 
+describe('placed sets', () => {
+  it('round-trips the version each placed custom set came from, and keeps fields it does not know', () => {
+    const sets = [
+      { id: 'g1', version: '1572ba9befec980c', anchor: { brick: 'b1', x: 0, y: -4, angle: 90 } },
+      { id: 'g2', version: 'aa', later: true },
+    ];
+    const back = readSidecar(writeSidecar({ schemaVersion: 1, bbmHashSha256: '', sets }));
+    expect(back.sets).toEqual(sets);
+    expect(back.extras).toBeUndefined();
+    // Entries without an id or a version are dropped; none at all writes no field.
+    expect(readSidecar(JSON.stringify({ schemaVersion: 1, sets: [{ id: 'x' }, null, { id: 'g', version: 'v' }] })).sets).toEqual([{ id: 'g', version: 'v' }]);
+    expect(writeSidecar({ schemaVersion: 1, bbmHashSha256: '', sets: [] })).not.toContain('sets');
+  });
+});
+
 describe('readSidecar', () => {
   it('parses a minimal sidecar', () => {
     const result = readSidecar(JSON.stringify({ schemaVersion: 1, bbmHashSha256: 'abc' }));

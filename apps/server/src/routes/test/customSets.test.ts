@@ -60,6 +60,7 @@ interface WirePart {
   subparts: { subKey: string; x: number; y: number; angle: number }[];
   noSprite?: true;
   canUngroup?: false;
+  setVersion?: string;
 }
 
 describe('a set of custom parts', () => {
@@ -140,6 +141,30 @@ describe('a set of custom parts', () => {
     invalidatePartsCache();
     const part = (await catalog()).find((p) => p.partNumber === 'Left_switch_cut_150.whole')!;
     expect(part.subparts).toHaveLength(2);
+  });
+
+  it('a set has a version that changes with its parts or name, so placed copies can say Update available', async () => {
+    const { id } = (await uploadSet()).json() as { id: string };
+    const version = async () => (await catalog()).find((p) => p.key === `custom:${id}`)?.setVersion;
+    const v1 = await version();
+    expect(v1).toMatch(/^[0-9a-f]{16}$/);
+    // The same set sent again: the same version.
+    await uploadSet(SET_XML, 'PUT', id);
+    invalidatePartsCache();
+    expect(await version()).toBe(v1);
+    // A part moved.
+    await uploadSet(SET_XML.replace('<x>5.5</x>', '<x>6</x>'), 'PUT', id);
+    invalidatePartsCache();
+    const v2 = await version();
+    expect(v2).not.toBe(v1);
+    // Renamed.
+    await uploadSet(SET_XML.replace('<x>5.5</x>', '<x>6</x>').replace('as designed', 'as built'), 'PUT', id);
+    invalidatePartsCache();
+    expect(await version()).not.toBe(v2);
+    // A part has none.
+    await upload({ partNumber: 'P1', displayName: 'P1', xmlBase64: b64(PART_XML), spriteBase64: EMPTY_GIF.toString('base64'), spriteMime: 'image/gif' });
+    invalidatePartsCache();
+    expect((await catalog()).find((p) => p.partNumber === 'P1')?.setVersion).toBeUndefined();
   });
 
   it('without a sprite, only a <group> with parts is taken', async () => {

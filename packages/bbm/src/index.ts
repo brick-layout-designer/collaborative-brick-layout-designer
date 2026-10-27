@@ -18,6 +18,7 @@ export {
   type Sidecar,
   type SidecarModule,
   type SavedView,
+  type PlacedSet,
   type Venue,
   type VenueEdge,
   type VenueObstacle,
