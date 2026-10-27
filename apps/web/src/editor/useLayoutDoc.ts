@@ -176,13 +176,59 @@ function wsUrlBase(): string {
   return `${proto}//${window.location.host}`;
 }
 
-export function useLayoutDoc(layoutId: string): LayoutDocState {
+/**
+ * Whether `mine` holds anything `server` lacks: what the layout reads as
+ * changes when mine is put on top of the server's copy. Only the doc's
+ * shared types that `mine` reads are compared.
+ */
+export function holdsEditsServerLacks(server: Y.Doc, mine: Y.Doc): boolean {
+  const both = new Y.Doc();
+  Y.applyUpdate(both, Y.encodeStateAsUpdate(server));
+  const read = (): string => {
+    const out: Record<string, unknown> = {};
+    for (const [name, type] of mine.share) {
+      // A shared type nothing here reads (the doc only holds it untyped): skip it.
+      if (type.constructor === Y.AbstractType) continue;
+      out[name] = both.get(name, type.constructor as typeof Y.AbstractType<unknown>).toJSON();
+    }
+    return JSON.stringify(out);
+  };
+  const before = read();
+  Y.applyUpdate(both, Y.encodeStateAsUpdate(mine));
+  const after = read();
+  both.destroy();
+  return before !== after;
+}
+
+/**
+ * `canEdit`: whether the person may edit the layout now (their role on it;
+ * undefined until known). When it goes from yes to no while the layout is
+ * open, the server has been dropping their edits since, and drops any
+ * made offline too: the layout starts again from the server's copy, and a
+ * copy holding edits the server lacks is kept (refusedCopies, 'view_only').
+ */
+export function useLayoutDoc(layoutId: string, canEdit?: boolean): LayoutDocState {
   const [doc, setDoc] = useState<Y.Doc | null>(null);
   const [awareness, setAwareness] = useState<Awareness | null>(null);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'connecting' });
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const providerRef = useRef<WebsocketProvider | null>(null);
+  // Bumped to start the layout again from the server's copy (down to view only).
+  const [generation, setGeneration] = useState(0);
+  const restarting = useRef(false);
+  // The copy from before starting again, until the server's copy is in to compare.
+  const toCheck = useRef<Y.Doc | null>(null);
+  const couldEdit = useRef(canEdit);
+
+  useEffect(() => {
+    const before = couldEdit.current;
+    couldEdit.current = canEdit;
+    if (before === true && canEdit === false && providerRef.current) {
+      restarting.current = true;
+      setGeneration((g) => g + 1);
+    }
+  }, [canEdit]);
 
   useEffect(() => {
     setDoc(null);
@@ -249,6 +295,12 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       if (isSynced) {
         unsent = false;
         if (unreadable()) return;
+        // Started again at view only: keep the copy from before if the server lacks some of it.
+        const earlier = toCheck.current;
+        if (earlier) {
+          toCheck.current = null;
+          if (!(holdsEditsServerLacks(fresh, earlier) && keepRefusedCopy(layoutId, earlier, 'view_only'))) earlier.destroy();
+        }
         if (syncTimer) {
           clearTimeout(syncTimer);
           syncTimer = null;
@@ -352,6 +404,16 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       fresh.off('update', onDocUpdate);
       if (repairTimer) clearTimeout(repairTimer);
       if (providerRef.current === provider) providerRef.current = null;
+      if (restarting.current) {
+        // Down to view only: the server takes none of this copy's edits any
+        // more. It waits to be compared with the server's copy (onSync).
+        restarting.current = false;
+        provider.disconnect();
+        provider.destroy();
+        toCheck.current?.destroy();
+        toCheck.current = fresh;
+        return;
+      }
       if (unsent) {
         // Left with edits the server hasn't got: they still go to THIS
         // layout when the connection is back, never to the next one.
@@ -362,7 +424,16 @@ export function useLayoutDoc(layoutId: string): LayoutDocState {
       provider.destroy();
       if (!refused) fresh.destroy();
     };
-  }, [layoutId]);
+  }, [layoutId, generation]);
+
+  // Leaving the layout before the server's copy came in: nothing to compare with.
+  useEffect(
+    () => () => {
+      toCheck.current?.destroy();
+      toCheck.current = null;
+    },
+    [layoutId],
+  );
 
   // Edits stream over the socket and the server persists each update on
   // receipt, so "saved" means: connected and synced right now.
