@@ -82,7 +82,14 @@ export function connectionDots(brick: Brick, meta: PartWire | undefined, bendHan
  * desktop's cosmetic pens; dots scale with the map, as before.
  */
 export function drawSelection(ctx: Konva.Context, shape: Konva.Shape, s: SelectionDraw): number {
-  if (s.haloIds.length === 0 && s.dotIds.length === 0) return 0;
+  // What it drew last, on the node, for the browser tests (which can't see pixels as nodes).
+  const record = (drawn: SelectionDrawn) => {
+    (shape.attrs as { drawn?: SelectionDrawn }).drawn = drawn;
+  };
+  if (s.haloIds.length === 0 && s.dotIds.length === 0) {
+    record({ halos: 0, dots: 0, stroke: null });
+    return 0;
+  }
   const layer = shape.getLayer();
   const pr = ctx.getCanvas().getPixelRatio();
   const c = ctx._context;
@@ -95,6 +102,8 @@ export function drawSelection(ctx: Konva.Context, shape: Konva.Shape, s: Selecti
   };
   const at = (m: number[], p: Pt): Pt => ({ x: pr * (m[0]! * p.x + m[2]! * p.y + m[4]!), y: pr * (m[1]! * p.x + m[3]! * p.y + m[5]!) });
   let drawn = 0;
+  let dots = 0;
+  let stroke: string | null = null;
   c.save();
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.lineJoin = 'miter';
@@ -115,6 +124,7 @@ export function drawSelection(ctx: Konva.Context, shape: Konva.Shape, s: Selecti
         path.moveTo(p.x + r, p.y);
         path.arc(p.x, p.y, r, 0, Math.PI * 2);
         any = true;
+        dots++;
       }
     }
     if (any) {
@@ -132,7 +142,9 @@ export function drawSelection(ctx: Konva.Context, shape: Konva.Shape, s: Selecti
   }
 
   if (s.haloIds.length) {
-    const { stroke, fill } = s.colors();
+    const colors = s.colors();
+    const fill = colors.fill;
+    stroke = colors.stroke;
     for (const id of s.haloIds) {
       const hit = on(id);
       if (!hit) continue;
@@ -156,12 +168,21 @@ export function drawSelection(ctx: Konva.Context, shape: Konva.Shape, s: Selecti
         c.fillStyle = fill;
         c.fill();
       }
-      c.strokeStyle = stroke;
+      c.strokeStyle = colors.stroke;
       c.lineWidth = SELECTION.partInnerWidth * pr;
       c.stroke();
       drawn++;
     }
   }
   c.restore();
+  record({ halos: drawn, dots, stroke: drawn > 0 ? stroke : null });
   return drawn;
+}
+
+/** What drawSelection drew last (on the overlay node as `drawn`). */
+export interface SelectionDrawn {
+  halos: number;
+  dots: number;
+  /** The halos' inner stroke, or null with none drawn. */
+  stroke: string | null;
 }

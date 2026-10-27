@@ -57,7 +57,7 @@ describe('selection overlay', () => {
   // Stand-ins for Konva nodes (jsdom has no canvas): a layer, and a part's group at (x, y).
   const parts = { name: 'parts' };
   const drag = { name: 'drag' };
-  const shapeOn = (layer: object) => ({ getLayer: () => layer }) as unknown as Konva.Shape;
+  const shapeOn = (layer: object) => ({ getLayer: () => layer, attrs: {} as Record<string, unknown> }) as unknown as Konva.Shape;
   const groupAt = (layer: object, x: number, y: number) =>
     ({ getLayer: () => layer, getAbsoluteTransform: () => ({ getMatrix: () => [1, 0, 0, 1, x, y] }) }) as unknown as Konva.Group;
 
@@ -77,6 +77,7 @@ describe('selection overlay', () => {
     });
     // a and b (c is on the drag layer; 'gone' has no part).
     expect(drawn).toBe(2);
+    expect(overlay.attrs.drawn).toEqual({ halos: 2, dots: 0, stroke: '#FFD700' });
     // Device px (pixel ratio 2): a's halo starts at (10 - 4 - 1) * 2, (20 - 4 - 1) * 2.
     expect(calls).toContain('moveTo(10,30)');
     // The desktop's order for each part: dark outline, the tint's fill, the tint's outline.
