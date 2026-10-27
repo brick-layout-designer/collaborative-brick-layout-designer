@@ -1,28 +1,44 @@
 // While the view moves (a middle-button pan, a turn of the wheel, fingers on
-// a touch screen) the map is shown as one picture that moves and scales with
-// the view, instead of drawing every part again on every frame. On a layout
-// of 5,000 parts each of those frames used to draw all 5,000.
+// a touch screen) the map isn't drawn again on every frame. On a layout of
+// 5,000 parts each of those frames used to draw all 5,000.
 //
-// The picture is taken of the sheets that are costly to draw (the background
-// sheet with the venue and areas, the parts sheet, the module outlines), a
-// margin around the screen included, so a pan shows parts coming in from the
-// edge. It is taken again, once, when the view leaves it or has zoomed in so
-// far it would look soft, and when the map changes during the move (someone
-// else's edit, a part's picture arriving). When the view stops, the sheets
-// are drawn sharp again, as before.
+// Instead, the canvases move. When the view starts moving, a picture is
+// taken of the sheets that are costly to draw (the background sheet with the
+// grid, venue and areas, the parts sheet, the module outlines), a margin of
+// half a screen around it included. It goes in under the canvases, and on
+// each frame the canvases and the picture are moved and scaled with a CSS
+// transform to where the view now is (`follow`): no Konva work and no React
+// render (the editor's `stageView` stays put, editorStore.ts). The picture's
+// margin shows parts coming in from the edge.
 //
-// Nodes named VIEW_LIVE (the grid and the background color: cheap, and drawn
-// for the view on screen only) keep being drawn live under the picture.
+// When the view leaves the picture, or has zoomed in so far it would look
+// soft, the stage itself catches up: it's moved to the view once, its
+// costly sheets are drawn from a new picture, and the CSS starts again from
+// there. A change to the map during the move (someone else's edit, a part's
+// picture arriving) takes the picture again, at most every 150 ms. When the
+// view stops, the stage is moved to it and the sheets are drawn sharp again,
+// as before.
 //
 // Konva draws a layer through its `drawScene`; while frozen, each frozen
-// layer's own `drawScene` is swapped for one that draws the live nodes and
-// the picture. A draw into another canvas (an export) goes through as usual.
+// layer's own `drawScene` is swapped for one that draws the picture. A draw
+// into another canvas (an export) goes through as usual.
 
 import Konva from 'konva';
 import { SceneCanvas } from 'konva/lib/Canvas';
 
-/** Name for nodes drawn live during a move, not taken into the picture. */
+/**
+ * Name for nodes drawn for the view on screen (the grid and its labels,
+ * the background color). They are cheap; they draw for whatever canvas
+ * they're drawn into, the picture's margin included.
+ */
 export const VIEW_LIVE = 'view-live';
+
+/** Where the view is: the zoom, and the pan in screen px. */
+export interface ViewAt {
+  zoom: number;
+  panX: number;
+  panY: number;
+}
 
 export interface ViewBitmapOptions {
   /** The margin around the screen taken into the picture, as a share of its width and height on each side. */
@@ -65,6 +81,8 @@ export class ViewBitmap {
   private canvas: SceneCanvas | null = null;
   private picture: Picture | null = null;
   private frozen = false;
+  /** Whether the canvases are moved by CSS (`follow`). */
+  private following = false;
   /** Bumped whenever the map's drawing may have changed. */
   private version = 0;
   private lastTakenAt = 0;
@@ -96,6 +114,9 @@ export class ViewBitmap {
     this.cancelIdle();
     // A picture of this very map is used as long as it covers the view.
     if (this.picture && this.picture.version !== this.version) this.picture = null;
+    // The canvases stay as they are drawn while the view moves, so the
+    // picture is needed from the first frame.
+    if (!this.picture || !this.covers(this.picture)) this.take();
     layers.forEach((layer, i) => {
       const own = Object.prototype.hasOwnProperty.call(layer, 'drawScene') ? layer.drawScene : undefined;
       const base = layer.drawScene;
@@ -109,7 +130,50 @@ export class ViewBitmap {
     });
   }
 
-  /** The view has stopped: the sheets draw themselves again (the caller asks for the draw). */
+  /**
+   * Moves and scales the canvases (and the picture under them) to show the
+   * view `at`, without drawing anything. False when the picture doesn't
+   * cover it, sharp enough: then the stage must be moved to it and drawn
+   * (from a new picture), and `follow` called again.
+   */
+  follow(at: ViewAt): boolean {
+    if (!this.frozen) return false;
+    const s = this.stage;
+    const scale = s.scaleX();
+    if (!(scale > 0) || !(at.zoom > 0)) return false;
+    const p = this.picture;
+    if (!p || !this.coversView(p, at)) return false;
+    // The canvases hold the map drawn at the stage's own view.
+    const k = at.zoom / scale;
+    const tx = at.panX - k * s.x();
+    const ty = at.panY - k * s.y();
+    const t = `translate(${tx}px, ${ty}px) scale(${k})`;
+    for (const layer of s.getLayers()) setTransform(layer.getNativeCanvasElement(), t);
+    // The picture: its corner is map point (p.x, p.y), drawn p.scale px per unit.
+    const el = this.canvas?._canvas;
+    if (el) {
+      const kp = at.zoom / p.scale;
+      setTransform(el, `translate(${at.panX + at.zoom * p.x}px, ${at.panY + at.zoom * p.y}px) scale(${kp})`);
+      if (el.parentElement !== s.content) {
+        el.style.pointerEvents = 'none';
+        s.content.insertBefore(el, s.content.firstChild);
+      }
+      el.style.display = '';
+    }
+    this.following = true;
+    return true;
+  }
+
+  /** The canvases back where they belong, the picture hidden. */
+  private unfollow(): void {
+    if (!this.following) return;
+    this.following = false;
+    for (const layer of this.stage.getLayers()) setTransform(layer.getNativeCanvasElement(), '');
+    const el = this.canvas?._canvas;
+    if (el) el.style.display = 'none';
+  }
+
+  /** The view has stopped: the sheets draw themselves again (the caller asks for the draw, then calls `settled`). */
   thaw(): void {
     if (!this.frozen) return;
     this.frozen = false;
@@ -123,6 +187,11 @@ export class ViewBitmap {
     if (this.changeTimer !== null) clearTimeout(this.changeTimer);
     this.changeTimer = null;
     this.prepareWhenIdle(AFTER_MOVE_MS);
+  }
+
+  /** The sheets have been drawn sharp at the stage's view: the CSS transform goes. */
+  settled(): void {
+    this.unfollow();
   }
 
   get isFrozen(): boolean {
@@ -161,6 +230,8 @@ export class ViewBitmap {
 
   dispose(): void {
     this.thaw();
+    this.unfollow();
+    this.canvas?._canvas.remove();
     this.cancelIdle();
     for (const off of this.offDraw.splice(0)) off();
     this.picture = null;
@@ -184,13 +255,19 @@ export class ViewBitmap {
     );
   }
 
-  /** Whether the picture still covers the view, sharp enough. */
+  /** Whether the picture still covers the stage's view, sharp enough. */
   private covers(p: Picture): boolean {
     const s = this.stage;
-    const scale = s.scaleX();
+    return this.coversView(p, { zoom: s.scaleX(), panX: s.x(), panY: s.y() });
+  }
+
+  /** Whether the picture covers the view `at` on this stage's screen, sharp enough. */
+  private coversView(p: Picture, at: ViewAt): boolean {
+    const s = this.stage;
+    const scale = at.zoom;
     if (scale / p.scale > this.opts.maxZoomIn) return false;
-    const x0 = -s.x() / scale;
-    const y0 = -s.y() / scale;
+    const x0 = -at.panX / scale;
+    const y0 = -at.panY / scale;
     const x1 = x0 + s.width() / scale;
     const y1 = y0 + s.height() / scale;
     const eps = 0.5 / scale;
@@ -201,7 +278,6 @@ export class ViewBitmap {
     const canvas = layer.getCanvas();
     const ctx = canvas.getContext();
     ctx.clear();
-    for (const child of layer.getChildren()) if (child.hasName(VIEW_LIVE)) child.drawScene(canvas);
     if (!bottom) return;
     let p = this.picture;
     const changed = !!p && p.version !== this.version;
@@ -240,7 +316,14 @@ export class ViewBitmap {
     const cw = Math.ceil(w * (1 + 2 * m));
     const ch = Math.ceil(h * (1 + 2 * m));
     const ratio = Math.min(layers[0]!.getCanvas().getPixelRatio(), Math.sqrt(this.opts.maxPixels / (cw * ch)));
-    if (!this.canvas) this.canvas = new SceneCanvas({ width: cw, height: ch, pixelRatio: ratio });
+    if (!this.canvas) {
+      this.canvas = new SceneCanvas({ width: cw, height: ch, pixelRatio: ratio });
+      const el = this.canvas._canvas;
+      el.style.display = 'none';
+      el.style.transformOrigin = '0 0';
+      el.setAttribute('aria-hidden', 'true');
+      el.dataset.viewBitmap = '';
+    }
     const canvas = this.canvas;
     if (canvas.pixelRatio !== ratio || canvas.width !== Math.floor(cw * ratio) || canvas.height !== Math.floor(ch * ratio)) {
       canvas.pixelRatio = ratio;
@@ -253,9 +336,7 @@ export class ViewBitmap {
     ctx.translate(m * w, m * h);
     for (const layer of layers) {
       if (!layer.isVisible()) continue;
-      for (const child of layer.getChildren()) {
-        if (!child.hasName(VIEW_LIVE)) child.drawScene(canvas);
-      }
+      for (const child of layer.getChildren()) child.drawScene(canvas);
     }
     ctx.restore();
     (canvas as unknown as { _trimIsolationCanvas?: () => void })._trimIsolationCanvas?.();
@@ -303,4 +384,9 @@ export class ViewBitmap {
     if (this.idleHandle !== null) (window as Window & { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback?.(this.idleHandle);
     this.idleHandle = null;
   }
+}
+
+function setTransform(el: HTMLElement, t: string): void {
+  if (t && el.style.transformOrigin !== '0px 0px') el.style.transformOrigin = '0 0';
+  if (el.style.transform !== t) el.style.transform = t;
 }

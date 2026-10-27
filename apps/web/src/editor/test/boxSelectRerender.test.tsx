@@ -16,7 +16,7 @@ vi.mock('react-konva', () => {
     prims++;
     return h(Fragment, null, p.children);
   };
-  return { Group: mk(), Circle: mk(), Line: mk(), Text: mk(), Rect: mk() };
+  return { Group: mk(), Circle: mk(), Line: mk(), Text: mk(), Rect: mk(), Shape: mk() };
 });
 
 import { addCircularRuler, addLinearRuler, ensureRulerLayer } from '../mutations';
@@ -66,23 +66,30 @@ describe('RulerLayers re-render scope', () => {
 });
 
 describe('GridLayer re-render scope', () => {
-  it('draws no grid line again when the view has not moved', async () => {
+  it('renders nothing again when the view moves: the grid draws for the view when Konva draws it', async () => {
     const doc = createDefaultLayoutDoc();
-    const map = projectDoc(doc)!;
+    const withLabels = projectDoc(doc)!;
+    // Without the cell-index labels, the few Text nodes that do follow the view.
+    const map = { ...withLabels, layers: withLabels.layers.map((l) => (l.type === 'grid' ? { ...l, displayCellIndex: false } : l)) };
     const root = createRoot(document.createElement('div'));
     // As the editor does: a new viewport object on every render.
-    const render = (x: number) =>
-      h(GridLayer, { map, showGrid: true, cornerOverride: null, viewport: { studXMin: x, studYMin: 0, studXMax: x + 400, studYMax: 300 } });
+    const render = (x: number, showGrid = true) =>
+      h(GridLayer, { map, showGrid, cornerOverride: null, viewport: { studXMin: x, studYMin: 0, studXMax: x + 400, studYMax: 300 } });
     await act(async () => root.render(render(0)));
-    expect(prims).toBeGreaterThan(20);
+    expect(prims).toBeGreaterThan(0);
 
     prims = 0;
     await act(async () => root.render(render(0)));
     expect(prims).toBe(0);
 
-    // Panned: it draws again.
+    // Panned: nothing to render (it used to be every grid line).
     prims = 0;
     await act(async () => root.render(render(50)));
-    expect(prims).toBeGreaterThan(20);
+    expect(prims).toBe(0);
+
+    // The grid turned off: it renders again.
+    prims = 0;
+    await act(async () => root.render(render(50, false)));
+    expect(prims).toBeGreaterThan(0);
   });
 });

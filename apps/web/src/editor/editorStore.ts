@@ -126,6 +126,15 @@ export interface EditorState {
   panX: number;
   panY: number;
   /**
+   * The view the map's canvas is drawn at. The same as zoom/panX/panY,
+   * except while the view moves (a pan, the wheel, a pinch): then the canvas
+   * follows the view by a CSS transform, and this catches up only when the
+   * move ends or leaves the picture taken for it (viewBitmap.ts). What is
+   * drawn on the map reads this, so a pan renders nothing; the rest (the
+   * status bar, pointer maths) reads zoom/panX/panY.
+   */
+  stageView: StageView;
+  /**
    * Active grid-snap step in studs. 0 = grid snap disabled (connection
    * snap still applies). Default 1 stud (matches desktop default).
    */
@@ -337,6 +346,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   zoom: 1,
   panX: 0,
   panY: 0,
+  stageView: { zoom: 1, panX: 0, panY: 0 },
   statusMessage: null,
   statusMessageTimerId: null,
   notice: null,
@@ -588,6 +598,44 @@ export const useEditorStore = create<EditorState>((set) => ({
       };
     }),
 }));
+
+export interface StageView {
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+let stageViewHeld = false;
+
+/** Whether `stageView` is the view (zoom/panX/panY). */
+function stageViewIsLive(s: EditorState): boolean {
+  return s.stageView.zoom === s.zoom && s.stageView.panX === s.panX && s.stageView.panY === s.panY;
+}
+
+/** Brings `stageView` up to the view. */
+export function commitStageView(): void {
+  const s = useEditorStore.getState();
+  if (!stageViewIsLive(s)) useEditorStore.setState({ stageView: { zoom: s.zoom, panX: s.panX, panY: s.panY } });
+}
+
+/**
+ * While the view moves, `stageView` stays where it is until it's committed
+ * (`commitStageView`); letting go commits it.
+ */
+export function holdStageView(hold: boolean): void {
+  stageViewHeld = hold;
+  if (!hold) commitStageView();
+}
+
+export function isStageViewHeld(): boolean {
+  return stageViewHeld;
+}
+
+// Every other change to the view (Fit, the zoom buttons, a saved view, a
+// test setting it) reaches the canvas at once.
+useEditorStore.subscribe((s) => {
+  if (!stageViewHeld && !stageViewIsLive(s)) commitStageView();
+});
 
 /** View zoom range — desktop MapView.cpp:77-78 (`kMinZoom`/`kMaxZoom`). */
 export const MIN_ZOOM = 0.02;

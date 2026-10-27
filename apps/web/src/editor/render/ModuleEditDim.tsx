@@ -31,7 +31,7 @@ export function editedModuleFrame(map: BbmMap, modules: readonly SidecarModule[]
 const FAR = 1e7;
 
 export function ModuleEditDim({ frame }: { frame: StudRect | null }) {
-  const zoom = useEditorStore((s) => s.zoom);
+  const zoom = useEditorStore((s) => s.stageView.zoom);
   if (!frame) return null;
   const x0 = studToPx(frame.x);
   const y0 = studToPx(frame.y);

@@ -1,5 +1,6 @@
-import { memo, type JSX } from 'react';
-import { Group, Line, Rect, Text } from 'react-konva';
+import { memo } from 'react';
+import type Konva from 'konva';
+import { Group, Shape, Text } from 'react-konva';
 import type { BbmMap, LayerGrid } from '@cld/model';
 import { studToPx } from './coords';
 import { useEditorStore } from '../editorStore';
@@ -17,15 +18,20 @@ export interface ViewportRect {
 }
 
 /**
- * Background fill + grid lines, sized to whatever is currently visible.
+ * Background fill + grid lines, drawn for whatever the canvas they're drawn
+ * into shows.
  *
  * Old behaviour drew a fixed 2000-stud square centred on the origin —
- * panning or zooming far enough left a blank stage. We now derive the
- * extent from the live viewport so the grid is always covering exactly
- * what the user sees.
+ * panning or zooming far enough left a blank stage. The fill and the lines
+ * are one shape that works out, when it's drawn, what part of the map the
+ * canvas covers: the screen, or the bigger picture of the map taken while
+ * the view moves (viewBitmap.ts), its margin included. So a pan needn't
+ * render anything again for the grid: Konva just draws it for the new view.
+ * The cell-index labels, a few Text nodes, still follow `viewport`.
  */
 interface GridLayerProps {
   map: BbmMap;
+  /** World-space (stud) bounds the cell-index labels are laid out over. */
   viewport: ViewportRect;
   /** Live cell-index origin while it is being dragged (not yet in the doc). */
   cornerOverride?: { layerId: string; corner: { x: number; y: number } } | null;
@@ -34,16 +40,17 @@ interface GridLayerProps {
 }
 
 /**
- * Whether the grid would draw the same: the viewport is a new object on
- * every render of the editor's canvas, so it's compared by its numbers.
- * Without this every frame of a box-select drag made new line arrays and
- * Konva redrew the grid's whole layer each time.
+ * Whether the grid would draw the same. The viewport is a new object on
+ * every render of the editor's canvas, so it's compared by its numbers, and
+ * only when there are cell-index labels to lay out: the fill and the lines
+ * don't depend on it. Without this every frame of a box-select drag made new
+ * line arrays and Konva redrew the grid's whole layer each time.
  */
 export function sameGrid(a: GridLayerProps, b: GridLayerProps): boolean {
+  if (a.map !== b.map || a.showGrid !== b.showGrid || a.cornerOverride !== b.cornerOverride) return false;
+  const grid = drawnGridLayer(a.map.layers) as LayerGrid | undefined;
+  if (!grid?.displayCellIndex) return true;
   return (
-    a.map === b.map &&
-    a.showGrid === b.showGrid &&
-    a.cornerOverride === b.cornerOverride &&
     a.viewport.studXMin === b.viewport.studXMin &&
     a.viewport.studYMin === b.viewport.studYMin &&
     a.viewport.studXMax === b.viewport.studXMax &&
@@ -60,44 +67,113 @@ export const GridLayer = memo(function GridLayer({
   const showGridStore = useEditorStore((s) => s.showGrid);
   const showGrid = showGridProp ?? showGridStore;
   const grid = drawnGridLayer(map.layers) as LayerGrid | undefined;
-
-  // Background always covers the full visible area regardless of grid visibility.
-  const bgPad = (grid?.gridSizeInStud ?? 32) * 2;
-  const bgXMin = viewport.studXMin - bgPad;
-  const bgYMin = viewport.studYMin - bgPad;
-  const bgXMax = viewport.studXMax + bgPad;
-  const bgYMax = viewport.studYMax + bgPad;
-  const px = studToPx();
-
-  // Grid lines only render when the grid layer exists, is visible, and showGrid is on.
-  const gridVisible = grid && grid.visible && showGrid;
-  const pad = gridVisible ? grid.gridSizeInStud * 2 : bgPad;
-  const xMin = viewport.studXMin - pad;
-  const yMin = viewport.studYMin - pad;
-  const xMax = viewport.studXMax + pad;
-  const yMax = viewport.studYMax + pad;
+  const gridVisible = !!grid && grid.visible && showGrid;
+  const background = colorSpecToCss(map.backgroundColor, '#404040');
+  const pad = grid ? grid.gridSizeInStud * 2 : 64;
 
   return (
     <Group>
-      <Rect
-        x={bgXMin * px}
-        y={bgYMin * px}
-        width={(bgXMax - bgXMin) * px}
-        height={(bgYMax - bgYMin) * px}
-        fill={colorSpecToCss(map.backgroundColor, '#404040')}
-        listening={false}
-      />
-      {gridVisible && grid.displaySubGrid && <SubGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
-      {gridVisible && grid.displayGrid && <MajorGridLines grid={grid} bounds={{ xMin, yMin, xMax, yMax }} />}
+      <GridShape grid={gridVisible ? grid : undefined} background={background} />
       {gridVisible && grid.displayCellIndex && (
         <CellIndexLabels
           grid={cornerOverride && cornerOverride.layerId === grid.id ? { ...grid, cellIndexCorner: cornerOverride.corner } : grid}
-          bounds={{ xMin, yMin, xMax, yMax }}
+          bounds={{
+            xMin: viewport.studXMin - pad,
+            yMin: viewport.studYMin - pad,
+            xMax: viewport.studXMax + pad,
+            yMax: viewport.studYMax + pad,
+          }}
         />
       )}
     </Group>
   );
 }, sameGrid);
+
+/** Past this many lines across the screen, a grid (or sub-grid) is left out: it would be a smear. */
+const MAX_LINES = 600;
+
+/** The part of the map (scene px) a canvas shows, from the transform it's drawn with. */
+function drawnBounds(ctx: CanvasRenderingContext2D): Bounds | null {
+  const m = ctx.getTransform();
+  if (!m.is2D || m.a * m.d - m.b * m.c === 0) return null;
+  const inv = m.inverse();
+  const { width, height } = ctx.canvas;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const [x, y] of [[0, 0], [width, 0], [0, height], [width, height]] as const) {
+    const p = inv.transformPoint({ x, y });
+    xs.push(p.x);
+    ys.push(p.y);
+  }
+  return { xMin: Math.min(...xs), yMin: Math.min(...ys), xMax: Math.max(...xs), yMax: Math.max(...ys) };
+}
+
+/** How many lines `step` (studs) apart would cross the screen, on the stage's own view (not a bigger picture's). */
+function linesAcrossScreen(shape: Konva.Shape, step: number, drawn: Bounds): number {
+  const st = shape.getStage();
+  const px = studToPx();
+  const scale = st?.scaleX() ?? 0;
+  if (!st || !(scale > 0)) return Math.max(drawn.xMax - drawn.xMin, drawn.yMax - drawn.yMin) / (step * px);
+  return (Math.max(st.width(), st.height()) / scale) / (step * px) + 4;
+}
+
+const GridShape = memo(function GridShape({ grid, background }: { grid: LayerGrid | undefined; background: string }) {
+  return (
+    <Shape
+      listening={false}
+      perfectDrawEnabled={false}
+      sceneFunc={(kctx, shape) => {
+        const ctx = (kctx as unknown as { _context: CanvasRenderingContext2D })._context;
+        const b = drawnBounds(ctx);
+        if (!b) return;
+        // A little past the edges, so nothing shows at a canvas's border.
+        const edge = (b.xMax - b.xMin + b.yMax - b.yMin) * 0.01;
+        const bounds = { xMin: b.xMin - edge, yMin: b.yMin - edge, xMax: b.xMax + edge, yMax: b.yMax + edge };
+        ctx.fillStyle = background;
+        ctx.fillRect(bounds.xMin, bounds.yMin, bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin);
+        if (!grid) return;
+        if (grid.displaySubGrid) {
+          const step = grid.gridSizeInStud / Math.max(2, grid.subDivisionNumber);
+          strokeLines(ctx, shape, step, bounds, colorSpecToCss(grid.subGridColor), grid.subGridThickness);
+        }
+        if (grid.displayGrid) {
+          strokeLines(ctx, shape, grid.gridSizeInStud, bounds, colorSpecToCss(grid.gridColor), grid.gridThickness);
+        }
+      }}
+    />
+  );
+});
+
+/** The lines `stepStuds` apart over `bounds` (scene px): the verticals, then the horizontals, as one stroke each. */
+function strokeLines(
+  ctx: CanvasRenderingContext2D,
+  shape: Konva.Shape,
+  stepStuds: number,
+  bounds: Bounds,
+  stroke: string,
+  thickness: number,
+): void {
+  if (!(stepStuds > 0) || !(thickness > 0)) return;
+  if (linesAcrossScreen(shape, stepStuds, bounds) > MAX_LINES) return;
+  const step = stepStuds * studToPx();
+  // Anchored to multiples of the step, so the lines stay put on the map.
+  const x0 = Math.floor(bounds.xMin / step) * step;
+  const y0 = Math.floor(bounds.yMin / step) * step;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = thickness;
+  ctx.beginPath();
+  for (let x = x0; x <= bounds.xMax; x += step) {
+    ctx.moveTo(x, bounds.yMin);
+    ctx.lineTo(x, bounds.yMax);
+  }
+  ctx.stroke();
+  ctx.beginPath();
+  for (let y = y0; y <= bounds.yMax; y += step) {
+    ctx.moveTo(bounds.xMin, y);
+    ctx.lineTo(bounds.xMax, y);
+  }
+  ctx.stroke();
+}
 
 interface Bounds {
   xMin: number;
@@ -124,7 +200,7 @@ function CellIndexLabels({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) 
   const cellPx = grid.gridSizeInStud * px;
   // Too small to read on screen (phone viewer only): grow them to a
   // readable size while they fit their cell, else leave them out.
-  const shownPx = useEditorStore((s) => legibleLabelPx(fontPx, s.zoom, s.minTextPx, cellPx * 0.6));
+  const shownPx = useEditorStore((s) => legibleLabelPx(fontPx, s.stageView.zoom, s.minTextPx, cellPx * 0.6));
   const labels = cellIndexLabels(
     bounds,
     grid.gridSizeInStud,
@@ -157,92 +233,4 @@ function CellIndexLabels({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) 
       ))}
     </Group>
   );
-}
-
-function MajorGridLines({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
-  return (
-    <GridLines
-      stepStuds={grid.gridSizeInStud}
-      bounds={bounds}
-      stroke={colorSpecToCss(grid.gridColor)}
-      thickness={grid.gridThickness}
-      opacity={1}
-      keyPrefix="g"
-    />
-  );
-}
-
-function SubGridLines({ grid, bounds }: { grid: LayerGrid; bounds: Bounds }) {
-  const step = grid.gridSizeInStud / Math.max(2, grid.subDivisionNumber);
-  return (
-    <GridLines
-      stepStuds={step}
-      bounds={bounds}
-      stroke={colorSpecToCss(grid.subGridColor)}
-      thickness={grid.subGridThickness}
-      opacity={1}
-      keyPrefix="s"
-    />
-  );
-}
-
-function GridLines({
-  stepStuds,
-  bounds,
-  stroke,
-  thickness,
-  opacity,
-  keyPrefix,
-}: {
-  stepStuds: number;
-  bounds: Bounds;
-  stroke: string;
-  thickness: number;
-  opacity: number;
-  keyPrefix: string;
-}) {
-  const px = studToPx();
-  const lines: JSX.Element[] = [];
-  // Snap start to a multiple of `stepStuds` so the lines stay anchored
-  // to the world even while the user pans.
-  const startX = Math.floor(bounds.xMin / stepStuds) * stepStuds;
-  const startY = Math.floor(bounds.yMin / stepStuds) * stepStuds;
-  // Cap the number of lines we emit even when zoomed way out — we don't
-  // need 50000 sub-grid lines, the grid is purely cosmetic past a point.
-  const maxLines = 600;
-  const xCount = Math.ceil((bounds.xMax - startX) / stepStuds);
-  const yCount = Math.ceil((bounds.yMax - startY) / stepStuds);
-  if (xCount > maxLines || yCount > maxLines) return null;
-
-  for (let i = 0; i <= xCount; i++) {
-    const s = startX + i * stepStuds;
-    const p = s * px;
-    lines.push(
-      <Line
-        key={`${keyPrefix}-v-${i}`}
-        points={[p, bounds.yMin * px, p, bounds.yMax * px]}
-        stroke={stroke}
-        strokeWidth={thickness}
-        opacity={opacity}
-        perfectDrawEnabled={false}
-        listening={false}
-      />,
-    );
-  }
-  for (let j = 0; j <= yCount; j++) {
-    const s = startY + j * stepStuds;
-    const p = s * px;
-    lines.push(
-      <Line
-        key={`${keyPrefix}-h-${j}`}
-        points={[bounds.xMin * px, p, bounds.xMax * px, p]}
-        stroke={stroke}
-        strokeWidth={thickness}
-        opacity={opacity}
-        perfectDrawEnabled={false}
-        listening={false}
-      />,
-    );
-  }
-  return <Group>{lines}</Group>;
 }

@@ -6,7 +6,7 @@ import * as Y from 'yjs';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stage, Layer as KonvaLayer, Circle, Group, Image as KonvaImage, Line, Text } from 'react-konva';
-import type Konva from 'konva';
+import Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { api, spriteUrlFor, type LayoutSummary, type PartWire } from '../api';
 import { MERGE_REFUSED, SIGN_IN_TO_OPEN, useLayoutDoc, type LayoutDocState } from './useLayoutDoc';
@@ -18,7 +18,7 @@ import { useLibraryEntries } from './moduleLibraryMenu';
 import { TouchModuleSheet } from './TouchModuleSheet';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
-import { setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
+import { commitStageView, holdStageView, isStageViewHeld, setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -1830,9 +1830,11 @@ function Canvas({
   // and competed with Konva's own drag-move redraws, making drags feel
   // like they stalled or wouldn't move. Removed; see issue about
   // dragging bricks being unresponsive.)
-  const zoom = useEditorStore((s) => s.zoom);
-  const panX = useEditorStore((s) => s.panX);
-  const panY = useEditorStore((s) => s.panY);
+  // They are the stage's view (stageView): while the view moves it stays
+  // put and the canvas follows by CSS (followView), so a pan renders nothing.
+  const zoom = useEditorStore((s) => s.stageView.zoom);
+  const panX = useEditorStore((s) => s.stageView.panX);
+  const panY = useEditorStore((s) => s.stageView.panY);
   const tool = useEditorStore((s) => s.tool);
   const activeLayerId = useEditorStore((s) => s.activeLayerId);
   const setActiveLayer = useEditorStore((s) => s.setActiveLayer);
@@ -1996,12 +1998,58 @@ function Canvas({
     const stage = stageRef.current;
     if (!stage || stage.listening() === !moving) return;
     stage.listening(!moving);
-    if (moving) viewBitmapRef.current?.freeze();
-    else {
-      viewBitmapRef.current?.thaw();
-      for (const layer of stage.getLayers()) layer.batchDraw();
+    if (moving) {
+      viewBitmapRef.current?.freeze();
+      // The canvas follows the view by CSS from here (followView), and the
+      // map renders nothing until the move ends.
+      holdStageView(true);
+    } else {
+      stopViewMoving(stage);
     }
   }
+  /**
+   * The view has stopped: the stage goes to it and the sheets are drawn
+   * sharp on the next frame, and in that same frame the CSS that moved
+   * the canvas comes off.
+   */
+  function stopViewMoving(stage: Konva.Stage): void {
+    flushSync(() => holdStageView(false));
+    const vb = viewBitmapRef.current;
+    vb?.thaw();
+    for (const layer of stage.getLayers()) layer.batchDraw();
+    // Queued after the layers' draws, so it runs in the same frame, after them.
+    Konva.Util.requestAnimFrame(() => vb?.settled());
+  }
+  /** A catch-up of the stage to the view is waiting for its frame. */
+  const catchUpRef = useRef(false);
+  /**
+   * While the view moves: the canvas, and the picture under it, are moved
+   * and scaled to the view by CSS. When the picture doesn't cover the view
+   * any more, the stage catches up (one render, and its sheets drawn from a
+   * new picture), and the CSS goes on from there.
+   */
+  function followView(): void {
+    const vb = viewBitmapRef.current;
+    if (catchUpRef.current) return;
+    if (vb?.follow(useEditorStore.getState())) return;
+    catchUpRef.current = true;
+    flushSync(() => commitStageView());
+    const stage = stageRef.current;
+    if (stage) for (const layer of stage.getLayers()) layer.batchDraw();
+    Konva.Util.requestAnimFrame(() => {
+      catchUpRef.current = false;
+      if (isStageViewHeld()) followView();
+    });
+  }
+  useEffect(
+    () =>
+      useEditorStore.subscribe((s, prev) => {
+        if (s.zoom === prev.zoom && s.panX === prev.panX && s.panY === prev.panY) return;
+        if (isStageViewHeld()) followView();
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- followView reads refs only
+    [],
+  );
   /** The wheel has no "let go": the view counts as still once it stops turning for a moment. */
   function viewMovingFor(ms: number): void {
     setViewMoving(true);
@@ -2071,10 +2119,7 @@ function Canvas({
       const stage = stageRef.current;
       if (!stage) return;
       stage.listening(true);
-      if (viewBitmapRef.current?.isFrozen) {
-        viewBitmapRef.current.thaw();
-        for (const layer of stage.getLayers()) layer.batchDraw();
-      }
+      if (isStageViewHeld() || viewBitmapRef.current?.isFrozen) stopViewMoving(stage);
       for (const layer of stage.getLayers()) if (layer.isListening()) layer.drawHit();
     };
     el.addEventListener('pointerdown', settle, true);
@@ -4195,18 +4240,19 @@ function Canvas({
           Group's `listening={!isViewer}`. */}
       <KonvaLayer name="background-layer" listening={!isViewer} perfectDrawEnabled={false}>
         {/* View-only (desktop paints it in drawBackground): hidden on export.
-            Drawn for the screen only, so it stays live under the moving
-            picture while the view moves (viewBitmap.ts). */}
+            It draws for whatever canvas it's drawn into, the moving
+            picture's margin too (viewBitmap.ts); the cell-index labels are
+            laid out for half a screen past each edge, for that margin. */}
         <Group name={`${EXPORT_HIDE} ${VIEW_LIVE}`} listening={false}>
           <GridLayer
             map={map}
             {...(viewFilter ? { showGrid: viewFilter.grid } : {})}
             cornerOverride={gridPreview}
             viewport={{
-              studXMin: pxToStud(-panX / zoom),
-              studYMin: pxToStud(-panY / zoom),
-              studXMax: pxToStud((width - panX) / zoom),
-              studYMax: pxToStud((height - panY) / zoom),
+              studXMin: pxToStud((-width / 2 - panX) / zoom),
+              studYMin: pxToStud((-height / 2 - panY) / zoom),
+              studXMax: pxToStud((width * 1.5 - panX) / zoom),
+              studYMax: pxToStud((height * 1.5 - panY) / zoom),
             }}
           />
         </Group>
@@ -4854,7 +4900,7 @@ function CanvasContextMenu({
 /** While bending flex track: an amber ring on each joint at its hinge limit (desktop paintBendHandles). */
 function HingeLimits() {
   const points = useEditorStore((s) => s.hingeLimits);
-  const zoom = useEditorStore((s) => s.zoom);
+  const zoom = useEditorStore((s) => s.stageView.zoom);
   if (points.length === 0) return null;
   const px = (n: number) => n / (zoom > 0 ? zoom : 1);
   return (
@@ -4880,7 +4926,7 @@ function HingeLimits() {
 function SnapRing() {
   const live = useEditorStore((s) => s.liveSnap);
   const moving = useEditorStore((s) => s.snapMoving);
-  const zoom = useEditorStore((s) => s.zoom);
+  const zoom = useEditorStore((s) => s.stageView.zoom);
   if (!live && !moving) return null;
   const px = (n: number) => n / (zoom > 0 ? zoom : 1);
   return (
