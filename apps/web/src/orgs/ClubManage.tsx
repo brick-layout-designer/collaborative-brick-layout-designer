@@ -151,7 +151,7 @@ export function MembersSection({
   const [warning, setWarning] = useState<string | null>(null);
   const sorted = [...members].sort((a, b) => byRole(a.role, b.role) || a.displayName.localeCompare(b.displayName));
   return (
-    <Section title={`Members (${members.length})`} help={atLeast(myRole, 'manager') || managesMembers ? 'club.roles' : undefined}>
+    <Section title={`Members (${members.length})`} help={invites || managesMembers ? 'club.roles' : undefined}>
       {withRoles && (
         <p className="text-sm text-muted">
           {managesMembers
@@ -966,7 +966,7 @@ export function LeaveClubButton({ org, myUserId }: { org: OrgDetail; myUserId: s
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
-  const lastAdmin = org.myRole === 'admin' && (org.adminCount ?? 1) <= 1;
+  const lastAdmin = (org.isAdmin ?? org.myRole === 'admin') && (org.adminCount ?? 1) <= 1;
   const leave = useMutation({
     mutationFn: () => api.orgs.removeMember(org.slug, myUserId),
     onSuccess: async () => {

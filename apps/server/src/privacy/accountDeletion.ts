@@ -11,11 +11,12 @@
 //       collections, public catalog items; background pictures and data
 //       downloads on disk too)
 //     - club things they made stay with the club, credited "Builder #…"
-//       (deleted_author_id); a club collection they curate moves to the
-//       club's admin
+//       (deleted_author_id), with the club's admin standing in as its
+//       maker; a club collection they curate moves to them too
 //     - their edits to other people's layouts stay; they leave share lists
-//     - a club they were the last admin of gets a new admin (the longest
-//       member); a club with nobody else in it goes too
+//     - a club they were the last admin of gets a new admin (someone who
+//       may manage members and roles, else the longest-serving member:
+//       clubSuccessor); a club with nobody else in it goes too
 //     - the audit log keeps what happened, as "Deleted user #abc123": no
 //       name, no email
 //     - an `erasures` row records that it happened, with counts only
@@ -28,7 +29,7 @@ import { and, asc, count, eq, inArray, isNotNull, like, lte, ne, or, sql } from 
 import { db, schema } from '../db/index.js';
 import type { User } from '../db/schema.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
-import { addBuiltinRole } from '../access/clubPermissions.js';
+import { addBuiltinRole, clubSuccessor } from '../access/clubPermissions.js';
 import { invalidateAllSessions } from '../auth/session.js';
 import { notifyCredentialRevoked } from '../auth/revocation.js';
 import { docHub } from '../ws/docHub.js';
@@ -250,16 +251,15 @@ async function sweepFiles(layoutIds: string[]): Promise<void> {
   }
 }
 
-/** Someone to stand in as `created_by` (which must name an account) once the author is gone. */
+/**
+ * Someone to stand in as `created_by` (which must name an account) once
+ * the author is gone: the club's member chosen by permission (clubSuccessor),
+ * else the longest-standing site admin.
+ */
 async function standIn(orgId: string | null, excluding: string): Promise<string | null> {
   if (orgId) {
-    const admin = await db
-      .select({ u: schema.orgMembers.userId })
-      .from(schema.orgMembers)
-      .where(and(eq(schema.orgMembers.orgId, orgId), ne(schema.orgMembers.userId, excluding)))
-      .orderBy(sql`case ${schema.orgMembers.role} when 'admin' then 0 when 'manager' then 1 else 2 end`, asc(schema.orgMembers.joinedAt))
-      .get();
-    if (admin) return admin.u;
+    const member = await clubSuccessor(orgId, excluding);
+    if (member) return member;
   }
   const site = await db
     .select({ id: schema.users.id })
@@ -294,17 +294,14 @@ export async function eraseUser(userId: string, how: 'self' | 'admin' | 'request
       continue;
     }
     if (!c.lastAdmin) continue;
-    const heir = await db
-      .select({ u: s.orgMembers.userId })
-      .from(s.orgMembers)
-      .where(and(eq(s.orgMembers.orgId, c.id), ne(s.orgMembers.userId, userId)))
-      .orderBy(sql`case ${s.orgMembers.role} when 'manager' then 0 else 1 end`, asc(s.orgMembers.joinedAt))
-      .get();
+    // By permission: whoever may manage members and roles, then whoever
+    // may invite, then the longest-serving member (clubSuccessor).
+    const heir = await clubSuccessor(c.id, userId);
     if (!heir) continue;
     // The heir gets the club's Admin role on top of the roles they hold.
-    await addBuiltinRole(c.id, heir.u, 'admin');
-    await writeAuditEvent({ resourceKind: 'org', resourceId: c.id, userId: null, eventType: 'hand_over', payload: { toUserId: heir.u, reason: 'admin_account_deleted' } });
-    await postPersonalNote(heir.u, `${c.name}'s only admin deleted their account, so you're now its admin. You can make others admins too.`, `/orgs/${c.slug}`, {
+    await addBuiltinRole(c.id, heir, 'admin');
+    await writeAuditEvent({ resourceKind: 'org', resourceId: c.id, userId: null, eventType: 'hand_over', payload: { toUserId: heir, reason: 'admin_account_deleted' } });
+    await postPersonalNote(heir, `${c.name}'s only admin deleted their account, so you're now its admin. You can make others admins too.`, `/orgs/${c.slug}`, {
       clubOrgId: c.id,
     });
   }

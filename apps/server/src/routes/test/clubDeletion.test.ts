@@ -224,6 +224,23 @@ describe('deleting a club', () => {
     expect((await call(ben, 'GET', '/api/orgs')).json().orgs[0]).toMatchObject({ myRole: 'member' });
   });
 
+  it('restored with none of its admins left, the new admin is chosen by permission, not the longest member', async () => {
+    // Ben is the longest member; Cy, newer, holds a role of the club's own that manages members.
+    await db.insert(schema.orgMembers).values({ orgId, userId: cy.id, role: 'member', joinedAt: new Date(Date.now() + 1000) });
+    const crew = await call(ada, 'POST', '/api/orgs/train-club/roles', { name: 'People crew', permissions: ['manage_members'] });
+    expect(crew.statusCode, crew.body).toBe(201);
+    expect((await call(ada, 'PATCH', `/api/orgs/train-club/members/${cy.id}`, { roleIds: [crew.json().id] })).statusCode).toBe(200);
+    expect((await call(ada, 'DELETE', '/api/orgs/train-club', { confirm: 'Train Club', catalog: 'takedown' })).statusCode).toBe(200);
+    // Ada is gone by the time a site admin restores it.
+    const org = (await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get())!;
+    const plan = JSON.parse(org.deletionPlan!) as { members: { userId: string }[] };
+    plan.members = plan.members.filter((m) => m.userId !== ada.id);
+    await db.update(schema.orgs).set({ deletionPlan: JSON.stringify(plan) }).where(eq(schema.orgs.id, orgId));
+    expect((await call(root, 'POST', `/api/admin/orgs/${orgId}/restore`)).statusCode).toBe(200);
+    expect((await call(cy, 'GET', '/api/orgs/train-club')).json()).toMatchObject({ isAdmin: true, roleNames: ['Admin', 'People crew'] });
+    expect((await call(ben, 'GET', '/api/orgs/train-club')).json()).toMatchObject({ isAdmin: false });
+  });
+
   it('a site admin deletes with the same wait, and can restore it', async () => {
     expect((await call(ada, 'DELETE', `/api/admin/orgs/${orgId}`)).statusCode).toBe(403);
     expect((await call(root, 'DELETE', `/api/admin/orgs/${orgId}`)).statusCode).toBe(200);

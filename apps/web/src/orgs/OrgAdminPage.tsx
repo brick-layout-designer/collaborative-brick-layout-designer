@@ -21,7 +21,7 @@ import {
 } from './ClubManage';
 import { CategoryPicker } from '../parts/CategoryPicker';
 import { AppHeader } from '../AppHeader';
-import { aRole } from './clubRoles';
+import { yourRolesSentence } from './clubRoles';
 import { clubCan, runsClub } from './clubPermissions';
 import { RolesSection } from './ClubRoles';
 import { ClubReviewTab } from './ClubReview';
@@ -112,7 +112,9 @@ function OrgAdmin({ slug }: { slug: string }) {
             <ClubLogo name={org.name} logoUrl={org.logoUrl} size={40} />
             Manage {org.name}
           </h1>
-          <p className="text-sm text-muted">You’re {aRole(org.myRole)} of this club.</p>
+          <p className="text-sm text-muted" data-testid="your-roles">
+            {yourRolesSentence(org)}
+          </p>
         </div>
 
         <nav role="tablist" aria-label="Manage the club" className="flex flex-wrap gap-1 border-b border-line">

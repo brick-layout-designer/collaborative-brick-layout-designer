@@ -1,15 +1,12 @@
 // Organization endpoints (Phase 6).
 //
-// An org has members with three roles (access/clubRoles.ts):
-//   - 'admin'   → everything: club settings, changing roles, handing the
-//                 club over, deleting it, plus all a manager does
-//   - 'manager' → day-to-day running: invite people (as members), resend or
-//                 cancel member invites, answer join requests, remove
-//                 members (not managers or admins), and own the club's
-//                 layouts, venues, modules and parts
-//   - 'member'  → can read the org's metadata and access org-owned layouts
-//                 as if they had editor role on each one (per
-//                 resolveResourceRole)
+// What a member may do comes from the roles they hold (access/clubPermissions.ts):
+// each club starts with Admin, Manager, Member and Viewer and can make its
+// own; a member's permissions are the union of their roles'. Routes ask a
+// permission (`can`, or `getMembership(...).permissions`), never a role's
+// name. Only the Admin role (`isAdmin`) changes the club's settings, hands
+// it over or deletes it; it always has every permission, and a club always
+// keeps one Admin.
 //
 // The creator of an org becomes its first admin.
 //
@@ -292,7 +289,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+    if (!mine.isAdmin) return reply.code(403).send({ error: 'forbidden' });
 
     const body = req.body ?? {};
     const updates: Partial<typeof schema.orgs.$inferInsert> = {};
@@ -364,7 +361,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+    if (!mine.isAdmin) return reply.code(403).send({ error: 'forbidden' });
     const typed = typeof req.body?.confirm === 'string' ? req.body.confirm.trim().toLowerCase() : '';
     if (typed !== org.name.trim().toLowerCase()) return reply.code(400).send({ error: 'confirm_name_mismatch' });
     const choice = await catalogChoice(org.id, req.body?.catalog, req.body?.heirUserId, user.id);
@@ -384,7 +381,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const mine = await getMembership(org.id, user.id);
       if (!mine) return reply.code(404).send({ error: 'not_found' });
-      if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+      if (!mine.isAdmin) return reply.code(403).send({ error: 'forbidden' });
       const targetId = typeof req.body?.userId === 'string' ? req.body.userId : '';
       if (!targetId || targetId === user.id) return reply.code(400).send({ error: 'invalid_input' });
       const target = await getMembership(org.id, targetId);

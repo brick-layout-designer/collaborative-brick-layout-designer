@@ -42,7 +42,7 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
     if (!org) return reply.code(404).send({ error: 'not_found' });
     const mine = await getMembership(org.id, user.id);
     if (!mine) return reply.code(404).send({ error: 'not_found' });
-    if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+    if (!mine.isAdmin) return reply.code(403).send({ error: 'forbidden' });
     return clubDeletionSummary(org);
   });
 
@@ -87,7 +87,7 @@ export async function clubDeletionRoutes(app: FastifyInstance): Promise<void> {
       if (!org) return reply.code(404).send({ error: 'not_found' });
       const mine = await getMembership(org.id, user.id);
       if (!mine) return reply.code(404).send({ error: 'not_found' });
-      if (mine.role !== 'admin') return reply.code(403).send({ error: 'forbidden' });
+      if (!mine.isAdmin) return reply.code(403).send({ error: 'forbidden' });
       const kind = req.body?.kind;
       if (kind !== 'layouts' && kind !== 'modules') return reply.code(400).send({ error: 'invalid_input' });
       let to: { ownerUserId: string | null; ownerOrgId: string | null };
