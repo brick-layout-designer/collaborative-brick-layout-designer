@@ -410,8 +410,12 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- list members + pending invites -------------------------------------
+  // The desktop reads this with its API token too (layouts:read), for its
+  // read-only Members view: names, roles and last active, never addresses
+  // or invites (those stay on the website, where members are managed).
   app.get<{ Params: { slug: string } }>(
     '/api/orgs/:slug/members',
+    { config: { apiToken: 'layouts:read' } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);
@@ -436,6 +440,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       // Only the people who invite see pending invites (the email list is
       // somewhat sensitive). Everyone else gets an empty array.
       const runsMembers = has(myMembership, 'invite') || has(myMembership, 'manage_members');
+      const viaToken = !!req.apiToken;
       // Roughly when each was last active, for the people who run the club
       // (and each person about themselves), unless they turned it off
       // (Settings › Privacy). Never the exact time.
@@ -454,7 +459,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         return ids.length ? ids : [`${org.id}:${legacy}`];
       };
       const invites =
-        runsMembers
+        runsMembers && !viaToken
           ? await db
               .select()
               .from(schema.orgInvites)
@@ -471,7 +476,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           joinedAt: m.joinedAt.getTime(),
           // Members' addresses are for the people who run the club (and the
           // person themselves); everyone else sees only names.
-          email: runsMembers || m.userId === user.id || user.isGlobalAdmin ? m.email : '',
+          email: !viaToken && (runsMembers || m.userId === user.id || user.isGlobalAdmin) ? m.email : '',
           displayName: nameFor(user, m.userId, m.displayName),
           avatarUrl: m.avatarUrl,
           lastActive: lastActiveOf(m),
