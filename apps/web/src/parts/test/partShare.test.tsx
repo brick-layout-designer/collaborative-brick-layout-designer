@@ -66,6 +66,23 @@ describe('Share with people (custom part)', () => {
     await waitFor(() => expect(screen.queryByTestId('part-invites')).toBeNull());
   });
 
+  it('an invite past its date says it has expired, not when it expires', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue(ME('owner@example.com'));
+    vi.spyOn(api.customParts, 'collaborators').mockResolvedValue({
+      collaborators: [],
+      invites: [
+        { id: 'i1', invitedEmail: 'old@example.com', role: 'viewer', expiresAt: Date.now() - 86_400_000 },
+        { id: 'i2', invitedEmail: 'new@example.com', role: 'editor', expiresAt: Date.now() + 3 * 86_400_000 },
+      ],
+    });
+    wrap(<PartShareDialog part={{ ...PART, role: 'owner' }} myUserId="u1" onClose={() => {}} />);
+    const waiting = await screen.findByTestId('part-invites');
+    const rows = [...waiting.querySelectorAll('li')].map((li) => li.textContent ?? '');
+    expect(rows[0]).toContain('viewer · expired: invite them again for a new link');
+    expect(rows[0]).not.toContain('expires');
+    expect(rows[1]).toContain('editor · expires');
+  });
+
   it('a set says which of your parts come along, and a part says who has it with a set', async () => {
     vi.spyOn(api, 'me').mockResolvedValue(ME('owner@example.com'));
     vi.spyOn(api.customParts, 'collaborators').mockResolvedValue({
