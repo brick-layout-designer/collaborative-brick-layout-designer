@@ -49,7 +49,11 @@ beforeEach(() => {
           ? { ok: true, inviteUrl: 'http://x/org-invite/t', emailDelivered: true, expiresAt: 0 }
           : method === 'PATCH'
             ? { ok: true, slug: 'arklug', name: 'Arkansas LUG' }
-            : { ok: true };
+            : input.includes('/user-search?q=Kim')
+              ? { users: [{ id: 'u2', displayName: 'Kim', avatarUrl: null, alreadyMember: false }] }
+              : input.includes('/user-search')
+                ? { users: [] }
+                : { ok: true };
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   });
   autoConfirm(true);
@@ -111,6 +115,22 @@ describe('club management', () => {
       path: '/api/orgs/arklug/invites',
       body: { email: 'new@x.com', role: 'member', expiresInDays: 7 },
     });
+  });
+
+  it('the name search finds people I work with, and points to an invite link for anyone else', async () => {
+    show(<InviteSection slug="arklug" />);
+    const box = screen.getByLabelText('Name or email');
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: 'Kim' } });
+    expect(await screen.findByRole('button', { name: 'Kim' }, { timeout: 3000 })).toBeTruthy();
+    fireEvent.change(box, { target: { value: 'Stella' } });
+    expect(await screen.findByText('No one found — send an invite link instead.', {}, { timeout: 3000 })).toBeTruthy();
+    expect(screen.getByText(/Search finds people you already share a club or layout with/)).toBeTruthy();
+    // Their email still makes an invite link.
+    fireEvent.change(box, { target: { value: 'stella@x.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send invite' }));
+    await screen.findByText('http://x/org-invite/t');
+    expect(writes()[0]).toMatchObject({ method: 'POST', path: '/api/orgs/arklug/invites', body: { email: 'stella@x.com' } });
   });
 
   it('pending invites can be sent again or cancelled', async () => {

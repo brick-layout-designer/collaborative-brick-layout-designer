@@ -502,12 +502,21 @@ describe('org user search (invite autocomplete)', () => {
     await app.close();
   });
 
+  const idOf = async (email: string) => (await db.select().from(schema.users).where(eq(schema.users.email, email)).get())!.id;
+  /** Puts these people in a club together (search finds only people the searcher already works with). */
+  const shareAClub = async (...userIds: string[]) => {
+    const orgId = `shared-${userIds.join('-')}`;
+    await db.insert(schema.orgs).values({ id: orgId, slug: orgId, name: 'Shared club', createdAt: new Date() } as typeof schema.orgs.$inferInsert);
+    for (const userId of userIds) await db.insert(schema.orgMembers).values({ orgId, userId, role: 'member', joinedAt: new Date() });
+  };
+
   it('org admin can search for a user by display-name substring', async () => {
     const adminCookie = await registerAndLogin(app, 'admin@example.com');
     await app.inject({
       method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org', slug: 'search-org' },
     });
     await registerAndLogin(app, 'target@example.com'); // displayName 'target'
+    await shareAClub(await idOf('admin@example.com'), await idOf('target@example.com'));
 
     const res = await app.inject({
       method: 'GET', url: '/api/orgs/search-org/user-search?q=target', headers: { cookie: adminCookie },
@@ -527,6 +536,7 @@ describe('org user search (invite autocomplete)', () => {
       id: 'exact-1', email: 'zzz-nomatch@example.com', displayName: 'Totally Different Name', avatarUrl: null,
       passwordHash: null, isDemoAccount: false, isGlobalAdmin: false, emailVerified: true, createdAt: new Date(),
     });
+    await shareAClub(await idOf('admin@example.com'), 'exact-1');
 
     const res = await app.inject({
       method: 'GET', url: '/api/orgs/search-org-2/user-search?q=zzz-nomatch@example.com', headers: { cookie: adminCookie },
@@ -544,6 +554,7 @@ describe('org user search (invite autocomplete)', () => {
       id: 'partial-1', email: 'partial-match@example.com', displayName: 'Unrelated Label', avatarUrl: null,
       passwordHash: null, isDemoAccount: false, isGlobalAdmin: false, emailVerified: true, createdAt: new Date(),
     });
+    await shareAClub(await idOf('admin@example.com'), 'partial-1');
 
     const res = await app.inject({
       method: 'GET', url: '/api/orgs/search-org-3/user-search?q=partial-match', headers: { cookie: adminCookie },
@@ -610,6 +621,57 @@ describe('org user search (invite autocomplete)', () => {
       method: 'GET', url: '/api/orgs/search-org-7/user-search?q=member', headers: { cookie: memberCookie },
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it('finds only people the searcher already works with: a club or a layout in common', async () => {
+    const adminCookie = await registerAndLogin(app, 'finder@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 9', slug: 'search-org-9' } });
+    const me = await idOf('finder@example.com');
+    const ins = (id: string, displayName: string) =>
+      db.insert(schema.users).values({
+        id, email: `${id}@example.com`, displayName, avatarUrl: null,
+        passwordHash: null, isDemoAccount: false, isGlobalAdmin: false, emailVerified: true, createdAt: new Date(),
+      });
+    await ins('clubmate', 'Railfan Clubmate');
+    await ins('collab', 'Railfan Collaborator');
+    await ins('owner', 'Railfan Owner');
+    await ins('stranger', 'Railfan Stranger');
+    await shareAClub(me, 'clubmate');
+    // A layout of mine 'collab' works on, and one of 'owner's shared with me.
+    const now = new Date();
+    await db.insert(schema.layouts).values([
+      { id: 'mine', title: 'Mine', ownerUserId: me, ownerOrgId: null, createdBy: me, createdAt: now, updatedAt: now, docSnapshot: new Uint8Array() },
+      { id: 'theirs', title: 'Theirs', ownerUserId: 'owner', ownerOrgId: null, createdBy: 'owner', createdAt: now, updatedAt: now, docSnapshot: new Uint8Array() },
+    ] as (typeof schema.layouts.$inferInsert)[]);
+    await db.insert(schema.layoutCollaborators).values([
+      { layoutId: 'mine', userId: 'collab', role: 'editor', addedAt: now },
+      { layoutId: 'theirs', userId: me, role: 'viewer', addedAt: now },
+    ]);
+
+    const search = async (q: string) =>
+      ((await app.inject({ method: 'GET', url: `/api/orgs/search-org-9/user-search?q=${encodeURIComponent(q)}`, headers: { cookie: adminCookie } })).json() as {
+        users: { id: string }[];
+      }).users.map((u) => u.id).sort();
+    expect(await search('Railfan')).toEqual(['clubmate', 'collab', 'owner']);
+    expect(await search('collab@example.com')).toEqual(['collab']);
+    expect(await search('stranger@example.com')).toEqual([]);
+    expect(await search('Stranger')).toEqual([]);
+  });
+
+  it('answers the same for an account the searcher doesn’t work with as for an address with no account', async () => {
+    // Anyone can make a club: its search must not tell them whether an address has an account.
+    const adminCookie = await registerAndLogin(app, 'prober@example.com');
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: { cookie: adminCookie }, payload: { name: 'Search Org 10', slug: 'search-org-10' } });
+    await registerAndLogin(app, 'has-account@example.com');
+    const ask = (q: string) => app.inject({ method: 'GET', url: `/api/orgs/search-org-10/user-search?q=${encodeURIComponent(q)}`, headers: { cookie: adminCookie } });
+    const exists = await ask('has-account@example.com');
+    const missing = await ask('no-account@example.com');
+    expect(exists.statusCode).toBe(200);
+    expect(missing.statusCode).toBe(200);
+    expect(exists.body).toBe(missing.body);
+    expect(exists.json()).toEqual({ users: [] });
+    // By name too.
+    expect((await ask('has-account')).body).toBe((await ask('no-account')).body);
   });
 
   it('a non-member gets 404 (does not leak org existence)', async () => {
