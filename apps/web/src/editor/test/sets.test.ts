@@ -135,6 +135,31 @@ describe('placing a set', () => {
     expect(L.bricks[0]!.connexions[1]!.linkedTo).toBe(L.bricks[1]!.connexions[0]!.id);
   });
 
+  it('a set named like one of its own parts places that part, not copies of itself', () => {
+    // The set comes first in the catalog, so its number would find it again for that part.
+    const set = part('custom:s', [], {
+      partNumber: 'YARD',
+      kind: 'group',
+      source: 'custom',
+      customPartId: 's',
+      noSprite: true,
+      subparts: [
+        { subKey: 'yard', x: 0, y: 0, angle: 0 },
+        { subKey: 'yard.plate2', x: 0, y: 8, angle: 0 },
+      ],
+    } as Partial<PartWire>);
+    const all = [
+      set,
+      part('custom:p', [], { partNumber: 'YARD', colorCode: '', source: 'custom', customPartId: 'p' } as Partial<PartWire>),
+      part('custom:q', [], { partNumber: 'Yard.plate2', source: 'custom', customPartId: 'q' } as Partial<PartWire>),
+    ];
+    const parts = indexParts(all);
+    expect(parts.get('yard')).toBe(set);
+    const out = expandSet(parts, 'custom:s', { x: 0, y: 0 }, 0, makeId);
+    expect(out.groups.map((g) => g.partNumber)).toEqual(['custom:s']);
+    expect(out.bricks.map((b) => b.partNumber)).toEqual(['custom:p', 'custom:q']);
+  });
+
   it('makes a nested set a child group, and a click picks the whole', () => {
     const { doc, layerId } = newDoc();
     place(doc, layerId, 'town.group', { x: 0, y: 0 });

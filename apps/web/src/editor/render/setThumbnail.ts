@@ -23,6 +23,7 @@
 import { studToPx } from './coords';
 import { ensureSprite } from './spriteCache';
 import { spriteUrlFor, type PartWire } from '../../api';
+import { subpartOf } from '../sets';
 
 const cache = new Map<string, Promise<string | null>>();
 
@@ -70,7 +71,9 @@ async function composeSetThumbnail(
   };
   const resolved: Resolved[] = [];
   for (const sub of group.subparts) {
-    const meta = partsByKey.get(sub.subKey.toLowerCase()) ?? findByPartNumber(partsByKey, sub.subKey);
+    // (Never the set itself, for a set named like one of its own parts.)
+    const meta = subpartOf(partsByKey, sub.subKey, [group]) ?? findByPartNumber(partsByKey, sub.subKey);
+    if (meta === group) continue;
     if (!meta) continue;
     const url = spriteUrlFor(meta);
     if (!url) continue;

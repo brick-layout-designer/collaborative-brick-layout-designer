@@ -5,7 +5,7 @@
 
 import type { BbmMap } from '@cld/model';
 import type { PartWire } from '../api';
-import { libraryItems } from './sets';
+import { libraryItems, subpartOf } from './sets';
 
 const fold = (part: string) => part.toLowerCase();
 
@@ -87,14 +87,15 @@ export function effectiveLimit(limits: ReadonlyMap<string, number>, part: string
 }
 
 /** Leaf parts inside a set, counted per folded part id, nested sets expanded (desktop setLeafParts). */
-export function setLeafParts(index: ReadonlyMap<string, PartWire>, part: string, depth = 0): Map<string, number> {
+export function setLeafParts(index: ReadonlyMap<string, PartWire>, part: string, outer: readonly PartWire[] = []): Map<string, number> {
   const out = new Map<string, number>();
-  const meta = index.get(part.toLowerCase());
-  if (!meta || meta.kind !== 'group' || depth > 16) return out;
+  const meta = outer.length === 0 ? index.get(part.toLowerCase()) : outer[outer.length - 1];
+  if (!meta || meta.kind !== 'group' || outer.length > 16) return out;
+  const inside = outer.length === 0 ? [meta] : outer;
   for (const sp of meta.subparts) {
-    const sub = index.get(sp.subKey.toLowerCase());
+    const sub = subpartOf(index, sp.subKey, inside);
     if (sub && sub.kind === 'group') {
-      for (const [k, n] of setLeafParts(index, sp.subKey, depth + 1)) out.set(k, (out.get(k) ?? 0) + n);
+      for (const [k, n] of setLeafParts(index, sp.subKey, [...inside, sub])) out.set(k, (out.get(k) ?? 0) + n);
     } else {
       const k = fold(sp.subKey);
       out.set(k, (out.get(k) ?? 0) + 1);

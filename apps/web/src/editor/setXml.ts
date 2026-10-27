@@ -99,6 +99,16 @@ export function setPartNumber(name: string): string {
   return safe.replace(/\.set$/i, '') || 'Set';
 }
 
+/**
+ * The part inside a set that the set's number `partNumber` would clash
+ * with, or null. Placing such a set would find the set itself for that
+ * part, nesting copies of itself, so the name is refused.
+ */
+export function partNamedLikeSet(partNumber: string, subparts: readonly Pick<SetSubpart, 'partKey'>[]): string | null {
+  const own = partNumber.toLowerCase();
+  return subparts.find((sp) => sp.partKey.toLowerCase() === own)?.partKey ?? null;
+}
+
 // Control characters XML 1.0 doesn't allow (a pasted name with one made a
 // file BlueBrick won't open) are left out, as @cld/bbm's writer does.
 function escXml(s: string): string {

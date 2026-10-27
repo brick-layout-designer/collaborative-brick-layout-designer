@@ -118,7 +118,7 @@ import {
   type ModuleBatch,
 } from './mutations';
 import { brickDrag } from './brickDrag';
-import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, groupChain, selectedSet, setAnchorOrder, ungroupState } from './sets';
+import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, groupChain, selectedSet, setAnchorOrder, subpartOf, ungroupState } from './sets';
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
 import { UsedPartsPanel } from './UsedPartsPanel';
@@ -3620,12 +3620,13 @@ function Canvas({
 
     // Parts without a footprint get their box from their picture.
     const natural = new Map<string, { width: number; height: number }>();
-    const visit = async (set: PartWire, depth: number): Promise<void> => {
+    const visit = async (set: PartWire, outer: readonly PartWire[]): Promise<void> => {
+      const inside = [...outer, set];
       for (const sub of set.subparts) {
-        const meta = partsByKey.get(sub.subKey.toLowerCase());
+        const meta = subpartOf(partsByKey, sub.subKey, inside);
         if (!meta) continue;
         if (meta.kind === 'group') {
-          if (depth < 16) await visit(meta, depth + 1);
+          if (inside.length < 16) await visit(meta, inside);
           continue;
         }
         const url = meta.spriteSize ? '' : spriteUrlFor(meta);
@@ -3638,7 +3639,7 @@ function Canvas({
         }
       }
     };
-    await visit(group, 0);
+    await visit(group, []);
     const layout = setDropLayout(group, studX, studY, { ...snapOpts, final: snapOpts.final ?? true }, natural);
     if (!layout) return;
     const { set, placed } = layout;

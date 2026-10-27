@@ -187,6 +187,7 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
     const parsed = parsePartBody(body);
     if ('error' in parsed) return reply.code(parsed.status).send({ error: parsed.error });
     const { partNumber, displayName, xmlBlob, spriteBlob, spriteMime } = parsed;
+    if (parsed.namesItself) return reply.code(400).send({ error: 'set_named_like_its_part' });
 
     let ownerUserId: string | null = user.id;
     let ownerOrgId: string | null = null;
@@ -304,6 +305,8 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
         recordUpload(user.id, owner, newBytes);
       }
       if (partNumber !== current.partNumber) {
+        // (Renaming keeps the number, so a set saved before this check can still be renamed.)
+        if (parsed.namesItself) return reply.code(400).send({ error: 'set_named_like_its_part' });
         const dup = await db
           .select({ id: schema.customParts.id })
           .from(schema.customParts)
@@ -500,7 +503,15 @@ export async function customPartRoutes(app: FastifyInstance): Promise<void> {
 }
 
 type ParsedPartBody =
-  | { partNumber: string; displayName: string; xmlBlob: Buffer; spriteBlob: Buffer; spriteMime: '' | 'image/gif' | 'image/png' }
+  | {
+      partNumber: string;
+      displayName: string;
+      xmlBlob: Buffer;
+      spriteBlob: Buffer;
+      spriteMime: '' | 'image/gif' | 'image/png';
+      /** A set numbered like a part inside it (see setNamesItself). */
+      namesItself?: boolean;
+    }
   | { status: 400 | 413; error: string };
 
 /** A 1x1 transparent GIF: what a set's sprite URL serves. */
@@ -516,12 +527,27 @@ export function isSetRow(p: { spriteMime: string }): boolean {
 
 /** Whether `xml` is a set: a `<group>` with at least one sub-part. */
 export function isSetXml(xml: Buffer): boolean {
+  return setSubpartIds(xml) !== null;
+}
+
+/** The part numbers a set's XML names, as written; null when it isn't a set. */
+export function setSubpartIds(xml: Buffer): string[] | null {
   try {
     const parsed = parsePartXml(stripImportSource(xml).toString('utf8'), { partNumber: 'set', colorCode: '', spritePath: '' });
-    return parsed.kind === 'group' && parsed.subparts.length > 0;
+    return parsed.kind === 'group' && parsed.subparts.length > 0 ? parsed.subparts.map((s) => s.subKey) : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Whether a set numbered `partNumber` names a part of that same number
+ * inside it. Placing it would find the set again for that part, and so
+ * on, nesting copies of itself, so such a name is refused.
+ */
+export function setNamesItself(partNumber: string, subpartIds: readonly string[]): boolean {
+  const own = partNumber.toLowerCase();
+  return subpartIds.some((id) => id.toLowerCase() === own);
 }
 
 /** A create / replace body's fields, checked, with the blobs decoded. */
@@ -539,8 +565,16 @@ function parsePartBody(body: CreatePartBody): ParsedPartBody {
     }
     if (xmlBlob.length === 0) return { status: 400, error: 'empty_payload' };
     if (xmlBlob.length > MAX_PART_BLOB_BYTES) return { status: 413, error: 'payload_too_large' };
-    if (!isSetXml(xmlBlob)) return { status: 400, error: 'invalid_set' };
-    return { partNumber, displayName, xmlBlob: stripImportSource(xmlBlob), spriteBlob: Buffer.alloc(0), spriteMime: '' };
+    const ids = setSubpartIds(xmlBlob);
+    if (!ids) return { status: 400, error: 'invalid_set' };
+    return {
+      partNumber,
+      displayName,
+      xmlBlob: stripImportSource(xmlBlob),
+      spriteBlob: Buffer.alloc(0),
+      spriteMime: '',
+      namesItself: setNamesItself(partNumber, ids),
+    };
   }
   if (body.spriteMime !== 'image/gif' && body.spriteMime !== 'image/png') {
     return { status: 400, error: 'invalid_sprite_mime' };

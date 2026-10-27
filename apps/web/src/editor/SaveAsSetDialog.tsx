@@ -7,7 +7,7 @@ import { api, toBase64 } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import { noticeDownloaded, useEditorStore } from './editorStore';
 import { indexParts } from './partIndex';
-import { buildSetXml, setPartNumber, setSubparts } from './setXml';
+import { buildSetXml, partNamedLikeSet, setPartNumber, setSubparts } from './setXml';
 import { useEscape } from './useEscape';
 
 interface Props {
@@ -66,6 +66,11 @@ export function SaveAsSetDialog({ doc, onClose, viewOnly = false }: Props) {
     if (cannotSave) return;
     const displayName = trimmedName();
     const partNumber = setPartNumber(displayName);
+    const clash = partNamedLikeSet(partNumber, setSubparts(picked, index));
+    if (clash) {
+      setError(`“${clash}” is a part in this set, so the set can’t have that name too. Pick another name.`);
+      return;
+    }
     const taken = mine.data?.parts.some((p) => p.ownerUserId === user?.id && p.partNumber.toLowerCase() === partNumber.toLowerCase());
     if (taken) {
       setError(`You already have a part or set called “${partNumber}”. Pick another name.`);
@@ -96,6 +101,11 @@ export function SaveAsSetDialog({ doc, onClose, viewOnly = false }: Props) {
   function download() {
     if (picked.length === 0) {
       setError('Select one or more parts first.');
+      return;
+    }
+    const clash = partNamedLikeSet(setPartNumber(trimmedName()), setSubparts(picked, index));
+    if (clash) {
+      setError(`“${clash}” is a part in this set, so the set can’t have that name too. Pick another name.`);
       return;
     }
     downloadText(`${setPartNumber(trimmedName())}.set.xml`, setXml());
