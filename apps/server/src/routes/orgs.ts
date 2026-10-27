@@ -947,11 +947,14 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
 
       const isSelf = req.params.userId === user.id;
       const target = await getMembership(org.id, req.params.userId);
-      // "Manage members and roles" removes anyone; "invite people" removes
-      // only people with less than you (a Manager removes Members, as before).
+      // "Manage members and roles" removes anyone but an Admin (only an
+      // Admin takes the Admin role, so only an Admin removes one); "invite
+      // people" removes only people with less than you (a Manager removes
+      // Members, as before).
       const mayRemove =
         isSelf ||
-        has(myMembership, 'manage_members') ||
+        myMembership.isAdmin ||
+        (has(myMembership, 'manage_members') && !target?.isAdmin) ||
         (has(myMembership, 'invite') && !!target && !target.isAdmin && lesserRole(target.permissions, myMembership.permissions));
       if (!mayRemove) {
         return reply.code(403).send({ error: 'forbidden' });
@@ -1236,14 +1239,16 @@ export async function getMembership(orgId: string, userId: string): Promise<Club
 }
 
 /**
- * Whether `actor` may invite someone to, or give, `role`: anyone with
- * "manage members and roles" (only an Admin gives Admin); with only
- * "invite people", roles with strictly less than the actor's own.
+ * Whether `actor` may invite someone to, or give, `role`: an Admin any
+ * role; with "manage members and roles", roles with no more than the
+ * actor's own (as changing a member's roles allows), never Admin; with
+ * only "invite people", roles with strictly less than the actor's own.
  */
 export function mayGiveRole(actor: ClubAccess, role: ClubRoleRow | undefined): boolean {
   if (!role) return false;
-  if (role.key === 'admin') return actor.isAdmin;
-  if (actor.permissions.has('manage_members')) return true;
+  if (actor.isAdmin) return true;
+  if (role.key === 'admin') return false;
+  if (actor.permissions.has('manage_members')) return role.permissions.every((p) => actor.permissions.has(p));
   return actor.permissions.has('invite') && lesserRole(new Set(role.permissions), actor.permissions);
 }
 
