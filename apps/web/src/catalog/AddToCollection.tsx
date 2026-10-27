@@ -79,7 +79,7 @@ export function AddToCollectionDialog({ target, onClose }: { target: CollectionT
         <h3 className="text-lg font-semibold">Add “{picked.title}” to a collection</h3>
         {cannot ? (
           <p className="text-muted">
-            Only {ownerClub?.name ?? 'the club'}’s admins and managers put its {picked.kind === 'module' ? 'modules' : 'parts'} in its collections. Ask one of them.
+            Putting {ownerClub?.name ?? 'the club'}’s {picked.kind === 'module' ? 'modules' : 'parts'} in its collections needs the Send to the catalog permission. Ask a club admin.
           </p>
         ) : (
           <>

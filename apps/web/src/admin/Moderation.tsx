@@ -98,7 +98,7 @@ export function ModerationTab() {
       )}
       {view === 'trusted' && (
         <>
-          <p className="text-sm text-muted">Each trusted club’s admins and managers review these. You can still approve or decline one.</p>
+          <p className="text-sm text-muted">Each trusted club reviews these itself. You can still approve or decline one.</p>
           <ModerationList view="trusted" title="Catalog items" total={c?.trusted} />
           <CoverQueue trusted />
           <CollectionModeration part="trusted" />
@@ -586,7 +586,7 @@ export function TrustedClubsSection() {
         <HelpButton helpKey="club.trusted" />
       </h2>
       <p className="text-xs text-muted">
-        A trusted club’s admins and managers review what’s published under its name, instead of you. You can still see, decline or unpublish anything.
+        A trusted club reviews what’s published under its name itself, instead of you. You can still see, decline or unpublish anything.
       </p>
       <input
         type="search"

@@ -350,7 +350,7 @@ describe('Add to a collection…', () => {
         onClose={() => undefined}
       />,
     );
-    expect(await screen.findByText(/Only Other’s admins and managers put its parts in its collections/)).toBeTruthy();
+    expect(await screen.findByText(/Putting Other’s parts in its collections needs the Send to the catalog permission/)).toBeTruthy();
   });
 });
 

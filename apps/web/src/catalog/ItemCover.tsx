@@ -78,7 +78,7 @@ export function ItemCoverDialog({ itemId, onClose, clubReview }: { itemId: strin
               drawnUrl={drawnPictureUrl(item)}
               currentUrl={current}
               maxBytes={settings.data?.coverMaxBytes ?? 5 * 1024 * 1024}
-              reviewNote={live && review ? (clubReview ? `${clubReview}’s admins check it before everyone sees it.` : 'A moderator checks it before everyone sees it.') : undefined}
+              reviewNote={live && review ? (clubReview ? `${clubReview} checks it before everyone sees it.` : 'A moderator checks it before everyone sees it.') : undefined}
               handle={picker}
               name={`cover-${itemId}`}
             />
