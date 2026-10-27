@@ -520,8 +520,8 @@ function TransferSection({ layoutId }: { layoutId: string }) {
           className="space-y-2"
         >
           <p className="text-xs text-muted">
-            Transfer commits immediately. You'll lose owner-level access unless
-            you're an admin of the destination org.
+            It moves to the club at once. Afterwards, what you can do with it
+            depends on your roles in that club.
           </p>
           <select
             value={orgSlug}
@@ -532,7 +532,7 @@ function TransferSection({ layoutId }: { layoutId: string }) {
             <option value="">Choose a club…</option>
             {clubsICanAddTo(orgs.data.orgs).map((o) => (
               <option key={o.slug} value={o.slug}>
-                {o.name} ({o.myRole})
+                {o.name}
               </option>
             ))}
           </select>

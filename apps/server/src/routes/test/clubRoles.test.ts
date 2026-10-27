@@ -202,4 +202,32 @@ describe('club roles', () => {
     expect(meta().get('after')).toBeUndefined();
     expect(ws.readyState).toBe(WebSocket.OPEN);
   });
+
+  it('your clubs list says the roles you hold by name', async () => {
+    const crew = await makeRole('Track crew', ['edit_layouts']);
+    expect((await give(ben, [`${orgId}:viewer`, crew])).statusCode).toBe(200);
+    const mine = (await as(ben, 'GET', '/api/orgs')).json().orgs.find((o: { slug: string }) => o.slug === 'rail-club');
+    expect(mine.roleNames).toEqual(['Viewer', 'Track crew']);
+    // A member added without role rows holds the built-in role org_members names.
+    await db.delete(schema.memberRoles).where(and(eq(schema.memberRoles.orgId, orgId), eq(schema.memberRoles.userId, ben.id)));
+    const bare = (await as(ben, 'GET', '/api/orgs')).json().orgs.find((o: { slug: string }) => o.slug === 'rail-club');
+    expect(bare.roleNames).toEqual(['Member']);
+  });
+
+  it('the requests-to-join badge counts for whoever may answer them, by permission', async () => {
+    await as(ann, 'PATCH', '/api/orgs/rail-club', { joinPolicy: 'request', listed: true });
+    const dee = await loginAs(app, 'dee@x.com');
+    expect((await as(dee, 'POST', '/api/orgs/rail-club/join', {})).statusCode).toBeLessThan(300);
+    // A custom role that invites people answers requests, so it sees the badge.
+    const door = await makeRole('Door', ['invite']);
+    expect((await give(ben, [door])).statusCode).toBe(200);
+    expect((await as(ben, 'GET', '/api/orgs/rail-club/join-requests')).statusCode).toBe(200);
+    expect((await as(ben, 'GET', '/api/join-requests/count')).json()).toEqual({ count: 1, clubs: [{ slug: 'rail-club', count: 1 }] });
+    // A Manager whose role no longer invites can't answer them, and sees none.
+    const manager = (await as(ann, 'GET', '/api/orgs/rail-club/roles')).json().roles.find((r: { key: string }) => r.key === 'manager');
+    expect((await as(ann, 'PATCH', `/api/orgs/rail-club/roles/${manager.id}`, { permissions: ['view_items', 'edit_layouts'] })).statusCode).toBe(200);
+    expect((await give(ben, [manager.id])).statusCode).toBe(200);
+    expect((await as(ben, 'GET', '/api/orgs/rail-club/join-requests')).statusCode).toBe(403);
+    expect((await as(ben, 'GET', '/api/join-requests/count')).json()).toEqual({ count: 0, clubs: [] });
+  });
 });
