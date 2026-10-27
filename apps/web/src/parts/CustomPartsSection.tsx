@@ -69,6 +69,14 @@ export function CustomPartsSection({
     },
     onError: (e: Error) => alert(`Could not delete the part: ${e.message}`),
   });
+  // Which of them are only used inside sets (<NotListedInLibrary>), from the parts catalog.
+  const partsCatalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 60_000 });
+  const hiddenIds = new Set((partsCatalog.data?.parts ?? []).filter((x) => x.notListed && x.customPartId).map((x) => x.customPartId!));
+  const listing = useMutation({
+    mutationFn: ({ id, notListed }: { id: string; notListed: boolean }) => api.customParts.setListing(id, notListed),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['custom-parts'] }), qc.invalidateQueries({ queryKey: ['parts-catalog'] })]),
+    onError: (e: Error) => alert(`Could not change that: ${e.message}`),
+  });
   const list = (parts.data?.parts ?? [])
     .filter((p) => matchesOwnerFilter(p, filter, myUserId, orgs))
     .sort((a, b) => a.partNumber.localeCompare(b.partNumber));
@@ -107,6 +115,11 @@ export function CustomPartsSection({
                     <OwnerChip item={p} myUserId={myUserId} orgs={orgs} />
                     {catalog.shared('part', p.id) && <CatalogBadge item={catalog.shared('part', p.id)!} />}
                     <UpdateAvailable copyId={p.id} label={p.displayName || p.partNumber} />
+                    {hiddenIds.has(p.id) && (
+                      <span data-testid="only-in-sets" title="Hidden from the parts list: only placed inside its sets" className="rounded bg-soft px-1.5 py-0.5 text-xs text-muted">
+                        Only in sets
+                      </span>
+                    )}
                   </p>
                   <p className="break-all font-mono text-xs text-muted">{p.partNumber}</p>
                   <CreditLine credit={p.credit} />
@@ -129,6 +142,18 @@ export function CustomPartsSection({
                 {p.kind === 'set' && (p.role === 'owner' || p.role === 'editor') && (
                   <button role="menuitem" type="button" onClick={() => setRenamingSet(p)} className={MORE_ITEM}>
                     Rename set…
+                  </button>
+                )}
+                {(p.role === 'owner' || p.role === 'editor') && (
+                  <button
+                    role="menuitemcheckbox"
+                    aria-checked={hiddenIds.has(p.id)}
+                    type="button"
+                    title="A part that only makes sense inside its sets (a cut piece, one half of a flex track) isn’t listed in the Parts panel or placed by itself."
+                    onClick={() => listing.mutate({ id: p.id, notListed: !hiddenIds.has(p.id) })}
+                    className={MORE_ITEM}
+                  >
+                    {hiddenIds.has(p.id) ? '✓ ' : ''}Only used inside sets
                   </button>
                 )}
                 <button role="menuitem" type="button" onClick={() => setSharingPeople(p)} className={MORE_ITEM}>

@@ -313,3 +313,13 @@ describe('<Designer>: who built an imported model', () => {
     expect(parse('').designer).toBeUndefined();
   });
 });
+
+describe('NotListedInLibrary', () => {
+  const input = { partNumber: 'p', colorCode: '', spritePath: '' };
+  it('marks a part BlueBrick keeps out of its parts list (only used inside sets)', () => {
+    expect(parsePartXml('<part><NotListedInLibrary>true</NotListedInLibrary></part>', input).notListed).toBe(true);
+    expect(parsePartXml('<group><NotListedInLibrary> TRUE </NotListedInLibrary><SubPartList/></group>', input).notListed).toBe(true);
+    expect(parsePartXml('<part><NotListedInLibrary>false</NotListedInLibrary></part>', input).notListed).toBeUndefined();
+    expect(parsePartXml('<part></part>', input).notListed).toBeUndefined();
+  });
+});

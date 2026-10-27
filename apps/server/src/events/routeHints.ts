@@ -461,6 +461,7 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   'PATCH /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'DELETE /api/custom-parts/:id/collaborators/:userId': resource('custom-part', { param: 'id' }, (c) => [c.params.userId ?? null]),
   'POST /api/custom-parts/:id/move': resource('custom-part'),
+  'PATCH /api/custom-parts/:id/listing': resource('custom-part'),
   'POST /api/custom-parts/:id/copy': resource('custom-part', { reply: 'id' }),
   'POST /api/custom-parts/:id/take-back': returned('custom-part'),
   'POST /api/custom-parts/:id/give-back': returned('custom-part'),

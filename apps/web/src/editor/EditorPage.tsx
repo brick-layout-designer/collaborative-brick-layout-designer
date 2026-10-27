@@ -159,6 +159,7 @@ import { downloadAllViews } from './sharePicture';
 import { NoticeToast } from './NoticeToast';
 import { writeBbm, type SavedView, type SidecarModule } from '@cld/bbm';
 import { LOCAL_ORIGIN } from './useLayoutDoc';
+import { hiddenPartNotice } from './hiddenParts';
 import { contentBoundsStuds, EXPORT_HIDE, exportRegionStuds, unionStudRects, type StudRect, exportSceneSize, renderMapToCanvas, watermarkText } from './exportRender';
 import { dropdownAnchor, dropTargetHint, viewCentreStuds, wheelZoomStep } from './viewHelpers';
 import { parseVenueFile, VENUE_FILE_ACCEPT, VENUE_FILE_EXT, writeVenueFile } from './venueFile';
@@ -3467,6 +3468,11 @@ function Canvas({
     studY: number,
     snapOpts: { session?: SnapSession; bypass?: boolean; final?: boolean } = {},
   ) {
+    // A part only used inside sets (<NotListedInLibrary>) isn't placed by itself.
+    if (meta.notListed) {
+      useEditorStore.getState().showNotice(hiddenPartNotice(meta), 'error', 7000);
+      return;
+    }
     if (!budgetAllows(meta.key)) return;
     // Group / set placement — expand into individual bricks at the
     // subpart-relative offsets the .set.xml declares. Single Yjs

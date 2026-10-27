@@ -134,6 +134,7 @@ const ACCESS: Record<string, [Access, Scope, Flags?]> = {
   'POST /api/custom-parts': ['user', 'parts:write', { demo: true }],
   'PUT /api/custom-parts/:id': ['owner', 'parts:write', { demo: true }],
   'DELETE /api/custom-parts/:id': ['owner', 'parts:write'],
+  'PATCH /api/custom-parts/:id/listing': ['owner', 'parts:write', { demo: true }],
   'GET /api/custom-parts/:id/collaborators': ['shared', null],
   'POST /api/custom-parts/:id/invites': ['owner', null, { demo: true }],
   'DELETE /api/custom-parts/:id/invites/:inviteId': ['owner', null],

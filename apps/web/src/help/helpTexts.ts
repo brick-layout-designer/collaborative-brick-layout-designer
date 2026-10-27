@@ -201,6 +201,11 @@ export const HELP_TEXTS = {
     short: 'A set you placed knows when the set changes, so you can bring in the new version.',
     more: 'When one of your custom sets (or one shared with you) gets new parts, has its parts moved, or is renamed, layouts that use it say “Update available”. Update puts the set’s new parts where the placed set is now, keeping its place and turn, and joins them to the track around it where they fit. Nothing changes until you choose Update, and Undo puts it back.',
   },
+  'part.hidden': {
+    title: 'Hidden parts',
+    short: 'Some parts are only used inside a set, so they’re hidden from the parts list.',
+    more: 'A building of a castle set, a cut track piece or one half of a flex track only makes sense inside its set, so it isn’t listed or placed by itself (BlueBrick’s “Not listed in library”), while the set places, moves and ungroups as usual. Tick Show hidden parts, or right-click a set and choose Show its parts, to see them. On your own parts, “Only used inside sets” in the part’s menu turns this on or off.',
+  },
 
   // Opening files
   'open.formats': {

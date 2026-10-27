@@ -94,6 +94,12 @@ export interface PartMetadata {
    */
   canUngroup: boolean;
   /**
+   * BlueBrick's `<NotListedInLibrary>true`: the part isn't offered in the
+   * parts list or placed by itself; it's there for the sets that use it
+   * (and works like any part once one is ungrouped). Absent: listed.
+   */
+  notListed?: true;
+  /**
    * A set's `<GroupConnectionPreferenceList>`: from a connection of the set
    * (its parts' connections, numbered in sub-part order) to the one to add
    * the next part at (flex.group: 0 <-> 2). Groups only; absent when none.

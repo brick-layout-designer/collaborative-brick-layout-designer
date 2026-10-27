@@ -64,6 +64,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
   const descriptions = readDescriptions(root.Description);
   const pxPerStud = Number.parseInt(stringField(root, 'PixelsPerStud', '8'), 10);
   const canUngroup = stringField(root, 'CanUngroup', 'true').toLowerCase() === 'true';
+  const notListed = stringField(root, 'NotListedInLibrary', 'false').trim().toLowerCase() === 'true';
 
   const connections = kind === 'leaf' ? readConnexionList(root.ConnexionList) : [];
   const subparts = kind === 'group' ? readSubPartList(root.SubPartList) : [];
@@ -98,6 +99,7 @@ export function parsePartXml(xml: string, input: ParseInput): PartMetadata {
     connections,
     subparts,
     canUngroup,
+    ...(notListed ? { notListed: true as const } : {}),
     ...(groupNextPreferred ? { groupNextPreferred } : {}),
     hullPts,
     ...(snapMargin ? { snapMargin } : {}),

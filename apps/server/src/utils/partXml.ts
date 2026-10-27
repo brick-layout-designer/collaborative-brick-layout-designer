@@ -37,3 +37,17 @@ export function stripImportSource(xmlBlob: Buffer): Buffer {
   if (from === 0) return xmlBlob;
   return Buffer.from(out + xml.slice(from), 'utf8');
 }
+
+/**
+ * `xml` with BlueBrick's `<NotListedInLibrary>` set: `true` (the part is
+ * only placed inside its sets, never listed or placed by itself) or taken
+ * out (listed as usual). Everything else stays as it was.
+ */
+export function withNotListed(xml: string, notListed: boolean): string {
+  const without = xml.replace(/\s*<NotListedInLibrary\s*\/>|\s*<NotListedInLibrary>[^<]*<\/NotListedInLibrary>/g, '');
+  if (!notListed) return without;
+  const root = /<(part|group)(\s[^>]*)?>/.exec(without);
+  if (!root) return without;
+  const at = root.index + root[0].length;
+  return `${without.slice(0, at)}\n\t<NotListedInLibrary>true</NotListedInLibrary>${without.slice(at)}`;
+}

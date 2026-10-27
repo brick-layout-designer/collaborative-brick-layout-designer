@@ -13,6 +13,8 @@ import { RenameDialog } from '../ui/RenameDialog';
 import { confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { SET_DELETE_WORDING } from '../ui/deleteWording';
 import { renameSet } from '../parts/setActions';
+import { HelpButton } from '../help/HelpButton';
+import { hiddenPartNotice, partsInSet, useShowHiddenParts } from './hiddenParts';
 
 interface PartContextMenu {
   part: PartWire;
@@ -89,6 +91,10 @@ export const PartsPanel = memo(function PartsPanel({
   });
   const [filter, setFilter] = useState('');
   const [category, setCategory] = useState<string>(ALL_CATEGORIES);
+  // Parts only used inside sets (<NotListedInLibrary>) are left out unless
+  // asked for, or their set is opened with "Show its parts".
+  const [showHidden, setShowHidden] = useShowHiddenParts();
+  const [openSet, setOpenSet] = useState<PartWire | null>(null);
   // Use as Model on a map part: find it here, pick it and show it.
   const modelPart = useEditorStore((s) => s.modelPart);
   useEffect(() => {
@@ -122,13 +128,22 @@ export const PartsPanel = memo(function PartsPanel({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [data]);
 
+  const inOpenSet = useMemo(() => (openSet ? partsInSet(partsByKey, openSet) : null), [openSet, partsByKey]);
+  const hiddenCount = useMemo(() => data?.parts.filter((p) => p.notListed).length ?? 0, [data]);
+
   const visible = useMemo(() => {
     if (!data) return [];
     const needle = filter.trim().toLowerCase();
     const scored: { score: number; part: PartWire }[] = [];
     for (const p of data.parts) {
-      if (category !== ALL_CATEGORIES && (p.category || 'Other') !== category) {
-        continue;
+      if (inOpenSet) {
+        if (!inOpenSet.has(p.key)) continue;
+      } else {
+        if (category !== ALL_CATEGORIES && (p.category || 'Other') !== category) {
+          continue;
+        }
+        // (A part picked with Use as Model shows, hidden or not.)
+        if (p.notListed && !showHidden && p.key !== selectedTile) continue;
       }
       // Same fuzzy hay as desktop (PartsBrowser.cpp:242):
       //   "<key> <description>" lowercased.
@@ -153,7 +168,16 @@ export const PartsPanel = memo(function PartsPanel({
       });
     }
     return scored.map((s) => s.part);
-  }, [data, filter, category, hasBudget, showOnlyBudgeted, budgetLimits, defaultInfinite]);
+  }, [data, filter, category, hasBudget, showOnlyBudgeted, budgetLimits, defaultInfinite, inOpenSet, showHidden, selectedTile]);
+
+  /** Place a part from the list: never one that is only used inside sets. */
+  function place(p: PartWire) {
+    if (p.notListed) {
+      useEditorStore.getState().showNotice(hiddenPartNotice(p), 'error', 7000);
+      return;
+    }
+    onPlacePart(p);
+  }
 
   return (
     <aside className="relative flex h-full min-h-0 w-full flex-col bg-panel text-sm">
@@ -179,19 +203,39 @@ export const PartsPanel = memo(function PartsPanel({
           placeholder='Fuzzy filter — e.g. "plt2" matches "plate2x4"'
           className="w-full rounded-lg border border-border bg-soft px-2 py-1 text-xs"
         />
-        {canUploadPart && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <button
-              type="button"
-              onClick={() => setUploading(true)}
-              className="text-xs font-semibold text-accent-text hover:underline"
-            >
-              Upload part…
+        {openSet && (
+          <div data-testid="open-set" className="flex items-center gap-2 rounded-lg bg-soft px-2 py-1 text-xs">
+            <span className="min-w-0 flex-1 truncate">
+              Parts in the set “{openSet.description || openSet.partNumber}”
+            </span>
+            <button type="button" onClick={() => setOpenSet(null)} className="font-semibold text-accent-text hover:underline">
+              Back to all parts
             </button>
-            {catalogSettings.data?.parts && (
+          </div>
+        )}
+        {/* One row, so a small panel still has space for the list. */}
+        {(canUploadPart || (hiddenCount > 0 && !openSet)) && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {canUploadPart && (
+              <button
+                type="button"
+                onClick={() => setUploading(true)}
+                className="text-xs font-semibold text-accent-text hover:underline"
+              >
+                Upload part…
+              </button>
+            )}
+            {canUploadPart && catalogSettings.data?.parts && (
               <button type="button" onClick={() => setFromCatalog(true)} className="text-xs font-semibold text-accent-text hover:underline">
                 From the catalog…
               </button>
+            )}
+            {hiddenCount > 0 && !openSet && (
+              <label className="flex items-center gap-1 text-xs text-muted">
+                <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
+                <span>Show hidden parts ({hiddenCount})</span>
+                <HelpButton helpKey="part.hidden" />
+              </label>
             )}
           </div>
         )}
@@ -234,33 +278,36 @@ export const PartsPanel = memo(function PartsPanel({
                   // double-click or Enter adds the part to the map.
                   aria-pressed={selectedTile === p.key}
                   data-part-key={p.key}
+                  data-hidden-part={p.notListed ? 'true' : undefined}
                   onClick={() => setSelectedTile(p.key)}
-                  onDoubleClick={() => onPlacePart(p)}
+                  onDoubleClick={() => place(p)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      onPlacePart(p);
+                      place(p);
                     }
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setCtxMenu({ part: p, x: e.clientX, y: e.clientY });
                   }}
-                  draggable
+                  draggable={!p.notListed}
                   onDragStart={(e) => {
+                    if (p.notListed) return;
                     if (e.dataTransfer) {
                       e.dataTransfer.effectAllowed = 'copy';
                       e.dataTransfer.setData('application/x-cld-part', p.key);
                       e.dataTransfer.setData('text/plain', p.key);
                     }
                   }}
-                  title={tooltip}
-                  className={`flex w-full flex-col items-center rounded-lg p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-panel hover:bg-soft'} ${selectedTile === p.key ? 'ring-2 ring-accent' : ''}`}
+                  title={p.notListed ? `${tooltip}\nOnly used inside a set: place its set instead.` : tooltip}
+                  className={`flex w-full flex-col items-center rounded-lg p-1 text-[10px] ${over ? 'bg-red-900/70 hover:bg-red-800/70' : 'bg-panel hover:bg-soft'} ${selectedTile === p.key ? 'ring-2 ring-accent' : ''} ${p.notListed ? 'opacity-60' : ''}`}
                 >
                   <PartThumbnail part={p} partsByKey={partsByKey} px={iconSize} />
                   <span className="mt-1 line-clamp-2 text-center leading-tight">
                     {caption}
                   </span>
+                  {p.notListed && <span className="text-[9px] italic text-muted">Only in sets</span>}
                   {usage && (
                     <span data-testid="budget-numbers" className={over ? 'font-semibold text-red-300' : 'text-muted'}>
                       {used}/{limit >= 0 ? limit : '?'}
@@ -278,7 +325,11 @@ export const PartsPanel = memo(function PartsPanel({
         <PartContextMenuPopup
           ref={menuRef}
           menu={ctxMenu}
-          onAddToMap={() => { onPlacePart(ctxMenu.part); setCtxMenu(null); }}
+          onAddToMap={() => { place(ctxMenu.part); setCtxMenu(null); }}
+          onShowSetParts={() => {
+            setOpenSet(ctxMenu.part);
+            setCtxMenu(null);
+          }}
           onCopyPartNumber={() => {
             void navigator.clipboard.writeText(ctxMenu.part.partNumber);
             setCtxMenu(null);
@@ -321,6 +372,7 @@ export const PartsPanel = memo(function PartsPanel({
 function PartContextMenuPopup({
   menu,
   onAddToMap,
+  onShowSetParts,
   onCopyPartNumber,
   ownSet,
   onRenameSet,
@@ -330,6 +382,8 @@ function PartContextMenuPopup({
 }: {
   menu: PartContextMenu;
   onAddToMap: () => void;
+  /** A set: show the parts in it, hidden ones too. */
+  onShowSetParts: () => void;
   onCopyPartNumber: () => void;
   /** A set you made (or may edit): it can be renamed, and by its owner deleted. */
   ownSet: CustomPartSummary | undefined;
@@ -346,9 +400,19 @@ function PartContextMenuPopup({
       className="min-w-[160px] rounded-lg border border-border bg-panel py-1 shadow-lg"
       onContextMenu={(e) => e.preventDefault()}
     >
-      <button className={itemCls} onClick={onAddToMap}>
+      <button
+        className={itemCls + ' disabled:cursor-default disabled:opacity-40'}
+        onClick={onAddToMap}
+        disabled={!!menu.part.notListed}
+        title={menu.part.notListed ? 'Only used inside a set: place its set instead.' : undefined}
+      >
         Add to map
       </button>
+      {menu.part.kind === 'group' && menu.part.subparts.length > 0 && (
+        <button className={itemCls} onClick={onShowSetParts}>
+          Show its parts
+        </button>
+      )}
       <button className={itemCls} onClick={onCopyPartNumber}>
         Copy part number
       </button>
