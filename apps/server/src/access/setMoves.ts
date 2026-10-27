@@ -11,6 +11,11 @@
 //     author, as a copy is);
 //   - a part whose number the club already has: the set uses the club's;
 //   - a part the mover may not move (a club's part they don't run).
+//
+// Copying a set to a club brings copies of those parts instead
+// (planSetCopy): the club gets its own copy of every one the copier could
+// move, the originals stay where they are, and a number the club already
+// has is left to the club's part.
 
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
@@ -80,4 +85,14 @@ export async function planSetMove(setId: string, userId: string, destOrgId: stri
     else plan.move.push(p);
   }
   return plan;
+}
+
+/**
+ * What happens to the custom parts in set `setId` when `userId` copies it
+ * to the club `destOrgId`: the ones they could move are copied (`copy`),
+ * none move; the club's own numbers and parts not theirs stay as they are.
+ */
+export async function planSetCopy(setId: string, userId: string, destOrgId: string): Promise<SetMovePlan> {
+  const plan = await planSetMove(setId, userId, destOrgId);
+  return { move: [], copy: [...plan.move, ...plan.copy], inClub: plan.inClub, notYours: plan.notYours };
 }

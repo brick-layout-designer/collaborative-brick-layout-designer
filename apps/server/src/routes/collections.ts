@@ -1674,7 +1674,18 @@ async function alreadyHaveModules(mods: readonly Pick<ModuleRow, 'id' | 'ownerUs
  * Copy one of a collection's own custom parts to `user` or the club
  * `destOrgId`. A part with the same number there already: 409 (they have it).
  */
-export async function copyPartTo(user: User, partId: string, destOrgId: string | null): Promise<{ ok: true; id: string } | { ok: false; status: number; body: unknown }> {
+/**
+ * A copy of custom part `partId` for `destOrgId` (a club) or, without one,
+ * `user`. `along`: the ids of custom parts to copy with it, owned the same
+ * way (a set's parts, setMoves.planSetCopy), in the same step and counted
+ * against the same limits; each is credited to its author.
+ */
+export async function copyPartTo(
+  user: User,
+  partId: string,
+  destOrgId: string | null,
+  along: readonly string[] = [],
+): Promise<{ ok: true; id: string; copied: { id: string; partNumber: string }[] } | { ok: false; status: number; body: unknown }> {
   const src = await db.select().from(schema.customParts).where(eq(schema.customParts.id, partId)).get();
   if (!src) return { ok: false, status: 404, body: { error: 'not_found' } };
   const taken = await db
@@ -1683,31 +1694,64 @@ export async function copyPartTo(user: User, partId: string, destOrgId: string |
     .where(and(eq(schema.customParts.partNumber, src.partNumber), destOrgId ? eq(schema.customParts.ownerOrgId, destOrgId) : eq(schema.customParts.ownerUserId, user.id)))
     .get();
   if (taken) return { ok: false, status: 409, body: { error: 'part_number_taken' } };
+  // In the order given (the plan lists them by number).
+  const extra = (along.length ? await db.select().from(schema.customParts).where(inArray(schema.customParts.id, [...along])).all() : []).sort(
+    (a, b) => along.indexOf(a.id) - along.indexOf(b.id),
+  );
   // A copy never carries the importer's local path (older rows may still have it).
   const xml = stripImportSource(Buffer.from(src.xmlBlob as Uint8Array));
   const sprite = Buffer.from(src.spriteBlob as Uint8Array);
+  const extraBlobs = extra.map((e) => ({ src: e, xml: stripImportSource(Buffer.from(e.xmlBlob as Uint8Array)), sprite: Buffer.from(e.spriteBlob as Uint8Array) }));
   const owner: Subject = destOrgId ? { kind: 'org', id: destOrgId } : { kind: 'user', id: user.id };
-  const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1, bytes: xml.length + sprite.length } });
+  const bytes = xml.length + sprite.length + extraBlobs.reduce((n, e) => n + e.xml.length + e.sprite.length, 0);
+  const refusal = await checkGrowth({ actor: user, owner, add: { customParts: 1 + extra.length, bytes } });
   if (refusal) return { ok: false, status: refusal.status, body: refusal.body };
   const id = randomUUID();
   const now = new Date();
-  await db.insert(schema.customParts).values({
-    id,
-    partNumber: src.partNumber,
-    displayName: src.displayName,
-    category: src.category,
-    ownerUserId: destOrgId ? null : user.id,
-    ownerOrgId: destOrgId,
-    createdBy: user.id,
-    xmlBlob: xml,
-    spriteBlob: sprite,
-    spriteMime: src.spriteMime,
-    copiedFromId: src.id,
-    createdAt: now,
-    updatedAt: now,
+  const copyIds = new Map(extra.map((e) => [e.id, randomUUID()]));
+  db.transaction((tx) => {
+    tx.insert(schema.customParts)
+      .values({
+        id,
+        partNumber: src.partNumber,
+        displayName: src.displayName,
+        category: src.category,
+        ownerUserId: destOrgId ? null : user.id,
+        ownerOrgId: destOrgId,
+        createdBy: user.id,
+        xmlBlob: xml,
+        spriteBlob: sprite,
+        spriteMime: src.spriteMime,
+        copiedFromId: src.id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    for (const e of extraBlobs) {
+      tx.insert(schema.customParts)
+        .values({
+          id: copyIds.get(e.src.id)!,
+          partNumber: e.src.partNumber,
+          displayName: e.src.displayName,
+          category: e.src.category,
+          ownerUserId: destOrgId ? null : user.id,
+          ownerOrgId: destOrgId,
+          createdBy: e.src.createdBy ?? user.id,
+          xmlBlob: e.xml,
+          spriteBlob: e.sprite,
+          spriteMime: e.src.spriteMime,
+          copiedFromId: e.src.id,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
   });
   await writeAuditEvent({ resourceKind: 'custom_part', resourceId: id, userId: user.id, eventType: 'create', payload: { copiedFrom: src.id, owner } });
-  return { ok: true, id };
+  for (const e of extra) {
+    await writeAuditEvent({ resourceKind: 'custom_part', resourceId: copyIds.get(e.id)!, userId: user.id, eventType: 'create', payload: { copiedFrom: e.id, owner, withSet: id } });
+  }
+  return { ok: true, id, copied: extra.map((e) => ({ id: copyIds.get(e.id)!, partNumber: e.partNumber })) };
 }
 
 /** How many public collections each item is in (for its owner's badge). */

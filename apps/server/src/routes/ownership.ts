@@ -10,6 +10,7 @@
 //                                     a set brings its owner's parts in it (access/setMoves.ts)
 //   GET  /api/custom-parts/:id/move-plan?orgSlug=   what a set's move would do with its parts
 //   POST /api/custom-parts/:id/copy   a copy into your parts or a club's
+//   GET  /api/custom-parts/:id/copy-plan?orgSlug=   what a set's copy to a club would do with its parts
 //
 // No other club→person move exists. When a thing goes back, the club keeps
 // its own copy, credited to the author and pointing at the original
@@ -44,7 +45,7 @@ import { postClubNote } from './warnings.js';
 import { perPerson } from '../utils/rateLimits.js';
 import { clearPendingLayoutShares, clearPendingModuleShares, clearPendingPartShares, handedOverIds } from '../access/pendingShares.js';
 import { notifyAccessChanged } from '../ws/liveAccess.js';
-import { emptyPlan, planSetMove, type SetMovePlan } from '../access/setMoves.js';
+import { emptyPlan, planSetCopy, planSetMove, type SetMovePlan } from '../access/setMoves.js';
 
 const KINDS: { kind: CreditKind; path: string; token: 'layouts:write' | 'parts:write' | 'venues:write'; word: string }[] = [
   { kind: 'layout', path: 'layouts', token: 'layouts:write', word: 'layout' },
@@ -427,6 +428,20 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ---- copy a custom part ----------------------------------------------------
+  // A set copied to a club brings copies of your custom parts in it
+  // (access/setMoves.ts planSetCopy); the dialog shows which first (copy-plan).
+  app.get<{ Params: { id: string }; Querystring: { orgSlug?: string } }>('/api/custom-parts/:id/copy-plan', async (req, reply) => {
+    const user = requireUser(req);
+    const { role } = await resolveResourceRole(user.id, 'custom_part', req.params.id);
+    if (role === null) return reply.code(404).send({ error: 'not_found' });
+    if (!req.query.orgSlug) return reply.code(400).send({ error: 'copy_plan_needs_a_club' });
+    const dest = await destinationOrg(user.id, req.query.orgSlug, addPermission('custom_part'));
+    if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, ...(dest.permission ? { permission: dest.permission } : {}) });
+    const part = await db.select({ spriteMime: schema.customParts.spriteMime }).from(schema.customParts).where(eq(schema.customParts.id, req.params.id)).get();
+    if (!part || part.spriteMime !== '' || !dest.orgId) return { parts: emptyPlan() };
+    return { parts: await planSetCopy(req.params.id, user.id, dest.orgId) };
+  });
+
   app.post<{ Params: { id: string }; Body: { orgSlug?: string } }>(
     '/api/custom-parts/:id/copy',
     { config: { apiToken: 'parts:write' } },
@@ -437,9 +452,16 @@ export async function ownershipRoutes(app: FastifyInstance): Promise<void> {
       if (role === null) return reply.code(404).send({ error: 'not_found' });
       const dest = await destinationOrg(user.id, req.body?.orgSlug, addPermission('custom_part'));
       if (!dest.ok) return reply.code(dest.code).send({ error: dest.error, permission: dest.permission });
-      const r = await copyPartTo(user, req.params.id, dest.orgId);
+      // A set into a club: copies of your custom parts in it come along.
+      const part = await db.select({ spriteMime: schema.customParts.spriteMime }).from(schema.customParts).where(eq(schema.customParts.id, req.params.id)).get();
+      const plan = part?.spriteMime === '' && dest.orgId ? await planSetCopy(req.params.id, user.id, dest.orgId) : null;
+      const r = await copyPartTo(user, req.params.id, dest.orgId, plan?.copy.map((p) => p.id) ?? []);
       if (!r.ok) return reply.code(r.status).send(r.body);
-      return reply.code(201).send({ id: r.id });
+      const names = (list: { partNumber: string }[]) => list.map((p) => p.partNumber);
+      return reply.code(201).send({
+        id: r.id,
+        ...(plan ? { parts: { copied: names(r.copied), inClub: names(plan.inClub), notYours: names(plan.notYours) } } : {}),
+      });
     },
   );
 }
