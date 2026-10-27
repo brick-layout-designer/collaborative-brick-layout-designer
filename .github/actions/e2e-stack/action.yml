@@ -1,0 +1,55 @@
+name: E2E stack
+description: >
+  Everything a Playwright run needs, after the repo is checked out: the pinned
+  BlueBrick parts library, pnpm and Node, the packages built, Chromium, and the
+  API server running on a fresh test database. The job sets DB_PATH,
+  PARTS_DIR, BACKUPS_DIR and the server's other env.
+
+inputs:
+  parts-sha:
+    description: The BlueBrick parts library commit to check out
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check out the BlueBrick parts library
+      uses: actions/checkout@v7
+      with:
+        repository: Lswbanban/BlueBrickParts
+        ref: ${{ inputs.parts-sha }}
+        path: .e2e/BlueBrickParts
+
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 10
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: pnpm
+
+    - shell: bash
+      run: pnpm install --frozen-lockfile=false
+
+    - name: Build the packages
+      shell: bash
+      run: pnpm -r --filter "./packages/*" build
+
+    - name: Install Chromium for Playwright
+      shell: bash
+      working-directory: apps/web
+      run: npx playwright install --with-deps chromium
+
+    - name: Start the API server
+      shell: bash
+      working-directory: apps/server
+      run: |
+        mkdir -p "$BACKUPS_DIR"
+        npx tsx src/db/migrate.ts
+        nohup npx tsx src/index.ts > "$GITHUB_WORKSPACE/.e2e/server.log" 2>&1 &
+        for i in $(seq 60); do
+          curl -sf http://localhost:3000/api/health && exit 0
+          sleep 1
+        done
+        echo "::error::The API server did not start"; cat "$GITHUB_WORKSPACE/.e2e/server.log"; exit 1

@@ -509,7 +509,10 @@ GitHub Actions workflows:
 - **`ci.yml`**: on every pull request, lint, typecheck, build, unit tests,
   the Docker build, the OSV scan and the conventional-commit check.
 - **`journeys.yml`**: the end-to-end journeys on every pull request, and
-  every e2e spec nightly.
+  every e2e spec nightly, split into shards of about 12 minutes by how long
+  each spec took the night before (`.github/scripts/e2e-shards.mjs`), with
+  their reports merged into one summary on the run page. Run it by hand with
+  `gh workflow run journeys.yml --ref <branch> -f full=true`.
 - **`secret-scan.yml`**: gitleaks.
 - **`nightly.yml`**: on every push to `main`, pushes the `:nightly` image to
   GHCR and uploads a Trivy report.

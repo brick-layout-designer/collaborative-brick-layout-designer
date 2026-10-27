@@ -9,31 +9,28 @@
 //
 // SHOTS_DIR=<dir> saves one screenshot per route and device.
 // MOBILE_SURVEY=<file> writes every finding to a JSON file instead of failing.
+//
+// The devices are split over test/mobileRoutes.*.spec.ts (phones, iPads,
+// large tablets), so no one spec takes a nightly shard to itself.
 
 import { test, expect, request as playwrightRequest, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureUser, signIn } from '../helpers';
-import { makeGlobalAdmin } from '../dbHelpers';
-import { DEVICES, findOverflow, findSmallTargets } from '../mobileChecks';
+import { ensureUser, signIn } from './helpers';
+import { makeGlobalAdmin } from './dbHelpers';
+import { DEVICES, findOverflow, findSmallTargets } from './mobileChecks';
 
 const SHOTS = process.env.SHOTS_DIR;
 const SURVEY = process.env.MOBILE_SURVEY;
 
 const FORDYCE_BBM = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../../../../packages/bbm/tests/fixtures/fordyce-2026.bbm'),
+  join(dirname(fileURLToPath(import.meta.url)), '../../../packages/bbm/tests/fixtures/fordyce-2026.bbm'),
   'utf-8',
 );
 
 // MOBILE_DEVICES=<regex> runs only the matching devices.
 const PICK = process.env.MOBILE_DEVICES ? new RegExp(process.env.MOBILE_DEVICES) : null;
-const PHONES = DEVICES.filter((d) => !PICK || PICK.test(d.name));
-
-const ts = Date.now();
-const OWNER = `mobile-owner-${ts}@example.com`;
-const MEMBER = `mobile-member-${ts}@example.com`;
-const VIEWER = `mobile-viewer-${ts}@example.com`;
 
 interface Seed {
   layoutId: string;
@@ -44,7 +41,6 @@ interface Seed {
   orgInviteToken: string;
   transferToken: string;
 }
-let seed: Seed;
 
 type Who = 'owner' | 'member' | 'viewer' | 'nobody';
 interface RouteCase {
@@ -128,75 +124,85 @@ const ROUTES: RouteCase[] = [
   { name: 'public-layout', who: 'nobody', path: (s) => `/p/${s.shareToken}`, ready: canvasReady },
 ];
 
-test.beforeAll(async ({ baseURL }) => {
-  test.setTimeout(120_000);
-  const ownerCookies = await ensureUser(OWNER, 'Mobile Owner');
-  await ensureUser(MEMBER, 'Mobile Member');
-  const viewerCookies = await ensureUser(VIEWER, 'Mobile Viewer');
-  makeGlobalAdmin(OWNER);
-  const api = await playwrightRequest.newContext({ baseURL, storageState: { cookies: ownerCookies, origins: [] } });
-  const post = async <T,>(path: string, data: unknown = {}): Promise<T> => {
-    const res = await api.post(path, { data });
-    expect(res.ok(), `${path}: ${res.status()} ${await res.text()}`).toBe(true);
-    return (await res.json()) as T;
-  };
-  try {
-    const { id: layoutId } = await post<{ id: string }>('/api/layouts', { title: 'Mobile Layout', bbm: FORDYCE_BBM });
-    // A second layout so the home page has a list, one with a long name.
-    await post('/api/layouts', { title: 'A layout with a rather long name for a small phone screen' });
-    const org = await post<{ slug: string }>('/api/orgs', { name: `Mobile Club ${ts}` });
-    const venue = await post<{ id: string }>('/api/venues', {
-      name: 'Mobile Hall',
-      data: { name: 'Mobile Hall', enabled: true, minWalkwayStuds: 0, bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [] },
-    });
-    const { token: shareToken } = await post<{ token: string }>(`/api/layouts/${layoutId}/public-share`);
-    const { token: inviteToken } = await post<{ token: string }>(`/api/layouts/${layoutId}/invites`, { email: MEMBER, role: 'editor' });
-    const { token: orgInviteToken } = await post<{ token: string }>(`/api/orgs/${org.slug}/invites`, { email: MEMBER, role: 'member' });
-    const { id: spareId } = await post<{ id: string }>('/api/layouts', { title: 'Mobile Transfer' });
-    const { token: transferToken } = await post<{ token: string }>(`/api/layouts/${spareId}/transfer`, { recipientEmail: MEMBER });
-    const { token: viewerInvite } = await post<{ token: string }>(`/api/layouts/${layoutId}/invites`, { email: VIEWER, role: 'viewer' });
-    const viewerApi = await playwrightRequest.newContext({ baseURL, storageState: { cookies: viewerCookies, origins: [] } });
-    expect((await viewerApi.post(`/api/invites/${viewerInvite}`)).ok()).toBe(true);
-    await viewerApi.dispose();
-    seed = { layoutId, orgSlug: org.slug, venueId: venue.id, shareToken, inviteToken, orgInviteToken, transferToken };
-  } finally {
-    await api.dispose();
-  }
-});
+/** Every route on the devices whose names `group` takes (and MOBILE_DEVICES, if set). */
+export function mobileRouteTests(group: (device: string) => boolean): void {
+  const PHONES = DEVICES.filter((d) => group(d.name) && (!PICK || PICK.test(d.name)));
+  const ts = Date.now();
+  const OWNER = `mobile-owner-${ts}@example.com`;
+  const MEMBER = `mobile-member-${ts}@example.com`;
+  const VIEWER = `mobile-viewer-${ts}@example.com`;
+  let seed: Seed;
 
-const survey: Record<string, { overflow: string[]; small: string[] }> = {};
-
-for (const phone of PHONES) {
-  test.describe(`on ${phone.name}`, () => {
-    test.use(phone.use);
-    for (const route of ROUTES) {
-      test(`${route.name} fits and has 44 px tap targets`, async ({ page }) => {
-        if (route.who === 'owner') await signIn(page, OWNER, 'Mobile Owner');
-        if (route.who === 'member') await signIn(page, MEMBER, 'Mobile Member');
-        if (route.who === 'viewer') await signIn(page, VIEWER, 'Mobile Viewer');
-        if (route.before) await route.before(page);
-        await page.goto(route.path(seed));
-        if (route.ready) await route.ready(page);
-        if (route.tab) await route.tab(page);
-        await page.waitForLoadState('networkidle').catch(() => {});
-        // Let lazy pages and fonts settle.
-        await page.waitForTimeout(400);
-        const overflow = await findOverflow(page);
-        const small = await findSmallTargets(page);
-        if (SHOTS) await page.screenshot({ path: `${SHOTS}/${phone.name}--${route.name}.png` });
-        if (SURVEY) {
-          survey[`${route.name} @ ${phone.name}`] = { overflow, small };
-          return;
-        }
-        expect(overflow, 'nothing sticks out sideways').toEqual([]);
-        expect(small, 'every control is at least 44×44 px').toEqual([]);
+  test.beforeAll(async ({ baseURL }) => {
+    test.setTimeout(120_000);
+    const ownerCookies = await ensureUser(OWNER, 'Mobile Owner');
+    await ensureUser(MEMBER, 'Mobile Member');
+    const viewerCookies = await ensureUser(VIEWER, 'Mobile Viewer');
+    makeGlobalAdmin(OWNER);
+    const api = await playwrightRequest.newContext({ baseURL, storageState: { cookies: ownerCookies, origins: [] } });
+    const post = async <T,>(path: string, data: unknown = {}): Promise<T> => {
+      const res = await api.post(path, { data });
+      expect(res.ok(), `${path}: ${res.status()} ${await res.text()}`).toBe(true);
+      return (await res.json()) as T;
+    };
+    try {
+      const { id: layoutId } = await post<{ id: string }>('/api/layouts', { title: 'Mobile Layout', bbm: FORDYCE_BBM });
+      // A second layout so the home page has a list, one with a long name.
+      await post('/api/layouts', { title: 'A layout with a rather long name for a small phone screen' });
+      const org = await post<{ slug: string }>('/api/orgs', { name: `Mobile Club ${ts}` });
+      const venue = await post<{ id: string }>('/api/venues', {
+        name: 'Mobile Hall',
+        data: { name: 'Mobile Hall', enabled: true, minWalkwayStuds: 0, bounds: { x: 0, y: 0, w: 0, h: 0 }, edges: [], obstacles: [] },
       });
+      const { token: shareToken } = await post<{ token: string }>(`/api/layouts/${layoutId}/public-share`);
+      const { token: inviteToken } = await post<{ token: string }>(`/api/layouts/${layoutId}/invites`, { email: MEMBER, role: 'editor' });
+      const { token: orgInviteToken } = await post<{ token: string }>(`/api/orgs/${org.slug}/invites`, { email: MEMBER, role: 'member' });
+      const { id: spareId } = await post<{ id: string }>('/api/layouts', { title: 'Mobile Transfer' });
+      const { token: transferToken } = await post<{ token: string }>(`/api/layouts/${spareId}/transfer`, { recipientEmail: MEMBER });
+      const { token: viewerInvite } = await post<{ token: string }>(`/api/layouts/${layoutId}/invites`, { email: VIEWER, role: 'viewer' });
+      const viewerApi = await playwrightRequest.newContext({ baseURL, storageState: { cookies: viewerCookies, origins: [] } });
+      expect((await viewerApi.post(`/api/invites/${viewerInvite}`)).ok()).toBe(true);
+      await viewerApi.dispose();
+      seed = { layoutId, orgSlug: org.slug, venueId: venue.id, shareToken, inviteToken, orgInviteToken, transferToken };
+    } finally {
+      await api.dispose();
     }
   });
-}
 
-test.afterAll(() => {
-  if (!SURVEY) return;
-  const before = existsSync(SURVEY) ? (JSON.parse(readFileSync(SURVEY, 'utf-8')) as typeof survey) : {};
-  writeFileSync(SURVEY, JSON.stringify({ ...before, ...survey }, null, 2));
-});
+  const survey: Record<string, { overflow: string[]; small: string[] }> = {};
+
+  for (const phone of PHONES) {
+    test.describe(`on ${phone.name}`, () => {
+      test.use(phone.use);
+      for (const route of ROUTES) {
+        test(`${route.name} fits and has 44 px tap targets`, async ({ page }) => {
+          if (route.who === 'owner') await signIn(page, OWNER, 'Mobile Owner');
+          if (route.who === 'member') await signIn(page, MEMBER, 'Mobile Member');
+          if (route.who === 'viewer') await signIn(page, VIEWER, 'Mobile Viewer');
+          if (route.before) await route.before(page);
+          await page.goto(route.path(seed));
+          if (route.ready) await route.ready(page);
+          if (route.tab) await route.tab(page);
+          await page.waitForLoadState('networkidle').catch(() => {});
+          // Let lazy pages and fonts settle.
+          await page.waitForTimeout(400);
+          const overflow = await findOverflow(page);
+          const small = await findSmallTargets(page);
+          if (SHOTS) await page.screenshot({ path: `${SHOTS}/${phone.name}--${route.name}.png` });
+          if (SURVEY) {
+            survey[`${route.name} @ ${phone.name}`] = { overflow, small };
+            return;
+          }
+          expect(overflow, 'nothing sticks out sideways').toEqual([]);
+          expect(small, 'every control is at least 44×44 px').toEqual([]);
+        });
+      }
+    });
+  }
+
+  test.afterAll(() => {
+    if (!SURVEY) return;
+    const before = existsSync(SURVEY) ? (JSON.parse(readFileSync(SURVEY, 'utf-8')) as typeof survey) : {};
+    writeFileSync(SURVEY, JSON.stringify({ ...before, ...survey }, null, 2));
+  });
+}

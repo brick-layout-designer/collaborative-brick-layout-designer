@@ -131,7 +131,7 @@ test('share, review, find, add, update and unpublish a module', async ({ page })
   const card = page.getByTestId('catalog-item').filter({ hasText: 'Coal stage' });
   await expect(card).toContainText('by Owner Olive');
   await expect.poll(() => card.getByTestId('catalog-preview').evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await card.getByRole('button', { name: 'Add Coal stage' }).click();
+  await card.getByRole('button', { name: 'Add to my modules: Coal stage' }).click();
   const add = page.getByRole('dialog', { name: 'Add Coal stage' });
   await add.getByRole('button', { name: 'Add' }).click();
   await expect(add.getByRole('status')).toContainText('now in your modules');
