@@ -11,6 +11,7 @@
 
 import * as Y from 'yjs';
 import type { DecodedUpdate } from './decoded.js';
+import { TokenBucket, copyBudget, wsPacing } from './pacing.js';
 
 /** Pending bytes (structs + deletions) one room holds at most. */
 export const MAX_PENDING_BYTES = 2 * 1024 * 1024;
@@ -99,4 +100,113 @@ export function restorePending(doc: Y.Doc, saved: PendingState): void {
 export function dropPending(doc: Y.Doc): void {
   doc.store.pendingStructs = null;
   doc.store.pendingDs = null;
+}
+
+// ---- who pays for changes waiting on another editor -------------------------
+//
+// Waiting changes normally wait on their own client's earlier ones (an
+// update the room refused). Changes that wait on another client land with
+// that client's edits, and an edit they land with is worked out on a copy
+// of the layout (gridGuard.ts). That copy is charged to the room's budget
+// and to whoever left the changes waiting, never to the editor whose edit
+// they land with. When either is spent, the waiting changes are dropped
+// instead of copied (nobody is slowed down for them), and no one may leave
+// more changes waiting on another client in that room until it refills.
+
+interface RoomWaits {
+  /** The clients changes wait on that aren't their own, and who left them waiting (null: unknown, from a snapshot). */
+  foreign: Map<number, Set<string | null>>;
+  budget: TokenBucket;
+}
+
+const rooms = new WeakMap<Y.Doc, RoomWaits>();
+
+function roomWaits(doc: Y.Doc): RoomWaits {
+  let r = rooms.get(doc);
+  if (!r) {
+    r = { foreign: new Map(), budget: new TokenBucket(wsPacing.roomCopyByteBurst, wsPacing.roomCopyBytesPerSecond / 1000) };
+    rooms.set(doc, r);
+  }
+  return r;
+}
+
+/** The clients what waits in `doc` waits on (structs and deletions). */
+function waitedOn(doc: Y.Doc): Set<number> {
+  const out = new Set<number>(doc.store.pendingStructs?.missing.keys() ?? []);
+  if (doc.store.pendingDs) for (const c of pendingDsClients(doc.store.pendingDs)) out.add(c);
+  return out;
+}
+
+/** A room opened with changes waiting: who left them is unknown, so each counts as waiting on another client. */
+export function noteWaitingOnOpen(doc: Y.Doc): void {
+  const r = roomWaits(doc);
+  r.foreign.clear();
+  for (const c of waitedOn(doc)) r.foreign.set(c, new Set([null]));
+}
+
+/**
+ * The clients `update` left changes waiting on that aren't its own (none
+ * of its structs are theirs), compared with what waited before
+ * (`before`: savePending's).
+ */
+export function newForeignWaits(doc: Y.Doc, before: PendingState, update: DecodedUpdate | null): number[] {
+  const had = new Set<number>(before.structs?.missing.keys() ?? []);
+  if (before.ds) for (const c of pendingDsClients(before.ds)) had.add(c);
+  const own = new Set(update?.byClient.keys() ?? []);
+  return [...waitedOn(doc)].filter((c) => !had.has(c) && !own.has(c));
+}
+
+/** Whether changes waiting on another client may be left in this room now (its budget isn't spent). */
+export function mayLeaveForeignWaits(doc: Y.Doc): boolean {
+  return roomWaits(doc).budget.available();
+}
+
+/** Remember that `userId` left changes waiting on `clients`. */
+export function noteForeignWaits(doc: Y.Doc, clients: readonly number[], userId: string): void {
+  const r = roomWaits(doc);
+  for (const c of clients) {
+    const by = r.foreign.get(c);
+    if (by) by.add(userId);
+    else r.foreign.set(c, new Set([userId]));
+  }
+}
+
+/** Who pays for working an update out on a copy: the sender, or the room and whoever left the changes it lands. */
+export interface CopyPayer {
+  available: () => boolean;
+  charge: (bytes: number) => void;
+  /** True when the room pays (changes waiting on another client land with it). */
+  room: boolean;
+}
+
+/**
+ * The payer of `update`'s copy, if it needs one. When changes waiting on
+ * another client may land with it and their budget is spent, what waits
+ * is dropped first (the update is then worked out as in a room with
+ * nothing waiting, by its sender).
+ */
+export function copyPayer(doc: Y.Doc, update: DecodedUpdate | null, senderId: string): CopyPayer {
+  const sender = copyBudget(senderId);
+  const own: CopyPayer = { available: () => sender.available(), charge: (n) => sender.charge(n), room: false };
+  const r = rooms.get(doc);
+  if (!update || !r || r.foreign.size === 0) return own;
+  // Forget clients nothing waits on any more (what waited landed, or was dropped).
+  const waiting = waitedOn(doc);
+  for (const c of r.foreign.keys()) if (!waiting.has(c)) r.foreign.delete(c);
+  if (!pendingMayLand(doc, update)) return own;
+  const leftBy = new Set<string | null>();
+  for (const c of update.byClient.keys()) for (const u of r.foreign.get(c) ?? []) leftBy.add(u);
+  if (leftBy.size === 0) return own;
+  const payers = [r.budget, ...[...leftBy].filter((u): u is string => u !== null).map((u) => copyBudget(u))];
+  if (!payers.every((b) => b.available())) {
+    dropPending(doc);
+    r.foreign.clear();
+    return own;
+  }
+  return { available: () => payers.every((b) => b.available()), charge: (n) => payers.forEach((b) => b.charge(n)), room: true };
+}
+
+/** Forget every room's waiting record (tests). */
+export function resetRoomWaits(doc: Y.Doc): void {
+  rooms.delete(doc);
 }

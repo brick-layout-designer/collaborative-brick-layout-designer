@@ -29,8 +29,19 @@ import { isCredentialActive, revokedReason, type Credential } from '../auth/cred
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { checkIncomingDecoded, type MergeCheck } from './mergeGuard.js';
 import { checkStateVector, checkUpdate } from './updateGuard.js';
-import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, pendingBytes, pendingDsBytes, restorePending, savePending } from './pending.js';
-import { copyBudget, newPace, workBudget, type Pace } from './pacing.js';
+import {
+  MAX_PENDING_BYTES,
+  MAX_PENDING_DS_BYTES,
+  copyPayer,
+  mayLeaveForeignWaits,
+  newForeignWaits,
+  noteForeignWaits,
+  pendingBytes,
+  pendingDsBytes,
+  restorePending,
+  savePending,
+} from './pending.js';
+import { newPace, workBudget, type Pace } from './pacing.js';
 import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
 import { COPY_BUDGET_SPENT, checkGridSizesDecoded } from './gridGuard.js';
 import { decodeIncoming, guardWork } from './decoded.js';
@@ -290,11 +301,13 @@ function handleMessage(
           allowance.charge(work);
         }
         // The few it works out on a copy of the layout count against the
-        // sender's copy budget (ws/pacing.ts): past it, they slow down.
-        const budget = copyBudget(sender.userId);
+        // sender's copy budget (ws/pacing.ts): past it, they slow down. One
+        // that lands changes waiting on another editor counts against the
+        // room's and theirs instead (ws/pending.ts copyPayer).
+        const payer = copyPayer(session.doc, decoded, sender.userId);
         const copied = guardWork.copyBytes;
-        const badGrid = decoded ? checkGridSizesDecoded(session.doc, update, decoded, () => budget.available()) : null;
-        budget.charge(guardWork.copyBytes - copied);
+        const badGrid = decoded ? checkGridSizesDecoded(session.doc, update, decoded, payer.available) : null;
+        payer.charge(guardWork.copyBytes - copied);
         if (badGrid === COPY_BUDGET_SPENT) {
           slowDown(ws, session, sender, update.length);
           return;
@@ -336,6 +349,17 @@ function handleMessage(
           restorePending(session.doc, pending);
           refuseUpdate(ws, session, sender, update.length, 'incomplete', `it leaves ${nowDs} bytes of deletions waiting for changes the layout doesn't have`);
           return;
+        }
+        // Changes left waiting on another editor's: only while the room's
+        // budget for them lasts (ws/pending.ts), and on whoever left them.
+        const foreign = newForeignWaits(session.doc, pending, decoded);
+        if (foreign.length > 0) {
+          if (!mayLeaveForeignWaits(session.doc)) {
+            restorePending(session.doc, pending);
+            refuseUpdate(ws, session, sender, update.length, 'incomplete', 'it leaves changes waiting for another editor\'s, past what the layout takes for now');
+            return;
+          }
+          noteForeignWaits(session.doc, foreign, sender.userId);
         }
       }
       if (encoding.length(encoder) > 1) {
