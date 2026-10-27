@@ -336,5 +336,11 @@ describe('WS update guard', () => {
     const zero = Buffer.from(encodeDoc(zeroGrid));
     expect((await put(`/api/layouts/${id}/snapshot`, zero)).json()).toEqual({ error: 'unreadable_snapshot' });
     expect((await put(`/api/modules/${modId}/snapshot`, zero)).json()).toEqual({ error: 'unreadable_snapshot' });
+    // …or a grid of a billion sub-divisions (drawingSettings.ts).
+    const busyGrid = createDefaultLayoutDoc();
+    for (const l of busyGrid.getMap<Y.Map<unknown>>('layerData').values()) if (l.get('type') === 'grid') l.set('subDivisionNumber', 1e9);
+    const busy = Buffer.from(encodeDoc(busyGrid));
+    expect((await put(`/api/layouts/${id}/snapshot`, busy)).json()).toEqual({ error: 'unreadable_snapshot' });
+    expect((await put(`/api/modules/${modId}/snapshot`, busy)).json()).toEqual({ error: 'unreadable_snapshot' });
   });
 });

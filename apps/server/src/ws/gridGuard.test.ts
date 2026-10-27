@@ -16,6 +16,7 @@ import { createDefaultLayoutDoc, seedFromBbm } from '@cld/ydoc';
 import { checkGridSizes, checkGridSizesOnCopy, exactVerdict, invalidGridLayers, UNSURE, validGridSize } from './gridGuard.js';
 import { decodeIncoming, guardWork } from './decoded.js';
 import { checkUpdate } from './updateGuard.js';
+import { LIMITS_TEXT } from './drawingSettings.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const FIXTURES = join(ROOT, 'packages/bbm/tests/fixtures');
@@ -28,6 +29,7 @@ interface GridVector {
 }
 const contract = JSON.parse(readFileSync(join(ROOT, 'fixtures/contracts/update-guard.json'), 'utf8')) as {
   gridSize: { base: string; vectors: GridVector[] };
+  drawingSettings: { base: string; vectors: GridVector[]; limits: Record<string, string> };
 };
 const bytes = (hex: string) => new Uint8Array(Buffer.from(hex, 'hex'));
 
@@ -52,6 +54,28 @@ describe('grid guard', () => {
     // Each is worked out from the keys it touches, the same as on a copy.
     expect(guardWork.docCopies).toBe(copies);
     expect(checkGridSizesOnCopy(v.kind === 'update' ? room() : null, update)).toEqual(why);
+  });
+
+  it.each(contract.drawingSettings.vectors.map((v) => [v.what, v] as const))('drawing settings: %s', (_what, v) => {
+    const update = bytes(v.hex);
+    expect(checkUpdate(update)).toBeNull();
+    const room = () => {
+      const doc = new Y.Doc();
+      Y.applyUpdate(doc, bytes(contract.drawingSettings.base));
+      return doc;
+    };
+    const copies = guardWork.docCopies;
+    const why = checkGridSizes(v.kind === 'update' ? room() : null, update);
+    if (v.refused) expect(why).toMatch(/outside/);
+    else expect(why).toBeNull();
+    // Worked out from the keys it touches, the same as on a copy.
+    expect(guardWork.docCopies).toBe(copies);
+    expect(checkGridSizesOnCopy(v.kind === 'update' ? room() : null, update)).toEqual(why);
+  });
+
+  it('lists the drawing-settings limits the desktop matches', () => {
+    expect(contract.drawingSettings.limits).toEqual(LIMITS_TEXT);
+    expect(contract.drawingSettings.vectors.filter((v) => v.refused).length).toBeGreaterThanOrEqual(15);
   });
 
   it('has vectors for each kind of size', () => {
@@ -154,12 +178,13 @@ describe('grid guard', () => {
         }),
       );
     };
-    // No copy: parts, a layer of another kind, a title, a type taken away, a grid layer deleted.
-    expect(copies(edit((d) => parts(d, 2000)))).toEqual([null, 0]);
+    // Nothing read: a title, a grid layer deleted.
     expect(copies(edit((d) => d.getMap('meta').set('title', 'Yard')))).toEqual([null, 0]);
+    expect(copies(edit((d) => d.getMap('layerData').forEach((l, id) => l === gridOf(d) && d.getMap('layerData').delete(id))))).toEqual([null, 0]);
+    // One sheet read, never the 2000 parts on it: a new sheet of parts, a type taken away or changed.
+    expect(copies(edit((d) => parts(d, 2000)))).toEqual([null, 1]);
     expect(copies(edit((d) => gridOf(d).delete('type')))).toEqual([null, 0]);
     expect(copies(edit((d) => gridOf(d).set('type', 'brick')))).toEqual([null, 0]);
-    expect(copies(edit((d) => d.getMap('layerData').forEach((l, id) => l === gridOf(d) && d.getMap('layerData').delete(id))))).toEqual([null, 0]);
     // Read: a new size (valid: taken), a layer turned into a grid, a grid size deleted: one layer each.
     expect(copies(edit((d) => gridOf(d).set('gridSizeInStud', 48)))).toEqual([null, 1]);
     expect(copies(edit((d) => gridOf(d).set('gridSizeInStud', 0)))[1]).toBe(1);
@@ -243,7 +268,64 @@ describe('grid guard', () => {
       const ls = [...layers(d).values()].filter((l): l is Y.Map<unknown> => l instanceof Y.Map);
       return ls.length ? pick(ls) : null;
     };
+    const NUMS = [0, 1, 2, 3.5, 32, 64, 100, 101, 4096, 1e9, -1, Number.NaN, Number.POSITIVE_INFINITY] as const;
+    const fieldValue = (field: string): unknown => {
+      if (field === 'hullProperties') return { isVisible: false, hullThickness: pick(NUMS) };
+      if (field === 'cellIndexFont' || field === 'measureFont') return { name: 'Arial', size: pick(NUMS) };
+      if (field === 'cellIndexCorner' || field === 'point1' || field === 'point2' || field === 'center') return { x: pick(NUMS), y: pick([0, 5, 2e7]) };
+      if (field === 'guidelineDashPattern') return pick([[], [4, 2], [0, 0], [1e9], [3, Number.NaN]]);
+      return rand() < 0.1 ? 'x' : pick(NUMS);
+    };
+    const SHEET_FIELDS = ['transparency', 'hullProperties', 'gridThickness', 'subGridThickness', 'subDivisionNumber', 'cellIndexFont', 'cellIndexCorner', 'areaCellSize'];
+    const RULER_FIELDS = ['lineThickness', 'guidelineThickness', 'guidelineDashPattern', 'unit', 'measureFont', 'point1', 'point2', 'center', 'radius', 'offsetDistance'];
+    const rulerList = (d: Y.Doc) => {
+      let r = layers(d).get('R');
+      if (!(r instanceof Y.Map)) {
+        r = new Y.Map<unknown>();
+        layers(d).set('R', r);
+        (r as Y.Map<unknown>).set('type', 'ruler');
+      }
+      let arr = (r as Y.Map<unknown>).get('rulerItems');
+      if (!(arr instanceof Y.Array)) {
+        arr = new Y.Array<unknown>();
+        (r as Y.Map<unknown>).set('rulerItems', arr);
+      }
+      return arr as Y.Array<unknown>;
+    };
+    const newRuler = (): Record<string, unknown> => {
+      const o: Record<string, unknown> = { id: `r${Math.floor(rand() * 1e6)}`, kind: 'linear', point1: { x: 0, y: 0 }, point2: { x: 8, y: 0 }, lineThickness: 2 };
+      if (rand() < 0.6) o[pick(RULER_FIELDS)] = fieldValue(pick(RULER_FIELDS));
+      return o;
+    };
     const ops: ((d: Y.Doc) => void)[] = [
+      (d) => {
+        const f = pick(SHEET_FIELDS);
+        anyLayer(d)?.set(f, fieldValue(f));
+      },
+      (d) => anyLayer(d)?.delete(pick(SHEET_FIELDS)),
+      // A ruler as plain JSON (older docs), or as a map (doc shape 2).
+      (d) => rulerList(d).push([newRuler()]),
+      (d) => rulerList(d).push([toMap(newRuler())]),
+      (d) => {
+        const maps = rulerList(d).toArray().filter((v): v is Y.Map<unknown> => v instanceof Y.Map);
+        if (maps.length) {
+          const f = pick(RULER_FIELDS);
+          pick(maps).set(f, fieldValue(f));
+        }
+      },
+      (d) => {
+        const arr = rulerList(d);
+        if (arr.length) arr.delete(Math.floor(rand() * arr.length), 1);
+      },
+      (d) => {
+        // Move a plain ruler: its entry replaced, as the apps do.
+        const arr = rulerList(d);
+        const i = arr.toArray().findIndex((v) => !(v instanceof Y.Map));
+        if (i < 0) return;
+        const was = arr.get(i) as Record<string, unknown>;
+        arr.delete(i, 1);
+        arr.insert(i, [{ ...was, point1: fieldValue('point1') }]);
+      },
       (d) => anyLayer(d)?.set('gridSizeInStud', pick(SIZES)),
       (d) => anyLayer(d)?.set('gridSizeInStud', pick([16, 32, 64])),
       (d) => anyLayer(d)?.delete('gridSizeInStud'),
@@ -267,6 +349,11 @@ describe('grid guard', () => {
         if (b instanceof Y.Array) b.push([new Y.Map<unknown>([['id', `p${Math.floor(rand() * 1e6)}`]])]);
       },
     ];
+    const toMap = (o: Record<string, unknown>) => {
+      const m = new Y.Map<unknown>();
+      for (const [k, v] of Object.entries(o)) m.set(k, v);
+      return m;
+    };
     const edit = (d: Y.Doc) => {
       const n = 1 + Math.floor(rand() * 3);
       d.transact(() => {
