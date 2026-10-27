@@ -756,7 +756,7 @@ function CreateLayoutDialog({
         body.bbm = parts.bbm;
         partNotes = parts.notes;
         // The browser keeps the catalog for 60 s: fetch past that so the editor sees the new parts.
-        if (parts.changed) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
+        if (parts.changed) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 0 });
       } catch (err) {
         partNotes = [`the layout's parts could not be added: ${(err as Error).message}`];
       }

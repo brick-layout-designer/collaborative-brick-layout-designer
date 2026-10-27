@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { HINT_KINDS, focusKeys, hintsForWrite, invalidateFor, keysFor, refetchKey, type HintKind } from '../invalidate';
-import { api, markPartsChanged } from '../../api';
+import { api } from '../../api';
 import { backoffMs, createBatcher, parseHint } from '../LiveUpdates';
 
 import serverHub from '../../../../server/src/events/hub.ts?raw';
@@ -119,20 +119,19 @@ describe('invalidateFor', () => {
 });
 
 describe('the parts catalog refetch', () => {
-  it('skips the browser cache for a minute after parts changed', async () => {
+  it('always asks the server again, so a new or renamed set is never hidden by the browser cache', async () => {
     const fetchMock = vi.fn(async () => new Response('{"parts":[]}', { status: 200, headers: { 'content-type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
     const cacheOf = () => ((fetchMock.mock.calls.at(-1) as unknown as [string, RequestInit])[1] ?? {}).cache;
     try {
-      markPartsChanged(0);
+      // The first read after a page load, as after a reload…
       await api.parts.catalog();
-      expect(cacheOf()).toBeUndefined();
-      // A change refetches the catalog: that read, and the next minute's, skip the cache.
+      expect(cacheOf()).toBe('no-cache');
+      // …and a refetch after a change.
       await refetchKey(new QueryClient(), ['parts-catalog']);
       await api.parts.catalog();
       expect(cacheOf()).toBe('no-cache');
     } finally {
-      markPartsChanged(0);
       vi.unstubAllGlobals();
     }
   });

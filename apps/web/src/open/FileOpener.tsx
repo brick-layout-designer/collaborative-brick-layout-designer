@@ -82,7 +82,7 @@ export function FileOpener() {
           // the ones it defines differently are asked about first.
           const parts = await takeLayoutParts(l.parts, l.bbm, loadCatalog, ask);
           // The browser keeps the catalog for 60 s: fetch past that so the editor sees the new parts.
-          if (parts.changed) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 });
+          if (parts.changed) await qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 0 });
           const warnings = [...(l.warnings ?? []), ...parts.notes];
           const created = await api.layouts.create({
             bbm: parts.bbm,

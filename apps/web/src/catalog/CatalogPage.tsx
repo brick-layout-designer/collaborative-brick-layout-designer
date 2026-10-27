@@ -499,7 +499,7 @@ export function AddDialog({ item, onClose, onAdded }: { item: CatalogItem; onClo
     mutationFn: () => api.catalog.add(item.id, owner || undefined),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: [r.kind === 'module' ? 'modules' : r.kind === 'part' ? 'custom-parts' : r.kind === 'layout' ? 'layouts' : 'venues'] });
-      if (r.kind === 'part') void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 }).catch(() => undefined);
+      if (r.kind === 'part') void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 0 }).catch(() => undefined);
       void qc.invalidateQueries({ queryKey: ['catalog-items'] });
       onAdded?.(r.id);
     },

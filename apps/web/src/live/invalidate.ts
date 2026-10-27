@@ -8,7 +8,6 @@
 // when they next show.
 
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
-import { markPartsChanged } from '../api';
 
 /** Keep in step with apps/server/src/events/hub.ts HINT_KINDS. */
 export const HINT_KINDS = [
@@ -106,13 +105,8 @@ export function invalidateFor(qc: QueryClient, kind: HintKind, extra: Omit<Hint,
   return Promise.all(keysFor({ kind, ...extra }).map((queryKey) => refetchKey(qc, queryKey))).then(() => undefined);
 }
 
-/**
- * Refetch one key (prefix). The parts catalog is cached by the browser
- * for a minute, so a refetch of it first says parts changed (see
- * markPartsChanged), or it would bring back the list from before.
- */
+/** Refetch one key (prefix). */
 export function refetchKey(qc: QueryClient, queryKey: QueryKey, gone: ReadonlySet<string> = NONE_GONE): Promise<void> {
-  if (queryKey[0] === 'parts-catalog') markPartsChanged();
   if (gone.size === 0) return qc.invalidateQueries({ queryKey });
   // A deleted thing's own queries (['layout', id], ['module', id, 'info'] …)
   // keep what they showed: asking again would only bring a 404, and a

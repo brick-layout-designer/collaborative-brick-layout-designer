@@ -70,9 +70,9 @@ describe('parts catalog — anonymous', () => {
     expect(res.headers['etag']).toBeTruthy();
   });
 
-  it('sets cache-control header', async () => {
+  it('lets the browser keep the catalog but always ask again, so a reload never shows an old list', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/parts/catalog' });
-    expect(res.headers['cache-control']).toContain('max-age=');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 
   it('returns 304 when If-None-Match matches the ETag', async () => {
@@ -208,6 +208,25 @@ describe('parts catalog — authenticated with custom parts', () => {
     const after = await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie, 'if-none-match': before } });
     expect(after.statusCode).toBe(200);
     expect(after.headers['etag']).not.toBe(before);
+  });
+
+  it('a part swapped for another in the same instant still changes the ETag', async () => {
+    const cookie = await registerAndLogin(app, 'swap@example.com');
+    const up = (partNumber: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/custom-parts',
+        headers: { cookie },
+        payload: { partNumber, displayName: partNumber, xmlBase64: SAMPLE_XML, spriteBase64: FAKE_GIF, spriteMime: 'image/gif' },
+      });
+    const first = (await up('SWAPA')).json() as { id: string };
+    const before = (await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie } })).headers['etag'] as string;
+    // Same count of parts, and no wait between: only the contents differ.
+    expect((await app.inject({ method: 'DELETE', url: `/api/custom-parts/${first.id}`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await up('SWAPB')).statusCode).toBe(201);
+    const after = await app.inject({ method: 'GET', url: '/api/parts/catalog', headers: { cookie, 'if-none-match': before } });
+    expect(after.statusCode).toBe(200);
+    expect((after.json() as { parts: { partNumber: string }[] }).parts.some((p) => p.partNumber === 'SWAPB')).toBe(true);
   });
 
   it('authenticated ETag differs from anonymous ETag (user-scoped cache)', async () => {

@@ -728,7 +728,7 @@ function AddAllDialog({ c, onClose }: { c: CollectionDetail; onClose: () => void
     mutationFn: () => api.catalog.addCollection(c.id, owner || undefined),
     onSuccess: (r) => {
       void invalidateFor(qc, 'catalog');
-      if (r.added.some((a) => a.kind === 'part')) void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 }).catch(() => undefined);
+      if (r.added.some((a) => a.kind === 'part')) void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 0 }).catch(() => undefined);
     },
     onError: (e: Error) => setError(e.message),
   });
