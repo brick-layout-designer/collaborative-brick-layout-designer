@@ -16,7 +16,7 @@ vi.mock('react-konva', () => {
     if (p.name) groups.push(p.name);
     return h(Fragment, null, p.children);
   };
-  return { Group, Image: plain(), Rect: plain(), Circle: plain(), Line: plain(), Text: plain() };
+  return { Group, Image: plain(), Rect: plain(), Circle: plain(), Line: plain(), Text: plain(), Shape: plain() };
 });
 
 import { placeBrick } from '../mutations';
