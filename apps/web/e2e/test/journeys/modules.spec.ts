@@ -178,7 +178,7 @@ test('a module goes from New module to another member’s layout', async ({ page
   const card = page.getByTestId('catalog-item').filter({ hasText: TITLE });
   await expect(card).toContainText('by Owner Ola');
   await expectLoadedPicture(card.getByTestId('catalog-preview'));
-  await card.getByRole('button', { name: `Add ${TITLE}` }).click();
+  await card.getByRole('button', { name: `Add to my modules: ${TITLE}` }).click();
   const add = page.getByRole('dialog', { name: `Add ${TITLE}` });
   await add.getByRole('button', { name: 'Add' }).click();
   await expect(add.getByRole('status')).toContainText('now in your modules');

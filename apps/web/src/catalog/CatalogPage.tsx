@@ -407,7 +407,8 @@ function ItemCard({ it, signedIn, demo, mineIds, onAdd, onCollect, onCover, onTa
           <button
             type="button"
             onClick={() => onAdd(it)}
-            aria-label={`Add ${it.title}`}
+            // Its words, then which one (a name that starts with what it says, WCAG 2.5.3).
+            aria-label={`${KIND_LABEL[it.kind].add}: ${it.title}`}
             className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
           >
             {KIND_LABEL[it.kind].add}
