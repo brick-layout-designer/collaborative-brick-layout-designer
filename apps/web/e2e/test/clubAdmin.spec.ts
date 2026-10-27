@@ -79,7 +79,7 @@ test('an admin hands the club over, and the new admin deletes it with its name t
   await page.getByRole('button', { name: 'Leave the club' }).click();
   await expect(page.getByRole('alert')).toContainText('only admin');
 
-  await page.getByLabel('New admin').selectOption({ label: 'Max Member' });
+  await page.getByLabel('New admin').selectOption({ label: 'Max Member (Member)' });
   await page.getByRole('button', { name: 'Hand over' }).click();
   await confirmInDialog(page);
   await expect(page).toHaveURL(new RegExp(`/orgs/${slug}$`));
