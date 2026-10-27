@@ -123,7 +123,8 @@ test('a placed set moves whole: dragged by any of its parts, nudged, turned, und
     expect(m.dy).toBeCloseTo(m2[0]!.dy, 1);
   }
 
-  // ── Picked with a click, nudged with an arrow key. ──
+  // ── Picked with a click, nudged with an arrow key (its own undo step). ──
+  await page.waitForTimeout(400);
   await deselect(page);
   const at = await onScreen(page, start[1]!.id);
   await page.mouse.click(at.x, at.y);
