@@ -278,6 +278,8 @@ export function MemberRoleChips({
       void qc.invalidateQueries({ queryKey: ['org-members', slug] });
       void qc.invalidateQueries({ queryKey: ['org-roles', slug] });
       void qc.invalidateQueries({ queryKey: ['org', slug] });
+      // Your clubs list names the roles you hold.
+      void qc.invalidateQueries({ queryKey: ['orgs'] });
     },
     onError: (e: Error) => onError(e.message),
   });
