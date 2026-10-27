@@ -129,6 +129,16 @@ describe('role chips on the Members list', () => {
     expect(writes()[0]!.body).toMatchObject({ email: 'cal@x.com', roleId: 'crew' });
   });
 
+  it('someone who manages members but isn’t an admin invites only to roles with no more than theirs', () => {
+    const door = { ...ADMIN_ORG, myRole: 'member', isAdmin: false, permissions: ['view_items', 'edit_layouts', 'invite', 'manage_members'] } as OrgDetail;
+    show(<InviteSection slug="rail" myRole="member" org={door} roles={ROLES} />);
+    const offered = within(screen.getByLabelText('Joins as')).getAllByRole('option').map((o) => o.textContent);
+    expect(offered).toEqual(expect.arrayContaining(['Viewer', 'Track crew']));
+    expect(offered).not.toContain('Manager');
+    expect(offered).not.toContain('Member');
+    expect(offered).not.toContain('Admin');
+  });
+
   it('the activity says what happened to roles in plain words', () => {
     const e = (eventType: string, payload: Record<string, unknown>) =>
       describeEvent({ id: '1', eventType, userName: 'Ann', payload, createdAt: 0 } as never, (id) => (id === 'u2' ? 'Ben' : undefined));

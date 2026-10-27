@@ -127,7 +127,9 @@ export function MembersSection({
   const adminIds = new Set((roles ?? []).filter((r) => r.key === 'admin').map((r) => r.id));
   const isAdminMember = (m: OrgMemberSummary) => (withRoles ? (m.roleIds ?? []).some((id) => adminIds.has(id)) : m.role === 'admin');
   const mayRemove = (m: OrgMemberSummary) =>
-    withRoles ? managesMembers || (invites && !isAdminMember(m) && lesser(permsOf(m, roles!), mine)) : isAdmin || (myRole === 'manager' && m.role === 'member');
+    withRoles
+      ? isAdmin || (managesMembers && !isAdminMember(m)) || (invites && !isAdminMember(m) && lesser(permsOf(m, roles!), mine))
+      : isAdmin || (myRole === 'manager' && m.role === 'member');
   const mayWarnMember = (m: OrgMemberSummary) =>
     withRoles ? !isAdminMember(m) && (managesMembers || (invites && lesser(permsOf(m, roles!), mine))) : mayWarn(myRole, m.role);
   // Admins give and take any role; people who manage members, roles with no more than their own.
@@ -304,12 +306,14 @@ export function RoleBadge({ role }: { role: ClubRole }) {
  * Invite by email (or by picking an account), with an expiry; the link can
  * be copied and sent by hand. Managers invite members; admins pick the role.
  */
-/** The club roles I may invite people to, or hand out: admins any; Manage members and roles, any but Admin; Invite people, lesser ones. */
+/** The club roles I may invite people to, or hand out: admins any; Manage members and roles, any with no more than mine but Admin; Invite people, lesser ones. */
 export function rolesICanGive(org: OrgDetail | undefined, roles: ClubRoleSummary[] | undefined): ClubRoleSummary[] {
   if (!org || !roles) return [];
   const mine = new Set<ClubPermission>(org.permissions ?? []);
   if (org.isAdmin) return roles;
-  return roles.filter((r) => r.key !== 'admin' && (mine.has('manage_members') || (mine.has('invite') && lesser(new Set(r.permissions), mine))));
+  return roles.filter(
+    (r) => r.key !== 'admin' && ((mine.has('manage_members') && r.permissions.every((p) => mine.has(p))) || (mine.has('invite') && lesser(new Set(r.permissions), mine))),
+  );
 }
 
 export function InviteSection({
