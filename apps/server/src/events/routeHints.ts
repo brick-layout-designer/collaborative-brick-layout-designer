@@ -520,6 +520,8 @@ export const ROUTE_HINTS: Record<string, HintSpec> = {
   // ---- clubs
   'POST /api/orgs': club(async (c) => str(c.reply?.id)),
   'PATCH /api/orgs/:slug': club(bySlug),
+  'PUT /api/orgs/:slug/logo': club(bySlug),
+  'DELETE /api/orgs/:slug/logo': club(bySlug),
   'DELETE /api/orgs/:slug': club(bySlug),
   'POST /api/orgs/:slug/restore': {
     after: async (c) => {

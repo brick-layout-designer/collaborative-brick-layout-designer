@@ -3,6 +3,7 @@
 // picker used wherever something is created or saved, and the Move or
 // copy dialog.
 
+import { ClubLogo } from '../orgs/ClubLogo';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Credit, type OrgSummary, type OwnableKind } from '../api';
@@ -204,20 +205,25 @@ export function SaveToPicker({
       </div>
     ) : null;
   }
+  const chosen = value ? orgs.find((o) => o.slug === value) : undefined;
   return (
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-muted">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-11 w-full rounded-lg border border-border bg-soft px-3 py-2 text-ink"
-      >
-        {options.map((o) => (
-          <option key={o.value || 'me'} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <span className="flex items-center gap-2">
+        {/* The chosen club's logo (a list of options can't show pictures). */}
+        {chosen && <ClubLogo name={chosen.name} logoUrl={chosen.logoUrl} size={36} />}
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-h-11 w-full rounded-lg border border-border bg-soft px-3 py-2 text-ink"
+        >
+          {options.map((o) => (
+            <option key={o.value || 'me'} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </span>
       <LeftOutNote orgs={orgs} kind={kind} />
     </label>
   );

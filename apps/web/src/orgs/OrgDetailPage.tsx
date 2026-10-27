@@ -1,4 +1,5 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { ClubLogo } from './ClubLogo';
 import { ClubGoneNotice } from './DeleteClub';
 import { SignInFirst } from '../auth/signIn';
 import { useQuery } from '@tanstack/react-query';
@@ -46,7 +47,9 @@ function OrgDetail({ slug }: { slug: string }) {
       <AppHeader user={me.data.user} />
       <main className="mx-auto mt-6 max-w-3xl space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-start gap-3">
+            <ClubLogo name={org.name} logoUrl={org.logoUrl} size={56} />
+            <div className="min-w-0">
             <h1 className="break-words text-2xl font-semibold">
               {org.name}
               {org.trusted && <TrustedBadge />}
@@ -56,6 +59,7 @@ function OrgDetail({ slug }: { slug: string }) {
               you are {aRole(org.myRole)}
             </p>
             {org.description && <p className="mt-2 whitespace-pre-line text-sm">{org.description}</p>}
+            </div>
           </div>
           {isAdmin && (
             <Link

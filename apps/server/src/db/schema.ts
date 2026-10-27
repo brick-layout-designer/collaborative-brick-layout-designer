@@ -1471,3 +1471,15 @@ export const privacyRequestEvents = sqliteTable(
   }),
 );
 export type PrivacyRequestEvent = typeof privacyRequestEvents.$inferSelect;
+
+// A club's logo (0037): the picture its admins upload, re-encoded as WebP
+// no bigger than 512 px a side (an SVG is drawn into one; the SVG itself is
+// never kept). One per club; it goes with the club.
+export const clubLogos = sqliteTable('club_logos', {
+  orgId: text('org_id')
+    .primaryKey()
+    .references(() => orgs.id, { onDelete: 'cascade' }),
+  image: blob('image').notNull(),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});

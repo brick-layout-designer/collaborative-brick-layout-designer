@@ -2,6 +2,7 @@
 // ask to join with a note, take the request back, or "Invite only"), and
 // what someone outside a listed club sees on its page.
 
+import { ClubLogo } from './ClubLogo';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -176,10 +177,13 @@ export function FindClubSection() {
           <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Listed clubs">
             {list.data.clubs.map((c) => (
               <li key={c.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
+                <div className="flex min-w-0 items-start gap-3">
+                  <ClubLogo name={c.name} logoUrl={c.logoUrl} size={40} />
+                  <div className="min-w-0">
                   <p className="break-words font-medium">{c.name}</p>
                   <p className="text-xs text-muted">{members(c.memberCount)}</p>
                   {c.description && <p className="mt-1 line-clamp-3 whitespace-pre-line break-words text-sm">{c.description}</p>}
+                  </div>
                 </div>
                 <div className="shrink-0 sm:max-w-xs">
                   <JoinControls club={c} />
@@ -196,10 +200,13 @@ export function FindClubSection() {
 export function ClubPublicView({ club }: { club: ClubSummary }) {
   return (
     <section aria-label={club.name} className="space-y-3 rounded-section border border-line bg-panel p-4">
-      <div>
+      <div className="flex items-start gap-3">
+        <ClubLogo name={club.name} logoUrl={club.logoUrl} size={56} />
+        <div className="min-w-0">
         <h1 className="break-words text-2xl font-semibold">{club.name}</h1>
         <p className="text-sm text-muted">{members(club.memberCount)} · you’re not in this club</p>
         {club.description && <p className="mt-2 whitespace-pre-line text-sm">{club.description}</p>}
+        </div>
       </div>
       <JoinControls club={club} />
     </section>

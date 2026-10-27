@@ -225,6 +225,14 @@ export async function writeOwnedFiles(zip: ZipFileWriter, owner: Owner): Promise
         : eq(s.catalogCollections.orgId, owner.id),
     )
     .all();
+  // A club's logo.
+  if (owner.kind === 'org') {
+    const logo = await db.select({ image: s.clubLogos.image }).from(s.clubLogos).where(eq(s.clubLogos.orgId, owner.id)).get();
+    if (logo) {
+      zip.add('club-logo.webp', logo.image as Uint8Array);
+      counts.covers++;
+    }
+  }
   for (const c of collections) {
     const covers = await db.select().from(s.catalogCollectionCovers).where(eq(s.catalogCollectionCovers.collectionId, c.id)).all();
     for (const cover of covers) {

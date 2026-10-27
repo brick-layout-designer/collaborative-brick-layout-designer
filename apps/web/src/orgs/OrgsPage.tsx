@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ClubLogo } from './ClubLogo';
 import { Link, useNavigate } from 'react-router-dom';
 import { SignInFirst } from '../auth/signIn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,8 +50,9 @@ export function OrgsPage() {
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line">
             {list.data.orgs.map((o) => (
-              <li key={o.id} className="flex items-center justify-between px-4 py-3">
-                <div>
+              <li key={o.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <ClubLogo name={o.name} logoUrl={o.logoUrl} size={40} />
+                <div className="min-w-0 grow">
                   <Link to={`/orgs/${o.slug}`} className="font-medium hover:underline">
                     {o.name}
                   </Link>

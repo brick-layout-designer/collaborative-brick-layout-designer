@@ -3,6 +3,7 @@
 // invites), its settings, handing it over, deleting it, and what happened
 // lately. Every action is checked again on the server.
 
+import { ClubLogo } from './ClubLogo';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -559,6 +560,67 @@ export function PendingInvitesSection({
 }
 
 /** Name, address, description, and who may add things. */
+/** Turn a file into what PUT /api/orgs/:slug/logo takes. */
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
+    r.onerror = () => reject(new Error('That file couldn’t be read.'));
+    r.readAsDataURL(file);
+  });
+}
+
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+
+/** The club's logo: its admins upload one (PNG, JPEG, WebP or SVG) or take it away. */
+export function LogoSection({ org }: { org: OrgDetail }) {
+  const [error, setError] = useState<string | null>(null);
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      if (!LOGO_TYPES.includes(file.type)) throw new Error('Choose a PNG, JPEG, WebP or SVG picture.');
+      return api.orgs.setLogo(org.slug, { mime: file.type, data: await readAsBase64(file) });
+    },
+    onMutate: () => setError(null),
+    onError: (e: Error) => setError(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.orgs.removeLogo(org.slug),
+    onMutate: () => setError(null),
+    onError: (e: Error) => setError(e.message),
+  });
+  const busy = upload.isPending || remove.isPending;
+  return (
+    <Section title="Logo" hint="Shows next to the club’s name on its pages, in club lists and where you pick a club. PNG, JPEG, WebP or SVG; it’s shown square, up to 512 px.">
+      <div className="flex flex-wrap items-center gap-4">
+        <ClubLogo name={org.name} logoUrl={org.logoUrl} size={96} />
+        <div className="flex flex-wrap gap-2">
+          <label className={`inline-flex min-h-11 cursor-pointer items-center rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover ${busy ? 'pointer-events-none opacity-50' : ''}`}>
+            {busy && upload.isPending ? 'Uploading…' : org.logoUrl ? 'Change logo…' : 'Upload a logo…'}
+            <input
+              type="file"
+              accept={LOGO_TYPES.join(',')}
+              className="sr-only"
+              aria-label="Club logo file"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) upload.mutate(file);
+              }}
+            />
+          </label>
+          {org.logoUrl && (
+            <button type="button" disabled={busy} onClick={() => remove.mutate()} className="min-h-11 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-soft disabled:opacity-50">
+              Remove logo
+            </button>
+          )}
+        </div>
+      </div>
+      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
+    </Section>
+  );
+}
+
 export function SettingsSection({ org }: { org: OrgDetail }) {
   const qc = useQueryClient();
   const navigate = useNavigate();

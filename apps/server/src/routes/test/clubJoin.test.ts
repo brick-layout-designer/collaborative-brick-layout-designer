@@ -116,6 +116,7 @@ describe('club join settings', () => {
       joinPolicy: 'invite',
       listed: true,
       myStatus: null,
+      logoUrl: null,
     });
     expect(JSON.stringify(all)).not.toContain('@example.com');
     expect(((await call(outsider, 'GET', '/api/club-directory?q=little')).json() as { clubs: unknown[] }).clubs).toHaveLength(1);
