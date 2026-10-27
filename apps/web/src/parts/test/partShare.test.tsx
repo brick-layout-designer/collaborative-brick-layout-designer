@@ -66,6 +66,32 @@ describe('Share with people (custom part)', () => {
     await waitFor(() => expect(screen.queryByTestId('part-invites')).toBeNull());
   });
 
+  it('a set says which of your parts come along, and a part says who has it with a set', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue(ME('owner@example.com'));
+    vi.spyOn(api.customParts, 'collaborators').mockResolvedValue({
+      collaborators: [],
+      invites: [],
+      setParts: [
+        { id: 'p2', partNumber: 'SHED', displayName: 'Engine shed' },
+        { id: 'p3', partNumber: 'TOWER', displayName: 'TOWER' },
+      ],
+    });
+    wrap(<PartShareDialog part={{ id: 's1', partNumber: 'Yard', displayName: 'Yard', role: 'owner' }} myUserId="u1" onClose={() => {}} />);
+    const along = await screen.findByTestId('set-parts-come-along');
+    expect(along.textContent).toContain('These 2 custom parts of yours come along with the set');
+    expect(along.textContent).toContain('Engine shed (SHED)');
+    expect(along.textContent).toContain('Taking the set back takes them back too');
+    cleanup();
+
+    vi.spyOn(api.customParts, 'collaborators').mockResolvedValue({
+      collaborators: [{ userId: 'u2', role: 'viewer', addedAt: 0, email: 'bob@example.com', displayName: 'Bob', avatarUrl: null, viaSets: ['Yard'] }],
+      invites: [],
+    });
+    wrap(<PartShareDialog part={{ id: 'p2', partNumber: 'SHED', displayName: 'Engine shed', role: 'owner' }} myUserId="u1" onClose={() => {}} />);
+    expect((await screen.findByTestId('part-people')).textContent).toContain('With the set “Yard”');
+    expect(screen.queryByTestId('set-parts-come-along')).toBeNull();
+  });
+
   it('someone it’s shared with sees who has it, can’t invite, and can leave', async () => {
     vi.spyOn(api, 'me').mockResolvedValue(ME('bob@example.com'));
     vi.spyOn(api.customParts, 'collaborators').mockResolvedValue({
@@ -109,6 +135,31 @@ describe('part invite page', () => {
     await waitFor(() => expect(accept).toHaveBeenCalledWith('tok'));
     expect(await screen.findByText('home page', {}, { timeout: 3000 })).toBeTruthy();
     expect(screen.getByTestId('where').textContent).toBe('/#parts');
+  });
+
+  it('a set: lists the parts that come with it, and says they came', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue(ME('bob@example.com'));
+    vi.spyOn(api.partInvites, 'preview').mockResolvedValue({
+      ...preview,
+      forYou: false,
+      partName: 'Yard',
+      setParts: [
+        { partNumber: 'SHED', displayName: 'Engine shed' },
+        { partNumber: 'TOWER', displayName: 'TOWER' },
+      ],
+    });
+    wrap(page, '/part-invite/tok');
+    const parts = await screen.findByTestId('invite-set-parts');
+    expect(parts.textContent).toContain('these 2 parts of theirs come with it');
+    expect(parts.textContent).toContain('Engine shed (SHED)');
+    expect(parts.textContent).toContain('TOWER');
+    cleanup();
+
+    vi.spyOn(api.partInvites, 'preview').mockResolvedValue({ ...preview, setParts: [{ partNumber: 'SHED', displayName: 'Engine shed' }] });
+    const accept = vi.spyOn(api.partInvites, 'accept').mockResolvedValue({ partId: 'p1', role: 'viewer', setParts: [{ id: 'p2', partNumber: 'SHED' }] });
+    wrap(page, '/part-invite/tok');
+    await waitFor(() => expect(accept).toHaveBeenCalledWith('tok'));
+    expect(await screen.findByText('You have the set and its part! Opening your parts…')).toBeTruthy();
   });
 
   it('signed in as someone else: says so, shows only the masked address, and doesn’t accept', async () => {

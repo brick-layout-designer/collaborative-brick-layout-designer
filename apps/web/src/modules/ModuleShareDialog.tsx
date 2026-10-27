@@ -5,7 +5,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type CollaboratorSummary, type CustomPartSummary, type InviteSummary, type ModuleSummary } from '../api';
+import { api, type CollaboratorSummary, type CustomPartSummary, type InviteSummary, type ModuleSummary, type SetPartSummary } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import { useIsDemo } from '../catalog/ShareToCatalog';
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
@@ -20,7 +20,7 @@ interface Shareable {
   /** Query keys: its share list, and the list it appears in. */
   listKey: string;
   thingsKey: string;
-  collaborators: (id: string) => Promise<{ collaborators: CollaboratorSummary[]; invites?: InviteSummary[] }>;
+  collaborators: (id: string) => Promise<{ collaborators: CollaboratorSummary[]; invites?: InviteSummary[]; setParts?: SetPartSummary[] }>;
   invite: (id: string, email: string, role: 'viewer' | 'editor') => Promise<{ inviteUrl: string; emailDelivered: boolean }>;
   revokeInvite: (id: string, inviteId: string) => Promise<unknown>;
   removeCollaborator: (id: string, userId: string) => Promise<unknown>;
@@ -122,6 +122,7 @@ function ShareWithPeopleDialog({
           </button>
         </div>
 
+        {list.data?.setParts && list.data.setParts.length > 0 && <ComesAlong parts={list.data.setParts} isOwner={isOwner} />}
         {canShare && <InviteForm what={what} id={id} onInvited={refresh} />}
 
         {list.isLoading && <p className="text-sm text-muted">Loading…</p>}
@@ -133,6 +134,32 @@ function ShareWithPeopleDialog({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A set's own custom parts: they come along when it's shared, and go when it's taken back. */
+function ComesAlong({ parts, isOwner }: { parts: SetPartSummary[]; isOwner: boolean }) {
+  return (
+    <div className="rounded-lg border border-line bg-soft/40 p-3 text-sm" data-testid="set-parts-come-along">
+      <p className="flex items-start gap-1">
+        <span>
+          {parts.length === 1 ? 'This custom part of yours comes along with the set:' : `These ${parts.length} custom parts of yours come along with the set:`}
+        </span>
+        <HelpButton helpKey="set.sharing" />
+      </p>
+      <ul className="mt-1 list-inside list-disc text-xs">
+        {parts.map((p) => (
+          <li key={p.id} className="break-words">
+            {p.displayName && p.displayName !== p.partNumber ? `${p.displayName} (${p.partNumber})` : p.partNumber}
+          </li>
+        ))}
+      </ul>
+      {isOwner && (
+        <p className="mt-1 text-xs text-muted">
+          People you share it with can look at and place them. Taking the set back takes them back too, unless you shared them on their own.
+        </p>
+      )}
     </div>
   );
 }
@@ -243,6 +270,11 @@ function People({
                   {p.displayName} {isSelf && <span className="text-xs text-muted">(you)</span>}
                 </p>
                 {p.email && <p className="break-all text-xs text-muted">{p.email}</p>}
+                {p.viaSets && p.viaSets.length > 0 && (
+                  <p className="text-xs text-muted">
+                    With the set{p.viaSets.length === 1 ? '' : 's'} {p.viaSets.map((n) => `“${n}”`).join(', ')}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="rounded-lg bg-soft px-2 py-1 text-xs text-neutral-300">{p.role}</span>

@@ -24,11 +24,13 @@ export function PartInvitePage() {
     retry: false,
   });
   const [accepted, setAccepted] = useState(false);
+  const [cameAlong, setCameAlong] = useState(0);
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const accept = useMutation({
     mutationFn: () => api.partInvites.accept(params.token!),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      setCameAlong(res.setParts?.length ?? 0);
       setAccepted(true);
       void qc.invalidateQueries({ queryKey: ['custom-parts'] });
       void qc.invalidateQueries({ queryKey: ['parts-catalog'] });
@@ -60,7 +62,12 @@ export function PartInvitePage() {
 
   const inv = preview.data!;
   const isSignedIn = !!me.data?.user;
-  if (accepted) return <Centered>You have it! Opening your parts…</Centered>;
+  if (accepted)
+    return (
+      <Centered>
+        {cameAlong > 0 ? `You have the set and ${cameAlong === 1 ? 'its part' : `its ${cameAlong} parts`}! Opening your parts…` : 'You have it! Opening your parts…'}
+      </Centered>
+    );
 
   return (
     <Centered>
@@ -69,6 +76,18 @@ export function PartInvitePage() {
         <p className="text-sm text-muted">
           You've been invited to the custom part <strong>{inv.partName}</strong> ({inv.partNumber}) as {inv.role === 'editor' ? 'an editor' : 'a viewer'}.
         </p>
+        {inv.setParts && inv.setParts.length > 0 && (
+          <div className="text-sm text-muted" data-testid="invite-set-parts">
+            <p>It's a set, so {inv.setParts.length === 1 ? 'this part of theirs comes' : `these ${inv.setParts.length} parts of theirs come`} with it, to look at and place:</p>
+            <ul className="mt-1 list-inside list-disc text-xs">
+              {inv.setParts.map((p) => (
+                <li key={p.partNumber} className="break-words">
+                  {p.displayName && p.displayName !== p.partNumber ? `${p.displayName} (${p.partNumber})` : p.partNumber}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {!isSignedIn && (
           <>
             <p className="text-sm text-neutral-300">

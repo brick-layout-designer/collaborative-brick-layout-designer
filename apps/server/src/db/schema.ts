@@ -712,6 +712,32 @@ export const customPartInvites = sqliteTable(
   }),
 );
 
+// Custom parts someone has only because a set of them was shared with
+// them (0038): sharing a set by invite brings along the sharer's own parts
+// it's made of, as viewers. One row per (set, part, person); while a row
+// is left the part stays shared, and taking the set back takes the part
+// back too, unless it was shared on its own (then it has no row here).
+export const customPartSetShares = sqliteTable(
+  'custom_part_set_shares',
+  {
+    setId: text('set_id')
+      .notNull()
+      .references(() => customParts.id, { onDelete: 'cascade' }),
+    partId: text('part_id')
+      .notNull()
+      .references(() => customParts.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    addedAt: integer('added_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.setId, t.partId, t.userId] }),
+    partUserIdx: index('custom_part_set_shares_part_user_idx').on(t.partId, t.userId),
+    userIdx: index('custom_part_set_shares_user_id_idx').on(t.userId),
+  }),
+);
+
 // Reusable named module: a saved selection of bricks (and their relative
 // positions / per-brick metadata) that can be dropped into any layout the
 // owner has access to. Mirrors desktop's `Module` but elevates it to a
@@ -912,6 +938,7 @@ export type LayoutTransfer = typeof layoutTransfers.$inferSelect;
 export type CustomPart = typeof customParts.$inferSelect;
 export type CustomPartCollaborator = typeof customPartCollaborators.$inferSelect;
 export type CustomPartInvite = typeof customPartInvites.$inferSelect;
+export type CustomPartSetShare = typeof customPartSetShares.$inferSelect;
 export type Module = typeof modules.$inferSelect;
 export type ModuleCollaborator = typeof moduleCollaborators.$inferSelect;
 export type ModuleTransfer = typeof moduleTransfers.$inferSelect;
