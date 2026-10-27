@@ -563,6 +563,8 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
           to: email,
           inviteUrl,
           inviterName: publicName(user.id, user.displayName),
+          what: 'club',
+          name: org.name,
         });
       } catch {
         /* ignored — fall back to copy-paste link */
@@ -710,7 +712,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       const inviteUrl = `${env.publicUrl}/org-invite/${invite.token}`;
       let emailDelivered = false;
       try {
-        emailDelivered = await sendInviteEmail({ to: invite.invitedEmail, inviteUrl, inviterName: publicName(user.id, user.displayName) });
+        emailDelivered = await sendInviteEmail({ to: invite.invitedEmail, inviteUrl, inviterName: publicName(user.id, user.displayName), what: 'club', name: org.name });
       } catch {
         /* ignored — the admin can copy the link */
       }

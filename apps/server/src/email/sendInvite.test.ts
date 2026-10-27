@@ -53,3 +53,29 @@ describe('sendInviteEmail — HTML-escapes user-controlled inviterName', () => {
     expect(call.html).toContain('Alice Wonderland invited you');
   });
 });
+
+describe('sendInviteEmail — says what the invite is for', () => {
+  const sent = () => sendMail.mock.calls.at(-1)![0] as { html: string; text: string; subject: string };
+
+  it('a club invite asks you to join the club, by name', async () => {
+    await sendInviteEmail({ to: 'a@example.com', inviteUrl: 'https://app.example.com/org-invite/t', inviterName: 'Ann', what: 'club', name: 'Rail <Club>' });
+    expect(sent().subject).toBe('Ann invited you to join Rail <Club>');
+    expect(sent().text).toContain('Ann invited you to join the club Rail <Club> on Collaborative Brick Layout Designer.');
+    expect(sent().html).toContain('join the club Rail &lt;Club&gt;');
+    expect(sent().text).not.toContain('layout');
+  });
+
+  it('a hand-over asks you to take the layout', async () => {
+    await sendInviteEmail({ to: 'a@example.com', inviteUrl: 'https://app.example.com/transfer/t', inviterName: 'Ann', what: 'transfer' });
+    expect(sent().subject).toBe('Ann wants to hand a layout over to you');
+    expect(sent().text).toContain('Ann wants to make you the owner of a Collaborative Brick Layout Designer layout.');
+    expect(sent().text).not.toContain('collaborate');
+  });
+
+  it('a set is a set, a part a custom part', async () => {
+    await sendInviteEmail({ to: 'a@example.com', inviteUrl: 'https://app.example.com/part-invite/t', inviterName: 'Ann', what: 'set' });
+    expect(sent().subject).toBe('Ann invited you to a set');
+    await sendInviteEmail({ to: 'a@example.com', inviteUrl: 'https://app.example.com/part-invite/t', inviterName: 'Ann', what: 'part' });
+    expect(sent().subject).toBe('Ann invited you to a custom part');
+  });
+});

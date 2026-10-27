@@ -81,7 +81,8 @@ describe('sharing a set brings its custom parts', () => {
     expect((await call(alice, 'GET', `/api/custom-parts/${tower}/collaborators`)).json()).not.toHaveProperty('setParts');
 
     const inv = (await call(alice, 'POST', `/api/custom-parts/${yard}/invites`, { email: 'bob@example.com', role: 'viewer' })).json() as { token: string };
-    const preview = (await call(null, 'GET', `/api/part-invites/${inv.token}`)).json() as { setParts?: { partNumber: string; displayName: string }[] };
+    const preview = (await call(null, 'GET', `/api/part-invites/${inv.token}`)).json() as { isSet?: boolean; setParts?: { partNumber: string; displayName: string }[] };
+    expect(preview.isSet).toBe(true);
     expect(preview.setParts).toEqual([
       { partNumber: 'Shed', displayName: 'Shed name' },
       { partNumber: 'TOWER', displayName: 'TOWER name' },

@@ -110,7 +110,8 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
       const inviteUrl = `${env.publicUrl}/part-invite/${token}`;
       let emailDelivered = false;
       try {
-        emailDelivered = await sendInviteEmail({ to: email, inviteUrl, inviterName: publicName(user.id, user.displayName), what: 'part' });
+        const isSet = (await db.select({ spriteMime: schema.customParts.spriteMime }).from(schema.customParts).where(eq(schema.customParts.id, req.params.id)).get())?.spriteMime === '';
+        emailDelivered = await sendInviteEmail({ to: email, inviteUrl, inviterName: publicName(user.id, user.displayName), what: isSet ? 'set' : 'part' });
       } catch {
         // emailDelivered stays false; the owner has the link to send.
       }
@@ -143,7 +144,7 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
     const bad = await unusable(invite);
     if (bad) return reply.code(bad.code).send({ error: bad.error });
     const part = await db
-      .select({ partNumber: schema.customParts.partNumber, displayName: schema.customParts.displayName })
+      .select({ partNumber: schema.customParts.partNumber, displayName: schema.customParts.displayName, spriteMime: schema.customParts.spriteMime })
       .from(schema.customParts)
       .where(eq(schema.customParts.id, invite!.customPartId))
       .get();
@@ -161,6 +162,8 @@ export async function customPartInviteRoutes(app: FastifyInstance): Promise<void
       partId: invite!.customPartId,
       partNumber: part.partNumber,
       partName: part.displayName,
+      // A set (a group of parts, no picture of its own).
+      isSet: part.spriteMime === '',
       expiresAt: invite!.expiresAt.getTime(),
     };
   });

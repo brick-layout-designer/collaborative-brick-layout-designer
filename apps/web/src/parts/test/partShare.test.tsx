@@ -162,6 +162,13 @@ describe('part invite page', () => {
     expect(await screen.findByText('You have the set and its part! Opening your parts…')).toBeTruthy();
   });
 
+  it('a set is called a set, even with no parts of theirs coming along', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue(ME('eve@example.com'));
+    vi.spyOn(api.partInvites, 'preview').mockResolvedValue({ ...preview, forYou: false, partName: 'Yard', partNumber: 'Yard', isSet: true });
+    wrap(page, '/part-invite/tok');
+    expect((await screen.findByText(/You've been invited to/)).textContent).toBe("You've been invited to the set Yard as a viewer.");
+  });
+
   it('signed in as someone else: says so, shows only the masked address, and doesn’t accept', async () => {
     vi.spyOn(api, 'me').mockResolvedValue(ME('eve@example.com'));
     vi.spyOn(api.partInvites, 'preview').mockResolvedValue({ ...preview, invitedEmail: 'b…@example.com', forYou: false });

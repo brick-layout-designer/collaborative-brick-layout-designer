@@ -12,8 +12,36 @@ interface SendInviteEmailArgs {
   to: string;
   inviteUrl: string;
   inviterName: string;
-  /** What they're invited to (default a layout). */
-  what?: 'layout' | 'module' | 'part';
+  /**
+   * What they're invited to (default a layout): to work on a layout,
+   * module, custom part or set; to join a club; or to take a layout
+   * handed over to them.
+   */
+  what?: 'layout' | 'module' | 'part' | 'set' | 'club' | 'transfer';
+  /** The club's name, for a club invite. */
+  name?: string;
+}
+
+const APP = 'Collaborative Brick Layout Designer';
+
+/** The subject and the sentence the email opens with, in plain text. */
+function wording(args: SendInviteEmailArgs): { subject: string; line: (who: string, name: string) => string } {
+  switch (args.what) {
+    case 'club':
+      return {
+        subject: `${args.inviterName} invited you to join ${args.name || 'a club'}`,
+        line: (who, name) => (name ? `${who} invited you to join the club ${name} on ${APP}.` : `${who} invited you to join a club on ${APP}.`),
+      };
+    case 'transfer':
+      return {
+        subject: `${args.inviterName} wants to hand a layout over to you`,
+        line: (who) => `${who} wants to make you the owner of a ${APP} layout.`,
+      };
+    default: {
+      const what = args.what === 'part' ? 'custom part' : (args.what ?? 'layout');
+      return { subject: `${args.inviterName} invited you to a ${what}`, line: (who) => `${who} invited you to collaborate on a ${APP} ${what}.` };
+    }
+  }
 }
 
 export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolean> {
@@ -28,15 +56,11 @@ export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<boolea
   const safeName = escapeHtml(args.inviterName);
   const safeUrl = escapeHtml(args.inviteUrl);
 
-  const what = args.what === 'part' ? 'custom part' : (args.what ?? 'layout');
-  const subject = `${args.inviterName} invited you to a ${what}`;
-  const text =
-    `${args.inviterName} invited you to collaborate on a Collaborative ` +
-    `Brick Layout Designer ${what}.\n\nOpen this link to accept:\n\n${args.inviteUrl}\n`;
+  const { subject, line } = wording(args);
+  const text = `${line(args.inviterName, args.name ?? '')}\n\nOpen this link to accept:\n\n${args.inviteUrl}\n`;
   const html =
-    `<p>${safeName} invited you to collaborate on a ` +
-    `Collaborative Brick Layout Designer ${what}.</p>` +
-    `<p><a href="${safeUrl}">Open in Collaborative Brick Layout Designer</a></p>` +
+    `<p>${line(safeName, escapeHtml(args.name ?? ''))}</p>` +
+    `<p><a href="${safeUrl}">Open in ${APP}</a></p>` +
     `<p style="color:#888">Or paste this URL into your browser: ${safeUrl}</p>`;
 
   await transporter.sendMail({

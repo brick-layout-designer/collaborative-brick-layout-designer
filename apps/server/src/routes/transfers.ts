@@ -186,6 +186,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           to: recipientEmail,
           inviteUrl: transferUrl,
           inviterName: publicName(user.id, user.displayName),
+          what: 'transfer',
         });
       } catch {
         /* ignored */
