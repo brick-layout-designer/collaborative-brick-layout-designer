@@ -8,7 +8,7 @@
 //   - 'bundled' → sprite at /parts/<spritePath>
 //   - 'custom'  → sprite at /api/custom-parts/<id>/sprite (auth required)
 
-import { setVersion } from '../utils/setVersion.js';
+import { setVersion, withNestedSetVersions } from '../utils/setVersion.js';
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
@@ -167,7 +167,8 @@ export async function partsRoutes(app: FastifyInstance): Promise<void> {
     if (req.headers['if-none-match'] === etag) {
       return reply.code(304).send();
     }
-    return { parts: uniqueByKey([...bundled.wire, ...customWire]) };
+    // A custom set's version follows the custom sets inside it.
+    return { parts: withNestedSetVersions(uniqueByKey([...bundled.wire, ...customWire])) };
   });
 }
 

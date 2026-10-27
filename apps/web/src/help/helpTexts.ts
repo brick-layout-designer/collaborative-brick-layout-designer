@@ -199,7 +199,7 @@ export const HELP_TEXTS = {
   'set.updates': {
     title: 'Set updates',
     short: 'A set you placed knows when the set changes, so you can bring in the new version.',
-    more: 'When one of your custom sets (or one shared with you) gets new parts, has its parts moved, or is renamed, layouts that use it say “Update available”. Update puts the set’s new parts where the placed set is now, keeping its place and turn, and joins them to the track around it where they fit. Nothing changes until you choose Update, and Undo puts it back.',
+    more: 'When one of your custom sets (or one shared with you) gets new parts, has its parts moved, or is renamed, or a custom set inside it changes, layouts that use it say “Update available”. Update puts the set’s new parts where the placed set is now, keeping its place and turn, and joins them to the track around it where they fit. Nothing changes until you choose Update, and Undo puts it back.',
   },
   'part.hidden': {
     title: 'Hidden parts',
