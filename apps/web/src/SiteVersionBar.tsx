@@ -3,7 +3,7 @@
 // whenever the tab comes back into view. It never reloads by itself, so
 // nobody loses their place while editing; the layout itself is saved live.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** How often to ask, besides on focus. */
 export const VERSION_POLL_MS = 5 * 60 * 1000;
@@ -53,10 +53,29 @@ export function SiteVersionBar() {
     };
   }, []);
 
-  if (!ready || hidden) return null;
+  // While it shows, the page ends above it (styles.css --site-bar-space),
+  // so it covers nothing: not the editor's zoom buttons or touch bar, not
+  // the last row of a list.
+  const bar = useRef<HTMLDivElement>(null);
+  const shown = ready && !hidden;
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!shown || !el) return;
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty('--site-bar-space', `${Math.max(0, Math.ceil(window.innerHeight - el.getBoundingClientRect().top + 8))}px`);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      root.style.removeProperty('--site-bar-space');
+    };
+  }, [shown]);
+
+  if (!shown) return null;
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-4">
       <div
+        ref={bar}
         data-testid="site-version-bar"
         className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-card border border-line bg-panel py-2 pl-4 pr-2 text-ink shadow-pop"
       >
@@ -66,7 +85,7 @@ export function SiteVersionBar() {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:bg-accent-hover"
+          className="min-h-9 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:bg-accent-hover"
         >
           Reload
         </button>
@@ -75,7 +94,7 @@ export function SiteVersionBar() {
           aria-label="Not now"
           title="Not now"
           onClick={() => setHidden(true)}
-          className="rounded-md px-2 py-1.5 text-sm text-muted hover:bg-soft hover:text-ink"
+          className="min-h-9 min-w-9 rounded-md px-2 py-1.5 text-sm text-muted hover:bg-soft hover:text-ink"
         >
           ✕
         </button>

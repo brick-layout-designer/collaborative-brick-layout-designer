@@ -74,7 +74,7 @@ export function ModuleInvitePage() {
             </p>
             <Link
               to={`/login?next=${encodeURIComponent(`/module-invite/${params.token}`)}`}
-              className="block rounded-lg bg-accent px-4 py-2 text-center text-accent-ink hover:bg-accent-hover"
+              className="flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 py-2 text-center text-accent-ink hover:bg-accent-hover"
             >
               Sign in
             </Link>

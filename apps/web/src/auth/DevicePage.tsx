@@ -67,7 +67,7 @@ export function DevicePage() {
         <p className="text-sm text-muted">Sign in to approve the desktop app's request.</p>
         <Link
           to={`/login?next=${encodeURIComponent(next)}`}
-          className="inline-block rounded-lg bg-accent text-accent-ink px-4 py-2 text-sm hover:bg-accent-hover"
+          className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2 text-sm text-accent-ink hover:bg-accent-hover"
         >
           Sign in
         </Link>

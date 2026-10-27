@@ -816,8 +816,9 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
     <div
       // dvh, not vh: on a phone 100vh is the height with the browser bars
       // hidden, so the bottom of the page (scale card, status bar) would sit
-      // under the address bar.
-      className="grid h-screen supports-[height:100dvh]:h-dvh grid-rows-[auto_auto_1fr_auto] bg-bg text-ink"
+      // under the address bar. Less the "new version" bar while it shows
+      // (styles.css .h-app), so the bar covers no zoom button.
+      className="h-app grid grid-rows-[auto_auto_1fr_auto] bg-bg text-ink"
       style={{ gridTemplateColumns: viewport.isMobile ? '0px 0px 1fr 0px' : `${showRail ? '76px' : '0px'} ${cols}` }}
     >
       {moduleMode ? (
@@ -1222,7 +1223,13 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
         // off the canvas, so a pinch zooms the map, not the page.
         // No text selection or iOS callout on a long press either.
         className="relative touch-none select-none overflow-hidden [-webkit-touch-callout:none]"
-        style={{ gridColumn: '3', gridRow: '3', ...(touchEditing ? { ['--touch-bar-h' as string]: '4.25rem' } : {}) }}
+        style={{
+          gridColumn: '3',
+          gridRow: '3',
+          ...(touchEditing || touchTablet ? { ['--touch-bar-h' as string]: '4.25rem' } : {}),
+          // Below the floating Undo / Redo (and the saved view's name above them) on a phone.
+          ...(touchEditing ? { ['--touch-top' as string]: activeView ? '6.5rem' : '3.75rem' } : {}),
+        }}
       >
         {activeView && (
           <div
@@ -4307,7 +4314,7 @@ function Canvas({
         />
       )}
       </Suspense>
-      <SetUpdatesBar updates={setUpdates} onUpdate={updatePlacedSets} onShow={showPlacedSets} lifted={phone || coarsePointer()} />
+      <SetUpdatesBar updates={setUpdates} onUpdate={updatePlacedSets} onShow={showPlacedSets} top={phone} />
       {ctxMenu && !isViewer && (
         <CanvasContextMenu
           x={ctxMenu.x}
