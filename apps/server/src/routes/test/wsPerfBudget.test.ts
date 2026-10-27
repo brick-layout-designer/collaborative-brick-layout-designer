@@ -213,6 +213,8 @@ describe('WS perf budget', () => {
     ['a grid size of NaN', (d) => gridOf(d).set('gridSizeInStud', Number.NaN), [1008, 'unreadable_update'], 'layout_update_refused', { kind: 'unreadable' }],
     ['an infinite grid size', (d) => gridOf(d).set('gridSizeInStud', Number.NEGATIVE_INFINITY), [1008, 'unreadable_update'], 'layout_update_refused', { kind: 'unreadable' }],
     ['the grid size deleted', (d) => gridOf(d).delete('gridSizeInStud'), [1008, 'unreadable_update'], 'layout_update_refused', { kind: 'unreadable' }],
+    ['a billion grid sub-divisions', (d) => gridOf(d).set('subDivisionNumber', 1e9), [1008, 'unreadable_update'], 'layout_update_refused', { kind: 'unreadable' }],
+    ['an infinite grid line thickness', (d) => gridOf(d).set('gridThickness', Number.POSITIVE_INFINITY), [1008, 'unreadable_update'], 'layout_update_refused', { kind: 'unreadable' }],
     [
       'a valid grid size written and deleted in one update',
       (d) =>

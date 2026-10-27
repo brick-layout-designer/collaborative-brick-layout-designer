@@ -5,6 +5,9 @@
 // would leave a grid layer outside that range (0, negative, a fraction
 // below 1, too big for an int, not finite, not a number, or the field
 // gone) is refused like one the apps can't read (ws/updateGuard.ts).
+// So is one that leaves any other drawing setting of a sheet or a ruler
+// outside its range (drawingSettings.ts): line thicknesses, sub-divisions,
+// an area's cell size, transparency, a ruler's geometry and so on.
 //
 // The check is cheap for almost every update: it reads the update's
 // structs (decoded once and shared with the merge guard, ws/decoded.ts),
@@ -15,6 +18,8 @@
 //     else (no origin) its right origin's;
 //   - writes a grid size that isn't one plain valid number, or deletes the
 //     value it writes;
+//   - writes any other drawing setting, or adds an entry to a list (it may
+//     be a ruler);
 //   - deletes the grid size of a layer that is a grid and stays;
 //   - lands while the room has changes waiting for others (they may land
 //     with it), or holds two structs for one id (hand-made: Yjs reads one).
@@ -36,10 +41,14 @@
 import * as Y from 'yjs';
 import { decodeIncoming, findStruct, guardWork, type DecodedUpdate, type DeleteSet, type Struct } from './decoded.js';
 import { updateClientBlocks } from './updateGuard.js';
+import { docSheetProblems, placeOf, RULER_KEYS, rulerView, SHEET_KEYS, sheetProblems, type RulerView } from './drawingSettings.js';
 
 const SIZE_KEY = 'gridSizeInStud';
 const TYPE_KEY = 'type';
 const LAYER_DATA = 'layerData';
+const RULERS_KEY = 'rulerItems';
+/** The keys of a sheet whose writes the guard works out (drawingSettings.ts). */
+const SHEET_READ: ReadonlySet<string> = new Set([TYPE_KEY, SIZE_KEY, RULERS_KEY, ...SHEET_KEYS]);
 export const MAX_GRID_SIZE = 2147483647;
 
 /** Whether `v` is a grid size both apps draw. */
@@ -58,6 +67,38 @@ export function invalidGridLayers(doc: Y.Doc): Set<string> {
     if (layer instanceof Y.Map && layer.get(TYPE_KEY) === 'grid' && !validGridSize(layer.get(SIZE_KEY))) out.add(id);
   });
   return out;
+}
+
+/** A sheet's grid size problem, as a problem key (`<sheet>.gridSizeInStud`). */
+const sizeProblem = (sheet: string) => `${sheet}.${SIZE_KEY}`;
+
+/** Everything outside its range on one sheet of a document as it is (null: no such sheet). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sheetProblemsIn(layerData: Y.AbstractType<any> | undefined, sheet: string): string[] {
+  const item = layerData?._map.get(sheet);
+  if (!item || item.deleted) return [];
+  const layer = item.content.getContent()[item.length - 1];
+  if (!(layer instanceof Y.Map)) return [];
+  const out = docSheetProblems(sheet, layer);
+  if (layer.get(TYPE_KEY) === 'grid' && !validGridSize(layer.get(SIZE_KEY))) out.push(sizeProblem(sheet));
+  return out;
+}
+
+/** Everything outside its range in `doc`, every sheet. */
+export function drawingProblems(doc: Y.Doc): Set<string> {
+  const layerData = doc.share.get(LAYER_DATA);
+  const out = new Set<string>();
+  if (!layerData) return out;
+  for (const sheet of layerData._map.keys()) for (const p of sheetProblemsIn(layerData, sheet)) out.add(p);
+  return out;
+}
+
+/** Why an update is refused, for the log. */
+function refusal(problem: string): string {
+  if (problem.endsWith(`.${SIZE_KEY}`)) {
+    return `it leaves grid layer ${problem.slice(0, -SIZE_KEY.length - 1)} with a cell size outside 1 to ${MAX_GRID_SIZE} studs`;
+  }
+  return `it leaves ${problem} outside what the apps draw`;
 }
 
 /** Could this write of a layer's type make it a grid? */
@@ -139,6 +180,9 @@ function mayBreakGrid(doc: Y.Doc | null, update: DecodedUpdate): boolean {
     const key = keyOf(s);
     if (key === SIZE_KEY && !writesValidSize(s, ds)) return true;
     if (key === TYPE_KEY && mayWriteGrid(s.content)) return true;
+    // Another drawing setting (a sheet's or a ruler's), or a list entry that may be a ruler.
+    if (key !== null && (SHEET_KEYS.has(key) || RULER_KEYS.has(key) || key === RULERS_KEY)) return true;
+    if (key === null && (s.content instanceof Y.ContentType || (s.content instanceof Y.ContentAny && s.content.arr.some((v) => v !== null && typeof v === 'object')))) return true;
   }
   // Deleting the grid size of a layer that is a grid, unless the layer goes too.
   if (doc) {
@@ -190,14 +234,12 @@ export function checkGridSizesDecoded(doc: Y.Doc | null, update: Uint8Array, dec
 /** The same worked out on a copy of the room's document (exact for any update; costs the layout's size). */
 export function checkGridSizesOnCopy(doc: Y.Doc | null, update: Uint8Array): string | null {
   guardWork.docCopies += 1;
-  const before = doc ? invalidGridLayers(doc) : new Set<string>();
+  const before = doc ? drawingProblems(doc) : new Set<string>();
   const after = new Y.Doc();
   try {
     if (doc) Y.applyUpdate(after, Y.encodeStateAsUpdate(doc));
     Y.applyUpdate(after, update);
-    for (const id of invalidGridLayers(after)) {
-      if (!before.has(id)) return `it leaves grid layer ${id} with a cell size outside 1 to ${MAX_GRID_SIZE} studs`;
-    }
+    for (const p of drawingProblems(after)) if (!before.has(p)) return refusal(p);
     return null;
   } catch {
     return null; // Yjs can't apply it either: it changes nothing
@@ -379,31 +421,54 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
   };
   for (const s of placed) if (s instanceof Y.Item) slots.set(s, slotOf(s));
 
-  // The layer a map is (its key in layerData), or null.
-  const layerOf = (tok: string): string | null => {
+  // Where a node of the update or the document sits: the slot of the item that holds it.
+  const holderSlots = new Map<string, Slot | null>();
+  const holderSlot = (tok: string): Slot | null => {
     if (!tok.startsWith('i:')) return null;
-    const [client, clock] = tok.slice(2).split(':').map(Number) as [number, number];
-    const r = resolve(Y.createID(client, clock));
-    return r.slot?.tok === ROOT_LAYERS ? r.slot.key : null;
+    let slot = holderSlots.get(tok);
+    if (slot === undefined) {
+      const [client, clock] = tok.slice(2).split(':').map(Number) as [number, number];
+      slot = resolve(Y.createID(client, clock)).slot;
+      holderSlots.set(tok, slot);
+    }
+    return slot;
+  };
+  // The sheet a map is (its key in layerData), or null.
+  const layerOf = (tok: string): string | null => {
+    const slot = holderSlot(tok);
+    return slot?.tok === ROOT_LAYERS ? slot.key : null;
+  };
+  // The sheet whose rulerItems a list is, or null.
+  const rulersOf = (tok: string): string | null => {
+    const slot = holderSlot(tok);
+    return slot?.key === RULERS_KEY ? layerOf(slot.tok) : null;
+  };
+  // The sheet a ruler (a map in a sheet's rulerItems) is on, or null.
+  const rulerSheetOf = (tok: string): string | null => {
+    const slot = holderSlot(tok);
+    return slot && slot.key === null ? rulersOf(slot.tok) : null;
   };
 
-  // The new items of each key, and the layers touched.
+  // The new items of each key and of each list, and the sheets touched.
   const chains = new Map<string, Y.Item[]>();
+  const lists = new Map<string, Y.Item[]>();
   const touched = new Set<string>();
+  const add = (sheet: string | null) => {
+    if (sheet !== null) touched.add(sheet);
+  };
   const touch = (slot: Slot) => {
-    if (slot.key === null) return;
-    if (slot.tok === ROOT_LAYERS) touched.add(slot.key);
-    else if (slot.key === TYPE_KEY || slot.key === SIZE_KEY) {
-      const layer = layerOf(slot.tok);
-      if (layer !== null) touched.add(layer);
-    }
+    if (slot.key === null) add(rulersOf(slot.tok));
+    else if (slot.tok === ROOT_LAYERS) touched.add(slot.key);
+    else if (SHEET_READ.has(slot.key)) add(layerOf(slot.tok));
+    else if (RULER_KEYS.has(slot.key)) add(rulerSheetOf(slot.tok));
   };
   for (const [item, slot] of slots) {
-    if (!slot || slot.key === null) continue;
-    const k = `${slot.tok}\u0000${slot.key}`;
-    const list = chains.get(k);
+    if (!slot) continue;
+    const k = slot.key === null ? slot.tok : `${slot.tok}\u0000${slot.key}`;
+    const to = slot.key === null ? lists : chains;
+    const list = to.get(k);
     if (list) list.push(item);
-    else chains.set(k, [item]);
+    else to.set(k, [item]);
     touch(slot);
   }
   // Values the update deletes in the room's document.
@@ -459,21 +524,50 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
     const gone = (known(last.id) ? last.deleted : last.content instanceof Y.ContentDeleted) || deletesLast(ds, last);
     return { item: last, value: gone ? undefined : last.content.getContent()[last.length - 1] };
   };
-  const invalidBefore = (layer: string): boolean => {
-    const t = doc ? ((doc.share.get(LAYER_DATA)?._map.get(layer) as Y.Item | undefined) ?? null) : null;
-    if (!t || t.deleted) return false;
-    const v = t.content.getContent()[t.length - 1];
-    return v instanceof Y.Map && v.get(TYPE_KEY) === 'grid' && !validGridSize(v.get(SIZE_KEY));
+  const tokOf = (item: Y.Item) => `i:${idKey(item.id.client, item.id.clock)}`;
+  const deletesClock = (client: number, clock: number) => (ds.clients.get(client) ?? []).some((r) => r.clock <= clock && clock < r.clock + r.len);
+
+  // A sheet's rulers after the update: those of the list now that stay, and the new ones.
+  const rulersAfter = (list: { item: Y.Item | null; value: unknown }): RulerView[] => {
+    if (!(list.value instanceof Y.Array) || !list.item) return [];
+    const out: RulerView[] = [];
+    const entry = (item: Y.Item, j: number, value: unknown) => {
+      if (deletesClock(item.id.client, item.id.clock + j)) return;
+      const place = placeOf(item.id.client, item.id.clock + j);
+      if (value instanceof Y.Map) {
+        const tok = tokOf(item);
+        const id = read(tok, 'id').value;
+        out.push({ key: typeof id === 'string' && id ? id : place, read: (f) => read(tok, f).value });
+        return;
+      }
+      const view = rulerView(value, place);
+      if (view) out.push(view);
+    };
+    if (known(list.item.id)) {
+      for (let item = list.value._start; item; item = item.right) {
+        if (item.deleted) continue;
+        item.content.getContent().forEach((v, j) => entry(item!, j, v));
+      }
+    }
+    for (const item of lists.get(tokOf(list.item)) ?? []) {
+      if (item.content instanceof Y.ContentDeleted) continue;
+      item.content.getContent().forEach((v, j) => entry(item, j, v));
+    }
+    return out;
   };
 
-  for (const layer of touched) {
+  const layerData = doc?.share.get(LAYER_DATA);
+  for (const sheet of touched) {
     guardWork.gridLayersRead += 1;
-    const entry = read(ROOT_LAYERS, layer);
+    const entry = read(ROOT_LAYERS, sheet);
     if (!(entry.value instanceof Y.Map) || !entry.item) continue;
-    const tok = `i:${idKey(entry.item.id.client, entry.item.id.clock)}`;
-    if (read(tok, TYPE_KEY).value !== 'grid') continue;
-    if (validGridSize(read(tok, SIZE_KEY).value)) continue;
-    if (!invalidBefore(layer)) return `it leaves grid layer ${layer} with a cell size outside 1 to ${MAX_GRID_SIZE} studs`;
+    const tok = tokOf(entry.item);
+    const after = sheetProblems(sheet, (f) => read(tok, f).value, rulersAfter(read(tok, RULERS_KEY)));
+    if (read(tok, TYPE_KEY).value === 'grid' && !validGridSize(read(tok, SIZE_KEY).value)) after.unshift(sizeProblem(sheet));
+    if (after.length === 0) continue;
+    const before = new Set(sheetProblemsIn(layerData, sheet));
+    const fresh = after.find((p) => !before.has(p));
+    if (fresh) return refusal(fresh);
   }
   return null;
 }
