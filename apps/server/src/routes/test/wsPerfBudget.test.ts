@@ -5,7 +5,8 @@
 //     offline session and a run of single edits: each update decoded once
 //     (shared by the grid and merge guards), no copy of the room's document,
 //     and stored a few rows at a time;
-//   - a grid size change still works out what it leaves, on a copy;
+//   - a grid size change and a new grid layer work out what they leave from
+//     the keys they touch: one layer read each, no copy of the document;
 //   - on that shared path every refusal still happens as before, with the
 //     same close code and the same audit event: an update the apps can't
 //     read, a grid size outside 1 to 2^31-1 (0, negative, NaN, infinite,
@@ -106,6 +107,7 @@ describe('WS perf budget', () => {
   const room = (id: string) => docHub.peek(id)!;
   const work = () => ({ ...guardWork });
   const since = (before: typeof guardWork) => ({ decodes: guardWork.decodes - before.decodes, docCopies: guardWork.docCopies - before.docCopies });
+  const layersRead = (before: typeof guardWork) => guardWork.gridLayersRead - before.gridLayersRead;
   /** Until `done`, polling (for up to 4 s: a busy runner is slow, and only the counts are checked). */
   async function until(done: () => boolean): Promise<number> {
     const t = performance.now();
@@ -179,11 +181,23 @@ describe('WS perf budget', () => {
     expect(rows(id) - steadyRows).toBeLessThan(n / 4);
     expect(pendingBytes(room(id).doc)).toBe(0);
 
-    // A grid size change is still worked out on a copy (and taken).
+    // A grid size change is worked out from the keys it touches (and taken): no copy of the layout.
     w = work();
     gridOf(doc).set('gridSizeInStud', 48);
     await until(() => gridOf(room(id).doc).get('gridSizeInStud') === 48);
-    expect(since(w)).toEqual({ decodes: 1, docCopies: 1 });
+    expect(since(w)).toEqual({ decodes: 1, docCopies: 0 });
+    expect(layersRead(w)).toBe(1);
+    // So is a new grid layer.
+    w = work();
+    doc.transact(() => {
+      const g = new Y.Map<unknown>();
+      doc.getMap('layerData').set('perf-grid', g);
+      g.set('type', 'grid');
+      g.set('gridSizeInStud', 16);
+    });
+    await until(() => room(id).doc.getMap<Y.Map<unknown>>('layerData').get('perf-grid')?.get('gridSizeInStud') === 16);
+    expect(since(w)).toEqual({ decodes: 1, docCopies: 0 });
+    expect(layersRead(w)).toBe(1);
     expect(back.ws.readyState).toBe(WebSocket.OPEN);
     console.log(`[perf budget] ${times.join('; ')}`);
     await back.leave();

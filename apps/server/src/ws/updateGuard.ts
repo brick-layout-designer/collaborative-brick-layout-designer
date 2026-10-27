@@ -36,6 +36,8 @@ class Refused extends Error {}
 class Walk {
   private p = 0;
   private readonly b: Uint8Array;
+  /** When set, update() lists each block of structs' client id here, in order. */
+  clients: number[] | null = null;
 
   constructor(bytes: Uint8Array) {
     this.b = bytes;
@@ -98,7 +100,8 @@ class Walk {
     const clients = this.count(3, 'clients'); // each: block count, client id, clock
     for (let c = 0; c < clients; c++) {
       const blocks = this.count(2, 'blocks'); // each: info byte and at least one more
-      this.varUint(); // client id
+      const client = this.varUint();
+      this.clients?.push(client);
       this.varUint(); // first clock
       for (let i = 0; i < blocks; i++) this.block();
     }
@@ -291,4 +294,17 @@ export function checkUpdate(update: Uint8Array): string | null {
 /** The same for a state vector (sync step 1). */
 export function checkStateVector(stateVector: Uint8Array): string | null {
   return run(stateVector, (w) => w.stateVector());
+}
+
+/**
+ * The client of each block of structs in `update`, in order (Yjs reads only
+ * the last block of a client that has two), or null when it can't be read.
+ */
+export function updateClientBlocks(update: Uint8Array): number[] | null {
+  const clients: number[] = [];
+  const why = run(update, (w) => {
+    w.clients = clients;
+    w.update();
+  });
+  return why === null ? clients : null;
 }
