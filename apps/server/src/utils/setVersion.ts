@@ -58,6 +58,11 @@ interface CatalogPart {
   setVersion?: string;
 }
 
+/** How many inner-set versions one catalog works out at most (see withNestedSetVersions). */
+export const NESTED_SET_BUDGET = 20_000;
+
+class OverBudget extends Error {}
+
 /**
  * The catalog with each custom set's version following the custom sets
  * inside it. A sub-part is found as the editor finds it (indexParts and
@@ -65,13 +70,29 @@ interface CatalogPart {
  * old name, the first one listed winning; never a set it sits in; at most
  * 16 deep. The desktop does the same from its library (edit/SetUpdates.cpp).
  * Changed entries are copies: the parts passed in are left as they are.
+ *
+ * An inner set's version depends only on that set and which sets are
+ * around it, so each is worked out once (a set naming the same set many
+ * times, nested a few deep, would otherwise cost the count to the power of
+ * the depth). Sets that still need more than NESTED_SET_BUDGET of them in
+ * all keep their own version.
  */
 export function withNestedSetVersions<P extends CatalogPart>(parts: readonly P[]): P[] {
   const index = new Map<string, P>();
   for (const p of parts) index.set(p.key.toLowerCase(), p);
   for (const p of parts) if (!index.has(p.partNumber.toLowerCase())) index.set(p.partNumber.toLowerCase(), p);
   for (const p of parts) for (const old of p.oldNames ?? []) if (!index.has(old.toLowerCase())) index.set(old.toLowerCase(), p);
+  const ids = new Map<P, number>(parts.map((p, i) => [p, i]));
+  const memo = new Map<string, string>();
+  let budget = NESTED_SET_BUDGET;
   const versionOf = (set: P, outer: readonly P[]): string => {
+    const key = `${ids.get(set)}|${outer
+      .map((o) => ids.get(o)!)
+      .sort((a, b) => a - b)
+      .join(',')}`;
+    const known = memo.get(key);
+    if (known !== undefined) return known;
+    if (--budget < 0) throw new OverBudget();
     const chain = [...outer, set];
     const inner: { subKey: string; version: string }[] = [];
     for (const sp of set.subparts ?? []) {
@@ -79,11 +100,19 @@ export function withNestedSetVersions<P extends CatalogPart>(parts: readonly P[]
       if (!sub || sub.kind !== 'group' || !sub.setVersion || chain.includes(sub) || chain.length >= 16) continue;
       inner.push({ subKey: sp.subKey, version: versionOf(sub, chain) });
     }
-    return nestedSetVersion(set.setVersion!, inner);
+    const v = nestedSetVersion(set.setVersion!, inner);
+    memo.set(key, v);
+    return v;
   };
   return parts.map((p) => {
     if (p.kind !== 'group' || !p.setVersion) return p;
-    const v = versionOf(p, []);
+    let v: string;
+    try {
+      v = versionOf(p, []);
+    } catch (e) {
+      if (!(e instanceof OverBudget)) throw e;
+      return p;
+    }
     return v === p.setVersion ? p : { ...p, setVersion: v };
   });
 }
