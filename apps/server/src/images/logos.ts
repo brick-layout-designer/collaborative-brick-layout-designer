@@ -46,8 +46,8 @@ export function svgProblem(bytes: Buffer): string | null {
     [/\\/i, 'a backslash'],
   ];
   for (const [re, what] of banned) if (re.test(text)) return what;
-  // Links (href, xlink:href) and url()s may only point inside the picture.
-  for (const m of lower.matchAll(/(?:^|[\s"'])(?:xlink:)?href\s*=\s*(["'])(.*?)\1/g)) if (!m[2]!.trim().startsWith('#')) return 'a link outside the picture';
+  // Links (href, and a link's href under any namespace prefix, as xlink:href) and url()s may only point inside the picture.
+  for (const m of lower.matchAll(/(?:^|[\s"'])(?:[a-z_][\w.-]*:)?href\s*=\s*(["'])(.*?)\1/g)) if (!m[2]!.trim().startsWith('#')) return 'a link outside the picture';
   for (const m of lower.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/g)) if (!m[2]!.trim().startsWith('#')) return 'a url() outside the picture';
   return null;
 }
