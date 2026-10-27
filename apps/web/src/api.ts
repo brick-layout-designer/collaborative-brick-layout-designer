@@ -1910,6 +1910,8 @@ export interface OrgSummary {
   permissions?: ClubPermission[];
   /** I hold its Admin role. */
   isAdmin?: boolean;
+  /** The names of the roles I hold in it, in the club's order (older servers leave it out). */
+  roleNames?: string[];
   /** Its logo's address, or null (older servers leave it out). */
   logoUrl?: string | null;
 }

@@ -31,6 +31,7 @@ import { checkGrowth } from '../limits/limits.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { escapeLike } from '../utils/validate.js';
 import { getMembership, loadOrgBySlug } from './orgs.js';
+import { clubAccessMap } from '../access/clubPermissions.js';
 import { type ClubRole } from '../access/clubRoles.js';
 import { publicName } from '../utils/publicName.js';
 import { perPerson } from '../utils/rateLimits.js';
@@ -326,15 +327,16 @@ export async function clubJoinRoutes(app: FastifyInstance): Promise<void> {
   // ---- how many are waiting, in the clubs you run --------------------------------
   app.get('/api/join-requests/count', async (req) => {
     const user = requireUser(req);
+    // The clubs where my roles answer requests (asManager's rule: invite people, or manage members).
+    const answering = [...(await clubAccessMap(user.id)).values()]
+      .filter((a) => a.permissions.has('invite') || a.permissions.has('manage_members'))
+      .map((a) => a.orgId);
+    if (answering.length === 0) return { count: 0, clubs: [] };
     const rows = await db
       .select({ slug: schema.orgs.slug, n: count() })
       .from(schema.orgJoinRequests)
       .innerJoin(schema.orgs, eq(schema.orgs.id, schema.orgJoinRequests.orgId))
-      .innerJoin(
-        schema.orgMembers,
-        and(eq(schema.orgMembers.orgId, schema.orgJoinRequests.orgId), eq(schema.orgMembers.userId, user.id)),
-      )
-      .where(inArray(schema.orgMembers.role, ['admin', 'manager']))
+      .where(inArray(schema.orgJoinRequests.orgId, answering))
       .groupBy(schema.orgs.slug);
     return { count: rows.reduce((t, r) => t + r.n, 0), clubs: rows.map((r) => ({ slug: r.slug, count: r.n })) };
   });

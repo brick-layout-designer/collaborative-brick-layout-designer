@@ -8,7 +8,7 @@ import { ModuleThumb } from '../modules/ModuleThumb';
 import { LeaveClubButton, MembersSection } from './ClubManage';
 import { AppHeader } from '../AppHeader';
 import { ClubPublicView } from './ClubDirectory';
-import { aRole } from './clubRoles';
+import { yourRolesText } from './clubRoles';
 import { runsClub } from './clubPermissions';
 import { ClubCollectionsSection } from '../catalog/Collections';
 import { TrustedBadge } from '../catalog/TrustedBadge';
@@ -56,7 +56,7 @@ function OrgDetail({ slug }: { slug: string }) {
             </h1>
             <p className="text-sm text-muted">
               {org.memberCount !== undefined && `${org.memberCount} ${org.memberCount === 1 ? 'member' : 'members'} · `}
-              you are {aRole(org.myRole)}
+              {yourRolesText(org)}
             </p>
             {org.description && <p className="mt-2 whitespace-pre-line text-sm">{org.description}</p>}
             </div>

@@ -130,6 +130,19 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
 
     const access = await clubAccessMap(user.id);
     const logos = await clubLogoUrls(rows);
+    // The names of the roles I hold, in each club's order ("you are Viewer, Track crew").
+    const heldIds = [...access.values()].flatMap((a) => a.roleIds);
+    const roleRows = heldIds.length
+      ? await db
+          .select({ id: schema.clubRoles.id, name: schema.clubRoles.name, position: schema.clubRoles.position })
+          .from(schema.clubRoles)
+          .where(inArray(schema.clubRoles.id, heldIds))
+          .orderBy(schema.clubRoles.position)
+      : [];
+    const roleNamesIn = (orgId: string) => {
+      const ids = access.get(orgId)?.roleIds ?? [];
+      return roleRows.filter((r) => ids.includes(r.id)).map((r) => r.name);
+    };
     // Whoever reviews a trusted club's shares sees what waits in its queue.
     const reviews = new Map<string, number>();
     for (const r of rows) if (r.trusted && has(access.get(r.id), 'send_catalog')) reviews.set(r.id, await clubReviewCount(r.id));
@@ -148,6 +161,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         // What my roles in it let me do (access/clubPermissions.ts).
         permissions: [...(access.get(r.id)?.permissions ?? [])],
         isAdmin: !!access.get(r.id)?.isAdmin,
+        roleNames: roleNamesIn(r.id),
         logoUrl: logos.get(r.id) ?? null,
         ...(reviews.has(r.id) ? { pendingReviews: reviews.get(r.id) } : {}),
       })),
@@ -242,6 +256,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
       myRole: myMembership.role,
       permissions: [...perms],
       isAdmin: myMembership.isAdmin,
+      roleNames: (await clubRoleList(org.id)).filter((r) => myMembership.roleIds.includes(r.id)).map((r) => r.name),
       description: org.description ?? '',
       membersCanCreate: org.membersCanCreate,
       memberCount: counts.length,
