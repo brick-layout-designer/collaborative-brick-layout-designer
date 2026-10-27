@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { inviteExpiry } from '../ui/inviteExpiry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type InviteSummary } from '../api';
 import { clubsICanAddTo } from '../owners/OwnerControls';
@@ -380,7 +381,7 @@ function PendingInvites({
             <div>
               <p>{i.invitedEmail}</p>
               <p className="text-xs text-muted">
-                {i.role} · expires {new Date(i.expiresAt).toLocaleDateString()}
+                {i.role} · {inviteExpiry(i.expiresAt)}
               </p>
             </div>
             {isOwner && (

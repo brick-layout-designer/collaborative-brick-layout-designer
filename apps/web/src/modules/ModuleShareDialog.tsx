@@ -4,6 +4,7 @@
 // off. Everyone else sees who has it, and can leave it themselves.
 
 import { useState, type FormEvent } from 'react';
+import { inviteExpiry } from '../ui/inviteExpiry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CollaboratorSummary, type CustomPartSummary, type InviteSummary, type ModuleSummary, type SetPartSummary } from '../api';
 import { HelpButton } from '../help/HelpButton';
@@ -324,7 +325,7 @@ function PendingInvites({ what, id, invites, isOwner, onChange }: { what: Sharea
             <div className="min-w-0">
               <p className="break-all">{i.invitedEmail}</p>
               <p className="text-xs text-muted">
-                {i.role} · expires {new Date(i.expiresAt).toLocaleDateString()}
+                {i.role} · {inviteExpiry(i.expiresAt)}
               </p>
             </div>
             {isOwner && (
