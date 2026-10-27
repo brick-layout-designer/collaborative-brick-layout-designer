@@ -58,16 +58,25 @@ and reads and writes the same files (`.bld-layout`, and BlueBrick's
   and settings that follow your account to the desktop app.
 
 **Clubs.** Members share layouts, modules, venues and parts. A club is
-joined by invite, by request or openly. Roles:
-- **members** use the club's things and add their own;
-- **managers** also run the club day to day: invites, join requests,
-  removing members, and looking after the club's layouts, venues, modules
-  and parts;
-- **admins** also manage the club itself: its settings, roles, handing it
-  over, and deleting it (with a waiting period and Restore).
+joined by invite, by request or openly. What each member may do comes from
+the **roles** they hold, and each role is a set of **permissions**: view,
+edit or start layouts, add modules and parts, manage venues, send to the
+catalog, invite people, manage members and roles, download the club's data,
+and delete club items. Someone with several roles may do everything those
+roles allow.
+- Every club starts with **Admin**, **Manager**, **Member** and **Viewer**,
+  and its admins can change them or add the club's own, such as Track crew.
+- **Admin** always has every permission and can't be edited; only admins
+  change the club's settings, hand it over, or delete it (with a waiting
+  period and Restore). A club always keeps one admin.
+- People who may *invite* answer join requests, and invite, remove or warn
+  people whose roles can do less than theirs; people who may *manage
+  members and roles* give and take any role but Admin, and remove anyone
+  but an admin.
 
 Things saved to a club keep their author's credit, and the author can *Take
-back* something they gave to a club (or a manager can *Give back*).
+back* something they gave to a club (or someone who may *delete club items*
+can *Give back*).
 
 **Public catalog.** When the site admin turns it on, people publish modules,
 parts, layouts and venues, and arrange them in collections with cover

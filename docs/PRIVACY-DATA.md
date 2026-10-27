@@ -122,9 +122,9 @@ When the account is erased (`privacy/accountDeletion.ts`):
 | Data | What happens |
 |---|---|
 | `users`, `sessions`, `api_tokens`, `device_codes`, `oauth_accounts`, `email_verifications`, `user_preferences` | deleted |
-| `org_members`, `org_join_requests` | deleted. A club they were the **last admin** of gets a new admin (its longest-standing manager, else member), who gets a note. A club with **nobody else** in it is deleted. |
+| `org_members`, `org_join_requests` | deleted. A club they were the **last admin** of gets a new admin, chosen by what their roles may do: someone who may manage members and roles, else someone who may invite people, else the longest-standing member (longest-standing first within each); they get a note. A club with **nobody else** in it is deleted. |
 | `layouts`, `modules`, `custom_parts`, `venue_library`, `catalog_items`, personal `catalog_collections` they own alone | deleted (with their background pictures and data downloads on disk). Copies other people added from the catalog are theirs and stay. |
-| Club things they made | stay with the club: `created_by` moves to a club admin (it must name an account), `deleted_author_id` keeps the credit "Builder #…". A club collection they curate moves to a club admin. |
+| Club things they made | stay with the club: `created_by` moves to a club admin, chosen the same way (it must name an account), `deleted_author_id` keeps the credit "Builder #…". A club collection they curate moves to them too. |
 | `layout_collaborators`, `module_collaborators`, `custom_part_collaborators` | deleted: they leave share lists. Their edits to other people's layouts stay. |
 | Invites and transfers they sent, or addressed to their email | deleted |
 | `warnings` to them | deleted; warnings they sent keep `issued_by` empty |
@@ -172,7 +172,7 @@ Display names never show an address (`publicName`). On a layout's,
 module's or part's share list, addresses show only to the person
 themselves, the owners (who manage sharing) and site admins; pending
 invites (addresses only) show only to owners. Club member lists already
-showed addresses only to the club's admins and managers.
+showed addresses only to the people whose roles may invite people or manage members.
 
 ## The privacy page
 
@@ -204,7 +204,9 @@ The club then **waits** (the same `deletionGraceDays` as accounts):
 - every member gets a notice saying who deleted it, when it goes for good,
   and that its admins or a site admin can restore it;
 - **Restore** (Clubs › Being deleted, or Admin › Clubs) puts the
-  memberships back as they were.
+  memberships back as they were, with each member's roles. If none of its
+  admins is still here, one member becomes its admin, chosen as for a
+  deleted account's club (above).
 
 After the wait (or a site admin's **Erase now**, behind the typed name)
 the catalog choice is applied and the club goes with everything it owns
