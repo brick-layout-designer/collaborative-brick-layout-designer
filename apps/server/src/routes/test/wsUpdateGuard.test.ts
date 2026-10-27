@@ -30,7 +30,8 @@ import { layoutRoutes } from '../layouts.js';
 import { moduleRoutes } from '../modules.js';
 import { wsRoutes } from '../ws.js';
 import { docHub } from '../../ws/docHub.js';
-import { MAX_PENDING_BYTES, pendingBytes } from '../../ws/pending.js';
+import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, pendingBytes, pendingDsBytes } from '../../ws/pending.js';
+import { guardWork } from '../../ws/decoded.js';
 import { Peer } from './wsPeer.js';
 import { resetCopyBudgets, wsPacing } from '../../ws/pacing.js';
 
@@ -279,6 +280,53 @@ describe('WS update guard', () => {
     for (let i = 0; i < 50 && room(id).doc.getMap('meta').get('after') !== 'yes'; i++) await sleep(20);
     expect(room(id).doc.getMap('meta').get('after')).toBe('yes');
     await other.leave();
+  });
+
+  it('refuses an update leaving more deletions waiting than a room holds, and keeps the room as it was', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const id = await create();
+    const peer = await rawSocket(port, id, cookieStr);
+    await sleep(100);
+    // Deletions of clocks of a client the room has never seen: they all wait.
+    const e = encoding.createEncoder();
+    encoding.writeVarUint(e, 0);
+    encoding.writeVarUint(e, 1);
+    encoding.writeVarUint(e, 4242);
+    const n = 20_000;
+    encoding.writeVarUint(e, n);
+    for (let i = 0; i < n; i++) {
+      encoding.writeVarUint(e, i * 2);
+      encoding.writeVarUint(e, 1);
+    }
+    peer.ws.send(updateMsg(encoding.toUint8Array(e)));
+    expect(await peer.closed).toEqual([1008, 'unreadable_update']);
+    expect(pendingDsBytes(room(id).doc)).toBe(0);
+    expect(JSON.parse(audits('layout_update_refused')[0]!.payload!)).toMatchObject({ kind: 'incomplete' });
+    expect(MAX_PENDING_DS_BYTES).toBeLessThan(n);
+  });
+
+  it('with a change waiting in the room, everyone else edits as quickly as before', { timeout: 60_000 }, async () => {
+    const id = await create({ title: 'Fordyce', bbm: readFileSync(join(FIXTURES, 'fordyce-2026.bbm'), 'utf8') });
+    const peer = await rawSocket(port, id, cookieStr);
+    await sleep(100);
+    const d = new Y.Doc();
+    d.clientID = 123457;
+    d.getMap('p').set('seed', 1); // never sent: the next one waits for it
+    const sv = Y.encodeStateVector(d);
+    d.getMap('p').set('waits', 1);
+    peer.ws.send(updateMsg(Y.encodeStateAsUpdate(d, sv)));
+    for (let i = 0; i < 50 && pendingBytes(room(id).doc) === 0; i++) await sleep(20);
+    expect(pendingBytes(room(id).doc)).toBeGreaterThan(0);
+    // Another editor's 200 small edits: none worked out on a copy of the layout, none slowed down.
+    const other = new Peer(port, id, cookieStr, new Y.Doc());
+    await other.synced;
+    const copies = guardWork.docCopies;
+    for (let i = 0; i < 200; i++) other.doc.getMap('meta').set('comment', `edit ${i}`);
+    for (let i = 0; i < 100 && room(id).doc.getMap('meta').get('comment') !== 'edit 199'; i++) await sleep(20);
+    expect(room(id).doc.getMap('meta').get('comment')).toBe('edit 199');
+    expect(guardWork.docCopies - copies).toBe(0);
+    await other.leave();
+    peer.ws.close();
   });
 
   it('opens a snapshot holding more waiting than the limit with that dropped', async () => {
