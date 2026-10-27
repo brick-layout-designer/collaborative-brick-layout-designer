@@ -210,8 +210,8 @@ export function SaveToPicker({
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-muted">{label}</span>
       <span className="flex items-center gap-2">
-        {/* The chosen club's logo (a list of options can't show pictures). */}
-        {chosen && <ClubLogo name={chosen.name} logoUrl={chosen.logoUrl} size={36} />}
+        {/* The chosen club's logo, when it has one (a list of options can't show pictures). */}
+        {chosen?.logoUrl && <ClubLogo name={chosen.name} logoUrl={chosen.logoUrl} size={36} />}
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}

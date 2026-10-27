@@ -35,17 +35,17 @@ export function svgProblem(bytes: Buffer): string | null {
   const lower = text.toLowerCase();
   if (!/<svg[\s>]/.test(lower)) return 'no <svg> element';
   const banned: [RegExp, string][] = [
-    [/<!doctype/, 'a DOCTYPE'],
-    [/<!entity/, 'an entity'],
-    [/<\?xml-stylesheet/, 'a stylesheet'],
-    [/<script[\s>/]/, 'a script'],
-    [/<(foreignobject|iframe|embed|object|audio|video|animate|set)[\s>/]/, 'embedded content'],
-    [/\son[a-z]+\s*=/, 'an event handler'],
-    [/@import/, 'an @import'],
+    [/<!doctype/i, 'a DOCTYPE'],
+    [/<!entity/i, 'an entity'],
+    [/<\?xml-stylesheet/i, 'a stylesheet'],
+    [/<script[\s>/]/i, 'a script'],
+    [/<(foreignobject|iframe|embed|object|audio|video|animate|set)[\s>/]/i, 'embedded content'],
+    [/\son[a-z]+\s*=/i, 'an event handler'],
+    [/@import/i, 'an @import'],
     // CSS escapes could spell url( another way.
-    [/\\/, 'a backslash'],
+    [/\\/i, 'a backslash'],
   ];
-  for (const [re, what] of banned) if (re.test(lower)) return what;
+  for (const [re, what] of banned) if (re.test(text)) return what;
   // Links (href, xlink:href) and url()s may only point inside the picture.
   for (const m of lower.matchAll(/(?:^|[\s"'])(?:xlink:)?href\s*=\s*(["'])(.*?)\1/g)) if (!m[2]!.trim().startsWith('#')) return 'a link outside the picture';
   for (const m of lower.matchAll(/url\(\s*(["']?)(.*?)\1\s*\)/g)) if (!m[2]!.trim().startsWith('#')) return 'a url() outside the picture';

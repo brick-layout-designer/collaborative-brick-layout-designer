@@ -98,6 +98,7 @@ describe('club logos', () => {
     expect((await sharp(pic.rawPayload).metadata()).format).toBe('webp');
     const refused = [
       svg('<script>alert(1)</script>'),
+      svg('<SCRIPT>alert(1)</SCRIPT>'),
       svg('<image href="https://example.com/x.png" width="10" height="10"/>'),
       svg('<image xlink:href="file:///etc/passwd"/>'),
       svg('<rect style="fill:url(https://example.com/x)" width="1" height="1"/>'),
