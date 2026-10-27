@@ -117,6 +117,7 @@ import {
   makeSetsOfModules,
   type ModuleBatch,
 } from './mutations';
+import { brickDrag } from './brickDrag';
 import { cloneGroups, expandSet, expandToGroups, findLooseSets, findSetModules, setsAgainNotice, groupChain, selectedSet, setAnchorOrder, ungroupState } from './sets';
 import type { Group as BrickGroup } from '@cld/model';
 import { TextDialog, type TextDialogResult } from './TextDialog';
@@ -3248,6 +3249,9 @@ function Canvas({
     const st = useEditorStore.getState();
     if (st.selection.length + annoCount(st.annoSelection) === 0) return;
     if (!selectionMayMove(doc, st.selection)) return;
+    // In mid-drag: the parts go down where they are first, then turn, and
+    // the drag picks up again (brickDrag.ts).
+    brickDrag.dropForTurn();
     rotateSelection(doc, map ? bricksByLayer(map, st.selection) : new Map(), st.annoSelection, degrees, partOf);
   }
 
