@@ -67,7 +67,8 @@ export async function clubLogoRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { slug: string } }>(
     '/api/orgs/:slug/logo',
-    { config: { rateLimit: perPerson(600, '1 minute') } },
+    // The desktop shows logos too, fetched with its API token.
+    { config: { rateLimit: perPerson(600, '1 minute'), apiToken: 'layouts:read' } },
     async (req, reply) => {
       const user = requireUser(req);
       const org = await loadOrgBySlug(req.params.slug);
