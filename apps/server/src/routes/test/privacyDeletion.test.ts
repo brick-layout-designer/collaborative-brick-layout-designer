@@ -8,7 +8,7 @@ import cookie from '@fastify/cookie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, issueToken, loginAs, resetDb, schema } from '../../test/helpers.js';
 import { sqlite } from '../../db/index.js';
 import { attachUser } from '../../auth/cookie.js';
@@ -24,6 +24,8 @@ import { privacyRoutes } from '../privacy.js';
 import { invalidatePrivacyCache } from '../../privacy/settings.js';
 import { privacyTick } from '../../privacy/tick.js';
 import { settleExports } from '../../privacy/exports.js';
+import { eraseUser } from '../../privacy/accountDeletion.js';
+import { clubAccess, ensureClubRoles, setMemberRoles } from '../../access/clubPermissions.js';
 
 const DAY = 86_400_000;
 
@@ -248,6 +250,73 @@ describe('Delete my account', () => {
     const notes = await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, bob.id)).all();
     expect(notes.some((n) => n.reason.includes('now its admin'))).toBe(true);
     expect((await db.select().from(schema.erasures).all())[0]!.how).toBe('admin');
+  });
+
+  it('the last admin’s successor and stand-in go by permission, not the old fixed roles', async () => {
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: h(ann), payload: { name: 'Rail Club' } });
+    const club = (await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'rail-club')).get())!.id;
+    const cat = await loginAs(app, 'cat@example.com');
+    const dee = await loginAs(app, 'dee@example.com');
+    const t0 = Date.now();
+    // Bob is the longest-serving Member, Cat a Manager (as it starts), Dee
+    // the newest, with a role of the club's own that manages members.
+    await db.insert(schema.orgMembers).values([
+      { orgId: club, userId: bob.id, role: 'member', joinedAt: new Date(t0 + 1) },
+      { orgId: club, userId: cat.id, role: 'manager', joinedAt: new Date(t0 + 2) },
+      { orgId: club, userId: dee.id, role: 'member', joinedAt: new Date(t0 + 3) },
+    ]);
+    await ensureClubRoles(club);
+    await db.insert(schema.clubRoles).values({ id: 'people-crew', orgId: club, key: null, name: 'People crew', permissions: JSON.stringify(['view_items', 'manage_members']), position: 9, createdAt: new Date() });
+    await setMemberRoles(club, dee.id, ['people-crew']);
+    // Ann made a layout for the club.
+    const yard = (await app.inject({ method: 'POST', url: '/api/layouts', headers: h(ann), payload: { title: 'Yard', orgSlug: 'rail-club' } })).json().id as string;
+
+    await eraseUser(ann.id, 'admin', null);
+    // Dee, who may manage members and roles, is the new admin (keeping her own role).
+    expect((await clubAccess(dee.id, club))!.isAdmin).toBe(true);
+    expect((await clubAccess(dee.id, club))!.roleIds).toContain('people-crew');
+    expect((await clubAccess(cat.id, club))!.isAdmin).toBe(false);
+    // And she stands in as the yard's maker, credited "Builder #…".
+    const kept = await db.select().from(schema.layouts).where(eq(schema.layouts.id, yard)).get();
+    expect(kept!.createdBy).toBe(dee.id);
+    expect(kept!.deletedAuthorId).toBe(ann.id);
+  });
+
+  it('with nobody who may manage or invite, the longest-serving member takes over, as before', async () => {
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: h(ann), payload: { name: 'Quiet Club' } });
+    const club = (await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'quiet-club')).get())!.id;
+    const cat = await loginAs(app, 'cat@example.com');
+    const t0 = Date.now();
+    await db.insert(schema.orgMembers).values([
+      { orgId: club, userId: cat.id, role: 'member', joinedAt: new Date(t0 + 1) },
+      { orgId: club, userId: bob.id, role: 'member', joinedAt: new Date(t0 + 2) },
+    ]);
+    await ensureClubRoles(club);
+    await setMemberRoles(club, bob.id, [`${club}:viewer`]);
+    const yard = (await app.inject({ method: 'POST', url: '/api/layouts', headers: h(ann), payload: { title: 'Yard', orgSlug: 'quiet-club' } })).json().id as string;
+
+    await eraseUser(ann.id, 'admin', null);
+    expect((await clubAccess(cat.id, club))!.isAdmin).toBe(true);
+    expect((await clubAccess(bob.id, club))!.isAdmin).toBe(false);
+    expect((await db.select().from(schema.layouts).where(eq(schema.layouts.id, yard)).get())!.createdBy).toBe(cat.id);
+  });
+
+  it('a member’s club things get the club’s admin as stand-in, not a longer-serving member', async () => {
+    await app.inject({ method: 'POST', url: '/api/orgs', headers: h(bob), payload: { name: 'Bob Club' } });
+    const club = (await db.select().from(schema.orgs).where(eq(schema.orgs.slug, 'bob-club')).get())!.id;
+    const cat = await loginAs(app, 'cat@example.com');
+    const t0 = Date.now();
+    // Cat joined before Ann; Bob (the admin) is the one to stand in.
+    await db.insert(schema.orgMembers).values([
+      { orgId: club, userId: cat.id, role: 'member', joinedAt: new Date(t0 - 10_000) },
+      { orgId: club, userId: ann.id, role: 'member', joinedAt: new Date(t0 + 1) },
+    ]);
+    await db.update(schema.orgMembers).set({ joinedAt: new Date(t0 + 5) }).where(and(eq(schema.orgMembers.orgId, club), eq(schema.orgMembers.userId, bob.id)));
+    await ensureClubRoles(club);
+    const yard = (await app.inject({ method: 'POST', url: '/api/layouts', headers: h(ann), payload: { title: 'Yard', orgSlug: 'bob-club' } })).json().id as string;
+
+    await eraseUser(ann.id, 'admin', null);
+    expect((await db.select().from(schema.layouts).where(eq(schema.layouts.id, yard)).get())!.createdBy).toBe(bob.id);
   });
 
   it('only the person can delete their own account; strangers and members can’t erase others', async () => {

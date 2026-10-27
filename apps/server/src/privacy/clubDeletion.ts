@@ -25,6 +25,7 @@ import type { Org } from '../db/schema.js';
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { docHub } from '../ws/docHub.js';
 import { publish } from '../events/audience.js';
+import { clubRoleList, successorRank } from '../access/clubPermissions.js';
 import { postPersonalNote } from '../routes/warnings.js';
 import { publicName } from '../utils/publicName.js';
 import { backgroundImagePath } from './exportFiles.js';
@@ -187,9 +188,16 @@ export async function restoreClub(org: Org, actor: { id: string; displayName: st
   const back = members.filter((m) => alive.has(m.userId));
   // The club's roles stay while it waits; any that went meanwhile are skipped.
   const roleIds = new Set((await db.select({ id: s.clubRoles.id }).from(s.clubRoles).where(eq(s.clubRoles.orgId, org.id)).all()).map((r) => r.id));
-  // A club always has an admin: if none of its admins is still here, its longest member becomes one.
+  // A club always has an admin: if none of its admins is still here, one
+  // becomes it, chosen by permission as clubSuccessor does (whoever may
+  // manage members and roles, then invite, then the longest member).
   if (back.length && !back.some((m) => m.role === 'admin')) {
-    const first = [...back].sort((a, b) => a.joinedAt - b.joinedAt)[0]!;
+    const roles = await clubRoleList(org.id);
+    const rank = (m: (typeof back)[number]) => {
+      const held = m.roleIds?.length ? roles.filter((r) => m.roleIds!.includes(r.id)) : roles.filter((r) => r.key === m.role);
+      return successorRank({ isAdmin: held.some((r) => r.key === 'admin'), permissions: new Set(held.flatMap((r) => r.permissions)) });
+    };
+    const first = [...back].sort((a, b) => rank(a) - rank(b) || a.joinedAt - b.joinedAt)[0]!;
     first.role = 'admin';
     if (first.roleIds) first.roleIds = [...first.roleIds, `${org.id}:admin`];
   }

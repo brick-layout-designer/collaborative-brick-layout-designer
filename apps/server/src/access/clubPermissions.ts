@@ -16,7 +16,7 @@
 // that org_members.role names.
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import type { ClubRole } from './clubRoles.js';
 
@@ -250,6 +250,36 @@ export async function clubMembersAccess(orgId: string): Promise<Map<string, Club
     out.set(m.userId, accessFrom(orgId, m.role, defs, org.membersCanCreate));
   }
   return out;
+}
+
+/**
+ * The member to turn to when someone leaves for good (their account is
+ * deleted): the club's next admin when they were its last, and the
+ * stand-in author of club things they made. By permission, not by the
+ * role's name: an admin first, then whoever may manage members and roles,
+ * then whoever may invite people (as a Manager starts), then anyone; the
+ * longest-serving member within each. Null when nobody else is in it.
+ */
+export async function clubSuccessor(orgId: string, excluding: string): Promise<string | null> {
+  const members = await db
+    .select({ userId: schema.orgMembers.userId })
+    .from(schema.orgMembers)
+    .where(and(eq(schema.orgMembers.orgId, orgId), ne(schema.orgMembers.userId, excluding)))
+    .orderBy(asc(schema.orgMembers.joinedAt), asc(schema.orgMembers.userId));
+  if (members.length === 0) return null;
+  const access = await clubMembersAccess(orgId);
+  const rank = (id: string) => successorRank(access.get(id));
+  // A stable sort keeps the longest-serving first within each rank.
+  return [...members].sort((x, y) => rank(x.userId) - rank(y.userId))[0]!.userId;
+}
+
+/** clubSuccessor's order: lower comes first (an admin 0, managing members 1, inviting 2, anyone 3). */
+export function successorRank(a: Pick<ClubAccess, 'isAdmin' | 'permissions'> | undefined): number {
+  if (!a) return 4;
+  if (a.isAdmin) return 0;
+  if (a.permissions.has('manage_members')) return 1;
+  if (a.permissions.has('invite')) return 2;
+  return 3;
 }
 
 /** Who `userId` is in the club, or null when they aren't in it. */
