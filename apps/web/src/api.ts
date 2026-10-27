@@ -891,9 +891,15 @@ export const api = {
     /** List it in the Parts panel, or (notListed) keep it for the sets that use it. */
     setListing: (id: string, notListed: boolean) =>
       patch<{ id: string; notListed: boolean }>(`/api/custom-parts/${encodeURIComponent(id)}/listing`, { notListed }),
-    /** Copy into your own parts (no `orgSlug`) or a club's. */
+    /** What copying a set to the club `orgSlug` does with your custom parts in it (they're copied too). */
+    copyPlan: (id: string, orgSlug: string) =>
+      get<{ parts: SetMovePlan }>(`/api/custom-parts/${encodeURIComponent(id)}/copy-plan?orgSlug=${encodeURIComponent(orgSlug)}`),
+    /** Copy into your own parts (no `orgSlug`) or a club's; a set into a club brings copies of your custom parts in it (`parts`). */
     copy: (id: string, orgSlug?: string) =>
-      post<{ id: string }>(`/api/custom-parts/${encodeURIComponent(id)}/copy`, orgSlug ? { orgSlug } : {}),
+      post<{ id: string; parts?: { copied: string[]; inClub: string[]; notYours: string[] } }>(
+        `/api/custom-parts/${encodeURIComponent(id)}/copy`,
+        orgSlug ? { orgSlug } : {},
+      ),
     spriteUrl: (id: string) => `/api/custom-parts/${id}/sprite`,
     xmlUrl: (id: string) => `/api/custom-parts/${id}/xml`,
     /** Who has it, and (for its owners) the invites still waiting. A set also lists its own custom parts, which come along when it's shared. */
@@ -2058,11 +2064,11 @@ export interface SetPartSummary {
   displayName: string;
 }
 
-/** What moving a set to a club does with the custom parts in it (server access/setMoves.ts). */
+/** What moving (or copying) a set to a club does with the custom parts in it (server access/setMoves.ts). */
 export interface SetMovePlan {
-  /** Move with it. */
+  /** Move with it (never when copying). */
   move: SetPartSummary[];
-  /** Stay where they are, as another of your sets uses them; the club gets its own copy. */
+  /** The club gets its own copy: when moving, those another of your sets uses (they stay yours); when copying, all of yours. */
   copy: SetPartSummary[];
   /** The club already has a part with that number; the set uses the club's. */
   inClub: SetPartSummary[];

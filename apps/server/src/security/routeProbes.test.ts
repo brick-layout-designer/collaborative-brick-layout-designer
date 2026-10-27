@@ -299,6 +299,7 @@ const ACCESS: Record<string, [Access, Scope, Flags?]> = {
   'POST /api/venues/:id/give-back': ['owner', 'venues:write', { demo: true }],
   'POST /api/custom-parts/:id/move': ['owner', 'parts:write', { demo: true }],
   'GET /api/custom-parts/:id/move-plan': ['owner', null],
+  'GET /api/custom-parts/:id/copy-plan': ['shared', null],
   'POST /api/custom-parts/:id/copy': ['shared', 'parts:write', { demo: true }],
   'GET /api/me/privacy/exports': ['user', null],
   'POST /api/me/privacy/exports': ['user', null, { demo: true }],

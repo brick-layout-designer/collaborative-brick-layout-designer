@@ -192,9 +192,9 @@ export const HELP_TEXTS = {
     more: 'The people you invite also get the custom parts of yours that the set uses, so it places properly for them, to look at and place but not change. Taking the set back takes those parts back too, unless you shared them on their own.',
   },
   'set.moving': {
-    title: 'Moving a set to a club',
-    short: 'Your own custom parts in a set move to the club with it.',
-    more: 'Everyone in the club can then place the set with all its parts. A part that another of your sets also uses stays yours, so that set keeps working, and the club gets its own copy of it. If the club already has a part with the same number, the set uses the club’s.',
+    title: 'Moving or copying a set to a club',
+    short: 'Your own custom parts in a set go to the club with it.',
+    more: 'Everyone in the club can then place the set with all its parts. Moving takes your parts along, except one that another of your sets uses, which stays yours while the club gets its own copy; copying gives the club its own copy of each, and yours stay as they are. Either way, a part number the club already has is left to the club’s part.',
   },
   'set.updates': {
     title: 'Set updates',

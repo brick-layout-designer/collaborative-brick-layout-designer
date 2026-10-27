@@ -265,11 +265,12 @@ export function MoveCopyDialog({
   const [dest, setDest] = useState(() => (item.ownerOrgId ? '' : (clubsICanAddTo(orgs, addKind)[0]?.slug ?? '')));
   const [error, setError] = useState<string | null>(null);
   const word = KIND_WORD[kind];
-  const setMove = kind === 'part' && !!item.isSet && mode === 'move' && !!dest;
+  // A set going to a club: the dialog lists what happens to your custom parts in it.
+  const setToClub = kind === 'part' && !!item.isSet && !!dest;
   const plan = useQuery({
-    queryKey: ['set-move-plan', item.id, dest],
-    queryFn: () => api.customParts.movePlan(item.id, dest),
-    enabled: setMove,
+    queryKey: ['set-move-plan', item.id, dest, mode],
+    queryFn: () => (mode === 'move' ? api.customParts.movePlan(item.id, dest) : api.customParts.copyPlan(item.id, dest)),
+    enabled: setToClub,
   });
 
   const run = useMutation({
@@ -291,10 +292,12 @@ export function MoveCopyDialog({
       const key = kind === 'layout' ? 'layouts' : kind === 'module' ? 'modules' : kind === 'part' ? 'custom-parts' : 'venues';
       await qc.invalidateQueries({ queryKey: [key] });
       if (kind === 'part') await qc.invalidateQueries({ queryKey: ['parts-catalog'] });
-      const moved = res && typeof res === 'object' && 'parts' in res ? (res as { parts?: { moved?: string[] } }).parts?.moved?.length ?? 0 : 0;
-      if (moved > 0) {
+      const along = res && typeof res === 'object' && 'parts' in res ? (res as { parts?: { moved?: string[]; copied?: string[] } }).parts : undefined;
+      const n = (mode === 'move' ? along?.moved : along?.copied)?.length ?? 0;
+      if (n > 0) {
         const club = orgs.find((o) => o.slug === dest)?.name ?? 'the club';
-        showToast(`Moved “${item.title}” and ${moved === 1 ? '1 of your parts' : `${moved} of your parts`} in it to ${club}.`);
+        const yours = n === 1 ? '1 of your parts' : `${n} of your parts`;
+        showToast(mode === 'move' ? `Moved “${item.title}” and ${yours} in it to ${club}.` : `Copied “${item.title}” and ${yours} in it to ${club}.`);
       }
       onClose();
     },
@@ -372,7 +375,7 @@ export function MoveCopyDialog({
           orgs={orgs}
           exclude={mode === 'move' ? ['', ...(currentSlug ? [currentSlug] : [])] : []}
         />
-        {setMove && <SetMoveParts plan={plan.data?.parts} loading={plan.isLoading} failed={plan.isError} />}
+        {setToClub && <SetMoveParts mode={mode} plan={plan.data?.parts} loading={plan.isLoading} failed={plan.isError} />}
         {item.ownerOrgId && (
           <p className="text-xs text-muted">
             A club’s {word}s stay with the club. Its author can take one back from the ⋯ menu; anyone can make a copy.
@@ -399,21 +402,37 @@ export function MoveCopyDialog({
 
 const partName = (p: SetPartSummary) => (p.displayName && p.displayName !== p.partNumber ? `${p.displayName} (${p.partNumber})` : p.partNumber);
 
-/** What moving a set does with the custom parts in it: which come along, which stay (the club gets a copy), which the club has. */
-function SetMoveParts({ plan, loading, failed }: { plan: SetMovePlan | undefined; loading: boolean; failed: boolean }) {
+/**
+ * What moving or copying a set to a club does with the custom parts in it:
+ * moving, which come along, which stay (the club gets a copy), which the club
+ * has; copying, which the club gets its own copy of, and which it has.
+ */
+function SetMoveParts({ mode, plan, loading, failed }: { mode: 'copy' | 'move'; plan: SetMovePlan | undefined; loading: boolean; failed: boolean }) {
+  const copying = mode === 'copy';
   if (loading) return <p className="text-xs text-muted">Checking the parts in this set…</p>;
-  if (failed || !plan) return <p className="text-xs text-muted">Couldn’t check the parts in this set. Your custom parts in it still move with it.</p>;
-  const groups: [string, SetPartSummary[]][] = [
-    [plan.move.length === 1 ? 'This custom part of yours moves with the set:' : `These ${plan.move.length} custom parts of yours move with the set:`, plan.move],
-    ['These stay yours, because another of your sets uses them. The club gets its own copy:', plan.copy],
-    ['The club already has parts with these numbers, so the set uses the club’s:', plan.inClub],
-    ['These aren’t yours to move, so they stay where they are:', plan.notYours],
-  ];
+  if (failed || !plan)
+    return <p className="text-xs text-muted">Couldn’t check the parts in this set. Your custom parts in it still {copying ? 'come with the copy' : 'move with it'}.</p>;
+  const groups: [string, SetPartSummary[]][] = copying
+    ? [
+        [plan.copy.length === 1 ? 'The club gets its own copy of this custom part of yours:' : `The club gets its own copy of these ${plan.copy.length} custom parts of yours:`, plan.copy],
+        ['The club already has parts with these numbers, so its copy of the set uses the club’s:', plan.inClub],
+        ['These aren’t yours, so they aren’t copied:', plan.notYours],
+      ]
+    : [
+        [plan.move.length === 1 ? 'This custom part of yours moves with the set:' : `These ${plan.move.length} custom parts of yours move with the set:`, plan.move],
+        ['These stay yours, because another of your sets uses them. The club gets its own copy:', plan.copy],
+        ['The club already has parts with these numbers, so the set uses the club’s:', plan.inClub],
+        ['These aren’t yours to move, so they stay where they are:', plan.notYours],
+      ];
   const shown = groups.filter(([, list]) => list.length > 0);
   return (
     <div className="space-y-2 rounded-lg border border-line bg-soft/40 p-3 text-sm" data-testid="set-move-parts">
       <p className="flex items-start gap-1">
-        <span>{shown.length === 0 ? 'This set has no custom parts of yours in it, so only the set moves.' : 'Your custom parts in this set:'}</span>
+        <span>
+          {shown.length === 0
+            ? `This set has no custom parts of yours in it, so only the set ${copying ? 'is copied' : 'moves'}.`
+            : 'Your custom parts in this set:'}
+        </span>
         <HelpButton helpKey="set.moving" />
       </p>
       {shown.map(([label, list]) => (

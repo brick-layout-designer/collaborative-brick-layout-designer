@@ -5,6 +5,9 @@
 //   the part that moves with it, and the one that stays his (the depot uses
 //   it) while the club gets a copy → Move → Ada, in the club, sees the set
 //   and both parts it needs, live → Sam's depot still has its part.
+// Copying a set to a club: the dialog lists the part the club gets its own
+//   copy of, and the one it already has → Copy → Ada sees the set's copy and
+//   the part's copy, live → Sam's set and parts are still his.
 
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { signIn } from '../../helpers';
@@ -91,6 +94,64 @@ test('moving a set to a club brings the custom parts in it', async ({ browser })
     expect(sams).toEqual(expect.arrayContaining([DEPOT, LAMP]));
     expect(sams).not.toContain(YARD);
     expect(sams).not.toContain(SHED);
+  } finally {
+    await ada.ctx.close();
+    await sam.ctx.close();
+  }
+});
+
+test('copying a set to a club brings copies of the custom parts in it', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const ada = await browserFor(browser, `j-setcopy-ada-${ts}@example.com`, 'Ada');
+  const sam = await browserFor(browser, `j-setcopy-sam-${ts}@example.com`, 'Sam');
+  const shed = `CSHED${ts}`;
+  const lamp = `CLAMP${ts}`;
+  const yard = `CYard${ts}`;
+  try {
+    const CLUB = `Copy Club ${ts}`;
+    const club = (await (await ada.page.request.post('/api/orgs', { data: { name: CLUB } })).json()) as { id: string; slug: string };
+    expect((await ada.page.request.patch(`/api/orgs/${club.slug}`, { data: { joinPolicy: 'open', listed: true } })).ok()).toBe(true);
+    expect((await sam.page.request.post(`/api/orgs/${club.slug}/join`, { data: {} })).ok()).toBe(true);
+    // The club already has a lamp with that number.
+    const clubLamp = await ada.page.request.post('/api/custom-parts', {
+      data: { partNumber: lamp, displayName: 'Club lamp', xmlBase64: XML, spriteBase64: PNG, spriteMime: 'image/png', orgSlug: club.slug },
+    });
+    expect(clubLamp.status()).toBe(201);
+    for (const [partNumber, displayName] of [
+      [shed, 'Engine shed'],
+      [lamp, 'Yard lamp'],
+    ]) {
+      const r = await sam.page.request.post('/api/custom-parts', { data: { partNumber, displayName, xmlBase64: XML, spriteBase64: PNG, spriteMime: 'image/png' } });
+      expect(r.status()).toBe(201);
+    }
+    const made = await sam.page.request.post('/api/custom-parts', { data: { partNumber: yard, displayName: yard, xmlBase64: setXml(yard, [shed, lamp]) } });
+    expect(made.status()).toBe(201);
+
+    await ada.page.goto('/#parts');
+    await expect(ada.page.locator('html')).toHaveAttribute('data-live', 'open', { timeout: 15000 });
+    await sam.page.goto('/#parts');
+
+    // ── Copy, to the club: the dialog lists what happens to the parts in it. ──
+    await sam.page.getByRole('button', { name: `More for ${yard}` }).click();
+    await sam.page.getByRole('menuitem', { name: 'Move or copy…' }).click();
+    await expect(sam.page.getByLabel('Copy to')).toHaveValue(club.slug);
+    const box = sam.page.getByTestId('set-move-parts');
+    await expect(box).toContainText('The club gets its own copy of this custom part of yours:');
+    await expect(box).toContainText(`Engine shed (${shed})`);
+    await expect(box).toContainText('The club already has parts with these numbers, so its copy of the set uses the club’s:');
+    await expect(box).toContainText(`Yard lamp (${lamp})`);
+    await sam.page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect(sam.page.getByText(`Copied “${yard}” and 1 of your parts in it to ${CLUB}.`)).toBeVisible();
+
+    // ── Ada, in the club, has the set's copy and the shed's, without a reload. ──
+    await expect(ada.page.getByRole('button', { name: `More for ${yard}` })).toBeVisible({ timeout: 15000 });
+    await expect(ada.page.getByRole('button', { name: `More for ${shed}` })).toBeVisible({ timeout: 15000 });
+    const adas = ((await (await ada.page.request.get('/api/custom-parts')).json()) as { parts: Listed[] }).parts;
+    for (const n of [yard, shed, lamp]) expect(adas.filter((p) => p.partNumber === n && p.ownerOrgId === club.id)).toHaveLength(1);
+
+    // ── Sam's own set and parts are still his. ──
+    const sams = ((await (await sam.page.request.get('/api/custom-parts?owner=me')).json()) as { parts: Listed[] }).parts.map((p) => p.partNumber);
+    expect(sams).toEqual(expect.arrayContaining([yard, shed, lamp]));
   } finally {
     await ada.ctx.close();
     await sam.ctx.close();

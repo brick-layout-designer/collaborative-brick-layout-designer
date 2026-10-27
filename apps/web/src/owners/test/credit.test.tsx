@@ -11,6 +11,7 @@ import { api, type Credit } from '../../api';
 import { creditText, moveToClubWording } from '../owners';
 import { CreditLine, MoveCopyDialog, ReturnMenuItems } from '../OwnerControls';
 import { autoConfirm } from '../../test/confirmHost';
+import { ToastHost } from '../../ui/ConfirmDialog';
 
 const base: Credit = { by: null, authorName: null, club: null, basedOn: null, canTakeBack: false, canGiveBack: false };
 
@@ -114,9 +115,8 @@ describe('moving your own thing into a club', () => {
     });
     const move = vi.spyOn(api.customParts, 'move').mockResolvedValue({ ok: true, id: 'p1' });
     autoConfirm(true);
+    vi.spyOn(api.customParts, 'copyPlan').mockResolvedValue({ parts: { move: [], copy: [], inClub: [], notYours: [] } });
     wrap(<MoveCopyDialog kind="part" item={{ id: 'p1', title: 'Yard', ownerOrgId: null, isSet: true }} canMove orgs={ORGS} onClose={() => {}} />);
-    // Copying lists nothing.
-    expect(screen.queryByTestId('set-move-parts')).toBeNull();
     fireEvent.click(screen.getByLabelText(/Move to a club/));
     const box = await screen.findByTestId('set-move-parts');
     await waitFor(() => expect(box.textContent).toContain('These 2 custom parts of yours move with the set:'));
@@ -128,6 +128,34 @@ describe('moving your own thing into a club', () => {
     expect(screen.getByRole('button', { name: /help/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Move' }));
     await waitFor(() => expect(move).toHaveBeenCalledWith('p1', 'arklug'));
+  });
+
+  it('copying a set to a club lists which of your parts the club gets a copy of, and says so after', async () => {
+    const sp = (id: string, partNumber: string, displayName = partNumber) => ({ id, partNumber, displayName });
+    const planned = vi.spyOn(api.customParts, 'copyPlan').mockResolvedValue({
+      parts: { move: [], copy: [sp('a', 'TOWER', 'Signal tower'), sp('b', 'SHED')], inClub: [sp('d', 'GATE')], notYours: [sp('e', 'BARN')] },
+    });
+    const movePlan = vi.spyOn(api.customParts, 'movePlan');
+    const copy = vi.spyOn(api.customParts, 'copy').mockResolvedValue({ id: 'p2', parts: { copied: ['SHED', 'TOWER'], inClub: ['GATE'], notYours: ['BARN'] } });
+    const asked = autoConfirm(false);
+    wrap(
+      <>
+        <MoveCopyDialog kind="part" item={{ id: 'p1', title: 'Yard', ownerOrgId: null, isSet: true }} canMove orgs={ORGS} onClose={() => {}} />
+        <ToastHost />
+      </>,
+    );
+    const box = await screen.findByTestId('set-move-parts');
+    await waitFor(() => expect(box.textContent).toContain('The club gets its own copy of these 2 custom parts of yours:'));
+    expect(planned).toHaveBeenCalledWith('p1', 'arklug');
+    expect(movePlan).not.toHaveBeenCalled();
+    expect(box.textContent).toContain('Signal tower (TOWER)');
+    expect(box.textContent).toContain('so its copy of the set uses the club’s:GATE');
+    expect(box.textContent).toContain('These aren’t yours, so they aren’t copied:BARN');
+    expect(box.textContent).not.toContain('move');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('p1', 'arklug'));
+    expect(asked.titles).toEqual([]);
+    await waitFor(() => expect(document.body.textContent).toContain('Copied “Yard” and 2 of your parts in it to ArkLUG.'));
   });
 
   it('copying asks nothing', async () => {

@@ -2,7 +2,9 @@
 // the move plan says which come along, the move takes them (and the parts of
 // a set inside it), a part another of your sets still uses stays yours while
 // the club gets a copy, a number the club already has is left to the club's
-// part, and pending invites go as for any move.
+// part, and pending invites go as for any move. Copying a set to a club
+// brings copies of your custom parts in it (planSetCopy), with the same
+// plan in the dialog (copy-plan).
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -180,5 +182,85 @@ describe('moving a set to a club brings its custom parts', () => {
     expect((await call(bob, 'GET', `/api/custom-parts/${yard}/move-plan?orgSlug=rail-club`)).statusCode).toBe(404);
     expect((await call(alice, 'GET', `/api/custom-parts/${yard}/move-plan`)).statusCode).toBe(400);
     expect((await call(null, 'GET', `/api/custom-parts/${yard}/move-plan?orgSlug=rail-club`)).statusCode).toBe(401);
+  });
+  // ---- copying a set to a club ------------------------------------------------
+  const copyPlan = async (who: Who, id: string, slug = 'rail-club') =>
+    (await call(who, 'GET', `/api/custom-parts/${id}/copy-plan?orgSlug=${slug}`)).json() as {
+      parts: Record<'move' | 'copy' | 'inClub' | 'notYours', { partNumber: string }[]>;
+    };
+  const clubPart = (n: string) =>
+    db.select().from(schema.customParts).where(and(eq(schema.customParts.ownerOrgId, clubId), eq(schema.customParts.partNumber, n))).get();
+
+  it('copying a set to a club brings copies of your custom parts in it, a set inside it too', async () => {
+    const tower = await part(alice, 'TOWER');
+    const lamp = await part(alice, 'LAMP');
+    const inner = await set(alice, 'Lights', ['LAMP']);
+    await part(bob, 'BARN'); // someone else's part with a number the set names: not alice's
+    const yard = await set(alice, 'Yard', ['3001.1', 'tower', 'BARN', 'Lights']);
+    // Another of her sets uses the tower: it's copied all the same.
+    await set(alice, 'Depot', ['TOWER']);
+
+    const p = (await copyPlan(alice, yard)).parts;
+    expect(p.move).toEqual([]);
+    expect(numbers(p.copy)).toEqual(['LAMP', 'Lights', 'TOWER']);
+    // A part that isn't a set brings nothing.
+    expect((await copyPlan(alice, tower)).parts).toEqual({ move: [], copy: [], inClub: [], notYours: [] });
+
+    const res = await call(alice, 'POST', `/api/custom-parts/${yard}/copy`, { orgSlug: 'rail-club' });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as { id: string; parts: { copied: string[]; inClub: string[]; notYours: string[] } };
+    expect(body.parts).toEqual({ copied: ['LAMP', 'Lights', 'TOWER'], inClub: [], notYours: [] });
+    // Hers stay hers; the club has its own, credited to her and pointing at hers.
+    for (const id of [yard, tower, lamp, inner]) expect(await ownerOf(id)).toBe('alice');
+    expect(await ownerOf(body.id)).toBe('club');
+    for (const [n, from] of [['TOWER', tower], ['LAMP', lamp], ['Lights', inner]] as const) {
+      expect(await clubPart(n)).toMatchObject({ createdBy: alice.id, copiedFromId: from, ownerUserId: null });
+    }
+    expect((await clubPart('TOWER'))!.spriteMime).toBe('image/gif');
+    // Bob, in the club, has the set's copy and every part it needs.
+    const bobs = await all(bob);
+    for (const n of ['Yard', 'TOWER', 'LAMP', 'Lights']) expect(bobs.some((x) => x.partNumber === n && x.ownerOrgId === clubId)).toBe(true);
+    // Each copy is audit-logged with the set it came with.
+    const audit = await db
+      .select()
+      .from(schema.auditEvents)
+      .where(and(eq(schema.auditEvents.resourceId, (await clubPart('TOWER'))!.id), eq(schema.auditEvents.eventType, 'create')))
+      .get();
+    expect(JSON.parse(String(audit?.payload))).toMatchObject({ copiedFrom: tower, owner: { kind: 'org', id: clubId }, withSet: body.id });
+  });
+
+  it('copying: a number the club already has is left to the club’s part', async () => {
+    const clubTower = await part(alice, 'TOWER', 'rail-club');
+    await part(alice, 'TOWER');
+    await part(alice, 'SHED');
+    const yard = await set(alice, 'Yard', ['TOWER', 'SHED']);
+    const p = (await copyPlan(alice, yard)).parts;
+    expect(numbers(p.inClub)).toEqual(['TOWER']);
+    expect(numbers(p.copy)).toEqual(['SHED']);
+    const res = await call(alice, 'POST', `/api/custom-parts/${yard}/copy`, { orgSlug: 'rail-club' });
+    expect((res.json() as { parts: unknown }).parts).toEqual({ copied: ['SHED'], inClub: ['TOWER'], notYours: [] });
+    const towers = await db.select().from(schema.customParts).where(and(eq(schema.customParts.ownerOrgId, clubId), eq(schema.customParts.partNumber, 'TOWER'))).all();
+    expect(towers.map((t) => t.id)).toEqual([clubTower]);
+  });
+
+  it('copying someone else’s set: their parts aren’t yours, so they aren’t copied', async () => {
+    const carol = await loginAs(app, 'carol@example.com');
+    await part(alice, 'TOWER');
+    const yard = await set(alice, 'Yard', ['TOWER']);
+    const inv = (await call(alice, 'POST', `/api/custom-parts/${yard}/invites`, { email: 'carol@example.com', role: 'viewer' })).json() as { token: string };
+    expect((await call(carol, 'POST', `/api/part-invites/${inv.token}`)).statusCode).toBe(200);
+    expect((await call(carol, 'POST', '/api/orgs', { name: 'Carol Club' })).statusCode).toBe(201);
+    expect(numbers((await copyPlan(carol, yard, 'carol-club')).parts.notYours)).toEqual(['TOWER']);
+    const res = await call(carol, 'POST', `/api/custom-parts/${yard}/copy`, { orgSlug: 'carol-club' });
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { parts: unknown }).parts).toEqual({ copied: [], inClub: [], notYours: ['TOWER'] });
+  });
+
+  it('the copy plan is for those who may see the set and add parts to the club', async () => {
+    await part(alice, 'TOWER');
+    const yard = await set(alice, 'Yard', ['TOWER']);
+    expect((await call(bob, 'GET', `/api/custom-parts/${yard}/copy-plan?orgSlug=rail-club`)).statusCode).toBe(404);
+    expect((await call(alice, 'GET', `/api/custom-parts/${yard}/copy-plan`)).statusCode).toBe(400);
+    expect((await call(null, 'GET', `/api/custom-parts/${yard}/copy-plan?orgSlug=rail-club`)).statusCode).toBe(401);
   });
 });
