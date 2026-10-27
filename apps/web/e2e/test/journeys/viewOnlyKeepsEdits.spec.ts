@@ -81,7 +81,8 @@ test('edits the server didn’t take after your role went down to view only are 
 
   // Saved as his own layout: both parts.
   await card.getByRole('button', { name: 'Save my copy as a new layout' }).click();
-  await expect(ben).toHaveURL(/\/editor\/[0-9a-f-]{36}$/, { timeout: 15000 });
+  // The new layout's page, not the one already open (whose address matches too).
+  await expect(ben).toHaveURL(new RegExp(`/editor/(?!${layout.id}$)[0-9a-f-]{36}$`), { timeout: 15000 });
   const copyId = ben.url().split('/').at(-1)!;
   expect(copyId).not.toBe(layout.id);
   await expect.poll(() => onServer(ben, copyId), { timeout: 15000 }).toBe(2);
