@@ -23,6 +23,7 @@ import { clubDeletionRoutes } from '../clubDeletion.js';
 import { invalidatePrivacyCache } from '../../privacy/settings.js';
 import { settleExports } from '../../privacy/exports.js';
 import { privacyTick } from '../../privacy/tick.js';
+import { collectOrgData } from '../../privacy/collect.js';
 
 const DAY = 86_400_000;
 
@@ -177,6 +178,50 @@ describe('deleting a club', () => {
     expect(await db.select().from(schema.warnings).where(eq(schema.warnings.subjectUserId, ada.id)).all()).toHaveLength(0);
     // And it won't be deleted when the time would have come.
     expect((await privacyTick(new Date(Date.now() + 20 * DAY))).clubsErased).toBe(0);
+  });
+
+  it('restoring brings back its custom roles, their permissions and who holds them, exactly as exported', async () => {
+    const crew = await call(ada, 'POST', '/api/orgs/train-club/roles', { name: 'Track crew', permissions: ['edit_layouts', 'add_parts'] });
+    expect(crew.statusCode, crew.body).toBe(201);
+    const crewId = crew.json().id as string;
+    // Ben holds Viewer plus Track crew; Ada keeps Admin and also holds Track crew.
+    expect((await call(ada, 'PATCH', `/api/orgs/train-club/members/${ben.id}`, { roleIds: [`${orgId}:viewer`, crewId] })).statusCode).toBe(200);
+    expect((await call(ada, 'PATCH', `/api/orgs/train-club/members/${ada.id}`, { roleIds: [`${orgId}:admin`, crewId] })).statusCode).toBe(200);
+
+    const snapshot = async () => {
+      const sections = await collectOrgData(orgId);
+      const pick = (name: string) => {
+        const rows = sections.find((x) => x.name === name)!.rows.map((r) => JSON.stringify(r));
+        return rows.sort();
+      };
+      return { members: pick('members'), roles: pick('roles'), memberRoles: pick('member-roles') };
+    };
+    const before = await snapshot();
+    expect(before.roles.some((r) => r.includes('Track crew'))).toBe(true);
+    expect(before.memberRoles).toHaveLength(4);
+    const benBefore = (await call(ben, 'GET', '/api/orgs')).json().orgs[0].permissions;
+    expect(benBefore).toEqual(['view_items', 'edit_layouts', 'add_parts']);
+
+    expect((await call(ada, 'DELETE', '/api/orgs/train-club', { confirm: 'Train Club', catalog: 'takedown' })).statusCode).toBe(200);
+    expect((await call(ada, 'POST', '/api/orgs/train-club/restore')).statusCode).toBe(200);
+
+    expect(await snapshot()).toEqual(before);
+    expect((await call(ben, 'GET', '/api/orgs')).json().orgs[0].permissions).toEqual(benBefore);
+    const roster = (await call(ada, 'GET', '/api/orgs/train-club/members')).json();
+    const benRow = roster.members.find((m: { userId: string }) => m.userId === ben.id);
+    expect([...benRow.roleIds].sort()).toEqual([`${orgId}:viewer`, crewId].sort());
+    expect(roster.roles.find((r: { id: string }) => r.id === crewId)).toMatchObject({ name: 'Track crew', memberCount: 2 });
+  });
+
+  it('a deletion asked for before roles were kept restores each member with their built-in role', async () => {
+    expect((await call(ada, 'DELETE', '/api/orgs/train-club', { confirm: 'Train Club', catalog: 'takedown' })).statusCode).toBe(200);
+    const org = (await db.select().from(schema.orgs).where(eq(schema.orgs.id, orgId)).get())!;
+    const plan = JSON.parse(org.deletionPlan!) as { members: { roleIds?: string[] }[] };
+    for (const m of plan.members) delete m.roleIds;
+    await db.update(schema.orgs).set({ deletionPlan: JSON.stringify(plan) }).where(eq(schema.orgs.id, orgId));
+    expect((await call(ada, 'POST', '/api/orgs/train-club/restore')).statusCode).toBe(200);
+    expect((await call(ada, 'GET', '/api/orgs/train-club')).json()).toMatchObject({ myRole: 'admin' });
+    expect((await call(ben, 'GET', '/api/orgs')).json().orgs[0]).toMatchObject({ myRole: 'member' });
   });
 
   it('a site admin deletes with the same wait, and can restore it', async () => {
