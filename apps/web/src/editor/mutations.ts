@@ -1366,6 +1366,35 @@ export interface EditRulerPatch {
 }
 
 /**
+ * What the Edit Ruler dialog may write: the desktop dialog's ranges, all
+ * inside what the server takes in a live update (apps/server/src/ws/
+ * drawingSettings.ts), so an edit is never refused for a number typed past
+ * the end of a field.
+ */
+export const RULER_LIMITS = {
+  lineThickness: { min: 0.1, max: 50 },
+  guidelineThickness: { min: 0, max: 50 },
+  fontSize: { min: 1, max: 200 },
+  /** Offset and radius, in studs. */
+  distance: 1e7,
+  maxDashes: 64,
+  maxDash: 1000,
+  /** A pattern adding up to less is drawn solid (none). */
+  minDashTotal: 0.01,
+} as const;
+
+const clampTo = (v: number, lo: number, hi: number, fallback: number): number => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback);
+
+/** A dash pattern both apps draw: up to 64 lengths of 0 to 1000; one adding up to (nearly) nothing is none. */
+export function rulerDashPattern(dashes: readonly number[]): number[] {
+  const out = dashes
+    .filter((d) => Number.isFinite(d))
+    .slice(0, RULER_LIMITS.maxDashes)
+    .map((d) => clampTo(d, 0, RULER_LIMITS.maxDash, 0));
+  return out.reduce((a, b) => a + b, 0) >= RULER_LIMITS.minDashTotal ? out : [];
+}
+
+/**
  * Apply an `EditRulerPatch` — port of `EditRulerItemCommand`
  * (RulerCommands.cpp:99-149). Only fields present in the patch
  * change; everything else is preserved.
@@ -1384,26 +1413,24 @@ export function editRulerItem(
     const cur = rulerJson(yItems.get(idx)) as RulerLike | null;
     if (!cur) return;
     const next: Record<string, unknown> = { ...cur };
-    for (const k of [
-      'color',
-      'lineThickness',
-      'displayDistance',
-      'displayUnit',
-      'guidelineColor',
-      'guidelineThickness',
-      'guidelineDashPattern',
-      'unit',
-      'measureFont',
-      'measureFontColor',
-    ] as const) {
+    for (const k of ['color', 'displayDistance', 'displayUnit', 'guidelineColor', 'unit', 'measureFontColor'] as const) {
       if (patch[k] !== undefined) next[k] = patch[k] as unknown;
     }
+    const L = RULER_LIMITS;
+    if (patch.lineThickness !== undefined) next.lineThickness = clampTo(patch.lineThickness, L.lineThickness.min, L.lineThickness.max, 1);
+    if (patch.guidelineThickness !== undefined) {
+      next.guidelineThickness = clampTo(patch.guidelineThickness, L.guidelineThickness.min, L.guidelineThickness.max, 1);
+    }
+    if (patch.guidelineDashPattern !== undefined) next.guidelineDashPattern = rulerDashPattern(patch.guidelineDashPattern);
+    if (patch.measureFont !== undefined) {
+      next.measureFont = { ...patch.measureFont, size: clampTo(patch.measureFont.size, L.fontSize.min, L.fontSize.max, 8.25) };
+    }
     if (cur.kind === 'linear') {
-      if (patch.offsetDistance !== undefined) next.offsetDistance = patch.offsetDistance;
+      if (patch.offsetDistance !== undefined) next.offsetDistance = clampTo(patch.offsetDistance, -L.distance, L.distance, 0);
       if (patch.allowOffset !== undefined) next.allowOffset = patch.allowOffset;
     } else {
       if (patch.radius !== undefined) {
-        const r = Math.max(0, patch.radius);
+        const r = clampTo(patch.radius, 0, L.distance, 0);
         next.radius = r;
         next.displayArea = rectAroundCircle(cur.center, r);
       }
