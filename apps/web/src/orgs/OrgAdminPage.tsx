@@ -163,7 +163,7 @@ function OrgAdmin({ slug }: { slug: string }) {
             <SettingsSection key={`${org.slug}:${org.name}`} org={org} />
             <LogoSection org={org} />
             <JoinSettingsSection key={`join:${org.slug}`} org={org} />
-            <HandOverSection slug={slug} myUserId={myUserId} members={memberList} />
+            <HandOverSection slug={slug} myUserId={myUserId} members={memberList} roles={roles} />
             <Section title="Leave the club">
               <LeaveClubButton org={org} myUserId={myUserId} />
             </Section>

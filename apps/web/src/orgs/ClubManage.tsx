@@ -19,7 +19,7 @@ import {
 } from '../api';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
-import { aRole, atLeast, byRole, CLUB_ROLES, roleLabel, type ClubRole } from './clubRoles';
+import { aRole, atLeast, byStrongestRole, CLUB_ROLES, memberRoleNames, roleLabel, type ClubRole } from './clubRoles';
 import { WarnForm, WarningHistory } from '../notices/Notices';
 import { MemberRoleChips } from './ClubRoles';
 import { clubCan, type ClubPermission } from './clubPermissions';
@@ -149,7 +149,7 @@ export function MembersSection({
     onError: (e: Error) => setError(e.message),
   });
   const [warning, setWarning] = useState<string | null>(null);
-  const sorted = [...members].sort((a, b) => byRole(a.role, b.role) || a.displayName.localeCompare(b.displayName));
+  const sorted = [...members].sort(byStrongestRole(withRoles ? roles : undefined));
   return (
     <Section title={`Members (${members.length})`} help={invites || managesMembers ? 'club.roles' : undefined}>
       {withRoles && (
@@ -899,10 +899,27 @@ export function JoinRequestsSection({ slug, requests }: { slug: string; requests
 }
 
 /** Make another member an admin and step down, so the club is never left without one. */
-export function HandOverSection({ slug, myUserId, members }: { slug: string; myUserId: string; members: OrgMemberSummary[] }) {
+export function HandOverSection({
+  slug,
+  myUserId,
+  members,
+  roles,
+}: {
+  slug: string;
+  myUserId: string;
+  members: OrgMemberSummary[];
+  /** The club's roles, to name the ones each member holds (servers with club roles). */
+  roles?: ClubRoleSummary[] | undefined;
+}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const others = members.filter((m) => m.userId !== myUserId);
+  const others = [...members.filter((m) => m.userId !== myUserId)].sort(byStrongestRole(roles));
+  // "Ann (Manager, Track crew)", as the club lists name your roles; an older server: its fixed role.
+  const heldRoles = (m: OrgMemberSummary) => {
+    const names = memberRoleNames(m, roles);
+    if (names.length > 0) return ` (${names.join(', ')})`;
+    return m.role === 'admin' ? ' (already an admin)' : m.role === 'manager' ? ' (a manager)' : '';
+  };
   const [to, setTo] = useState(others[0]?.userId ?? '');
   const [error, setError] = useState<string | null>(null);
   const hand = useMutation({
@@ -945,7 +962,7 @@ export function HandOverSection({ slug, myUserId, members }: { slug: string; myU
               {others.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.displayName}
-                  {m.role === 'admin' ? ' (already an admin)' : m.role === 'manager' ? ' (a manager)' : ''}
+                  {heldRoles(m)}
                 </option>
               ))}
             </select>
