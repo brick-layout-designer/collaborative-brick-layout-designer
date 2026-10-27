@@ -122,7 +122,7 @@ describe('role chips on the Members list', () => {
 
   it('invites to a club role by id', async () => {
     show(<InviteSection slug="rail" myRole="admin" org={ADMIN_ORG} roles={ROLES} />);
-    fireEvent.change(screen.getByPlaceholderText('Search by name, or type an email'), { target: { value: 'cal@x.com' } });
+    fireEvent.change(screen.getByPlaceholderText('Search people you work with, or type an email'), { target: { value: 'cal@x.com' } });
     fireEvent.change(screen.getByLabelText('Joins as'), { target: { value: 'crew' } });
     fireEvent.click(screen.getByRole('button', { name: /Invite|Send/ }));
     await waitFor(() => expect(writes()).toHaveLength(1));

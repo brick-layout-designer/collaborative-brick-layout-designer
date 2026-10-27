@@ -616,8 +616,11 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
   // narrow: short results, minimal fields (never a bare email match —
   // only id/displayName/avatarUrl, plus the org-membership status so
   // the UI can grey out people who are already members), a minimum
-  // query length, and a low rate limit — this is still a user-search
-  // oracle and should stay hard to use for enumeration.
+  // query length, and a low rate limit. It finds only people the searcher
+  // already works with (a club or a layout in common, peopleIWorkWith):
+  // anyone else, by name or by exact email, gets the same empty answer
+  // from the same query whether or not they have an account, and is
+  // invited by email (a link) instead.
   app.get<{ Params: { slug: string }; Querystring: { q?: string } }>(
     '/api/orgs/:slug/user-search',
     { config: { rateLimit: perPerson(20, '1 minute') } },
@@ -641,6 +644,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         .where(
           and(
             ne(schema.users.id, user.id),
+            sql`${schema.users.id} IN ${peopleIWorkWith(user.id)}`,
             or(
               // A name that is an email address is never a substring match:
               // that would make this an email search after all.
@@ -1236,6 +1240,24 @@ async function notifyClub(orgId: string): Promise<void> {
 /** Who `userId` is in the club (their roles and permissions), or null. */
 export async function getMembership(orgId: string, userId: string): Promise<ClubAccess | null> {
   return clubAccess(userId, orgId);
+}
+
+/**
+ * The ids of the people `userId` already works with, as a subquery: anyone
+ * in a club with them, and anyone on a layout they can open (theirs, one
+ * of their clubs', or one shared with them), owner or collaborator.
+ */
+function peopleIWorkWith(userId: string) {
+  const myLayouts = sql`(
+    SELECT id FROM layouts WHERE owner_user_id = ${userId}
+      OR owner_org_id IN (SELECT org_id FROM org_members WHERE user_id = ${userId})
+    UNION SELECT layout_id FROM layout_collaborators WHERE user_id = ${userId}
+  )`;
+  return sql`(
+    SELECT other.user_id FROM org_members mine JOIN org_members other ON other.org_id = mine.org_id WHERE mine.user_id = ${userId}
+    UNION SELECT user_id FROM layout_collaborators WHERE layout_id IN ${myLayouts}
+    UNION SELECT owner_user_id FROM layouts WHERE owner_user_id IS NOT NULL AND id IN ${myLayouts}
+  )`;
 }
 
 /**

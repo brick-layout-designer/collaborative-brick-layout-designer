@@ -340,7 +340,9 @@ export function InviteSection({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Suggestions from real accounts (club-admin-only search that never shows emails).
+  // Suggestions from people I already share a club or a layout with (the
+  // server finds no one else, and never shows an email); anyone else gets
+  // an invite link by email.
   const [query, setQuery] = useState('');
   const [suggest, setSuggest] = useState(false);
   useEffect(() => {
@@ -391,14 +393,17 @@ export function InviteSection({
             onFocus={() => setSuggest(true)}
             onBlur={() => setTimeout(() => setSuggest(false), 150)}
             className={field}
-            placeholder="Search by name, or type an email"
+            placeholder="Search people you work with, or type an email"
             autoComplete="off"
           />
           {suggest && pickedUserId === null && query.length >= 2 && !query.includes('@') && (
             <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-panel shadow-lg">
               {suggestions.isLoading && <li className="px-3 py-2 text-muted">Searching…</li>}
               {suggestions.data && suggestions.data.users.length === 0 && (
-                <li className="px-3 py-2 text-muted">No account with that name. You can still invite by email.</li>
+                <li className="px-3 py-2 text-muted">
+                  <span className="block">No one found — send an invite link instead.</span>
+                  <span className="block text-xs">Search finds people you already share a club or layout with. Type their email to invite anyone else.</span>
+                </li>
               )}
               {suggestions.data?.users.map((u) => (
                 <li key={u.id}>
