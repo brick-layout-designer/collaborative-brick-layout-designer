@@ -31,6 +31,7 @@ import { ModuleVersionsDialog } from '../modules/ModuleVersionsDialog';
 import { askConfirm, confirmDelete, toastDeleted } from '../ui/ConfirmDialog';
 import { MODULE_DELETE_WORDING } from '../ui/deleteWording';
 import { CatalogBadge, ShareToCatalogDialog, UpdateAvailable, useCatalogStatus } from '../catalog/ShareToCatalog';
+import { useEscape } from '../editor/useEscape';
 const ShareDialog = lazyRetry(() => import('./ShareDialog').then((m) => ({ default: m.ShareDialog })));
 const ModuleShareDialog = lazyRetry(() => import('../modules/ModuleShareDialog').then((m) => ({ default: m.ModuleShareDialog })));
 
@@ -412,6 +413,7 @@ function NewModuleDialog({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const [title, setTitle] = useState('');
   const [ownerSlug, setOwnerSlug] = useState(initialOwnerSlug);
@@ -621,6 +623,7 @@ function CreateLayoutDialog({
   /** `openedFile`: the layout started from this file. */
   onCreated: (id: string, openWarnings?: string[], openedFile?: string) => void;
 }) {
+  useEscape(onClose);
   const [title, setTitle] = useState('');
   const [bbm, setBbm] = useState<string | null>(null);
   // What converting a picked LDraw / TrackDesigner / 4DBrix file skipped.

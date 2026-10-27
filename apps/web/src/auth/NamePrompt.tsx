@@ -10,6 +10,7 @@ import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { HelpButton } from '../help/HelpButton';
+import { useEscape } from '../editor/useEscape';
 
 const SKIP_KEY = 'cld.namePrompt.skipped';
 
@@ -52,6 +53,7 @@ export function NamePrompt() {
 }
 
 function NameDialog({ suggestion, onSkip }: { suggestion: string; onSkip: () => void }) {
+  useEscape(onSkip);
   const [name, setName] = useState(suggestion);
   const [error, setError] = useState<string | null>(null);
   const qc = useQueryClient();

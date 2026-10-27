@@ -103,6 +103,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 <span className={labelCls}>Wheel zoom speed</span>
                 <div className="flex flex-1 items-center gap-2">
                   <input
+                    aria-label="Wheel zoom speed"
                     type="range"
                     min={0.2}
                     max={3}
@@ -145,6 +146,7 @@ export function PreferencesDialog({ onClose }: Props) {
               <div className={rowCls}>
                 <span className={labelCls}>Reopen last layout on startup</span>
                 <input
+                  aria-label="Reopen last layout on startup"
                   type="checkbox"
                   checked={reopenLastFile}
                   onChange={(e) => setReopenLastFile(e.target.checked)}
@@ -155,6 +157,7 @@ export function PreferencesDialog({ onClose }: Props) {
                 <span className={labelCls}>Undo stack depth</span>
                 <div className="flex flex-1 items-center gap-2">
                   <input
+                    aria-label="Undo stack depth"
                     type="number"
                     min={0}
                     max={1000}
@@ -174,6 +177,7 @@ export function PreferencesDialog({ onClose }: Props) {
               <div className={rowCls}>
                 <span className={labelCls}>Default snap step</span>
                 <select
+                  aria-label="Default snap step"
                   value={snapStepStuds}
                   onChange={(e) => setSnapStep(Number(e.target.value))}
                   className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
@@ -186,6 +190,7 @@ export function PreferencesDialog({ onClose }: Props) {
               <div className={rowCls}>
                 <span className={labelCls}>Default rotation step</span>
                 <select
+                  aria-label="Default rotation step"
                   value={rotationStepDegrees}
                   onChange={(e) => setRotationStep(Number(e.target.value))}
                   className="rounded-lg border border-border bg-soft px-2 py-1 text-xs"
@@ -198,6 +203,7 @@ export function PreferencesDialog({ onClose }: Props) {
               <div className={rowCls}>
                 <span className={labelCls}>Default paint color</span>
                 <input
+                  aria-label="Default paint color"
                   type="color"
                   value={pickerColor}
                   onChange={(e) => onPickerChange(e.target.value)}
@@ -233,6 +239,7 @@ export function PreferencesDialog({ onClose }: Props) {
               <div className="flex items-center justify-between gap-4 py-1.5">
                 <span className="text-xs text-muted">Selection tint color</span>
                 <input
+                  aria-label="Selection tint color"
                   type="color"
                   value={`#${selectionTint}`}
                   onChange={(e) => setSelectionTint(e.target.value.slice(1))}
@@ -260,6 +267,7 @@ export function PreferencesDialog({ onClose }: Props) {
                   Module label size (% of long axis)
                 </span>
                 <input
+                  aria-label="Module label size (% of long axis)"
                   type="number"
                   min={5}
                   max={100}
@@ -272,6 +280,7 @@ export function PreferencesDialog({ onClose }: Props) {
               <div className="flex items-center justify-between gap-4 py-1.5">
                 <span className="text-xs text-muted">Venue label size (px)</span>
                 <input
+                  aria-label="Venue label size (px)"
                   type="number"
                   min={4}
                   max={200}

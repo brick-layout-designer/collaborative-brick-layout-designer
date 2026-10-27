@@ -38,6 +38,7 @@ import { HelpPage } from './help/HelpPage';
 import { SettingsPage } from './settings/SettingsPage';
 import { PrefsProvider } from './theme/PrefsProvider';
 import { FileOpener } from './open/FileOpener';
+import { installModalFocus } from './ui/modalFocus';
 import './styles.css';
 
 // Heavy routes are code-split so the landing / auth pages don't download
@@ -72,6 +73,8 @@ listenForInstall();
 watchKeyboard();
 // Installed app or browser tab, for the admin dashboard's counts.
 reportDisplayMode();
+// Dialogs take the focus, keep Tab inside, and hand it back when they close.
+installModalFocus();
 
 createRoot(root).render(
   <StrictMode>

@@ -10,6 +10,7 @@
 import { test, expect, devices, type Page } from '@playwright/test';
 import { signIn } from '../../helpers';
 import { findOverflow } from '../../mobileChecks';
+import { expectAccessible } from '../../a11y';
 
 const ts = Date.now();
 const ADA = `j-roles-ada-${ts}@example.com`;
@@ -47,6 +48,7 @@ test('an admin makes a Track crew role that edits layouts but adds no modules', 
   await form.getByRole('button', { name: 'Add role' }).click();
   const roles = page.getByRole('list', { name: 'Club roles' });
   await expect(roles.getByRole('listitem').filter({ hasText: 'Track crew' })).toContainText('0 members');
+  await expectAccessible(page, 'Manage › Roles');
 
   // ── People: Ben gets Track crew, and loses Member. ──
   await page.getByRole('tab', { name: 'People' }).click();
@@ -60,6 +62,7 @@ test('an admin makes a Track crew role that edits layouts but adds no modules', 
   await page.getByRole('tab', { name: 'Activity' }).click();
   await expect(page.getByText('Ada Admin made the Track crew role')).toBeVisible();
   await expect(page.getByText(/Ada Admin gave Ben Builder the Track crew role/)).toBeVisible();
+  await expectAccessible(page, 'Manage › Activity');
 
   // ── Ben edits the club's layout… ──
   await ben.goto(`/editor/${layout.id}`);

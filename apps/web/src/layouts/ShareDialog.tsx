@@ -6,6 +6,7 @@ import { clubsICanAddTo } from '../owners/OwnerControls';
 import { HelpButton } from '../help/HelpButton';
 import { CatalogBadge, useCatalogStatus, useIsDemo } from '../catalog/ShareToCatalog';
 import { askConfirm, confirmDelete, showToast } from '../ui/ConfirmDialog';
+import { useEscape } from '../editor/useEscape';
 
 interface Props {
   layoutId: string;
@@ -36,6 +37,7 @@ export function ShareDialog({
   onSharePicture,
   onShareToCatalog,
 }: Props) {
+  useEscape(onClose);
   const catalog = useCatalogStatus();
   const shared = catalog.shared('layout', layoutId);
   const qc = useQueryClient();
@@ -606,10 +608,13 @@ export function AuditPanel({ layoutId }: { layoutId: string }) {
     staleTime: 30_000,
   });
 
+  // The ⓘ sits beside the summary, not in it: a button inside the summary
+  // (itself a button) is lost to screen readers and the keyboard.
   return (
+    <div className="relative">
     <details className="rounded-lg border border-line p-3 text-sm">
-      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">
-        History <HelpButton helpKey="share.history" target="details" className="ml-1" />
+      <summary className="cursor-pointer pr-8 text-xs font-semibold uppercase tracking-wide text-muted">
+        History
       </summary>
       <div className="mt-2 max-h-60 overflow-y-auto">
         {events.isLoading && <p className="text-xs text-muted">Loading…</p>}
@@ -638,6 +643,8 @@ export function AuditPanel({ layoutId }: { layoutId: string }) {
         )}
       </div>
     </details>
+    <HelpButton helpKey="share.history" className="absolute right-3 top-3" />
+    </div>
   );
 }
 

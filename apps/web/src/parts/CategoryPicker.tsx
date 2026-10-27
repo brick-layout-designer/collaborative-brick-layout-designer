@@ -33,6 +33,7 @@ export function CategoryPicker({
       <span className="block text-muted">Category</span>
       {!customMode ? (
         <select
+          aria-label="Category"
           value={categories.includes(value) ? value : (categories[0] ?? '')}
           onChange={onSelect}
           className="w-full rounded-lg border border-border bg-soft px-3 py-2 text-sm"
@@ -45,6 +46,7 @@ export function CategoryPicker({
       ) : (
         <div className="flex gap-2">
           <input
+            aria-label="Category"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="My Category"

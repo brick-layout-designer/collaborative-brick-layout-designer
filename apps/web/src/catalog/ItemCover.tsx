@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type MyCatalogItem } from '../api';
 import { invalidateFor } from '../live/invalidate';
 import { CoverPicker, type CoverMode, type CoverPickerHandle } from '../ui/CoverPicker';
+import { useEscape } from '../editor/useEscape';
 
 /** The drawn picture of what's shared: the public version, else the one waiting; null when it has none. */
 export const drawnPictureUrl = (i: Pick<MyCatalogItem, 'id' | 'version' | 'pendingVersion' | 'drawnUrl'>): string | null =>
@@ -25,6 +26,7 @@ export function coverSavedText(status: 'public' | 'in_review' | undefined, remov
 }
 
 export function ItemCoverDialog({ itemId, onClose, clubReview }: { itemId: string; onClose: () => void; clubReview?: string | undefined }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
   const mine = useQuery({ queryKey: ['catalog-mine'], queryFn: api.catalog.mine });

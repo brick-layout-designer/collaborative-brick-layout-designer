@@ -9,6 +9,7 @@ import { api, type CatalogItem, type CollectionEntry, type CustomPartSummary, ty
 import { invalidateFor } from '../live/invalidate';
 import { audienceLabel, CollectionEditor, type Picked } from './Collections';
 import { showCollectionToast } from './collectionToast';
+import { useEscape } from '../editor/useEscape';
 
 export type CollectionTarget =
   | { kind: 'catalog'; item: Pick<CatalogItem, 'id' | 'kind' | 'title' | 'previewUrl'> }
@@ -39,6 +40,7 @@ export function targetOwner(t: CollectionTarget): { club: string } | 'me' | 'cat
 }
 
 export function AddToCollectionDialog({ target, onClose }: { target: CollectionTarget; onClose: () => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const mine = useQuery({ queryKey: ['catalog-collections-mine'], queryFn: api.catalog.myCollections });
   const clubs = useQuery({ queryKey: ['club-collections', ''], queryFn: () => api.catalog.clubCollections() });

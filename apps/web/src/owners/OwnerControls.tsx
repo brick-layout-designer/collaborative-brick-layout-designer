@@ -13,6 +13,7 @@ import { askConfirm, showToast } from '../ui/ConfirmDialog';
 import { invalidateFor } from '../live/invalidate';
 import { MORE_ITEM } from '../ui/MoreMenu';
 import { addPermissionFor, askForPermission, clubCanAdd, type AddKind } from '../orgs/clubPermissions';
+import { useEscape } from '../editor/useEscape';
 
 /** "by Sam · in ArkLUG", and for a copy "based on Yard by Sam": a small line under the name. */
 export function CreditLine({ credit, className = '' }: { credit: Credit | null | undefined; className?: string }) {
@@ -256,6 +257,7 @@ export function MoveCopyDialog({
   orgs: readonly OrgSummary[];
   onClose: () => void;
 }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const currentSlug = item.ownerOrgId ? (orgs.find((o) => o.id === item.ownerOrgId)?.slug ?? null) : '';
   const addKind: AddKind = kind === 'room' ? 'venue' : kind;
@@ -468,6 +470,7 @@ export function SaveToDialog({
   onConfirm: (slug: string) => void;
   onClose: () => void;
 }) {
+  useEscape(onClose);
   const [dest, setDest] = useState(() => (clubsICanAddTo(orgs).some((o) => o.slug === initial) ? initial : ''));
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">

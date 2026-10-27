@@ -12,8 +12,10 @@ import { api, moduleVersionThumbnailUrl, type ModuleSummary, type ModuleVersion 
 import { sanitizeFilename } from '../bbmFiles';
 import { downloadBlob } from '../editor/sharePicture';
 import { askConfirm } from '../ui/ConfirmDialog';
+import { useEscape } from '../editor/useEscape';
 
 export function ModuleVersionsDialog({ module, onClose }: { module: Pick<ModuleSummary, 'id' | 'title'>; onClose: () => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ['module-versions', module.id], queryFn: () => api.modules.versions(module.id) });
   const [preview, setPreview] = useState<ModuleVersion | null>(null);

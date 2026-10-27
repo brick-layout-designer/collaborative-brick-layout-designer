@@ -4,8 +4,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
+import { useEscape } from '../editor/useEscape';
 
 export function CatalogPartsDialog({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [added, setAdded] = useState<string[]>([]);

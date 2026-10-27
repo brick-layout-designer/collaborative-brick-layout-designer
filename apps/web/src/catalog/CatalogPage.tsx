@@ -18,6 +18,7 @@ import { CollectionCard, CollectionsSection } from './Collections';
 import { TrustedBadge } from './TrustedBadge';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { ItemCoverDialog } from './ItemCover';
+import { useEscape } from '../editor/useEscape';
 
 /** How many items a landing row shows, and a page of the full list. */
 const ROW = 8;
@@ -491,6 +492,7 @@ export function CatalogPreview({ item }: { item: Pick<CatalogItem, 'previewUrl' 
 
 /** "Add to my modules / parts": where the copy goes, then where to find it. */
 export function AddDialog({ item, onClose, onAdded }: { item: CatalogItem; onClose: () => void; onAdded?: (id: string) => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const [owner, setOwner] = useState('');

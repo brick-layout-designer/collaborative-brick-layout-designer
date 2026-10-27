@@ -184,6 +184,7 @@ export const PartsPanel = memo(function PartsPanel({
       <div className="space-y-2 border-b border-line p-2">
         <div className="flex items-center gap-2">
           <select
+            aria-label="Category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             className="min-w-0 flex-1 rounded-lg border border-border bg-soft px-2 py-1 text-xs"

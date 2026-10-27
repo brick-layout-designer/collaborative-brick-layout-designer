@@ -87,6 +87,7 @@ export function FindDialog({ map, doc, onClose }: Props) {
         {/* Scope + options row */}
         <div className="mt-3 flex items-center gap-3 text-xs">
           <select
+            aria-label="Find in"
             value={scope}
             onChange={(e) => { setScope(e.target.value as FindScope); setCurrent(0); }}
             className="rounded-lg border border-border bg-soft px-2 py-1"

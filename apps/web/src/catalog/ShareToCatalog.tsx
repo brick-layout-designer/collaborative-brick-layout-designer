@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type CatalogKind, type MyCatalogItem } from '../api';
 import { ItemCoverDialog } from './ItemCover';
+import { useEscape } from '../editor/useEscape';
 
 /** What the catalogs know about your things: shared items by source, and copies by id. */
 /**
@@ -113,6 +114,7 @@ export function ShareToCatalogDialog({
   /** A layout's picture for its card (the editor draws it). */
   makeThumbnail?: () => Promise<{ mime: string; data: string } | null>;
 }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
   // An update waiting for review: start from the text it sent.

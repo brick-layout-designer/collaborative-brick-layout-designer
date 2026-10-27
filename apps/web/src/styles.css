@@ -503,3 +503,11 @@ body,
     opacity: 0.5;
   }
 }
+
+/* A link inside a sentence is underlined, not told apart by its color alone
+   (WCAG 1.4.1: the accent color is too close to the text's in both themes).
+   Links styled as buttons (.tap-target) keep their look. */
+p a:not(.tap-target):not(.no-underline) {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
