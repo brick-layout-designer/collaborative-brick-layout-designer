@@ -29,7 +29,7 @@ import { isCredentialActive, revokedReason, type Credential } from '../auth/cred
 import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { checkIncomingDecoded, type MergeCheck } from './mergeGuard.js';
 import { checkStateVector, checkUpdate } from './updateGuard.js';
-import { MAX_PENDING_BYTES, pendingBytes, restorePending, savePending } from './pending.js';
+import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, pendingBytes, pendingDsBytes, restorePending, savePending } from './pending.js';
 import { copyBudget, newPace, type Pace } from './pacing.js';
 import { concerns, onAccessChanged, suspendedIn } from './liveAccess.js';
 import { COPY_BUDGET_SPENT, checkGridSizesDecoded } from './gridGuard.js';
@@ -312,6 +312,13 @@ function handleMessage(
         if (nowPending > MAX_PENDING_BYTES && nowPending > pending.bytes) {
           restorePending(session.doc, pending);
           refuseUpdate(ws, session, sender, update.length, 'incomplete', `it leaves ${nowPending} bytes waiting for changes the layout doesn't have`);
+          return;
+        }
+        // Deletions waiting are read again with every update: far less of them.
+        const nowDs = pendingDsBytes(session.doc);
+        if (nowDs > MAX_PENDING_DS_BYTES && nowDs > (pending.ds?.length ?? 0)) {
+          restorePending(session.doc, pending);
+          refuseUpdate(ws, session, sender, update.length, 'incomplete', `it leaves ${nowDs} bytes of deletions waiting for changes the layout doesn't have`);
           return;
         }
       }

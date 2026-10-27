@@ -18,7 +18,7 @@ import { upgradeDoc } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 import { rollup } from '../metrics/rollup.js';
-import { MAX_PENDING_BYTES, dropPending, pendingBytes } from './pending.js';
+import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, dropPending, pendingBytes, pendingDsBytes } from './pending.js';
 
 /**
  * Largest awareness (presence) message taken from a client. A presence
@@ -350,7 +350,7 @@ export class DocSession {
    */
   private limitPending(): void {
     const bytes = pendingBytes(this.doc);
-    if (bytes <= MAX_PENDING_BYTES) return;
+    if (bytes <= MAX_PENDING_BYTES && pendingDsBytes(this.doc) <= MAX_PENDING_DS_BYTES) return;
     console.warn(`[docHub] layout ${this.layoutId}: dropped ${bytes} bytes waiting for changes the layout doesn't have`);
     dropPending(this.doc);
   }

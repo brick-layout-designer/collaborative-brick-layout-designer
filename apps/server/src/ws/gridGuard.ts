@@ -21,8 +21,9 @@
 //   - writes any other drawing setting, or adds an entry to a list (it may
 //     be a ruler);
 //   - deletes the grid size of a layer that is a grid and stays;
-//   - lands while the room has changes waiting for others (they may land
-//     with it), or holds two structs for one id (hand-made: Yjs reads one).
+//   - lands while the room has changes waiting for others that it may let
+//     land (pending.ts pendingMayLand), or holds two structs for one id
+//     (hand-made: Yjs reads one).
 // Adding a layer of another kind, deleting a layer, and every edit that
 // writes neither key (parts, labels, a paste, an offline session) can't
 // leave a grid without a valid size, and need nothing more.
@@ -41,6 +42,7 @@
 import * as Y from 'yjs';
 import { decodeIncoming, findStruct, guardWork, type DecodedUpdate, type DeleteSet, type Struct } from './decoded.js';
 import { updateClientBlocks } from './updateGuard.js';
+import { pendingMayLand } from './pending.js';
 import { docSheetProblems, placeOf, RULER_KEYS, rulerView, SHEET_KEYS, sheetProblems, type RulerView } from './drawingSettings.js';
 
 const SIZE_KEY = 'gridSizeInStud';
@@ -141,7 +143,7 @@ function writesValidSize(item: Y.Item, ds: DeleteSet): boolean {
 /** Could `update` leave a grid layer of `doc` without a valid size? (False: certainly not.) */
 function mayBreakGrid(doc: Y.Doc | null, update: DecodedUpdate): boolean {
   // Changes the room holds back until others arrive may land with this one.
-  if (doc?.store.pendingStructs || doc?.store.pendingDs) return true;
+  if (pendingMayLand(doc, update)) return true;
   if (update.overlapping) return true;
   const { structs, ds, byClient } = update;
   const known = (id: Y.ID): boolean => !!doc && id.clock < Y.getState(doc.store, id.client);
@@ -380,7 +382,7 @@ function integration(doc: Y.Doc | null, byClient: Map<number, Struct[]>): Struct
  * update touches; UNSURE for an update outside what this reads.
  */
 export function exactVerdict(doc: Y.Doc | null, update: Uint8Array, decoded: DecodedUpdate): string | null | Unsure {
-  if (doc?.store.pendingStructs || doc?.store.pendingDs || decoded.overlapping) return UNSURE;
+  if (pendingMayLand(doc, decoded) || decoded.overlapping) return UNSURE;
   // Yjs reads only the last block of a client that has two.
   const blocks = updateClientBlocks(update);
   if (!blocks || new Set(blocks).size !== blocks.length) return UNSURE;
