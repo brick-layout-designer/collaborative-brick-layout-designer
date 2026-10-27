@@ -213,26 +213,29 @@ export const PartsPanel = memo(function PartsPanel({
             </button>
           </div>
         )}
-        {hiddenCount > 0 && !openSet && (
-          <label className="flex items-center gap-1.5 text-xs text-muted">
-            <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
-            <span>Show hidden parts ({hiddenCount})</span>
-            <HelpButton helpKey="part.hidden" />
-          </label>
-        )}
-        {canUploadPart && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <button
-              type="button"
-              onClick={() => setUploading(true)}
-              className="text-xs font-semibold text-accent-text hover:underline"
-            >
-              Upload part…
-            </button>
-            {catalogSettings.data?.parts && (
+        {/* One row, so a small panel still has space for the list. */}
+        {(canUploadPart || (hiddenCount > 0 && !openSet)) && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {canUploadPart && (
+              <button
+                type="button"
+                onClick={() => setUploading(true)}
+                className="text-xs font-semibold text-accent-text hover:underline"
+              >
+                Upload part…
+              </button>
+            )}
+            {canUploadPart && catalogSettings.data?.parts && (
               <button type="button" onClick={() => setFromCatalog(true)} className="text-xs font-semibold text-accent-text hover:underline">
                 From the catalog…
               </button>
+            )}
+            {hiddenCount > 0 && !openSet && (
+              <label className="flex items-center gap-1 text-xs text-muted">
+                <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
+                <span>Show hidden parts ({hiddenCount})</span>
+                <HelpButton helpKey="part.hidden" />
+              </label>
             )}
           </div>
         )}
