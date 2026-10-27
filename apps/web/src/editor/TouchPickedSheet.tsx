@@ -1,13 +1,18 @@
 // What else can be done with the picked parts on a phone or tablet (the
-// touch bar's More actions button): Save as set…, Group, Ungroup, Select
-// connected, Bring to front, Send to back and Move to a sheet…, as the
-// map's right-click menu has them. Phones have no right-click menu and no
+// touch bar's More actions button): Copy, Cut and Paste, Save as set…,
+// Group, Ungroup, Select connected, Bring to front, Send to back and Move
+// to a sheet…, as the map's right-click menu has them. Phones have no right-click menu and no
 // Map menu bar, so without this sheet these had no way in by touch.
 
 import { useEffect, useState } from 'react';
 import { useEditorStore } from './editorStore';
 
 export interface PickedActions {
+  /** Copy the picked parts, to paste in this layout or another (the same clipboard as Ctrl+C). */
+  copy: () => void;
+  cut: () => void;
+  /** Paste what was copied, in the middle of the view. */
+  paste: () => void;
   saveAsSet: () => void;
   group: () => void;
   ungroup: () => void;
@@ -49,6 +54,9 @@ export function TouchPickedSheet({ actions, onClose }: { actions: PickedActions;
 
   const ungroup = actions.ungroupState();
   const entries: Entry[] = [
+    { id: 'copy', label: 'Copy', onSelect: actions.copy },
+    { id: 'cut', label: 'Cut', onSelect: actions.cut },
+    { id: 'paste', label: 'Paste', onSelect: actions.paste },
     { id: 'save-set', label: 'Save as set…', onSelect: actions.saveAsSet },
     ...(parts >= 2 ? [{ id: 'group', label: 'Group', onSelect: actions.group }] : []),
     ...(ungroup === 'splits' ? [{ id: 'ungroup', label: 'Ungroup', onSelect: actions.ungroup }] : []),
