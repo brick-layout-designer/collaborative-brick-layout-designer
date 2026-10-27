@@ -74,7 +74,8 @@ export function PartInvitePage() {
       <div className="w-full max-w-md space-y-4 rounded-lg border border-line bg-panel p-6">
         <h1 className="text-lg font-semibold">You're invited</h1>
         <p className="text-sm text-muted">
-          You've been invited to the custom part <strong>{inv.partName}</strong> ({inv.partNumber}) as {inv.role === 'editor' ? 'an editor' : 'a viewer'}.
+          You've been invited to {inv.isSet ? 'the set' : 'the custom part'} <strong>{inv.partName}</strong>
+          {inv.partNumber !== inv.partName && ` (${inv.partNumber})`} as {inv.role === 'editor' ? 'an editor' : 'a viewer'}.
         </p>
         {inv.setParts && inv.setParts.length > 0 && (
           <div className="text-sm text-muted" data-testid="invite-set-parts">

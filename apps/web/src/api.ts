@@ -909,6 +909,8 @@ export const api = {
         partId: string;
         partNumber: string;
         partName: string;
+        /** It's a set (older servers leave it out). */
+        isSet?: boolean;
         expiresAt: number;
         /** A set: the sender's own parts in it, which come along. */
         setParts?: { partNumber: string; displayName: string }[];
