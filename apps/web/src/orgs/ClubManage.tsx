@@ -574,18 +574,27 @@ const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 
 /** The club's logo: its admins upload one (PNG, JPEG, WebP or SVG) or take it away. */
 export function LogoSection({ org }: { org: OrgDetail }) {
+  const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  // The club's pages, lists and pickers show the new logo at once (the live update follows).
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['org', org.slug] });
+    void qc.invalidateQueries({ queryKey: ['orgs'] });
+    void qc.invalidateQueries({ queryKey: ['club-directory'] });
+  };
   const upload = useMutation({
     mutationFn: async (file: File) => {
       if (!LOGO_TYPES.includes(file.type)) throw new Error('Choose a PNG, JPEG, WebP or SVG picture.');
       return api.orgs.setLogo(org.slug, { mime: file.type, data: await readAsBase64(file) });
     },
     onMutate: () => setError(null),
+    onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
   const remove = useMutation({
     mutationFn: () => api.orgs.removeLogo(org.slug),
     onMutate: () => setError(null),
+    onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
   const busy = upload.isPending || remove.isPending;
