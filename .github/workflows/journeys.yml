@@ -33,9 +33,10 @@ env:
 jobs:
   journeys:
     name: Journeys (e2e)
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
+    env: &e2e-env
       DB_PATH: ${{ github.workspace }}/.e2e/e2e.sqlite
       PARTS_DIR: ${{ github.workspace }}/.e2e/BlueBrickParts
       BACKUPS_DIR: ${{ github.workspace }}/.e2e/backups
@@ -50,54 +51,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Check out the BlueBrick parts library
-        uses: actions/checkout@v7
+      - uses: ./.github/actions/e2e-stack
         with:
-          repository: Lswbanban/BlueBrickParts
-          ref: ${{ env.BLUEBRICK_PARTS_SHA }}
-          path: .e2e/BlueBrickParts
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile=false
-
-      - name: Build the packages
-        run: pnpm -r --filter "./packages/*" build
-
-      - name: Install Chromium for Playwright
-        working-directory: apps/web
-        run: npx playwright install --with-deps chromium
-
-      - name: Start the API server
-        working-directory: apps/server
-        run: |
-          mkdir -p "$BACKUPS_DIR"
-          npx tsx src/db/migrate.ts
-          nohup npx tsx src/index.ts > "$GITHUB_WORKSPACE/.e2e/server.log" 2>&1 &
-          for i in $(seq 60); do
-            curl -sf http://localhost:3000/api/health && exit 0
-            sleep 1
-          done
-          echo "::error::The API server did not start"; cat "$GITHUB_WORKSPACE/.e2e/server.log"; exit 1
+          parts-sha: ${{ env.BLUEBRICK_PARTS_SHA }}
 
       # Playwright starts the Vite dev server itself (playwright.config.ts
       # webServer), proxying /api, /ws and /parts to the server above.
       # The journeys change site-wide settings (catalogs, review, limits) the
       # way an admin would, so they run one at a time.
       - name: Journeys
-        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)
         working-directory: apps/web
         run: npx playwright test e2e/test/journeys/ --workers=1 --retries=1 --reporter=list,html
 
       - name: Core specs
-        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.full)
         working-directory: apps/web
         run: >
           npx playwright test
@@ -121,13 +87,6 @@ jobs:
           e2e/test/a11y.spec.ts
           --workers=2 --retries=1 --reporter=list,html
 
-      # At night: every spec, one at a time, because several of them change
-      # site-wide settings (catalogs, limits) that the others would see.
-      - name: Every e2e spec
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)
-        working-directory: apps/web
-        run: npx playwright test --workers=1 --retries=1 --reporter=list,html
-
       - name: Upload the Playwright report and traces
         if: failure()
         uses: actions/upload-artifact@v7
@@ -137,4 +96,113 @@ jobs:
             apps/web/playwright-report/
             apps/web/test-results/
             .e2e/server.log
+          retention-days: 14
+
+  # At night: every spec, split across shards that run side by side. Each
+  # shard is its own machine with its own server and database, and runs its
+  # specs one at a time, because several of them change site-wide settings
+  # (catalogs, limits) that the others would see. The shards split by file,
+  # so a spec's tests stay together and in order.
+  every-spec:
+    name: Every e2e spec (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)
+    runs-on: ubuntu-latest
+    # The specs stop themselves at 25 minutes (--global-timeout) and still
+    # write their report; this is the backstop for a hung setup.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # Sized so each shard's specs take about 15 minutes. Keep the
+        # report job's SHARDS in step with this list.
+        shard: [1, 2, 3, 4, 5, 6]
+    env: *e2e-env
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/e2e-stack
+        with:
+          parts-sha: ${{ env.BLUEBRICK_PARTS_SHA }}
+
+      - name: Every e2e spec
+        working-directory: apps/web
+        run: >
+          npx playwright test
+          --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          --workers=1 --retries=1 --global-timeout=1500000
+          --reporter=list,blob
+
+      - name: Upload the shard's blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: apps/web/blob-report/
+          retention-days: 3
+
+      - name: Upload the shard's traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: traces-${{ matrix.shard }}
+          path: |
+            apps/web/test-results/
+            .e2e/server.log
+          retention-days: 14
+
+  # One report for the whole night: every shard's results merged into one
+  # HTML report and one summary on the run page.
+  every-spec-report:
+    name: Every e2e spec (report)
+    needs: every-spec
+    if: ${{ !cancelled() && needs.every-spec.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SHARDS: 6
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile=false
+
+      - name: Download the shards' blob reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: blob-report-*
+          merge-multiple: true
+          path: apps/web/all-blob-reports
+
+      - name: Merge the reports
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: merged.json
+          PLAYWRIGHT_HTML_OPEN: never
+        run: |
+          mkdir -p all-blob-reports
+          if ls all-blob-reports/*.zip >/dev/null 2>&1; then
+            npx playwright merge-reports --reporter=list,html,json ./all-blob-reports
+          fi
+
+      - name: Summary
+        working-directory: apps/web
+        run: |
+          node ../../.github/scripts/e2e-summary.mjs merged.json all-blob-reports \
+            "$SHARDS" >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the merged HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
           retention-days: 14
