@@ -61,6 +61,23 @@ describe('club logos', () => {
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(2);
   });
 
+  it('a new or removed logo shows at once, without waiting for the live update', async () => {
+    // The club's page and lists read these queries; the logo changes when they're fetched again.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const asked = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <LogoSection org={{ ...ORG, logoUrl: '/api/orgs/arklug/logo?v=1' }} />
+      </QueryClientProvider>,
+    );
+    const input = screen.getByLabelText('Club logo file') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(asked.mock.calls.map((c) => c[0]?.queryKey)).toEqual(expect.arrayContaining([['org', 'arklug'], ['orgs']])));
+    asked.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove logo' }));
+    await waitFor(() => expect(asked.mock.calls.map((c) => c[0]?.queryKey)).toEqual(expect.arrayContaining([['org', 'arklug'], ['orgs']])));
+  });
+
   it('removes it', async () => {
     show(<LogoSection org={{ ...ORG, logoUrl: '/api/orgs/arklug/logo?v=1' }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Remove logo' }));
