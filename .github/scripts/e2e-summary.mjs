@@ -94,7 +94,8 @@ if (report) {
     out.push('');
     out.push('| Test | Where | First error line |');
     out.push('|---|---|---|');
-    const esc = (s) => s.replace(/\|/g, '\\|').slice(0, 200);
+    // A table cell: backslashes first, then the pipes, on one line.
+    const esc = (s) => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\s+/g, ' ').slice(0, 200);
     for (const r of rows) out.push(`| ${esc(r.title)} | \`${r.where}\` | ${esc(r.error)} |`);
   };
   table('Failed', failed);
