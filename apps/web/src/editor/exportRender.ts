@@ -335,6 +335,16 @@ export function renderMapToCanvas(
     opts.hudLayer.visible(false);
     hidden.push(opts.hudLayer);
   }
+  // Konva renders each layer into a canvas of its own the size of the
+  // picture before putting them together: leave out the layers with nothing
+  // to draw (the drag layer, an empty module or bend layer). On a big
+  // export each one was a 16,384 px canvas made and copied for nothing.
+  for (const layer of stage.getLayers?.() ?? []) {
+    if (!layer.visible()) continue;
+    if (layer.findOne((n: Konva.Node) => n.nodeType === 'Shape' && n.isVisible())) continue;
+    layer.visible(false);
+    hidden.push(layer);
+  }
   let content: HTMLCanvasElement;
   try {
     stage.scale({ x: 1, y: 1 });
@@ -347,9 +357,28 @@ export function renderMapToCanvas(
     stage.batchDraw();
   }
 
+  const outWidth = size?.width ?? content.width;
+  const outHeight = size?.height ?? content.height;
+  // Already the size asked for, and no grid to go under it: the background
+  // goes under the picture in place, with no second canvas to copy it into.
+  if (!opts.grid && content.width === outWidth && content.height === outHeight) {
+    const ctx = content.getContext('2d');
+    if (ctx) {
+      if (!opts.transparent) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = exportBackground(map);
+        ctx.fillRect(0, 0, outWidth, outHeight);
+        ctx.restore();
+      }
+      stampWatermark(ctx, opts.watermark, outWidth, outHeight);
+      return { canvas: content, pixelRatio };
+    }
+  }
   const out = document.createElement('canvas');
-  out.width = size?.width ?? content.width;
-  out.height = size?.height ?? content.height;
+  out.width = outWidth;
+  out.height = outHeight;
   const ctx = out.getContext('2d');
   if (!ctx) return { canvas: content, pixelRatio };
   if (!opts.transparent) {
@@ -362,12 +391,20 @@ export function renderMapToCanvas(
   }
   ctx.imageSmoothingEnabled = smooth;
   ctx.drawImage(content, 0, 0, out.width, out.height);
-  if (opts.watermark) {
-    ctx.font = `${watermarkFontPx(out.height)}px sans-serif`;
-    ctx.fillStyle = 'rgba(0,0,0,0.549)'; // QColor(0, 0, 0, 140)
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(opts.watermark, out.width - 10, out.height - 10);
-  }
+  stampWatermark(ctx, opts.watermark, out.width, out.height);
   return { canvas: out, pixelRatio };
+}
+
+/** The general-info watermark, bottom right, in QColor(0, 0, 0, 140). */
+function stampWatermark(ctx: CanvasRenderingContext2D, text: string | undefined, width: number, height: number): void {
+  if (!text) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.font = `${watermarkFontPx(height)}px sans-serif`;
+  ctx.fillStyle = 'rgba(0,0,0,0.549)'; // QColor(0, 0, 0, 140)
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(text, width - 10, height - 10);
+  ctx.restore();
 }

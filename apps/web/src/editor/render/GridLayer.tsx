@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { memo, type JSX } from 'react';
 import { Group, Line, Rect, Text } from 'react-konva';
 import type { BbmMap, LayerGrid } from '@cld/model';
 import { studToPx } from './coords';
@@ -24,19 +24,39 @@ export interface ViewportRect {
  * extent from the live viewport so the grid is always covering exactly
  * what the user sees.
  */
-export function GridLayer({
-  map,
-  viewport,
-  showGrid: showGridProp,
-  cornerOverride,
-}: {
+interface GridLayerProps {
   map: BbmMap;
   viewport: ViewportRect;
   /** Live cell-index origin while it is being dragged (not yet in the doc). */
   cornerOverride?: { layerId: string; corner: { x: number; y: number } } | null;
   /** Override the editor-store value. Pass `true` from the public viewer to avoid a store subscription. */
   showGrid?: boolean;
-}) {
+}
+
+/**
+ * Whether the grid would draw the same: the viewport is a new object on
+ * every render of the editor's canvas, so it's compared by its numbers.
+ * Without this every frame of a box-select drag made new line arrays and
+ * Konva redrew the grid's whole layer each time.
+ */
+export function sameGrid(a: GridLayerProps, b: GridLayerProps): boolean {
+  return (
+    a.map === b.map &&
+    a.showGrid === b.showGrid &&
+    a.cornerOverride === b.cornerOverride &&
+    a.viewport.studXMin === b.viewport.studXMin &&
+    a.viewport.studYMin === b.viewport.studYMin &&
+    a.viewport.studXMax === b.viewport.studXMax &&
+    a.viewport.studYMax === b.viewport.studYMax
+  );
+}
+
+export const GridLayer = memo(function GridLayer({
+  map,
+  viewport,
+  showGrid: showGridProp,
+  cornerOverride,
+}: GridLayerProps) {
   const showGridStore = useEditorStore((s) => s.showGrid);
   const showGrid = showGridProp ?? showGridStore;
   const grid = drawnGridLayer(map.layers) as LayerGrid | undefined;
@@ -77,7 +97,7 @@ export function GridLayer({
       )}
     </Group>
   );
-}
+}, sameGrid);
 
 interface Bounds {
   xMin: number;
