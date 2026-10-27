@@ -11,6 +11,7 @@
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { eq, inArray } from 'drizzle-orm';
 import { imageSize, parsePartXml, scanCatalog } from '@cld/parts-catalog';
@@ -140,23 +141,24 @@ export async function partsRoutes(app: FastifyInstance): Promise<void> {
     // can hit it without a session.
     const user = req.user;
     let customWire: PartWire[] = [];
-    let latest = 0;
     try {
-      ({ wire: customWire, latest } = await loadCustom(user?.id ?? null));
+      ({ wire: customWire } = await loadCustom(user?.id ?? null));
     } catch (err) {
       app.log.warn({ err }, 'custom parts merge failed; serving bundled only');
     }
 
-    // ETag includes the user id + count of custom parts and the latest
-    // change to one, so a fresh upload or a replaced part busts the cache
-    // for that user without touching the bundled cache. Falls back to
-    // anonymous (global-only) when no user.
-    const custom = `${customWire.length}-${latest.toString(36)}`;
+    // The ETag hashes the custom parts this user gets, so any change to
+    // them (a new set, a rename, a share or one taken back, even two in
+    // the same second) is a new tag, without touching the bundled cache.
+    // no-cache: the browser keeps the list but asks again every time (a
+    // 304 when nothing changed), so a reload never shows the list from
+    // before a set was added or renamed.
+    const custom = createHash('sha1').update(JSON.stringify(customWire)).digest('base64url').slice(0, 16);
     const etag = user
       ? `"${bundled.etag.slice(1, -1)}-u-${user.id.slice(0, 8)}-${custom}"`
       : `"${bundled.etag.slice(1, -1)}-anon-${custom}"`;
     reply.header('etag', etag);
-    reply.header('cache-control', 'private, max-age=60');
+    reply.header('cache-control', 'private, no-cache');
     if (req.headers['if-none-match'] === etag) {
       return reply.code(304).send();
     }
@@ -377,11 +379,10 @@ export async function visibleCustomParts(userId: string | null): Promise<CustomC
   return rows;
 }
 
-async function loadCustom(userId: string | null): Promise<{ wire: PartWire[]; latest: number }> {
+async function loadCustom(userId: string | null): Promise<{ wire: PartWire[] }> {
   const rows = await visibleCustomParts(userId);
   const parsed = await parsedCustomXml(rows);
-  const latest = rows.reduce((m, r) => Math.max(m, r.updatedAt.getTime()), 0);
-  return { wire: rows.map((r) => customRowToWire(r, parsed.get(r.id))), latest };
+  return { wire: rows.map((r) => customRowToWire(r, parsed.get(r.id))) };
 }
 
 function toBundledWire(p: PartMetadata, spritePrefix = ''): PartWire {

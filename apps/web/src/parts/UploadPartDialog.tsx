@@ -37,7 +37,7 @@ export function UploadPartDialog({ onClose, filter }: { onClose: () => void; fil
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['custom-parts'] });
       // Past the browser's 60 s catalog cache, so the Parts panel shows it now.
-      void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalogFresh, staleTime: 0 }).catch(() => undefined);
+      void qc.fetchQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 0 }).catch(() => undefined);
       onClose();
     },
     onError: (e: Error) => setError(e.message),
