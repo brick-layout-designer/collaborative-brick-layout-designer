@@ -2,7 +2,7 @@
 // screen (taller ones scroll inside themselves), nothing in it runs off the
 // side, and its controls are 44 px tap targets. The home page's row menus,
 // the new-thing dialogs, and the editor's dialogs (View on a phone; Edit on
-// a tablet, through its Map menu).
+// a tablet, through its Map menu; on a phone, through its Map sheet).
 //
 // SHOTS_DIR=<dir> saves a screenshot of each.
 
@@ -71,6 +71,13 @@ const more = (title: string, item?: string) => async (page: Page) => {
   if (item) await page.getByRole('menuitem', { name: item }).click();
 };
 const mapItem = (path: string[]) => (page: Page) => mapMenu(page, ...path);
+/** On a phone: Edit, then the layout-name menu ▸ Map… and down `path` in its sheet. */
+const phoneMapItem = (path: string[]) => async (page: Page) => {
+  await page.getByTestId('mode-switch').getByRole('radio', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: /Dialog Layout/ }).first().click();
+  await page.getByTestId('phone-map').click();
+  for (const label of path) await page.getByRole('menu').last().getByRole('menuitem', { name: label, exact: true }).click();
+};
 const editor = () => `/editor/${layoutId}`;
 
 const DIALOGS: DialogCase[] = [
@@ -101,6 +108,21 @@ const DIALOGS: DialogCase[] = [
     ['Download & export', 'Export as image…'],
     ['Download & export', 'Export part list…'],
   ].map((path): DialogCase => ({ name: `editor ${path.at(-1)!.replace(/…/g, '')}`, path: editor, on: 'tablet', open: mapItem(path) })),
+  // The phone's Map sheet reaches the same dialogs (Map menu entries with no other way in by touch).
+  { name: 'editor phone map sheet', path: editor, on: 'phone', open: phoneMapItem([]) },
+  ...[
+    ['General info…'],
+    ['Background color…'],
+    ['Background image…'],
+    ['Find…'],
+    ['Modules & sets', 'Save selection as set…'],
+    ['Modules & sets', 'Import .bbm as module…'],
+    ['Venue', 'Draw outline by dimensions…'],
+    ['Venue', 'Edit venue properties…'],
+    ['Budget', 'Edit budget…'],
+    ['Download & export', 'Export part list…'],
+    ['Preferences…'],
+  ].map((path): DialogCase => ({ name: `phone ${path.at(-1)!.replace(/…/g, '')}`, path: editor, on: 'phone', open: phoneMapItem(path) })),
 ];
 
 for (const device of DEVICES.filter((d) => ['360x740', '360x740-landscape', 'tablet-ipad-mini', 'tablet-ipad-mini-landscape'].includes(d.name))) {

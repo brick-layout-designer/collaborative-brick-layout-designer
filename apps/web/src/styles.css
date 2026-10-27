@@ -475,6 +475,11 @@ body,
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+  /* On a `grid place-items-center` overlay, 100% is the grid track, which
+     grows with the dialog: hold it to the screen's width instead. */
+  .fixed.inset-0.grid > :is(div, form, section) {
+    max-width: calc(100vw - 1rem);
+  }
 }
 
 /* The map's one font (editor/render/mapText.ts), the same file the
