@@ -1,6 +1,7 @@
 // Invite-acceptance endpoints.
 //
-//   GET  /api/invites/:token    → preview (no side effects)
+//   GET  /api/invites/:token    → preview (no side effects; the address is
+//                                 masked unless it's the signed-in account's)
 //   POST /api/invites/:token    → accept (requires authenticated user)
 //
 // The accept handler checks that the authenticated user's email matches
@@ -16,6 +17,7 @@ import { writeAuditEvent } from '../audit/writeAuditEvent.js';
 import { hasVerifiedEmail } from '../auth/users.js';
 import { sameEmail } from '../utils/validate.js';
 import { layoutInviteStillValid } from '../access/pendingShares.js';
+import { maskEmail } from '../utils/maskEmail.js';
 
 export async function inviteRoutes(app: FastifyInstance): Promise<void> {
   // ---- preview -------------------------------------------------------------
@@ -45,8 +47,12 @@ export async function inviteRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(410).send({ error: 'invite_no_longer_valid' });
       }
 
+      // Whoever holds the link sees a masked address, and whether the invite
+      // is for the account they're signed in with (null signed out).
+      const forYou = req.user ? sameEmail(invite.invitedEmail, req.user.email) : null;
       return {
-        invitedEmail: invite.invitedEmail,
+        invitedEmail: forYou ? invite.invitedEmail : maskEmail(invite.invitedEmail),
+        forYou,
         role: invite.role,
         layoutId: invite.layoutId,
         layoutTitle: layout.title,
