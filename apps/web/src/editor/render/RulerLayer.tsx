@@ -45,6 +45,7 @@ import { pivotOf } from '../brickGeometry';
 import type { PartWire } from '../../api';
 import { usePosedMap } from '../liveDragPose';
 import { SELECTION, rulerHaloWidth } from './selectionStyle';
+import { coarsePointer } from '../useViewportSize';
 
 interface Props {
   map: BbmMap;
@@ -551,9 +552,21 @@ const LinearRulerView = memo(function LinearRulerView({
   );
 }, sameRulerView);
 
+/**
+ * A ruler handle's radius. With a mouse, the desktop's (scene px). By
+ * touch, a fingertip's at any zoom: 12 px on screen, and 10 px more around
+ * it that a finger still catches.
+ */
+function useHandleSize(): { radius: number; hitStrokeWidth?: number } {
+  const zoom = useEditorStore((s) => s.stageView.zoom);
+  if (!coarsePointer()) return { radius: SELECTION.handleRadius };
+  return { radius: 12 / (zoom > 0 ? zoom : 1), hitStrokeWidth: 20 };
+}
+
 /** BlueBrick ScaleRuler's handle: the offset line's middle, or a circle's rim. */
 function ScaleHandle({ x, y, onDrag }: { x: number; y: number; onDrag: (studX: number, studY: number) => void }) {
   const PX = studToPx();
+  const size = useHandleSize();
   const report = (e: KonvaEventObject<DragEvent>) => {
     e.cancelBubble = true;
     onDrag(e.target.x() / PX, e.target.y() / PX);
@@ -563,7 +576,7 @@ function ScaleHandle({ x, y, onDrag }: { x: number; y: number; onDrag: (studX: n
       name="ruler-scale"
       x={x}
       y={y}
-      radius={SELECTION.handleRadius}
+      {...size}
       fill={SELECTION.handleStroke}
       stroke={SELECTION.handleFill}
       strokeWidth={SELECTION.handleStrokeWidth}
@@ -593,12 +606,13 @@ function EndpointHandle({
   onDrag: (which: 0 | 1, studX: number, studY: number, free: boolean) => void;
 }) {
   const PX = studToPx();
+  const size = useHandleSize();
   return (
     <KonvaCircle
       name="ruler-endpoint"
       x={x}
       y={y}
-      radius={SELECTION.handleRadius}
+      {...size}
       fill={SELECTION.handleFill}
       stroke={SELECTION.handleStroke}
       strokeWidth={SELECTION.handleStrokeWidth}

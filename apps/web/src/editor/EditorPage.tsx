@@ -18,7 +18,7 @@ import { useLibraryEntries } from './moduleLibraryMenu';
 import { TouchModuleSheet } from './TouchModuleSheet';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
-import { commitStageView, holdStageView, isStageViewHeld, setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, type AnnoSelection, noticeDownloaded } from './editorStore';
+import { commitStageView, holdStageView, isStageViewHeld, setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, EMPTY_ANNO, type AnnoSelection, noticeDownloaded } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -57,6 +57,7 @@ import { readSidecarFromDoc } from '@cld/ydoc';
 import { coarsePointer, useViewportSize } from './useViewportSize';
 import { useElementSize } from './useElementSize';
 import { useTouchView } from './useTouchView';
+import { TouchToolsSheet } from './TouchTools';
 import { besideTarget, readPhoneEdit, safeSessionStorage, writePhoneEdit, type Pt } from './touchGesture';
 import { AddPartSheet, ModeSwitch, TouchActionBar, TouchUndoRedo } from './TouchEdit';
 import { TouchPickedSheet } from './TouchPickedSheet';
@@ -450,6 +451,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
   const mapToggles = useMapMenuToggles();
   /** The touch bar's More actions sheet (TouchPickedSheet). */
   const [showTouchPicked, setShowTouchPicked] = useState(false);
+  const [showTouchTools, setShowTouchTools] = useState(false);
   const [showVenueProps, setShowVenueProps] = useState(false);
   const [showVenueDesigner, setShowVenueDesigner] = useState(false);
   const [showVenueDimensions, setShowVenueDimensions] = useState(false);
@@ -1289,6 +1291,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             }}
             onAddPart={() => setShowAddPart(true)}
             onPaste={() => canvasActionsRef.current?.clipboardByTouch('paste')}
+            onTools={() => setShowTouchTools(true)}
             onSheets={() => setShowTouchSheets(true)}
             onEditText={openTouchText}
             onModule={isViewer || !doc ? undefined : () => {
@@ -1303,6 +1306,7 @@ function Editor({ layoutId, docState, moduleMode }: { layoutId: string; docState
             onMore={isViewer || !doc ? undefined : () => setShowTouchPicked(true)}
           />
         )}
+        {showTouchTools && !isViewer && <TouchToolsSheet onClose={() => setShowTouchTools(false)} />}
         {showTouchPicked && !isViewer && (
           <TouchPickedSheet
             onClose={() => setShowTouchPicked(false)}
@@ -1679,6 +1683,8 @@ function Canvas({
     const shape = stage.getIntersection({ x: p.x + area.left - box.left, y: p.y + area.top - box.top });
     if (!shape) return null;
     if (shape.name() === 'text-cell') return { kind: 'texts', id: shape.id(), node: shape };
+    // A picked ruler's round handles: the finger drags them, never pans.
+    if (shape.name() === 'ruler-endpoint' || shape.name() === 'ruler-scale') return { kind: 'handle', id: '', node: shape };
     // A bend handle: the finger bends the run (BendHandles), never pans.
     const handle = shape.findAncestor((n: Konva.Node) => n.name() === BEND_HANDLE_NAME);
     if (handle) return { kind: 'handle', id: '', node: handle };
@@ -1708,6 +1714,65 @@ function Canvas({
       y: pxToStud((p.y + area.top - box.top - st.panY) / st.zoom),
     };
   };
+  /**
+   * A ruler by touch: the first tap is its start (a circle's middle), on
+   * the grid as with a mouse; the second its end (a point on the edge).
+   * It's then picked, with handles to drag, and the tool goes back to
+   * picking.
+   */
+  function touchRulerTap(p: Pt): void {
+    const at = areaStuds(p);
+    if (!at) return;
+    const pt = gridPointStuds(at);
+    const st = useEditorStore.getState();
+    const start = st.touchRulerStart;
+    if (!start) {
+      useEditorStore.setState({ touchRulerStart: pt });
+      return;
+    }
+    const length = Math.hypot(pt.x - start.x, pt.y - start.y);
+    // The same spot again: still waiting for the end.
+    if (length < 0.5) return;
+    const layerId = ensureRulerLayer(doc);
+    const id = st.tool === 'rulerCircular' ? addCircularRuler(doc, layerId, start, length) : addLinearRuler(doc, layerId, start, pt);
+    st.setTool('select');
+    useEditorStore.setState({ selection: [], annoSelection: { ...EMPTY_ANNO, rulers: [id] } });
+  }
+  /**
+   * Painting areas by touch, one finger's stroke: the squares under it
+   * are painted (or erased) as it goes; a tap paints one. Nothing is
+   * painted until the finger has moved a little or stayed a moment, so a
+   * second finger landing for a pinch doesn't leave a square behind.
+   */
+  const touchStrokeRef = useRef<{ at: number; last: Pt | null; painting: boolean } | null>(null);
+  function touchPaint(phase: 'move' | 'end' | 'cancel', from: Pt, to: Pt): void {
+    if (phase === 'cancel') {
+      touchStrokeRef.current = null;
+      paintStrokeRef.current = null;
+      return;
+    }
+    const stroke = (touchStrokeRef.current ??= { at: performance.now(), last: null, painting: false });
+    if (!stroke.painting) {
+      const settled = phase === 'end' || performance.now() - stroke.at >= 100 || Math.hypot(to.x - from.x, to.y - from.y) >= 12;
+      if (!settled) return;
+      stroke.painting = true;
+      paintStrokeRef.current = new Set();
+    }
+    paintAlong(stroke.last ?? from, to);
+    stroke.last = to;
+    if (phase === 'end') {
+      touchStrokeRef.current = null;
+      paintStrokeRef.current = null;
+    }
+  }
+  /** Paints the squares on the line from `a` to `b` (canvas-area px), so a fast finger leaves no gaps. */
+  function paintAlong(a: Pt, b: Pt): void {
+    const sa = areaStuds(a);
+    const sb = areaStuds(b);
+    if (!sa || !sb) return;
+    const steps = Math.max(1, Math.ceil(Math.hypot(sb.x - sa.x, sb.y - sa.y) / 2));
+    for (let i = 0; i <= steps; i++) doPaintStroke(sa.x + ((sb.x - sa.x) * i) / steps, sa.y + ((sb.y - sa.y) * i) / steps);
+  }
   /** Where a long press on empty map offers "Paste here": the spot on the canvas area, and in studs. */
   const [pasteSpot, setPasteSpot] = useState<{ x: number; y: number; studs: Pt } | null>(null);
   useTouchView(
@@ -1728,10 +1793,17 @@ function Canvas({
       // which it still drags.
       boxFrom: (p) => {
         const st = useEditorStore.getState();
+        // Painting areas: one finger paints (touchPaint).
+        if (!isViewer && (st.tool === 'paint' || st.tool === 'erase')) return true;
         if (isViewer || st.tool !== 'select' || !st.touchSelectArea) return false;
         return !dragsPicked(itemAt(p));
       },
       onBox: (phase, from, to) => {
+        const tool = useEditorStore.getState().tool;
+        if (tool === 'paint' || tool === 'erase') {
+          touchPaint(phase, from, to);
+          return;
+        }
         const a = areaStuds(from);
         const b = areaStuds(to);
         if (phase === 'cancel' || !a || !b) {
@@ -1767,6 +1839,10 @@ function Canvas({
         setPasteSpot(null);
         if (isViewer) return;
         const st = useEditorStore.getState();
+        if (st.tool === 'rulerLinear' || st.tool === 'rulerCircular') {
+          touchRulerTap(p);
+          return;
+        }
         if (st.tool !== 'select' || st.touchSelectMore) return;
         // A part, label or text handles its own tap; empty map clears the pick.
         if (!itemAt(p)) st.setSelection([]);
@@ -3253,10 +3329,11 @@ function Canvas({
     const stroke = paintStrokeRef.current;
     if (!stroke) return;
     const layerId = ensureAreaLayer(doc);
-    // Find the cell size for this layer (default 8 if missing).
-    const layer = map.layers.find((l) => l.id === layerId && l.type === 'area');
-    const cellStuds =
-      layer && layer.type === 'area' && layer.areaCellSize > 0 ? layer.areaCellSize : 8;
+    // The sheet's cell size, from the doc: a sheet this stroke just made
+    // isn't in `map` yet (it used to be painted in 8-stud cells on a
+    // 32-stud sheet, so the first stroke's squares landed apart).
+    const fromDoc = doc.getMap<Y.Map<unknown>>('layerData').get(layerId)?.get('areaCellSize');
+    const cellStuds = typeof fromDoc === 'number' && fromDoc > 0 ? fromDoc : 8;
     const cx = Math.floor(studX / cellStuds);
     const cy = Math.floor(studY / cellStuds);
     const key = `${cx},${cy}`;
@@ -4462,6 +4539,7 @@ function Canvas({
         <SnapRing />
         <HingeLimits />
         {rulerDraft && <RulerDraftPreview draft={rulerDraft} />}
+        <TouchRulerStart zoom={zoom} />
         {venueDraft && <VenueDraftPreview draft={venueDraft} />}
         <RemoteCursors awareness={awareness} map={map} />
       </KonvaLayer>
@@ -4971,6 +5049,26 @@ function CanvasContextMenu({
  * SnapMarks in SelectionStyle.h). Driven by editor-store `liveSnap` and
  * `snapMoving`.
  */
+/** Measuring by touch: where the first tap put the ruler's start, until the second tap. */
+function TouchRulerStart({ zoom }: { zoom: number }) {
+  const at = useEditorStore((s) => s.touchRulerStart);
+  if (!at) return null;
+  const px = (n: number) => n / (zoom > 0 ? zoom : 1);
+  return (
+    <Circle
+      name="touch-ruler-start"
+      x={studToPx(at.x)}
+      y={studToPx(at.y)}
+      radius={px(9)}
+      stroke="rgb(255,150,0)"
+      strokeWidth={px(3)}
+      fill="rgba(255,150,0,0.35)"
+      listening={false}
+      perfectDrawEnabled={false}
+    />
+  );
+}
+
 /** While bending flex track: an amber ring on each joint at its hinge limit (desktop paintBendHandles). */
 function HingeLimits() {
   const points = useEditorStore((s) => s.hingeLimits);
