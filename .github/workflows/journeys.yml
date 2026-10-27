@@ -118,6 +118,7 @@ jobs:
           e2e/test/desktopParity.spec.ts
           e2e/test/tours.spec.ts
           e2e/test/bigLayoutWork.spec.ts
+          e2e/test/a11y.spec.ts
           --workers=2 --retries=1 --reporter=list,html
 
       # At night: every spec, one at a time, because several of them change

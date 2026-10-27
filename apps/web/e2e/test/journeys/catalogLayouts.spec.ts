@@ -130,7 +130,7 @@ test('a layout and a venue are shared, reviewed, viewed signed out, copied, and 
   // 5. Tom copies the layout, and starts a layout in the venue.
   await as(page, TAKER, 'Taker Tom');
   await page.goto('/catalog?kind=layout');
-  await page.getByRole('button', { name: `Add ${LAYOUT}` }).click();
+  await page.getByRole('button', { name: `Copy to my layouts: ${LAYOUT}` }).click();
   const add = page.getByRole('dialog', { name: `Add ${LAYOUT}` });
   await add.getByRole('button', { name: 'Add' }).click();
   await expect(add.getByRole('status')).toContainText('is now in your layouts');

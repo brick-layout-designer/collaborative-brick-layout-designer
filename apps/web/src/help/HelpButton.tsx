@@ -135,6 +135,8 @@ export function HelpButton({ helpKey, target, className = '' }: Props) {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== 'Escape') return;
+    // Nothing of its own showing: Esc is the dialog's (closes it) or the map's.
+    if (!open && !showTip) return;
     // Keep Esc from also closing the dialog or clearing the selection underneath.
     e.stopPropagation();
     e.preventDefault();

@@ -43,6 +43,7 @@ import { TrustedBadge } from './TrustedBadge';
 import { useIsDemo } from './ShareToCatalog';
 import { askConfirm, askReason, confirmDelete, deleteOptions, toastDeleted, type DeleteWording } from '../ui/ConfirmDialog';
 import { CoverPicker, type CoverMode, type CoverPickerHandle } from '../ui/CoverPicker';
+import { useEscape } from '../editor/useEscape';
 
 /** Who sees it, in a few words. */
 export function audienceLabel(audience: CollectionAudience | undefined, clubName?: string | null): string {
@@ -414,6 +415,7 @@ export function CollectionEditor({
   initial?: Picked[];
   onClose: () => void;
 }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
   const settings = useQuery({ queryKey: ['catalog-settings'], queryFn: api.catalog.settings });
@@ -720,6 +722,7 @@ export function CollectionEditor({
 
 /** "Add all": every item to me or a club; what's already there is skipped. */
 function AddAllDialog({ c, onClose }: { c: CollectionDetail; onClose: () => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const [owner, setOwner] = useState('');
@@ -777,6 +780,7 @@ function AddAllDialog({ c, onClose }: { c: CollectionDetail; onClose: () => void
 
 /** One of the collection's own modules or parts, copied to you or a club. */
 function AddLibraryDialog({ item, onClose }: { item: CollectionItem; onClose: () => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const [owner, setOwner] = useState('');

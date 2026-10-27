@@ -7,6 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { ensureUser, signIn } from '../../helpers';
+import { expectAccessible } from '../../a11y';
 
 const ts = Date.now();
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -39,6 +40,7 @@ test('a shared set brings its custom parts, and taking it back takes them back',
   const along = share.getByTestId('set-parts-come-along');
   await expect(along).toContainText('This custom part of yours comes along with the set');
   await expect(along).toContainText(`Engine shed (${PART})`);
+  await expectAccessible(page, 'the set share dialog', { include: '[role=dialog]' });
   await share.getByPlaceholder('alice@example.com').fill(beaEmail);
   await share.getByRole('button', { name: 'Invite' }).click();
   const sent = share.getByRole('status');

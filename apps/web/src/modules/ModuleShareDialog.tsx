@@ -11,6 +11,7 @@ import { HelpButton } from '../help/HelpButton';
 import { useIsDemo } from '../catalog/ShareToCatalog';
 import { askConfirm, confirmDelete } from '../ui/ConfirmDialog';
 import { CopyLinkButton } from '../layouts/ShareDialog';
+import { useEscape } from '../editor/useEscape';
 
 type Role = 'owner' | 'editor' | 'viewer';
 
@@ -85,6 +86,7 @@ function ShareWithPeopleDialog({
   myUserId: string | undefined;
   onClose: () => void;
 }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const key = [what.listKey, id];
   const list = useQuery({ queryKey: key, queryFn: () => what.collaborators(id) });

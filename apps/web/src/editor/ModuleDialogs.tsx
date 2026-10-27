@@ -18,6 +18,7 @@ import { clubCanAdd } from '../orgs/clubPermissions';
 import { SaveToPicker } from '../owners/OwnerControls';
 import { moveToClubWording } from '../owners/owners';
 import { ModuleThumb } from '../modules/ModuleThumb';
+import { useEscape } from './useEscape';
 import { HelpButton } from '../help/HelpButton';
 import type { HelpKey } from '../help/helpTexts';
 import { askConfirm } from '../ui/ConfirmDialog';
@@ -66,7 +67,8 @@ function SheetsNote({ map, members, oneSheet, setOneSheet }: {
   );
 }
 
-function Shell({ title, help, children }: { title: string; help?: HelpKey; children: React.ReactNode }) {
+function Shell({ title, help, onClose, children }: { title: string; help?: HelpKey; onClose: () => void; children: React.ReactNode }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" data-no-gesture>
       <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-sm rounded-lg border border-border bg-panel p-5 text-ink shadow-xl">
@@ -188,7 +190,7 @@ export function MakeModuleDialog({ doc, onClose, layoutOwnerOrgId, makeThumbnail
   }
 
   return (
-    <Shell title="Make a module" help="module.make">
+    <Shell title="Make a module" help="module.make" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <p className="text-xs text-muted">
           The {members.length === 1 ? 'picked part becomes' : `${members.length} picked parts become`} one module in this layout. It moves as one piece.
@@ -260,7 +262,7 @@ export function SaveToLibraryDialog({ doc, moduleId, onClose, layoutOwnerOrgId, 
   }
 
   return (
-    <Shell title={`Save “${mod.name || 'module'}” to the Module library`} help="module.library">
+    <Shell title={`Save “${mod.name || 'module'}” to the Module library`} help="module.library" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <p className="text-xs text-muted">A copy goes to your Module library, so you and your club can use it in other layouts. This module stays linked to it.</p>
         <fieldset className="flex flex-col gap-1 text-xs">
@@ -339,7 +341,7 @@ export function PublishModuleDialog({ doc, moduleId, onClose, makeThumbnail }: C
   if (!mod) return null;
   const linked = state?.kind === 'linked' ? state : null;
   return (
-    <Shell title="Update Module library version" help="module.library">
+    <Shell title="Update Module library version" help="module.library" onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

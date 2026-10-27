@@ -8,6 +8,7 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { mapMenu, signIn } from '../../helpers';
+import { expectAccessible } from '../../a11y';
 
 const ts = Date.now();
 const PART = 'ts_narrowgauge_straight.8';
@@ -44,6 +45,7 @@ test('save a selection as a set, place it, rename it and delete it', async ({ pa
   await expect(dialog).toContainText('A set is a group of parts saved together, to place again in one go.');
   await expect(dialog).toContainText('2 parts selected.');
   await expect(dialog.getByRole('button', { name: 'Download .set.xml' })).toBeEnabled();
+  await expectAccessible(page, 'Save selection as set', { include: '[role=dialog][aria-label="Save selection as set"]' });
   // A set can't be named like a part inside it: placing it would nest copies of itself.
   await dialog.getByLabel('Set name').fill(PART);
   await dialog.getByRole('button', { name: 'Save set' }).click();

@@ -9,9 +9,11 @@ import { defaultSaveTo, readOwnerFilter, type OwnerFilter } from '../owners/owne
 import { SaveToPicker } from '../owners/OwnerControls';
 import { CategoryPicker } from './CategoryPicker';
 import { DesktopOnlySteps } from '../open/DesktopOnly';
+import { useEscape } from '../editor/useEscape';
 
 /** `filter`: the owner filter being shown (home page); otherwise the last one picked there. */
 export function UploadPartDialog({ onClose, filter }: { onClose: () => void; filter?: OwnerFilter }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const catalog = useQuery({ queryKey: ['parts-catalog'], queryFn: api.parts.catalog, staleTime: 5 * 60 * 1000 });

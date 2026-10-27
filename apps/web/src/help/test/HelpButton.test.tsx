@@ -108,6 +108,22 @@ describe('HelpButton', () => {
     expect(onOuterKey.mock.calls.some(([e]) => (e as KeyboardEvent).key === 'Escape')).toBe(false);
   });
 
+  it('with nothing of its own showing, Esc goes on to the dialog it sits in', async () => {
+    const { onOuterKey } = setup();
+    const user = userEvent.setup();
+    await user.tab();
+    await user.tab();
+    expect(document.activeElement).toBe(helpButton());
+    // Focused from the keyboard: its tip shows, and the first Esc hides it.
+    expect(screen.getByRole('tooltip')).toBeTruthy();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(onOuterKey.mock.calls.some(([e]) => (e as KeyboardEvent).key === 'Escape')).toBe(false);
+    // The next is the dialog's: it closes it (it used to be swallowed for good).
+    await user.keyboard('{Escape}');
+    expect(onOuterKey.mock.calls.some(([e]) => (e as KeyboardEvent).key === 'Escape')).toBe(true);
+  });
+
   it('works from the keyboard alone: Enter opens, Tab reaches Show me, Esc closes', async () => {
     setup();
     const user = userEvent.setup();

@@ -18,6 +18,7 @@ import { CollectionCard, CollectionsSection } from './Collections';
 import { TrustedBadge } from './TrustedBadge';
 import { AddToCollectionDialog, type CollectionTarget } from './AddToCollection';
 import { ItemCoverDialog } from './ItemCover';
+import { useEscape } from '../editor/useEscape';
 
 /** How many items a landing row shows, and a page of the full list. */
 const ROW = 8;
@@ -406,7 +407,8 @@ function ItemCard({ it, signedIn, demo, mineIds, onAdd, onCollect, onCover, onTa
           <button
             type="button"
             onClick={() => onAdd(it)}
-            aria-label={`Add ${it.title}`}
+            // Its words, then which one (a name that starts with what it says, WCAG 2.5.3).
+            aria-label={`${KIND_LABEL[it.kind].add}: ${it.title}`}
             className="tap-target rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
           >
             {KIND_LABEL[it.kind].add}
@@ -491,6 +493,7 @@ export function CatalogPreview({ item }: { item: Pick<CatalogItem, 'previewUrl' 
 
 /** "Add to my modules / parts": where the copy goes, then where to find it. */
 export function AddDialog({ item, onClose, onAdded }: { item: CatalogItem; onClose: () => void; onAdded?: (id: string) => void }) {
+  useEscape(onClose);
   const qc = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs'], queryFn: api.orgs.list });
   const [owner, setOwner] = useState('');
