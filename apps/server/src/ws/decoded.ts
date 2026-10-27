@@ -35,6 +35,10 @@ export const guardWork = {
   decodes: 0,
   /** Copies of a room's document made to work out what an update leaves (gridGuard). */
   docCopies: 0,
+  /** Updates whose grid sizes were worked out from the keys they touch, without a copy (gridGuard). */
+  gridExact: 0,
+  /** Layers whose type and grid size that took reading (gridGuard): a few per update, whatever the layout's size. */
+  gridLayersRead: 0,
 };
 
 /** The update's structs, or null when Yjs can't read it (Yjs then refuses it on its own). */

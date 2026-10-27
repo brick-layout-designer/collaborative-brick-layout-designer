@@ -1,8 +1,10 @@
 // Grid sizes the apps draw (ws/gridGuard.ts): the shared vectors
 // (fixtures/contracts/update-guard.json, gridSize), every layout fixture as
 // the server seeds it, a layout already holding such a size, changes that
-// wait for others before they apply, and which updates are worked out on a
-// copy of the room's document (only those that could break a grid).
+// wait for others before they apply, which updates are worked out at all
+// (only those that could break a grid), and that those are worked out from
+// the keys they touch, answering exactly what a copy of the room's
+// document would (a seeded random mix of edits, several clients, races).
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,7 +13,7 @@ import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
 import { readBbm } from '@cld/bbm';
 import { createDefaultLayoutDoc, seedFromBbm } from '@cld/ydoc';
-import { checkGridSizes, invalidGridLayers, validGridSize } from './gridGuard.js';
+import { checkGridSizes, checkGridSizesOnCopy, exactVerdict, invalidGridLayers, UNSURE, validGridSize } from './gridGuard.js';
 import { decodeIncoming, guardWork } from './decoded.js';
 import { checkUpdate } from './updateGuard.js';
 
@@ -43,9 +45,13 @@ describe('grid guard', () => {
     const update = bytes(v.hex);
     // Both apps read it: only the grid size decides.
     expect(checkUpdate(update)).toBeNull();
+    const copies = guardWork.docCopies;
     const why = checkGridSizes(v.kind === 'update' ? room() : null, update);
     if (v.refused) expect(why).toMatch(/cell size/);
     else expect(why).toBeNull();
+    // Each is worked out from the keys it touches, the same as on a copy.
+    expect(guardWork.docCopies).toBe(copies);
+    expect(checkGridSizesOnCopy(v.kind === 'update' ? room() : null, update)).toEqual(why);
   });
 
   it('has vectors for each kind of size', () => {
@@ -115,7 +121,7 @@ describe('grid guard', () => {
     expect(checkGridSizes(doc, earlier)).toMatch(/cell size/);
   });
 
-  it('works out on a copy only the updates that could leave a grid without a valid size', () => {
+  it('works out only the updates that could leave a grid without a valid size, from the keys they touch', () => {
     const doc = room();
     const edit = (fn: (d: Y.Doc) => void) => {
       const mine = new Y.Doc();
@@ -124,10 +130,13 @@ describe('grid guard', () => {
       fn(mine);
       return Y.encodeStateAsUpdate(mine, sv);
     };
+    // [verdict, layers read]; never a copy of the document.
     const copies = (update: Uint8Array): [string | null, number] => {
-      const before = guardWork.docCopies;
+      const before = { ...guardWork };
       const why = checkGridSizes(doc, update);
-      return [why, guardWork.docCopies - before];
+      expect(guardWork.docCopies - before.docCopies).toBe(0);
+      expect(why).toEqual(checkGridSizesOnCopy(doc, update));
+      return [why, guardWork.gridLayersRead - before.gridLayersRead];
     };
     const parts = (d: Y.Doc, n: number) => {
       const layer = new Y.Map<unknown>();
@@ -151,7 +160,7 @@ describe('grid guard', () => {
     expect(copies(edit((d) => gridOf(d).delete('type')))).toEqual([null, 0]);
     expect(copies(edit((d) => gridOf(d).set('type', 'brick')))).toEqual([null, 0]);
     expect(copies(edit((d) => d.getMap('layerData').forEach((l, id) => l === gridOf(d) && d.getMap('layerData').delete(id))))).toEqual([null, 0]);
-    // A copy: a new size (valid: taken), a layer turned into a grid, a grid size deleted.
+    // Read: a new size (valid: taken), a layer turned into a grid, a grid size deleted: one layer each.
     expect(copies(edit((d) => gridOf(d).set('gridSizeInStud', 48)))).toEqual([null, 1]);
     expect(copies(edit((d) => gridOf(d).set('gridSizeInStud', 0)))[1]).toBe(1);
     expect(copies(edit((d) => gridOf(d).delete('gridSizeInStud')))).toEqual([expect.stringMatching(/cell size/), 1]);
@@ -217,5 +226,104 @@ describe('grid guard', () => {
     Y.applyUpdate(after, crafted);
     expect(gridOf(after).has('gridSizeInStud')).toBe(false);
     expect(checkGridSizes(doc, crafted)).toMatch(/cell size/);
+  });
+
+  it('answers from the touched keys exactly what a copy answers, over a seeded mix of edits, clients and races', () => {
+    let seed = 0x5eed;
+    const rand = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
+    const SIZES = [0, -8, 0.5, 1, 32, 48, 2147483647, 2147483648, Number.NaN, Number.POSITIVE_INFINITY, '32', null] as const;
+    const layers = (d: Y.Doc) => d.getMap<unknown>('layerData');
+    const anyLayer = (d: Y.Doc): Y.Map<unknown> | null => {
+      const ls = [...layers(d).values()].filter((l): l is Y.Map<unknown> => l instanceof Y.Map);
+      return ls.length ? pick(ls) : null;
+    };
+    const ops: ((d: Y.Doc) => void)[] = [
+      (d) => anyLayer(d)?.set('gridSizeInStud', pick(SIZES)),
+      (d) => anyLayer(d)?.set('gridSizeInStud', pick([16, 32, 64])),
+      (d) => anyLayer(d)?.delete('gridSizeInStud'),
+      (d) => anyLayer(d)?.set('type', pick(['grid', 'brick', 'text'])),
+      (d) => anyLayer(d)?.delete('type'),
+      (d) => anyLayer(d)?.set('name', `n${Math.floor(rand() * 100)}`),
+      (d) => {
+        const g = new Y.Map<unknown>();
+        layers(d).set(pick(['G', 'G2', 'G3', 'B', 'N1', `L${Math.floor(rand() * 4)}`]), g);
+        if (rand() < 0.8) g.set('type', pick(['grid', 'grid', 'brick']));
+        if (rand() < 0.7) g.set('gridSizeInStud', pick(SIZES));
+      },
+      (d) => {
+        const ids = [...layers(d).keys()];
+        if (ids.length) layers(d).delete(pick(ids));
+      },
+      (d) => d.getMap('meta').set('title', `t${Math.floor(rand() * 100)}`),
+      (d) => {
+        const l = anyLayer(d);
+        const b = l?.get('bricks');
+        if (b instanceof Y.Array) b.push([new Y.Map<unknown>([['id', `p${Math.floor(rand() * 1e6)}`]])]);
+      },
+    ];
+    const edit = (d: Y.Doc) => {
+      const n = 1 + Math.floor(rand() * 3);
+      d.transact(() => {
+        for (let i = 0; i < n; i++) pick(ops)(d);
+      });
+    };
+    const copyOf = (d: Y.Doc, client: number) => {
+      const c = new Y.Doc();
+      c.clientID = client;
+      Y.applyUpdate(c, Y.encodeStateAsUpdate(d));
+      return c;
+    };
+
+    let decided = 0;
+    let total = 0;
+    let refused = 0;
+    const compare = (doc: Y.Doc | null, update: Uint8Array) => {
+      const decodedUpdate = decodeIncoming(update)!;
+      const exact = exactVerdict(doc, update, decodedUpdate);
+      const copied = checkGridSizesOnCopy(doc, update);
+      total++;
+      if (copied !== null) refused++;
+      if (exact === UNSURE) return copied;
+      decided++;
+      expect(exact === null, `exact ${String(exact)} / copy ${String(copied)}`).toBe(copied === null);
+      return copied;
+    };
+
+    for (let round = 0; round < 60; round++) {
+      const roomDoc = room();
+      let next = 1000 + round * 100;
+      // Someone who went offline a while ago and comes back with their edits.
+      const late = copyOf(roomDoc, next++);
+      const lateSv = Y.encodeStateVector(late);
+      for (let step = 0; step < 12; step++) {
+        if (step === 6 || step === 11) {
+          edit(late);
+          const back = Y.encodeStateAsUpdate(late, lateSv);
+          if (compare(roomDoc, back) === null) Y.applyUpdate(roomDoc, back);
+        }
+        // One to three people edit from the room as it is (or was a step ago).
+        const peers = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => copyOf(roomDoc, next++));
+        const svs = peers.map((p) => Y.encodeStateVector(p));
+        for (const p of peers) edit(p);
+        if (rand() < 0.3) edit(peers[0]!); // a second transaction from the same person
+        const diffs = peers.map((p, i) => Y.encodeStateAsUpdate(p, svs[i]));
+        const update = diffs.length === 1 || rand() < 0.5 ? diffs[0]! : Y.mergeUpdates(diffs);
+        const why = compare(roomDoc, update);
+        if (why === null) Y.applyUpdate(roomDoc, update);
+        // Now and then a whole document on its own (a snapshot).
+        if (rand() < 0.1) compare(null, Y.encodeStateAsUpdate(peers[0]!));
+      }
+    }
+    console.log(`[grid exact] ${decided} of ${total} worked out from the touched keys; ${refused} refused`);
+    expect(total).toBeGreaterThan(700);
+    expect(refused).toBeGreaterThan(50);
+    // Almost all are worked out from the touched keys; the rest on a copy.
+    expect(decided / total).toBeGreaterThan(0.8);
   });
 });
