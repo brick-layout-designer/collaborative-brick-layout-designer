@@ -86,6 +86,25 @@ function sheetProblemsIn(layerData: Y.AbstractType<any> | undefined, sheet: stri
   return out;
 }
 
+/**
+ * What was outside its range on each sheet of a room's document, worked
+ * out once per sheet. An update the guard takes never leaves a problem
+ * that wasn't there before, so what a sheet had when first read stays
+ * true of it (some may have been fixed since; those may come back, as
+ * when the layout was read). Reading a sheet with many rulers once,
+ * instead of with every update to it, keeps each update's check to what
+ * it touches.
+ */
+const knownProblems = new WeakMap<Y.Doc, Map<string, Set<string>>>();
+function problemsBefore(doc: Y.Doc | null, sheet: string): Set<string> {
+  if (!doc) return new Set();
+  let sheets = knownProblems.get(doc);
+  if (!sheets) knownProblems.set(doc, (sheets = new Map()));
+  let known = sheets.get(sheet);
+  if (!known) sheets.set(sheet, (known = new Set(sheetProblemsIn(doc.share.get(LAYER_DATA), sheet))));
+  return known;
+}
+
 /** Everything outside its range in `doc`, every sheet. */
 export function drawingProblems(doc: Y.Doc): Set<string> {
   const layerData = doc.share.get(LAYER_DATA);
@@ -476,10 +495,12 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
     return slot && slot.key === null ? rulersOf(slot.tok) : null;
   };
 
-  // The new items of each key and of each list, and the sheets touched.
+  // The new items of each key and of each list, the sheets touched, and
+  // the rulers of the room's document whose fields (or id) the update writes.
   const chains = new Map<string, Y.Item[]>();
   const lists = new Map<string, Y.Item[]>();
   const touched = new Set<string>();
+  const touchedRulers = new Set<string>();
   const add = (sheet: string | null) => {
     if (sheet !== null) touched.add(sheet);
   };
@@ -487,7 +508,13 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
     if (slot.key === null) add(rulersOf(slot.tok));
     else if (slot.tok === ROOT_LAYERS) touched.add(slot.key);
     else if (SHEET_READ.has(slot.key)) add(layerOf(slot.tok));
-    else if (RULER_KEYS.has(slot.key)) add(rulerSheetOf(slot.tok));
+    else if (RULER_KEYS.has(slot.key) || slot.key === 'id') {
+      const sheet = rulerSheetOf(slot.tok);
+      if (sheet !== null) {
+        touched.add(sheet);
+        touchedRulers.add(slot.tok);
+      }
+    }
   };
   for (const [item, slot] of slots) {
     if (!slot) continue;
@@ -570,10 +597,16 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
       const view = rulerView(value, place);
       if (view) out.push(view);
     };
+    // Of the list the room has, only the rulers the update writes to: the
+    // others are as they were, with the problems they had (problemsBefore).
     if (known(list.item.id)) {
-      for (let item = list.value._start; item; item = item.right) {
-        if (item.deleted) continue;
-        item.content.getContent().forEach((v, j) => entry(item!, j, v));
+      for (const tok of touchedRulers) {
+        const [client, clock] = tok.slice(2).split(':').map(Number) as [number, number];
+        const id = Y.createID(client, clock);
+        if (!known(id)) continue;
+        const item = docStruct(id);
+        if (!(item instanceof Y.Item) || item.deleted || item.parent !== list.value) continue;
+        item.content.getContent().forEach((v, j) => entry(item, j, v));
       }
     }
     for (const item of lists.get(tokOf(list.item)) ?? []) {
@@ -583,7 +616,6 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
     return out;
   };
 
-  const layerData = doc?.share.get(LAYER_DATA);
   for (const sheet of touched) {
     guardWork.gridLayersRead += 1;
     const entry = read(ROOT_LAYERS, sheet);
@@ -592,7 +624,7 @@ function exactOrThrow(doc: Y.Doc | null, decoded: DecodedUpdate): string | null 
     const after = sheetProblems(sheet, (f) => read(tok, f).value, rulersAfter(read(tok, RULERS_KEY)));
     if (read(tok, TYPE_KEY).value === 'grid' && !validGridSize(read(tok, SIZE_KEY).value)) after.unshift(sizeProblem(sheet));
     if (after.length === 0) continue;
-    const before = new Set(sheetProblemsIn(layerData, sheet));
+    const before = problemsBefore(doc, sheet);
     const fresh = after.find((p) => !before.has(p));
     if (fresh) return refusal(fresh);
   }
