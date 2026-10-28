@@ -18,6 +18,7 @@ import { upgradeDoc } from '@cld/ydoc';
 import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 import { rollup } from '../metrics/rollup.js';
+import { applyStoredUpdate } from './yjsWork.js';
 import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, dropPending, pendingBytes, pendingDsBytes } from './pending.js';
 
 /**
@@ -211,13 +212,9 @@ export class DocSession {
           eq(schema.layoutUpdates.doc, 'main'),
         ),
       );
-    for (const u of updates) {
-      try {
-        Y.applyUpdate(this.doc, u.updateBytes as Uint8Array);
-      } catch {
-        // Corrupt updates are ignored — the snapshot is the source of truth.
-      }
-    }
+    // Corrupt updates, and any that would take too long to apply
+    // (ws/yjsWork.ts), are skipped: the snapshot is the source of truth.
+    for (const u of updates) applyStoredUpdate(this.doc, u.updateBytes as Uint8Array, `layout ${this.layoutId}`);
     // A snapshot written before rooms had a limit on it may hold more
     // waiting for changes nobody sent than one may (ws/pending.ts).
     this.limitPending();

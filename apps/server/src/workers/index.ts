@@ -32,6 +32,7 @@ import { env } from '../env.js';
 import { classifyBackups } from './retention.js';
 import { backgroundJobs } from './jobs.js';
 import { docHub } from '../ws/docHub.js';
+import { applyStoredUpdate } from '../ws/yjsWork.js';
 import { sweepRollup } from '../metrics/rollup.js';
 import { sweepUsage } from '../metrics/usage.js';
 import { getPlatformSettings } from '../auth/platformSettings.js';
@@ -156,13 +157,8 @@ export async function dailyCompaction(): Promise<void> {
 
     const doc = new Y.Doc();
     Y.applyUpdate(doc, layout.snapshot as Uint8Array);
-    for (const u of updates) {
-      try {
-        Y.applyUpdate(doc, u.updateBytes as Uint8Array);
-      } catch {
-        /* corrupt update — skip */
-      }
-    }
+    // Corrupt or too costly to apply (ws/yjsWork.ts): skipped.
+    for (const u of updates) applyStoredUpdate(doc, u.updateBytes as Uint8Array, `layout ${layout.id}`);
     const fresh = Y.encodeStateAsUpdate(doc);
     await db
       .update(schema.layouts)

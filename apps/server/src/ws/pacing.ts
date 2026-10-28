@@ -28,6 +28,14 @@ export const wsPacing = {
   copyByteBurst: 16 * 1024 * 1024,
   /** ...then this many a second (a copy takes roughly 0.1 ms per KB). */
   copyBytesPerSecond: 1024 * 1024,
+  /**
+   * The work Yjs may do applying one person's updates (ws/yjsWork.ts, in
+   * structs walked plus values copied), across their connections: a burst
+   * of this many...
+   */
+  workBurst: 8_000_000,
+  /** ...then this many a second. */
+  workPerSecond: 2_000_000,
 };
 
 export class TokenBucket {
@@ -83,9 +91,23 @@ export function copyBudget(userId: string, now: number = Date.now()): TokenBucke
   return bucket;
 }
 
-/** Forget every copy budget (tests). */
+const workBuckets = new Map<string, TokenBucket>();
+
+/** The Yjs work budget of one person (wsPacing.workBurst / workPerSecond), shared by their connections. */
+export function workBudget(userId: string, now: number = Date.now()): TokenBucket {
+  let bucket = workBuckets.get(userId);
+  if (!bucket) {
+    if (workBuckets.size >= 10_000) for (const [id, b] of workBuckets) if (b.full(now)) workBuckets.delete(id);
+    bucket = new TokenBucket(wsPacing.workBurst, wsPacing.workPerSecond / 1000, now);
+    workBuckets.set(userId, bucket);
+  }
+  return bucket;
+}
+
+/** Forget every copy and work budget (tests). */
 export function resetCopyBudgets(): void {
   copyBuckets.clear();
+  workBuckets.clear();
 }
 
 /** One connection's buckets. */
