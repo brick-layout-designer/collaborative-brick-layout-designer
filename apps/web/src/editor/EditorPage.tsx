@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { lazyRetry, preloadLazy } from '../ui/lazyRetry';
 import { RenameDialog } from '../ui/RenameDialog';
 import { flushSync } from 'react-dom';
@@ -18,7 +18,7 @@ import { useLibraryEntries } from './moduleLibraryMenu';
 import { TouchModuleSheet } from './TouchModuleSheet';
 import { useDocMap, projectDoc } from './useDocMap';
 import { emptyVenue } from '../venues/designer/model';
-import { commitStageView, holdStageView, isStageViewHeld, setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, EMPTY_ANNO, type AnnoSelection, noticeDownloaded } from './editorStore';
+import { holdStageView, isStageViewHeld, setSelectionShaper, shapeSelectionIds, useEditorStore, SNAP_STEPS, ROTATION_STEPS, MIN_ZOOM, MAX_ZOOM, EMPTY_ANNO, type AnnoSelection, noticeDownloaded } from './editorStore';
 import {
   annoCount,
   annotationsInMarquee,
@@ -2106,6 +2106,10 @@ function Canvas({
    */
   function stopViewMoving(stage: Konva.Stage): void {
     flushSync(() => holdStageView(false));
+    // A catch-up during the move may have put the stage somewhere React
+    // never rendered (followView); it goes back to the view React has.
+    const { stageView } = useEditorStore.getState();
+    stage.setAttrs({ x: stageView.panX, y: stageView.panY, scaleX: stageView.zoom, scaleY: stageView.zoom });
     const vb = viewBitmapRef.current;
     vb?.thaw();
     for (const layer of stage.getLayers()) layer.batchDraw();
@@ -2117,17 +2121,23 @@ function Canvas({
   /**
    * While the view moves: the canvas, and the picture under it, are moved
    * and scaled to the view by CSS. When the picture doesn't cover the view
-   * any more, the stage catches up (one render, and its sheets drawn from a
-   * new picture), and the CSS goes on from there.
+   * any more, the stage catches up (its sheets drawn from a new picture),
+   * and the CSS goes on from there. The catch-up moves Konva's stage
+   * itself, with no render: React's `stageView` stays put until the move
+   * ends, so what depends on the zoom in React (how thick an outline is,
+   * whether text is big enough to show) is brought up to date then.
    */
   function followView(): void {
     const vb = viewBitmapRef.current;
     if (catchUpRef.current) return;
-    if (vb?.follow(useEditorStore.getState())) return;
+    const view = useEditorStore.getState();
+    if (vb?.follow(view)) return;
     catchUpRef.current = true;
-    flushSync(() => commitStageView());
     const stage = stageRef.current;
-    if (stage) for (const layer of stage.getLayers()) layer.batchDraw();
+    if (stage) {
+      stage.setAttrs({ x: view.panX, y: view.panY, scaleX: view.zoom, scaleY: view.zoom });
+      for (const layer of stage.getLayers()) layer.batchDraw();
+    }
     Konva.Util.requestAnimFrame(() => {
       catchUpRef.current = false;
       if (isStageViewHeld()) followView();
@@ -5443,6 +5453,27 @@ function VenueDraftPreview({
 }
 
 /**
+ * The zoom as a percentage. It's written into the page straight from the
+ * store, so a turn of the wheel or a pinch doesn't render the status bar
+ * (which it did on every step).
+ */
+function ZoomPercent(props: { className?: string; 'aria-label'?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    let shown = '';
+    const show = (zoom: number) => {
+      const text = `${Math.round(zoom * 100)}%`;
+      if (text === shown || !ref.current) return;
+      shown = text;
+      ref.current.textContent = text;
+    };
+    show(useEditorStore.getState().zoom);
+    return useEditorStore.subscribe((s) => show(s.zoom));
+  }, []);
+  return <span ref={ref} data-testid="zoom-readout" {...props} />;
+}
+
+/**
  * Status bar at the bottom of the editor — minimal port of
  * MainWindow.cpp:861-1014's permanent widgets.
  *   - Mouse position in studs (clears on canvas-leave)
@@ -5469,7 +5500,6 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
   const selection = useEditorStore((s) => s.selection);
   const onSheets = budgetMap ? sheetsOfSelection(budgetMap, selection) : [];
   const sheetName = onSheets.length === 1 ? budgetMap?.layers.find((l) => l.id === onSheets[0])?.name : undefined;
-  const zoom = useEditorStore((s) => s.zoom);
   const tool = useEditorStore((s) => s.tool);
   const mapW = useEditorStore((s) => s.hudMapWidthStuds);
   const mapH = useEditorStore((s) => s.hudMapHeightStuds);
@@ -5513,7 +5543,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={bigBtn}>−</button>
-          <span className="min-w-[3.25rem] text-center font-bold tabular-nums text-ink" aria-label="Zoom">{Math.round(zoom * 100)}%</span>
+          <ZoomPercent className="min-w-[3.25rem] text-center font-bold tabular-nums text-ink" aria-label="Zoom" />
           <button type="button" aria-label="Zoom in" onClick={onZoomIn} className={bigBtn}>+</button>
           <button type="button" title="Fit everything in view" onClick={onFit} className={bigBtn}>Fit</button>
         </div>
@@ -5584,7 +5614,7 @@ function StatusBar({ gridSpan, status, venue, budgetLimits, budgetMap, onZoomIn,
           {sheetName ? <span data-testid="status-sheet"> · on sheet “{sheetName}”</span> : onSheets.length > 1 ? <span data-testid="status-sheet"> · on {onSheets.length} sheets</span> : null}
         </span>
         <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={zoomBtn}>−</button>
-        <span className="font-bold tabular-nums text-ink">Zoom: {Math.round(zoom * 100)}%</span>
+        <span className="font-bold tabular-nums text-ink">Zoom: <ZoomPercent /></span>
         <button type="button" aria-label="Zoom in" onClick={onZoomIn} className={zoomBtn}>+</button>
         <button type="button" title="Fit everything in view" onClick={onFit} className={`${zoomBtn} px-2.5 font-bold`}>Fit</button>
       </div>

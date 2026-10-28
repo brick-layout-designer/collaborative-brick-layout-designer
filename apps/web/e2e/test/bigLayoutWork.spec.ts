@@ -11,6 +11,10 @@
 //  - And while it moves, the canvases themselves are moved by CSS: a
 //    60-frame pan commits nothing in React (it rendered the map's canvas on
 //    every frame), and Konva's stage stays put until the pan ends.
+//  - 40 notches of the wheel commit next to nothing in React: the zoom
+//    readout is written straight from the store, and the stage catches up
+//    to the picture without a render. The readout, the zoom buttons and the
+//    keyboard still show the right zoom.
 //  - Dragging a box redraws no part: only the box. It used to redraw every
 //    part (and the grid) on each mouse move, as the rulers and grid lines
 //    came along with new point arrays.
@@ -330,4 +334,56 @@ test('a big layout: a pan renders nothing in React and moves the canvas, not the
   expect(part).not.toBeNull();
   await page.mouse.click(part!.x, part!.y);
   await expect(page.locator('footer')).toContainText(/selected: 1\b/);
+});
+
+test('a big layout: a turn of the wheel renders next to nothing in React, and the zoom readout keeps up', async ({ page }) => {
+  test.setTimeout(180_000);
+  const commits = await countReactCommits(page);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await signIn(page, `big-wheel-${Date.now()}@example.com`, 'Big Wheel');
+  const res = await page.request.post('/api/layouts', { data: { title: 'Big wheel zoom', bbm: FORDYCE_BBM } });
+  expect(res.ok()).toBe(true);
+  const { id } = (await res.json()) as { id: string };
+  await page.goto(`/editor/${id}`);
+  await expect(page.getByTestId('loading-card')).toBeHidden({ timeout: 60000 });
+  await expect(page.getByText('940 pieces').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  await page.waitForTimeout(1500);
+  const area = (await page.locator('.konvajs-content').first().boundingBox())!;
+  const c = { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+  const readout = page.getByTestId('zoom-readout');
+  /** The zoom the map is drawn at, as the readout shows it. */
+  const stageZoom = () =>
+    page.evaluate(() => `${Math.round((window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX() * 100)}%`);
+  const atStart = await readout.textContent();
+  expect(atStart).toBe(await stageZoom());
+
+  // ── 40 notches of the wheel in one go: 20 in, 20 out. ──
+  await page.mouse.move(c.x, c.y);
+  const start = await commits();
+  let midReadout = '';
+  for (let i = 0; i < 40; i++) {
+    await page.mouse.wheel(0, i < 20 ? -100 : 100);
+    await page.waitForTimeout(30);
+    if (i === 19) midReadout = (await readout.textContent()) ?? '';
+  }
+  const during = (await commits()) - start;
+  expect(midReadout, 'the readout follows the wheel while it turns').not.toBe(atStart);
+  expect(during, 'React commits during 40 notches of the wheel (it was about 50)').toBeLessThanOrEqual(5);
+  await page.waitForTimeout(500);
+  expect(await readout.textContent(), 'the readout shows the zoom the wheel stopped at').toBe(await stageZoom());
+
+  // ── The zoom buttons and the keyboard still zoom, and the readout says so. ──
+  const before = await readout.textContent();
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await page.waitForTimeout(400);
+  const afterButton = await readout.textContent();
+  expect(afterButton).not.toBe(before);
+  expect(afterButton).toBe(await stageZoom());
+  await page.mouse.click(area.x + 5, area.y + 5);
+  await page.keyboard.press('Control+-');
+  await page.waitForTimeout(400);
+  const afterKey = await readout.textContent();
+  expect(afterKey).not.toBe(afterButton);
+  expect(afterKey).toBe(await stageZoom());
 });
