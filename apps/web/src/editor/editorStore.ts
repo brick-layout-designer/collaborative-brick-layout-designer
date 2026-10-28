@@ -116,6 +116,8 @@ export interface EditorState {
   touchSelectMore: boolean;
   /** Touch editing: one finger on the map draws a box that picks what it touches, instead of moving the view. */
   touchSelectArea: boolean;
+  /** Touch editing with a ruler tool: where the first tap put the ruler's start (or a circle's centre), in studs, until the second tap. */
+  touchRulerStart: { x: number; y: number } | null;
   /** Layer id currently being edited. */
   activeLayerId: string | null;
   /** Part library key picked for the place tool. Empty when nothing chosen. */
@@ -341,6 +343,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   annoSelection: EMPTY_ANNO,
   touchSelectMore: false,
   touchSelectArea: false,
+  touchRulerStart: null,
   activeLayerId: null,
   placePartKey: '',
   zoom: 1,
@@ -431,7 +434,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     return Number.isInteger(n) && n >= 4 ? n : 28;
   })(),
 
-  setTool: (tool) => set({ tool }),
+  setTool: (tool) => set({ tool, touchRulerStart: null }),
   setPaintColor: (paintColor) => {
     localStorage.setItem('cld:paintColor', paintColor);
     set({ paintColor });

@@ -10,6 +10,7 @@ import { useEditorStore } from './editorStore';
 import { indexParts } from './partIndex';
 import { fuzzyScore, PartThumbnail } from './PartsPanel';
 import { pushRecent } from './touchGesture';
+import { isTouchDrawTool, TouchDrawBar } from './TouchTools';
 
 const RECENT_KEY = 'cld:recentParts';
 const MAX_RESULTS = 60;
@@ -92,6 +93,7 @@ const RotLeft = () => (<svg {...svg}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="
 const RotRight = () => (<svg {...svg}><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v5h-5" /></svg>);
 const Copy = () => (<svg {...svg}><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></svg>);
 const PasteIcon = () => (<svg {...svg}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1" /><path d="M9 11h6M9 15h4" /></svg>);
+const RulerIcon = () => (<svg {...svg}><path d="M3 17L17 3l4 4L7 21z" /><path d="M7 13l2 2M10 10l2 2M13 7l2 2" /></svg>);
 const Trash = () => (<svg {...svg}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 15h10l1-15" /></svg>);
 const Check = () => (<svg {...svg}><path d="M5 12l5 5L20 7" /></svg>);
 const Plus = () => (<svg {...svg}><path d="M12 5v14M5 12h14" /></svg>);
@@ -128,11 +130,14 @@ export function TouchUndoRedo({ undo, top }: { undo: { canUndo: boolean; canRedo
  * picked: Rotate left / right, Duplicate, Module (make one, or the picked
  * module's menu), More actions (Save as set, Group, Ungroup and the rest:
  * TouchPickedSheet: Copy, Cut and Paste are there too), Delete, Select
- * more, Select area and Done. With nothing picked: Add part, Paste, Select
- * more, Select area and Sheets.
+ * more, Select area and Done. With nothing picked: Add part, Paste, Tools
+ * (measure and paint: TouchTools), Select more, Select area and Sheets.
+ * While measuring or painting, the bar is TouchDrawBar.
  */
-export function TouchActionBar({ actions, onAddPart, onPaste, onSheets, onEditText, onModule, onMore }: {
+export function TouchActionBar({ actions, onAddPart, onPaste, onTools, onSheets, onEditText, onModule, onMore }: {
   actions: Actions;
+  /** Opens the measure and paint tools (TouchToolsSheet). */
+  onTools?: (() => void) | undefined;
   /** Paste what was copied (in this layout, another one, or another device), in the middle of the view. */
   onPaste?: (() => void) | undefined;
   /** The picked parts' other actions (TouchPickedSheet). */
@@ -151,6 +156,9 @@ export function TouchActionBar({ actions, onAddPart, onPaste, onSheets, onEditTe
   const oneText = parts === 0 && anno.rulers.length === 0 && anno.labels.length + anno.texts.length === 1;
   const more = useEditorStore((s) => s.touchSelectMore);
   const area = useEditorStore((s) => s.touchSelectArea);
+  const drawing = useEditorStore((s) => isTouchDrawTool(s.tool));
+  const oneRuler = parts === 0 && anno.labels.length + anno.texts.length === 0 && anno.rulers.length === 1;
+  if (drawing && onAddPart) return <TouchDrawBar />;
   if (count === 0 && !onAddPart) return null;
   const toggleMore = () => useEditorStore.setState({ touchSelectMore: !more });
   const toggleArea = () => useEditorStore.setState({ touchSelectArea: !area });
@@ -172,6 +180,11 @@ export function TouchActionBar({ actions, onAddPart, onPaste, onSheets, onEditTe
       {area && (
         <p role="status" className="px-2 pb-1 text-center text-xs font-semibold text-muted">
           Drag a box around the parts to pick. Two fingers move the map.
+        </p>
+      )}
+      {!area && oneRuler && (
+        <p role="status" className="px-2 pb-1 text-center text-xs font-semibold text-muted">
+          Drag the round handles to adjust the ruler. Tap Done when it’s right.
         </p>
       )}
       {count > 0 ? (
@@ -201,19 +214,21 @@ export function TouchActionBar({ actions, onAddPart, onPaste, onSheets, onEditTe
           </BarButton>
         </div>
       ) : (
-        <div className="flex items-stretch gap-1">
+        <div className="flex items-stretch gap-0.5">
           <button
             type="button"
             onClick={onAddPart}
             data-testid="add-part"
-            className="flex min-h-14 flex-[2] items-center whitespace-nowrap justify-center gap-2 rounded-control bg-accent px-4 text-base font-bold text-accent-ink hover:bg-accent-hover"
+            className="flex min-h-14 flex-[2_0_auto] items-center whitespace-nowrap justify-center gap-1.5 rounded-control bg-accent px-3 text-base font-bold text-accent-ink hover:bg-accent-hover"
           >
             <Plus />
             Add part
           </button>
           {onPaste && <BarButton label="Paste" onClick={onPaste} testId="touch-paste"><PasteIcon /></BarButton>}
-          <BarButton label="Select more" pressed={more} onClick={toggleMore}><More /></BarButton>
-          {areaButton()}
+          {onTools && <BarButton label="Measure and paint" short="Tools" onClick={onTools} testId="touch-tools"><RulerIcon /></BarButton>}
+          {/* The short words, so six fit across a 360 px phone. */}
+          <BarButton label="Select more" short="More" pressed={more} onClick={toggleMore}><More /></BarButton>
+          {areaButton('Area')}
           {onSheets && <BarButton label="Sheets" onClick={onSheets} testId="touch-sheets"><Layers /></BarButton>}
         </div>
       )}
