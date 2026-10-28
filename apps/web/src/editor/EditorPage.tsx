@@ -1680,6 +1680,7 @@ function Canvas({
     if (!stage || !touchEl) return null;
     const area = touchEl.getBoundingClientRect();
     const box = stage.container().getBoundingClientRect();
+    freshHit();
     const shape = stage.getIntersection({ x: p.x + area.left - box.left, y: p.y + area.top - box.top });
     if (!shape) return null;
     if (shape.name() === 'text-cell') return { kind: 'texts', id: shape.id(), node: shape };
@@ -2105,6 +2106,7 @@ function Canvas({
    * the canvas comes off.
    */
   function stopViewMoving(stage: Konva.Stage): void {
+    hitStaleRef.current = true;
     flushSync(() => holdStageView(false));
     // A catch-up during the move may have put the stage somewhere React
     // never rendered (followView); it goes back to the view React has.
@@ -2114,7 +2116,27 @@ function Canvas({
     vb?.thaw();
     for (const layer of stage.getLayers()) layer.batchDraw();
     // Queued after the layers' draws, so it runs in the same frame, after them.
-    Konva.Util.requestAnimFrame(() => vb?.settled());
+    Konva.Util.requestAnimFrame(() => {
+      hitStaleRef.current = false;
+      vb?.settled();
+    });
+  }
+  /**
+   * The view has stopped, and the hit canvas (what a click lands on) is
+   * drawn with the sheets on the next frame. Until then it still has the
+   * map where it was before the move: it isn't drawn while the view moves.
+   * A press that comes first (a fast click right after a pan, a zoom or a
+   * pinch; on a quick machine it lands in that same frame) would hit what
+   * used to be there, or nothing, and start a box that picks every part
+   * under the pointer.
+   */
+  const hitStaleRef = useRef(false);
+  /** Draws the hit canvas now if it's behind the view, so a hit test sees the map where it is. */
+  function freshHit(): void {
+    const stage = stageRef.current;
+    if (!stage || !hitStaleRef.current || !stage.listening()) return;
+    hitStaleRef.current = false;
+    for (const layer of stage.getLayers()) if (layer.isListening()) layer.drawHit();
   }
   /** A catch-up of the stage to the view is waiting for its frame. */
   const catchUpRef = useRef(false);
@@ -2214,21 +2236,27 @@ function Canvas({
   useEffect(() => {
     const el = stageRef.current?.container();
     if (!el) return;
+    // So does a press right after a pan or a pinch, before the frame that
+    // draws the hit canvas again (freshHit).
     const settle = () => {
-      if (viewStillTimer.current === null) return;
-      window.clearTimeout(viewStillTimer.current);
-      viewStillTimer.current = null;
       const stage = stageRef.current;
       if (!stage) return;
-      stage.listening(true);
-      if (isStageViewHeld() || viewBitmapRef.current?.isFrozen) stopViewMoving(stage);
-      for (const layer of stage.getLayers()) if (layer.isListening()) layer.drawHit();
+      if (viewStillTimer.current !== null) {
+        window.clearTimeout(viewStillTimer.current);
+        viewStillTimer.current = null;
+        stage.listening(true);
+        if (isStageViewHeld() || viewBitmapRef.current?.isFrozen) stopViewMoving(stage);
+        hitStaleRef.current = true;
+      }
+      freshHit();
     };
     el.addEventListener('pointerdown', settle, true);
     el.addEventListener('mousedown', settle, true);
+    el.addEventListener('touchstart', settle, { capture: true, passive: true });
     return () => {
       el.removeEventListener('pointerdown', settle, true);
       el.removeEventListener('mousedown', settle, true);
+      el.removeEventListener('touchstart', settle, true);
       if (viewStillTimer.current !== null) window.clearTimeout(viewStillTimer.current);
     };
   }, [hasMap]);

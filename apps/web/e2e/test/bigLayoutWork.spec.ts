@@ -19,6 +19,10 @@
 //    part (and the grid) on each mouse move, as the rulers and grid lines
 //    came along with new point arrays.
 //  - Export as image gives a real PNG of the size asked for.
+//  - A press in the very task the view stops in (no frame between, as a
+//    fast click lands in a production build) picks the part under it, after
+//    a pan, a turn of the wheel and a pinch: the hit canvas isn't drawn
+//    while the view moves, and was only drawn again on the next frame.
 
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -67,9 +71,9 @@ async function oneHitDraw(page: Page): Promise<number> {
   return (await done()).hits;
 }
 
-/** The screen point of a part near the view's centre, big enough to click. */
-function partNearCentre(page: Page): Promise<{ x: number; y: number } | null> {
-  return page.evaluate(() => {
+/** The screen point of a part near the view's centre, big enough to click (run in the page). */
+function findPartNearCentre(): { x: number; y: number; name: string } | null {
+  {
     type N = { name: () => string; getClassName: () => string; getClientRect: () => { x: number; y: number; width: number; height: number } };
     const st = (window as unknown as { Konva: { stages: { container: () => HTMLElement; find: (f: (n: N) => boolean) => N[] }[] } }).Konva.stages[0]!;
     const b = st.container().getBoundingClientRect();
@@ -81,10 +85,79 @@ function partNearCentre(page: Page): Promise<{ x: number; y: number } | null> {
       const y = r.y + r.height / 2;
       if (x < 40 || y < 40 || x > b.width - 40 || y > b.height - 40) continue;
       const d = Math.hypot(x - b.width / 2, y - b.height / 2);
-      if (!best || d < best.d) best = { x: b.left + x, y: b.top + y, d };
+      if (!best || d < best.d) best = { x: b.left + x, y: b.top + y, d, name: n.name() };
     }
     return best;
-  });
+  }
+}
+
+/** The screen point of a part near the view's centre, big enough to click. */
+function partNearCentre(page: Page): Promise<{ x: number; y: number; name: string } | null> {
+  return page.evaluate(findPartNearCentre);
+}
+
+/**
+ * In one task of the page, with no frame between: `stop` ends the move
+ * (or waits, task by task, until the view has stopped), then the part near
+ * the centre is pressed and let go, with the mouse or a finger. Gives the
+ * part pressed, or null when there was none.
+ */
+function pressRightAfter(page: Page, how: { stop: 'pan' | 'wheel' | 'pinch'; at: { x: number; y: number } }): Promise<string | null> {
+  return page.evaluate(
+    async ([src, how]) => {
+      const find = new Function(`return (${src})`)() as () => { x: number; y: number; name: string } | null;
+      type St = { content: HTMLElement; listening: () => boolean };
+      const st = (window as unknown as { Konva: { stages: St[] } }).Konva.stages[0]!;
+      const el = st.content;
+      const mouse = (type: string, p: { x: number; y: number }, button: number) => {
+        const init = { bubbles: true, cancelable: true, composed: true, clientX: p.x, clientY: p.y, button, buttons: type.endsWith('down') ? 1 << (button === 1 ? 2 : 0) : 0 };
+        el.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, { ...init, pointerType: 'mouse', isPrimary: true }) : new MouseEvent(type, init));
+      };
+      let id = 0;
+      const touch = (type: string, pts: { x: number; y: number }[]) => {
+        const touches = pts.map((p, i) => new Touch({ identifier: id + i, target: el, clientX: p.x, clientY: p.y }));
+        const ev = new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: type === 'touchend' ? [] : touches, targetTouches: type === 'touchend' ? [] : touches, changedTouches: touches });
+        el.dispatchEvent(ev);
+      };
+      const { x, y } = how.at;
+      if (how.stop === 'pan') {
+        // The middle button was held down and moved; it's let go here.
+        mouse('pointerup', how.at, 1);
+        mouse('mouseup', how.at, 1);
+      } else if (how.stop === 'wheel') {
+        for (let i = 0; i < 4; i++) el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: x, clientY: y, deltaY: -100 }));
+        // The wheel has no "let go": the view stops a moment after the last
+        // notch. The press comes in the first task after that.
+        const tick = () => new Promise<void>((r) => {
+          const ch = new MessageChannel();
+          ch.port1.onmessage = () => r();
+          ch.port2.postMessage(null);
+        });
+        while (!st.listening()) await tick();
+        const t0 = performance.now();
+        while (st.listening() && performance.now() - t0 < 50) await tick();
+        while (!st.listening()) await tick();
+      } else {
+        touch('touchstart', [{ x: x - 20, y }, { x: x + 20, y }]);
+        for (let d = 30; d <= 60; d += 10) touch('touchmove', [{ x: x - d, y }, { x: x + d, y }]);
+        touch('touchend', [{ x: x - 60, y }, { x: x + 60, y }]);
+      }
+      const part = find();
+      if (!part) return null;
+      id = 10;
+      if (how.stop === 'pinch') {
+        touch('touchstart', [part]);
+        touch('touchend', [part]);
+      } else {
+        mouse('pointerdown', part, 0);
+        mouse('mousedown', part, 0);
+        mouse('pointerup', part, 0);
+        mouse('mouseup', part, 0);
+      }
+      return part.name;
+    },
+    [findPartNearCentre.toString(), how] as const,
+  );
 }
 
 test('a big layout: pan, zoom and box-select draw what changed, and the export is a real PNG', async ({ page }) => {
@@ -334,6 +407,48 @@ test('a big layout: a pan renders nothing in React and moves the canvas, not the
   expect(part).not.toBeNull();
   await page.mouse.click(part!.x, part!.y);
   await expect(page.locator('footer')).toContainText(/selected: 1\b/);
+
+  // ── And a click in the very task the pan ends in. ──
+  // (A fast click landed before the frame that draws the hit canvas
+  // again: it hit nothing and its box picked the two parts under it.)
+  await page.keyboard.press('Escape');
+  await expect(page.locator('footer')).not.toContainText(/selected: \d/);
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.down({ button: 'middle' });
+  await panHeld(page, c, 10);
+  expect(await pressRightAfter(page, { stop: 'pan', at: { x: c.x + 40, y: c.y + 20 } })).not.toBeNull();
+  await expect(page.locator('footer')).toContainText(/selected: 1\b/);
+
+  // ── Or the task the wheel stops in. ──
+  await page.keyboard.press('Escape');
+  await expect(page.locator('footer')).not.toContainText(/selected: \d/);
+  expect(await pressRightAfter(page, { stop: 'wheel', at: c })).not.toBeNull();
+  await expect(page.locator('footer')).toContainText(/selected: 1\b/);
+});
+
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true });
+
+  test('a big layout: a tap in the very task a pinch ends in picks the part under it', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await signIn(page, `big-pinch-${Date.now()}@example.com`, 'Big Pinch');
+    const res = await page.request.post('/api/layouts', { data: { title: 'Big pinch', bbm: FORDYCE_BBM } });
+    expect(res.ok()).toBe(true);
+    const { id } = (await res.json()) as { id: string };
+    await page.goto(`/editor/${id}`);
+    await expect(page.getByTestId('loading-card')).toBeHidden({ timeout: 60000 });
+    await expect(page.getByText('940 pieces').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Fit', exact: true }).click();
+    await page.waitForTimeout(1500);
+    const area = (await page.locator('.konvajs-content').first().boundingBox())!;
+    const c = { x: area.x + area.width / 2, y: area.y + area.height / 2 };
+    const zoom = () => page.evaluate(() => (window as unknown as { Konva: { stages: { scaleX: () => number }[] } }).Konva.stages[0]!.scaleX());
+    const before = await zoom();
+    expect(await pressRightAfter(page, { stop: 'pinch', at: c })).not.toBeNull();
+    expect(await zoom(), 'the pinch zoomed in').toBeGreaterThan(before);
+    await expect(page.locator('footer')).toContainText(/selected: 1\b/);
+  });
 });
 
 test('a big layout: a turn of the wheel renders next to nothing in React, and the zoom readout keeps up', async ({ page }) => {

@@ -87,6 +87,19 @@ jobs:
           e2e/test/a11y.spec.ts
           --workers=2 --retries=1 --reporter=list,html
 
+      # The big-layout spec once more, on the production build (vite build,
+      # vite preview) as the live site runs it: a click right after a pan
+      # passed on the dev server and picked two parts there, as the faster
+      # build let the click in before the frame that redraws the hit canvas.
+      # The dev server above has stopped; the preview takes its port.
+      - name: Big layout on the production build
+        working-directory: apps/web
+        run: |
+          npx vite build
+          nohup npx vite preview > "$GITHUB_WORKSPACE/.e2e/preview.log" 2>&1 &
+          for i in $(seq 30); do curl -sf http://localhost:5173/ > /dev/null && break; sleep 1; done
+          npx playwright test e2e/test/bigLayoutWork.spec.ts --workers=1 --retries=1 --reporter=list
+
       - name: Upload the Playwright report and traces
         if: failure()
         uses: actions/upload-artifact@v7
@@ -96,6 +109,7 @@ jobs:
             apps/web/playwright-report/
             apps/web/test-results/
             .e2e/server.log
+            .e2e/preview.log
           retention-days: 14
 
   # At night: every spec, split across shards that run side by side. Each
@@ -199,6 +213,7 @@ jobs:
           path: |
             apps/web/test-results/
             .e2e/server.log
+            .e2e/preview.log
           retention-days: 14
 
   # One report for the whole night: every shard's results merged into one
