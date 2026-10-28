@@ -36,6 +36,14 @@ export const wsPacing = {
   workBurst: 8_000_000,
   /** ...then this many a second. */
   workPerSecond: 2_000_000,
+  /**
+   * Bytes of a room's document the copies may take that are worked out
+   * because changes waiting for another editor's land (ws/pending.ts
+   * waitingCosts): a burst of this many per room...
+   */
+  roomCopyByteBurst: 16 * 1024 * 1024,
+  /** ...then this many a second. */
+  roomCopyBytesPerSecond: 1024 * 1024,
 };
 
 export class TokenBucket {

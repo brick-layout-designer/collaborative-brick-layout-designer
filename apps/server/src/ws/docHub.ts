@@ -19,7 +19,7 @@ import { db, schema } from '../db/index.js';
 import { encodeAwarenessUpdate, encodeSyncUpdate, isWsPeer, sendBytes } from './protocol.js';
 import { rollup } from '../metrics/rollup.js';
 import { applyStoredUpdate } from './yjsWork.js';
-import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, dropPending, pendingBytes, pendingDsBytes } from './pending.js';
+import { MAX_PENDING_BYTES, MAX_PENDING_DS_BYTES, dropPending, noteWaitingOnOpen, pendingBytes, pendingDsBytes } from './pending.js';
 
 /**
  * Largest awareness (presence) message taken from a client. A presence
@@ -218,6 +218,8 @@ export class DocSession {
     // A snapshot written before rooms had a limit on it may hold more
     // waiting for changes nobody sent than one may (ws/pending.ts).
     this.limitPending();
+    // Who left what still waits isn't known: the room pays for it.
+    noteWaitingOnOpen(this.doc);
     // Docs created before text cells had ids (schemaVersion 1) get them
     // now, so every live-sync client sees a stable id on every cell. This
     // runs before the persist listener is installed; the change reaches
